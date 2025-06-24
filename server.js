@@ -2,17 +2,101 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { NovelAI, Model, Action, Sampler, Noise, Resolution } = require('nekoai-js');
+const waifu2x = require('waifu2x-node');
 
-if (!fs.existsSync('./config.json')) {
-    console.error('config.json not found');
-    process.exit(1);
-}
-const config = require('./config.json');
+// Dynamic config loading
+let config = null;
+let configLastModified = 0;
 
-if (!config.apiKey) {
-    console.error('apiKey is not set in config.json');
-    process.exit(1);
+function loadConfig() {
+    const configPath = './config.json';
+    
+    if (!fs.existsSync(configPath)) {
+        console.error('config.json not found');
+        process.exit(1);
+    }
+    
+    const stats = fs.statSync(configPath);
+    if (stats.mtime.getTime() > configLastModified) {
+        console.log('🔄 Reloading config.json...');
+        
+        try {
+            const configData = fs.readFileSync(configPath, 'utf8');
+            config = JSON.parse(configData);
+            configLastModified = stats.mtime.getTime();
+            
+            if (!config.apiKey) {
+                console.error('apiKey is not set in config.json');
+                process.exit(1);
+            }
+            
+            console.log('✅ Config reloaded successfully');
+        } catch (error) {
+            console.error('❌ Error reloading config:', error.message);
+            // Keep using the old config if there's an error
+            if (!config) {
+                process.exit(1);
+            }
+        }
+    }
+    
+    return config;
 }
+
+// Text replacement function
+function applyTextReplacements(text, presetName) {
+    if (!text || !config.text_replacements) {
+        return text;
+    }
+    
+    let result = text;
+    
+    // Replace <PRESET_NAME> with the actual preset name
+    result = result.replace(/<PRESET_NAME>/g, presetName);
+    
+    // Apply custom text replacements from config and validate
+    for (const [key, value] of Object.entries(config.text_replacements)) {
+        const pattern = new RegExp(`<${key}>`, 'g');
+        if (pattern.test(result)) {
+            result = result.replace(pattern, value);
+        }
+    }
+    
+    // Check if there are any remaining unmatched replacements
+    const remainingReplacements = result.match(/<[^>]+>/g);
+    if (remainingReplacements && remainingReplacements.length > 0) {
+        const invalidReplacements = remainingReplacements.join(', ');
+        throw new Error(`Invalid text replacement: ${invalidReplacements}`);
+    }
+    
+    return result;
+}
+
+// Function to get list of used replacement keys
+function getUsedReplacements(text) {
+    if (!text || !config.text_replacements) {
+        return [];
+    }
+    
+    const usedKeys = [];
+    
+    // Check for <PRESET_NAME>
+    if (text.includes('<PRESET_NAME>')) {
+        usedKeys.push('PRESET_NAME');
+    }
+    
+    // Check for custom replacements
+    for (const key of Object.keys(config.text_replacements)) {
+        if (text.includes(`<${key}>`)) {
+            usedKeys.push(key);
+        }
+    }
+    
+    return usedKeys;
+}
+
+// Get current config
+config = loadConfig();
 
 const client = new NovelAI({ token: config.apiKey });
 
@@ -42,6 +126,9 @@ app.use(express.json());
 const imagesDir = path.resolve(__dirname, 'images');
 if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir);
 
+const upscaledDir = path.resolve(__dirname, 'upscaled');
+if (!fs.existsSync(upscaledDir)) fs.mkdirSync(upscaledDir);
+
 const formatDate = () => {
     const d = new Date(); const pad = n => n.toString().padStart(2,'0');
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}`;
@@ -55,6 +142,9 @@ async function saveImage(img, filename) {
 
 // Common options handler function
 function buildOptions(model, body, preset = null, isImg2Img = false) {
+    // Reload config to get latest changes
+    const currentConfig = loadConfig();
+    
     console.log('🔧 Building options...');
     console.log('📥 Input request:', JSON.stringify(body, null, 2));
     if (preset) {
@@ -64,10 +154,22 @@ function buildOptions(model, body, preset = null, isImg2Img = false) {
     // Check if resolution is provided (either in body or preset)
     const resolution = preset ? preset.resolution : body.resolution;
     
+    // Get allowPaid early for validation
+    const allowPaid = preset ? preset.allow_paid : body.allow_paid;
+    
     let width, height;
     if (resolution && Resolution[resolution.toUpperCase()]) {
         // Use resolution preset directly
         console.log(`📐 Using resolution preset: "${resolution}"`);
+        
+        // Check if resolution requires paid tier
+        if (resolution.startsWith('LARGE_') || resolution.startsWith('WALLPAPER_')) {
+            if (!allowPaid) {
+                throw new Error(`Resolution "${resolution}" requires paid tier. Set "allow_paid": true to use large/wallpaper resolutions.`);
+            }
+            console.log(`⚠️ Using ${resolution} resolution (paid tier required)`);
+        }
+        
         // Don't set width/height when using resolution preset
         width = undefined;
         height = undefined;
@@ -76,11 +178,18 @@ function buildOptions(model, body, preset = null, isImg2Img = false) {
         width = preset ? (preset.width || 512) : (body.width || 512);
         height = preset ? (preset.height || 768) : (body.height || 768);
         console.log(`📐 Using custom dimensions: ${width}x${height}`);
+        
+        // Check if custom dimensions require paid tier (any dimension > 1024)
+        if (width > 1024 || height > 1024) {
+            if (!allowPaid) {
+                throw new Error(`Custom dimensions ${width}x${height} exceed maximum of 1024. Set "allow_paid": true to use larger dimensions.`);
+            }
+            console.log(`⚠️ Using custom dimensions ${width}x${height} (paid tier required)`);
+        }
     }
 
     // Validate steps
     const steps = preset ? (preset.steps || 28) : (body.steps || 28);
-    const allowPaid = preset ? preset.allow_paid : body.allow_paid;
     
     if (steps > 28 && !allowPaid) {
         throw new Error(`Steps value ${steps} exceeds maximum of 28. Set "allow_paid": true to use higher step values.`);
@@ -92,9 +201,37 @@ function buildOptions(model, body, preset = null, isImg2Img = false) {
         console.log(`✅ Using ${steps} steps`);
     }
 
+    // Get preset name for text replacements
+    const presetName = preset ? Object.keys(currentConfig.presets).find(key => currentConfig.presets[key] === preset) : null;
+    
+    // Apply text replacements to prompt and negative prompt
+    const rawPrompt = preset ? preset.prompt : body.prompt;
+    const rawNegativePrompt = preset ? preset.uc : body.uc;
+    
+    let processedPrompt, processedNegativePrompt;
+    
+    try {
+        processedPrompt = applyTextReplacements(rawPrompt, presetName);
+        processedNegativePrompt = applyTextReplacements(rawNegativePrompt, presetName);
+        
+        // Get list of used replacements for logging
+        const usedPromptReplacements = getUsedReplacements(rawPrompt);
+        const usedNegativeReplacements = getUsedReplacements(rawNegativePrompt);
+        
+        if (usedPromptReplacements.length > 0) {
+            console.log(`🔄 Applied text replacements to prompt: [${usedPromptReplacements.join(', ')}]`);
+        }
+        if (usedNegativeReplacements.length > 0) {
+            console.log(`🔄 Applied text replacements to negative prompt: [${usedNegativeReplacements.join(', ')}]`);
+        }
+    } catch (error) {
+        console.log('❌ Text replacement error:', error.message);
+        throw error; // Re-throw to be caught by endpoint handler
+    }
+
     const baseOptions = {
-        prompt: preset ? preset.prompt : body.prompt,
-        negative_prompt : preset ? preset.uc : body.uc,
+        prompt: processedPrompt,
+        negative_prompt: processedNegativePrompt,
         model: Model[model.toUpperCase()],
         steps: steps,
         scale: preset ? (preset.guidance || 7.5) : (body.guidance || 7.5),
@@ -106,7 +243,8 @@ function buildOptions(model, body, preset = null, isImg2Img = false) {
         qualityToggle: preset ? (preset.noQualityTags !== true) : (body.noQualityTags !== true),
         ucPreset: (preset ? preset.ucPreset : body.ucPreset) || 100,
         dynamicThresholding: preset ? preset.dynamicThresholding : body.dynamicThresholding,
-        seed: preset ? preset.seed : body.seed || undefined
+        seed: preset ? preset.seed : body.seed || undefined,
+        upscale: preset ? preset.upscale : body.upscale
     };
 
     // Add resolution or width/height based on what's provided
@@ -158,14 +296,29 @@ async function handleGeneration(opts, returnImage = false) {
         console.log('💾 Temporary file saved');
         
         // Read the file as buffer
-        const buffer = fs.readFileSync(tempPath);
+        let buffer = fs.readFileSync(tempPath);
         console.log(`📊 Buffer size: ${buffer.length} bytes`);
+        
+        // Apply upscaling if requested
+        if (opts.upscale && opts.upscale > 1) {
+            console.log(`🔍 Upscaling requested with scale: ${opts.upscale}`);
+            buffer = await upscaleImage(buffer, opts.upscale);
+            console.log(`📊 Upscaled buffer size: ${buffer.length} bytes`);
+        }
         
         // Save image permanently if shouldSave is true
         if (shouldSave) {
             const finalPath = path.join(imagesDir, name);
             fs.renameSync(tempPath, finalPath);
             console.log(`💾 Image saved permanently: ${name}`);
+            
+            // If upscaling was applied, also save the upscaled version
+            if (opts.upscale && opts.upscale > 1) {
+                const upscaledName = `upscaled_${name}`;
+                const upscaledPath = path.join(upscaledDir, upscaledName);
+                fs.writeFileSync(upscaledPath, buffer);
+                console.log(`💾 Upscaled image saved: ${upscaledName}`);
+            }
         } else {
             // Remove temporary file if we don't want to save
             fs.unlinkSync(tempPath);
@@ -365,3 +518,93 @@ app.post('/:model/img2img', async (req, res) => {
 });
 
 app.listen(config.port, () => console.log(`Server running on port ${config.port}`));
+
+// Endpoint to return available options
+app.get('/options', (req, res) => {
+    console.log('\n🎯 GET /options');
+    console.log('👤 Client IP:', req.ip);
+    console.log('📅 Timestamp:', new Date().toISOString());
+    
+    try {
+        const options = {
+            models: Object.keys(Model).reduce((acc, key) => {
+                acc[key] = Model[key];
+                return acc;
+            }, {}),
+            actions: Object.keys(Action).reduce((acc, key) => {
+                acc[key] = Action[key];
+                return acc;
+            }, {}),
+            samplers: Object.keys(Sampler).reduce((acc, key) => {
+                acc[key] = Sampler[key];
+                return acc;
+            }, {}),
+            noiseSchedulers: Object.keys(Noise).reduce((acc, key) => {
+                acc[key] = Noise[key];
+                return acc;
+            }, {}),
+            resolutions: Object.keys(Resolution).reduce((acc, key) => {
+                acc[key] = Resolution[key];
+                return acc;
+            }, {}),
+            presets: Object.keys(config.presets),
+            textReplacements: config.text_replacements || {}
+        };
+        
+        console.log('📤 Sending options to client');
+        res.json(options);
+        console.log('✅ Options request completed successfully\n');
+    } catch(e) {
+        console.log('❌ Error occurred:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Upscaling function using waifu2x-node
+async function upscaleImage(imageBuffer, scale = 2) {
+    if (scale <= 1) {
+        console.log('📏 No upscaling needed (scale <= 1)');
+        return imageBuffer;
+    }
+    
+    console.log(`🔍 Upscaling image with scale factor: ${scale}`);
+    
+    try {
+        // Create temporary file for input
+        const tempInputPath = path.join(imagesDir, `temp_input_${Date.now()}.png`);
+        fs.writeFileSync(tempInputPath, imageBuffer);
+        
+        // Create temporary file for output
+        const tempOutputPath = path.join(imagesDir, `temp_output_${Date.now()}.png`);
+        
+        // Use W2XCJS for upscaling
+        const { W2XCJS, DEFAULT_MODELS_DIR } = waifu2x;
+        const converter = new W2XCJS();
+        
+        // Load models
+        const err = converter.loadModels(DEFAULT_MODELS_DIR);
+        if (err) {
+            throw new Error(`Failed to load models: ${err}`);
+        }
+        
+        // Convert file (upscale)
+        const conv_err = converter.convertFile(tempInputPath, tempOutputPath);
+        if (conv_err) {
+            throw new Error(`Failed to convert file: ${conv_err}`);
+        }
+        
+        // Read the upscaled image
+        const upscaledBuffer = fs.readFileSync(tempOutputPath);
+        
+        // Clean up temporary files
+        fs.unlinkSync(tempInputPath);
+        fs.unlinkSync(tempOutputPath);
+        
+        console.log(`✅ Image upscaled successfully (scale: ${scale})`);
+        return upscaledBuffer;
+    } catch (error) {
+        console.log('❌ Upscaling failed:', error.message);
+        // Return original buffer if upscaling fails
+        return imageBuffer;
+    }
+}
