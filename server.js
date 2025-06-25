@@ -1,7 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const { NovelAI, Model, Action, Sampler, Noise, Resolution } = require('nekoai-js');
+const { NovelAI, Model, Action, Sampler, Noise, Resolution, calculateCost } = require('nekoai-js');
 const waifu2x = require('waifu2x-node');
 
 // Dynamic config loading
@@ -12,9 +12,9 @@ function loadConfig() {
     const configPath = './config.json';
     
     if (!fs.existsSync(configPath)) {
-        console.error('config.json not found');
-        process.exit(1);
-    }
+    console.error('config.json not found');
+    process.exit(1);
+}
     
     const stats = fs.statSync(configPath);
     if (stats.mtime.getTime() > configLastModified) {
@@ -24,11 +24,11 @@ function loadConfig() {
             const configData = fs.readFileSync(configPath, 'utf8');
             config = JSON.parse(configData);
             configLastModified = stats.mtime.getTime();
-            
-            if (!config.apiKey) {
-                console.error('apiKey is not set in config.json');
-                process.exit(1);
-            }
+
+if (!config.apiKey) {
+    console.error('apiKey is not set in config.json');
+    process.exit(1);
+}
             
             console.log('✅ Config reloaded successfully');
         } catch (error) {
@@ -44,7 +44,7 @@ function loadConfig() {
 }
 
 // Text replacement function
-function applyTextReplacements(text, presetName) {
+function applyTextReplacements(text, presetName, model = null) {
     if (!text || !config.text_replacements) {
         return text;
     }
@@ -54,11 +54,51 @@ function applyTextReplacements(text, presetName) {
     // Replace <PRESET_NAME> with the actual preset name
     result = result.replace(/<PRESET_NAME>/g, presetName);
     
-    // Apply custom text replacements from config and validate
-    for (const [key, value] of Object.entries(config.text_replacements)) {
-        const pattern = new RegExp(`<${key}>`, 'g');
-        if (pattern.test(result)) {
-            result = result.replace(pattern, value);
+    // Handle PICK_<NAME> replacements first
+    const pickPattern = /<PICK_([^>]+)>/g;
+    result = result.replace(pickPattern, (match, name) => {
+        const matchingKeys = Object.keys(config.text_replacements).filter(key => 
+            key.startsWith(name) && key !== name
+        );
+        
+        if (matchingKeys.length === 0) {
+            throw new Error(`No text replacements found starting with: ${name}`);
+        }
+        
+        const randomKey = matchingKeys[Math.floor(Math.random() * matchingKeys.length)];
+        const replacementValue = getReplacementValue(config.text_replacements[randomKey]);
+        return replacementValue;
+    });
+    
+    // Find all unique base keys from the text (extract keys from <KEY> patterns, excluding PICK_)
+    const keyPattern = /<([^>]+)>/g;
+    const foundKeys = new Set();
+    let match;
+    while ((match = keyPattern.exec(text)) !== null) {
+        // Skip PICK_ keys as they're handled above
+        if (!match[1].startsWith('PICK_')) {
+            foundKeys.add(match[1]);
+        }
+    }
+    
+    // Apply text replacements with model-specific priority
+    for (const baseKey of foundKeys) {
+        const pattern = new RegExp(`<${baseKey}>`, 'g');
+        
+        // Check for model-specific version first
+        if (model) {
+            const modelSpecificKey = `${baseKey}_${model.toUpperCase()}`;
+            if (config.text_replacements[modelSpecificKey]) {
+                const replacementValue = getReplacementValue(config.text_replacements[modelSpecificKey]);
+                result = result.replace(pattern, replacementValue);
+                continue; // Skip the base key check
+            }
+        }
+        
+        // Fall back to base key
+        if (config.text_replacements[baseKey]) {
+            const replacementValue = getReplacementValue(config.text_replacements[baseKey]);
+            result = result.replace(pattern, replacementValue);
         }
     }
     
@@ -72,8 +112,18 @@ function applyTextReplacements(text, presetName) {
     return result;
 }
 
+// Helper function to get replacement value (handles arrays and strings)
+function getReplacementValue(value) {
+    if (Array.isArray(value)) {
+        // Randomly select an item from the array
+        const randomIndex = Math.floor(Math.random() * value.length);
+        return value[randomIndex];
+    }
+    return value;
+}
+
 // Function to get list of used replacement keys
-function getUsedReplacements(text) {
+function getUsedReplacements(text, model = null) {
     if (!text || !config.text_replacements) {
         return [];
     }
@@ -85,10 +135,52 @@ function getUsedReplacements(text) {
         usedKeys.push('PRESET_NAME');
     }
     
-    // Check for custom replacements
-    for (const key of Object.keys(config.text_replacements)) {
-        if (text.includes(`<${key}>`)) {
-            usedKeys.push(key);
+    // Check for PICK_<NAME> replacements
+    const pickPattern = /<PICK_([^>]+)>/g;
+    let pickMatch;
+    while ((pickMatch = pickPattern.exec(text)) !== null) {
+        const name = pickMatch[1];
+        const matchingKeys = Object.keys(config.text_replacements).filter(key => 
+            key.startsWith(name) && key !== name
+        );
+        
+        if (matchingKeys.length > 0) {
+            // Show the PICK_ replacement and how many options it has
+            usedKeys.push(`PICK_${name} (${matchingKeys.length} options)`);
+        }
+    }
+    
+    // Find all unique base keys from the text (extract keys from <KEY> patterns, excluding PICK_)
+    const keyPattern = /<([^>]+)>/g;
+    const foundKeys = new Set();
+    let match;
+    while ((match = keyPattern.exec(text)) !== null) {
+        // Skip PICK_ keys as they're handled above
+        if (!match[1].startsWith('PICK_')) {
+            foundKeys.add(match[1]);
+        }
+    }
+    
+    // Check each found key for model-specific or base versions
+    for (const baseKey of foundKeys) {
+        if (baseKey === 'PRESET_NAME') continue; // Skip as it's handled above
+        
+        // Check for model-specific version first
+        if (model) {
+            const modelSpecificKey = `${baseKey}_${model.toUpperCase()}`;
+            if (config.text_replacements[modelSpecificKey]) {
+                const value = config.text_replacements[modelSpecificKey];
+                const suffix = Array.isArray(value) ? ` (${model.toUpperCase()}, random)` : ` (${model.toUpperCase()})`;
+                usedKeys.push(`${baseKey}${suffix}`);
+                continue; // Skip the base key check
+            }
+        }
+        
+        // Check for base key
+        if (config.text_replacements[baseKey]) {
+            const value = config.text_replacements[baseKey];
+            const suffix = Array.isArray(value) ? ' (random)' : '';
+            usedKeys.push(`${baseKey}${suffix}`);
         }
     }
     
@@ -151,52 +243,56 @@ function buildOptions(model, body, preset = null, isImg2Img = false) {
         console.log('⚙️ Using preset:', JSON.stringify(preset, null, 2));
     }
     
-    // Check if resolution is provided (either in body or preset)
-    const resolution = preset ? preset.resolution : body.resolution;
+    // Check if resolution is provided (body takes priority over preset)
+    const resolution = body.resolution || (preset ? preset.resolution : undefined);
     
-    // Get allowPaid early for validation
-    const allowPaid = preset ? preset.allow_paid : body.allow_paid;
+    // Get allowPaid (body takes priority over preset)
+    const allowPaid = body.allow_paid !== undefined ? body.allow_paid : (preset ? preset.allow_paid : undefined);
+
+    // Veriety+ Enable
+    const skip_cfg_above_sigma = (body.variety || (preset ? preset.variety : undefined)) ? 59.04722600415217 : undefined
     
     let width, height;
     if (resolution && Resolution[resolution.toUpperCase()]) {
         // Use resolution preset directly
         console.log(`📐 Using resolution preset: "${resolution}"`);
         
-        // Check if resolution requires paid tier
+        // Precheck: Resolution requiring paid tier
         if (resolution.startsWith('LARGE_') || resolution.startsWith('WALLPAPER_')) {
             if (!allowPaid) {
-                throw new Error(`Resolution "${resolution}" requires paid tier. Set "allow_paid": true to use large/wallpaper resolutions.`);
+                throw new Error(`Resolution "${resolution}" requires Opus credits. Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
             }
-            console.log(`⚠️ Using ${resolution} resolution (paid tier required)`);
+            console.log(`⚠️ Using ${resolution} resolution (Opus credits required)`);
         }
         
         // Don't set width/height when using resolution preset
         width = undefined;
         height = undefined;
     } else {
-        // Fall back to individual width/height settings
-        width = preset ? (preset.width || 512) : (body.width || 512);
-        height = preset ? (preset.height || 768) : (body.height || 768);
+        // Fall back to individual width/height settings (body takes priority over preset)
+        width = body.width || (preset ? preset.width : 1024) || 1024;
+        height = body.height || (preset ? preset.height : 1024) || 1024;
         console.log(`📐 Using custom dimensions: ${width}x${height}`);
         
-        // Check if custom dimensions require paid tier (any dimension > 1024)
+        // Precheck: Custom dimensions > 1024
         if (width > 1024 || height > 1024) {
             if (!allowPaid) {
-                throw new Error(`Custom dimensions ${width}x${height} exceed maximum of 1024. Set "allow_paid": true to use larger dimensions.`);
+                throw new Error(`Custom dimensions ${width}x${height} exceed maximum of 1024. Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
             }
-            console.log(`⚠️ Using custom dimensions ${width}x${height} (paid tier required)`);
+            console.log(`⚠️ Using custom dimensions ${width}x${height} (Opus credits required)`);
         }
     }
 
-    // Validate steps
-    const steps = preset ? (preset.steps || 28) : (body.steps || 28);
+    // Get steps (body takes priority over preset)
+    const steps = body.steps || (preset ? preset.steps : 24) || 24;
     
+    // Precheck: Steps > 28
     if (steps > 28 && !allowPaid) {
-        throw new Error(`Steps value ${steps} exceeds maximum of 28. Set "allow_paid": true to use higher step values.`);
+        throw new Error(`Steps value ${steps} exceeds maximum of 28. Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
     }
     
     if (steps > 28) {
-        console.log(`⚠️ Using ${steps} steps (paid tier required)`);
+        console.log(`⚠️ Using ${steps} steps (Opus credits required)`);
     } else {
         console.log(`✅ Using ${steps} steps`);
     }
@@ -204,19 +300,19 @@ function buildOptions(model, body, preset = null, isImg2Img = false) {
     // Get preset name for text replacements
     const presetName = preset ? Object.keys(currentConfig.presets).find(key => currentConfig.presets[key] === preset) : null;
     
-    // Apply text replacements to prompt and negative prompt
-    const rawPrompt = preset ? preset.prompt : body.prompt;
-    const rawNegativePrompt = preset ? preset.uc : body.uc;
+    // Apply text replacements to prompt and negative prompt (body takes priority over preset)
+    const rawPrompt = body.prompt || (preset ? preset.prompt : undefined);
+    const rawNegativePrompt = body.uc || (preset ? preset.uc : undefined);
     
     let processedPrompt, processedNegativePrompt;
     
     try {
-        processedPrompt = applyTextReplacements(rawPrompt, presetName);
-        processedNegativePrompt = applyTextReplacements(rawNegativePrompt, presetName);
+        processedPrompt = applyTextReplacements(rawPrompt, presetName, model);
+        processedNegativePrompt = applyTextReplacements(rawNegativePrompt, presetName, model);
         
         // Get list of used replacements for logging
-        const usedPromptReplacements = getUsedReplacements(rawPrompt);
-        const usedNegativeReplacements = getUsedReplacements(rawNegativePrompt);
+        const usedPromptReplacements = getUsedReplacements(rawPrompt, model);
+        const usedNegativeReplacements = getUsedReplacements(rawNegativePrompt, model);
         
         if (usedPromptReplacements.length > 0) {
             console.log(`🔄 Applied text replacements to prompt: [${usedPromptReplacements.join(', ')}]`);
@@ -234,17 +330,18 @@ function buildOptions(model, body, preset = null, isImg2Img = false) {
         negative_prompt: processedNegativePrompt,
         model: Model[model.toUpperCase()],
         steps: steps,
-        scale: preset ? (preset.guidance || 7.5) : (body.guidance || 7.5),
-        cfg_rescale: preset ? (preset.rescale || 0.0) : (body.rescale || 0.0),
-        sampler: preset ? (preset.sampler || Sampler.EULER_ANC) : (body.sampler || Sampler.EULER_ANC),
-        noiseScheduler: preset ? (preset.noiseScheduler || Noise.KARRAS) : (body.noiseScheduler || Noise.KARRAS),
-        characterPrompts: preset ? preset.characterPrompts : body.characterPrompts,
-        no_save: preset ? preset.no_save : body.no_save,
-        qualityToggle: preset ? (preset.noQualityTags !== true) : (body.noQualityTags !== true),
-        ucPreset: (preset ? preset.ucPreset : body.ucPreset) || 100,
-        dynamicThresholding: preset ? preset.dynamicThresholding : body.dynamicThresholding,
-        seed: preset ? preset.seed : body.seed || undefined,
-        upscale: preset ? preset.upscale : body.upscale
+        scale: body.guidance || (preset ? preset.guidance : 5.5) || 5.5,
+        cfg_rescale: body.rescale || (preset ? preset.rescale : 0.0) || 0.0,
+        skip_cfg_above_sigma: skip_cfg_above_sigma,
+        sampler: body.sampler ? Sampler[body.sampler.toUpperCase()] : (preset ? (preset.sampler ? Sampler[preset.sampler.toUpperCase()] : Sampler.EULER_ANC) : Sampler.EULER_ANC),
+        noiseScheduler: body.noiseScheduler ? Noise[body.noiseScheduler.toUpperCase()] : (preset ? (preset.noiseScheduler ? Noise[preset.noiseScheduler.toUpperCase()] : Noise.KARRAS) : Noise.KARRAS),
+        characterPrompts: body.characterPrompts || (preset ? preset.characterPrompts : undefined),
+        no_save: body.no_save !== undefined ? body.no_save : (preset ? preset.no_save : undefined),
+        qualityToggle: false,
+        ucPreset: 100,
+        dynamicThresholding: body.dynamicThresholding || (preset ? preset.dynamicThresholding : undefined),
+        seed: body.seed || (preset ? preset.seed : undefined),
+        upscale: body.upscale || (preset ? preset.upscale : undefined)
     };
 
     // Add resolution or width/height based on what's provided
@@ -260,6 +357,27 @@ function buildOptions(model, body, preset = null, isImg2Img = false) {
         baseOptions.image = body.image;
         baseOptions.strength = body.strength || 0.5;
         console.log('🖼️ Image-to-image mode enabled');
+    }
+
+    // Check if request requires paid tier using calculateCost
+    if (!allowPaid) {
+        try {
+            const cost_opus = calculateCost(baseOptions, true);
+            const cost_free = calculateCost(baseOptions, false);
+            console.log(`💰 Calculated cost: ${cost_free}, ${cost_opus} (Opus Tier)`);
+            
+            // If cost > 0, it means the request requires paid tier
+            if (cost_opus > 0) {
+                throw new Error(`Request requires Opus credits (cost: ${cost_opus}). Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
+            }
+        } catch (error) {
+            if (error.message.includes('requires Opus credits')) {
+                throw error;
+            }
+            console.log('⚠️ Cost calculation failed, proceeding with request:', error.message);
+        }
+    } else {
+        console.log('✅ Opus credits allowed, skipping cost validation');
     }
 
     console.log('📋 Final options:', JSON.stringify(baseOptions, null, 2));
@@ -278,8 +396,15 @@ async function handleGeneration(opts, returnImage = false) {
     
     opts.n_samples = 1;
     console.log('🚀 Starting image generation...');
-    const [img] = await client.generateImage(opts);
-    console.log('✅ Image generation completed');
+    
+    let img;
+    try {
+        [img] = await client.generateImage(opts);
+        console.log('✅ Image generation completed');
+    } catch (error) {
+        console.log('❌ Image generation failed:', error.message);
+        throw new Error(`Image generation failed: ${error.message}`);
+    }
     
     const name = `${formatDate()}_${seed}.png`;
     console.log(`📝 Generated filename: ${name}`);
@@ -407,6 +532,9 @@ app.post('/:model/generate', async (req, res) => {
         console.log('👤 Client IP:', req.ip);
         console.log('📅 Timestamp:', new Date().toISOString());
         
+        // Reload config on every request
+        const currentConfig = loadConfig();
+        
         try {
             const key = req.params.model.toLowerCase();
             const model = Model[key.toUpperCase()];
@@ -446,8 +574,11 @@ app.get('/preset/:name', async (req, res) => {
         console.log('👤 Client IP:', req.ip);
         console.log('📅 Timestamp:', new Date().toISOString());
         
+        // Reload config on every request
+        const currentConfig = loadConfig();
+        
         try {
-            const p = config.presets[req.params.name];
+            const p = currentConfig.presets[req.params.name];
             if (!p) {
                 console.log('❌ Preset not found:', req.params.name);
                 return res.status(404).json({ error: 'Preset not found' });
@@ -478,11 +609,176 @@ app.get('/preset/:name', async (req, res) => {
     });
 });
 
+app.post('/preset/:name', async (req, res) => {
+    await queueRequest(req, res, async (req, res) => {
+        console.log(`\n🎯 POST /preset/${req.params.name}`);
+        console.log('👤 Client IP:', req.ip);
+        console.log('📅 Timestamp:', new Date().toISOString());
+        
+        // Reload config on every request
+        const currentConfig = loadConfig();
+        
+        try {
+            const p = currentConfig.presets[req.params.name];
+            if (!p) {
+                console.log('❌ Preset not found:', req.params.name);
+                return res.status(404).json({ error: 'Preset not found' });
+            }
+            console.log(`✅ Preset found: ${req.params.name}`);
+            
+            // Handle body overrides for POST requests
+            const bodyOverrides = { ...req.body };
+            
+            // Handle prompt override - append to preset prompt if provided
+            if (bodyOverrides.prompt) {
+                const originalPrompt = p.prompt || '';
+                bodyOverrides.prompt = originalPrompt + ', ' + bodyOverrides.prompt;
+                console.log(`🔄 Appending body prompt to preset: "${bodyOverrides.prompt}"`);
+                delete bodyOverrides.uc; // Remove uc override as per requirements
+            }
+            
+            const opts = buildOptions(p.model, bodyOverrides, p);
+            const result = await handleGeneration(opts, true);
+            
+            // Set content type for image
+            res.setHeader('Content-Type', 'image/png');
+            
+            // Only set download headers if download query parameter is true
+            if (req.query.download === 'true') {
+                res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+                console.log('📥 Setting download headers');
+            } else {
+                console.log('🖼️ Returning image as content');
+            }
+            
+            console.log('📤 Sending image to client');
+            res.send(result.buffer);
+            console.log('✅ Request completed successfully\n');
+        } catch(e) {
+            console.log('❌ Error occurred:', e.message);
+            res.status(500).json({ error: e.message });
+        }
+    });
+});
+
+app.get('/preset/:name/:resolution', async (req, res) => {
+    await queueRequest(req, res, async (req, res) => {
+        console.log(`\n🎯 GET /preset/${req.params.name}/${req.params.resolution}`);
+        console.log('👤 Client IP:', req.ip);
+        console.log('📅 Timestamp:', new Date().toISOString());
+        
+        // Reload config on every request
+        const currentConfig = loadConfig();
+        
+        try {
+            const p = currentConfig.presets[req.params.name];
+            if (!p) {
+                console.log('❌ Preset not found:', req.params.name);
+                return res.status(404).json({ error: 'Preset not found' });
+            }
+            console.log(`✅ Preset found: ${req.params.name}`);
+            
+            // Validate resolution
+            const resolution = req.params.resolution;
+            if (!Resolution[resolution.toUpperCase()]) {
+                console.log('❌ Invalid resolution:', resolution);
+                return res.status(400).json({ error: 'Invalid resolution' });
+            }
+            console.log(`✅ Valid resolution: ${resolution}`);
+            
+            const bodyOverrides = { resolution };
+            const opts = buildOptions(p.model, bodyOverrides, p);
+            const result = await handleGeneration(opts, true);
+            
+            // Set content type for image
+            res.setHeader('Content-Type', 'image/png');
+            
+            // Only set download headers if download query parameter is true
+            if (req.query.download === 'true') {
+                res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+                console.log('📥 Setting download headers');
+            } else {
+                console.log('🖼️ Returning image as content');
+            }
+            
+            console.log('📤 Sending image to client');
+            res.send(result.buffer);
+            console.log('✅ Request completed successfully\n');
+        } catch(e) {
+            console.log('❌ Error occurred:', e.message);
+            res.status(500).json({ error: e.message });
+        }
+    });
+});
+
+app.post('/preset/:name/:resolution', async (req, res) => {
+    await queueRequest(req, res, async (req, res) => {
+        console.log(`\n🎯 POST /preset/${req.params.name}/${req.params.resolution}`);
+        console.log('👤 Client IP:', req.ip);
+        console.log('📅 Timestamp:', new Date().toISOString());
+        
+        // Reload config on every request
+        const currentConfig = loadConfig();
+        
+        try {
+            const p = currentConfig.presets[req.params.name];
+            if (!p) {
+                console.log('❌ Preset not found:', req.params.name);
+                return res.status(404).json({ error: 'Preset not found' });
+            }
+            console.log(`✅ Preset found: ${req.params.name}`);
+            
+            // Validate resolution
+            const resolution = req.params.resolution;
+            if (!Resolution[resolution.toUpperCase()]) {
+                console.log('❌ Invalid resolution:', resolution);
+                return res.status(400).json({ error: 'Invalid resolution' });
+            }
+            console.log(`✅ Valid resolution: ${resolution}`);
+            
+            // Handle body overrides for POST requests
+            const bodyOverrides = { resolution, ...req.body };
+            
+            // Handle prompt override - append to preset prompt if provided
+            if (bodyOverrides.prompt) {
+                const originalPrompt = p.prompt || '';
+                bodyOverrides.prompt = originalPrompt + ', ' + bodyOverrides.prompt;
+                console.log(`🔄 Appending body prompt to preset: "${bodyOverrides.prompt}"`);
+                delete bodyOverrides.uc; // Remove uc override as per requirements
+            }
+            
+            const opts = buildOptions(p.model, bodyOverrides, p);
+            const result = await handleGeneration(opts, true);
+            
+            // Set content type for image
+            res.setHeader('Content-Type', 'image/png');
+            
+            // Only set download headers if download query parameter is true
+            if (req.query.download === 'true') {
+                res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+                console.log('📥 Setting download headers');
+            } else {
+                console.log('🖼️ Returning image as content');
+            }
+            
+            console.log('📤 Sending image to client');
+            res.send(result.buffer);
+            console.log('✅ Request completed successfully\n');
+        } catch(e) {
+            console.log('❌ Error occurred:', e.message);
+            res.status(500).json({ error: e.message });
+        }
+    });
+});
+
 app.post('/:model/img2img', async (req, res) => {
     await queueRequest(req, res, async (req, res) => {
         console.log(`\n🎯 POST /${req.params.model}/img2img`);
         console.log('👤 Client IP:', req.ip);
         console.log('📅 Timestamp:', new Date().toISOString());
+        
+        // Reload config on every request
+        const currentConfig = loadConfig();
         
         try {
             const key = req.params.model.toLowerCase();
@@ -525,6 +821,9 @@ app.get('/options', (req, res) => {
     console.log('👤 Client IP:', req.ip);
     console.log('📅 Timestamp:', new Date().toISOString());
     
+    // Reload config on every request
+    const currentConfig = loadConfig();
+    
     try {
         const options = {
             models: Object.keys(Model).reduce((acc, key) => {
@@ -547,8 +846,8 @@ app.get('/options', (req, res) => {
                 acc[key] = Resolution[key];
                 return acc;
             }, {}),
-            presets: Object.keys(config.presets),
-            textReplacements: config.text_replacements || {}
+            presets: Object.keys(currentConfig.presets),
+            textReplacements: currentConfig.text_replacements || {}
         };
         
         console.log('📤 Sending options to client');

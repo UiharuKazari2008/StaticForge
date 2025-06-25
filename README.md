@@ -190,43 +190,141 @@ Returns all available models, samplers, resolutions, and presets.
 
 ## Text Replacements
 
-The server supports dynamic text replacements in prompts and negative prompts:
+The server supports dynamic text replacements in prompts and negative prompts. Replacements are defined in `config.json` under the `text_replacements` section.
 
-### Built-in Replacements
-- `<PRESET_NAME>`: Replaced with the actual preset name
+### Basic Usage
 
-### Custom Replacements
-Define in `config.json`:
+Use `<KEY>` syntax in your prompts to reference replacement values:
+
+```
+"prompt": "1girl, <CHARACTER>, <HAIR_COLOR>, <EYE_COLOR>"
+```
+
+### Array-Based Random Selection
+
+Text replacements can be arrays, in which case a random item is selected each time:
+
 ```json
 {
-    "text_replacements": {
-        "CHARACTER": "1girl, anime style",
-        "STYLE": "masterpiece, best quality"
-    }
+  "text_replacements": {
+    "HAIR_COLOR": ["blonde hair", "black hair", "brown hair", "red hair", "blue hair", "purple hair", "pink hair"],
+    "EYE_COLOR": ["blue eyes", "green eyes", "brown eyes", "red eyes", "purple eyes", "pink eyes"],
+    "POSE": ["standing", "sitting", "lying down", "walking", "running", "dancing"],
+    "EXPRESSION": ["smile", "serious", "angry", "sad", "surprised", "wink"]
+  }
 }
 ```
 
-Usage in prompts:
-```
-"prompt": "<CHARACTER>, <STYLE>, detailed"
-```
+When using `<HAIR_COLOR>` in a prompt, it will randomly select one of the hair colors each time.
 
-## Presets
+### Model-Specific Replacements
 
-Create reusable generation configurations in `config.json`:
+You can define model-specific versions of replacements by appending the model name:
 
 ```json
 {
-    "presets": {
-        "anime_portrait": {
-            "prompt": "<CHARACTER>, <STYLE>",
-            "uc": "<NEGATIVE>",
-            "model": "v4_5",
-            "resolution": "NORMAL_PORTRAIT",
-            "steps": 28,
-            "upscale": 2
-        }
+  "text_replacements": {
+    "CHARACTER": "1girl, anime style",
+    "CHARACTER_V4_5": "1girl, anime style, detailed face",
+    "CHARACTER_V3": "1girl, anime style, simple"
+  }
+}
+```
+
+When generating with V4.5, `<CHARACTER>` will use "1girl, anime style, detailed face". For other models, it falls back to the base "CHARACTER" value.
+
+### Special Replacements
+
+- `<PRESET_NAME>`: Automatically replaced with the preset name being used
+- `<PICK_<NAME>>`: Randomly selects from all text replacement keys that begin with `NAME`
+- Quality and UC presets: Pre-defined negative prompt components for different models
+
+#### PICK_<NAME> Usage
+
+The `PICK_<NAME>` replacement allows you to randomly select from a group of related replacements:
+
+```json
+{
+  "text_replacements": {
+    "GIC_F_1": "girl in casual outfit",
+    "GIC_F_2": "girl in formal dress", 
+    "GIC_F_3": "girl in school uniform",
+    "GIC_F_4": "girl in swimsuit",
+    "GIC_F_5": "girl in kimono"
+  }
+}
+```
+
+Using `<PICK_GIC_F_>` in a prompt will randomly select one of the GIC_F_* keys. This is useful for organizing related replacements into groups.
+
+**Note**: The system excludes the exact match (e.g., `GIC_F_` itself) and only considers keys that start with the specified name.
+
+### Validation
+
+The server validates all text replacements and will throw an error if an undefined replacement is used. The `/options` endpoint shows which replacements were used in each generation.
+
+## Presets
+
+Presets are predefined configurations stored in `config.json`. They allow you to quickly generate images with consistent settings.
+
+### Using Presets
+
+#### Basic Preset Usage
+```
+GET /preset/example
+POST /preset/example
+```
+
+#### Preset with Resolution Override
+```
+GET /preset/example/NORMAL_PORTRAIT
+POST /preset/example/NORMAL_PORTRAIT
+```
+
+#### Preset with Body Overrides
+You can override preset values by sending a body with additional parameters (POST requests only):
+
+```json
+POST /preset/example
+{
+  "steps": 50,
+  "allow_paid": true,
+  "seed": 123456789,
+  "guidance": 8.0
+}
+```
+
+#### Preset with Resolution and Body Overrides
+```
+POST /preset/example/LARGE_PORTRAIT
+{
+  "steps": 50,
+  "allow_paid": true,
+  "seed": 123456789
+}
+```
+
+### Override Rules
+
+- **Prompt Override**: If a `prompt` is provided in the body, it will be **appended** to the preset's prompt (not replaced)
+- **UC Override**: The `uc` (negative prompt) from the body is **ignored** - only the preset's UC is used
+- **All Other Parameters**: Can be overridden by the body (steps, guidance, seed, allow_paid, etc.)
+- **Resolution Override**: Can be specified in the URL path for quick resolution changes
+
+### Example Preset Configuration
+```json
+{
+  "presets": {
+    "example": {
+      "prompt": "<NQUALITY>, <DETAILS>, <CHARACTER>, <PICK_GGIRL_>, <HAIR_COLOR>, <EYE_COLOR>, <POSE>, <EXPRESSION>, small breasts, 1.5::huge hips, wide hips, thick calves::, full body, three quarter view | <MANSION_ROOM>",
+      "uc": "<NUC_3M>",
+      "model": "v4_5",
+      "resolution": "NORMAL_PORTRAIT",
+      "steps": 24,
+      "guidance": 5.5,
+      "allow_paid": false
     }
+  }
 }
 ```
 
