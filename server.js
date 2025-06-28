@@ -255,7 +255,6 @@ async function saveImage(img, filename) {
 
 // Build options for image generation
 const buildOptions = (model, body, preset = null, isImg2Img = false) => {
-    const currentConfig = loadConfig();
     console.log('🔧 Building options...', preset ? 'Using preset' : '');
     
     const resolution = body.resolution || preset?.resolution;
@@ -682,7 +681,6 @@ app.get('/options', (req, res) => {
     console.log('📅 Timestamp:', new Date().toISOString());
     
     try {
-        const currentConfig = loadConfig();
         const currentPromptConfig = loadPromptConfig();
         const options = {
             models: Object.fromEntries(Object.keys(Model).map(key => [key, Model[key]])),
