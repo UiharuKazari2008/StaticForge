@@ -15,6 +15,7 @@ A Node.js Express server for generating AI images using NovelAI's API with advan
 - 📊 **Comprehensive Logging**
 - 🔍 **Prompt Preview Endpoints**
 - 🎲 **Upscale Override** via query parameters
+- 🎞 **Image Optimization** to compress images to JPEG at 75% quality
 
 ## Installation
 
@@ -46,7 +47,18 @@ Create a `config.json` file in the root directory:
 {
     "apiKey": "your-novelai-api-key-here",
     "port": 3000,
-    "loginKey": "your-secret-key-here"
+    "loginKey": "your-secret-key-here",
+    "allow_paid": true,
+    "rateLimit": {
+        "generation": {
+            "maxConcurrent": 1,
+            "minTime": 2000
+        },
+        "upscaling": {
+            "maxConcurrent": 1,
+            "minTime": 1000
+        }
+    }
 }
 ```
 
@@ -61,7 +73,9 @@ Create a `prompt.config.json` file for presets and text replacements:
         "STYLE": "masterpiece, best quality",
         "NEGATIVE": "lowres, bad anatomy, bad hands",
         "HAIR_COLOR": ["blonde hair", "black hair", "brown hair", "red hair"],
-        "EYE_COLOR": ["blue eyes", "green eyes", "brown eyes", "red eyes"]
+        "EYE_COLOR": ["blue eyes", "green eyes", "brown eyes", "red eyes"],
+        "{{hair}}": ["blonde", "brunette", "redhead"],
+        "{{eyes}}": ["blue", "green", "brown"]
     },
     "presets": {
         "example": {
@@ -78,6 +92,12 @@ Create a `prompt.config.json` file for presets and text replacements:
             "resolution": "NORMAL_PORTRAIT",
             "steps": 28,
             "upscale": 2
+        },
+        "anime": {
+            "model": "nai-diffusion-3",
+            "prompt": "anime girl with {{hair}} hair and {{eyes}} eyes",
+            "negative_prompt": "nsfw, nude, naked",
+            "resolution": "PORTRAIT"
         }
     }
 }
@@ -90,6 +110,8 @@ Create a `prompt.config.json` file for presets and text replacements:
 | `apiKey` | string | Your NovelAI API key (required) |
 | `port` | number | Server port (default: 3000) |
 | `loginKey` | string | Optional authentication key |
+| `allow_paid` | boolean | Allow paid-tier features |
+| `rateLimit` | object | Rate limiting configuration |
 
 ## Authentication
 
@@ -130,6 +152,7 @@ Generate an image using a specific model.
 
 **Query Parameters:**
 - `upscale` (optional): Override upscaling (`true` for 4x, or number like `2`, `1.5`)
+- `optimize` (optional): Compress image to JPEG at 75% quality
 - `download` (optional): Set to `true` to force download
 - `auth` (optional): Authentication key if enabled
 
@@ -143,6 +166,7 @@ Generate an image using a predefined preset.
 
 **Query Parameters:**
 - `upscale` (optional): Override upscaling
+- `optimize` (optional): Compress image to JPEG at 75% quality
 - `download` (optional): Force download
 - `auth` (optional): Authentication key
 
@@ -213,7 +237,7 @@ Returns all available models, samplers, resolutions, presets, and text replaceme
     "resolutions": {
         "NORMAL_PORTRAIT": "normal_portrait"
     },
-    "presets": ["example", "high_quality"],
+    "presets": ["example", "high_quality", "anime"],
     "textReplacements": {
         "CHARACTER": "1girl, anime style"
     }
@@ -252,6 +276,7 @@ Returns all available models, samplers, resolutions, presets, and text replaceme
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `upscale` | string | Override upscaling (`true` or number) |
+| `optimize` | boolean | Compress image to JPEG at 75% quality |
 | `download` | boolean | Force download instead of display |
 | `auth` | string | Authentication key (if enabled) |
 
@@ -503,3 +528,4 @@ The server provides detailed console logging:
 - ✅ **Prompt Preview**: Added endpoints to preview processed prompts
 - ✅ **ZIP Extraction**: Added support for NovelAI's ZIP response format
 - ✅ **Code Cleanup**: Removed unused dependencies and optimized code
+- ✅ **Image Optimization**: Added support for compressing images to JPEG at 75% quality

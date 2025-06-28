@@ -509,17 +509,40 @@ async function handleGeneration(opts, returnImage = false) {
 // Helper function for common endpoint logic
 const handleImageRequest = async (req, res, opts) => {
     const result = await handleGeneration(opts, true);
-    res.setHeader('Content-Type', 'image/png');
+    
+    // Check if optimization is requested
+    const optimize = req.query.optimize === 'true';
+    
+    let finalBuffer = result.buffer;
+    let contentType = 'image/png';
+    
+    if (optimize) {
+        console.log('🔧 Optimizing image to JPEG at 75% quality...');
+        try {
+            finalBuffer = await sharp(result.buffer)
+                .jpeg({ quality: 75 })
+                .toBuffer();
+            contentType = 'image/jpeg';
+            console.log(`✅ Image optimized: ${result.buffer.length} bytes → ${finalBuffer.length} bytes (${Math.round((1 - finalBuffer.length / result.buffer.length) * 100)}% reduction)`);
+        } catch (error) {
+            console.log('❌ Image optimization failed:', error.message);
+            // Fall back to original PNG if optimization fails
+        }
+    }
+    
+    res.setHeader('Content-Type', contentType);
     
     if (req.query.download === 'true') {
-        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+        const extension = optimize ? 'jpg' : 'png';
+        const optimizedFilename = result.filename.replace('.png', `.${extension}`);
+        res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
         console.log('📥 Setting download headers');
     } else {
         console.log('🖼️ Returning image as content');
     }
-
+    
     console.log('📤 Sending image to client');
-    res.send(result.buffer);
+    res.send(finalBuffer);
     console.log('✅ Request completed successfully\n');
 };
 
@@ -629,11 +652,33 @@ app.get('/preset/:name', createEndpointHandler(async (req, res) => {
         
         if (cached) {
             console.log('📤 Returning cached image');
-            res.setHeader('Content-Type', 'image/png');
-            if (req.query.download === 'true') {
-                res.setHeader('Content-Disposition', `attachment; filename="${cached.filename}"`);
+            
+            // Check if optimization is requested
+            const optimize = req.query.optimize === 'true';
+            let finalBuffer = cached.buffer;
+            let contentType = 'image/png';
+            
+            if (optimize) {
+                console.log('🔧 Optimizing cached image to JPEG at 75% quality...');
+                try {
+                    finalBuffer = await sharp(cached.buffer)
+                        .jpeg({ quality: 75 })
+                        .toBuffer();
+                    contentType = 'image/jpeg';
+                    console.log(`✅ Cached image optimized: ${cached.buffer.length} bytes → ${finalBuffer.length} bytes (${Math.round((1 - finalBuffer.length / cached.buffer.length) * 100)}% reduction)`);
+                } catch (error) {
+                    console.log('❌ Image optimization failed:', error.message);
+                    // Fall back to original PNG if optimization fails
+                }
             }
-            res.send(cached.buffer);
+            
+            res.setHeader('Content-Type', contentType);
+            if (req.query.download === 'true') {
+                const extension = optimize ? 'jpg' : 'png';
+                const optimizedFilename = cached.filename.replace('.png', `.${extension}`);
+                res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+            }
+            res.send(finalBuffer);
             return;
         }
     } else {
@@ -649,11 +694,32 @@ app.get('/preset/:name', createEndpointHandler(async (req, res) => {
         setCachedPreset(cacheKey, result.buffer, result.filename);
     }
     
-    res.setHeader('Content-Type', 'image/png');
-    if (req.query.download === 'true') {
-        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    // Check if optimization is requested
+    const optimize = req.query.optimize === 'true';
+    let finalBuffer = result.buffer;
+    let contentType = 'image/png';
+    
+    if (optimize) {
+        console.log('🔧 Optimizing generated image to JPEG at 75% quality...');
+        try {
+            finalBuffer = await sharp(result.buffer)
+                .jpeg({ quality: 75 })
+                .toBuffer();
+            contentType = 'image/jpeg';
+            console.log(`✅ Generated image optimized: ${result.buffer.length} bytes → ${finalBuffer.length} bytes (${Math.round((1 - finalBuffer.length / result.buffer.length) * 100)}% reduction)`);
+        } catch (error) {
+            console.log('❌ Image optimization failed:', error.message);
+            // Fall back to original PNG if optimization fails
+        }
     }
-    res.send(result.buffer);
+    
+    res.setHeader('Content-Type', contentType);
+    if (req.query.download === 'true') {
+        const extension = optimize ? 'jpg' : 'png';
+        const optimizedFilename = result.filename.replace('.png', `.${extension}`);
+        res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+    }
+    res.send(finalBuffer);
 }));
 
 app.post('/preset/:name', createEndpointHandler(async (req, res) => {
@@ -683,11 +749,33 @@ app.post('/preset/:name', createEndpointHandler(async (req, res) => {
         
         if (cached) {
             console.log('📤 Returning cached image');
-            res.setHeader('Content-Type', 'image/png');
-            if (req.query.download === 'true') {
-                res.setHeader('Content-Disposition', `attachment; filename="${cached.filename}"`);
+            
+            // Check if optimization is requested
+            const optimize = req.query.optimize === 'true';
+            let finalBuffer = cached.buffer;
+            let contentType = 'image/png';
+            
+            if (optimize) {
+                console.log('🔧 Optimizing cached image to JPEG at 75% quality...');
+                try {
+                    finalBuffer = await sharp(cached.buffer)
+                        .jpeg({ quality: 75 })
+                        .toBuffer();
+                    contentType = 'image/jpeg';
+                    console.log(`✅ Cached image optimized: ${cached.buffer.length} bytes → ${finalBuffer.length} bytes (${Math.round((1 - finalBuffer.length / cached.buffer.length) * 100)}% reduction)`);
+                } catch (error) {
+                    console.log('❌ Image optimization failed:', error.message);
+                    // Fall back to original PNG if optimization fails
+                }
             }
-            res.send(cached.buffer);
+            
+            res.setHeader('Content-Type', contentType);
+            if (req.query.download === 'true') {
+                const extension = optimize ? 'jpg' : 'png';
+                const optimizedFilename = cached.filename.replace('.png', `.${extension}`);
+                res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+            }
+            res.send(finalBuffer);
             return;
         }
     } else {
@@ -703,11 +791,32 @@ app.post('/preset/:name', createEndpointHandler(async (req, res) => {
         setCachedPreset(cacheKey, result.buffer, result.filename);
     }
     
-    res.setHeader('Content-Type', 'image/png');
-    if (req.query.download === 'true') {
-        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    // Check if optimization is requested
+    const optimize = req.query.optimize === 'true';
+    let finalBuffer = result.buffer;
+    let contentType = 'image/png';
+    
+    if (optimize) {
+        console.log('🔧 Optimizing generated image to JPEG at 75% quality...');
+        try {
+            finalBuffer = await sharp(result.buffer)
+                .jpeg({ quality: 75 })
+                .toBuffer();
+            contentType = 'image/jpeg';
+            console.log(`✅ Generated image optimized: ${result.buffer.length} bytes → ${finalBuffer.length} bytes (${Math.round((1 - finalBuffer.length / result.buffer.length) * 100)}% reduction)`);
+        } catch (error) {
+            console.log('❌ Image optimization failed:', error.message);
+            // Fall back to original PNG if optimization fails
+        }
     }
-    res.send(result.buffer);
+    
+    res.setHeader('Content-Type', contentType);
+    if (req.query.download === 'true') {
+        const extension = optimize ? 'jpg' : 'png';
+        const optimizedFilename = result.filename.replace('.png', `.${extension}`);
+        res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+    }
+    res.send(finalBuffer);
 }));
             
 // GET /preset/:name/prompt?resolution=... (no body, just preset)
@@ -771,11 +880,33 @@ app.get('/preset/:name/:resolution', createEndpointHandler(async (req, res) => {
         
         if (cached) {
             console.log('📤 Returning cached image');
-            res.setHeader('Content-Type', 'image/png');
-            if (req.query.download === 'true') {
-                res.setHeader('Content-Disposition', `attachment; filename="${cached.filename}"`);
+            
+            // Check if optimization is requested
+            const optimize = req.query.optimize === 'true';
+            let finalBuffer = cached.buffer;
+            let contentType = 'image/png';
+            
+            if (optimize) {
+                console.log('🔧 Optimizing cached image to JPEG at 75% quality...');
+                try {
+                    finalBuffer = await sharp(cached.buffer)
+                        .jpeg({ quality: 75 })
+                        .toBuffer();
+                    contentType = 'image/jpeg';
+                    console.log(`✅ Cached image optimized: ${cached.buffer.length} bytes → ${finalBuffer.length} bytes (${Math.round((1 - finalBuffer.length / cached.buffer.length) * 100)}% reduction)`);
+                } catch (error) {
+                    console.log('❌ Image optimization failed:', error.message);
+                    // Fall back to original PNG if optimization fails
+                }
             }
-            res.send(cached.buffer);
+            
+            res.setHeader('Content-Type', contentType);
+            if (req.query.download === 'true') {
+                const extension = optimize ? 'jpg' : 'png';
+                const optimizedFilename = cached.filename.replace('.png', `.${extension}`);
+                res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+            }
+            res.send(finalBuffer);
             return;
         }
     } else {
@@ -792,11 +923,32 @@ app.get('/preset/:name/:resolution', createEndpointHandler(async (req, res) => {
         setCachedPreset(cacheKey, result.buffer, result.filename);
     }
     
-    res.setHeader('Content-Type', 'image/png');
-    if (req.query.download === 'true') {
-        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    // Check if optimization is requested
+    const optimize = req.query.optimize === 'true';
+    let finalBuffer = result.buffer;
+    let contentType = 'image/png';
+    
+    if (optimize) {
+        console.log('🔧 Optimizing generated image to JPEG at 75% quality...');
+        try {
+            finalBuffer = await sharp(result.buffer)
+                .jpeg({ quality: 75 })
+                .toBuffer();
+            contentType = 'image/jpeg';
+            console.log(`✅ Generated image optimized: ${result.buffer.length} bytes → ${finalBuffer.length} bytes (${Math.round((1 - finalBuffer.length / result.buffer.length) * 100)}% reduction)`);
+        } catch (error) {
+            console.log('❌ Image optimization failed:', error.message);
+            // Fall back to original PNG if optimization fails
+        }
     }
-    res.send(result.buffer);
+    
+    res.setHeader('Content-Type', contentType);
+    if (req.query.download === 'true') {
+        const extension = optimize ? 'jpg' : 'png';
+        const optimizedFilename = result.filename.replace('.png', `.${extension}`);
+        res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+    }
+    res.send(finalBuffer);
 }));
 
 app.post('/preset/:name/:resolution', createEndpointHandler(async (req, res) => {
@@ -833,11 +985,33 @@ app.post('/preset/:name/:resolution', createEndpointHandler(async (req, res) => 
         
         if (cached) {
             console.log('📤 Returning cached image');
-            res.setHeader('Content-Type', 'image/png');
-            if (req.query.download === 'true') {
-                res.setHeader('Content-Disposition', `attachment; filename="${cached.filename}"`);
+            
+            // Check if optimization is requested
+            const optimize = req.query.optimize === 'true';
+            let finalBuffer = cached.buffer;
+            let contentType = 'image/png';
+            
+            if (optimize) {
+                console.log('🔧 Optimizing cached image to JPEG at 75% quality...');
+                try {
+                    finalBuffer = await sharp(cached.buffer)
+                        .jpeg({ quality: 75 })
+                        .toBuffer();
+                    contentType = 'image/jpeg';
+                    console.log(`✅ Cached image optimized: ${cached.buffer.length} bytes → ${finalBuffer.length} bytes (${Math.round((1 - finalBuffer.length / cached.buffer.length) * 100)}% reduction)`);
+                } catch (error) {
+                    console.log('❌ Image optimization failed:', error.message);
+                    // Fall back to original PNG if optimization fails
+                }
             }
-            res.send(cached.buffer);
+            
+            res.setHeader('Content-Type', contentType);
+            if (req.query.download === 'true') {
+                const extension = optimize ? 'jpg' : 'png';
+                const optimizedFilename = cached.filename.replace('.png', `.${extension}`);
+                res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+            }
+            res.send(finalBuffer);
             return;
         }
     } else {
@@ -853,11 +1027,32 @@ app.post('/preset/:name/:resolution', createEndpointHandler(async (req, res) => 
         setCachedPreset(cacheKey, result.buffer, result.filename);
     }
     
-    res.setHeader('Content-Type', 'image/png');
-    if (req.query.download === 'true') {
-        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    // Check if optimization is requested
+    const optimize = req.query.optimize === 'true';
+    let finalBuffer = result.buffer;
+    let contentType = 'image/png';
+    
+    if (optimize) {
+        console.log('🔧 Optimizing generated image to JPEG at 75% quality...');
+        try {
+            finalBuffer = await sharp(result.buffer)
+                .jpeg({ quality: 75 })
+                .toBuffer();
+            contentType = 'image/jpeg';
+            console.log(`✅ Generated image optimized: ${result.buffer.length} bytes → ${finalBuffer.length} bytes (${Math.round((1 - finalBuffer.length / result.buffer.length) * 100)}% reduction)`);
+        } catch (error) {
+            console.log('❌ Image optimization failed:', error.message);
+            // Fall back to original PNG if optimization fails
+        }
     }
-    res.send(result.buffer);
+    
+    res.setHeader('Content-Type', contentType);
+    if (req.query.download === 'true') {
+        const extension = optimize ? 'jpg' : 'png';
+        const optimizedFilename = result.filename.replace('.png', `.${extension}`);
+        res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+    }
+    res.send(finalBuffer);
 }));
 
 app.post('/:model/img2img', createEndpointHandler(async (req, res) => {
