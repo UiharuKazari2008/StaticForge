@@ -254,7 +254,8 @@ async function saveImage(img, filename) {
 }
 
 // Build options for image generation
-const buildOptions = (model, body, preset = null, isImg2Img = false) => {
+const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams = {}) => {
+    const currentConfig = loadConfig();
     console.log('🔧 Building options...', preset ? 'Using preset' : '');
     
     const resolution = body.resolution || preset?.resolution;
@@ -290,6 +291,22 @@ const buildOptions = (model, body, preset = null, isImg2Img = false) => {
     const rawPrompt = body.prompt || preset?.prompt;
     const rawNegativePrompt = body.uc || preset?.uc;
     
+    // Handle upscale override from query parameters
+    let upscaleValue = body.upscale || preset?.upscale;
+    if (queryParams.upscale !== undefined) {
+        if (queryParams.upscale === 'true') {
+            upscaleValue = true; // Default to 4x
+        } else {
+            const parsedUpscale = parseFloat(queryParams.upscale);
+            if (!isNaN(parsedUpscale) && parsedUpscale > 0) {
+                upscaleValue = parsedUpscale;
+            } else {
+                throw new Error('Invalid upscale value. Use ?upscale=true for default 4x or ?upscale=<number> for custom multiplier.');
+            }
+        }
+        console.log(`🔍 Upscale override from query parameter: ${upscaleValue}`);
+    }
+    
     try {
         const processedPrompt = applyTextReplacements(rawPrompt, presetName, model);
         const processedNegativePrompt = applyTextReplacements(rawNegativePrompt, presetName, model);
@@ -316,7 +333,7 @@ const buildOptions = (model, body, preset = null, isImg2Img = false) => {
             ucPreset: 100,
             dynamicThresholding: body.dynamicThresholding || preset?.dynamicThresholding,
             seed: body.seed || preset?.seed,
-            upscale: body.upscale || preset?.upscale
+            upscale: upscaleValue
         };
 
         if (baseOptions.upscale && baseOptions.upscale > 1 && !allowPaid) {
@@ -543,7 +560,7 @@ app.post('/:model/generate', createEndpointHandler(async (req, res) => {
     }
     console.log(`✅ Valid model: ${req.params.model}`);
     
-    const opts = buildOptions(key, req.body);
+    const opts = buildOptions(key, req.body, null, false, req.query);
     await handleImageRequest(req, res, opts);
 }));
 
@@ -556,7 +573,7 @@ app.get('/preset/:name', createEndpointHandler(async (req, res) => {
     }
     console.log(`✅ Preset found: ${req.params.name}`);
     
-    const opts = buildOptions(p.model, {}, p);
+    const opts = buildOptions(p.model, {}, p, false, req.query);
     await handleImageRequest(req, res, opts);
 }));
 
@@ -577,20 +594,22 @@ app.post('/preset/:name', createEndpointHandler(async (req, res) => {
         delete bodyOverrides.uc;
     }
     
-    const opts = buildOptions(p.model, bodyOverrides, p);
+    const opts = buildOptions(p.model, bodyOverrides, p, false, req.query);
     await handleImageRequest(req, res, opts);
 }));
 
+// GET /preset/:name/prompt?resolution=... (no body, just preset)
 app.get('/preset/:name/prompt', createEndpointHandler(async (req, res) => {
     const currentPromptConfig = loadPromptConfig();
     const p = currentPromptConfig.presets[req.params.name];
     if (!p) return res.status(404).json({ error: 'Preset not found' });
     const resolution = req.query.resolution;
     const body = resolution ? { resolution } : {};
-    const opts = buildOptions(p.model, body, p);
+    const opts = buildOptions(p.model, body, p, false, req.query);
     res.json({ prompt: opts.prompt, uc: opts.negative_prompt });
 }));
 
+// POST /preset/:name/prompt (body overrides)
 app.post('/preset/:name/prompt', createEndpointHandler(async (req, res) => {
     const currentPromptConfig = loadPromptConfig();
     const p = currentPromptConfig.presets[req.params.name];
@@ -601,15 +620,16 @@ app.post('/preset/:name/prompt', createEndpointHandler(async (req, res) => {
         bodyOverrides.prompt = originalPrompt + ', ' + bodyOverrides.prompt;
         delete bodyOverrides.uc;
     }
-    const opts = buildOptions(p.model, bodyOverrides, p);
+    const opts = buildOptions(p.model, bodyOverrides, p, false, req.query);
     res.json({ prompt: opts.prompt, uc: opts.negative_prompt });
 }));
 
+// POST /:model/prompt (direct model, body)
 app.post('/:model/prompt', createEndpointHandler(async (req, res) => {
     const key = req.params.model.toLowerCase();
     const model = Model[key.toUpperCase()];
     if (!model) return res.status(400).json({ error: 'Invalid model' });
-    const opts = buildOptions(key, req.body);
+    const opts = buildOptions(key, req.body, null, false, req.query);
     res.json({ prompt: opts.prompt, uc: opts.negative_prompt });
 }));
 
@@ -630,7 +650,7 @@ app.get('/preset/:name/:resolution', createEndpointHandler(async (req, res) => {
     console.log(`✅ Valid resolution: ${resolution}`);
     
     const bodyOverrides = { resolution };
-    const opts = buildOptions(p.model, bodyOverrides, p);
+    const opts = buildOptions(p.model, bodyOverrides, p, false, req.query);
     await handleImageRequest(req, res, opts);
 }));
 
@@ -658,7 +678,7 @@ app.post('/preset/:name/:resolution', createEndpointHandler(async (req, res) => 
         delete bodyOverrides.uc;
     }
     
-    const opts = buildOptions(p.model, bodyOverrides, p);
+    const opts = buildOptions(p.model, bodyOverrides, p, false, req.query);
     await handleImageRequest(req, res, opts);
 }));
 
@@ -671,7 +691,7 @@ app.post('/:model/img2img', createEndpointHandler(async (req, res) => {
     }
     console.log(`✅ Valid model: ${req.params.model}`);
     
-    const opts = buildOptions(key, req.body, null, true);
+    const opts = buildOptions(key, req.body, null, true, req.query);
     await handleImageRequest(req, res, opts);
 }));
 
