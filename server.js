@@ -12,6 +12,9 @@ let configLastModified = 0;
 let promptConfig = null;
 let promptConfigLastModified = 0;
 
+// Preset cache system
+const presetCache = new Map();
+
 function loadConfig() {
     const configPath = './config.json';
     
@@ -76,6 +79,49 @@ function loadPromptConfig() {
     
     return promptConfig;
 }
+
+// Preset cache management functions
+const getPresetCacheKey = (presetName, queryParams = {}) => {
+    // Create a cache key based on preset name and relevant query parameters
+    const relevantParams = {
+        upscale: queryParams.upscale,
+        resolution: queryParams.resolution
+    };
+    return `${presetName}_${JSON.stringify(relevantParams)}`;
+};
+
+const getCachedPreset = (cacheKey) => {
+    const cached = presetCache.get(cacheKey);
+    if (!cached) return null;
+    
+    const now = Date.now();
+    const thirtyMinutes = 30 * 60 * 1000; // 30 minutes in milliseconds
+    
+    if (now - cached.timestamp > thirtyMinutes) {
+        console.log(`⏰ Cache expired for preset: ${cacheKey}`);
+        presetCache.delete(cacheKey);
+        return null;
+    }
+    
+    console.log(`📋 Using cached image for preset: ${cacheKey} (${Math.round((now - cached.timestamp) / 1000)}s old)`);
+    return cached;
+};
+
+const setCachedPreset = (cacheKey, buffer, filename) => {
+    const now = Date.now();
+    presetCache.set(cacheKey, {
+        buffer,
+        filename,
+        timestamp: now
+    });
+    console.log(`💾 Cached image for preset: ${cacheKey}`);
+};
+
+const clearPresetCache = () => {
+    const beforeSize = presetCache.size;
+    presetCache.clear();
+    console.log(`🗑️ Cleared preset cache (${beforeSize} entries)`);
+};
 
 // Text replacement functions
 const applyTextReplacements = (text, presetName, model = null) => {
@@ -276,8 +322,8 @@ const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams
         height = body.height || preset?.height || 1024;
         console.log(`📐 Using custom dimensions: ${width}x${height}`);
         if ((width > 1024 || height > 1024) && !allowPaid) {
-            throw new Error(`Custom dimensions ${width}x${height} exceed maximum of 1024. Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
-        }
+                throw new Error(`Custom dimensions ${width}x${height} exceed maximum of 1024. Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
+            }
     }
 
     const steps = body.steps || preset?.steps || 24;
@@ -285,7 +331,7 @@ const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams
     if (steps > 28 && !allowPaid) {
         throw new Error(`Steps value ${steps} exceeds maximum of 28. Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
     }
-
+    
     const currentPromptConfig = loadPromptConfig();
     const presetName = preset ? Object.keys(currentPromptConfig.presets).find(key => currentPromptConfig.presets[key] === preset) : null;
     const rawPrompt = body.prompt || preset?.prompt;
@@ -296,7 +342,7 @@ const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams
     if (queryParams.upscale !== undefined) {
         if (queryParams.upscale === 'true') {
             upscaleValue = true; // Default to 4x
-        } else {
+    } else {
             const parsedUpscale = parseFloat(queryParams.upscale);
             if (!isNaN(parsedUpscale) && parsedUpscale > 0) {
                 upscaleValue = parsedUpscale;
@@ -316,11 +362,11 @@ const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams
         
         if (usedPromptReplacements.length > 0) console.log(`🔄 Applied text replacements to prompt: [${usedPromptReplacements.join(', ')}]`);
         if (usedNegativeReplacements.length > 0) console.log(`🔄 Applied text replacements to negative prompt: [${usedNegativeReplacements.join(', ')}]`);
-        
-        const baseOptions = {
-            prompt: processedPrompt,
-            negative_prompt: processedNegativePrompt,
-            model: Model[model.toUpperCase()],
+
+    const baseOptions = {
+        prompt: processedPrompt,
+        negative_prompt: processedNegativePrompt,
+        model: Model[model.toUpperCase()],
             steps,
             scale: body.guidance || preset?.guidance || 5.5,
             cfg_rescale: body.rescale || preset?.rescale || 0.0,
@@ -329,8 +375,8 @@ const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams
             noiseScheduler: body.noiseScheduler ? Noise[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? Noise[preset.noiseScheduler.toUpperCase()] : Noise.KARRAS),
             characterPrompts: body.characterPrompts || preset?.characterPrompts,
             no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
-            qualityToggle: false,
-            ucPreset: 100,
+        qualityToggle: false,
+        ucPreset: 100,
             dynamicThresholding: body.dynamicThresholding || preset?.dynamicThresholding,
             seed: body.seed || preset?.seed,
             upscale: upscaleValue
@@ -340,42 +386,42 @@ const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams
             throw new Error(`Upscaling with scale ${baseOptions.upscale} requires Opus credits. Set "allow_paid": true to confirm you accept using Opus credits for upscaling.`);
         }
 
-        if (resolution && Resolution[resolution.toUpperCase()]) {
-            baseOptions.resPreset = Resolution[resolution.toUpperCase()];
-        } else {
-            baseOptions.width = width;
-            baseOptions.height = height;
-        }
+    if (resolution && Resolution[resolution.toUpperCase()]) {
+        baseOptions.resPreset = Resolution[resolution.toUpperCase()];
+    } else {
+        baseOptions.width = width;
+        baseOptions.height = height;
+    }
 
-        if (isImg2Img) {
-            baseOptions.action = Action.IMG2IMG;
-            baseOptions.image = body.image;
-            baseOptions.strength = body.strength || 0.5;
-            console.log('🖼️ Image-to-image mode enabled');
-        }
+    if (isImg2Img) {
+        baseOptions.action = Action.IMG2IMG;
+        baseOptions.image = body.image;
+        baseOptions.strength = body.strength || 0.5;
+        console.log('🖼️ Image-to-image mode enabled');
+    }
 
-        if (!allowPaid) {
-            try {
-                const cost_opus = calculateCost(baseOptions, true);
-                const cost_free = calculateCost(baseOptions, false);
-                console.log(`💰 Calculated cost: ${cost_free}, ${cost_opus} (Opus Tier)`);
-                if (cost_opus > 0) {
-                    throw new Error(`Request requires Opus credits (cost: ${cost_opus}). Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
-                }
-            } catch (error) {
-                if (error.message.includes('requires Opus credits')) throw error;
-                console.log('⚠️ Cost calculation failed, proceeding with request:', error.message);
+    if (!allowPaid) {
+        try {
+            const cost_opus = calculateCost(baseOptions, true);
+            const cost_free = calculateCost(baseOptions, false);
+            console.log(`💰 Calculated cost: ${cost_free}, ${cost_opus} (Opus Tier)`);
+            if (cost_opus > 0) {
+                throw new Error(`Request requires Opus credits (cost: ${cost_opus}). Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
             }
-        } else {
-            console.log('✅ Opus credits allowed, skipping cost validation');
+        } catch (error) {
+                if (error.message.includes('requires Opus credits')) throw error;
+            console.log('⚠️ Cost calculation failed, proceeding with request:', error.message);
         }
+    } else {
+        console.log('✅ Opus credits allowed, skipping cost validation');
+    }
 
-        console.log('📋 Final options:', JSON.stringify(baseOptions, null, 2));
-        return baseOptions;
+    console.log('📋 Final options:', JSON.stringify(baseOptions, null, 2));
+    return baseOptions;
     } catch (error) {
         console.log('❌ Text replacement error:', error.message);
         throw error;
-    }
+}
 };
 
 async function handleGeneration(opts, returnImage = false) {
@@ -422,14 +468,14 @@ async function handleGeneration(opts, returnImage = false) {
             
             const scaledBuffer = await upscaleImage(buffer, scale, upscaleWidth, upscaleHeight);
             console.log(`📊 Upscaled buffer size: ${scaledBuffer.length} bytes`);
-            
-            // Save image permanently if shouldSave is true
-            if (shouldSave) {
-                const finalPath = path.join(imagesDir, name);
+        
+        // Save image permanently if shouldSave is true
+        if (shouldSave) {
+            const finalPath = path.join(imagesDir, name);
                 fs.writeFileSync(finalPath, buffer);
-                console.log(`💾 Image saved permanently: ${name}`);
-                
-                // If upscaling was applied, also save the upscaled version
+            console.log(`💾 Image saved permanently: ${name}`);
+            
+            // If upscaling was applied, also save the upscaled version
                 const upscaledName = `upscaled_${name}`;
                 const upscaledPath = path.join(upscaledDir, upscaledName);
                 fs.writeFileSync(upscaledPath, scaledBuffer);
@@ -471,7 +517,7 @@ const handleImageRequest = async (req, res, opts) => {
     } else {
         console.log('🖼️ Returning image as content');
     }
-    
+
     console.log('📤 Sending image to client');
     res.send(result.buffer);
     console.log('✅ Request completed successfully\n');
@@ -497,7 +543,7 @@ const upscaleLimiter = new Bottleneck({
     maxConcurrent: 1,
     trackDoneStatus: true
 });
-
+    
 // Event listeners for monitoring
 generateLimiter.on('failed', (error, jobInfo) => {
     console.log(`❌ Generate request failed: ${error.message} (Job ID: ${jobInfo.id})`);
@@ -513,7 +559,7 @@ upscaleLimiter.on('failed', (error, jobInfo) => {
 
 upscaleLimiter.on('done', (result, jobInfo) => {
     console.log(`✅ Upscale request completed (Job ID: ${jobInfo.id})`);
-});
+    });
 
 // Wrapper function to add requests to rate limiter
 function rateLimitedRequest(req, res, handler, limiter = generateLimiter) {
@@ -522,14 +568,14 @@ function rateLimitedRequest(req, res, handler, limiter = generateLimiter) {
         console.log(`📋 Adding request to rate limiter (Job ID: ${jobId})`);
         
         limiter.schedule(async () => {
-            try {
+                try {
                 console.log(`🔄 Processing request (Job ID: ${jobId})`);
-                await handler(req, res);
-                resolve();
-            } catch (error) {
+                    await handler(req, res);
+                    resolve();
+                } catch (error) {
                 console.log(`❌ Request failed (Job ID: ${jobId}): ${error.message}`);
-                reject(error);
-            }
+                    reject(error);
+                }
         }, jobId);
     });
 }
@@ -552,14 +598,14 @@ const createEndpointHandler = (handler) => async (req, res) => {
 
 // Endpoint handlers
 app.post('/:model/generate', createEndpointHandler(async (req, res) => {
-    const key = req.params.model.toLowerCase();
-    const model = Model[key.toUpperCase()];
-    if (!model) {
-        console.log('❌ Invalid model requested:', req.params.model);
-        return res.status(400).json({ error: 'Invalid model' });
-    }
-    console.log(`✅ Valid model: ${req.params.model}`);
-    
+            const key = req.params.model.toLowerCase();
+            const model = Model[key.toUpperCase()];
+            if (!model) {
+                console.log('❌ Invalid model requested:', req.params.model);
+                return res.status(400).json({ error: 'Invalid model' });
+            }
+            console.log(`✅ Valid model: ${req.params.model}`);
+            
     const opts = buildOptions(key, req.body, null, false, req.query);
     await handleImageRequest(req, res, opts);
 }));
@@ -573,8 +619,41 @@ app.get('/preset/:name', createEndpointHandler(async (req, res) => {
     }
     console.log(`✅ Preset found: ${req.params.name}`);
     
+    // Check if force generation is requested
+    const forceGenerate = req.query.forceGenerate === 'true';
+    
+    if (!forceGenerate) {
+        // Try to get cached image
+        const cacheKey = getPresetCacheKey(req.params.name, req.query);
+        const cached = getCachedPreset(cacheKey);
+        
+        if (cached) {
+            console.log('📤 Returning cached image');
+            res.setHeader('Content-Type', 'image/png');
+            if (req.query.download === 'true') {
+                res.setHeader('Content-Disposition', `attachment; filename="${cached.filename}"`);
+            }
+            res.send(cached.buffer);
+            return;
+        }
+    } else {
+        console.log('🔄 Force generation requested, bypassing cache');
+    }
+    
     const opts = buildOptions(p.model, {}, p, false, req.query);
-    await handleImageRequest(req, res, opts);
+    const result = await handleGeneration(opts, true);
+    
+    // Cache the result if generation was successful
+    if (!forceGenerate) {
+        const cacheKey = getPresetCacheKey(req.params.name, req.query);
+        setCachedPreset(cacheKey, result.buffer, result.filename);
+    }
+    
+    res.setHeader('Content-Type', 'image/png');
+    if (req.query.download === 'true') {
+        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    }
+    res.send(result.buffer);
 }));
 
 app.post('/preset/:name', createEndpointHandler(async (req, res) => {
@@ -594,10 +673,43 @@ app.post('/preset/:name', createEndpointHandler(async (req, res) => {
         delete bodyOverrides.uc;
     }
     
+    // Check if force generation is requested
+    const forceGenerate = req.query.forceGenerate === 'true';
+    
+    if (!forceGenerate) {
+        // Try to get cached image (POST requests with body overrides are not cached)
+        const cacheKey = getPresetCacheKey(req.params.name, req.query);
+        const cached = getCachedPreset(cacheKey);
+        
+        if (cached) {
+            console.log('📤 Returning cached image');
+            res.setHeader('Content-Type', 'image/png');
+            if (req.query.download === 'true') {
+                res.setHeader('Content-Disposition', `attachment; filename="${cached.filename}"`);
+            }
+            res.send(cached.buffer);
+            return;
+        }
+    } else {
+        console.log('🔄 Force generation requested, bypassing cache');
+    }
+    
     const opts = buildOptions(p.model, bodyOverrides, p, false, req.query);
-    await handleImageRequest(req, res, opts);
+    const result = await handleGeneration(opts, true);
+    
+    // Cache the result if generation was successful and no body overrides
+    if (!forceGenerate && Object.keys(bodyOverrides).length === 0) {
+        const cacheKey = getPresetCacheKey(req.params.name, req.query);
+        setCachedPreset(cacheKey, result.buffer, result.filename);
+    }
+    
+    res.setHeader('Content-Type', 'image/png');
+    if (req.query.download === 'true') {
+        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    }
+    res.send(result.buffer);
 }));
-
+            
 // GET /preset/:name/prompt?resolution=... (no body, just preset)
 app.get('/preset/:name/prompt', createEndpointHandler(async (req, res) => {
     const currentPromptConfig = loadPromptConfig();
@@ -649,9 +761,42 @@ app.get('/preset/:name/:resolution', createEndpointHandler(async (req, res) => {
     }
     console.log(`✅ Valid resolution: ${resolution}`);
     
+    // Check if force generation is requested
+    const forceGenerate = req.query.forceGenerate === 'true';
+    
+    if (!forceGenerate) {
+        // Try to get cached image
+        const cacheKey = getPresetCacheKey(req.params.name, { ...req.query, resolution });
+        const cached = getCachedPreset(cacheKey);
+        
+        if (cached) {
+            console.log('📤 Returning cached image');
+            res.setHeader('Content-Type', 'image/png');
+            if (req.query.download === 'true') {
+                res.setHeader('Content-Disposition', `attachment; filename="${cached.filename}"`);
+            }
+            res.send(cached.buffer);
+            return;
+        }
+    } else {
+        console.log('🔄 Force generation requested, bypassing cache');
+    }
+    
     const bodyOverrides = { resolution };
     const opts = buildOptions(p.model, bodyOverrides, p, false, req.query);
-    await handleImageRequest(req, res, opts);
+    const result = await handleGeneration(opts, true);
+    
+    // Cache the result if generation was successful
+    if (!forceGenerate) {
+        const cacheKey = getPresetCacheKey(req.params.name, { ...req.query, resolution });
+        setCachedPreset(cacheKey, result.buffer, result.filename);
+    }
+    
+    res.setHeader('Content-Type', 'image/png');
+    if (req.query.download === 'true') {
+        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    }
+    res.send(result.buffer);
 }));
 
 app.post('/preset/:name/:resolution', createEndpointHandler(async (req, res) => {
@@ -678,19 +823,52 @@ app.post('/preset/:name/:resolution', createEndpointHandler(async (req, res) => 
         delete bodyOverrides.uc;
     }
     
+    // Check if force generation is requested
+    const forceGenerate = req.query.forceGenerate === 'true';
+    
+    if (!forceGenerate) {
+        // Try to get cached image (POST requests with body overrides are not cached)
+        const cacheKey = getPresetCacheKey(req.params.name, { ...req.query, resolution });
+        const cached = getCachedPreset(cacheKey);
+        
+        if (cached) {
+            console.log('📤 Returning cached image');
+            res.setHeader('Content-Type', 'image/png');
+            if (req.query.download === 'true') {
+                res.setHeader('Content-Disposition', `attachment; filename="${cached.filename}"`);
+            }
+            res.send(cached.buffer);
+            return;
+        }
+    } else {
+        console.log('🔄 Force generation requested, bypassing cache');
+    }
+    
     const opts = buildOptions(p.model, bodyOverrides, p, false, req.query);
-    await handleImageRequest(req, res, opts);
+    const result = await handleGeneration(opts, true);
+    
+    // Cache the result if generation was successful and no body overrides (except resolution)
+    if (!forceGenerate && Object.keys(req.body).length === 0) {
+        const cacheKey = getPresetCacheKey(req.params.name, { ...req.query, resolution });
+        setCachedPreset(cacheKey, result.buffer, result.filename);
+    }
+    
+    res.setHeader('Content-Type', 'image/png');
+    if (req.query.download === 'true') {
+        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    }
+    res.send(result.buffer);
 }));
 
 app.post('/:model/img2img', createEndpointHandler(async (req, res) => {
-    const key = req.params.model.toLowerCase();
-    const model = Model[key.toUpperCase()];
-    if (!model) {
-        console.log('❌ Invalid model requested:', req.params.model);
-        return res.status(400).json({ error: 'Invalid model' });
-    }
-    console.log(`✅ Valid model: ${req.params.model}`);
-    
+            const key = req.params.model.toLowerCase();
+            const model = Model[key.toUpperCase()];
+            if (!model) {
+                console.log('❌ Invalid model requested:', req.params.model);
+                return res.status(400).json({ error: 'Invalid model' });
+            }
+            console.log(`✅ Valid model: ${req.params.model}`);
+            
     const opts = buildOptions(key, req.body, null, true, req.query);
     await handleImageRequest(req, res, opts);
 }));
@@ -701,6 +879,7 @@ app.get('/options', (req, res) => {
     console.log('📅 Timestamp:', new Date().toISOString());
     
     try {
+        const currentConfig = loadConfig();
         const currentPromptConfig = loadPromptConfig();
         const options = {
             models: Object.fromEntries(Object.keys(Model).map(key => [key, Model[key]])),
@@ -709,12 +888,74 @@ app.get('/options', (req, res) => {
             noiseSchedulers: Object.fromEntries(Object.keys(Noise).map(key => [key, Noise[key]])),
             resolutions: Object.fromEntries(Object.keys(Resolution).map(key => [key, Resolution[key]])),
             presets: Object.keys(currentPromptConfig.presets),
-            textReplacements: currentPromptConfig.text_replacements || {}
+            textReplacements: currentPromptConfig.text_replacements || {},
+            cache: {
+                enabled: true,
+                ttl: "30 minutes",
+                entries: presetCache.size,
+                clearEndpoint: "/cache/clear"
+            }
         };
         
         console.log('📤 Sending options to client');
         res.json(options);
         console.log('✅ Options request completed successfully\n');
+    } catch(e) {
+        console.log('❌ Error occurred:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Cache management endpoint
+app.post('/cache/clear', (req, res) => {
+    console.log('\n🎯 POST /cache/clear');
+    console.log('👤 Client IP:', req.ip);
+    console.log('📅 Timestamp:', new Date().toISOString());
+    
+    try {
+        clearPresetCache();
+        res.json({ 
+            success: true, 
+            message: 'Preset cache cleared successfully',
+            clearedEntries: 0 // Will be logged by clearPresetCache
+        });
+        console.log('✅ Cache clear request completed successfully\n');
+    } catch(e) {
+        console.log('❌ Error occurred:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Cache status endpoint
+app.get('/cache/status', (req, res) => {
+    console.log('\n🎯 GET /cache/status');
+    console.log('👤 Client IP:', req.ip);
+    console.log('📅 Timestamp:', new Date().toISOString());
+    
+    try {
+        const now = Date.now();
+        const cacheEntries = [];
+        
+        for (const [key, value] of presetCache.entries()) {
+            const ageSeconds = Math.round((now - value.timestamp) / 1000);
+            const ageMinutes = Math.round(ageSeconds / 60);
+            const expiresIn = Math.max(0, 30 * 60 - ageSeconds);
+            
+            cacheEntries.push({
+                key,
+                filename: value.filename,
+                age: `${ageMinutes}m ${ageSeconds % 60}s`,
+                expiresIn: `${Math.floor(expiresIn / 60)}m ${expiresIn % 60}s`,
+                size: value.buffer.length
+            });
+        }
+        
+        res.json({
+            totalEntries: presetCache.size,
+            entries: cacheEntries,
+            ttl: "30 minutes"
+        });
+        console.log('✅ Cache status request completed successfully\n');
     } catch(e) {
         console.log('❌ Error occurred:', e.message);
         res.status(500).json({ error: e.message });
@@ -771,7 +1012,7 @@ const upscaleImage = async (imageBuffer, scale = 4, width, height) => {
                                 reject(new Error(`Upscale API error: ${errorResponse.error || 'Unknown error'}`));
                             } catch (e) {
                                 reject(new Error(`Upscale API error: HTTP ${res.statusCode}`));
-                            }
+        }
                         }
                     });
                 });
@@ -793,19 +1034,19 @@ const upscaleImage = async (imageBuffer, scale = 4, width, height) => {
             
             if (zipEntries.length === 0) {
                 throw new Error('ZIP file is empty');
-            }
-            
+        }
+        
             // Get the first file (should be the upscaled PNG)
             const firstEntry = zipEntries[0];
             console.log(`📄 Extracted file: ${firstEntry.entryName} (${firstEntry.header.size} bytes)`);
             
             const upscaledBuffer = firstEntry.getData();
             console.log(`✅ Image upscaled successfully (scale: ${actualScale})`);
-            return upscaledBuffer;
-        } catch (error) {
-            console.log('❌ Upscaling failed:', error.message);
-            return imageBuffer;
-        }
+        return upscaledBuffer;
+    } catch (error) {
+        console.log('❌ Upscaling failed:', error.message);
+        return imageBuffer;
+    }
     }, `upscale-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 };
 
