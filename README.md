@@ -430,8 +430,7 @@ The server uses Bottleneck for advanced rate limiting:
 ### Directory Structure
 ```
 StaticForge/
-├── images/          # Original generated images
-├── upscaled/        # AI-upscaled versions
+├── images/          # All generated images (original + upscaled)
 ├── config.json      # Main configuration
 └── prompt.config.json # Presets and text replacements
 ```

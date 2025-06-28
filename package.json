@@ -1,9 +1,10 @@
 {
+  "name": "staticforge",
+  "version": "1.0.0",
   "dependencies": {
-    "adm-zip": "^0.5.16",
-    "bottleneck": "^2.19.5",
-    "express": "^5.1.0",
-    "nekoai-js": "^1.2.4",
-    "sharp": "^0.34.2"
+    "express": "^4.18.2",
+    "nekoai-js": "^1.0.0",
+    "sharp": "^0.32.6",
+    "adm-zip": "^0.5.10"
   }
 }
