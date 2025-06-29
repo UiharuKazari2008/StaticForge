@@ -14,7 +14,10 @@ class CustomQueue {
 
     // Check if endpoint should be excluded from rate limiting
     isExcluded(path) {
-        return this.excludedEndpoints.some(endpoint => path === endpoint || path.startsWith(endpoint));
+        return this.excludedEndpoints.some(endpoint => path === endpoint || path.startsWith(endpoint)) ||
+               path.startsWith('/images/') || 
+               path.startsWith('/styles.css') || 
+               path.startsWith('/script.js');
     }
 
     // Calculate current delay based on request count
