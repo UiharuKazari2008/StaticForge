@@ -16,7 +16,11 @@ const { queueMiddleware } = require('./modules/queue');
 console.log(config);
 
 // Initialize NovelAI client
-const client = new NovelAI({ token: config.apiKey });
+const client = new NovelAI({ 
+    token: config.apiKey,
+    timeout: 100000,
+    verbose: true
+ });
 
 // Create Express app
 const app = express();
@@ -50,10 +54,32 @@ const dimensionsMap = {
     "1920x1088": "wallpaper_landscape"
 };
 
+// Inverse mapping: resolution name to dimensions
+const inverseDimensionsMap = {
+    "small_portrait": { width: 512, height: 768 },
+    "small_landscape": { width: 768, height: 512 },
+    "small_square": { width: 640, height: 640 },
+    "normal_portrait": { width: 832, height: 1216 },
+    "normal_landscape": { width: 1216, height: 832 },
+    "normal_square": { width: 1024, height: 1024 },
+    "large_portrait": { width: 1024, height: 1536 },
+    "large_landscape": { width: 1536, height: 1024 },
+    "large_square": { width: 1472, height: 1472 },
+    "wallpaper_portrait": { width: 1088, height: 1920 },
+    "wallpaper_landscape": { width: 1920, height: 1088 }
+};
+
 // Helper: Get resolution name from dimensions
 function getResolutionFromDimensions(width, height) {
     const key = `${width}x${height}`;
     return dimensionsMap[key] || null;
+}
+
+// Helper: Get dimensions from resolution name
+function getDimensionsFromResolution(resolution) {
+    // Convert to lowercase for case-insensitive lookup
+    const normalizedResolution = resolution.toLowerCase();
+    return inverseDimensionsMap[normalizedResolution] || null;
 }
 
 // Helper: get base name for pairing
@@ -330,8 +356,8 @@ const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams
             noiseScheduler: body.noiseScheduler ? Noise[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? Noise[preset.noiseScheduler.toUpperCase()] : Noise.KARRAS),
             characterPrompts: body.characterPrompts || preset?.characterPrompts,
             no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
-        qualityToggle: false,
-        ucPreset: 100,
+            qualityToggle: false,
+            ucPreset: 100,
             dynamicThresholding: body.dynamicThresholding || preset?.dynamicThresholding,
             seed: body.seed || preset?.seed,
             upscale: upscaleValue
@@ -373,14 +399,24 @@ const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams
 };
 
 async function handleGeneration(opts, returnImage = false, presetName = null) {
-    const seed = opts.seed || Math.floor(Math.random() * 1e9);
+    const seed = opts.seed || Math.floor(Math.random() * 4294967288);
     
     opts.n_samples = 1;
+    opts.seed = seed;
+    if (opts.action === Action.INPAINT) {
+        opts.add_original_image = false;
+        opts.extra_noise_seed = seed;
+    }
     console.log(`🚀 Starting image generation (seed: ${seed})...`);
     
     let img;
+    delete opts.upscale;
+    delete opts.ucPreset;
+    delete opts.no_save;
+    delete opts.qualityToggle;
+    delete opts.characterPrompts
     try {
-        [img] = await client.generateImage(opts);
+        [img] = await client.generateImage(opts, false, true);
         console.log('✅ Image generation completed');
     } catch (error) {
         throw new Error(`❌ Image generation failed: ${error.message}`);
@@ -478,25 +514,60 @@ const handleImageRequest = async (req, res, opts, presetName = null) => {
     res.send(finalBuffer);
 };
 
-// Endpoint handlers
-app.post('/:model/generate', authMiddleware, async (req, res) => {
+// POST /preset/save (save a new preset) - MUST BE BEFORE /preset/:name
+app.post('/preset/save', authMiddleware, async (req, res) => {
+    console.log('=== PRESET SAVE ENDPOINT REACHED ===');
     try {
-            const key = req.params.model.toLowerCase();
-            const model = Model[key.toUpperCase()];
-            if (!model) {
-                return res.status(400).json({ error: 'Invalid model' });
-            }
-            
-    const opts = buildOptions(key, req.body, null, false, req.query);
-    const presetName = req.body.preset || null;
-    await handleImageRequest(req, res, opts, presetName);
-        } catch(e) {
-            console.log('❌ Error occurred:', e.message);
-            res.status(500).json({ error: e.message });
+        const { name, ...presetData } = req.body;
+        
+        console.log('=== PRESET SAVE DEBUG ===');
+        console.log('Preset name:', name);
+        console.log('Preset data:', presetData);
+        
+        if (!name || !presetData.prompt || !presetData.model) {
+            console.log('Validation failed - missing required fields');
+            return res.status(400).json({ error: 'Preset name, prompt, and model are required' });
         }
-    });
+        
+        console.log('Loading prompt config...');
+        const currentPromptConfig = loadPromptConfig();
+        console.log('Prompt config loaded successfully');
+        
+        console.log('Adding new preset to config...');
+        // Add the new preset
+        currentPromptConfig.presets[name] = {
+            prompt: presetData.prompt,
+            uc: presetData.uc || '',
+            model: presetData.model,
+            resolution: presetData.resolution || '',
+            steps: presetData.steps || 25,
+            guidance: presetData.guidance || 5.0,
+            rescale: presetData.rescale || 0.0,
+            seed: presetData.seed || null,
+            sampler: presetData.sampler || null,
+            noiseScheduler: presetData.noiseScheduler || null,
+            upscale: presetData.upscale || false,
+            allow_paid: presetData.allow_paid || false
+        };
+        
+        console.log('Saving to file...');
+        // Save to file
+        fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
+        
+        console.log(`💾 Saved new preset: ${name}`);
+        console.log('Available presets after save:', Object.keys(currentPromptConfig.presets));
+        console.log('=== END PRESET SAVE DEBUG ===');
+        
+        res.json({ success: true, message: `Preset "${name}" saved successfully` });
+        
+    } catch(e) {
+        console.log('❌ Error occurred in preset save:', e.message);
+        console.log('Error stack:', e.stack);
+        res.status(500).json({ error: e.message });
+    }
+});
 
-app.get('/preset/:name', authMiddleware, async (req, res) => {
+app.post('/preset/:name', authMiddleware, async (req, res) => {
     try {
     const currentPromptConfig = loadPromptConfig();
     const p = currentPromptConfig.presets[req.params.name];
@@ -581,97 +652,6 @@ app.get('/preset/:name', authMiddleware, async (req, res) => {
     }
 });
 
-app.post('/preset/:name', authMiddleware, async (req, res) => {
-    try {
-    const currentPromptConfig = loadPromptConfig();
-    const p = currentPromptConfig.presets[req.params.name];
-    if (!p) {
-        return res.status(404).json({ error: 'Preset not found' });
-    }
-    
-    const bodyOverrides = { ...req.body };
-    if (bodyOverrides.prompt) {
-        const originalPrompt = p.prompt || '';
-        bodyOverrides.prompt = originalPrompt + ', ' + bodyOverrides.prompt;
-        delete bodyOverrides.uc;
-    }
-    
-    // Check if force generation is requested
-    const forceGenerate = req.query.forceGenerate === 'true';
-    
-    if (!forceGenerate) {
-        // Try to get cached image (POST requests with body overrides are not cached)
-        const cacheKey = getPresetCacheKey(req.params.name, req.query);
-        const cached = getCachedPreset(cacheKey);
-        
-        if (cached) {
-            console.log('📤 Returning cached image');
-                
-                // Read the cached file from disk
-                const filePath = path.join(imagesDir, cached.filename);
-                const fileBuffer = fs.readFileSync(filePath);
-            
-            // Check if optimization is requested
-            const optimize = req.query.optimize === 'true';
-                let finalBuffer = fileBuffer;
-            let contentType = 'image/png';
-            
-            if (optimize) {
-                try {
-                        finalBuffer = await sharp(fileBuffer)
-                        .jpeg({ quality: 75 })
-                        .toBuffer();
-                    contentType = 'image/jpeg';
-                } catch (error) {
-                    console.log('❌ Image optimization failed:', error.message);
-                }
-            }
-            
-            res.setHeader('Content-Type', contentType);
-            if (req.query.download === 'true') {
-                const extension = optimize ? 'jpg' : 'png';
-                const optimizedFilename = cached.filename.replace('.png', `.${extension}`);
-                res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
-            }
-            res.send(finalBuffer);
-            return;
-        }
-    }
-    
-    const opts = buildOptions(p.model, bodyOverrides, p, false, req.query);
-        let result = await handleGeneration(opts, true, req.params.name);
-    // Cache the result if generation was successful and no body overrides
-    if (!forceGenerate && Object.keys(bodyOverrides).length === 0) {
-        const cacheKey = getPresetCacheKey(req.params.name, req.query);
-            setCachedPreset(cacheKey, result.filename);
-    }
-    // Check if optimization is requested
-    const optimize = req.query.optimize === 'true';
-    let finalBuffer = result.buffer;
-    let contentType = 'image/png';
-    if (optimize) {
-        try {
-            finalBuffer = await sharp(result.buffer)
-                .jpeg({ quality: 75 })
-                .toBuffer();
-            contentType = 'image/jpeg';
-        } catch (error) {
-            console.log('❌ Image optimization failed:', error.message);
-        }
-    }
-    res.setHeader('Content-Type', contentType);
-    if (req.query.download === 'true') {
-        const extension = optimize ? 'jpg' : 'png';
-        const optimizedFilename = result.filename.replace('.png', `.${extension}`);
-        res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
-    }
-    res.send(finalBuffer);
-    } catch(e) {
-        console.log('❌ Error occurred:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-            
 // GET /preset/:name/prompt?resolution=... (no body, just preset)
 app.get('/preset/:name/prompt', authMiddleware, async (req, res) => {
     try {
@@ -708,6 +688,36 @@ app.post('/preset/:name/prompt', authMiddleware, async (req, res) => {
     }
 });
 
+// GET /preset/:name/raw (returns raw preset data without text replacement processing)
+app.get('/preset/:name/raw', authMiddleware, async (req, res) => {
+    try {
+        const currentPromptConfig = loadPromptConfig();
+        const p = currentPromptConfig.presets[req.params.name];
+        if (!p) {
+            return res.status(404).json({ error: 'Preset not found' });
+        }
+        
+        // Return the raw preset data without processing text replacements
+        res.json({
+            prompt: p.prompt || '',
+            uc: p.uc || '',
+            model: p.model || '',
+            resolution: p.resolution || '',
+            steps: p.steps || 25,
+            guidance: p.guidance || 5.0,
+            rescale: p.rescale || 0.0,
+            seed: p.seed || null,
+            sampler: p.sampler || null,
+            noiseScheduler: p.noiseScheduler || null,
+            upscale: p.upscale || false,
+            allow_paid: p.allow_paid || false
+        });
+    } catch(e) {
+        console.log('❌ Error occurred:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // POST /:model/prompt (direct model, body)
 app.post('/:model/prompt', authMiddleware, async (req, res) => {
     try {
@@ -716,6 +726,24 @@ app.post('/:model/prompt', authMiddleware, async (req, res) => {
     if (!model) return res.status(400).json({ error: 'Invalid model' });
     const opts = buildOptions(key, req.body, null, false, req.query);
     res.json({ prompt: opts.prompt, uc: opts.negative_prompt });
+    } catch(e) {
+        console.log('❌ Error occurred:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// POST /:model/generate (direct model generation)
+app.post('/:model/generate', authMiddleware, async (req, res) => {
+    try {
+        const key = req.params.model.toLowerCase();
+        const model = Model[key.toUpperCase()];
+        if (!model) {
+            return res.status(400).json({ error: 'Invalid model' });
+        }
+        
+        const opts = buildOptions(key, req.body, null, false, req.query);
+        const presetName = req.body.preset || null;
+        await handleImageRequest(req, res, opts, presetName);
     } catch(e) {
         console.log('❌ Error occurred:', e.message);
         res.status(500).json({ error: e.message });
@@ -937,6 +965,7 @@ app.get('/options', authMiddleware, (req, res) => {
             noiseSchedulers: Object.fromEntries(Object.keys(Noise).map(key => [key, Noise[key]])),
             resolutions: Object.fromEntries(Object.keys(Resolution).map(key => [key, Resolution[key]])),
             presets: Object.keys(currentPromptConfig.presets),
+            pipelines: Object.keys(currentPromptConfig.pipelines || {}),
             textReplacements: currentPromptConfig.text_replacements || {},
             cache: {
                 enabled: true,
@@ -1323,6 +1352,17 @@ app.get('/metadata/:filename', authMiddleware, async (req, res) => {
         
         const result = extractRelevantFields(meta);
         if (matchedPreset) result.matchedPreset = matchedPreset;
+        
+        // Debug: Log the metadata values
+        console.log('=== METADATA DEBUG ===');
+        console.log('Raw metadata keys:', Object.keys(meta));
+        console.log('Extracted result keys:', Object.keys(result));
+        console.log('Sampler from metadata:', meta.sampler);
+        console.log('Noise schedule from metadata:', meta.noise_schedule);
+        console.log('UC from metadata:', meta.uc);
+        console.log('Resolution from metadata:', result.resolution);
+        console.log('=== END METADATA DEBUG ===');
+        
         res.json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -1402,5 +1442,509 @@ function getModelDisplayName(model) {
     
     return modelDisplayNames[model] || model;
 }
+
+// DELETE /images/:filename (delete image and related files)
+app.delete('/images/:filename', authMiddleware, async (req, res) => {
+    try {
+        const filename = req.params.filename;
+        const filePath = path.join(imagesDir, filename);
+        
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'Image not found' });
+        }
+        
+        // Get the base name to find related files
+        const baseName = getBaseName(filename);
+        const previewFile = getPreviewFilename(baseName);
+        const previewPath = path.join(previewsDir, previewFile);
+        
+        // Determine which files to delete
+        const filesToDelete = [];
+        
+        // Add the requested file
+        filesToDelete.push({ path: filePath, type: 'image' });
+        
+        // Find and add the original file (if this is an upscaled version)
+        if (filename.includes('_upscaled')) {
+            const originalFilename = filename.replace('_upscaled.png', '.png');
+            const originalPath = path.join(imagesDir, originalFilename);
+            if (fs.existsSync(originalPath)) {
+                filesToDelete.push({ path: originalPath, type: 'original' });
+            }
+        } else {
+            // If this is an original file, find and add the upscaled version
+            const upscaledFilename = filename.replace('.png', '_upscaled.png');
+            const upscaledPath = path.join(imagesDir, upscaledFilename);
+            if (fs.existsSync(upscaledPath)) {
+                filesToDelete.push({ path: upscaledPath, type: 'upscaled' });
+            }
+        }
+        
+        // Add the preview file
+        if (fs.existsSync(previewPath)) {
+            filesToDelete.push({ path: previewPath, type: 'preview' });
+        }
+        
+        // Delete all related files
+        const deletedFiles = [];
+        for (const file of filesToDelete) {
+            try {
+                fs.unlinkSync(file.path);
+                deletedFiles.push(file.type);
+                console.log(`🗑️ Deleted ${file.type}: ${path.basename(file.path)}`);
+            } catch (error) {
+                console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
+            }
+        }
+        
+        console.log(`✅ Deleted image and related files: ${deletedFiles.join(', ')}`);
+        res.json({ 
+            success: true, 
+            message: `Image deleted successfully`,
+            deletedFiles: deletedFiles
+        });
+        
+    } catch (error) {
+        console.error('Delete error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Pipeline helper functions
+async function generateMaskFromCoordinates(coordinates, resolution) {
+    try {
+        // Get resolution dimensions using inverse mapping
+        const dimensions = getDimensionsFromResolution(resolution);
+        if (!dimensions) {
+            throw new Error(`Invalid resolution: ${resolution}`);
+        }
+        
+        const { width, height } = dimensions;
+        console.log(`Creating mask with dimensions: ${width}x${height} for resolution: ${resolution}`);
+        
+        // Validate coordinates fit within image bounds
+        if (coordinates && Array.isArray(coordinates) && coordinates.length === 4) {
+            const [x, y, w, h] = coordinates;
+            if (
+                x < 0 || y < 0 || w <= 0 || h <= 0 ||
+                x + w > width || y + h > height
+            ) {
+                throw new Error(`Mask coordinates [${x},${y},${w},${h}] are out of bounds for image size ${width}x${height}`);
+            }
+        }
+        
+        // Create a black image with the specified resolution
+        const maskBuffer = await sharp({
+            create: {
+                width: width,
+                height: height,
+                channels: 3,
+                background: { r: 0, g: 0, b: 0, alpha: 1 }
+            }
+        })
+        .png()
+        .toBuffer();
+        
+        // If coordinates are provided, draw a white rectangle
+        if (coordinates && Array.isArray(coordinates) && coordinates.length === 4) {
+            const [x, y, w, h] = coordinates;
+            
+            // Create a white rectangle overlay
+            const whiteRect = await sharp({
+                create: {
+                    width: w,
+                    height: h,
+                    channels: 4,
+                    background: { r: 255, g: 255, b: 255, alpha: 1 }
+                }
+            })
+            .png()
+            .toBuffer();
+            
+            // Composite the white rectangle onto the black background
+            const finalMask = await sharp(maskBuffer)
+                .composite([{
+                    input: whiteRect,
+                    left: x,
+                    top: y
+                }])
+                .png()
+                .toBuffer();
+                
+            return finalMask;
+        }
+        
+        return maskBuffer;
+    } catch (error) {
+        console.error('Error generating mask:', error);
+        throw error;
+    }
+}
+
+async function generateMaskFromBase64(base64Data, resolution) {
+    try {
+        // Decode base64 data
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        // Get resolution dimensions using inverse mapping
+        const dimensions = getDimensionsFromResolution(resolution);
+        if (!dimensions) {
+            throw new Error(`Invalid resolution: ${resolution}`);
+        }
+        
+        const { width, height } = dimensions;
+        console.log(`Resizing mask to dimensions: ${width}x${height} for resolution: ${resolution}`);
+        
+        // Resize the mask to match the resolution
+        const resizedMask = await sharp(buffer)
+            .resize(width, height, { fit: 'fill' })
+            .png()
+            .toBuffer();
+            
+        return resizedMask;
+    } catch (error) {
+        console.error('Error processing base64 mask:', error);
+        throw error;
+    }
+}
+
+async function executePipeline(pipelineName, queryParams = {}) {
+    try {
+        const currentPromptConfig = loadPromptConfig();
+        const pipeline = currentPromptConfig.pipelines[pipelineName];
+        
+        if (!pipeline) {
+            throw new Error(`Pipeline "${pipelineName}" not found`);
+        }
+        
+        // Validate pipeline components`
+        if (!pipeline.layer1 || !pipeline.layer2 || !pipeline.resolution) {
+            throw new Error('Pipeline must have layer1, layer2, and resolution defined');
+        }
+        
+        // Check if presets exist
+        const preset1 = currentPromptConfig.presets[pipeline.layer1];
+        const preset2 = currentPromptConfig.presets[pipeline.layer2];
+        
+        if (!preset1) {
+            throw new Error(`Preset "${pipeline.layer1}" not found`);
+        }
+        if (!preset2) {
+            throw new Error(`Preset "${pipeline.layer2}" not found`);
+        }
+        
+        if (!Model[(preset2.model + "_INP").toUpperCase()]) {
+            throw new Error(`Pipeline layer2 model "${(preset2.model + "_INP").toUpperCase()}" does not have an inpainting model`);
+        }
+
+        // Use resolution from query params if provided, otherwise use pipeline's resolution
+        const resolution = queryParams.resolution || pipeline.resolution;
+        
+        console.log(`🚀 Starting pipeline: ${pipelineName}`);
+        console.log(`   Layer 1: ${pipeline.layer1} (${resolution})`);
+        console.log(`   Layer 2: ${pipeline.layer2} (inpainting)`);
+        
+        // Step 1: Generate base image using layer1 preset
+        const layer1Opts = buildOptions(preset1.model, {}, preset1, false, queryParams);
+        layer1Opts.resPreset = Resolution[resolution.toUpperCase()];
+        layer1Opts.upscale = false; // Disable upscaling for pipelines
+        
+        console.log(`📸 Generating base image with ${pipeline.layer1}...`);
+        const baseResult = await handleGeneration(layer1Opts, true, pipeline.layer1);
+        
+        // Step 2: Generate mask
+        let maskBuffer;
+        if (Array.isArray(pipeline.mask)) {
+            // Coordinates array [x, y, width, height]
+            mask = (await generateMaskFromCoordinates(pipeline.mask, resolution)).toString('base64');
+        } else if (typeof pipeline.mask === 'string') {
+            // Base64 encoded image
+            mask = pipeline.mask;
+        } else {
+            throw new Error('Mask must be either an array of coordinates or base64 encoded image');
+        }
+        
+        // Step 3: Generate inpainting image using layer2 preset
+        const layer2Opts = buildOptions(preset2.model, {}, preset2, true, queryParams);
+        layer2Opts.n_samples = 1;
+        layer2Opts.inpaintImg2ImgStrength = 1;
+        layer2Opts.action = Action.INPAINT;
+        layer2Opts.model = Model[(preset2.model + "_INP").toUpperCase()];
+        layer2Opts.upscale = false; 
+        layer2Opts.image = baseResult.buffer.toString('base64');
+        layer2Opts.mask = mask;
+        layer2Opts.resPreset = Resolution[resolution.toUpperCase()];
+        layer2Opts.strength = pipeline.inpainting_strength || 0.7; // Default inpainting strength
+        
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        console.log(`🎨 Generating inpainting with ${pipeline.layer2}...`);
+        const finalResult = await handleGeneration(layer2Opts, true, pipelineName);
+        
+        console.log(`✅ Pipeline completed: ${pipelineName}`);
+        return finalResult;
+        
+    } catch (error) {
+        console.error(`❌ Pipeline execution failed: ${error.message}`);
+        throw error;
+    }
+}
+
+// Pipeline endpoints
+app.get('/pipeline/:name', authMiddleware, async (req, res) => {
+    try {
+        const pipelineName = req.params.name;
+        const currentPromptConfig = loadPromptConfig();
+        const pipeline = currentPromptConfig.pipelines[pipelineName];
+        
+        if (!pipeline) {
+            return res.status(404).json({ error: 'Pipeline not found' });
+        }
+        
+        // Check if force generation is requested
+        const forceGenerate = req.query.forceGenerate === 'true';
+        
+        if (!forceGenerate) {
+            // Try to get cached image
+            const cacheKey = `pipeline_${pipelineName}_${JSON.stringify(req.query)}`;
+            const cached = getCachedPreset(cacheKey);
+            
+            if (cached) {
+                console.log('📤 Returning cached pipeline image');
+                
+                // Read the cached file from disk
+                const filePath = path.join(imagesDir, cached.filename);
+                const fileBuffer = fs.readFileSync(filePath);
+                
+                // Check if optimization is requested
+                const optimize = req.query.optimize === 'true';
+                let finalBuffer = fileBuffer;
+                let contentType = 'image/png';
+                
+                if (optimize) {
+                    try {
+                        finalBuffer = await sharp(fileBuffer)
+                            .jpeg({ quality: 75 })
+                            .toBuffer();
+                        contentType = 'image/jpeg';
+                    } catch (error) {
+                        console.log('❌ Image optimization failed:', error.message);
+                    }
+                }
+                
+                res.setHeader('Content-Type', contentType);
+                if (req.query.download === 'true') {
+                    const extension = optimize ? 'jpg' : 'png';
+                    const optimizedFilename = cached.filename.replace('.png', `.${extension}`);
+                    res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+                }
+                res.send(finalBuffer);
+                return;
+            }
+        }
+        
+        // Execute the pipeline
+        const result = await executePipeline(pipelineName, req.query);
+        
+        // Cache the result if generation was successful
+        if (!forceGenerate) {
+            const cacheKey = `pipeline_${pipelineName}_${JSON.stringify(req.query)}`;
+            setCachedPreset(cacheKey, result.filename);
+        }
+        
+        // Check if optimization is requested
+        const optimize = req.query.optimize === 'true';
+        let finalBuffer = result.buffer;
+        let contentType = 'image/png';
+        
+        if (optimize) {
+            try {
+                finalBuffer = await sharp(result.buffer)
+                    .jpeg({ quality: 75 })
+                    .toBuffer();
+                contentType = 'image/jpeg';
+            } catch (error) {
+                console.log('❌ Image optimization failed:', error.message);
+            }
+        }
+        
+        res.setHeader('Content-Type', contentType);
+        if (req.query.download === 'true') {
+            const extension = optimize ? 'jpg' : 'png';
+            const optimizedFilename = result.filename.replace('.png', `.${extension}`);
+            res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+        }
+        res.send(finalBuffer);
+        
+    } catch (error) {
+        console.log('❌ Pipeline error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /pipeline/save (save a new pipeline)
+app.post('/pipeline/save', authMiddleware, async (req, res) => {
+    try {
+        const { name, ...pipelineData } = req.body;
+        
+        if (!name || !pipelineData.layer1 || !pipelineData.layer2 || !pipelineData.resolution) {
+            return res.status(400).json({ error: 'Pipeline name, layer1, layer2, and resolution are required' });
+        }
+        
+        // Validate that presets exist
+        const currentPromptConfig = loadPromptConfig();
+        if (!currentPromptConfig.presets[pipelineData.layer1]) {
+            return res.status(400).json({ error: `Preset "${pipelineData.layer1}" not found` });
+        }
+        if (!currentPromptConfig.presets[pipelineData.layer2]) {
+            return res.status(400).json({ error: `Preset "${pipelineData.layer2}" not found` });
+        }
+        
+        // Validate resolution
+        if (!Resolution[pipelineData.resolution.toUpperCase()]) {
+            return res.status(400).json({ error: `Invalid resolution: ${pipelineData.resolution}` });
+        }
+        
+        // Add the new pipeline
+        if (!currentPromptConfig.pipelines) {
+            currentPromptConfig.pipelines = {};
+        }
+        
+        currentPromptConfig.pipelines[name] = {
+            layer1: pipelineData.layer1,
+            layer2: pipelineData.layer2,
+            resolution: pipelineData.resolution,
+            mask: pipelineData.mask || [100, 100, 300, 300] // Default mask coordinates
+        };
+        
+        // Save to file
+        fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
+        
+        console.log(`💾 Saved new pipeline: ${name}`);
+        res.json({ success: true, message: `Pipeline "${name}" saved successfully` });
+        
+    } catch (error) {
+        console.log('❌ Error occurred in pipeline save:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /pipeline/:name/info (get pipeline information)
+app.get('/pipeline/:name/info', authMiddleware, async (req, res) => {
+    try {
+        const pipelineName = req.params.name;
+        const currentPromptConfig = loadPromptConfig();
+        const pipeline = currentPromptConfig.pipelines[pipelineName];
+        
+        if (!pipeline) {
+            return res.status(404).json({ error: 'Pipeline not found' });
+        }
+        
+        // Get preset information
+        const preset1 = currentPromptConfig.presets[pipeline.layer1];
+        const preset2 = currentPromptConfig.presets[pipeline.layer2];
+        
+        res.json({
+            name: pipelineName,
+            layer1: {
+                name: pipeline.layer1,
+                prompt: preset1.prompt,
+                model: preset1.model,
+                resolution: preset1.resolution
+            },
+            layer2: {
+                name: pipeline.layer2,
+                prompt: preset2.prompt,
+                model: preset2.model,
+                resolution: preset2.resolution
+            },
+            pipeline_resolution: pipeline.resolution,
+            mask: pipeline.mask
+        });
+        
+    } catch (error) {
+        console.log('❌ Error occurred:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /pipelines (list all pipelines)
+app.get('/pipelines', authMiddleware, async (req, res) => {
+    try {
+        const currentPromptConfig = loadPromptConfig();
+        const pipelines = currentPromptConfig.pipelines || {};
+        
+        const pipelineList = Object.keys(pipelines).map(name => ({
+            name,
+            layer1: pipelines[name].layer1,
+            layer2: pipelines[name].layer2,
+            resolution: pipelines[name].resolution
+        }));
+        
+        res.json(pipelineList);
+        
+    } catch (error) {
+        console.log('❌ Error occurred:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /pipeline/:name (delete a pipeline)
+app.delete('/pipeline/:name', authMiddleware, async (req, res) => {
+    try {
+        const pipelineName = req.params.name;
+        const currentPromptConfig = loadPromptConfig();
+        
+        if (!currentPromptConfig.pipelines || !currentPromptConfig.pipelines[pipelineName]) {
+            return res.status(404).json({ error: 'Pipeline not found' });
+        }
+        
+        // Remove the pipeline
+        delete currentPromptConfig.pipelines[pipelineName];
+        
+        // Save to file
+        fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
+        
+        console.log(`🗑️ Deleted pipeline: ${pipelineName}`);
+        res.json({ success: true, message: `Pipeline "${pipelineName}" deleted successfully` });
+        
+    } catch (error) {
+        console.log('❌ Error occurred in pipeline delete:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /pipeline/:name/mask (preview the mask as an image)
+app.get('/pipeline/:name/mask', authMiddleware, async (req, res) => {
+    try {
+        const pipelineName = req.params.name;
+        const currentPromptConfig = loadPromptConfig();
+        const pipeline = currentPromptConfig.pipelines[pipelineName];
+        
+        if (!pipeline) {
+            return res.status(404).json({ error: 'Pipeline not found' });
+        }
+        
+        // Generate the mask
+        let maskBuffer;
+        if (Array.isArray(pipeline.mask)) {
+            // Coordinates array [x, y, width, height]
+            maskBuffer = await generateMaskFromCoordinates(pipeline.mask, pipeline.resolution);
+        } else if (typeof pipeline.mask === 'string') {
+            // Base64 encoded image
+            maskBuffer = await generateMaskFromBase64(pipeline.mask, pipeline.resolution);
+        } else {
+            return res.status(400).json({ error: 'Invalid mask format' });
+        }
+        
+        // Return the mask as an image
+        res.setHeader('Content-Type', 'image/png');
+        res.send(maskBuffer);
+        
+    } catch (error) {
+        console.log('❌ Mask preview error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 app.listen(config.port, () => console.log(`Server running on port ${config.port}`));

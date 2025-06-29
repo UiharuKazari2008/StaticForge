@@ -14,8 +14,107 @@
             <h2>Login Required</h2>
             <p>Enter your password to access generation features</p>
             <input type="password" id="loginPassword" placeholder="Enter password">
-            <button id="loginBtn" class="btn-primary">Login</button>
-            <button id="closeLoginBtn" class="btn-secondary">Cancel</button>
+            <div class="btn-group">
+                <button id="loginBtn" class="btn-primary">Login</button>
+                <button id="closeLoginBtn" class="btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Generation Modal -->
+    <div id="manualModal" class="modal">
+        <div class="modal-content manual-modal-content">
+            <h2>Manual Image Generation</h2>
+            <form id="manualForm">
+                <div class="form-group">
+                    <label for="manualModel">Model:</label>
+                    <select id="manualModel" class="form-control" required>
+                        <option value="">Select model...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="manualPrompt">Prompt:</label>
+                    <textarea id="manualPrompt" class="form-control" rows="4" placeholder="Enter your prompt..." required></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="manualUc">Undesired Content:</label>
+                    <textarea id="manualUc" class="form-control" rows="3" placeholder="Enter undesired content..."></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="manualResolution">Resolution:</label>
+                        <select id="manualResolution" class="form-control" required>
+                            <option value="">Select resolution...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="manualSteps">Steps:</label>
+                        <input type="number" id="manualSteps" class="form-control" min="1" max="50" value="25" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="manualGuidance">Guidance:</label>
+                        <input type="number" id="manualGuidance" class="form-control" min="0.0" max="10.0" step="0.1" value="5.0" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="manualSeed">Seed:</label>
+                        <input type="number" id="manualSeed" class="form-control" placeholder="Leave empty for random">
+                    </div>
+                    <div class="form-group">
+                        <label for="manualSampler">Sampler:</label>
+                        <select id="manualSampler" class="form-control">
+                            <option value="">Default</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="manualRescale">Rescale:</label>
+                        <input type="number" id="manualRescale" class="form-control" min="0.0" max="1.0" step="0.1" value="0.0" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="manualNoiseScheduler">Noise Scheduler:</label>
+                        <select id="manualNoiseScheduler" class="form-control">
+                            <option value="">Default</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="manualPresetName">Preset Name:</label>
+                        <input type="text" id="manualPresetName" class="form-control" placeholder="Enter preset name to save...">
+                    </div>
+                    <div class="form-group">
+                        <label for="manualUpscale">Upscale:</label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="manualUpscale">
+                            <span class="checkmark"></span>
+                            Enable upscaling
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-actions btn-group">
+                    <button type="submit" id="manualGenerateBtn" class="btn-primary">
+                        <i class="fas fa-star-of-life"></i> Generate
+                    </button>
+                    <button type="button" id="manualSaveBtn" class="btn-secondary">
+                        <i class="fas fa-save"></i> Save Preset
+                    </button>
+                    <button type="button" id="closeManualBtn" class="btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Autocomplete Overlay -->
+    <div id="autocompleteOverlay" class="autocomplete-overlay hidden">
+        <div class="autocomplete-list">
+            <!-- Suggestions will be populated here -->
         </div>
     </div>
 
@@ -28,15 +127,21 @@
                 <h3>Image Metadata</h3>
                 <div id="metadataContent"></div>
             </div>
-            <div class="lightbox-controls">
+            <div class="lightbox-controls btn-group">
                 <button id="downloadBtn" class="btn-primary">
                     <i class="fas fa-download"></i> Download
                 </button>
                 <button id="lightboxRerollBtn" class="btn-primary reroll-btn" style="display:none;">
                     <i class="fas fa-dice"></i> Reroll
                 </button>
+                <button id="lightboxRerollEditBtn" class="btn-primary reroll-edit-btn" style="display:none;">
+                    <i class="fas fa-cog"></i> Edit
+                </button>
                 <button id="lightboxUpscaleBtn" class="btn-primary upscale-btn" style="display:none;">
                     <i class="fas fa-expand"></i> Upscale
+                </button>
+                <button id="lightboxDeleteBtn" class="btn-danger" style="display:none;">
+                    <i class="fas fa-trash"></i> Delete
                 </button>
                 <button id="closeLightboxBtn" class="btn-secondary">Close</button>
             </div>
@@ -61,7 +166,7 @@
                 <div class="controls">
                     <div class="controls-left">
                         <select id="presetSelect" class="select-control">
-                            <option value="">Loading presets...</option>
+                            <option value="">Select preset or pipeline...</option>
                         </select>
                         <select id="resolutionSelect" class="select-control">
                             <option value="">Loading resolutions...</option>
@@ -73,7 +178,13 @@
                         </label>
                     </div>
 
-                    <div class="controls-right">
+                    <div class="controls-right btn-group-compact">
+                        <button id="maskPreviewBtn" class="btn-secondary" style="display: none;">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                        <button id="manualBtn" class="btn-secondary">
+                            <i class="fas fa-cog"></i>
+                        </button>
                         <button id="generateBtn" class="btn-primary generate-btn" disabled>
                             <i class="fas fa-star-of-life"></i> Generate
                         </button>
@@ -89,7 +200,7 @@
             </div>
             
             <!-- Pagination -->
-            <div class="pagination">
+            <div class="pagination btn-group">
                 <button id="prevPage" class="btn-secondary" disabled>
                     <i class="fas fa-chevron-left"></i> Previous
                 </button>

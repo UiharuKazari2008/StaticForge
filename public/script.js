@@ -1,11 +1,17 @@
 // Global variables
 let isAuthenticated = false;
-let authToken = null;
-let currentPage = 1;
+let authToken = getCookie('authToken');
 let imagesPerPage = 12;
+let currentPage = 1;
 let allImages = [];
 let presets = [];
+let pipelines = [];
 let resolutions = [];
+let models = [];
+let samplers = [];
+let noiseSchedulers = [];
+let textReplacements = {};
+let resizeTimeout = null;
 
 // Cookie helpers
 function setCookie(name, value, days) {
@@ -37,6 +43,11 @@ const loginButton = document.getElementById('loginButton');
 const loginBtn = document.getElementById('loginBtn');
 const closeLoginBtn = document.getElementById('closeLoginBtn');
 const loginPassword = document.getElementById('loginPassword');
+const manualModal = document.getElementById('manualModal');
+const manualBtn = document.getElementById('manualBtn');
+const closeManualBtn = document.getElementById('closeManualBtn');
+const manualForm = document.getElementById('manualForm');
+const manualGenerateBtn = document.getElementById('manualGenerateBtn');
 const lightboxModal = document.getElementById('lightboxModal');
 const lightboxImage = document.getElementById('lightboxImage');
 const closeLightbox = document.querySelector('.close-lightbox');
@@ -46,6 +57,7 @@ const generateBtn = document.getElementById('generateBtn');
 const presetSelect = document.getElementById('presetSelect');
 const resolutionSelect = document.getElementById('resolutionSelect');
 const upscaleToggle = document.getElementById('upscaleToggle');
+const maskPreviewBtn = document.getElementById('maskPreviewBtn');
 const gallery = document.getElementById('gallery');
 const prevPage = document.getElementById('prevPage');
 const nextPage = document.getElementById('nextPage');
@@ -55,6 +67,30 @@ const confettiContainer = document.getElementById('confettiContainer');
 const controlsWrapper = document.getElementById('controlsWrapper');
 const lightboxUpscaleBtn = document.getElementById('lightboxUpscaleBtn');
 const lightboxRerollBtn = document.getElementById('lightboxRerollBtn');
+const lightboxRerollEditBtn = document.getElementById('lightboxRerollEditBtn');
+
+// Manual form elements
+const manualModel = document.getElementById('manualModel');
+const manualPrompt = document.getElementById('manualPrompt');
+const manualUc = document.getElementById('manualUc');
+const manualResolution = document.getElementById('manualResolution');
+const manualSteps = document.getElementById('manualSteps');
+const manualGuidance = document.getElementById('manualGuidance');
+const manualSeed = document.getElementById('manualSeed');
+const manualSampler = document.getElementById('manualSampler');
+const manualRescale = document.getElementById('manualRescale');
+const manualNoiseScheduler = document.getElementById('manualNoiseScheduler');
+const manualPresetName = document.getElementById('manualPresetName');
+const manualUpscale = document.getElementById('manualUpscale');
+const manualSaveBtn = document.getElementById('manualSaveBtn');
+
+// Autocomplete elements
+const autocompleteOverlay = document.getElementById('autocompleteOverlay');
+const autocompleteList = document.querySelector('.autocomplete-list');
+
+// Global variables for autocomplete
+let currentAutocompleteTarget = null;
+let selectedAutocompleteIndex = -1;
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
@@ -73,6 +109,9 @@ document.addEventListener('DOMContentLoaded', function() {
 // Initialize the application
 async function initializeApp() {
     try {
+        // Calculate initial images per page based on current window size
+        imagesPerPage = calculateImagesPerPage();
+        
         if (isAuthenticated) {
             await loadOptions();
         }
@@ -93,6 +132,19 @@ function setupEventListeners() {
         if (e.key === 'Enter') handleLogin();
     });
 
+    // Manual modal events
+    manualBtn.addEventListener('click', showManualModal);
+    closeManualBtn.addEventListener('click', hideManualModal);
+    manualForm.addEventListener('submit', handleManualGeneration);
+    manualSaveBtn.addEventListener('click', handleManualSave);
+
+    // Autocomplete events
+    manualPrompt.addEventListener('input', handleAutocompleteInput);
+    manualUc.addEventListener('input', handleAutocompleteInput);
+    manualPrompt.addEventListener('keydown', handleAutocompleteKeydown);
+    manualUc.addEventListener('keydown', handleAutocompleteKeydown);
+    document.addEventListener('click', hideAutocomplete);
+
     // Lightbox events
     if (closeLightboxBtn) {
         closeLightboxBtn.addEventListener('click', hideLightbox);
@@ -111,18 +163,18 @@ function setupEventListeners() {
             if (loginModal.style.display === 'block') {
                 hideLoginModal();
             }
+            if (manualModal.style.display === 'block') {
+                hideManualModal();
+            }
         }
     });
 
-    // Download button
-    if (downloadBtn) {
-        downloadBtn.addEventListener('click', downloadImage);
-    }
 
     // Generation controls
     presetSelect.addEventListener('change', updateGenerateButton);
     resolutionSelect.addEventListener('change', updateGenerateButton);
     generateBtn.addEventListener('click', generateImage);
+    maskPreviewBtn.addEventListener('click', showMaskPreview);
 
     // Pagination
     prevPage.addEventListener('click', () => changePage(-1));
@@ -135,7 +187,11 @@ function setupEventListeners() {
     window.addEventListener('click', function(e) {
         if (e.target === loginModal) hideLoginModal();
         if (e.target === lightboxModal) hideLightbox();
+        if (e.target === manualModal) hideManualModal();
     });
+    
+    // Resize handler for dynamic gallery sizing
+    window.addEventListener('resize', handleResize);
 }
 
 // Load options from server
@@ -148,23 +204,81 @@ async function loadOptions() {
         
         // Populate presets
         presets = options.presets;
-        presetSelect.innerHTML = '<option value="">Select a preset...</option>';
+        pipelines = options.pipelines || [];
+        console.log('=== LOADING PRESETS AND PIPELINES ===');
+        console.log('Available presets:', presets);
+        console.log('Available pipelines:', pipelines);
+        presetSelect.innerHTML = '<option value="">Select preset or pipeline...</option>';
+        
+        // Add presets
         presets.forEach(preset => {
             const option = document.createElement('option');
-            option.value = preset;
+            option.value = `preset:${preset}`;
             option.textContent = preset;
+            option.dataset.type = 'preset';
             presetSelect.appendChild(option);
+            console.log('Added preset option:', preset);
         });
+        
+        // Add pipelines
+        pipelines.forEach(pipeline => {
+            const option = document.createElement('option');
+            option.value = `pipeline:${pipeline}`;
+            option.textContent = `🔗 ${pipeline}`;
+            option.dataset.type = 'pipeline';
+            presetSelect.appendChild(option);
+            console.log('Added pipeline option:', pipeline);
+        });
+        console.log('=== END LOADING PRESETS AND PIPELINES ===');
 
         // Populate resolutions
         resolutions = Object.keys(options.resolutions);
         resolutionSelect.innerHTML = '<option value="">Select resolution...</option>';
+        manualResolution.innerHTML = '<option value="">Select resolution...</option>';
         resolutions.forEach(resolution => {
             const option = document.createElement('option');
             option.value = resolution;
             option.textContent = resolution;
             resolutionSelect.appendChild(option);
+            
+            const manualOption = document.createElement('option');
+            manualOption.value = resolution;
+            manualOption.textContent = resolution;
+            manualResolution.appendChild(manualOption);
         });
+
+        // Populate models for manual form
+        models = Object.keys(options.models);
+        manualModel.innerHTML = '<option value="">Select model...</option>';
+        models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.toLowerCase(); // Use lowercase to match config
+            option.textContent = model;
+            manualModel.appendChild(option);
+        });
+
+        // Populate samplers for manual form
+        samplers = Object.keys(options.samplers);
+        manualSampler.innerHTML = '<option value="">Default</option>';
+        samplers.forEach(sampler => {
+            const option = document.createElement('option');
+            option.value = sampler;
+            option.textContent = sampler;
+            manualSampler.appendChild(option);
+        });
+
+        // Populate noise schedulers for manual form
+        noiseSchedulers = Object.keys(options.noiseSchedulers);
+        manualNoiseScheduler.innerHTML = '<option value="">Default</option>';
+        noiseSchedulers.forEach(scheduler => {
+            const option = document.createElement('option');
+            option.value = scheduler;
+            option.textContent = scheduler;
+            manualNoiseScheduler.appendChild(option);
+        });
+
+        // Store text replacements for autocomplete
+        textReplacements = options.textReplacements || {};
 
     } catch (error) {
         console.error('Error loading options:', error);
@@ -252,35 +366,63 @@ function createGalleryItem(image) {
     
     overlay.appendChild(infoContainer);
     
-    // Add button container
-    const buttonContainer = document.createElement('div');
-    buttonContainer.className = 'gallery-button-container';
+    // Create action buttons
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'gallery-actions';
     
-    // Add reroll button
+    // Download button
+    const downloadBtn = document.createElement('button');
+    downloadBtn.className = 'btn-primary download-btn';
+    downloadBtn.innerHTML = '<i class="fas fa-download"></i>';
+    downloadBtn.title = 'Download';
+    downloadBtn.onclick = (e) => {
+        e.stopPropagation();
+        downloadImage(image);
+    };
+    
+    // Direct reroll button (left side)
     const rerollBtn = document.createElement('button');
     rerollBtn.className = 'btn-primary reroll-btn';
-    rerollBtn.innerHTML = '<i class="fas fa-dice"></i> Reroll';
+    rerollBtn.innerHTML = '<i class="fas fa-dice"></i>';
     rerollBtn.title = 'Reroll with same settings';
     rerollBtn.onclick = (e) => {
         e.stopPropagation();
         rerollImage(image);
     };
-    buttonContainer.appendChild(rerollBtn);
     
-    // Add upscale button if image is not upscaled
-    if (!image.upscaled && image.original) {
-        const upscaleBtn = document.createElement('button');
-        upscaleBtn.className = 'btn-primary upscale-btn';
-        upscaleBtn.innerHTML = '<i class="fas fa-expand"></i> Upscale';
-        upscaleBtn.title = 'Upscale image';
-        upscaleBtn.onclick = (e) => {
-            e.stopPropagation();
-            upscaleImage(image);
-        };
-        buttonContainer.appendChild(upscaleBtn);
+    // Reroll with edit button (right side with cog)
+    const rerollEditBtn = document.createElement('button');
+    rerollEditBtn.className = 'btn-primary reroll-edit-btn';
+    rerollEditBtn.innerHTML = '<i class="fas fa-cog"></i>';
+    rerollEditBtn.title = 'Reroll with Edit';
+    rerollEditBtn.onclick = (e) => {
+        e.stopPropagation();
+        rerollImageWithEdit(image);
+    };
+    
+    // Upscale button (only for non-upscaled images)
+    const upscaleBtn = document.createElement('button');
+    upscaleBtn.className = 'btn-primary upscale-btn';
+    upscaleBtn.innerHTML = '<i class="fas fa-expand"></i>';
+    upscaleBtn.title = 'Upscale';
+    upscaleBtn.onclick = (e) => {
+        e.stopPropagation();
+        upscaleImage(image);
+    };
+    
+    // Only show upscale button for non-upscaled images
+    if (!image.upscaled) {
+        upscaleBtn.style.display = 'inline-block';
+    } else {
+        upscaleBtn.style.display = 'none';
     }
     
-    overlay.appendChild(buttonContainer);
+    actionsDiv.appendChild(downloadBtn);
+    actionsDiv.appendChild(rerollBtn);
+    actionsDiv.appendChild(rerollEditBtn);
+    actionsDiv.appendChild(upscaleBtn);
+    
+    overlay.appendChild(actionsDiv);
     
     item.appendChild(img);
     item.appendChild(overlay);
@@ -298,7 +440,7 @@ function createGalleryItem(image) {
     return item;
 }
 
-// Reroll an image with the same settings
+// Direct reroll an image (same settings)
 async function rerollImage(image) {
     if (!isAuthenticated) {
         showError('Please login first');
@@ -306,11 +448,20 @@ async function rerollImage(image) {
     }
 
     try {
+        // Determine which filename to use for metadata
+        const filenameForMetadata = image.upscaled || image.original;
+        
+        if (!filenameForMetadata) {
+            throw new Error('No filename available for metadata lookup');
+        }
+        
+        console.log('Direct reroll - fetching metadata for:', filenameForMetadata);
+        
         // Get metadata from the image
-        const response = await fetch(`/metadata/${image.original}?auth=${encodeURIComponent(getCookie('authToken'))}`);
+        const response = await fetch(`/metadata/${filenameForMetadata}?auth=${encodeURIComponent(getCookie('authToken'))}`);
         
         if (!response.ok) {
-            throw new Error('Failed to load image metadata');
+            throw new Error(`Failed to load image metadata: ${response.status} ${response.statusText}`);
         }
 
         const metadata = await response.json();
@@ -318,31 +469,45 @@ async function rerollImage(image) {
         if (!metadata) {
             throw new Error('No metadata found for this image');
         }
-
-        // Extract preset name from filename
-        const parts = image.base.split('_');
-        const presetName = parts.length >= 3 ? parts.slice(1, -1).join('_') : 'generated';
         
         // Show loading
         showLoading(true);
 
-        // Generate new image using the generate endpoint
-        const generateResponse = await fetch(`/${metadata.model}/generate?auth=${encodeURIComponent(getCookie('authToken'))}`, {
+        // Build request body from metadata
+        const requestBody = {
+            prompt: metadata.prompt || '',
+            resolution: metadata.resolution || '',
+            steps: metadata.steps || 25,
+            guidance: metadata.scale || 5.0,
+            rescale: metadata.cfg_rescale || 0.0
+        };
+        
+        // Add optional fields if they have values
+        if (metadata.uc) {
+            requestBody.uc = metadata.uc;
+        }
+        
+        if (metadata.seed) {
+            requestBody.seed = metadata.seed;
+        }
+        
+        if (metadata.sampler) {
+            requestBody.sampler = metadata.sampler;
+        }
+        
+        if (metadata.noise_schedule) {
+            requestBody.noiseScheduler = metadata.noise_schedule;
+        }
+        
+        // Generate image with same settings
+        const model = metadata.model ? metadata.model.toLowerCase() : 'v4_5';
+        const url = `/${model}/generate?auth=${encodeURIComponent(getCookie('authToken'))}`;
+        const generateResponse = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                prompt: metadata.prompt,
-                uc: metadata.uc,
-                steps: metadata.steps,
-                scale: metadata.scale,
-                cfg_rescale: metadata.cfg_rescale,
-                sampler: metadata.sampler,
-                noise_schedule: metadata.noise_schedule,
-                resolution: metadata.resolution,
-                preset: presetName
-            })
+            body: JSON.stringify(requestBody)
         });
 
         if (!generateResponse.ok) {
@@ -350,25 +515,257 @@ async function rerollImage(image) {
         }
 
         const blob = await generateResponse.blob();
+        const imageUrl = URL.createObjectURL(blob);
         
-        showLoading(false);
-        showSuccess('Image rerolled successfully!');
+        // Create a temporary image to get dimensions
+        const img = new Image();
+        img.onload = function() {
         createConfetti();
+            showSuccess('Image rerolled successfully!');
         
-        // Reload gallery to show new image
+            // Refresh gallery and show the new image in lightbox
+            setTimeout(async () => {
         await loadGallery();
         
-        // Find the newly generated image (it should be the first one since it's the most recent)
+                // Find the newly generated image (should be the first one)
         if (allImages.length > 0) {
-            const newImage = allImages[0]; // Most recent image
-            showLightbox(newImage);
-        }
+                    const newImage = allImages[0]; // Newest image is first
+                    const imageToShow = {
+                        filename: newImage.upscaled || newImage.original,
+                        base: newImage.base,
+                        upscaled: newImage.upscaled
+                    };
+                    showLightbox(imageToShow);
+                }
+            }, 1000);
+        };
+        img.src = imageUrl;
 
     } catch (error) {
-        console.error('Reroll error:', error);
+        console.error('Direct reroll error:', error);
+        showError('Image reroll failed: ' + error.message);
+    } finally {
         showLoading(false);
-        showError('Reroll failed: ' + error.message);
     }
+}
+
+// Reroll an image with editable settings
+async function rerollImageWithEdit(image) {
+    if (!isAuthenticated) {
+        showError('Please login first');
+        return;
+    }
+
+    console.log('Reroll with edit called with image:', image);
+
+    try {
+        // Determine which filename to use for metadata
+        const filenameForMetadata = image.upscaled || image.original;
+        
+        if (!filenameForMetadata) {
+            throw new Error('No filename available for metadata lookup');
+        }
+        
+        console.log('Fetching metadata for:', filenameForMetadata);
+        
+        // Get metadata from the image
+        const response = await fetch(`/metadata/${filenameForMetadata}?auth=${encodeURIComponent(getCookie('authToken'))}`);
+        
+        if (!response.ok) {
+            throw new Error(`Failed to load image metadata: ${response.status} ${response.statusText}`);
+        }
+
+        const metadata = await response.json();
+        
+        console.log('Received metadata:', metadata);
+        
+        if (!metadata) {
+            throw new Error('No metadata found for this image');
+        }
+
+        // Close lightbox if it's open
+        if (lightboxModal.style.display === 'block') {
+            hideLightbox();
+        }
+
+        // Load metadata into manual form
+        loadMetadataIntoManualForm(metadata, image);
+        
+        // Show manual modal directly (bypass preset selection logic)
+        manualModal.style.display = 'block';
+        if (manualPrompt) manualPrompt.focus();
+
+    } catch (error) {
+        console.error('Reroll with edit error:', error);
+        showError('Failed to load image metadata: ' + error.message);
+    }
+}
+
+// Load metadata into manual form
+function loadMetadataIntoManualForm(metadata, image) {
+    console.log('=== LOADING METADATA INTO FORM ===');
+    console.log('Metadata received:', metadata);
+    console.log('Image object:', image);
+    console.log('Metadata keys:', Object.keys(metadata));
+    console.log('UC value from metadata:', metadata.uc);
+    console.log('Resolution value from metadata:', metadata.resolution);
+    
+    // Clear form first
+    console.log('Clearing form...');
+    clearManualForm();
+    
+    // Fill form with metadata
+    console.log('Filling form fields...');
+    
+    if (manualPrompt) {
+        manualPrompt.value = metadata.prompt || '';
+        console.log('Set prompt to:', manualPrompt.value);
+    } else {
+        console.error('manualPrompt element not found!');
+    }
+    
+    if (manualUc) {
+        manualUc.value = metadata.uc || '';
+        console.log('Set UC to:', manualUc.value);
+    } else {
+        console.error('manualUc element not found!');
+    }
+    
+    // Map model to lowercase for form compatibility
+    const modelValue = metadata.model ? metadata.model.toLowerCase() : '';
+    if (manualModel) {
+        manualModel.value = modelValue;
+        console.log('Set model to:', manualModel.value);
+    } else {
+        console.error('manualModel element not found!');
+    }
+    
+    if (manualResolution) {
+        // Handle both resolution and width/height fields
+        let resolutionValue = metadata.resolution || '';
+        
+        // If we have a resolution value, ensure it's uppercase for form compatibility
+        if (resolutionValue) {
+            resolutionValue = resolutionValue.toUpperCase();
+        } else if (metadata.width && metadata.height) {
+            // Try to match dimensions to a known resolution
+            const dimensions = `${metadata.width}x${metadata.height}`;
+            const resolutionMap = {
+                '512x768': 'SMALL_PORTRAIT',
+                '768x512': 'SMALL_LANDSCAPE',
+                '640x640': 'SMALL_SQUARE',
+                '832x1216': 'NORMAL_PORTRAIT',
+                '1216x832': 'NORMAL_LANDSCAPE',
+                '1024x1024': 'NORMAL_SQUARE',
+                '1024x1536': 'LARGE_PORTRAIT',
+                '1536x1024': 'LARGE_LANDSCAPE',
+                '1472x1472': 'LARGE_SQUARE',
+                '1088x1920': 'WALLPAPER_PORTRAIT',
+                '1920x1088': 'WALLPAPER_LANDSCAPE'
+            };
+            resolutionValue = resolutionMap[dimensions] || '';
+        }
+        
+        manualResolution.value = resolutionValue;
+        console.log('Set resolution to:', manualResolution.value, '(from metadata resolution:', metadata.resolution, ', width:', metadata.width, ', height:', metadata.height, ')');
+    } else {
+        console.error('manualResolution element not found!');
+    }
+    
+    if (manualSteps) {
+        manualSteps.value = metadata.steps || 25;
+        console.log('Set steps to:', manualSteps.value);
+    } else {
+        console.error('manualSteps element not found!');
+    }
+    
+    if (manualGuidance) {
+        manualGuidance.value = metadata.scale || 5.0;
+        console.log('Set guidance to:', manualGuidance.value);
+    } else {
+        console.error('manualGuidance element not found!');
+    }
+    
+    if (manualRescale) {
+        manualRescale.value = metadata.cfg_rescale || 0.0;
+        console.log('Set rescale to:', manualRescale.value);
+    } else {
+        console.error('manualRescale element not found!');
+    }
+    
+    if (manualSeed) {
+        manualSeed.value = metadata.seed || '';
+        console.log('Set seed to:', manualSeed.value);
+    } else {
+        console.error('manualSeed element not found!');
+    }
+    
+    if (manualSampler) {
+        // Map NovelAI sampler values to dropdown options
+        const samplerMapping = {
+            'k_euler': 'EULER',
+            'k_euler_ancestral': 'EULER_ANC',
+            'dpm2s_ancestral': 'DPM2S_ANC',
+            'dpm2m': 'DPM2M',
+            'dpmsde': 'DPMSDE',
+            'dpm2msde': 'DPM2MSDE',
+            'ddim': 'DDIM'
+        };
+        
+        const mappedSampler = samplerMapping[metadata.sampler] || metadata.sampler || '';
+        manualSampler.value = mappedSampler;
+        console.log('Set sampler to:', manualSampler.value, '(from metadata.sampler:', metadata.sampler, ', mapped to:', mappedSampler, ')');
+        console.log('Available sampler options:', Array.from(manualSampler.options).map(opt => opt.value));
+    } else {
+        console.error('manualSampler element not found!');
+    }
+    
+    if (manualNoiseScheduler) {
+        // Map NovelAI noise schedule values to dropdown options
+        const noiseMapping = {
+            'native': 'NATIVE',
+            'karras': 'KARRAS',
+            'exponential': 'EXPONENTIAL',
+            'polyexponential': 'POLYEXPONENTIAL'
+        };
+        
+        const mappedNoise = noiseMapping[metadata.noise_schedule] || metadata.noise_schedule || '';
+        manualNoiseScheduler.value = mappedNoise;
+        console.log('Set noise scheduler to:', manualNoiseScheduler.value, '(from metadata.noise_schedule:', metadata.noise_schedule, ', mapped to:', mappedNoise, ')');
+        console.log('Available noise scheduler options:', Array.from(manualNoiseScheduler.options).map(opt => opt.value));
+    } else {
+        console.error('manualNoiseScheduler element not found!');
+    }
+    
+    if (manualUpscale) {
+        manualUpscale.checked = false; // Default to no upscale for reroll
+        console.log('Set upscale to: false');
+    } else {
+        console.error('manualUpscale element not found!');
+    }
+    
+    // Set preset name based on image filename or base
+    let presetName = 'generated';
+    if (image && image.base) {
+        const parts = image.base.split('_');
+        if (parts.length >= 3) {
+            presetName = parts.slice(1, -1).join('_');
+        }
+    } else if (image && image.filename) {
+        const parts = image.filename.split('_');
+        if (parts.length >= 3) {
+            presetName = parts.slice(1, -1).join('_');
+        }
+    }
+    
+    if (manualPresetName) {
+        manualPresetName.value = `${presetName}_edited`;
+        console.log('Set preset name to:', manualPresetName.value);
+    } else {
+        console.error('manualPresetName element not found!');
+    }
+    
+    console.log('=== FORM POPULATION COMPLETE ===');
 }
 
 // Upscale an image
@@ -402,14 +799,18 @@ async function upscaleImage(image) {
         // Reload gallery to show new upscaled image
         await loadGallery();
         
-        // Show the upscaled image in lightbox
-        const upscaledImage = {
-            filename: image.original.replace('.png', '_upscaled.png'),
-            base: image.base,
-            upscaled: true,
-            url: imageUrl
-        };
-        showLightbox(upscaledImage);
+        // Find the upscaled image in the gallery and show it in lightbox
+        const upscaledFilename = image.original.replace('.png', '_upscaled.png');
+        const upscaledImage = allImages.find(img => img.original === upscaledFilename || img.upscaled === upscaledFilename);
+        
+        if (upscaledImage) {
+            const imageToShow = {
+                filename: upscaledImage.upscaled || upscaledImage.original,
+                base: upscaledImage.base,
+                upscaled: upscaledImage.upscaled
+            };
+            showLightbox(imageToShow);
+        }
         
     } catch (error) {
         console.error('Upscaling error:', error);
@@ -538,16 +939,459 @@ function logout() {
     showSuccess('Logged out successfully');
 }
 
-// Update generate button state
-function updateGenerateButton() {
+// Show manual modal
+function showManualModal() {
     if (!isAuthenticated) {
-        generateBtn.disabled = true;
+        showError('Please login first');
         return;
     }
-    const hasPreset = presetSelect.value !== '';
-    const hasResolution = resolutionSelect.value !== '';
-    const canGenerate = isAuthenticated && hasPreset && hasResolution;
-    generateBtn.disabled = !canGenerate;
+    
+    // Check if a preset is selected for editing
+    const selectedPreset = presetSelect.value;
+    if (selectedPreset) {
+        loadPresetIntoManualForm(selectedPreset);
+    } else {
+        // Clear form for new generation
+        clearManualForm();
+    }
+    
+    manualModal.style.display = 'block';
+    manualPrompt.focus();
+}
+
+// Hide manual modal
+function hideManualModal() {
+    manualModal.style.display = 'none';
+    clearManualForm();
+}
+
+// Clear manual form
+function clearManualForm() {
+    manualForm.reset();
+    manualPresetName.value = '';
+    manualSeed.value = '';
+    manualSampler.value = '';
+    manualNoiseScheduler.value = '';
+}
+
+// Load preset into manual form
+async function loadPresetIntoManualForm(presetName) {
+    try {
+        const response = await fetch(`/preset/${presetName}/raw?auth=${encodeURIComponent(getCookie('authToken'))}`);
+        if (response.ok) {
+            const data = await response.json();
+            
+            // Fill form with raw preset data (no text replacement processing)
+            manualPrompt.value = data.prompt || '';
+            manualUc.value = data.uc || '';
+            manualModel.value = data.model || '';
+            manualResolution.value = data.resolution || '';
+            manualSteps.value = data.steps || 25;
+            manualGuidance.value = data.guidance || 5.0;
+            manualRescale.value = data.rescale || 0.0;
+            manualSeed.value = data.seed || '';
+            manualSampler.value = data.sampler || '';
+            manualNoiseScheduler.value = data.noiseScheduler || '';
+            manualUpscale.checked = data.upscale || false;
+            
+            // Set preset name for saving
+            manualPresetName.value = presetName;
+            
+        } else {
+            throw new Error('Failed to load preset data');
+        }
+    } catch (error) {
+        console.error('Error loading preset:', error);
+        showError('Failed to load preset data');
+    }
+}
+
+// Handle manual generation
+async function handleManualGeneration(e) {
+    e.preventDefault();
+    
+    if (!isAuthenticated) {
+        showError('Please login first');
+        return;
+    }
+    
+    // Validate required fields
+    const model = manualModel.value;
+    const prompt = manualPrompt.value.trim();
+    const resolution = manualResolution.value;
+    
+    if (!model || !prompt || !resolution) {
+        showError('Please fill in all required fields (Model, Prompt, Resolution)');
+        return;
+    }
+    
+    // Capture all form values BEFORE hiding the modal (which clears the form)
+    const ucValue = manualUc.value.trim();
+    const seedValue = manualSeed.value.trim();
+    const samplerValue = manualSampler.value;
+    const noiseSchedulerValue = manualNoiseScheduler.value;
+    const stepsValue = parseInt(manualSteps.value) || 25;
+    const guidanceValue = parseFloat(manualGuidance.value) || 5.0;
+    const rescaleValue = parseFloat(manualRescale.value) || 0.0;
+    const upscaleValue = manualUpscale.checked;
+    
+    showLoading(true);
+    hideManualModal();
+    
+    try {
+        // Build request body using captured values
+        const requestBody = {
+            prompt: prompt,
+            resolution: resolution,
+            steps: stepsValue,
+            guidance: guidanceValue,
+            rescale: rescaleValue,
+            allow_paid: true
+        };
+        
+        if (ucValue) {
+            requestBody.uc = ucValue;
+            console.log('Adding UC to request:', ucValue);
+        } else {
+            console.log('UC field is empty, not adding to request');
+        }
+        
+        if (seedValue) {
+            requestBody.seed = parseInt(seedValue);
+            console.log('Adding seed to request:', requestBody.seed);
+        }
+        
+        if (samplerValue) {
+            // Map dropdown values back to NovelAI API format
+            const reverseSamplerMapping = {
+                'EULER': 'k_euler',
+                'EULER_ANC': 'k_euler_ancestral',
+                'DPM2S_ANC': 'dpm2s_ancestral',
+                'DPM2M': 'dpm2m',
+                'DPMSDE': 'dpmsde',
+                'DPM2MSDE': 'dpm2msde',
+                'DDIM': 'ddim'
+            };
+            
+            const apiSampler = reverseSamplerMapping[samplerValue] || samplerValue;
+            requestBody.sampler = apiSampler;
+            console.log('Adding sampler to request:', apiSampler, '(from dropdown:', samplerValue, ')');
+        } else {
+            console.log('Sampler field is empty, not adding to request');
+        }
+        
+        if (noiseSchedulerValue) {
+            // Map dropdown values back to NovelAI API format
+            const reverseNoiseMapping = {
+                'NATIVE': 'native',
+                'KARRAS': 'karras',
+                'EXPONENTIAL': 'exponential',
+                'POLYEXPONENTIAL': 'polyexponential'
+            };
+            
+            const apiNoise = reverseNoiseMapping[noiseSchedulerValue] || noiseSchedulerValue;
+            requestBody.noiseScheduler = apiNoise;
+            console.log('Adding noise scheduler to request:', apiNoise, '(from dropdown:', noiseSchedulerValue, ')');
+        } else {
+            console.log('Noise scheduler field is empty, not adding to request');
+        }
+        
+        // Add upscale if enabled
+        if (upscaleValue) {
+            requestBody.upscale = true;
+            console.log('Adding upscale to request');
+        }
+        
+        // Generate image
+        const url = `/${model.toLowerCase()}/generate?auth=${encodeURIComponent(getCookie('authToken'))}`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Generation failed: ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const imageUrl = URL.createObjectURL(blob);
+        
+        // Create a temporary image to get dimensions
+        const img = new Image();
+        img.onload = function() {
+            createConfetti();
+            showSuccess('Image generated successfully!');
+            
+            // Save preset if name is provided
+            const presetName = manualPresetName.value.trim();
+            if (presetName) {
+                saveManualPreset(presetName, requestBody);
+            }
+            
+            // Refresh gallery and show the new image in lightbox
+            setTimeout(async () => {
+                await loadGallery();
+                
+                // Find the newly generated image (should be the first one)
+                if (allImages.length > 0) {
+                    const newImage = allImages[0]; // Newest image is first
+                    const imageToShow = {
+                        filename: newImage.upscaled || newImage.original,
+                        base: newImage.base,
+                        upscaled: newImage.upscaled
+                    };
+                    showLightbox(imageToShow);
+                }
+            }, 1000);
+        };
+        img.src = imageUrl;
+        
+    } catch (error) {
+        console.error('Manual generation error:', error);
+        showError('Image generation failed. Please try again.');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Save manual preset (this would need a backend endpoint)
+async function saveManualPreset(presetName, config) {
+    try {
+        const response = await fetch('/preset/save?auth=' + encodeURIComponent(getCookie('authToken')), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                name: presetName,
+                ...config
+            })
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            showSuccess(result.message);
+            
+            // Refresh the preset list
+            await loadOptions();
+            
+            // Select the newly saved preset
+            presetSelect.value = presetName;
+            updateGenerateButton();
+            
+            // Close the manual modal
+            hideManualModal();
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to save preset');
+        }
+    } catch (error) {
+        console.error('Error saving preset:', error);
+        showError('Failed to save preset: ' + error.message);
+    }
+}
+
+// Handle manual save button
+async function handleManualSave() {
+    const presetName = manualPresetName.value.trim();
+    if (!presetName) {
+        showError('Please enter a preset name to save');
+        return;
+    }
+    
+    // Validate required fields
+    const model = manualModel.value;
+    const prompt = manualPrompt.value.trim();
+    
+    if (!model || !prompt) {
+        showError('Please fill in all required fields (Model, Prompt)');
+        return;
+    }
+    
+    // Build preset data
+    const presetData = {
+        prompt: prompt,
+        uc: manualUc.value.trim(),
+        model: model,
+        resolution: manualResolution.value,
+        steps: parseInt(manualSteps.value) || 25,
+        guidance: parseFloat(manualGuidance.value) || 5.0,
+        rescale: parseFloat(manualRescale.value) || 0.0,
+        upscale: manualUpscale.checked
+    };
+    
+    // Add optional fields if they have values
+    if (manualSeed.value.trim()) {
+        presetData.seed = parseInt(manualSeed.value);
+    }
+    
+    if (manualSampler.value) {
+        presetData.sampler = manualSampler.value;
+    }
+    
+    if (manualNoiseScheduler.value) {
+        presetData.noiseScheduler = manualNoiseScheduler.value;
+    }
+    
+    await saveManualPreset(presetName, presetData);
+}
+
+// Autocomplete functions
+function handleAutocompleteInput(e) {
+    const target = e.target;
+    const value = target.value;
+    const cursorPos = target.selectionStart;
+    
+    // Find if we're inside a <placeholder> tag
+    const beforeCursor = value.substring(0, cursorPos);
+    const match = beforeCursor.match(/<([^>]*)$/);
+    
+    if (match) {
+        const partial = match[1];
+        showAutocompleteSuggestions(partial, target);
+    } else {
+        hideAutocomplete();
+    }
+}
+
+function handleAutocompleteKeydown(e) {
+    if (!autocompleteOverlay.classList.contains('hidden')) {
+        const items = autocompleteList.querySelectorAll('.autocomplete-item');
+        
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                selectedAutocompleteIndex = Math.min(selectedAutocompleteIndex + 1, items.length - 1);
+                updateAutocompleteSelection();
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                selectedAutocompleteIndex = Math.max(selectedAutocompleteIndex - 1, -1);
+                updateAutocompleteSelection();
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (selectedAutocompleteIndex >= 0 && items[selectedAutocompleteIndex]) {
+                    insertAutocompleteSuggestion(items[selectedAutocompleteIndex].dataset.value);
+                }
+                break;
+            case 'Escape':
+                hideAutocomplete();
+                break;
+        }
+    }
+}
+
+function showAutocompleteSuggestions(partial, target) {
+    currentAutocompleteTarget = target;
+    selectedAutocompleteIndex = -1;
+    
+    // Filter text replacements that match the partial
+    const suggestions = Object.keys(textReplacements).filter(key => 
+        key.toLowerCase().includes(partial.toLowerCase())
+    ).slice(0, 10); // Limit to 10 suggestions
+    
+    if (suggestions.length === 0) {
+        hideAutocomplete();
+        return;
+    }
+    
+    // Populate autocomplete list
+    autocompleteList.innerHTML = '';
+    suggestions.forEach((key, index) => {
+        const item = document.createElement('div');
+        item.className = 'autocomplete-item';
+        item.dataset.value = key;
+        item.innerHTML = `
+            <div class="placeholder-name">${key}</div>
+            <div class="placeholder-desc">${textReplacements[key]}</div>
+        `;
+        item.addEventListener('click', () => insertAutocompleteSuggestion(key));
+        autocompleteList.appendChild(item);
+    });
+    
+    // Position overlay
+    const rect = target.getBoundingClientRect();
+    autocompleteOverlay.style.left = rect.left + 'px';
+    autocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
+    autocompleteOverlay.style.width = rect.width + 'px';
+    
+    autocompleteOverlay.classList.remove('hidden');
+}
+
+function updateAutocompleteSelection() {
+    const items = autocompleteList.querySelectorAll('.autocomplete-item');
+    items.forEach((item, index) => {
+        item.classList.toggle('selected', index === selectedAutocompleteIndex);
+    });
+}
+
+function insertAutocompleteSuggestion(value) {
+    if (!currentAutocompleteTarget) return;
+    
+    const target = currentAutocompleteTarget;
+    const cursorPos = target.selectionStart;
+    const value_before = target.value.substring(0, cursorPos);
+    const value_after = target.value.substring(cursorPos);
+    
+    // Find the start of the <placeholder> tag
+    const beforeCursor = value_before;
+    const match = beforeCursor.match(/<([^>]*)$/);
+    
+    if (match) {
+        const startPos = beforeCursor.lastIndexOf('<');
+        const newValue = value_before.substring(0, startPos) + '<' + value + '>' + value_after;
+        target.value = newValue;
+        
+        // Set cursor position after the inserted placeholder
+        const newCursorPos = startPos + value.length + 2; // +2 for < and >
+        target.setSelectionRange(newCursorPos, newCursorPos);
+    }
+    
+    hideAutocomplete();
+}
+
+function hideAutocomplete() {
+    autocompleteOverlay.classList.add('hidden');
+    currentAutocompleteTarget = null;
+    selectedAutocompleteIndex = -1;
+}
+
+// Update generate button state
+function updateGenerateButton() {
+    const selectedValue = presetSelect.value;
+    const resolution = resolutionSelect.value;
+    
+    if (!selectedValue) {
+        generateBtn.disabled = true;
+        maskPreviewBtn.style.display = 'none';
+        return;
+    }
+    
+    // Parse the selected value to determine if it's a preset or pipeline
+    const [type, name] = selectedValue.split(':');
+    
+    if (!type || !name) {
+        generateBtn.disabled = true;
+        maskPreviewBtn.style.display = 'none';
+        return;
+    }
+    
+    if (type === 'preset') {
+        // For presets, resolution is required and no mask preview
+        generateBtn.disabled = !resolution;
+        maskPreviewBtn.style.display = 'none';
+    } else if (type === 'pipeline') {
+        // For pipelines, resolution is optional and show mask preview
+        generateBtn.disabled = false;
+        maskPreviewBtn.style.display = 'inline-block';
+    } else {
+        generateBtn.disabled = true;
+        maskPreviewBtn.style.display = 'none';
+    }
 }
 
 // Generate image
@@ -557,19 +1401,50 @@ async function generateImage() {
         return;
     }
 
-    const preset = presetSelect.value;
+    const selectedValue = presetSelect.value;
     const resolution = resolutionSelect.value;
     const upscale = upscaleToggle.checked;
 
-    if (!preset || !resolution) {
-        showError('Please select both preset and resolution');
+    if (!selectedValue) {
+        showError('Please select a preset or pipeline');
+        return;
+    }
+
+    // Parse the selected value to determine if it's a preset or pipeline
+    const [type, name] = selectedValue.split(':');
+    
+    if (!type || !name) {
+        showError('Invalid selection');
         return;
     }
 
     showLoading(true);
 
     try {
-        const url = `/preset/${preset}/${resolution}?auth=${encodeURIComponent(getCookie('authToken'))}&forceGenerate=true${upscale ? '&upscale=true' : ''}`;
+        let url;
+        
+        if (type === 'preset') {
+            // For presets, resolution is required
+            if (!resolution) {
+                showError('Please select a resolution for preset generation');
+                showLoading(false);
+                return;
+            }
+            url = `/preset/${name}/${resolution}?auth=${encodeURIComponent(getCookie('authToken'))}&forceGenerate=true${upscale ? '&upscale=true' : ''}`;
+        } else if (type === 'pipeline') {
+            // For pipelines, resolution is optional (uses pipeline's resolution if not specified)
+            const params = new URLSearchParams({
+                auth: getCookie('authToken'),
+                forceGenerate: 'true'
+            });
+            if (upscale) params.append('upscale', 'true');
+            if (resolution) params.append('resolution', resolution);
+            
+            url = `/pipeline/${name}?${params.toString()}`;
+        } else {
+            throw new Error('Invalid selection type');
+        }
+
         const response = await fetch(url);
         
         if (!response.ok) {
@@ -627,41 +1502,8 @@ async function showLightbox(image) {
     lightboxImage.dataset.base = image.base;
     lightboxImage.dataset.upscaled = image.upscaled ? 'true' : '';
 
-    // Show/hide reroll button in lightbox
-    if (lightboxRerollBtn) {
-        if (image.filename && !image.filename.includes('_upscaled')) {
-            lightboxRerollBtn.style.display = '';
-            lightboxRerollBtn.onclick = function() {
-                // Find the gallery image object by base name
-                const galleryImage = allImages.find(img => img.base === image.base);
-                if (galleryImage) {
-                    rerollImage(galleryImage);
-                    hideLightbox();
-                }
-            };
-        } else {
-            lightboxRerollBtn.style.display = 'none';
-            lightboxRerollBtn.onclick = null;
-        }
-    }
-
-    // Show/hide upscale button in lightbox
-    if (lightboxUpscaleBtn) {
-        if (!image.upscaled && image.filename && !image.filename.includes('_upscaled')) {
-            lightboxUpscaleBtn.style.display = '';
-            lightboxUpscaleBtn.onclick = function() {
-                // Find the gallery image object by base name
-                const galleryImage = allImages.find(img => img.base === image.base);
-                if (galleryImage) {
-                    upscaleImage(galleryImage);
-                    hideLightbox();
-                }
-            };
-        } else {
-            lightboxUpscaleBtn.style.display = 'none';
-            lightboxUpscaleBtn.onclick = null;
-        }
-    }
+    // Update lightbox controls based on image type
+    updateLightboxControls(image);
 
     // Load and display metadata
     await loadAndDisplayMetadata(image.filename);
@@ -795,9 +1637,23 @@ function hideLightbox() {
 }
 
 // Download image
-function downloadImage() {
-    const filename = lightboxImage.dataset.filename;
-    const url = lightboxImage.dataset.url;
+function downloadImage(image) {
+    let filename, url;
+    
+    // Handle different image object structures
+    if (image.url) {
+        // For newly generated images (lightbox)
+        url = image.url;
+        filename = image.filename;
+    } else if (image.upscaled || image.original) {
+        // For gallery images - prefer upscaled version if available
+        filename = image.upscaled || image.original;
+        url = null; // Will use server endpoint
+    } else {
+        // Fallback - assume it's a filename string
+        filename = image;
+        url = null;
+    }
     
     if (url) {
         // For newly generated images
@@ -811,6 +1667,59 @@ function downloadImage() {
         link.href = `/images/${filename}?download=true`;
         link.download = filename;
         link.click();
+    }
+}
+
+// Delete image
+async function deleteImage(image) {
+    if (!isAuthenticated) {
+        showError('Please login first');
+        return;
+    }
+    
+    // Show confirmation dialog
+    const confirmed = confirm('Are you sure you want to delete this image? This will permanently delete both the original and upscaled versions.');
+    
+    if (!confirmed) {
+        return;
+    }
+    
+    try {
+        // Determine which filename to use for deletion
+        const filenameToDelete = image.upscaled || image.original;
+        
+        if (!filenameToDelete) {
+            throw new Error('No filename available for deletion');
+        }
+        
+        console.log('Deleting image:', filenameToDelete);
+        
+        // Send delete request
+        const response = await fetch(`/images/${filenameToDelete}?auth=${encodeURIComponent(getCookie('authToken'))}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Delete failed: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showSuccess('Image deleted successfully!');
+            
+            // Close lightbox
+            hideLightbox();
+            
+            // Refresh gallery to show updated list
+            await loadGallery();
+        } else {
+            throw new Error(result.error || 'Delete failed');
+        }
+        
+    } catch (error) {
+        console.error('Delete error:', error);
+        showError('Failed to delete image: ' + error.message);
     }
 }
 
@@ -949,3 +1858,173 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style); 
+
+// Update lightbox controls based on image type
+function updateLightboxControls(image) {
+    const downloadBtn = document.getElementById('downloadBtn');
+    const rerollBtn = document.getElementById('lightboxRerollBtn');
+    const rerollEditBtn = document.getElementById('lightboxRerollEditBtn');
+    const upscaleBtn = document.getElementById('lightboxUpscaleBtn');
+    const deleteBtn = document.getElementById('lightboxDeleteBtn');
+    
+    // Handle mask images (show only download button)
+    if (image.isMask) {
+        downloadBtn.style.display = 'inline-block';
+        rerollBtn.style.display = 'none';
+        rerollEditBtn.style.display = 'none';
+        upscaleBtn.style.display = 'none';
+        deleteBtn.style.display = 'none';
+        
+        // Set up download for mask
+        downloadBtn.onclick = (e) => {
+            e.preventDefault();
+            downloadImage(image);
+        };
+        return;
+    }
+    
+    // Always show download button for regular images
+    downloadBtn.style.display = 'inline-block';
+    
+    // Show both reroll buttons for all images (both original and upscaled)
+    rerollBtn.style.display = 'inline-block';
+    rerollEditBtn.style.display = 'inline-block';
+    
+    // Show upscale button only for non-upscaled images
+    if (image.upscaled) {
+        upscaleBtn.style.display = 'none';
+    } else {
+        upscaleBtn.style.display = 'inline-block';
+    }
+    
+    // Show delete button only for logged-in users
+    if (isAuthenticated) {
+        deleteBtn.style.display = 'inline-block';
+    } else {
+        deleteBtn.style.display = 'none';
+    }
+    
+    // Construct proper image object for functions
+    const imageObj = {
+        filename: image.filename,
+        base: image.base,
+        original: image.upscaled ? image.filename.replace('_upscaled.png', '.png') : image.filename,
+        upscaled: image.upscaled ? image.filename : null
+    };
+    
+    // Set up event listeners
+    downloadBtn.onclick = (e) => {
+        e.preventDefault();
+        downloadImage(imageObj);
+    };
+    rerollBtn.onclick = () => rerollImage(imageObj); // Direct reroll
+    rerollEditBtn.onclick = () => rerollImageWithEdit(imageObj); // Reroll with edit
+    upscaleBtn.onclick = () => upscaleImage(imageObj);
+    deleteBtn.onclick = () => deleteImage(imageObj); // Delete image
+}
+
+// Calculate optimal images per page based on window size
+function calculateImagesPerPage() {
+    const gallery = document.querySelector('.gallery');
+    if (!gallery) return 12; // Default fallback
+    
+    // Get gallery container dimensions
+    const galleryRect = gallery.getBoundingClientRect();
+    const galleryWidth = galleryRect.width;
+    
+    // If gallery width is 0, use window width as fallback
+    const effectiveWidth = galleryWidth > 0 ? galleryWidth : window.innerWidth - 40; // 40px for margins
+    
+    // Calculate items per row based on CSS grid (250px min + 20px gap)
+    const itemWidth = 250 + 20; // minmax(250px, 1fr) + gap
+    const itemsPerRow = Math.floor(effectiveWidth / itemWidth);
+    
+    // Ensure at least 1 item per row and at most 8 items per row
+    const safeItemsPerRow = Math.max(1, Math.min(8, itemsPerRow));
+    
+    // Calculate for 4 rows
+    const newImagesPerPage = safeItemsPerRow * 4;
+    
+    console.log(`Gallery width: ${galleryWidth}px, Effective width: ${effectiveWidth}px, Items per row: ${safeItemsPerRow}, Images per page: ${newImagesPerPage}`);
+    
+    return newImagesPerPage;
+}
+
+// Debounced resize handler
+function handleResize() {
+    if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+    }
+    
+    resizeTimeout = setTimeout(() => {
+        const newImagesPerPage = calculateImagesPerPage();
+        
+        // Only update if the number of images per page has changed
+        if (newImagesPerPage !== imagesPerPage) {
+            console.log(`Updating images per page from ${imagesPerPage} to ${newImagesPerPage}`);
+            imagesPerPage = newImagesPerPage;
+            
+            // Recalculate current page to maintain position
+            const currentStartIndex = (currentPage - 1) * imagesPerPage;
+            currentPage = Math.floor(currentStartIndex / imagesPerPage) + 1;
+            
+            // Redisplay current page
+            displayCurrentPage();
+        }
+    }, 250); // 250ms delay
+}
+
+// Show mask preview for pipelines
+async function showMaskPreview() {
+    if (!isAuthenticated) {
+        showError('Please login first');
+        return;
+    }
+
+    const selectedValue = presetSelect.value;
+    
+    if (!selectedValue) {
+        showError('Please select a pipeline');
+        return;
+    }
+
+    // Parse the selected value to determine if it's a pipeline
+    const [type, name] = selectedValue.split(':');
+    
+    if (type !== 'pipeline' || !name) {
+        showError('Please select a pipeline to preview mask');
+        return;
+    }
+
+    try {
+        const url = `/pipeline/${name}/mask?auth=${encodeURIComponent(getCookie('authToken'))}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`Failed to load mask: ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        const imageUrl = URL.createObjectURL(blob);
+        
+        // Create a temporary image to get dimensions
+        const img = new Image();
+        img.onload = function() {
+            const maskImage = {
+                filename: `mask_${name}_${Date.now()}.png`,
+                width: img.width,
+                height: img.height,
+                url: imageUrl,
+                isMask: true
+            };
+            
+            showLightbox(maskImage);
+            showSuccess('Mask preview loaded');
+        };
+        img.src = imageUrl;
+
+    } catch (error) {
+        console.error('Mask preview error:', error);
+        showError('Failed to load mask preview. Please try again.');
+    }
+}
