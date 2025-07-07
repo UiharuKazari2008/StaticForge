@@ -7,20 +7,23 @@ const authMiddleware = (req, res, next) => {
     if (config.loginKey === null) {
         return next();
     }
-    
-    // Get auth token from query parameter or header
+
+    // REST API: Bearer or ?auth=...
     const authToken = req.query.auth || req.headers.authorization?.replace('Bearer ', '');
-    
-    if (!authToken) {
-        return res.status(401).json({ error: 'Authentication required' });
+    if (authToken) {
+        if (authToken !== config.loginKey) {
+            return res.status(403).json({ error: 'Invalid authentication token' });
+        }
+        return next();
     }
-    
-    // Check if token matches
-    if (authToken !== config.loginKey) {
-        return res.status(403).json({ error: 'Invalid authentication token' });
+
+    // Browser: session-based
+    if (req.session && req.session.authenticated) {
+        return next();
     }
-    
-    next();
+
+    // Not authenticated
+    return res.status(401).json({ error: 'Authentication required' });
 };
 
 module.exports = {

@@ -22,7 +22,6 @@ const getCachedPreset = (cacheKey) => {
     const thirtyMinutes = 30 * 60 * 1000; // 30 minutes in milliseconds
     
     if (now - cached.timestamp > thirtyMinutes) {
-        console.log(`⏰ Cache expired for preset: ${cacheKey}`);
         presetCache.delete(cacheKey);
         return null;
     }
@@ -30,12 +29,10 @@ const getCachedPreset = (cacheKey) => {
     // Check if the file still exists
     const filePath = path.join('./images', cached.filename);
     if (!fs.existsSync(filePath)) {
-        console.log(`📁 Cached file not found: ${cached.filename}`);
         presetCache.delete(cacheKey);
         return null;
     }
     
-    console.log(`📋 Using cached image for preset: ${cacheKey} (${Math.round((now - cached.timestamp) / 1000)}s old)`);
     return cached;
 };
 
@@ -45,13 +42,11 @@ const setCachedPreset = (cacheKey, filename) => {
         filename,
         timestamp: now
     });
-    console.log(`💾 Cached image for preset: ${cacheKey}`);
 };
 
 const clearPresetCache = () => {
     const beforeSize = presetCache.size;
     presetCache.clear();
-    console.log(`🗑️ Cleared preset cache (${beforeSize} entries)`);
 };
 
 const getCacheStatus = () => {

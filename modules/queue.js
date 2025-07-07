@@ -37,7 +37,6 @@ class CustomQueue {
         if (now - this.windowStartTime >= this.windowResetTime) {
             this.requestCount = 0;
             this.windowStartTime = now;
-            console.log('🔄 Rate limit window reset');
         }
     }
 
@@ -85,9 +84,7 @@ class CustomQueue {
             if (actualDelay > 0) {
                 const queueTime = now - item.enqueueTime;
                 if (queueTime > 0) {
-                    console.log(`⏳ Queued for ${queueTime}ms`);
                 }
-                console.log(`⏱️ Waiting ${actualDelay}ms (request #${this.requestCount + 1})`);
                 await new Promise(resolve => setTimeout(resolve, actualDelay));
             }
 
@@ -100,7 +97,6 @@ class CustomQueue {
                 await item.next(item.req, item.res);
                 item.resolve();
             } catch (error) {
-                console.log(`❌ Request failed: ${error.message}`);
                 item.reject(error);
             }
         }
