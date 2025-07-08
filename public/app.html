@@ -58,6 +58,51 @@
                     </div>
                 </div>
 
+                <!-- Character Prompts Section -->
+                <div class="form-group">
+                    <div class="character-prompts-header">
+                        <span class="character-prompts-title">Transformation</span>
+                        <div class="character-prompts-controls">    
+                            <button type="button" id="rerollTypeBtn" class="btn-secondary toggle-btn" data-state="on">
+                                <i class="nai-history"></i> Previous
+                            </button>
+                            <button type="button" id="variationTypeBtn" class="btn-secondary toggle-btn" data-state="off">
+                                <i class="nai-img2img"></i> Current
+                            </button>
+
+                            <button type="button" id="inpaintBtn" class="btn-secondary toggle-btn" data-state="off">
+                                <i class="nai-inpaint"></i> Inpaint
+                            </button>
+                            <button type="button" id="uploadImageBaseBtn" class="btn-secondary">
+                                <i class="nai-import"></i> Upload
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Variation-specific fields -->
+                <div class="form-row" id="manualVariationRow" style="display: none;">
+                    <div class="form-group">
+                        <label for="manualVariationImage">Source Image</label>
+                        <div class="variation-image-container">
+                            <div class="variation-image-wrapper" style="position: relative; display: inline-block;">
+                                <img id="manualVariationImage" src="" alt="Source Image" style="max-width: 200px; max-height: 200px; border-radius: 8px; display: none;">
+                                <canvas id="maskPreviewCanvas" style="position: absolute; top: 0; left: 0; max-width: 200px; max-height: 200px; border-radius: 8px; display: none; pointer-events: none;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="manualStrength">Strength</label>
+                        <input type="range" id="manualStrength" class="form-control" min="0.0" max="1.0" step="0.01" value="0.8" required>
+                        <span id="manualStrengthValue">0.8</span>
+                    </div>
+                    <div class="form-group">
+                        <label for="manualNoise">Noise</label>
+                        <input type="range" id="manualNoise" class="form-control" min="0.0" max="1.0" step="0.01" value="0.1" required>
+                        <span id="manualNoiseValue">0.1</span>
+                    </div>
+                </div>
+
                 <div class="form-row separator">
                     <div class="form-group" id="manualModelGroup">
                         <label for="manualModel">Model</label>
@@ -190,6 +235,46 @@
                         </div>
                         <input type="hidden" id="manualMaskBias" value="2">
                     </div>
+                    <div class="form-group" id="imageBiasGroup" style="display: none;">
+                        <label for="imageBias">Image Bias</label>
+                        <!-- Custom Image Bias Dropdown -->
+                        <div id="imageBiasDropdown" class="custom-dropdown dropup">
+                            <button type="button" id="imageBiasDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <div class="mask-bias-button-content">
+                                    <div class="mask-bias-grid" data-bias="2" data-orientation="landscape">
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                    </div>
+                                    <span id="imageBiasSelected">Center</span>
+                                </div>
+                            </button>
+                            <div id="imageBiasDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                        </div>
+                        <input type="hidden" id="imageBias" value="2">
+                    </div>
                 </div>
 
                 <div class="form-row">
@@ -205,43 +290,6 @@
                         <button type="button" id="manualSaveBtn" class="btn-secondary">
                             <i class="nai-save"></i> Save Preset
                         </button>
-                    </div>
-                </div>
-
-                <!-- Request Type Toggle (for reroll/variation) -->
-                <div class="form-row" id="requestTypeRow" style="display: none;">
-                    <div class="form-group">
-                        <label>Request Type</label>
-                        <div class="request-type-toggle">
-                            <button type="button" id="rerollTypeBtn" class="btn-secondary toggle-btn" data-state="on">
-                                <i class="nai-dice"></i> Reroll
-                            </button>
-                            <button type="button" id="variationTypeBtn" class="btn-secondary toggle-btn" data-state="off">
-                                <i class="nai-inpaint"></i> Variation
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-
-
-                <!-- Variation-specific fields -->
-                <div class="form-row" id="manualVariationRow" style="display: none;">
-                    <div class="form-group">
-                        <label for="manualVariationImage">Source Image</label>
-                        <div class="variation-image-container">
-                            <img id="manualVariationImage" src="" alt="Source Image" style="max-width: 200px; max-height: 200px; border-radius: 8px; display: none;">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="manualStrength">Strength</label>
-                        <input type="range" id="manualStrength" class="form-control" min="0.0" max="1.0" step="0.01" value="0.8" required>
-                        <span id="manualStrengthValue">0.8</span>
-                    </div>
-                    <div class="form-group">
-                        <label for="manualNoise">Noise</label>
-                        <input type="range" id="manualNoise" class="form-control" min="0.0" max="1.0" step="0.01" value="0.1" required>
-                        <span id="manualNoiseValue">0.1</span>
                     </div>
                 </div>
 
@@ -317,6 +365,77 @@
                 <div class="position-dialog-actions">
                     <button type="button" id="confirmPositionBtn" class="btn-primary">Confirm Position</button>
                     <button type="button" id="cancelPositionBtn" class="btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aspect Ratio Dialog Modal -->
+    <div id="aspectRatioDialog" class="modal">
+        <div class="modal-content aspect-ratio-dialog-content">
+            <div class="aspect-ratio-dialog-header">
+                <h3>Aspect Ratio Mismatch</h3>
+                <button id="closeAspectRatioDialogBtn" class="close-dialog">&times;</button>
+            </div>
+            <div class="aspect-ratio-dialog-body">
+                <div class="aspect-ratio-info">
+                    <p>The uploaded image has a different aspect ratio than the selected resolution.</p>
+                    <div class="aspect-ratio-details">
+                        <div class="aspect-ratio-item">
+                            <span class="aspect-ratio-label">Image:</span>
+                            <span id="imageAspectRatio" class="aspect-ratio-value">-</span>
+                        </div>
+                        <div class="aspect-ratio-item">
+                            <span class="aspect-ratio-label">Resolution:</span>
+                            <span id="resolutionAspectRatio" class="aspect-ratio-value">-</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="aspect-ratio-options">
+                    <button type="button" id="useResolutionBtn" class="btn-primary">
+                        <i class="fas fa-ruler-combined"></i> Use Resolution
+                        <div class="option-subtitle">Use this image's aspect ratio for the request</div>
+                    </button>
+                    <button type="button" id="useBiasBtn" class="btn-secondary">
+                        <i class="fas fa-crop"></i> Use Bias
+                        <div class="option-subtitle">Keep the resolution and bias this image to it</div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mask Editor Dialog Modal -->
+    <div id="maskEditorDialog" class="modal">
+        <div class="modal-content mask-editor-content">
+            <div class="mask-editor-header">
+                <h3>Mask Editor</h3>
+                <button id="closeMaskEditorBtn" class="close-dialog">&times;</button>
+            </div>
+            <div class="mask-editor-body">
+                <div class="mask-editor-tools">
+                    <button type="button" id="maskBrushBtn" class="btn-secondary toggle-btn" data-state="on" title="Brush Tool">
+                        <i class="fas fa-paint-brush"></i> Brush
+                    </button>
+                    <button type="button" id="maskEraserBtn" class="btn-secondary toggle-btn" data-state="off" title="Eraser Tool">
+                        <i class="fas fa-eraser"></i> Eraser
+                    </button>
+                    <div class="brush-size-control">
+                        <label for="brushSize">Brush Size:</label>
+                        <input type="range" id="brushSize" min="1" max="200" value="30" class="form-control">
+                        <span id="brushSizeValue">30</span>
+                    </div>
+                    <button type="button" id="clearMaskBtn" class="btn-secondary" title="Clear Mask">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                </div>
+                <div class="mask-editor-canvas-container">
+                    <canvas id="maskCanvas" width="512" height="512"></canvas>
+                </div>
+                <div class="mask-editor-actions">
+                    <button type="button" id="deleteMaskBtn" class="btn-danger">Delete Mask</button>
+                    <button type="button" id="saveMaskBtn" class="btn-primary">Save Mask</button>
+                    <button type="button" id="cancelMaskBtn" class="btn-secondary">Cancel</button>
                 </div>
             </div>
         </div>

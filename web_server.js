@@ -488,8 +488,33 @@ const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams
             baseOptions.strength = body.strength || variationSettings.strength || 0.8;
             baseOptions.noise = body.noise || variationSettings.noise || 0.1;
         } else {
-            // Regular img2img
-            baseOptions.image = body.image;
+            // Regular img2img - handle both filename and base64 data
+            if (body.image) {
+                // Check if this is a frontend upload (base64) or existing image (filename)
+                if (body.is_frontend_upload) {
+                    // This is base64 data from frontend upload
+                    baseOptions.image = body.image;
+                    baseOptions.is_frontend_upload = true;
+                    
+                    // Store additional bias information if provided
+                    if (body.unbiased_original_image) {
+                        baseOptions.unbiased_original_image = body.unbiased_original_image;
+                    }
+                    if (body.original_image_bias !== undefined) {
+                        baseOptions.original_image_bias = body.original_image_bias;
+                    }
+                } else {
+                    // This is a filename - load the image from disk
+                    const filePath = path.join(imagesDir, body.image);
+                    if (!fs.existsSync(filePath)) {
+                        throw new Error(`Image not found: ${body.image}`);
+                    }
+                    let imageBuffer = fs.readFileSync(filePath);
+                    imageBuffer = stripPngTextChunks(imageBuffer);
+                    baseOptions.image = imageBuffer.toString('base64');
+                    baseOptions.original_filename = body.image;
+                }
+            }
             baseOptions.strength = body.strength || 0.5;
             baseOptions.noise = body.noise || 0;
         }
@@ -638,6 +663,17 @@ async function handleGeneration(opts, returnImage = false, presetName = null) {
             // Add original filename if available
             if (opts.original_filename) {
                 forgeData.original_filename = opts.original_filename;
+            }
+            
+            // Store base image data for frontend uploads with bias mode
+            if (opts.is_frontend_upload) {
+                forgeData.is_frontend_upload = true;
+                if (opts.unbiased_original_image) {
+                    forgeData.unbiased_original_image = opts.unbiased_original_image;
+                }
+                if (opts.original_image_bias !== undefined) {
+                    forgeData.original_image_bias = opts.original_image_bias;
+                }
             }
         }
         
@@ -1627,6 +1663,13 @@ function updateMetadata(imageBuffer, forgeData) {
         
         existingMetadata.forge_data = { ...existingMetadata.forge_data, ...cleanForgeData };
         
+        // Store base image data if this is a frontend upload with bias mode
+        if (forgeData.is_frontend_upload && forgeData.original_image_bias !== undefined) {
+            existingMetadata.forge_data.base_image_data = forgeData.base_image_data;
+            existingMetadata.forge_data.original_image_bias = forgeData.original_image_bias;
+            existingMetadata.forge_data.unbiased_original_image = forgeData.unbiased_original_image;
+        }
+        
         // Restore existing preset_name if it was there
         if (existingPresetName && !forgeData.preset_name) {
             existingMetadata.forge_data.preset_name = existingPresetName;
@@ -1998,6 +2041,17 @@ function extractRelevantFields(meta, filename) {
         strength: meta.strength,
         noise: meta.noise
     };
+    
+    // Add frontend upload data if present
+    if (forgeData.is_frontend_upload) {
+        result.is_frontend_upload = true;
+        if (forgeData.unbiased_original_image) {
+            result.unbiased_original_image = forgeData.unbiased_original_image;
+        }
+        if (forgeData.original_image_bias !== undefined) {
+            result.original_image_bias = forgeData.original_image_bias;
+        }
+    }
     
     if (forgeData.layer1_seed !== undefined) {
         result.layer1Seed = forgeData.layer1_seed;
@@ -3369,28 +3423,34 @@ app.post('/:model/generate', authMiddleware, async (req, res) => {
         let baseFilename = null;
 
         if (req.body && req.body.image) {
-            // Find the non-upscaled version of the image
-            baseFilename = body.image;
-            if (body.image.includes('_upscaled')) {
-                baseFilename = body.image.replace('_upscaled.png', '.png');
+            // Check if this is a frontend upload (base64) or existing image (filename)
+            if (body.is_frontend_upload) {
+                // This is a frontend upload with base64 data - use it directly
+                // No need to set baseFilename since this is a new upload
+            } else {
+                // This is a filename - load the image from disk
+                baseFilename = body.image;
+                if (body.image.includes('_upscaled')) {
+                    baseFilename = body.image.replace('_upscaled.png', '.png');
+                }
+                const filePath = path.join(imagesDir, baseFilename);
+                
+                if (!fs.existsSync(filePath)) {
+                    return res.status(404).json({ error: 'Image not found' });
+                }
+                
+                // Read the image and convert to base64
+                const imageBuffer = fs.readFileSync(filePath);
+                body.image = imageBuffer.toString('base64');
             }
-            const filePath = path.join(imagesDir, baseFilename);
-            
-            if (!fs.existsSync(filePath)) {
-                return res.status(404).json({ error: 'Image not found' });
-            }
-            
-            // Read the image and convert to base64
-            const imageBuffer = fs.readFileSync(filePath);
-            body.image = imageBuffer.toString('base64');
             
             if (!body.strength) body.strength = 0.8;
             if (!body.noise) body.noise = 0.1;
         }
         
         const opts = buildOptions(key, body, null, (!!body?.image), req.query);
-        // Add original filename for metadata tracking if this is img2img
-        if (body.image) {
+        // Add original filename for metadata tracking if this is img2img and not a frontend upload
+        if (body.image && !body.is_frontend_upload) {
             opts.original_filename = baseFilename;
         }
         const presetName = req.body.preset || null;
