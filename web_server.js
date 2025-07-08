@@ -655,6 +655,9 @@ async function handleGeneration(opts, returnImage = false, presetName = null) {
         if (opts.mask_bias !== undefined) {
             forgeData.mask_bias = opts.mask_bias;
         }
+        if (opts.mask !== undefined) {
+            forgeData.mask = opts.mask;
+        }
 
         // Add variation info if applicable
         if (opts.action === Action.IMG2IMG && opts.image) {
@@ -1243,7 +1246,87 @@ app.get('/options', authMiddleware, (req, res) => {
         const modelEntriesShort = Object.keys(Model)
             .filter(key => !key.endsWith('_INP'))
             .map(key => [key, getModelDisplayName(key,true)]);
-        
+
+        // Helper to extract relevant preset info
+        const extractPresetInfo = (name, preset) => ({
+            name,
+            model: preset.model || 'Default',
+            upscale: preset.upscale || false,
+            allow_paid: preset.allow_paid || false,
+            variety: preset.variety || false,
+            character_prompts: preset.character_prompts || false,
+            base_image: preset.base_image || false,
+            resolution: preset.resolution || 'Default',
+            steps: preset.steps || 25,
+            guidance: preset.guidance || 5.0,
+            rescale: preset.rescale || 0.0,
+            sampler: preset.sampler || null,
+            noiseScheduler: preset.noiseScheduler || null
+        });
+
+        // Helper to resolve pipeline layer info (copied from OPTIONS /pipeline/:name)
+        const resolveLayerInfo = (layer) => {
+            if (typeof layer === 'string') {
+                // It's a preset name, resolve the preset
+                const preset = currentPromptConfig.presets[layer];
+                if (preset) {
+                    return {
+                        type: 'preset',
+                        name: layer,
+                        model: preset.model || 'Default',
+                        upscale: preset.upscale || false,
+                        allow_paid: preset.allow_paid || false,
+                        variety: preset.variety || false,
+                        character_prompts: preset.character_prompts || false,
+                        base_image: preset.base_image || false
+                    };
+                }
+            } else if (typeof layer === 'object' && layer !== null) {
+                // It's an inline preset
+                return {
+                    type: 'inline',
+                    model: layer.model || 'Default',
+                    upscale: layer.upscale || false,
+                    allow_paid: layer.allow_paid || false,
+                    variety: layer.variety || false,
+                    character_prompts: layer.character_prompts || false,
+                    base_image: layer.base_image || false
+                };
+            }
+            return {
+                type: 'unknown',
+                model: 'Default',
+                upscale: false,
+                allow_paid: false,
+                variety: false,
+                character_prompts: false,
+                base_image: false
+            };
+        };
+
+        // Build detailed preset info
+        const detailedPresets = Object.entries(currentPromptConfig.presets || {}).map(
+            ([name, preset]) => extractPresetInfo(name, preset)
+        );
+
+        // Build detailed pipeline info
+        const detailedPipelines = Object.entries(currentPromptConfig.pipelines || {}).map(
+            ([name, pipeline]) => ({
+                name,
+                layer1: {
+                    type: typeof pipeline.layer1 === 'string' ? 'preset' : 'inline',
+                    value: typeof pipeline.layer1 === 'string' ? pipeline.layer1 : 'inline preset',
+                    info: resolveLayerInfo(pipeline.layer1)
+                },
+                layer2: {
+                    type: typeof pipeline.layer2 === 'string' ? 'preset' : 'inline',
+                    value: typeof pipeline.layer2 === 'string' ? pipeline.layer2 : 'inline preset',
+                    info: resolveLayerInfo(pipeline.layer2)
+                },
+                resolution: pipeline.resolution
+            })
+        );
+
         const options = {
             models: Object.fromEntries(modelEntries),
             modelsShort: Object.fromEntries(modelEntriesShort),
@@ -1251,28 +1334,8 @@ app.get('/options', authMiddleware, (req, res) => {
             samplers: Object.fromEntries(Object.keys(Sampler).map(key => [key, Sampler[key]])),
             noiseSchedulers: Object.fromEntries(Object.keys(Noise).map(key => [key, Noise[key]])),
             resolutions: Object.fromEntries(Object.keys(Resolution).map(key => [key, Resolution[key]])),
-            presets: Object.keys(currentPromptConfig.presets),
-            pipelines: (() => {
-                const pipelines = [];
-                if (currentPromptConfig.pipelines) {
-                    Object.keys(currentPromptConfig.pipelines).forEach(name => {
-                        const pipeline = currentPromptConfig.pipelines[name];
-                        pipelines.push({
-                            name: name,
-                            layer1: {
-                                type: typeof pipeline.layer1 === 'string' ? 'preset' : 'inline',
-                                value: typeof pipeline.layer1 === 'string' ? pipeline.layer1 : 'inline preset'
-                            },
-                            layer2: {
-                                type: typeof pipeline.layer2 === 'string' ? 'preset' : 'inline',
-                                value: typeof pipeline.layer2 === 'string' ? pipeline.layer2 : 'inline preset'
-                            },
-                            resolution: pipeline.resolution
-                        });
-                    });
-                }
-                return pipelines;
-            })(),
+            presets: detailedPresets,
+            pipelines: detailedPipelines,
             textReplacements: currentPromptConfig.text_replacements || {},
             cache: {
                 enabled: true,
@@ -2063,6 +2126,9 @@ function extractRelevantFields(meta, filename) {
     // Add mask bias if present in forge data
     if (forgeData.mask_bias !== undefined) {
         result.mask_bias = forgeData.mask_bias;
+    }
+    if (forgeData.mask !== undefined) {
+        result.mask = forgeData.mask;
     }
     
     // Add resolution if it matches, otherwise add height and width
@@ -3174,79 +3240,6 @@ app.get('/pipeline/:name', authMiddleware, async (req, res) => {
 });
 
 
-// GET /pipeline/:name/info (get pipeline information)
-app.get('/pipeline/:name/info', authMiddleware, async (req, res) => {
-    try {
-        const pipelineName = req.params.name;
-        const currentPromptConfig = loadPromptConfig();
-        const pipeline = currentPromptConfig.pipelines[pipelineName];
-        
-        if (!pipeline) {
-            return res.status(404).json({ error: 'Pipeline not found' });
-        }
-        
-        // Helper function to get preset information
-        const getPresetInfo = (layer) => {
-            if (typeof layer === 'string') {
-                // String: get preset info
-                const preset = currentPromptConfig.presets[layer];
-                return {
-                    type: 'preset',
-                    name: layer,
-                    prompt: preset.prompt,
-                    model: preset.model,
-                    resolution: preset.resolution,
-                    variation: preset.variation || null
-                };
-            } else if (typeof layer === 'object' && layer !== null) {
-                // Object: inline preset info
-                return {
-                    type: 'inline',
-                    prompt: layer.prompt,
-                    model: layer.model,
-                    resolution: layer.resolution || null,
-                    variation: layer.variation || null
-                };
-            }
-            return null;
-        };
-        
-        // Get preset information for layer2 (layer1 depends on type)
-        const layer2Info = getPresetInfo(pipeline.layer2);
-        
-        // Handle layer1 based on type
-        let layer1Info;
-        if (pipeline.layer1_type === 'image_path') {
-            layer1Info = {
-                type: 'image_path',
-                filename: pipeline.layer1
-            };
-        } else if (pipeline.layer1_type === 'image_base64') {
-            layer1Info = {
-                type: 'image_base64',
-                data_length: pipeline.layer1.length
-            };
-        } else {
-            // Default: prompt type
-            layer1Info = getPresetInfo(pipeline.layer1);
-        }
-        
-        res.json({
-            name: pipelineName,
-            layer1: layer1Info,
-            layer1_type: pipeline.layer1_type || 'prompt',
-            layer2: layer2Info,
-            pipeline_resolution: pipeline.resolution,
-            mask: pipeline.mask,
-            inpainting_strength: pipeline.inpainting_strength || 0.7
-        });
-        
-    } catch (error) {
-        console.log('❌ Error occurred:', error.message);
-        res.status(500).json({ error: error.message });
-    }
-});
-
 // GET /pipelines (list all pipelines)
 app.get('/pipelines', authMiddleware, async (req, res) => {
     try {
@@ -3396,6 +3389,50 @@ app.get('/pipeline/:name/mask', authMiddleware, async (req, res) => {
     }
 });
 
+// GET /pipeline/:name/raw (returns raw pipeline data without text replacement processing)
+app.get('/pipeline/:name/raw', authMiddleware, async (req, res) => {
+    try {
+        const currentPromptConfig = loadPromptConfig();
+        const p = currentPromptConfig.pipelines[req.params.name];
+        if (!p) {
+            return res.status(404).json({ error: 'Pipeline not found' });
+        }
+        
+        // Helper function to get preset data for layers
+        const getPresetData = (layer) => {
+            if (typeof layer === 'string') {
+                // String: lookup preset by name
+                const preset = currentPromptConfig.presets[layer];
+                if (!preset) {
+                    return null;
+                }
+                return preset;
+            } else if (typeof layer === 'object' && layer !== null) {
+                // Object: inline preset
+                return layer;
+            }
+            return null;
+        };
+        
+        // Get layer data
+        const layer1Data = getPresetData(p.layer1);
+        const layer2Data = getPresetData(p.layer2);
+        
+        // Return the raw pipeline data without processing text replacements
+        res.json({
+            layer1: layer1Data,
+            layer1_type: p.layer1_type || 'prompt',
+            layer2: layer2Data,
+            resolution: p.resolution || '',
+            mask: p.mask || null,
+            inpainting_strength: p.inpainting_strength || 0.7
+        });
+    } catch(e) {
+        console.log('❌ Error occurred:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // POST /:model/prompt (direct model, body)
 app.post('/:model/prompt', authMiddleware, async (req, res) => {
     try {
@@ -3438,10 +3475,6 @@ app.post('/:model/generate', authMiddleware, async (req, res) => {
                 if (!fs.existsSync(filePath)) {
                     return res.status(404).json({ error: 'Image not found' });
                 }
-                
-                // Read the image and convert to base64
-                const imageBuffer = fs.readFileSync(filePath);
-                body.image = imageBuffer.toString('base64');
             }
             
             if (!body.strength) body.strength = 0.8;

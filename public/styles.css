@@ -5023,3 +5023,37 @@ button#layer1SeedToggle {
         width: 100%;
     }
 }
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+    to {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+}
+
+.no-images {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 50px;
+    color: #666;
+    font-size: 1.2rem;
+}
+
+.upscale-btn {
+    font-size: 0.9rem;
+    padding: 8px 16px;
+}

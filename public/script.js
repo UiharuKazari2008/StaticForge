@@ -369,74 +369,68 @@ document.addEventListener('click', e => {
 // Custom Preset Dropdown Functions
 async function renderCustomPresetDropdown(selectedVal) {
   customPresetDropdownMenu.innerHTML = '';
-  
-  // Add presets group
-  if (presets && presets.length > 0) {
+
+  // Use global presets and pipelines loaded from /options
+  if (Array.isArray(presets) && presets.length > 0) {
     // Presets group header
     const presetsGroupHeader = document.createElement('div');
     presetsGroupHeader.className = 'custom-dropdown-group';
     presetsGroupHeader.innerHTML = '<i class="nai-heart-enabled"></i> Presets';
     customPresetDropdownMenu.appendChild(presetsGroupHeader);
-    
+
     for (const preset of presets) {
       const option = document.createElement('div');
-      option.className = 'custom-dropdown-option' + (selectedVal === `preset:${preset}` ? ' selected' : '');
+      option.className = 'custom-dropdown-option' + (selectedVal === `preset:${preset.name}` ? ' selected' : '');
       option.tabIndex = 0;
-      option.dataset.value = `preset:${preset}`;
+      option.dataset.value = `preset:${preset.name}`;
       option.dataset.type = 'preset';
-      
-      // Get preset info for icons
-      const presetInfo = await getPresetInfo(preset);
-      
       option.innerHTML = `
         <div class="preset-option-content">
-          <div class="preset-name">${preset}</div>
+          <div class="preset-name">${preset.name}</div>
           <div class="preset-details">
-            <span class="preset-model">${modelsShort[presetInfo.model.toUpperCase()] || presetInfo.model || 'Default'}</span>
+            <span class="preset-model">${modelsShort[preset.model.toUpperCase()] || preset.model || 'Default'}</span>
             <div class="preset-icons">
-              ${presetInfo.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
-              ${presetInfo.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
-              ${presetInfo.variety ? '<i class="nai-wand-sparkles" title="Variety enabled"></i>' : ''}
-              ${presetInfo.character_prompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
-              ${presetInfo.base_image ? '<i class="fas fa-image" title="Has base image"></i>' : ''}
+              ${preset.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
+              ${preset.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
+              ${preset.variety ? '<i class="nai-wand-sparkles" title="Variety enabled"></i>' : ''}
+              ${preset.character_prompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
+              ${preset.base_image ? '<i class="fas fa-image" title="Has base image"></i>' : ''}
             </div>
+            <span class="preset-resolution">${preset.resolution || 'Default'}</span>
           </div>
-          <div class="preset-resolution">${presetInfo.resolution || 'Default'}</div>
         </div>
       `;
-      
       option.addEventListener('click', () => {
-        selectCustomPreset(`preset:${preset}`);
+        selectCustomPreset(`preset:${preset.name}`);
         closeCustomPresetDropdown();
       });
       option.addEventListener('keydown', e => {
         if (e.key === 'Enter' || e.key === ' ') {
-          selectCustomPreset(`preset:${preset}`);
+          selectCustomPreset(`preset:${preset.name}`);
           closeCustomPresetDropdown();
         }
       });
       customPresetDropdownMenu.appendChild(option);
     }
   }
-  
+
   // Add pipelines group
-  if (pipelines && pipelines.length > 0) {
+  if (Array.isArray(pipelines) && pipelines.length > 0) {
     // Pipelines group header
     const pipelinesGroupHeader = document.createElement('div');
     pipelinesGroupHeader.className = 'custom-dropdown-group';
     pipelinesGroupHeader.innerHTML = '<i class="nai-inpaint"></i> Pipelines';
     customPresetDropdownMenu.appendChild(pipelinesGroupHeader);
-    
+
     for (const pipeline of pipelines) {
       const option = document.createElement('div');
       option.className = 'custom-dropdown-option' + (selectedVal === `pipeline:${pipeline.name}` ? ' selected' : '');
       option.tabIndex = 0;
       option.dataset.value = `pipeline:${pipeline.name}`;
       option.dataset.type = 'pipeline';
-      
-      // Get pipeline info for icons
-      const pipelineInfo = await getPipelineInfo(pipeline.name);
-      
+      // Use layer info from /options
+      const l1 = pipeline.layer1.info;
+      const l2 = pipeline.layer2.info;
       option.innerHTML = `
         <div class="pipeline-option-content">
           <div class="pipeline-name">${pipeline.name}</div>
@@ -452,28 +446,27 @@ async function renderCustomPresetDropdown(selectedVal) {
           </div>
           <div class="pipeline-details">
             <div class="pipeline-models">
-              <span class="pipeline-model">${modelsShort[pipelineInfo.layer1Model.toUpperCase()] || pipelineInfo.layer1Model || 'Default'}</span>
+              <span class="pipeline-model">${modelsShort[l1.model?.toUpperCase()] || l1.model || 'Default'}</span>
               <div class="pipeline-icons">
-                ${pipelineInfo.layer1Upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
-                ${pipelineInfo.layer1AllowPaid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
-                ${pipelineInfo.layer1Variety ? '<i class="nai-wand-sparkles" title="Variety enabled"></i>' : ''}
-                ${pipelineInfo.layer1CharacterPrompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
-                ${pipelineInfo.layer1BaseImage ? '<i class="fas fa-image" title="Has base image"></i>' : ''}
+                ${l1.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
+                ${l1.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
+                ${l1.variety ? '<i class="nai-wand-sparkles" title="Variety enabled"></i>' : ''}
+                ${l1.character_prompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
+                ${l1.base_image ? '<i class="fas fa-image" title="Has base image"></i>' : ''}
               </div>
             </div>
             <div class="pipeline-models">
-              <span class="pipeline-model">${modelsShort[pipelineInfo.layer2Model.toUpperCase()] || pipelineInfo.layer2Model || 'Default'}</span>
+              <span class="pipeline-model">${modelsShort[l2.model?.toUpperCase()] || l2.model || 'Default'}</span>
               <div class="pipeline-icons">
-                ${pipelineInfo.layer2Upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
-                ${pipelineInfo.layer2AllowPaid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
-                ${pipelineInfo.layer2CharacterPrompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
+                ${l2.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
+                ${l2.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
+                ${l2.character_prompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
               </div>
             </div>
           </div>
           <div class="pipeline-resolution">${pipeline.resolution || 'Default'}</div>
         </div>
       `;
-      
       option.addEventListener('click', () => {
         selectCustomPreset(`pipeline:${pipeline.name}`);
         closeCustomPresetDropdown();
@@ -519,81 +512,6 @@ function openCustomPresetDropdown() {
 function closeCustomPresetDropdown() {
   customPresetDropdownMenu.style.display = 'none';
   customPresetDropdownBtn.classList.remove('active');
-}
-
-// Helper functions to get preset and pipeline info
-async function getPresetInfo(presetName) {
-  try {
-    const response = await fetchWithAuth(`/preset/${encodeURIComponent(presetName)}`, {
-      method: 'OPTIONS'
-    });
-    if (!response.ok) throw new Error('Failed to fetch preset details');
-    
-    const result = await response.json();
-    const presetData = result.data;
-    
-    return {
-      model: presetData.model || 'Default',
-      upscale: presetData.upscale || false,
-      allow_paid: presetData.allow_paid || false,
-      variety: presetData.variety || false,
-      character_prompts: presetData.character_prompts || false,
-      base_image: presetData.base_image || false,
-      resolution: presetData.resolution || 'Default'
-    };
-  } catch (error) {
-    console.error('Error fetching preset info:', error);
-    return {
-      model: 'Default',
-      upscale: false,
-      allow_paid: false,
-      variety: false,
-      character_prompts: false,
-      base_image: false,
-      resolution: 'Default'
-    };
-  }
-}
-
-async function getPipelineInfo(pipelineName) {
-  try {
-    const response = await fetchWithAuth(`/pipeline/${encodeURIComponent(pipelineName)}`, {
-      method: 'OPTIONS'
-    });
-    if (!response.ok) throw new Error('Failed to fetch pipeline details');
-    
-    const result = await response.json();
-    const pipelineData = result.data;
-    const layer1Info = result.layer1Info;
-    const layer2Info = result.layer2Info;
-    
-    return {
-      layer1Model: layer1Info?.model || 'Default',
-      layer1Upscale: layer1Info?.upscale || false,
-      layer1AllowPaid: layer1Info?.allow_paid || false,
-      layer1Variety: layer1Info?.variety || false,
-      layer1CharacterPrompts: layer1Info?.character_prompts || false,
-      layer1BaseImage: layer1Info?.base_image || false,
-      layer2Model: layer2Info?.model || 'Default',
-      layer2Upscale: layer2Info?.upscale || false,
-      layer2AllowPaid: layer2Info?.allow_paid || false,
-      layer2CharacterPrompts: layer2Info?.character_prompts || false
-    };
-  } catch (error) {
-    console.error('Error fetching pipeline info:', error);
-    return {
-      layer1Model: 'Default',
-      layer1Upscale: false,
-      layer1AllowPaid: false,
-      layer1Variety: false,
-      layer1CharacterPrompts: false,
-      layer1BaseImage: false,
-      layer2Model: 'Default',
-      layer2Upscale: false,
-      layer2AllowPaid: false,
-      layer2CharacterPrompts: false
-    };
-  }
 }
 
 // Event listeners for custom preset dropdown
@@ -694,7 +612,7 @@ function selectManualResolution(value, group) {
   }
   
   // Check if we're in a pipeline edit context and update mask bias visibility
-  if (window.currentPipelineEdit) {
+  if (window.currentPipelineEdit && !window.currentMaskData) {
     const pipelineName = window.currentPipelineEdit.pipelineName;
     const pipelinePresetRes = getPipelinePresetResolution(pipelineName);
     if (pipelinePresetRes) {
@@ -717,6 +635,8 @@ function selectManualResolution(value, group) {
         }
       }
     }
+  } else {
+    manualMaskBiasGroup.style.display = 'none';
   }
   
   // Trigger any listeners (e.g., updateGenerateButton or manual form update)
@@ -729,6 +649,7 @@ function openManualResolutionDropdown() {
   manualResolutionDropdownMenu.style.display = 'block';
   manualResolutionDropdownBtn.classList.add('active');
 }
+
 function closeManualResolutionDropdown() {
   manualResolutionDropdownMenu.style.display = 'none';
   manualResolutionDropdownBtn.classList.remove('active');
@@ -752,7 +673,7 @@ function updateCustomResolutionValue() {
       manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
       
       // Check if we're in a pipeline edit context and update mask bias visibility
-      if (window.currentPipelineEdit) {
+      if (window.currentPipelineEdit && !window.currentMaskData) {
         const pipelineName = window.currentPipelineEdit.pipelineName;
         const pipelinePresetRes = getPipelinePresetResolution(pipelineName);
         if (pipelinePresetRes) {
@@ -913,6 +834,7 @@ function openManualSamplerDropdown() {
   manualSamplerDropdownMenu.style.display = 'block';
   manualSamplerDropdownBtn.classList.add('active');
 }
+
 function closeManualSamplerDropdown() {
   manualSamplerDropdownMenu.style.display = 'none';
   manualSamplerDropdownBtn.classList.remove('active');
@@ -974,6 +896,7 @@ function openManualNoiseSchedulerDropdown() {
   manualNoiseSchedulerDropdownMenu.style.display = 'block';
   manualNoiseSchedulerDropdownBtn.classList.add('active');
 }
+
 function closeManualNoiseSchedulerDropdown() {
   manualNoiseSchedulerDropdownMenu.style.display = 'none';
   manualNoiseSchedulerDropdownBtn.classList.remove('active');
@@ -1220,6 +1143,7 @@ function openManualModelDropdown() {
   manualModelDropdownMenu.style.display = 'block';
   manualModelDropdownBtn.classList.add('active');
 }
+
 function closeManualModelDropdown() {
   manualModelDropdownMenu.style.display = 'none';
   manualModelDropdownBtn.classList.remove('active');
@@ -2958,7 +2882,7 @@ function loadMetadataIntoManualForm(metadata, image) {
     selectManualModel(modelValue, '');
     
     // Handle resolution with custom dropdown
-    let resolutionValue = metadata.resolution || 'normal_portrait';
+    let resolutionValue = (metadata.resolution || 'normal_portrait').toLowerCase();
     
     // If we have a resolution value, convert to lowercase for dropdown compatibility
     if (resolutionValue) {
@@ -3273,9 +3197,8 @@ function showManualModal() {
             // Load preset for editing
             loadPresetIntoManualForm(selectedValue);
         } else if (type === 'pipeline') {
-            // Pipelines can't be edited, show message and clear form
-            showError('Pipelines cannot be edited. Please select a preset to edit.');
-            clearManualForm();
+            // Load pipeline for limited editing (layer2 only)
+            loadPipelineIntoManualForm(selectedValue);
         }
     } else {
         // Clear form for new generation
@@ -3286,7 +3209,7 @@ function showManualModal() {
     manualPrompt.focus();
     
     // Ensure resolution is properly set if it's empty
-    const resolutionValue = document.getElementById('manualResolution').value;
+    const resolutionValue = document.getElementById('manualResolution').value.toLowerCase();
     if (!resolutionValue) {
         selectManualResolution('normal_portrait', '');
     }
@@ -3417,10 +3340,7 @@ async function loadPresetIntoManualForm(presetValue) {
             throw new Error('Invalid preset value format');
         }
         
-        // Only handle presets, not pipelines
-        if (type !== 'preset') {
-            throw new Error('Can only edit presets, not pipelines');
-        }
+
         
         const response = await fetchWithAuth(`/preset/${name}/raw`);
         if (response.ok) {
@@ -3439,7 +3359,7 @@ async function loadPresetIntoManualForm(presetValue) {
             manualPrompt.value = data.prompt || '';
             manualUc.value = data.uc || '';
             selectManualModel(data.model || 'v4_5', '');
-            selectManualResolution(data.resolution || 'normal_portrait', '');
+            selectManualResolution((data.resolution || 'normal_portrait').toLowerCase(), '');
             manualSteps.value = data.steps || undefined;
             manualGuidance.value = data.guidance || undefined;
             manualRescale.value = data.rescale || undefined;
@@ -3546,528 +3466,471 @@ async function loadPresetIntoManualForm(presetValue) {
     updateManualPriceDisplay();
 }
 
+// Load pipeline into manual form for limited editing (layer2 only)
+async function loadPipelineIntoManualForm(pipelineValue) {
+    try {
+        // Extract the actual pipeline name from the dropdown value format
+        // Format is either "preset:name" or "pipeline:name"
+        const [type, pipelineName] = pipelineValue.split(':');
+        
+        if (!type || !pipelineName) {
+            throw new Error('Invalid pipeline value format');
+        }
+        
+        // Only handle pipelines, not presets
+        if (type !== 'pipeline') {
+            throw new Error('Can only edit pipelines, not presets');
+        }
+        
+        const response = await fetchWithAuth(`/pipeline/${pipelineName}/raw`);
+        if (response.ok) {
+            const data = await response.json();
+
+            // Preprocess sampler and noiseScheduler to meta format for dropdowns
+            if (data.layer2.sampler) {
+                const samplerObj = getSamplerByRequest(data.layer2.sampler) || getSamplerByMeta(data.layer2.sampler);
+                data.layer2.sampler = samplerObj ? samplerObj.meta : '';
+            }
+            if (data.layer2.noiseScheduler) {
+                const noiseObj = getNoiseByRequest(data.layer2.noiseScheduler) || getNoiseByMeta(data.layer2.noiseScheduler);
+                data.layer2.noiseScheduler = noiseObj ? noiseObj.meta : '';
+            }
+            // Fill form with raw pipeline data (no text replacement processing)
+            manualPrompt.value = data.layer2.prompt || '';
+            manualUc.value = data.layer2.uc || '';
+            selectManualModel(data.layer2.model || 'v4_5', '');
+            selectManualResolution((data.resolution || 'normal_portrait').toLowerCase(), '');
+            manualSteps.value = data.layer2.steps || undefined;
+            manualGuidance.value = data.layer2.guidance || undefined;
+            manualRescale.value = data.layer2.rescale || undefined;
+            manualSeed.value = data.layer2.seed || undefined;
+            selectManualSampler(data.layer2.sampler || 'k_euler_ancestral');
+            selectManualNoiseScheduler(data.layer2.noiseScheduler || 'karras');
+            
+            // Set pipeline name for saving (use the actual pipeline name, not the full value)
+            manualPresetName.value = pipelineName;
+            
+            // Set upscale toggle button state
+            const upscaleState = data.layer2.upscale ? 'on' : 'off';
+            manualUpscale.setAttribute('data-state', upscaleState);
+            
+            // Set auto position button state
+            const autoPositionBtn = document.getElementById('autoPositionBtn');
+            autoPositionBtn.setAttribute('data-state', data.layer2.use_coords ? 'on' : 'off');
+            
+            // Load character prompts if they exist
+            if (data.layer2.characterPrompts && Array.isArray(data.layer2.characterPrompts)) {
+                const useCoords = data.layer2.use_coords;
+                loadCharacterPrompts(data.layer2.characterPrompts, useCoords);
+            } else {
+                clearCharacterPrompts();
+            }
+            
+            // Load variation data if it exists
+            if (data.layer2.variation && data.layer2.variation.file) {
+                // Set up variation context
+                window.currentVariationEdit = {
+                    sourceFilename: data.layer2.variation.file,
+                    isVariationEdit: true
+                };
+                
+                // Show variation image
+                const variationImage = document.getElementById('manualVariationImage');
+                if (variationImage) {
+                    variationImage.src = `/images/${data.layer2.variation.file}`;
+                    variationImage.style.display = 'block';
+                    
+                    // Show mask editor button
+                    updateMaskEditorButton();
+                }
+                
+                // Load mask data if it exists
+                if (data.layer2.variation.mask) {
+                    window.currentMaskData = data.layer2.variation.mask;
+                    updateInpaintButtonState();
+                    updateMaskPreview();
+                }
+                
+                // Set strength and noise values
+                if (data.layer2.variation.strength !== null && data.layer2.variation.strength !== undefined) {
+                    const strengthInput = document.getElementById('manualStrength');
+                    const strengthValue = document.getElementById('manualStrengthValue');
+                    if (strengthInput && strengthValue) {
+                        strengthInput.value = data.layer2.variation.strength;
+                        strengthValue.textContent = data.layer2.variation.strength;
+                        // Mark that strength value was loaded from preset
+                        window.strengthValueLoaded = true;
+                    }
+                }
+                
+                if (data.layer2.variation.noise !== null && data.layer2.variation.noise !== undefined) {
+                    const noiseInput = document.getElementById('manualNoise');
+                    const noiseValue = document.getElementById('manualNoiseValue');
+                    if (noiseInput && noiseValue) {
+                        noiseInput.value = data.layer2.variation.noise;
+                        noiseValue.textContent = data.layer2.variation.noise;
+                    }
+                }
+                
+                // Show variation-specific fields
+                const variationRow = document.getElementById('manualVariationRow');
+                if (variationRow) {
+                    variationRow.style.display = 'flex';
+                }
+            } else {
+                // Clear variation context
+                window.currentVariationEdit = null;
+                
+                // Hide variation image
+                const variationImage = document.getElementById('manualVariationImage');
+                if (variationImage) {
+                    variationImage.style.display = 'none';
+                    variationImage.src = '';
+                }
+                
+                // Hide variation-specific fields
+                const variationRow = document.getElementById('manualVariationRow');
+                if (variationRow) {
+                    variationRow.style.display = 'none';
+                }
+            }
+        } else {
+            throw new Error('Failed to load pipeline data');
+        }
+    
+        // Update price display after loading pipeline
+        updateManualPriceDisplay();
+        
+        // Set up pipeline editing context
+        window.currentPipelineEdit = {
+            isPipelineEdit: true,
+            pipelineName: pipelineName,
+            layer1Seed: null // Will be set if available from metadata
+        };
+    
+        // Show preset name field but disable it for pipeline editing
+        const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
+        const saveButton = document.getElementById('manualSaveBtn');
+        
+        if (presetNameGroup) {
+            presetNameGroup.style.display = 'block';
+            manualPresetName.disabled = true;
+            manualPresetName.style.opacity = '0.6';
+        }
+        if (saveButton) {
+            saveButton.style.display = 'none';
+        }
+        
+            // Show layer1 seed toggle for pipelines
+    layer1SeedToggle.style.display = 'block';
+    layer1SeedToggle.setAttribute('data-state', 'off');
+} catch (error) {
+    console.error('Error loading pipeline:', error);
+    showError('Failed to load pipeline data');
+}
+}
+
 // Handle manual generation
+// Utility: Collect common form values
+function collectManualFormValues() {
+    return {
+        model: manualModel.value,
+        prompt: manualPrompt.value.trim(),
+        resolutionValue: manualResolution.value,
+        uc: manualUc.value.trim(),
+        seed: manualSeed.value.trim(),
+        sampler: manualSampler.value,
+        noiseScheduler: manualNoiseScheduler.value,
+        steps: parseInt(manualSteps.value) || 25,
+        guidance: parseFloat(manualGuidance.value) || 5.0,
+        rescale: parseFloat(manualRescale.value) || 0.0,
+        upscale: manualUpscale.getAttribute('data-state') === 'on',
+        presetName: manualPresetName.value ? manualPresetName.value.trim() : "",
+        autoPositionBtn: document.getElementById('autoPositionBtn'),
+        container: document.getElementById('characterPromptsContainer'),
+        characterItems: document.getElementById('characterPromptsContainer') ? document.getElementById('characterPromptsContainer').querySelectorAll('.character-prompt-item') : [],
+        characterPrompts: getCharacterPrompts()
+    };
+}
+
+// Utility: Add shared fields to request body
+function addSharedFieldsToRequestBody(requestBody, values) {
+    if (values.uc) requestBody.uc = values.uc;
+    if (values.seed) requestBody.seed = parseInt(values.seed);
+    if (values.sampler) {
+        const samplerObj = getSamplerByMeta(values.sampler);
+        requestBody.sampler = samplerObj ? samplerObj.request : values.sampler;
+    }
+    if (values.noiseScheduler) {
+        const noiseObj = getNoiseByMeta(values.noiseScheduler);
+        requestBody.noiseScheduler = noiseObj ? noiseObj.request : values.noiseScheduler;
+    }
+    if (values.upscale) requestBody.upscale = true;
+    if (typeof varietyEnabled !== "undefined" && varietyEnabled) {
+        requestBody.variety = true;
+        varietyEnabled = false;
+        const varietyBtn = document.getElementById('varietyBtn');
+        if (varietyBtn) varietyBtn.setAttribute('data-state', 'off');
+    }
+    // Character prompts
+    if (values.characterPrompts && values.characterPrompts.length > 0) {
+        requestBody.allCharacterPrompts = values.characterPrompts;
+        requestBody.use_coords = false;
+        if (values.autoPositionBtn && values.autoPositionBtn.getAttribute('data-state') !== 'on') {
+            if (Array.from(values.characterItems).some(item => item.dataset.positionX && item.dataset.positionY)) {
+                requestBody.use_coords = true;
+            }
+        }
+    }
+}
+
+// Utility: Show image and confetti, refresh gallery, etc.
+function handleImageResult(blob, successMsg, clearContextFn) {
+    const imageUrl = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = function() {
+        createConfetti();
+        showSuccess(successMsg);
+        if (typeof clearContextFn === "function") clearContextFn();
+        setTimeout(async () => {
+            await loadGallery();
+            if (typeof loadBalance === "function") await loadBalance();
+            if (allImages.length > 0) {
+                const newImage = allImages[0];
+                let imageToShow;
+                if (newImage.pipeline_upscaled || newImage.pipeline) {
+                    let filenameToShow = newImage.original;
+                    if (newImage.pipeline_upscaled) filenameToShow = newImage.pipeline_upscaled;
+                    else if (newImage.pipeline) filenameToShow = newImage.pipeline;
+                    else if (newImage.upscaled) filenameToShow = newImage.upscaled;
+                    imageToShow = {
+                        filename: filenameToShow,
+                        base: newImage.base,
+                        upscaled: newImage.upscaled,
+                        pipeline: newImage.pipeline,
+                        pipeline_upscaled: newImage.pipeline_upscaled
+                    };
+                } else {
+                    imageToShow = {
+                        filename: newImage.upscaled || newImage.original,
+                        base: newImage.base,
+                        upscaled: newImage.upscaled
+                    };
+                }
+                showLightbox(imageToShow);
+            }
+        }, 1000);
+    };
+    img.src = imageUrl;
+}
+
 async function handleManualGeneration(e) {
     e.preventDefault();
-    
+
     if (!isAuthenticated) {
         showError('Please login first');
         return;
     }
-    
-    // Check if this is a pipeline edit
+
     const isPipelineEdit = window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit;
-    
-    // Check if this is a variation edit
     const isVariationEdit = window.currentVariationEdit && window.currentVariationEdit.isVariationEdit;
-    
-    // Check current request type
     const currentRequestType = window.currentRequestType;
-    
-    if (isPipelineEdit) {
-        // Handle pipeline editing
-        
-        // Validate required fields for pipeline editing
-        const prompt = manualPrompt.value.trim();
-        const resolutionValue = manualResolution.value;
-        
-        if (!prompt || !resolutionValue) {
-            showError('Please fill in all required fields (Prompt, Resolution)');
-            return;
+    const values = collectManualFormValues();
+
+    // Helper: Validate required fields
+    function validateFields(requiredFields, msg) {
+        for (const field of requiredFields) {
+            if (!values[field]) {
+                showError(msg);
+                return false;
+            }
         }
-        
-        // Process resolution value (handle custom resolution)
+        return true;
+    }
+
+    // Helper: Get processed resolution
+    function getResolution(resolutionValue) {
         const resolutionData = processResolutionValue(resolutionValue);
-        const resolution = resolutionData.isCustom ? `${resolutionData.width}x${resolutionData.height}` : resolutionData.resolution;
-        
-        // Capture all form values BEFORE hiding the modal (which clears the form)
-        const ucValue = manualUc.value.trim();
-        const seedValue = manualSeed.value.trim();
-        const samplerValue = manualSampler.value;
-        const noiseSchedulerValue = manualNoiseScheduler.value;
-        const stepsValue = parseInt(manualSteps.value) || 25;
-        const guidanceValue = parseFloat(manualGuidance.value) || 5.0;
-        const rescaleValue = parseFloat(manualRescale.value) || 0.0;
-        const upscaleValue = manualUpscale.getAttribute('data-state') === 'on';
-        const modelValue = manualModel.value; // Capture model value before modal is hidden
-        const useLayer1Seed = layer1SeedToggle.getAttribute('data-state') === 'on'; // Capture toggle state
-        
+        return resolutionData.isCustom ? `${resolutionData.width}x${resolutionData.height}` : resolutionData.resolution;
+    }
+
+    if (isPipelineEdit) {
+        // Pipeline Edit
+        if (!validateFields(['prompt', 'resolutionValue'], 'Please fill in all required fields (Prompt, Resolution)')) return;
+        const resolution = getResolution(values.resolutionValue);
+
         // Capture pipeline context BEFORE hiding modal (which clears it)
         let pipelineContext = { ...window.currentPipelineEdit };
-        
+        const useLayer1Seed = layer1SeedToggle.getAttribute('data-state') === 'on';
+
         showLoading(true, 'Generating pipeline...');
-        hideManualModal();
-        
+
         try {
-            // Build layer2 configuration from form values
+            // Build layer2 config
             const layer2Config = {
-                prompt: prompt,
-                model: modelValue, // Use the captured model value
+                prompt: values.prompt,
+                model: values.model,
                 resolution: resolution,
-                steps: stepsValue,
-                guidance: guidanceValue,
-                rescale: rescaleValue,
+                steps: values.steps,
+                guidance: values.guidance,
+                rescale: values.rescale,
                 allow_paid: true
             };
-            
-            if (ucValue) {
-                layer2Config.uc = ucValue;
-            }
-            
-            if (seedValue) {
-                layer2Config.seed = parseInt(seedValue);
-            }
-            
-            if (samplerValue) {
-                const samplerObj = getSamplerByMeta(samplerValue);
-                layer2Config.sampler = samplerObj ? samplerObj.request : samplerValue;
-            }
-            
-            if (noiseSchedulerValue) {
-                const noiseObj = getNoiseByMeta(noiseSchedulerValue);
-                layer2Config.noiseScheduler = noiseObj ? noiseObj.request : noiseSchedulerValue;
-            }
-            
-            // Add upscale if enabled
-            if (upscaleValue) {
-                layer2Config.upscale = true;
-            }
-            
-            // Add variety if enabled
-            if (varietyEnabled) {
-                layer2Config.variety = true;
-                varietyEnabled = false;
-                if (document.getElementById('varietyBtn')) document.getElementById('varietyBtn').setAttribute('data-state', 'off');
-            }
-            
-            // Build pipeline request body using captured pipeline context
+            addSharedFieldsToRequestBody(layer2Config, values);
+
+            // Build pipeline request body
             const pipelineRequestBody = {
                 preset: pipelineContext.pipelineName,
                 layer2: layer2Config,
                 resolution: resolution
             };
-            
-            // Check if layer1 seed toggle is enabled and we have a layer1 seed
             if (useLayer1Seed && pipelineContext.layer1Seed) {
                 pipelineRequestBody.layer1_seed = pipelineContext.layer1Seed;
             }
-            
-            // Add mask bias if dropdown is visible and has a value
-            if (manualMaskBiasDropdown && manualMaskBiasDropdown.style.display !== 'none' && manualMaskBiasHidden) {
+            if (window.currentMaskData) {
+                pipelineRequestBody.mask = window.currentMaskData.replace('data:image/png;base64,', '');
+            } else if (typeof manualMaskBiasDropdown !== "undefined" && manualMaskBiasDropdown && 
+                manualMaskBiasDropdown.style.display !== 'none' && manualMaskBiasHidden) {
                 pipelineRequestBody.mask_bias = parseInt(manualMaskBiasHidden.value);
             }
-            
+
             const pipelineUrl = `/pipeline/generate`;
             const generateResponse = await fetch(pipelineUrl, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(pipelineRequestBody)
             });
 
-            if (!generateResponse.ok) {
-                throw new Error(`Pipeline generation failed: ${generateResponse.statusText}`);
-            }
-
+            if (!generateResponse.ok) throw new Error(`Pipeline generation failed: ${generateResponse.statusText}`);
             const blob = await generateResponse.blob();
-            const imageUrl = URL.createObjectURL(blob);
-            
-            // Create a temporary image to get dimensions
-            const img = new Image();
-            img.onload = function() {
-                createConfetti();
-                showSuccess('Pipeline edited successfully!');
-                
-                // Clear pipeline context
-                window.currentPipelineEdit = null;
-                
-                // Refresh gallery and show the new image in lightbox
-                setTimeout(async () => {
-                    await loadGallery();
-                    
-                    // Refresh balance after successful pipeline generation
-                    await loadBalance();
-                    
-                    // Find the newly generated image (should be the first one)
-                    if (allImages.length > 0) {
-                        const newImage = allImages[0]; // Newest image is first
-                        let filenameToShow = newImage.original;
-                        if (newImage.pipeline_upscaled) {
-                            filenameToShow = newImage.pipeline_upscaled;
-                        } else if (newImage.pipeline) {
-                            filenameToShow = newImage.pipeline;
-                        } else if (newImage.upscaled) {
-                            filenameToShow = newImage.upscaled;
-                        }
-                        
-                        const imageToShow = {
-                            filename: filenameToShow,
-                            base: newImage.base,
-                            upscaled: newImage.upscaled,
-                            pipeline: newImage.pipeline,
-                            pipeline_upscaled: newImage.pipeline_upscaled
-                        };
-                        showLightbox(imageToShow);
-                    }
-                }, 1000);
-            };
-            img.src = imageUrl;
-            
+            handleImageResult(blob, 'Pipeline edited successfully!', () => { window.currentPipelineEdit = null; });
         } catch (error) {
             console.error('Pipeline edit generation error:', error);
             showError('Pipeline generation failed. Please try again.');
-            // Clear pipeline context on error
             window.currentPipelineEdit = null;
         } finally {
             showLoading(false);
         }
     } else if (isVariationEdit || currentRequestType === 'variation' || (currentRequestType === 'reroll' && isVariationEdit)) {
-        // Handle variation edit reroll (including reroll mode for variations with base images)
-        // Validate required fields for variation editing
-        const model = manualModel.value;
-        const prompt = manualPrompt.value.trim();
-        const resolutionValue = manualResolution.value;
-        
-        if (!model || !prompt || !resolutionValue) {
-            showError('Please fill in all required fields (Model, Prompt, Resolution)');
-            return;
-        }
-        
-        // Process resolution value (handle custom resolution)
-        const resolutionData = processResolutionValue(resolutionValue);
-        const resolution = resolutionData.isCustom ? `${resolutionData.width}x${resolutionData.height}` : resolutionData.resolution;
-        
-        // Capture all form values BEFORE hiding the modal (which clears the form)
-        const ucValue = manualUc.value.trim();
-        const seedValue = manualSeed.value.trim();
-        const samplerValue = manualSampler.value;
-        const noiseSchedulerValue = manualNoiseScheduler.value;
-        const stepsValue = parseInt(manualSteps.value) || 25;
-        const guidanceValue = parseFloat(manualGuidance.value) || 5.0;
-        const rescaleValue = parseFloat(manualRescale.value) || 0.0;
-        const upscaleValue = manualUpscale.getAttribute('data-state') === 'on';
-        const modelValue = manualModel.value; // Capture model value before modal is hidden
-        
-        // Handle uploaded image data - use base64 for frontend uploads, filename for existing images
+        // Variation Edit/Reroll
+        if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
+        const resolution = getResolution(values.resolutionValue);
+
+        // Prepare requestBody
+        const requestBody = {
+            strength: parseFloat(document.getElementById('manualStrength').value) || 0.8,
+            noise: parseFloat(document.getElementById('manualNoise').value) || 0.1,
+            prompt: values.prompt,
+            resolution: resolution,
+            steps: values.steps,
+            guidance: values.guidance,
+            rescale: values.rescale,
+            allow_paid: true
+        };
+
+        // Handle uploaded image data
         if (window.uploadedImageData) {
-            // This is a frontend upload - resize images to selected resolution before sending
             if (window.uploadedImageData.isBiasMode) {
-                // For bias mode, resize the original uncropped image data for both image and metadata
                 if (window.uploadedImageData.originalDataUrl) {
-                    // Check if this is a newly uploaded image or loaded from metadata
                     if (window.uploadedImageData.isClientSide) {
-                        // New upload - resize the image
                         const resizedDataUrl = await resizeImageToResolution(window.uploadedImageData.originalDataUrl);
                         const base64Data = resizedDataUrl.split(',')[1];
                         requestBody.image = base64Data;
-                        // Store the resized original image for metadata
                         requestBody.unbiased_original_image = base64Data;
                     } else {
-                        // Loaded from metadata - use as is (already resized)
                         const base64Data = window.uploadedImageData.originalDataUrl.split(',')[1];
                         requestBody.image = base64Data;
                         requestBody.unbiased_original_image = base64Data;
                     }
                 }
             } else {
-                // For normal mode, resize the processed image data
                 if (window.uploadedImageData.dataUrl) {
-                    // Check if this is a newly uploaded image or loaded from metadata
                     if (window.uploadedImageData.isClientSide) {
-                        // New upload - resize the image
                         const resizedDataUrl = await resizeImageToResolution(window.uploadedImageData.dataUrl);
                         const base64Data = resizedDataUrl.split(',')[1];
                         requestBody.image = base64Data;
                     } else {
-                        // Loaded from metadata - use as is (already resized)
                         const base64Data = window.uploadedImageData.dataUrl.split(',')[1];
                         requestBody.image = base64Data;
                     }
                 }
             }
-            // Mark as frontend upload
             requestBody.is_frontend_upload = true;
         } else if (window.currentVariationEdit && window.currentVariationEdit.sourceFilename) {
-            // For editing existing images, use the filename
             requestBody.image = window.currentVariationEdit.sourceFilename;
         }
-        
-        // Check if we have image data
+
         if (!requestBody.image) {
             showError('No source image found for variation');
             return;
         }
-        
+
+        // Add bias mode fields if applicable
+        if (window.uploadedImageData && window.uploadedImageData.isBiasMode) {
+            if (window.uploadedImageData.originalFilename) {
+                requestBody.unbiased_original_image = window.uploadedImageData.originalFilename;
+            }
+            requestBody.original_image_bias = window.uploadedImageData.bias;
+        }
+        // If this is a frontend upload being edited, mark it as such
+        if (window.uploadedImageData && !window.uploadedImageData.isClientSide) {
+            requestBody.is_frontend_upload = true;
+        }
+
+        addSharedFieldsToRequestBody(requestBody, values);
+
+        hideManualModal();
         showLoading(true, 'Generating variation...');
-        
+
         try {
-            // Capture strength and noise values right before sending request
-            const strength = parseFloat(document.getElementById('manualStrength').value) || 0.8;
-            const noise = parseFloat(document.getElementById('manualNoise').value) || 0.1;
-            
-            // Build request body for variation
-            const requestBody = {
-                strength: strength,
-                noise: noise,
-                prompt: prompt,
-                resolution: resolution,
-                steps: stepsValue,
-                guidance: guidanceValue,
-                rescale: rescaleValue,
-                allow_paid: true
-            };
-            
-            // Add bias mode fields if applicable
-            if (window.uploadedImageData && window.uploadedImageData.isBiasMode) {
-                if (window.uploadedImageData.originalFilename) {
-                    requestBody.unbiased_original_image = window.uploadedImageData.originalFilename;
-                }
-                requestBody.original_image_bias = window.uploadedImageData.bias;
-            }
-            
-            // If this is a frontend upload being edited, mark it as such
-            if (window.uploadedImageData && !window.uploadedImageData.isClientSide) {
-                requestBody.is_frontend_upload = true;
-            }
-            
-            if (ucValue) {
-                requestBody.uc = ucValue;
-            }
-            
-            if (seedValue) {
-                requestBody.seed = parseInt(seedValue);
-            }
-            
-            if (samplerValue) {
-                const samplerObj = getSamplerByMeta(samplerValue);
-                requestBody.sampler = samplerObj ? samplerObj.request : samplerValue;
-            }
-            
-            if (noiseSchedulerValue) {
-                const noiseObj = getNoiseByMeta(noiseSchedulerValue);
-                requestBody.noiseScheduler = noiseObj ? noiseObj.request : noiseSchedulerValue;
-            }
-            
-            // Add upscale if enabled
-            if (upscaleValue) {
-                requestBody.upscale = true;
-            }
-            
-            // Add variety if enabled
-            if (varietyEnabled) {
-                requestBody.variety = true;
-                varietyEnabled = false;
-                if (document.getElementById('varietyBtn')) document.getElementById('varietyBtn').setAttribute('data-state', 'off');
-            }
-            
-            // Add character prompts if available
-            const characterPrompts = getCharacterPrompts();
-            if (characterPrompts.length > 0) {
-                requestBody.allCharacterPrompts = characterPrompts;
-                requestBody.use_coords = false;
-                const container = document.getElementById('characterPromptsContainer');
-                const characterItems = container.querySelectorAll('.character-prompt-item');
-                const autoPositionBtn = document.getElementById('autoPositionBtn');
-                const isAutoPosition = autoPositionBtn.getAttribute('data-state') === 'on';
-                if (!isAutoPosition) {
-                    if (Array.from(characterItems).some(item => item.dataset.positionX && item.dataset.positionY)) {
-                        requestBody.use_coords = true;
-                    }
-                }
-            }
-            
-            // Generate variation
-            const url = `/${modelValue.toLowerCase()}/generate`;
+            const url = `/${values.model.toLowerCase()}/generate`;
             const response = await fetch(url, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody)
             });
-            
-            if (!response.ok) {
-                throw new Error(`Variation generation failed: ${response.statusText}`);
-            }
 
+            if (!response.ok) throw new Error(`Variation generation failed: ${response.statusText}`);
             const blob = await response.blob();
-            const imageUrl = URL.createObjectURL(blob);
-            
-            // Create a temporary image to get dimensions
-            const img = new Image();
-            img.onload = function() {
-                createConfetti();
-                showSuccess('Variation generated successfully!');
-                
-                // Clear variation context
-                window.currentVariationEdit = null;
-                
-                // Refresh gallery and show the new image in lightbox
-                setTimeout(async () => {
-                    await loadGallery();
-                    
-                    // Refresh balance after successful variation generation
-                    await loadBalance();
-                    
-                    // Find the newly generated image (should be the first one)
-                    if (allImages.length > 0) {
-                        const newImage = allImages[0]; // Newest image is first
-                        const imageToShow = {
-                            filename: newImage.upscaled || newImage.original,
-                            base: newImage.base,
-                            upscaled: newImage.upscaled
-                        };
-                        showLightbox(imageToShow);
-                    }
-                }, 1000);
-            };
-            img.src = imageUrl;
-            
+            handleImageResult(blob, 'Variation generated successfully!', () => { window.currentVariationEdit = null; });
         } catch (error) {
             console.error('Variation generation error:', error);
             showError('Variation generation failed. Please try again.');
-            // Clear variation context on error
             window.currentVariationEdit = null;
         } finally {
             showLoading(false);
             hideManualModal();
         }
     } else if (currentRequestType === 'reroll' || !currentRequestType) {
-        // Handle regular manual generation or reroll (existing logic)
-        // Validate required fields
-        const model = manualModel.value;
-        const prompt = manualPrompt.value.trim();
-        const resolutionValue = manualResolution.value;
-        
-        if (!model || !prompt || !resolutionValue) {
-            showError('Please fill in all required fields (Model, Prompt, Resolution)');
-            return;
-        }
-        
-        // Process resolution value (handle custom resolution)
-        const resolutionData = processResolutionValue(resolutionValue);
-        const resolution = resolutionData.isCustom ? `${resolutionData.width}x${resolutionData.height}` : resolutionData.resolution;
-        
-        // Capture all form values BEFORE hiding the modal (which clears the form)
-        const ucValue = manualUc.value.trim();
-        const seedValue = manualSeed.value.trim();
-        const samplerValue = manualSampler.value;
-        const noiseSchedulerValue = manualNoiseScheduler.value;
-        const stepsValue = parseInt(manualSteps.value) || 25;
-        const guidanceValue = parseFloat(manualGuidance.value) || 5.0;
-        const rescaleValue = parseFloat(manualRescale.value) || 0.0;
-        const upscaleValue = manualUpscale.getAttribute('data-state') === 'on';
-        const modelValue = manualModel.value; // Capture model value before modal is hidden
-        const presetName = manualPresetName.value.trim(); // Capture preset name before modal is hidden
-        const autoPositionBtn = document.getElementById('autoPositionBtn');
-        const isAutoPosition = autoPositionBtn.getAttribute('data-state') === 'on';
-        const container = document.getElementById('characterPromptsContainer');
-        const characterItems = container.querySelectorAll('.character-prompt-item');
-        const characterPrompts = getCharacterPrompts();        
+        // Regular manual generation or reroll
+        if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
+        const resolution = getResolution(values.resolutionValue);
+
+        const requestBody = {
+            prompt: values.prompt,
+            resolution: resolution,
+            steps: values.steps,
+            guidance: values.guidance,
+            rescale: values.rescale,
+            allow_paid: true
+        };
+        if (values.presetName) requestBody.preset = values.presetName;
+
+        addSharedFieldsToRequestBody(requestBody, values);
+
         showLoading(true, 'Generating image...');
-        
+
         try {
-            // Build request body using captured values
-            const requestBody = {
-                prompt: prompt,
-                resolution: resolution,
-                steps: stepsValue,
-                guidance: guidanceValue,
-                rescale: rescaleValue,
-                allow_paid: true
-            };
-            
-            // Add preset name if provided
-            if (presetName) {
-                requestBody.preset = presetName;
-            }
-            
-            if (ucValue) {
-                requestBody.uc = ucValue;
-            } else {
-            }
-            
-            if (seedValue) {
-                requestBody.seed = parseInt(seedValue);
-            }
-            
-            if (samplerValue) {
-                const samplerObj = getSamplerByMeta(samplerValue);
-                requestBody.sampler = samplerObj ? samplerObj.request : samplerValue;
-            }
-            
-            if (noiseSchedulerValue) {
-                const noiseObj = getNoiseByMeta(noiseSchedulerValue);
-                requestBody.noiseScheduler = noiseObj ? noiseObj.request : noiseSchedulerValue;
-            }
-            
-            // Add upscale if enabled
-            if (upscaleValue) {
-                requestBody.upscale = true;
-            }
-            
-            // Add variety if enabled
-            if (varietyEnabled) {
-                requestBody.variety = true;
-                varietyEnabled = false;
-                if (document.getElementById('varietyBtn')) document.getElementById('varietyBtn').setAttribute('data-state', 'off');
-            }
-            
-             if (characterPrompts.length > 0) {
-                // Send all character data for forge storage
-                requestBody.allCharacterPrompts = characterPrompts;
-                requestBody.use_coords = false;
-                
-                // Check for manual positions
-                if (!isAutoPosition) {
-                    if (Array.from(characterItems).some(item => item.dataset.positionX && item.dataset.positionY)) {
-                        requestBody.use_coords = true;
-                    }
-                }
-            }
-            
-            // Generate image
-            const url = `/${modelValue.toLowerCase()}/generate`;
+            const url = `/${values.model.toLowerCase()}/generate`;
             const response = await fetch(url, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody)
             });
-            
-            if (!response.ok) {
-                throw new Error(`Generation failed: ${response.statusText}`);
-            }
 
+            if (!response.ok) throw new Error(`Generation failed: ${response.statusText}`);
             const blob = await response.blob();
-            const imageUrl = URL.createObjectURL(blob);
-            
-            // Create a temporary image to get dimensions
-            const img = new Image();
-            img.onload = function() {
-                createConfetti();
-                showSuccess('Image generated successfully!');
-                
-                // Refresh gallery and show the new image in lightbox
-                setTimeout(async () => {
-                    await loadGallery();
-                    
-                    // Find the newly generated image (should be the first one)
-                    if (allImages.length > 0) {
-                        const newImage = allImages[0]; // Newest image is first
-                        const imageToShow = {
-                            filename: newImage.upscaled || newImage.original,
-                            base: newImage.base,
-                            upscaled: newImage.upscaled
-                        };
-                        showLightbox(imageToShow);
-                    }
-                }, 1000);
-            };
-            img.src = imageUrl;
-            
+            handleImageResult(blob, 'Image generated successfully!');
         } catch (error) {
             console.error('Manual generation error:', error);
             showError('Image generation failed. Please try again.');
@@ -4926,10 +4789,6 @@ async function generateImage() {
             if (upscale) params.append('upscale', 'true');
             if (resolution) params.append('resolution', resolution);
             if (variety) params.append('variety', 'true');
-            // Add mask_bias if dropdown is visible
-            if (maskBiasDropdown && maskBiasDropdown.style.display !== 'none') {
-                params.append('mask_bias', maskBiasDropdown.value);
-            }
             url = `/pipeline/${name}?${params.toString()}`;
         } else {
             throw new Error('Invalid selection type');
@@ -5037,7 +4896,7 @@ function formatResolution(resolution) {
     if (!resolution) return '';
     
     // Try to find the resolution in our global array first
-    const res = RESOLUTIONS.find(r => r.value === resolution);
+    const res = RESOLUTIONS.find(r => r.value.toLowerCase() === resolution.toLowerCase());
     if (res) {
         return res.display;
     }
@@ -5998,46 +5857,6 @@ function showError(message) {
     }, 4000);
 }
 
-// Add CSS animations for notifications
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes slideIn {
-        from {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-        to {
-            transform: translateX(0);
-            opacity: 1;
-        }
-    }
-    
-    @keyframes slideOut {
-        from {
-            transform: translateX(0);
-            opacity: 1;
-        }
-        to {
-            transform: translateX(100%);
-            opacity: 0;
-        }
-    }
-    
-    .no-images {
-        grid-column: 1 / -1;
-        text-align: center;
-        padding: 50px;
-        color: #666;
-        font-size: 1.2rem;
-    }
-    
-    .upscale-btn {
-        font-size: 0.9rem;
-        padding: 8px 16px;
-    }
-`;
-document.head.appendChild(style); 
-
 // Update lightbox controls based on image type
 function updateLightboxControls(image) {
     const downloadBtn = document.getElementById('downloadBtn');
@@ -6735,30 +6554,34 @@ function getResolutionFromDisplay(displayText) {
 
 // Show/hide mask bias dropdown based on pipeline/resolution
 function updateMaskBiasDropdown() {
-    if (!presetSelect || !resolutionSelect || !maskBiasDropdown) return;
+    if (!presetSelect || !resolutionSelect || !manualMaskBiasGroup) return;
+    if (window.currentMaskData) {
+        manualMaskBiasGroup.style.display = 'none';
+        return;
+    }
     const selectedValue = presetSelect.value;
     const [type, name] = selectedValue.split(':');
     if (type !== 'pipeline' || !name) {
-        maskBiasDropdown.style.display = 'none';
+        manualMaskBiasGroup.style.display = 'none';
         return;
     }
     const pipelinePresetRes = getPipelinePresetResolution(name);
     const selectedRes = resolutionSelect.value;
     if (!pipelinePresetRes || !selectedRes) {
-        maskBiasDropdown.style.display = 'none';
+        manualMaskBiasGroup.style.display = 'none';
         return;
     }
     const presetDims = getDimensionsFromResolution(pipelinePresetRes);
     const selectedDims = getDimensionsFromResolution(selectedRes);
     if (!presetDims || !selectedDims) {
-        maskBiasDropdown.style.display = 'none';
+        manualMaskBiasGroup.style.display = 'none';
         return;
     }
     // Show dropdown only if aspect ratio or size does not match
     if (presetDims.width !== selectedDims.width || presetDims.height !== selectedDims.height) {
-        maskBiasDropdown.style.display = '';
+        manualMaskBiasGroup.style.display = '';
     } else {
-        maskBiasDropdown.style.display = 'none';
+        manualMaskBiasGroup.style.display = 'none';
     }
 }
 
@@ -7407,11 +7230,6 @@ async function processUploadedImageWithBias(file, dataUrl) {
         showSuccess('Image processed with bias mode!');
     }
 }
-
-// This function is no longer needed since we're using base64 data directly
-// async function uploadImageAndGetFilename(file) {
-//     // Removed - we now send base64 data directly to the server
-// }
 
 // Resize image to match selected resolution (shortest edge becomes largest edge)
 function resizeImageToResolution(dataUrl) {
@@ -8740,6 +8558,9 @@ function saveMask() {
         
         showSuccess('Mask saved successfully!');
         closeMaskEditor();
+        
+        // Hide mask bias dropdown when mask is created/edited
+        updateMaskBiasDropdown();
     } catch (error) {
         console.error('Error saving mask:', error);
         showError('Failed to save mask');
@@ -8769,6 +8590,9 @@ function deleteMask() {
     
     showSuccess('Mask deleted successfully!');
     closeMaskEditor();
+    
+    // Show mask bias dropdown if pipeline has a mask and no current mask
+    updateMaskBiasDropdown();
 }
 
 // Close mask editor
@@ -8792,7 +8616,10 @@ function openMaskEditor() {
     
     // Get the source image dimensions
     const variationImage = document.getElementById('manualVariationImage');
-    if (!variationImage || !variationImage.src) {
+    const isPipelineEdit = window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit;
+    
+    // For pipeline editing, we don't need a variation image
+    if (!isPipelineEdit && (!variationImage || !variationImage.src)) {
         showError('No source image available');
         return;
     }
@@ -8867,10 +8694,19 @@ function openMaskEditor() {
     // Set the background image in the container with exact canvas dimensions
     const canvasContainer = document.querySelector('.mask-editor-canvas-container');
     if (canvasContainer) {
-        canvasContainer.style.setProperty('--background-image', `url(${variationImage.src})`);
-        canvasContainer.style.setProperty('--background-width', `${canvasWidth * displayScale}px`);
-        canvasContainer.style.setProperty('--background-height', `${canvasHeight * displayScale}px`);
-        canvasContainer.style.setProperty('--background-size', `${canvasWidth * displayScale}px ${canvasHeight * displayScale}px`);
+        if (isPipelineEdit || !variationImage || !variationImage.src) {
+            // For pipeline editing or when no variation image, use a blank background
+            canvasContainer.style.setProperty('--background-image', 'none');
+            canvasContainer.style.setProperty('--background-width', `${canvasWidth * displayScale}px`);
+            canvasContainer.style.setProperty('--background-height', `${canvasHeight * displayScale}px`);
+            canvasContainer.style.setProperty('--background-size', `${canvasWidth * displayScale}px ${canvasHeight * displayScale}px`);
+        } else {
+            // Use the variation image as background
+            canvasContainer.style.setProperty('--background-image', `url(${variationImage.src})`);
+            canvasContainer.style.setProperty('--background-width', `${canvasWidth * displayScale}px`);
+            canvasContainer.style.setProperty('--background-height', `${canvasHeight * displayScale}px`);
+            canvasContainer.style.setProperty('--background-size', `${canvasWidth * displayScale}px ${canvasHeight * displayScale}px`);
+        }
     }
     
     // Initialize canvas with transparent background (black will be drawn as needed)
@@ -8970,6 +8806,15 @@ function updateInpaintButtonState() {
 function updateMaskPreview() {
     const maskPreviewCanvas = document.getElementById('maskPreviewCanvas');
     const variationImage = document.getElementById('manualVariationImage');
+    const isPipelineEdit = window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit;
+    
+    // For pipeline editing, don't show mask preview since there's no variation image
+    if (isPipelineEdit) {
+        if (maskPreviewCanvas) {
+            maskPreviewCanvas.style.display = 'none';
+        }
+        return;
+    }
     
     if (!maskPreviewCanvas || !variationImage || !window.currentMaskData) {
         if (maskPreviewCanvas) {
