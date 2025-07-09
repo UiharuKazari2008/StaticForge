@@ -378,6 +378,12 @@ button#varietyBtn {
     --glass-layer-4: rgba(255, 255, 255, 0.15);
     --glass-layer-5: rgba(255, 255, 255, 0.2);
     
+    --glass-layer-dark-1: rgb(69 69 69 / 13%);
+    --glass-layer-dark-2: rgb(69 69 69 / 22%);
+    --glass-layer-dark-3: rgb(69 69 69 / 33%);
+    --glass-layer-dark-4: rgb(69 69 69 / 44%);
+    --glass-layer-dark-5: rgb(69 69 69 / 66%);
+    
     /* Glass Borders */
     --glass-border-1: rgba(255, 255, 255, 0.1);
     --glass-border-2: rgba(255, 255, 255, 0.15);
@@ -933,12 +939,12 @@ button.round-button {
     top: 0;
     width: 100%;
     height: 100%;
-    background: var(--bg-overlay);
+    background: transparent;
     overflow: hidden;
 }
 
 .modal-content {
-    background: var(--glass-layer-5);
+    background: var(--glass-layer-dark-5);
     backdrop-filter: blur(var(--glass-blur-5));
     border: 1px solid var(--glass-border-5);
     margin: 5% auto;
@@ -2549,13 +2555,6 @@ textarea:focus {
     -webkit-appearance: none;
     -webkit-tap-highlight-color: transparent;
     border: 1px solid rgba(255, 255, 255, 1);
-}
-
-
-/* Ensure existing button styles are preserved but with the new border */
-.btn-secondary,
-.btn-danger {
-    border: none;
 }
 
 .btn-primary {

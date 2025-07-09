@@ -277,484 +277,368 @@ let currentCharacterAutocompleteTarget = null;
 let characterSearchResults = [];
 let characterData = null;
 
-function renderCustomResolutionDropdown(selectedVal) {
-  customResolutionDropdownMenu.innerHTML = '';
-  resolutionGroups.forEach(group => {
-    // Group header
-    const groupHeader = document.createElement('div');
-    groupHeader.className = 'custom-dropdown-group';
-    groupHeader.textContent = group.group;
-    customResolutionDropdownMenu.appendChild(groupHeader);
-    // Options
-    group.options.forEach(opt => {
-      const option = document.createElement('div');
-      option.className = 'custom-dropdown-option' + (selectedVal === opt.value ? ' selected' : '');
-      option.tabIndex = 0;
-      option.dataset.value = opt.value;
-      option.dataset.group = group.group;
-      option.innerHTML = `<span>${opt.name}${opt.dims ? ' <span style="opacity:0.7;font-size:0.95em;">(' + opt.dims + ')</span>' : ''}</span>`;
-      option.addEventListener('click', () => {
-        selectCustomResolution(opt.value, group.group);
-        closeCustomResolutionDropdown();
-      });
-      option.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          selectCustomResolution(opt.value, group.group);
-          closeCustomResolutionDropdown();
-        }
-      });
-      customResolutionDropdownMenu.appendChild(option);
+const RESOLUTION_GROUPS = {
+    'Standard': ['1024x1024', '1152x896', '896x1152', '1216x832', '832x1216', '1344x768', '768x1344', '1536x640', '640x1536'],
+    'Portrait': ['1024x1280', '1024x1536', '1024x1792'],
+    'Landscape': ['1280x1024', '1536x1024', '1792x1024']
+};
+
+function renderGroupedDropdown(menu, groups, selectHandler, closeHandler, selectedVal, renderOptionContent) {
+    menu.innerHTML = '';
+    groups.forEach(group => {
+        const groupHeader = document.createElement('div');
+        groupHeader.className = 'custom-dropdown-group';
+        groupHeader.textContent = group.group;
+        menu.appendChild(groupHeader);
+        group.options.forEach(opt => {
+            const option = document.createElement('div');
+            option.className = 'custom-dropdown-option' + (selectedVal === opt.value ? ' selected' : '');
+            option.tabIndex = 0;
+            option.dataset.value = opt.value;
+            option.dataset.group = group.group;
+            option.innerHTML = renderOptionContent(opt, group);
+            const action = () => {
+                selectHandler(opt.value, group.group);
+                closeHandler();
+            };
+            option.addEventListener('click', action);
+            option.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    action();
+                }
+            });
+            menu.appendChild(option);
+        });
     });
-  });
+}
+
+const resolutionOptionRenderer = (opt, group) => `<span>${opt.name}${opt.dims ? ' <span style="opacity:0.7;font-size:0.95em;">(' + opt.dims + ')</span>' : ''}</span>`;
+
+
+function closeCustomResolutionDropdown() {
+    closeDropdown(customResolutionDropdownMenu, customResolutionDropdownBtn);
+}
+
+function renderCustomResolutionDropdown(selectedVal) {
+    renderGroupedDropdown(customResolutionDropdownMenu, resolutionGroups, selectCustomResolution, closeCustomResolutionDropdown, selectedVal, resolutionOptionRenderer);
 }
 
 function selectCustomResolution(value, group) {
-  selectedResolution = value;
-  
-  // If group is not provided, find it automatically
-  if (!group) {
-    for (const g of resolutionGroups) {
-      const found = g.options.find(o => o.value === value);
-      if (found) {
-        group = g.group;
-        break;
-      }
+    selectedResolution = value;
+    
+    // If group is not provided, find it automatically
+    if (!group) {
+        for (const g of resolutionGroups) {
+            const found = g.options.find(o => o.value === value);
+            if (found) {
+                group = g.group;
+                break;
+            }
+        }
     }
-  }
-  
-  selectedGroup = group;
-  
-  // Update button display
-  const groupObj = resolutionGroups.find(g => g.group === group);
-  const optObj = groupObj ? groupObj.options.find(o => o.value === value) : null;
-  if (optObj) {
-    customResolutionSelected.innerHTML = `${optObj.name}${groupObj.badge ? '<span class="custom-dropdown-badge">' + groupObj.badge + '</span>' : ''}`;
-  } else {
-    customResolutionSelected.textContent = 'Select resolution...';
-  }
-  // Sync with hidden select for compatibility
-  const hiddenSelect = document.getElementById('resolutionSelect');
-  if (hiddenSelect) hiddenSelect.value = value;
-  // Trigger any listeners (e.g., updateGenerateButton)
-  if (typeof updateGenerateButton === 'function') updateGenerateButton();
+    
+    selectedGroup = group;
+    
+    // Update button display
+    const groupObj = resolutionGroups.find(g => g.group === group);
+    const optObj = groupObj ? groupObj.options.find(o => o.value === value) : null;
+    if (optObj) {
+        customResolutionSelected.innerHTML = `${optObj.name}${groupObj.badge ? '<span class="custom-dropdown-badge">' + groupObj.badge + '</span>' : ''}`;
+    } else {
+        customResolutionSelected.textContent = 'Select resolution...';
+    }
+    // Sync with hidden select for compatibility
+    const hiddenSelect = document.getElementById('resolutionSelect');
+    if (hiddenSelect) hiddenSelect.value = value;
+    // Trigger any listeners (e.g., updateGenerateButton)
+    if (typeof updateGenerateButton === 'function') updateGenerateButton();
 }
 
-function openCustomResolutionDropdown() {
-  customResolutionDropdownMenu.style.display = 'block';
-  customResolutionDropdownBtn.classList.add('active');
-}
-function closeCustomResolutionDropdown() {
-  customResolutionDropdownMenu.style.display = 'none';
-  customResolutionDropdownBtn.classList.remove('active');
+function openDropdown(menu, button) {
+    menu.style.display = 'block';
+    if (button) button.classList.add('active');
 }
 
-customResolutionDropdownBtn.addEventListener('click', e => {
-  e.stopPropagation();
-  if (customResolutionDropdownMenu.style.display === 'block') {
-    closeCustomResolutionDropdown();
-  } else {
-    renderCustomResolutionDropdown(selectedResolution);
-    openCustomResolutionDropdown();
-  }
-});
+function closeDropdown(menu, button) {
+    menu.style.display = 'none';
+    if (button) button.classList.remove('active');
+}
 
-document.addEventListener('click', e => {
-  if (!customResolutionDropdown.contains(e.target)) {
-    closeCustomResolutionDropdown();
-  }
-});
+function setupDropdown(container, button, menu, render, getSelectedValue) {
+    if (!container || !button || !menu) return;
+    button.addEventListener('click', async e => {
+        e.stopPropagation();
+        if (menu.style.display === 'block') {
+            closeDropdown(menu, button);
+        } else {
+            await render(getSelectedValue());
+            openDropdown(menu, button);
+        }
+    });
+
+    document.addEventListener('click', e => {
+        if (!container.contains(e.target)) {
+            closeDropdown(menu, button);
+        }
+    });
+}
+
+setupDropdown(customResolutionDropdown, customResolutionDropdownBtn, customResolutionDropdownMenu, renderCustomResolutionDropdown, () => selectedResolution);
 
 // Custom Preset Dropdown Functions
 async function renderCustomPresetDropdown(selectedVal) {
-  customPresetDropdownMenu.innerHTML = '';
+    customPresetDropdownMenu.innerHTML = '';
 
-  // Use global presets and pipelines loaded from /options
-  if (Array.isArray(presets) && presets.length > 0) {
-    // Presets group header
-    const presetsGroupHeader = document.createElement('div');
-    presetsGroupHeader.className = 'custom-dropdown-group';
-    presetsGroupHeader.innerHTML = '<i class="nai-heart-enabled"></i> Presets';
-    customPresetDropdownMenu.appendChild(presetsGroupHeader);
+    // Use global presets and pipelines loaded from /options
+    if (Array.isArray(presets) && presets.length > 0) {
+        // Presets group header
+        const presetsGroupHeader = document.createElement('div');
+        presetsGroupHeader.className = 'custom-dropdown-group';
+        presetsGroupHeader.innerHTML = '<i class="nai-heart-enabled"></i> Presets';
+        customPresetDropdownMenu.appendChild(presetsGroupHeader);
 
-    for (const preset of presets) {
-      const option = document.createElement('div');
-      option.className = 'custom-dropdown-option' + (selectedVal === `preset:${preset.name}` ? ' selected' : '');
-      option.tabIndex = 0;
-      option.dataset.value = `preset:${preset.name}`;
-      option.dataset.type = 'preset';
-      option.innerHTML = `
-        <div class="preset-option-content">
-          <div class="preset-name">${preset.name}</div>
-          <div class="preset-details">
-            <span class="preset-model">${modelsShort[preset.model.toUpperCase()] || preset.model || 'Default'}</span>
-            <div class="preset-icons">
-              ${preset.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
-              ${preset.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
-              ${preset.variety ? '<i class="nai-wand-sparkles" title="Variety enabled"></i>' : ''}
-              ${preset.character_prompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
-              ${preset.base_image ? '<i class="fas fa-image" title="Has base image"></i>' : ''}
-            </div>
-            <span class="preset-resolution">${preset.resolution || 'Default'}</span>
-          </div>
-        </div>
-      `;
-      option.addEventListener('click', () => {
-        selectCustomPreset(`preset:${preset.name}`);
-        closeCustomPresetDropdown();
-      });
-      option.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          selectCustomPreset(`preset:${preset.name}`);
-          closeCustomPresetDropdown();
+        for (const preset of presets) {
+            const option = document.createElement('div');
+            option.className = 'custom-dropdown-option' + (selectedVal === `preset:${preset.name}` ? ' selected' : '');
+            option.tabIndex = 0;
+            option.dataset.value = `preset:${preset.name}`;
+            option.dataset.type = 'preset';
+            option.innerHTML = `
+                <div class="preset-option-content">
+                    <div class="preset-name">${preset.name}</div>
+                    <div class="preset-details">
+                        <span class="preset-model">${modelsShort[preset.model.toUpperCase()] || preset.model || 'Default'}</span>
+                        <div class="preset-icons">
+                            ${preset.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
+                            ${preset.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
+                            ${preset.variety ? '<i class="nai-wand-sparkles" title="Variety enabled"></i>' : ''}
+                            ${preset.character_prompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
+                            ${preset.base_image ? '<i class="fas fa-image" title="Has base image"></i>' : ''}
+                        </div>
+                        <span class="preset-resolution">${preset.resolution || 'Default'}</span>
+                    </div>
+                </div>
+            `;
+            option.addEventListener('click', () => {
+                selectCustomPreset(`preset:${preset.name}`);
+                closeCustomPresetDropdown();
+            });
+            option.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    selectCustomPreset(`preset:${preset.name}`);
+                    closeCustomPresetDropdown();
+                }
+            });
+            customPresetDropdownMenu.appendChild(option);
         }
-      });
-      customPresetDropdownMenu.appendChild(option);
     }
-  }
 
-  // Add pipelines group
-  if (Array.isArray(pipelines) && pipelines.length > 0) {
-    // Pipelines group header
-    const pipelinesGroupHeader = document.createElement('div');
-    pipelinesGroupHeader.className = 'custom-dropdown-group';
-    pipelinesGroupHeader.innerHTML = '<i class="nai-inpaint"></i> Pipelines';
-    customPresetDropdownMenu.appendChild(pipelinesGroupHeader);
+    // Add pipelines group
+    if (Array.isArray(pipelines) && pipelines.length > 0) {
+        // Pipelines group header
+        const pipelinesGroupHeader = document.createElement('div');
+        pipelinesGroupHeader.className = 'custom-dropdown-group';
+        pipelinesGroupHeader.innerHTML = '<i class="nai-inpaint"></i> Pipelines';
+        customPresetDropdownMenu.appendChild(pipelinesGroupHeader);
 
-    for (const pipeline of pipelines) {
-      const option = document.createElement('div');
-      option.className = 'custom-dropdown-option' + (selectedVal === `pipeline:${pipeline.name}` ? ' selected' : '');
-      option.tabIndex = 0;
-      option.dataset.value = `pipeline:${pipeline.name}`;
-      option.dataset.type = 'pipeline';
-      // Use layer info from /options
-      const l1 = pipeline.layer1.info;
-      const l2 = pipeline.layer2.info;
-      option.innerHTML = `
-        <div class="pipeline-option-content">
-          <div class="pipeline-name">${pipeline.name}</div>
-          <div class="pipeline-layers">
-            <div class="pipeline-layer">
-              <span class="layer-type">${pipeline.layer1.type}</span>
-              <span class="layer-value">${pipeline.layer1.value}</span>
-            </div>
-            <div class="pipeline-layer">
-              <span class="layer-type">${pipeline.layer2.type}</span>
-              <span class="layer-value">${pipeline.layer2.value}</span>
-            </div>
-          </div>
-          <div class="pipeline-details">
-            <div class="pipeline-models">
-              <span class="pipeline-model">${modelsShort[l1.model?.toUpperCase()] || l1.model || 'Default'}</span>
-              <div class="pipeline-icons">
-                ${l1.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
-                ${l1.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
-                ${l1.variety ? '<i class="nai-wand-sparkles" title="Variety enabled"></i>' : ''}
-                ${l1.character_prompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
-                ${l1.base_image ? '<i class="fas fa-image" title="Has base image"></i>' : ''}
-              </div>
-            </div>
-            <div class="pipeline-models">
-              <span class="pipeline-model">${modelsShort[l2.model?.toUpperCase()] || l2.model || 'Default'}</span>
-              <div class="pipeline-icons">
-                ${l2.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
-                ${l2.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
-                ${l2.character_prompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
-              </div>
-            </div>
-          </div>
-          <div class="pipeline-resolution">${pipeline.resolution || 'Default'}</div>
-        </div>
-      `;
-      option.addEventListener('click', () => {
-        selectCustomPreset(`pipeline:${pipeline.name}`);
-        closeCustomPresetDropdown();
-      });
-      option.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          selectCustomPreset(`pipeline:${pipeline.name}`);
-          closeCustomPresetDropdown();
+        for (const pipeline of pipelines) {
+            const option = document.createElement('div');
+            option.className = 'custom-dropdown-option' + (selectedVal === `pipeline:${pipeline.name}` ? ' selected' : '');
+            option.tabIndex = 0;
+            option.dataset.value = `pipeline:${pipeline.name}`;
+            option.dataset.type = 'pipeline';
+            // Use layer info from /options
+            const l1 = pipeline.layer1.info;
+            const l2 = pipeline.layer2.info;
+            option.innerHTML = `
+                <div class="pipeline-option-content">
+                    <div class="pipeline-name">${pipeline.name}</div>
+                    <div class="pipeline-layers">
+                        <div class="pipeline-layer">
+                            <span class="layer-type">${pipeline.layer1.type}</span>
+                            <span class="layer-value">${pipeline.layer1.value}</span>
+                        </div>
+                        <div class="pipeline-layer">
+                            <span class="layer-type">${pipeline.layer2.type}</span>
+                            <span class="layer-value">${pipeline.layer2.value}</span>
+                        </div>
+                    </div>
+                    <div class="pipeline-details">
+                        <div class="pipeline-models">
+                            <span class="pipeline-model">${modelsShort[l1.model?.toUpperCase()] || l1.model || 'Default'}</span>
+                            <div class="pipeline-icons">
+                                ${l1.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
+                                ${l1.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
+                                ${l1.variety ? '<i class="nai-wand-sparkles" title="Variety enabled"></i>' : ''}
+                                ${l1.character_prompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
+                                ${l1.base_image ? '<i class="fas fa-image" title="Has base image"></i>' : ''}
+                            </div>
+                        </div>
+                        <div class="pipeline-models">
+                            <span class="pipeline-model">${modelsShort[l2.model?.toUpperCase()] || l2.model || 'Default'}</span>
+                            <div class="pipeline-icons">
+                                ${l2.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
+                                ${l2.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
+                                ${l2.character_prompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pipeline-resolution">${pipeline.resolution || 'Default'}</div>
+                </div>
+            `;
+            option.addEventListener('click', () => {
+                selectCustomPreset(`pipeline:${pipeline.name}`);
+                closeCustomPresetDropdown();
+            });
+            option.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    selectCustomPreset(`pipeline:${pipeline.name}`);
+                    closeCustomPresetDropdown();
+                }
+            });
+            customPresetDropdownMenu.appendChild(option);
         }
-      });
-      customPresetDropdownMenu.appendChild(option);
     }
-  }
 }
 
 function selectCustomPreset(value) {
-  selectedPreset = value;
-  
-  // Update button display
-  if (value.startsWith('preset:')) {
-    const presetName = value.replace('preset:', '');
-    customPresetSelected.innerHTML = `<i class="nai-heart-enabled"></i> ${presetName}`;
-  } else if (value.startsWith('pipeline:')) {
-    const pipelineName = value.replace('pipeline:', '');
-    customPresetSelected.innerHTML = `<i class="nai-inpaint"></i> ${pipelineName}`;
-  } else {
-    customPresetSelected.innerHTML = '<i class="nai-heart-enabled"></i> Select preset or pipeline...';
-  }
-  
-  // Sync with hidden select for compatibility
-  const hiddenSelect = document.getElementById('presetSelect');
-  if (hiddenSelect) hiddenSelect.value = value;
-  
-  // Trigger any listeners (e.g., updateGenerateButton)
-  if (typeof updateGenerateButton === 'function') updateGenerateButton();
+    selectedPreset = value;
+    
+    // Update button display
+    if (value.startsWith('preset:')) {
+        const presetName = value.replace('preset:', '');
+        customPresetSelected.innerHTML = `<i class="nai-heart-enabled"></i> ${presetName}`;
+    } else if (value.startsWith('pipeline:')) {
+        const pipelineName = value.replace('pipeline:', '');
+        customPresetSelected.innerHTML = `<i class="nai-inpaint"></i> ${pipelineName}`;
+    } else {
+        customPresetSelected.innerHTML = '<i class="nai-heart-enabled"></i> Select preset or pipeline...';
+    }
+    
+    // Sync with hidden select for compatibility
+    const hiddenSelect = document.getElementById('presetSelect');
+    if (hiddenSelect) hiddenSelect.value = value;
+    
+    // Trigger any listeners (e.g., updateGenerateButton)
+    if (typeof updateGenerateButton === 'function') updateGenerateButton();
 }
 
 function openCustomPresetDropdown() {
-  customPresetDropdownMenu.style.display = 'block';
-  customPresetDropdownBtn.classList.add('active');
+    openDropdown(customPresetDropdownMenu, customPresetDropdownBtn);
 }
 
 function closeCustomPresetDropdown() {
-  customPresetDropdownMenu.style.display = 'none';
-  customPresetDropdownBtn.classList.remove('active');
+    closeDropdown(customPresetDropdownMenu, customPresetDropdownBtn);
 }
 
-// Event listeners for custom preset dropdown
-customPresetDropdownBtn.addEventListener('click', async e => {
-  e.stopPropagation();
-  if (customPresetDropdownMenu.style.display === 'block') {
-    closeCustomPresetDropdown();
-  } else {
-    await renderCustomPresetDropdown(selectedPreset);
-    openCustomPresetDropdown();
-  }
-});
-
-document.addEventListener('click', e => {
-  if (!customPresetDropdown.contains(e.target)) {
-    closeCustomPresetDropdown();
-  }
-});
-
+setupDropdown(customPresetDropdown, customPresetDropdownBtn, customPresetDropdownMenu, renderCustomPresetDropdown, () => selectedPreset);
 
 function renderManualResolutionDropdown(selectedVal) {
-  manualResolutionDropdownMenu.innerHTML = '';
-  resolutionGroups.forEach(group => {
-    // Group header
-    const groupHeader = document.createElement('div');
-    groupHeader.className = 'custom-dropdown-group';
-    groupHeader.textContent = group.group;
-    manualResolutionDropdownMenu.appendChild(groupHeader);
-    // Options
-    group.options.forEach(opt => {
-      const option = document.createElement('div');
-      option.className = 'custom-dropdown-option' + (selectedVal === opt.value ? ' selected' : '');
-      option.tabIndex = 0;
-      option.dataset.value = opt.value;
-      option.dataset.group = group.group;
-      option.innerHTML = `<span>${opt.name}${opt.dims ? ' <span style="opacity:0.7;font-size:0.95em;">(' + opt.dims + ')</span>' : ''}</span>`;
-      option.addEventListener('click', () => {
-        selectManualResolution(opt.value, group.group);
-        closeManualResolutionDropdown();
-      });
-      option.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          selectManualResolution(opt.value, group.group);
-          closeManualResolutionDropdown();
-        }
-      });
-      manualResolutionDropdownMenu.appendChild(option);
-    });
-  });
+    renderGroupedDropdown(manualResolutionDropdownMenu, resolutionGroups, selectManualResolution, closeManualResolutionDropdown, selectedVal, resolutionOptionRenderer);
 }
 
 function selectManualResolution(value, group) {
-  manualSelectedResolution = value;
-  
-  // If group is not provided, find it automatically
-  if (!group) {
-    for (const g of resolutionGroups) {
-      const found = g.options.find(o => o.value === value);
-      if (found) {
-        group = g.group;
-        break;
-      }
-    }
-  }
-  
-  manualSelectedGroup = group;
-  
-  // Handle custom resolution mode
-  if (value === 'custom') {
-    manualResolutionDropdown.style.display = 'none';
-    manualCustomResolution.style.display = 'flex';
-    manualCustomResolutionBtn.setAttribute('data-state', 'on');
-    // Set default values if empty
-    if (!manualWidth.value) manualWidth.value = '1024';
-    if (!manualHeight.value) manualHeight.value = '1024';
-    // Sanitize the default values
-    sanitizeCustomDimensions();
-  } else {
-    manualResolutionDropdown.style.display = 'block';
-    manualCustomResolution.style.display = 'none';
-    manualCustomResolutionBtn.setAttribute('data-state', 'off');
-  }
-  
-  // Update button display
-  const groupObj = resolutionGroups.find(g => g.group === group);
-  const optObj = groupObj ? groupObj.options.find(o => o.value === value) : null;
-  if (optObj) {
-    manualResolutionSelected.innerHTML = `${optObj.name}${groupObj.badge ? '<span class="custom-dropdown-badge">' + groupObj.badge + '</span>' : ''}`;
-  } else {
-    manualResolutionSelected.textContent = 'Select resolution...';
-  }
-  // Sync with hidden input for compatibility
-  if (manualResolutionHidden) manualResolutionHidden.value = value;
-  
-  // Update mask bias dropdown to reflect new resolution
-  if (manualMaskBiasSelected) {
-    selectManualMaskBias(manualSelectedMaskBias);
-  }
-  
-  // Check if we're in a pipeline edit context and update mask bias visibility
-  if (window.currentPipelineEdit && !window.currentMaskData) {
-    const pipelineName = window.currentPipelineEdit.pipelineName;
-    const pipelinePresetRes = getPipelinePresetResolution(pipelineName);
-    if (pipelinePresetRes) {
-      const presetDims = getDimensionsFromResolution(pipelinePresetRes);
-      const selectedDims = getDimensionsFromResolution(value);
-      if (presetDims && selectedDims) {
-        // Calculate aspect ratios
-        const presetAspectRatio = presetDims.width / presetDims.height;
-        const selectedAspectRatio = selectedDims.width / selectedDims.height;
-        
-        // Show/hide mask bias dropdown based on aspect ratio difference
-        if (Math.abs(presetAspectRatio - selectedAspectRatio) > 0.01) {
-          if (manualMaskBiasGroup) {
-            manualMaskBiasGroup.style.display = 'block';
-          }
-        } else {
-          if (manualMaskBiasGroup) {
-            manualMaskBiasGroup.style.display = 'none';
-          }
+    manualSelectedResolution = value;
+    
+    // If group is not provided, find it automatically
+    if (!group) {
+        for (const g of resolutionGroups) {
+            const found = g.options.find(o => o.value === value);
+            if (found) {
+                group = g.group;
+                break;
+            }
         }
-      }
     }
-  } else {
-    manualMaskBiasGroup.style.display = 'none';
-  }
-  
-  // Trigger any listeners (e.g., updateGenerateButton or manual form update)
-  if (typeof updateGenerateButton === 'function') updateGenerateButton();
-  // Update price display
-  updateManualPriceDisplay();
-
-  // --- ADDED: Refresh preview image if in bias mode ---
-  if (window.uploadedImageData && window.uploadedImageData.isBiasMode) {
-    // Reset bias to center (2) when resolution changes
-    const resetBias = 2;
-    if (imageBiasHidden != null) {
-      imageBiasHidden.value = resetBias.toString();
+    
+    manualSelectedGroup = group;
+    
+    // Handle custom resolution mode
+    if (value === 'custom') {
+        manualResolutionDropdown.style.display = 'none';
+        manualCustomResolution.style.display = 'flex';
+        manualCustomResolutionBtn.setAttribute('data-state', 'on');
+        // Set default values if empty
+        if (!manualWidth.value) manualWidth.value = '1024';
+        if (!manualHeight.value) manualHeight.value = '1024';
+        // Sanitize the default values
+        sanitizeCustomDimensions();
+    } else {
+        manualResolutionDropdown.style.display = 'block';
+        manualCustomResolution.style.display = 'none';
+        manualCustomResolutionBtn.setAttribute('data-state', 'off');
     }
-    window.uploadedImageData.bias = resetBias;
     
-    // Re-crop and update preview with reset bias
-    cropImageToResolution(window.uploadedImageData.originalDataUrl, resetBias).then(croppedDataUrl => {
-      const variationImage = document.getElementById('manualVariationImage');
-      if (variationImage) {
-        variationImage.src = croppedDataUrl;
-        variationImage.style.display = 'block';
-      }
-      window.uploadedImageData.dataUrl = croppedDataUrl;
-    });
-    // Only show bias dropdown if not already visible
-    if (imageBiasGroup && imageBiasGroup.style.display !== 'block') {
-      showImageBiasDropdown();
+    // Update button display
+    const groupObj = resolutionGroups.find(g => g.group === group);
+    const optObj = groupObj ? groupObj.options.find(o => o.value === value) : null;
+    if (optObj) {
+        manualResolutionSelected.innerHTML = `${optObj.name}${groupObj.badge ? '<span class="custom-dropdown-badge">' + groupObj.badge + '</span>' : ''}`;
+    } else {
+        manualResolutionSelected.textContent = 'Select resolution...';
     }
-    // Re-render the dropdown options to reflect new resolution and reset bias
-    renderImageBiasDropdown(resetBias.toString());
+    // Sync with hidden input for compatibility
+    if (manualResolutionHidden) manualResolutionHidden.value = value;
     
-    // Update the button display text
-    const isPortraitImage = window.uploadedImageData.height > window.uploadedImageData.width;
-    updateImageBiasDisplay(resetBias.toString(), isPortraitImage);
-  }
-}
-
-function openManualResolutionDropdown() {
-  manualResolutionDropdownMenu.style.display = 'block';
-  manualResolutionDropdownBtn.classList.add('active');
-}
-
-function closeManualResolutionDropdown() {
-  manualResolutionDropdownMenu.style.display = 'none';
-  manualResolutionDropdownBtn.classList.remove('active');
-}
-
-function updateCustomResolutionValue() {
-  if (manualSelectedResolution === 'custom' && manualWidth && manualHeight) {
-    const rawW = manualWidth.value;
-    const rawH = manualHeight.value;
+    // Update mask bias dropdown to reflect new resolution
+    if (manualMaskBiasSelected) {
+        selectManualMaskBias(manualSelectedMaskBias);
+    }
     
-    // Only update if both inputs have values
-    if (rawW && rawH) {
-      // Get step value from the manual steps input
-      const step = parseInt(manualSteps.value) || 1;
-      
-      const result = correctDimensions(rawW, rawH, {
-        step: step
-      });
-      
-      // Store sanitized custom dimensions in the hidden field as a special format
-      manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
-      
-      // Check if we're in a pipeline edit context and update mask bias visibility
-      if (window.currentPipelineEdit && !window.currentMaskData) {
+    // Check if we're in a pipeline edit context and update mask bias visibility
+    if (window.currentPipelineEdit && !window.currentMaskData) {
         const pipelineName = window.currentPipelineEdit.pipelineName;
         const pipelinePresetRes = getPipelinePresetResolution(pipelineName);
         if (pipelinePresetRes) {
-          const presetDims = getDimensionsFromResolution(pipelinePresetRes);
-          if (presetDims) {
-            // Calculate aspect ratios
-            const presetAspectRatio = presetDims.width / presetDims.height;
-            const selectedAspectRatio = result.width / result.height;
-            
-            // Show/hide mask bias dropdown based on aspect ratio difference
-            if (Math.abs(presetAspectRatio - selectedAspectRatio) > 0.01) {
-              if (manualMaskBiasGroup) {
-                manualMaskBiasGroup.style.display = 'block';
-              }
-            } else {
-              if (manualMaskBiasGroup) {
-                manualMaskBiasGroup.style.display = 'none';
-              }
+            const presetDims = getDimensionsFromResolution(pipelinePresetRes);
+            const selectedDims = getDimensionsFromResolution(value);
+            if (presetDims && selectedDims) {
+                // Calculate aspect ratios
+                const presetAspectRatio = presetDims.width / presetDims.height;
+                const selectedAspectRatio = selectedDims.width / selectedDims.height;
+                
+                // Show/hide mask bias dropdown based on aspect ratio difference
+                if (Math.abs(presetAspectRatio - selectedAspectRatio) > 0.01) {
+                    if (manualMaskBiasGroup) {
+                        manualMaskBiasGroup.style.display = 'block';
+                    }
+                } else {
+                    if (manualMaskBiasGroup) {
+                        manualMaskBiasGroup.style.display = 'none';
+                    }
+                }
             }
-          }
         }
-      }
-      
-      // Update button grid orientation for mask bias
-      const buttonGrid = manualMaskBiasDropdownBtn.querySelector('.mask-bias-grid');
-      if (buttonGrid) {
-        const width = parseInt(manualWidth.value);
-        const height = parseInt(manualHeight.value);
-        const isPortraitMode = height > width;
-        buttonGrid.setAttribute('data-orientation', isPortraitMode ? 'portrait' : 'landscape');
-      }
-      
-      // --- ADDED: Refresh preview image if in bias mode ---
-      if (window.uploadedImageData && window.uploadedImageData.isBiasMode) {
+    } else {
+        manualMaskBiasGroup.style.display = 'none';
+    }
+    
+    // Trigger any listeners (e.g., updateGenerateButton or manual form update)
+    if (typeof updateGenerateButton === 'function') updateGenerateButton();
+    // Update price display
+    updateManualPriceDisplay();
+
+    // --- ADDED: Refresh preview image if in bias mode ---
+    if (window.uploadedImageData && window.uploadedImageData.isBiasMode) {
         // Reset bias to center (2) when resolution changes
         const resetBias = 2;
         if (imageBiasHidden != null) {
-          imageBiasHidden.value = resetBias.toString();
+            imageBiasHidden.value = resetBias.toString();
         }
         window.uploadedImageData.bias = resetBias;
         
         // Re-crop and update preview with reset bias
         cropImageToResolution(window.uploadedImageData.originalDataUrl, resetBias).then(croppedDataUrl => {
-          const variationImage = document.getElementById('manualVariationImage');
-          if (variationImage) {
-            variationImage.src = croppedDataUrl;
-            variationImage.style.display = 'block';
-          }
-          window.uploadedImageData.dataUrl = croppedDataUrl;
+            const variationImage = document.getElementById('manualVariationImage');
+            if (variationImage) {
+                variationImage.src = croppedDataUrl;
+                variationImage.style.display = 'block';
+            }
+            window.uploadedImageData.dataUrl = croppedDataUrl;
         });
         // Only show bias dropdown if not already visible
         if (imageBiasGroup && imageBiasGroup.style.display !== 'block') {
-          showImageBiasDropdown();
+            showImageBiasDropdown();
         }
         // Re-render the dropdown options to reflect new resolution and reset bias
         renderImageBiasDropdown(resetBias.toString());
@@ -762,19 +646,111 @@ function updateCustomResolutionValue() {
         // Update the button display text
         const isPortraitImage = window.uploadedImageData.height > window.uploadedImageData.width;
         updateImageBiasDisplay(resetBias.toString(), isPortraitImage);
-      }
     }
-  }
+}
+
+function openManualResolutionDropdown() {
+    openDropdown(manualResolutionDropdownMenu, manualResolutionDropdownBtn);
+}
+
+function closeManualResolutionDropdown() {
+    closeDropdown(manualResolutionDropdownMenu, manualResolutionDropdownBtn);
+}
+
+setupDropdown(manualResolutionDropdown, manualResolutionDropdownBtn, manualResolutionDropdownMenu, renderManualResolutionDropdown, () => manualSelectedResolution);
+
+function updateCustomResolutionValue() {
+    if (manualSelectedResolution === 'custom' && manualWidth && manualHeight) {
+        const rawW = manualWidth.value;
+        const rawH = manualHeight.value;
+        
+        // Only update if both inputs have values
+        if (rawW && rawH) {
+            // Get step value from the manual steps input
+            const step = parseInt(manualSteps.value) || 1;
+            
+            const result = correctDimensions(rawW, rawH, {
+                step: step
+            });
+            
+            // Store sanitized custom dimensions in the hidden field as a special format
+            manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
+            
+            // Check if we're in a pipeline edit context and update mask bias visibility
+            if (window.currentPipelineEdit && !window.currentMaskData) {
+                const pipelineName = window.currentPipelineEdit.pipelineName;
+                const pipelinePresetRes = getPipelinePresetResolution(pipelineName);
+                if (pipelinePresetRes) {
+                    const presetDims = getDimensionsFromResolution(pipelinePresetRes);
+                    if (presetDims) {
+                        // Calculate aspect ratios
+                        const presetAspectRatio = presetDims.width / presetDims.height;
+                        const selectedAspectRatio = result.width / result.height;
+                        
+                        // Show/hide mask bias dropdown based on aspect ratio difference
+                        if (Math.abs(presetAspectRatio - selectedAspectRatio) > 0.01) {
+                            if (manualMaskBiasGroup) {
+                                manualMaskBiasGroup.style.display = 'block';
+                            }
+                        } else {
+                            if (manualMaskBiasGroup) {
+                                manualMaskBiasGroup.style.display = 'none';
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Update button grid orientation for mask bias
+            const buttonGrid = manualMaskBiasDropdownBtn.querySelector('.mask-bias-grid');
+            if (buttonGrid) {
+                const width = parseInt(manualWidth.value);
+                const height = parseInt(manualHeight.value);
+                const isPortraitMode = height > width;
+                buttonGrid.setAttribute('data-orientation', isPortraitMode ? 'portrait' : 'landscape');
+            }
+            
+            // --- ADDED: Refresh preview image if in bias mode ---
+            if (window.uploadedImageData && window.uploadedImageData.isBiasMode) {
+                // Reset bias to center (2) when resolution changes
+                const resetBias = 2;
+                if (imageBiasHidden != null) {
+                    imageBiasHidden.value = resetBias.toString();
+                }
+                window.uploadedImageData.bias = resetBias;
+                
+                // Re-crop and update preview with reset bias
+                cropImageToResolution(window.uploadedImageData.originalDataUrl, resetBias).then(croppedDataUrl => {
+                    const variationImage = document.getElementById('manualVariationImage');
+                    if (variationImage) {
+                        variationImage.src = croppedDataUrl;
+                        variationImage.style.display = 'block';
+                    }
+                    window.uploadedImageData.dataUrl = croppedDataUrl;
+                });
+                // Only show bias dropdown if not already visible
+                if (imageBiasGroup && imageBiasGroup.style.display !== 'block') {
+                    showImageBiasDropdown();
+                }
+                // Re-render the dropdown options to reflect new resolution and reset bias
+                renderImageBiasDropdown(resetBias.toString());
+                
+                // Update the button display text
+                const isPortraitImage = window.uploadedImageData.height > window.uploadedImageData.width;
+                updateImageBiasDisplay(resetBias.toString(), isPortraitImage);
+            }
+        }
+    }
 }
 
 function processResolutionValue(resolutionValue) {
-  // Check if this is a custom resolution
-  if (resolutionValue && resolutionValue.startsWith('custom_')) {
-    const dimensions = resolutionValue.replace('custom_', '');
-    const [width, height] = dimensions.split('x').map(Number);
-    return { width, height, isCustom: true };
-  }
-  return { resolution: resolutionValue, isCustom: false };
+    // Check if this is a custom resolution
+    if (resolutionValue && resolutionValue.startsWith('custom_')) {
+        const dimensions = resolutionValue.replace('custom_', '');
+        const [width, height] = dimensions.split('x').map(Number);
+        return { width, height, isCustom: true };
+    }
+    return { resolution: resolutionValue, isCustom: false };
 }
 
 function sanitizeCustomDimensions() {
@@ -830,42 +806,32 @@ function sanitizeCustomDimensions() {
   }
 }
 
-manualResolutionDropdownBtn.addEventListener('click', e => {
-  e.stopPropagation();
-  if (manualResolutionDropdownMenu.style.display === 'block') {
-    closeManualResolutionDropdown();
-  } else {
-    renderManualResolutionDropdown(manualSelectedResolution);
-    openManualResolutionDropdown();
-  }
-});
-
-document.addEventListener('click', e => {
-  if (!manualResolutionDropdown.contains(e.target)) {
-    closeManualResolutionDropdown();
-  }
-});
+function renderSimpleDropdown(menu, items, value_key, display_key, selectHandler, closeHandler, selectedVal) {
+    menu.innerHTML = '';
+    items.forEach(item => {
+        const option = document.createElement('div');
+        const value = item[value_key];
+        const display = item[display_key];
+        option.className = 'custom-dropdown-option' + (selectedVal === value ? ' selected' : '');
+        option.tabIndex = 0;
+        option.dataset.value = value;
+        option.innerHTML = `<span>${display}</span>`;
+        const action = () => {
+            selectHandler(value);
+            closeHandler();
+        };
+        option.addEventListener('click', action);
+        option.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                action();
+            }
+        });
+        menu.appendChild(option);
+    });
+}
 
 function renderManualSamplerDropdown(selectedVal) {
-  manualSamplerDropdownMenu.innerHTML = '';
-  SAMPLER_MAP.forEach(s => {
-    const option = document.createElement('div');
-    option.className = 'custom-dropdown-option' + (selectedVal === s.meta ? ' selected' : '');
-    option.tabIndex = 0;
-    option.dataset.value = s.meta;
-    option.innerHTML = `<span>${s.display}</span>`;
-    option.addEventListener('click', () => {
-      selectManualSampler(s.meta);
-      closeManualSamplerDropdown();
-    });
-    option.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        selectManualSampler(s.meta);
-        closeManualSamplerDropdown();
-      }
-    });
-    manualSamplerDropdownMenu.appendChild(option);
-  });
+  renderSimpleDropdown(manualSamplerDropdownMenu, SAMPLER_MAP, 'meta', 'display', selectManualSampler, closeManualSamplerDropdown, selectedVal);
 }
 
 function selectManualSampler(value) {
@@ -888,52 +854,14 @@ function selectManualSampler(value) {
   if (typeof updateGenerateButton === 'function') updateGenerateButton();
 }
 
-function openManualSamplerDropdown() {
-  manualSamplerDropdownMenu.style.display = 'block';
-  manualSamplerDropdownBtn.classList.add('active');
-}
-
 function closeManualSamplerDropdown() {
-  manualSamplerDropdownMenu.style.display = 'none';
-  manualSamplerDropdownBtn.classList.remove('active');
+    closeDropdown(manualSamplerDropdownMenu, manualSamplerDropdownBtn);
 }
 
-manualSamplerDropdownBtn.addEventListener('click', e => {
-  e.stopPropagation();
-  if (manualSamplerDropdownMenu.style.display === 'block') {
-    closeManualSamplerDropdown();
-  } else {
-    renderManualSamplerDropdown(manualSelectedSampler);
-    openManualSamplerDropdown();
-  }
-});
-
-document.addEventListener('click', e => {
-  if (!manualSamplerDropdown.contains(e.target)) {
-    closeManualSamplerDropdown();
-  }
-});
+setupDropdown(manualSamplerDropdown, manualSamplerDropdownBtn, manualSamplerDropdownMenu, renderManualSamplerDropdown, () => manualSelectedSampler);
 
 function renderManualNoiseSchedulerDropdown(selectedVal) {
-  manualNoiseSchedulerDropdownMenu.innerHTML = '';
-  NOISE_MAP.forEach(n => {
-    const option = document.createElement('div');
-    option.className = 'custom-dropdown-option' + (selectedVal === n.meta ? ' selected' : '');
-    option.tabIndex = 0;
-    option.dataset.value = n.meta;
-    option.innerHTML = `<span>${n.display}</span>`;
-    option.addEventListener('click', () => {
-      selectManualNoiseScheduler(n.meta);
-      closeManualNoiseSchedulerDropdown();
-    });
-    option.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        selectManualNoiseScheduler(n.meta);
-        closeManualNoiseSchedulerDropdown();
-      }
-    });
-    manualNoiseSchedulerDropdownMenu.appendChild(option);
-  });
+  renderSimpleDropdown(manualNoiseSchedulerDropdownMenu, NOISE_MAP, 'meta', 'display', selectManualNoiseScheduler, closeManualNoiseSchedulerDropdown, selectedVal);
 }
 
 function selectManualNoiseScheduler(value) {
@@ -950,31 +878,11 @@ function selectManualNoiseScheduler(value) {
   updateManualPriceDisplay();
 }
 
-function openManualNoiseSchedulerDropdown() {
-  manualNoiseSchedulerDropdownMenu.style.display = 'block';
-  manualNoiseSchedulerDropdownBtn.classList.add('active');
-}
-
 function closeManualNoiseSchedulerDropdown() {
-  manualNoiseSchedulerDropdownMenu.style.display = 'none';
-  manualNoiseSchedulerDropdownBtn.classList.remove('active');
+    closeDropdown(manualNoiseSchedulerDropdownMenu, manualNoiseSchedulerDropdownBtn);
 }
 
-manualNoiseSchedulerDropdownBtn.addEventListener('click', e => {
-  e.stopPropagation();
-  if (manualNoiseSchedulerDropdownMenu.style.display === 'block') {
-    closeManualNoiseSchedulerDropdown();
-  } else {
-    renderManualNoiseSchedulerDropdown(manualSelectedNoiseScheduler);
-    openManualNoiseSchedulerDropdown();
-  }
-});
-
-document.addEventListener('click', e => {
-  if (!manualNoiseSchedulerDropdown.contains(e.target)) {
-    closeManualNoiseSchedulerDropdown();
-  }
-});
+setupDropdown(manualNoiseSchedulerDropdown, manualNoiseSchedulerDropdownBtn, manualNoiseSchedulerDropdownMenu, renderManualNoiseSchedulerDropdown, () => manualSelectedNoiseScheduler);
 
 // Mask Bias Dropdown Functions
 function getMaskBiasOptions() {
@@ -1134,35 +1042,10 @@ document.addEventListener('click', e => {
     }
 });
 
+const modelOptionRenderer = (opt, group) => `<span>${opt.display}</span>`;
+
 function renderManualModelDropdown(selectedVal) {
-  manualModelDropdownMenu.innerHTML = '';
-  modelGroups.forEach(group => {
-    // Group header
-    const groupHeader = document.createElement('div');
-    groupHeader.className = 'custom-dropdown-group';
-    groupHeader.textContent = group.group;
-    manualModelDropdownMenu.appendChild(groupHeader);
-    // Options
-    group.options.forEach(opt => {
-      const option = document.createElement('div');
-      option.className = 'custom-dropdown-option' + (selectedVal === opt.value ? ' selected' : '');
-      option.tabIndex = 0;
-      option.dataset.value = opt.value;
-      option.dataset.group = group.group;
-      option.innerHTML = `<span>${opt.display}</span>`;
-      option.addEventListener('click', () => {
-        selectManualModel(opt.value, group.group);
-        closeManualModelDropdown();
-      });
-      option.addEventListener('keydown', e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          selectManualModel(opt.value, group.group);
-          closeManualModelDropdown();
-        }
-      });
-      manualModelDropdownMenu.appendChild(option);
-    });
-  });
+    renderGroupedDropdown(manualModelDropdownMenu, modelGroups, selectManualModel, closeManualModelDropdown, selectedVal, modelOptionRenderer);
 }
 
 function selectManualModel(value, group) {
@@ -1197,31 +1080,11 @@ function selectManualModel(value, group) {
   updateManualPriceDisplay();
 }
 
-function openManualModelDropdown() {
-  manualModelDropdownMenu.style.display = 'block';
-  manualModelDropdownBtn.classList.add('active');
-}
-
 function closeManualModelDropdown() {
-  manualModelDropdownMenu.style.display = 'none';
-  manualModelDropdownBtn.classList.remove('active');
+    closeDropdown(manualModelDropdownMenu, manualModelDropdownBtn);
 }
 
-manualModelDropdownBtn.addEventListener('click', e => {
-  e.stopPropagation();
-  if (manualModelDropdownMenu.style.display === 'block') {
-    closeManualModelDropdown();
-  } else {
-    renderManualModelDropdown(manualSelectedModel);
-    openManualModelDropdown();
-  }
-});
-
-document.addEventListener('click', e => {
-  if (!manualModelDropdown.contains(e.target)) {
-    closeManualModelDropdown();
-  }
-});
+setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel);
 
 renderManualSamplerDropdown(manualSelectedSampler);
 selectManualSampler('k_euler_ancestral');
@@ -2454,15 +2317,7 @@ async function rerollImage(image) {
                 layer2Config.uc = metadata.uc;
             }
             
-            if (metadata.sampler) {
-                const samplerObj = getSamplerByMeta(metadata.sampler);
-                layer2Config.sampler = samplerObj ? samplerObj.request : metadata.sampler;
-            }
-            
-            if (metadata.noise_schedule) {
-                const noiseObj = getNoiseByMeta(metadata.noise_schedule);
-                layer2Config.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
-            }
+            addSamplerAndNoiseToRequest(layer2Config, metadata);
             
             // Build pipeline request body using captured pipeline context
             const pipelineRequestBody = {
@@ -2556,15 +2411,7 @@ async function rerollImage(image) {
                     requestBody.uc = metadata.uc;
                 }
                 
-                if (metadata.sampler) {
-                    const samplerObj = getSamplerByMeta(metadata.sampler);
-                    requestBody.sampler = samplerObj ? samplerObj.request : metadata.sampler;
-                }
-                
-                if (metadata.noise_schedule) {
-                    const noiseObj = getNoiseByMeta(metadata.noise_schedule);
-                    requestBody.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
-                }
+                addSamplerAndNoiseToRequest(requestBody, metadata);
                 
                 if (metadata.skip_cfg_above_sigma) {
                     requestBody.variety = true;
@@ -2602,15 +2449,7 @@ async function rerollImage(image) {
                     requestBody.uc = metadata.uc;
                 }
                 
-                if (metadata.sampler) {
-                    const samplerObj = getSamplerByMeta(metadata.sampler);
-                    requestBody.sampler = samplerObj ? samplerObj.request : metadata.sampler;
-                }
-                
-                if (metadata.noise_schedule) {
-                    const noiseObj = getNoiseByMeta(metadata.noise_schedule);
-                    requestBody.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
-                }
+                addSamplerAndNoiseToRequest(requestBody, metadata);
                 
                 if (metadata.skip_cfg_above_sigma) {
                     requestBody.variety = true;
@@ -3159,7 +2998,11 @@ async function upscaleImage(image) {
 
     try {
         const response = await fetchWithAuth(`/upscale/${image.original}`, {
-            method: 'POST' });
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
         
         if (!response.ok) {
             throw new Error(`Upscaling failed: ${response.statusText}`);
@@ -3743,14 +3586,9 @@ function collectManualFormValues() {
 function addSharedFieldsToRequestBody(requestBody, values) {
     if (values.uc) requestBody.uc = values.uc;
     if (values.seed) requestBody.seed = parseInt(values.seed);
-    if (values.sampler) {
-        const samplerObj = getSamplerByMeta(values.sampler);
-        requestBody.sampler = samplerObj ? samplerObj.request : values.sampler;
-    }
-    if (values.noiseScheduler) {
-        const noiseObj = getNoiseByMeta(values.noiseScheduler);
-        requestBody.noiseScheduler = noiseObj ? noiseObj.request : values.noiseScheduler;
-    }
+    
+    addSamplerAndNoiseToRequest(requestBody, values);
+
     if (values.upscale) requestBody.upscale = true;
     if (typeof varietyEnabled !== "undefined" && varietyEnabled) {
         requestBody.variety = true;
