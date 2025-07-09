@@ -28,7 +28,7 @@ const client = new NovelAI({
 
 // Create Express app
 const app = express();
-app.use(express.json());
+app.use(express.json({limit: '100mb'}));
 app.use(cookieParser());
 app.use(session({
     secret: config.sessionSecret || 'staticforge-very-secret-key',
@@ -381,7 +381,7 @@ async function saveImage(img, filename) {
 }
 
 // Build options for image generation
-const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams = {}) => {
+const buildOptions = async (model, body, preset = null, isImg2Img = false, queryParams = {}) => {
     const resolution = body.resolution || preset?.resolution;
     const allowPaid = body.allow_paid !== undefined ? body.allow_paid : preset?.allow_paid;
     
@@ -436,30 +436,34 @@ const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams
             console.log(`🔄 Text replacements: ${[...usedPromptReplacements, ...usedNegativeReplacements].join(', ')}`);
         }
 
+
+    // Check if this is a variation preset or img2img request
+    const variationSettings = preset?.variation;
+    const isVariationPreset = variationSettings && variationSettings.file;
     const baseOptions = {
         prompt: processedPrompt,
         negative_prompt: processedNegativePrompt,
-        model: Model[model.toUpperCase()],
-            steps,
-            scale: body.guidance || preset?.guidance || 5.5,
-            cfg_rescale: body.rescale || preset?.rescale || 0.0,
-            skip_cfg_above_sigma: (body?.variety || preset?.variety || queryParams?.variety === 'true') ? 58 : undefined,
-            sampler: body.sampler ? Sampler[body.sampler.toUpperCase()] : (preset?.sampler ? Sampler[preset.sampler.toUpperCase()] : Sampler.EULER_ANC),
-            noise_schedule: body.noiseScheduler ? Noise[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? Noise[preset.noiseScheduler.toUpperCase()] : Noise.KARRAS),
-            no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
-            qualityToggle: false,
-            ucPreset: 4,
-            dynamicThresholding: body.dynamicThresholding || preset?.dynamicThresholding,
-            seed: body.seed || preset?.seed,
-            upscale: upscaleValue,
-            characterPrompts: body.characterPrompts || preset?.characterPrompts || undefined,
-            allCharacterPrompts: body.allCharacterPrompts || preset?.allCharacterPrompts || undefined,
-            use_coords: body.use_coords || preset?.use_coords || undefined,
-        };
+        model: Model[model.toUpperCase() + (body.mask && body.image && !model.toUpperCase().includes('_INP') ? '_INP' : '')],
+        steps,
+        scale: body.guidance || preset?.guidance || 5.5,
+        cfg_rescale: body.rescale || preset?.rescale || 0.0,
+        skip_cfg_above_sigma: (body?.variety || preset?.variety || queryParams?.variety === 'true') ? 58 : undefined,
+        sampler: body.sampler ? Sampler[body.sampler.toUpperCase()] : (preset?.sampler ? Sampler[preset.sampler.toUpperCase()] : Sampler.EULER_ANC),
+        noise_schedule: body.noiseScheduler ? Noise[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? Noise[preset.noiseScheduler.toUpperCase()] : Noise.KARRAS),
+        no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
+        qualityToggle: false,
+        ucPreset: 4,
+        dynamicThresholding: body.dynamicThresholding || preset?.dynamicThresholding,
+        seed: body.seed || preset?.seed,
+        upscale: upscaleValue,
+        characterPrompts: body.characterPrompts || preset?.characterPrompts || undefined,
+        allCharacterPrompts: body.allCharacterPrompts || preset?.allCharacterPrompts || undefined,
+        use_coords: body.use_coords || preset?.use_coords || undefined,
+    };
 
-        if (baseOptions.upscale && baseOptions.upscale > 1 && !allowPaid) {
-            throw new Error(`Upscaling with scale ${baseOptions.upscale} requires Opus credits. Set "allow_paid": true to confirm you accept using Opus credits for upscaling.`);
-        }
+    if (baseOptions.upscale && baseOptions.upscale > 1 && !allowPaid) {
+        throw new Error(`Upscaling with scale ${baseOptions.upscale} requires Opus credits. Set "allow_paid": true to confirm you accept using Opus credits for upscaling.`);
+    }
 
     if (resolution && Resolution[resolution.toUpperCase()]) {
         baseOptions.resPreset = Resolution[resolution.toUpperCase()];
@@ -467,13 +471,22 @@ const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams
         baseOptions.width = width;
         baseOptions.height = height;
     }
-
-    // Check if this is a variation preset or img2img request
-    const variationSettings = preset?.variation;
-    const isVariationPreset = variationSettings && variationSettings.file;
     
-    if (isImg2Img || isVariationPreset) {
-        baseOptions.action = Action.IMG2IMG;
+    if (!!body.image || isVariationPreset) {
+        baseOptions.action = (body.mask) ? Action.INPAINT : Action.IMG2IMG;
+        if (body.mask) {
+            baseOptions.mask = body.mask;
+            baseOptions.inpaintImg2ImgStrength = body.inpainting_strength || body.strength || 1;
+            baseOptions.strength = 1;
+            baseOptions.noise = 0.1;
+            baseOptions.img2img = {
+                strength: baseOptions.inpaintImg2ImgStrength,
+                color_correct: true
+            }
+        } else {
+            baseOptions.strength = body.strength || variationSettings?.strength || 0.8;
+            baseOptions.noise = body.noise || variationSettings?.noise || 0.1;
+        }
         
         if (isVariationPreset) {
             // Load the variation source image
@@ -483,26 +496,37 @@ const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams
             }
             let imageBuffer = fs.readFileSync(variationFilePath);
             imageBuffer = stripPngTextChunks(imageBuffer); // Strip all PNG tEXt metadata
+            
+            // Resize image to match target resolution if specified
+            if (resolution && Resolution[resolution.toUpperCase()]) {
+                const targetDims = getDimensionsFromResolution(resolution);
+                if (targetDims) {
+                    imageBuffer = await processImageToResolution(imageBuffer, targetDims);
+                    console.log(`📏 Resized variation source image to ${targetDims.width}x${targetDims.height}`);
+                }
+            }
+            
             baseOptions.image = imageBuffer.toString('base64');
             baseOptions.original_filename = variationSettings.file; // Track original filename
-            baseOptions.strength = body.strength || variationSettings.strength || 0.8;
-            baseOptions.noise = body.noise || variationSettings.noise || 0.1;
         } else {
             // Regular img2img - handle both filename and base64 data
             if (body.image) {
                 // Check if this is a frontend upload (base64) or existing image (filename)
                 if (body.is_frontend_upload) {
                     // This is base64 data from frontend upload
-                    baseOptions.image = body.image;
-                    baseOptions.is_frontend_upload = true;
+                    let imageBuffer = Buffer.from(body.image, 'base64');
                     
-                    // Store additional bias information if provided
-                    if (body.unbiased_original_image) {
-                        baseOptions.unbiased_original_image = body.unbiased_original_image;
+                    // Resize image to match target resolution if specified
+                    if (resolution && Resolution[resolution.toUpperCase()]) {
+                        const targetDims = getDimensionsFromResolution(resolution);
+                        if (targetDims) {
+                            imageBuffer = await processImageToResolution(imageBuffer, targetDims);
+                            console.log(`📏 Resized frontend upload image to ${targetDims.width}x${targetDims.height}`);
+                        }
                     }
-                    if (body.original_image_bias !== undefined) {
-                        baseOptions.original_image_bias = body.original_image_bias;
-                    }
+                    
+                    baseOptions.image = imageBuffer.toString('base64');
+                    baseOptions.is_frontend_upload = true;
                 } else {
                     // This is a filename - load the image from disk
                     const filePath = path.join(imagesDir, body.image);
@@ -511,19 +535,26 @@ const buildOptions = (model, body, preset = null, isImg2Img = false, queryParams
                     }
                     let imageBuffer = fs.readFileSync(filePath);
                     imageBuffer = stripPngTextChunks(imageBuffer);
+                    
+                    // Resize image to match target resolution if specified
+                    if (resolution && Resolution[resolution.toUpperCase()]) {
+                        const targetDims = getDimensionsFromResolution(resolution);
+                        if (targetDims) {
+                            imageBuffer = await processImageToResolution(imageBuffer, targetDims);
+                            console.log(`📏 Resized base image to ${targetDims.width}x${targetDims.height}`);
+                        }
+                    }
+                    
                     baseOptions.image = imageBuffer.toString('base64');
                     baseOptions.original_filename = body.image;
                 }
             }
-            baseOptions.strength = body.strength || 0.5;
-            baseOptions.noise = body.noise || 0;
         }
     }
 
     if (!allowPaid) {
         try {
             const cost_opus = calculateCost(baseOptions, true);
-            const cost_free = calculateCost(baseOptions, false);
             if (cost_opus > 0) {
                 throw new Error(`Request requires Opus credits (cost: ${cost_opus}). Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
             }
@@ -666,17 +697,6 @@ async function handleGeneration(opts, returnImage = false, presetName = null) {
             // Add original filename if available
             if (opts.original_filename) {
                 forgeData.original_filename = opts.original_filename;
-            }
-            
-            // Store base image data for frontend uploads with bias mode
-            if (opts.is_frontend_upload) {
-                forgeData.is_frontend_upload = true;
-                if (opts.unbiased_original_image) {
-                    forgeData.unbiased_original_image = opts.unbiased_original_image;
-                }
-                if (opts.original_image_bias !== undefined) {
-                    forgeData.original_image_bias = opts.original_image_bias;
-                }
             }
         }
         
@@ -896,7 +916,7 @@ app.get('/preset/:name', authMiddleware, async (req, res) => {
     
     // Check if this is a variation preset
     const isVariationPreset = p.variation && p.variation.file;
-    const opts = buildOptions(p.model, {}, p, isVariationPreset, req.query);
+    const opts = await buildOptions(p.model, {}, p, isVariationPreset, req.query);
     let result = await handleGeneration(opts, true, req.params.name);
     // Cache the result if generation was successful
     if (!forceGenerate) {
@@ -943,7 +963,7 @@ app.get('/preset/:name/prompt', authMiddleware, async (req, res) => {
     if (!p) return res.status(404).json({ error: 'Preset not found' });
     const resolution = req.query.resolution;
     const body = resolution ? { resolution } : {};
-    const opts = buildOptions(p.model, body, p, false, req.query);
+    const opts = await buildOptions(p.model, body, p, false, req.query);
     res.json({ prompt: opts.prompt, uc: opts.negative_prompt });
     } catch(e) {
         console.log('❌ Error occurred:', e.message);
@@ -965,7 +985,7 @@ app.post('/preset/:name/prompt', authMiddleware, async (req, res) => {
     }
     // Check if this is a variation preset
     const isVariationPreset = p.variation && p.variation.file;
-    const opts = buildOptions(p.model, bodyOverrides, p, isVariationPreset, req.query);
+    const opts = await buildOptions(p.model, bodyOverrides, p, isVariationPreset, req.query);
     res.json({ prompt: opts.prompt, uc: opts.negative_prompt });
     } catch(e) {
         console.log('❌ Error occurred:', e.message);
@@ -1088,7 +1108,7 @@ app.get('/preset/:name/:resolution', authMiddleware, async (req, res) => {
     const bodyOverrides = { resolution };
     // Check if this is a variation preset
     const isVariationPreset = p.variation && p.variation.file;
-    const opts = buildOptions(p.model, bodyOverrides, p, isVariationPreset, req.query);
+    const opts = await buildOptions(p.model, bodyOverrides, p, isVariationPreset, req.query);
         let result = await handleGeneration(opts, true, req.params.name);
     // Cache the result if generation was successful
     if (!forceGenerate) {
@@ -1195,7 +1215,7 @@ app.post('/preset/:name/:resolution', authMiddleware, async (req, res) => {
     
     // Check if this is a variation preset
     const isVariationPreset = p.variation && p.variation.file;
-    const opts = buildOptions(p.model, bodyOverrides, p, isVariationPreset, req.query);
+    const opts = await buildOptions(p.model, bodyOverrides, p, isVariationPreset, req.query);
         let result = await handleGeneration(opts, true, req.params.name);
     // Cache the result if generation was successful and no body overrides (except resolution)
     if (!forceGenerate && Object.keys(req.body).length === 0) {
@@ -1726,13 +1746,6 @@ function updateMetadata(imageBuffer, forgeData) {
         
         existingMetadata.forge_data = { ...existingMetadata.forge_data, ...cleanForgeData };
         
-        // Store base image data if this is a frontend upload with bias mode
-        if (forgeData.is_frontend_upload && forgeData.original_image_bias !== undefined) {
-            existingMetadata.forge_data.base_image_data = forgeData.base_image_data;
-            existingMetadata.forge_data.original_image_bias = forgeData.original_image_bias;
-            existingMetadata.forge_data.unbiased_original_image = forgeData.unbiased_original_image;
-        }
-        
         // Restore existing preset_name if it was there
         if (existingPresetName && !forgeData.preset_name) {
             existingMetadata.forge_data.preset_name = existingPresetName;
@@ -2106,14 +2119,8 @@ function extractRelevantFields(meta, filename) {
     };
     
     // Add frontend upload data if present
-    if (forgeData.is_frontend_upload) {
-        result.is_frontend_upload = true;
-        if (forgeData.unbiased_original_image) {
-            result.unbiased_original_image = forgeData.unbiased_original_image;
-        }
-        if (forgeData.original_image_bias !== undefined) {
-            result.original_image_bias = forgeData.original_image_bias;
-        }
+    if (forgeData.variation_source) {
+        result.variation_source = forgeData.variation_source;
     }
     
     if (forgeData.layer1_seed !== undefined) {
@@ -2861,7 +2868,7 @@ async function executePipeline(pipelineName, queryParams = {}, customPipeline = 
             const layer1Variation = preset1.variation;
             const isLayer1Variation = layer1Variation && layer1Variation.file;
             
-            const layer1Opts = buildOptions(preset1.model, {}, preset1, isLayer1Variation, queryParams);
+            const layer1Opts = await buildOptions(preset1.model, {}, preset1, isLayer1Variation, queryParams);
             layer1Opts.resPreset = Resolution[resolution.toUpperCase()];
             layer1Opts.upscale = false; 
             layer1Opts.no_save = true; // Don't save the intermediate base image
@@ -2917,15 +2924,16 @@ async function executePipeline(pipelineName, queryParams = {}, customPipeline = 
         }
         
         // Step 3: Generate inpainting image using layer2 preset
-        const layer2Opts = buildOptions(preset2.model, {}, preset2, true, queryParams);
+        const layer2Opts = await buildOptions(preset2.model, {}, preset2, true, queryParams);
         layer2Opts.n_samples = 1;
-        layer2Opts.inpaintImg2ImgStrength = 1;
+        layer2Opts.inpaintImg2ImgStrength = pipeline.inpainting_strength || 0.7;
         layer2Opts.action = Action.INPAINT;
         layer2Opts.model = Model[inpaintingModelName];
         layer2Opts.image = baseImage;
         layer2Opts.mask = mask;
         layer2Opts.resPreset = Resolution[resolution.toUpperCase()];
-        layer2Opts.strength = pipeline.inpainting_strength || 0.7; // Default inpainting strength
+        layer2Opts.strength = 1; // Default inpainting strength
+        layer2Opts.noise = 0.1;
         
         // Pass layer1Seed and pipelineName as parameters
         layer2Opts.layer1Seed = layer1Seed;
@@ -3439,7 +3447,7 @@ app.post('/:model/prompt', authMiddleware, async (req, res) => {
     const key = req.params.model.toLowerCase();
     const model = Model[key.toUpperCase()];
     if (!model) return res.status(400).json({ error: 'Invalid model' });
-    const opts = buildOptions(key, req.body, null, false, req.query);
+    const opts = await buildOptions(key, req.body, null, false, req.query);
     res.json({ prompt: opts.prompt, uc: opts.negative_prompt });
     } catch(e) {
         console.log('❌ Error occurred:', e.message);
@@ -3459,7 +3467,7 @@ app.post('/:model/generate', authMiddleware, async (req, res) => {
         let body = req.body;
         let baseFilename = null;
 
-        if (req.body && req.body.image) {
+        if (body?.image) {
             // Check if this is a frontend upload (base64) or existing image (filename)
             if (body.is_frontend_upload) {
                 // This is a frontend upload with base64 data - use it directly
@@ -3477,11 +3485,13 @@ app.post('/:model/generate', authMiddleware, async (req, res) => {
                 }
             }
             
-            if (!body.strength) body.strength = 0.8;
-            if (!body.noise) body.noise = 0.1;
+            if (!body.mask) {
+                if (!body.strength) body.strength = 0.8;
+                if (!body.noise) body.noise = 0.1;
+            }
         }
         
-        const opts = buildOptions(key, body, null, (!!body?.image), req.query);
+        const opts = await buildOptions(key, body, null, (!!body?.image), req.query);
         // Add original filename for metadata tracking if this is img2img and not a frontend upload
         if (body.image && !body.is_frontend_upload) {
             opts.original_filename = baseFilename;
@@ -3651,7 +3661,7 @@ app.get('/variation/:filename', authMiddleware, async (req, res) => {
         }
         
         // Build options and generate
-        const opts = buildOptions(modelName, requestBody, null, true, req.query);
+        const opts = await buildOptions(modelName, requestBody, null, true, req.query);
         // Add original filename for metadata tracking
         opts.original_filename = baseFilename;
         await handleImageRequest(req, res, opts);
