@@ -652,6 +652,211 @@ function closeManualResolutionDropdown() {
 
 setupDropdown(manualResolutionDropdown, manualResolutionDropdownBtn, manualResolutionDropdownMenu, renderManualResolutionDropdown, () => manualSelectedResolution);
 
+// Replace the three function definitions with the new combined function
+async function loadIntoManualForm(source, image = null) {
+    try {
+        let data = {};
+        let type = 'metadata';
+        let name = '';
+
+        // Clear form first for all cases
+        clearManualForm();
+
+        if (typeof source === 'string') {
+            const [presetType, presetName] = source.split(':');
+            if (!presetType || !presetName) {
+                throw new Error('Invalid preset value format');
+            }
+            name = presetName;
+
+            let endpoint = '';
+            if (presetType === 'preset') {
+                type = 'preset';
+                endpoint = `/preset/${presetName}/raw`;
+            } else if (presetType === 'pipeline') {
+                type = 'pipeline';
+                endpoint = `/pipeline/${presetName}/raw`;
+            } else {
+                throw new Error('Invalid type');
+            }
+
+            const response = await fetchWithAuth(endpoint);
+            if (!response.ok) {
+                throw new Error(`Failed to load ${presetType} data`);
+            }
+            data = await response.json();
+
+            // For pipeline, we only edit layer2
+            if (type === 'pipeline') {
+                data = data.layer2 || {};
+            }
+
+            // Preprocess sampler and noiseScheduler
+            if (data.sampler) {
+                const samplerObj = getSamplerByRequest(data.sampler) || getSamplerByMeta(data.sampler);
+                data.sampler = samplerObj ? samplerObj.meta : 'k_euler_ancestral';
+            }
+            if (data.noiseScheduler || data.noise_schedule) {
+                const noiseObj = getNoiseByRequest(data.noiseScheduler || data.noise_schedule) || getNoiseByMeta(data.noiseScheduler || data.noise_schedule);
+                data.noiseScheduler = noiseObj ? noiseObj.meta : 'karras';
+            }
+
+        } else if (typeof source === 'object' && source !== null) {
+            type = 'metadata';
+            data = source;
+
+            // Handle model
+            data.model = data.model ? data.model.toLowerCase() : 'v4_5';
+
+            // Handle resolution
+            data.resolution = (data.resolution || 'normal_portrait').toLowerCase();
+            if (!data.resolution.match(/^(small_|normal_|large_|wallpaper_)/) && data.width && data.height) {
+                data.resolution = 'custom';
+                if (manualWidth) manualWidth.value = data.width;
+                if (manualHeight) manualHeight.value = data.height;
+                sanitizeCustomDimensions();
+            }
+
+            // Handle sampler and noise
+            const samplerObj = getSamplerByMeta(data.sampler);
+            data.sampler = samplerObj ? samplerObj.meta : 'k_euler_ancestral';
+
+            const noiseObj = getNoiseByMeta(data.noise_schedule);
+            data.noiseScheduler = noiseObj ? noiseObj.meta : 'karras';
+
+            // Set variety based on skip_cfg_above_sigma
+            if (document.getElementById('varietyBtn')) {
+                const varietyBtn = document.getElementById('varietyBtn');
+                varietyEnabled = data.skip_cfg_above_sigma !== null && data.skip_cfg_above_sigma !== undefined;
+                varietyBtn.setAttribute('data-state', varietyEnabled ? 'on' : 'off');
+            }
+
+            // Determine preset name from image
+            if (image && image.base) {
+                const parts = image.base.split('_');
+                name = parts.length >= 3 ? parts.slice(1, -1).join('_') : 'generated';
+            }
+        } else {
+            throw new Error('Invalid source');
+        }
+
+        // Common form population
+        if (manualPrompt) manualPrompt.value = data.prompt || '';
+        if (manualUc) manualUc.value = data.uc || '';
+        selectManualModel(data.model || 'v4_5', '');
+        selectManualResolution(data.resolution || 'normal_portrait', type === 'metadata' && data.resolution === 'custom' ? 'Custom' : '');
+        if (manualSteps) manualSteps.value = data.steps || (type === 'metadata' ? 25 : undefined);
+        if (manualGuidance) manualGuidance.value = data.scale || data.guidance || (type === 'metadata' ? 5.0 : undefined);
+        if (manualRescale) manualRescale.value = data.cfg_rescale || data.rescale || (type === 'metadata' ? 0.0 : undefined);
+        if (manualSeed) manualSeed.value = ''; // Do not autofill for metadata, undefined for others
+        selectManualSampler(data.sampler || 'k_euler_ancestral');
+        selectManualNoiseScheduler(data.noiseScheduler || 'karras');
+
+        // Handle upscale
+        const upscaleState = data.upscale ? 'on' : 'off';
+        if (manualUpscale) manualUpscale.setAttribute('data-state', upscaleState);
+
+        // Handle character prompts and auto position
+        const autoPositionBtn = document.getElementById('autoPositionBtn');
+        if (data.characterPrompts && Array.isArray(data.characterPrompts)) {
+            loadCharacterPrompts(data.characterPrompts, data.use_coords);
+            autoPositionBtn.setAttribute('data-state', data.use_coords ? 'on' : 'off');
+        } else {
+            clearCharacterPrompts();
+        }
+
+        // Handle variation data
+        const hasVariation = data.variation && data.variation.file;
+        const variationRow = document.getElementById('manualVariationRow');
+        const variationImage = document.getElementById('manualVariationImage');
+        if (hasVariation) {
+            window.currentVariationEdit = {
+                sourceFilename: data.variation.file,
+                isVariationEdit: true
+            };
+            if (variationImage) {
+                variationImage.src = `/images/${data.variation.file}`;
+                variationImage.style.display = 'block';
+                updateMaskEditorButton();
+            }
+            if (data.variation.mask) {
+                window.currentMaskData = data.variation.mask;
+                updateInpaintButtonState();
+                updateMaskPreview();
+            }
+            const strengthValue = document.getElementById('manualStrengthValue');
+            if (strengthValue && data.variation.strength !== undefined) {
+                strengthValue.value = data.variation.strength;
+                window.strengthValueLoaded = true;
+            }
+            const noiseValue = document.getElementById('manualNoiseValue');
+            if (noiseValue && data.variation.noise !== undefined) {
+                noiseValue.value = data.variation.noise;
+            }
+            if (variationRow) variationRow.style.display = 'flex';
+        } else {
+            window.currentVariationEdit = null;
+            if (variationImage) {
+                variationImage.style.display = 'none';
+                variationImage.src = '';
+            }
+            if (variationRow) variationRow.style.display = 'none';
+        }
+
+        // Type-specific handling
+        if (type !== 'metadata') {
+            manualPresetName.value = name;
+        }
+
+        if (type === 'pipeline') {
+            // Pipeline-specific: disable preset name, etc.
+            const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
+            if (presetNameGroup) {
+                presetNameGroup.style.display = 'block';
+                manualPresetName.disabled = true;
+                manualPresetName.style.opacity = '0.6';
+            }
+            const saveButton = document.getElementById('manualSaveBtn');
+            if (saveButton) saveButton.style.display = 'none';
+            window.currentPipelineEdit = {
+                isPipelineEdit: true,
+                pipelineName: name,
+                layer1Seed: null
+            };
+        } else if (type === 'preset') {
+            // Preset-specific
+            const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
+            if (presetNameGroup) {
+                presetNameGroup.style.display = 'block';
+                manualPresetName.disabled = false;
+                manualPresetName.style.opacity = '1';
+            }
+            const saveButton = document.getElementById('manualSaveBtn');
+            if (saveButton) saveButton.style.display = 'inline-block';
+            window.currentPipelineEdit = null;
+        } else if (type === 'metadata') {
+            // Metadata-specific: strength, noise, upscale off
+            const manualStrengthValue = document.getElementById('manualStrengthValue');
+            if (manualStrengthValue) {
+                manualStrengthValue.value = data.strength || 0.8;
+                window.strengthValueLoaded = true;
+            }
+            const manualNoiseValue = document.getElementById('manualNoiseValue');
+            if (manualNoiseValue) manualNoiseValue.value = data.noise || 0.1;
+            if (manualUpscale) manualUpscale.checked = false;
+        }
+
+        // Common updates
+        updateManualPriceDisplay();
+        updateRequestTypeButtonVisibility();
+        updateUploadDeleteButtonVisibility();
+
+    } catch (error) {
+        console.error('Error loading into form:', error);
+        showError('Failed to load data');
+    }
+}
+
 function updateCustomResolutionValue() {
     if (manualSelectedResolution === 'custom' && manualWidth && manualHeight) {
         const rawW = manualWidth.value;
@@ -2123,7 +2328,7 @@ async function variationImageWithEdit(image) {
         updateRequestTypeButtonVisibility();
 
         // Load metadata into manual form for variation editing
-        loadMetadataIntoVariationForm(metadata, image);
+        loadIntoManualForm(metadata, image);
 
         // Show variation-specific fields
         const variationRow = document.getElementById('manualVariationRow');
@@ -2203,68 +2408,6 @@ async function variationImageWithEdit(image) {
     } catch (error) {
         console.error('Variation with edit error:', error);
         showError('Failed to load image metadata: ' + error.message);
-    }
-}
-
-// Load metadata into variation form
-function loadMetadataIntoVariationForm(metadata, image) {
-    // Load basic metadata like reroll but keep original prompt/UC for editing
-    if (manualModel) {
-        manualModel.value = metadata.model ? metadata.model.toLowerCase() : 'v4_5';
-    }
-    
-    if (manualPrompt) {
-        manualPrompt.value = metadata.prompt || '';
-    }
-    
-    if (manualUc) {
-        manualUc.value = metadata.uc || '';
-    }
-    
-    if (manualResolution) {
-        manualResolution.value = metadata.resolution || '';
-    }
-    
-    if (manualSteps) {
-        manualSteps.value = metadata.steps || 25;
-    }
-    
-    if (manualGuidance) {
-        manualGuidance.value = metadata.scale || 5.0;
-    }
-    
-    if (manualRescale) {
-        manualRescale.value = metadata.cfg_rescale || 0.0;
-    }
-    
-    if (manualSeed) {
-        manualSeed.value = ''; // Do not autofill for variations
-    }
-    
-    if (manualSampler) {
-        const samplerObj = getSamplerByMeta(metadata.sampler);
-        manualSampler.value = samplerObj ? samplerObj.meta : '';
-    }
-    
-    if (manualNoiseScheduler) {
-        const noiseObj = getNoiseByMeta(metadata.noise_schedule);
-        manualNoiseScheduler.value = noiseObj ? noiseObj.meta : '';
-    }
-    
-    if (manualUpscale) {
-        manualUpscale.checked = false; // Default to no upscale for variations
-    }
-    
-    // Set variety button state based on skip_cfg_above_sigma
-    if (document.getElementById('varietyBtn')) {
-        const varietyBtn = document.getElementById('varietyBtn');
-        if (metadata.skip_cfg_above_sigma !== null && metadata.skip_cfg_above_sigma !== undefined) {
-            varietyEnabled = true;
-            varietyBtn.setAttribute('data-state', 'on');
-        } else {
-            varietyEnabled = false;
-            varietyBtn.setAttribute('data-state', 'off');
-        }
     }
 }
 
@@ -2676,7 +2819,7 @@ async function rerollImageWithEdit(image) {
         // Check if this is a pipeline image
         if (isPipeline) {
             // Handle pipeline edit reroll
-            loadMetadataIntoManualForm(metadata, image);
+            loadIntoManualForm(metadata, image);
 
             // Show preset name field but disable it for pipeline editing
             const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
@@ -2757,7 +2900,7 @@ async function rerollImageWithEdit(image) {
             // Handle regular image or variation in reroll mode
             if (isVariation) {
                 // For variations in reroll mode, load manual form but show variation fields
-                loadMetadataIntoManualForm(metadata, image);
+                loadIntoManualForm(metadata, image);
                 
                 // Show variation-specific fields for variations in reroll mode
                 const variationRow = document.getElementById('manualVariationRow');
@@ -2803,7 +2946,7 @@ async function rerollImageWithEdit(image) {
                 };
             } else {
                 // Handle regular image
-                loadMetadataIntoManualForm(metadata, image);
+                loadIntoManualForm(metadata, image);
                 
                 // Show preset name and save button for regular images
                 const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
@@ -2841,215 +2984,6 @@ async function rerollImageWithEdit(image) {
     } catch (error) {
         console.error('Reroll with edit error:', error);
         showError('Failed to load image metadata: ' + error.message);
-    }
-}
-
-// Load metadata into manual form
-function loadMetadataIntoManualForm(metadata, image) {
-    
-    // Clear form first
-    clearManualForm();
-    
-    // Fill form with metadata
-    
-    if (manualPrompt) {
-        manualPrompt.value = metadata.prompt || '';
-    } else {
-        console.error('manualPrompt element not found!');
-    }
-    
-    if (manualUc) {
-        manualUc.value = metadata.uc || '';
-    } else {
-        console.error('manualUc element not found!');
-    }
-    
-    // Handle model with custom dropdown
-    const modelValue = metadata.model ? metadata.model.toLowerCase() : 'v4_5';
-    selectManualModel(modelValue, '');
-    
-    // Handle resolution with custom dropdown
-    let resolutionValue = (metadata.resolution || 'normal_portrait').toLowerCase();
-    
-    // If we have a resolution value, convert to lowercase for dropdown compatibility
-    if (resolutionValue) {
-        resolutionValue = resolutionValue.toLowerCase();
-    } else if (metadata.width && metadata.height) {
-        // Try to match dimensions to a known resolution
-        const dimensions = `${metadata.width}x${metadata.height}`;
-        const resolutionMap = {
-            '512x768': 'small_portrait',
-            '768x512': 'small_landscape',
-            '640x640': 'small_square',
-            '832x1216': 'normal_portrait',
-            '1216x832': 'normal_landscape',
-            '1024x1024': 'normal_square',
-            '1024x1536': 'large_portrait',
-            '1536x1024': 'large_landscape',
-            '1472x1472': 'large_square',
-            '1088x1920': 'wallpaper_portrait',
-            '1920x1088': 'wallpaper_landscape'
-        };
-        resolutionValue = resolutionMap[dimensions] || 'normal_portrait';
-    }
-    
-    // Check if this is a custom resolution (not in the standard map)
-    if (metadata.width && metadata.height && !resolutionValue.match(/^(small_|normal_|large_|wallpaper_)/)) {
-        // This is a custom resolution, set it up
-        resolutionValue = 'custom';
-        selectManualResolution(resolutionValue, 'Custom');
-        
-        // Set the width and height values
-        if (manualWidth) manualWidth.value = metadata.width;
-        if (manualHeight) manualHeight.value = metadata.height;
-        // Sanitize the loaded values
-        sanitizeCustomDimensions();
-    } else {
-        selectManualResolution(resolutionValue, '');
-    }
-    
-    if (manualSteps) {
-        manualSteps.value = metadata.steps || 25;
-    } else {
-        console.error('manualSteps element not found!');
-    }
-    
-    if (manualGuidance) {
-        manualGuidance.value = metadata.scale || 5.0;
-    } else {
-        console.error('manualGuidance element not found!');
-    }
-    
-    if (manualRescale) {
-        manualRescale.value = metadata.cfg_rescale || 0.0;
-    } else {
-        console.error('manualRescale element not found!');
-    }
-    
-    if (manualSeed) {
-        manualSeed.value = '';
-    } // Do not autofill
-    
-    // Handle sampler with custom dropdown
-        const samplerObj = getSamplerByMeta(metadata.sampler);
-    selectManualSampler(samplerObj ? samplerObj.meta : 'k_euler_ancestral');
-    
-    // Handle noise scheduler with custom dropdown
-        const noiseObj = getNoiseByMeta(metadata.noise_schedule);
-    selectManualNoiseScheduler(noiseObj ? noiseObj.meta : 'karras');
-    
-    // Set strength and noise values for variations
-    const manualStrengthValue = document.getElementById('manualStrengthValue');
-    const manualNoiseValue = document.getElementById('manualNoiseValue');
-    
-    if (manualStrengthValue) {
-        const strengthValue = metadata.strength || 0.8;
-        manualStrengthValue.value = strengthValue;
-        // Mark that strength value was loaded from metadata
-        window.strengthValueLoaded = true;
-    }
-    
-    if (manualNoiseValue) {
-        const noiseValue = metadata.noise || 0.1;
-        manualNoiseValue.value = noiseValue;
-    }
-    
-    if (manualUpscale) {
-        manualUpscale.checked = false; // Default to no upscale for reroll
-    } else {
-        console.error('manualUpscale element not found!');
-    }
-    
-    // Set variety button state based on skip_cfg_above_sigma
-    if (document.getElementById('varietyBtn')) {
-        const varietyBtn = document.getElementById('varietyBtn');
-        if (metadata.skip_cfg_above_sigma !== null && metadata.skip_cfg_above_sigma !== undefined) {
-            // Variety was enabled (skip_cfg_above_sigma has a value)
-            varietyEnabled = true;
-            varietyBtn.setAttribute('data-state', 'on');
-        } else {
-            // Variety was disabled (skip_cfg_above_sigma is null/undefined)
-            varietyEnabled = false;
-            varietyBtn.setAttribute('data-state', 'off');
-        }
-    }
-    
-    // Set preset name based on image filename or base
-    let presetName = 'generated';
-    if (image && image.base) {
-        const parts = image.base.split('_');
-        if (image.pipeline || image.pipeline_upscaled) {
-            // Pipeline format: [timestamp, preset, layer1Seed, layer2Seed]
-            if (parts.length >= 4) {
-                const presetParts = parts.slice(1, -2); // Everything between timestamp and the two seeds
-                presetName = presetParts.join('_') || 'generated';
-            } else if (parts.length === 3) {
-                // Format: [timestamp, preset, layer1Seed] (only one seed)
-                presetName = parts[1] || 'generated';
-            } else {
-                presetName = parts.slice(1).join('_') || 'generated';
-            }
-        } else {
-            // Regular format: [timestamp, preset, seed]
-            if (parts.length >= 3) {
-                presetName = parts.slice(1, -1).join('_') || 'generated';
-            }
-        }
-    } else if (image && image.filename) {
-        const parts = image.filename.split('_');
-        if (parts.length >= 3) {
-            presetName = parts.slice(1, -1).join('_') || 'generated';
-        }
-    }
-    
-    if (manualPresetName) {
-        manualPresetName.value = presetName;
-    } else {
-        console.error('manualPresetName element not found!');
-    }
-    
-    // Set lastLoadedSeed for sprout button
-    if (typeof lastLoadedSeed !== 'undefined') {
-        if (image && (image.pipeline || image.pipeline_upscaled)) {
-            lastLoadedSeed = metadata.layer2Seed || metadata.seed || '';
-        } else {
-            lastLoadedSeed = metadata.seed || '';
-        }
-    }
-    
-    // Update sprout seed button visibility
-    updateSproutSeedButton();
-    
-    // Load character prompts if available
-    if (metadata.characterPrompts && Array.isArray(metadata.characterPrompts)) {
-        const useCoords = metadata.use_coords;
-        loadCharacterPrompts(metadata.characterPrompts, useCoords);
-    }
-    
-    // Load mask bias if available
-    if (metadata.mask_bias !== undefined) {
-        selectManualMaskBias(metadata.mask_bias.toString());
-    }
-    
-    // Handle frontend upload data for aspect ratio dialog
-    if (metadata.is_frontend_upload) {
-        // Set up the uploaded image data for editing
-        window.uploadedImageData = {
-            isClientSide: false, // This is now server-side (loaded from metadata)
-            isBiasMode: metadata.original_image_bias !== undefined,
-            bias: metadata.original_image_bias || 2,
-            originalFilename: metadata.unbiased_original_image || null,
-            // Store the image data URLs from metadata (already resized)
-            dataUrl: metadata.unbiased_original_image ? `data:image/png;base64,${metadata.unbiased_original_image}` : null,
-            originalDataUrl: metadata.unbiased_original_image ? `data:image/png;base64,${metadata.unbiased_original_image}` : null
-        };
-        
-        // Show the image bias dropdown if this was a bias mode generation
-        if (metadata.original_image_bias !== undefined) {
-            showImageBiasDropdown();
-            setupImageBiasDropdown();
-            renderImageBiasDropdown(metadata.original_image_bias.toString());
-        }
     }
 }
 
@@ -3182,10 +3116,10 @@ function showManualModal() {
         
         if (type === 'preset') {
             // Load preset for editing
-            loadPresetIntoManualForm(selectedValue);
+            loadIntoManualForm(selectedValue);
         } else if (type === 'pipeline') {
             // Load pipeline for limited editing (layer2 only)
-            loadPipelineIntoManualForm(selectedValue);
+            loadIntoManualForm(selectedValue);
         }
     } else {
         // Clear form for new generation
@@ -6632,7 +6566,7 @@ function toggleRequestType(requestType) {
             if (isVariation && hasOriginalFilename) {
                 // For variations, use the original base image for reroll                
                 // Load metadata into manual form
-                loadMetadataIntoManualForm(metadata, image);
+                loadIntoManualForm(metadata, image);
                 
                 // Show variation-specific fields for variations in reroll mode
                 if (variationRow) {
@@ -6653,7 +6587,7 @@ function toggleRequestType(requestType) {
                 };
             } else {
                 // For regular images, use the current image
-                loadMetadataIntoManualForm(metadata, image);
+                loadIntoManualForm(metadata, image);
                 
                 // Hide variation-specific fields for regular images
                 if (variationRow) {
@@ -6711,7 +6645,7 @@ function toggleRequestType(requestType) {
             if (isVariation && hasOriginalFilename) {
                 // For variations, use the current image as the new base                
                 // Load metadata into variation form
-                loadMetadataIntoVariationForm(metadata, image);
+                loadIntoManualForm(metadata, image);
                 
                 // Set the variation image to the current image
                 const variationImage = document.getElementById('manualVariationImage');
@@ -6730,7 +6664,7 @@ function toggleRequestType(requestType) {
                 };
             } else {
                 // For regular images, use the current image as base
-                loadMetadataIntoVariationForm(metadata, image);
+                loadIntoManualForm(metadata, image);
                 
                 // Set the variation image to the current image
                 const variationImage = document.getElementById('manualVariationImage');
