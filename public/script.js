@@ -3738,6 +3738,7 @@ function handleImageResult(blob, successMsg, clearContextFn) {
             // Update manual modal preview instead of opening lightbox
             // Don't clear context when modal is open in wide viewport mode
             updateManualPreview(imageUrl, blob);
+            loadGallery();
         } else {
             // Clear context only when modal is not open or not in wide viewport mode
             if (typeof clearContextFn === "function") clearContextFn();
@@ -4216,6 +4217,9 @@ function handleCharacterAutocompleteKeydown(e) {
                     const selectedItem = items[selectedCharacterAutocompleteIndex];
                     if (selectedItem.dataset.type === 'textReplacement') {
                         selectTextReplacementFullText(selectedItem.dataset.placeholder);
+                    } else {
+                        // For characters, insert without enhancers
+                        selectCharacterWithoutEnhancers(selectedItem.dataset.index);
                     }
                 }
                 break;
@@ -4478,6 +4482,86 @@ function selectTextReplacementFullText(placeholder) {
     // Focus back on the target field
     if (target) {
         target.focus();
+    }
+}
+
+async function selectCharacterWithoutEnhancers(index) {
+    try {
+        const response = await fetchWithAuth(`/auto-complete/${index}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to load character data');
+        }
+        
+        const character = await response.json();
+        
+        if (!currentCharacterAutocompleteTarget) return;
+        
+        const target = currentCharacterAutocompleteTarget;
+        const currentValue = target.value;
+        const cursorPosition = target.selectionStart;
+        
+        // Get the text before the cursor
+        const textBeforeCursor = currentValue.substring(0, cursorPosition);
+        
+        // Find the last delimiter (:, |, ,) before the cursor, or start from the beginning
+        const lastDelimiterIndex = Math.max(
+            textBeforeCursor.lastIndexOf('{'),
+            textBeforeCursor.lastIndexOf('}'),
+            textBeforeCursor.lastIndexOf('['),
+            textBeforeCursor.lastIndexOf(']'),
+            textBeforeCursor.lastIndexOf(':'),
+            textBeforeCursor.lastIndexOf('|'),
+            textBeforeCursor.lastIndexOf(',')
+        );
+        const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
+        
+        // Get the text after the cursor
+        const textAfterCursor = currentValue.substring(cursorPosition);
+        
+        // Build the new prompt
+        let newPrompt = '';
+        
+        // Keep the text before the current term (trim any trailing delimiters and spaces)
+        const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
+        newPrompt = textBefore;
+        
+        // Add just the character prompt without any enhancers
+        if (character.prompt) {
+            if (newPrompt) {
+                newPrompt += ', ' + character.prompt;
+            } else {
+                newPrompt = character.prompt;
+            }
+        }
+        
+        // Add the text after the cursor (trim any leading delimiters and spaces)
+        const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
+        if (textAfter) {
+            if (newPrompt) {
+                newPrompt += ', ' + textAfter;
+            } else {
+                newPrompt = textAfter;
+            }
+        }
+        
+        // Update the target field
+        target.value = newPrompt;
+        
+        // Set cursor position after the inserted text
+        const newCursorPosition = newPrompt.length - textAfter.length;
+        target.setSelectionRange(newCursorPosition, newCursorPosition);
+        
+        // Hide character autocomplete
+        hideCharacterAutocomplete();
+        
+        // Focus back on the target field
+        if (target) {
+            target.focus();
+        }
+    } catch (error) {
+        console.error('Error loading character data:', error);
+        showError('Failed to load character data');
     }
 }
 

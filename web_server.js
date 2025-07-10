@@ -449,6 +449,35 @@ const buildOptions = async (model, body, preset = null, isImg2Img = false, query
             console.log(`🔄 Text replacements: ${[...usedPromptReplacements, ...usedNegativeReplacements].join(', ')}`);
         }
 
+        // Process character prompts with text replacements
+        let processedCharacterPrompts = body.allCharacterPrompts || preset?.allCharacterPrompts || undefined;
+        if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
+            processedCharacterPrompts = processedCharacterPrompts.map(char => {
+                // Apply text replacements to character prompt and UC
+                const processedPrompt = applyTextReplacements(char.prompt, presetName, model);
+                const processedUC = applyTextReplacements(char.uc, presetName, model);
+                
+                return {
+                    ...char,
+                    prompt: processedPrompt,
+                    uc: processedUC
+                };
+            });
+            
+            // Log text replacements used in character prompts
+            const usedCharacterReplacements = [];
+            (body.allCharacterPrompts || preset?.allCharacterPrompts).forEach(char => {
+                const promptReplacements = getUsedReplacements(char.prompt, model);
+                const ucReplacements = getUsedReplacements(char.uc, model);
+                if (promptReplacements.length > 0 || ucReplacements.length > 0) {
+                    usedCharacterReplacements.push(...promptReplacements, ...ucReplacements);
+                }
+            });
+            
+            if (usedCharacterReplacements.length > 0) {
+                console.log(`🔄 Character prompt text replacements: ${usedCharacterReplacements.join(', ')}`);
+            }
+        }
 
     // Check if this is a variation preset or img2img request
     const variationSettings = preset?.variation;
@@ -470,7 +499,7 @@ const buildOptions = async (model, body, preset = null, isImg2Img = false, query
         seed: body.seed || preset?.seed,
         upscale: upscaleValue,
         characterPrompts: body.characterPrompts || preset?.characterPrompts || undefined,
-        allCharacterPrompts: body.allCharacterPrompts || preset?.allCharacterPrompts || undefined,
+        allCharacterPrompts: processedCharacterPrompts || undefined,
         use_coords: body.use_coords || preset?.use_coords || undefined,
     };
 
