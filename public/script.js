@@ -5,7 +5,7 @@ let allImages = [];
 let currentPage = 1;
 let imagesPerPage = 12;
 let currentImage = null;
-let selectedAutocompleteIndex = -1;
+
 let selectedCharacterAutocompleteIndex = -1;
 
 // Selection state
@@ -244,10 +244,6 @@ const manualModelSelected = document.getElementById('manualModelSelected');
 const manualModelHidden = document.getElementById('manualModel');
 let manualSelectedModel = '';
 
-// Autocomplete elements
-const autocompleteOverlay = document.getElementById('autocompleteOverlay');
-const autocompleteList = document.querySelector('.autocomplete-list');
-
 // Character autocomplete elements
 const characterAutocompleteOverlay = document.getElementById('characterAutocompleteOverlay');
 const characterAutocompleteList = document.querySelector('.character-autocomplete-list');
@@ -265,9 +261,6 @@ const variationTypeBtn = document.getElementById('variationTypeBtn');
 const inpaintBtn = document.getElementById('inpaintBtn');
 const uploadImageBaseBtn = document.getElementById('uploadImageBaseBtn');
 const deleteImageBaseBtn = document.getElementById('deleteImageBaseBtn');
-
-// Global variables for autocomplete
-let currentAutocompleteTarget = null;
 
 // Global variables for character autocomplete
 let characterAutocompleteTimeout = null;
@@ -1140,6 +1133,40 @@ function setupEventListeners() {
     manualForm.addEventListener('submit', handleManualGeneration);
     manualSaveBtn.addEventListener('click', handleManualSave);
     
+    // Manual preview control events
+    const manualPreviewDownloadBtn = document.getElementById('manualPreviewDownloadBtn');
+    const manualPreviewUpscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
+    const manualPreviewVariationBtn = document.getElementById('manualPreviewVariationBtn');
+    
+    if (manualPreviewDownloadBtn) {
+        manualPreviewDownloadBtn.addEventListener('click', () => {
+            const previewImage = document.getElementById('manualPreviewImage');
+            if (previewImage && previewImage.dataset.blobUrl) {
+                const blobUrl = previewImage.dataset.blobUrl;
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = `generated-image-${Date.now()}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            }
+        });
+    }
+    
+    if (manualPreviewUpscaleBtn) {
+        manualPreviewUpscaleBtn.addEventListener('click', () => {
+            // TODO: Implement upscale functionality for preview
+            showToast('Upscale functionality coming soon!', 'info');
+        });
+    }
+    
+    if (manualPreviewVariationBtn) {
+        manualPreviewVariationBtn.addEventListener('click', () => {
+            // TODO: Implement variation functionality for preview
+            showToast('Variation functionality coming soon!', 'info');
+        });
+    }
+    
     // Clear seed button
     clearSeedBtn.addEventListener('click', clearSeed);
     
@@ -1178,11 +1205,9 @@ function setupEventListeners() {
     syncSliderWithInput(manualNoiseValue, manualNoiseValue, 0.0, 1.0, 0.01);
     
     // Autocomplete events
-    manualPrompt.addEventListener('input', handleAutocompleteInput);
-    manualUc.addEventListener('input', handleAutocompleteInput);
-    manualPrompt.addEventListener('keydown', handleAutocompleteKeydown);
-    manualUc.addEventListener('keydown', handleAutocompleteKeydown);
-    document.addEventListener('click', hideAutocomplete);
+
+
+
 
     // Character autocomplete events (for both prompt and UC fields)
     manualPrompt.addEventListener('input', handleCharacterAutocompleteInput);
@@ -1246,10 +1271,6 @@ function setupEventListeners() {
                 hideLightbox();
             } else if (metadataDialog.style.display === 'block') {
                 hideMetadataDialog();
-            // } else if (loginModal.style.display === 'block') {
-            //     hideLoginModal();
-            } else if (manualModal.style.display === 'block') {
-                hideManualModal();
             }
         } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             // Handle arrow key navigation for character detail
@@ -1411,6 +1432,18 @@ function setupEventListeners() {
     
     // Resize handler for dynamic gallery sizing
     window.addEventListener('resize', handleResize);
+    
+    // Handle viewport changes for manual modal preview
+    window.addEventListener('resize', () => {
+        const manualModal = document.getElementById('manualModal');
+        const isWideViewport = window.innerWidth >= 1400;
+        const isManualModalOpen = manualModal && manualModal.style.display === 'block';
+        
+        // If switching from wide to narrow viewport and modal is open, reset preview
+        if (!isWideViewport && isManualModalOpen) {
+            resetManualPreview();
+        }
+    });
 
     // Variety+ toggle
     if (varietyToggle) {
@@ -1562,6 +1595,16 @@ function setupEventListeners() {
     
     // Setup mask editor button
     setupMaskEditorButton();
+
+    document.getElementById('randomPromptToggleBtn').addEventListener('click', toggleRandomPrompt);
+    document.getElementById('randomPromptRefreshBtn').addEventListener('click', executeRandomPrompt);
+    document.getElementById('randomPromptNsfwBtn').addEventListener('click', (e) => {
+        const btn = e.currentTarget;
+        const state = btn.dataset.state === 'on' ? 'off' : 'on';
+        btn.dataset.state = state;
+        btn.classList.toggle('active', state === 'on');
+        executeRandomPrompt();
+    });
 }
 
 let presets, pipelines, resolutions, models, modelsNames, modelsShort, textReplacements, samplers, noiseSchedulers;
@@ -2317,7 +2360,15 @@ async function rerollImage(image) {
                 layer2Config.uc = metadata.uc;
             }
             
-            addSamplerAndNoiseToRequest(layer2Config, metadata);
+            if (metadata.sampler) {
+                const samplerObj = getSamplerByMeta(metadata.sampler);
+                layer2Config.sampler = samplerObj ? samplerObj.request : metadata.sampler;
+            }
+            
+            if (metadata.noise_schedule) {
+                const noiseObj = getNoiseByMeta(metadata.noise_schedule);
+                layer2Config.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
+            }
             
             // Build pipeline request body using captured pipeline context
             const pipelineRequestBody = {
@@ -2411,7 +2462,15 @@ async function rerollImage(image) {
                     requestBody.uc = metadata.uc;
                 }
                 
-                addSamplerAndNoiseToRequest(requestBody, metadata);
+                if (metadata.sampler) {
+                    const samplerObj = getSamplerByMeta(metadata.sampler);
+                    requestBody.sampler = samplerObj ? samplerObj.request : metadata.sampler;
+                }
+                
+                if (metadata.noise_schedule) {
+                    const noiseObj = getNoiseByMeta(metadata.noise_schedule);
+                    requestBody.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
+                }
                 
                 if (metadata.skip_cfg_above_sigma) {
                     requestBody.variety = true;
@@ -2449,7 +2508,15 @@ async function rerollImage(image) {
                     requestBody.uc = metadata.uc;
                 }
                 
-                addSamplerAndNoiseToRequest(requestBody, metadata);
+                if (metadata.sampler) {
+                    const samplerObj = getSamplerByMeta(metadata.sampler);
+                    requestBody.sampler = samplerObj ? samplerObj.request : metadata.sampler;
+                }
+                
+                if (metadata.noise_schedule) {
+                    const noiseObj = getNoiseByMeta(metadata.noise_schedule);
+                    requestBody.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
+                }
                 
                 if (metadata.skip_cfg_above_sigma) {
                     requestBody.variety = true;
@@ -3142,26 +3209,65 @@ function showManualModal() {
 }
 
 // Hide manual modal
-function hideManualModal() {
-    manualModal.style.display = 'none';
-    clearManualForm();
-    
-    // Clear pipeline context
-    window.currentPipelineEdit = null;
-    
-    // Hide request type toggle row
-    const requestTypeRow = document.getElementById('requestTypeRow');
-    if (requestTypeRow) {
-        requestTypeRow.style.display = 'none';
+function hideManualModal(e, preventModalReset = false) {
+    const isWideViewport = window.innerWidth >= 1400;
+    const isManualModalOpen = manualModal && manualModal.style.display === 'block';
+
+    if (!preventModalReset || !(isWideViewport && isManualModalOpen)) {
+        // Handle loading overlay when modal is closed
+        const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
+        if (manualLoadingOverlay && !manualLoadingOverlay.classList.contains('hidden')) {
+            // If manual loading overlay is visible, switch to regular loading overlay
+            const loadingMessage = manualLoadingOverlay.querySelector('p')?.textContent || 'Generating your image...';
+            manualLoadingOverlay.classList.add('hidden');
+            showLoading(true, loadingMessage);
+        }
+        
+        manualModal.style.display = 'none';
+        clearManualForm();
+        
+        // Reset manual preview
+        resetManualPreview();
+        
+        // Clear pipeline context
+        window.currentPipelineEdit = null;
+        
+        // Hide request type toggle row
+        const requestTypeRow = document.getElementById('requestTypeRow');
+        if (requestTypeRow) {
+            requestTypeRow.style.display = 'none';
+        }
+        
+        // Clear edit context
+        window.currentEditMetadata = null;
+        window.currentEditImage = null;
+        window.currentRequestType = null;
+        
+        // Reset random prompt state
+        savedRandomPromptState = null;
+        lastPromptState = null;
+        
+        // Reset random prompt buttons and icons
+        const toggleBtn = document.getElementById('randomPromptToggleBtn');
+        const refreshBtn = document.getElementById('randomPromptRefreshBtn');
+        const nsfwBtn = document.getElementById('randomPromptNsfwBtn');
+        
+        if (toggleBtn) {
+            toggleBtn.dataset.state = 'off';
+            toggleBtn.classList.remove('active');
+        }
+        if (refreshBtn) {
+            refreshBtn.style.display = 'none';
+        }
+        if (nsfwBtn) {
+            nsfwBtn.dataset.state = 'off';
+            nsfwBtn.classList.remove('active');
+            nsfwBtn.style.display = 'none';
+        }
+        
+        // Update button visibility
+        updateRequestTypeButtonVisibility();
     }
-    
-    // Clear edit context
-    window.currentEditMetadata = null;
-    window.currentEditImage = null;
-    window.currentRequestType = null;
-    
-    // Update button visibility
-    updateRequestTypeButtonVisibility();
 }
 
 // Clear manual form
@@ -3587,7 +3693,14 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     if (values.uc) requestBody.uc = values.uc;
     if (values.seed) requestBody.seed = parseInt(values.seed);
     
-    addSamplerAndNoiseToRequest(requestBody, values);
+    if (values.sampler) {
+        const samplerObj = getSamplerByMeta(values.sampler);
+        requestBody.sampler = samplerObj ? samplerObj.request : values.sampler;
+    }
+    if (values.noiseScheduler) {
+        const noiseObj = getNoiseByMeta(values.noiseScheduler);
+        requestBody.noiseScheduler = noiseObj ? noiseObj.request : values.noiseScheduler;
+    }
 
     if (values.upscale) requestBody.upscale = true;
     if (typeof varietyEnabled !== "undefined" && varietyEnabled) {
@@ -3615,37 +3728,110 @@ function handleImageResult(blob, successMsg, clearContextFn) {
     img.onload = function() {
         createConfetti();
         showSuccess(successMsg);
-        if (typeof clearContextFn === "function") clearContextFn();
-        setTimeout(async () => {
-            await loadGallery();
-            if (typeof loadBalance === "function") await loadBalance();
-            if (allImages.length > 0) {
-                const newImage = allImages[0];
-                let imageToShow;
-                if (newImage.pipeline_upscaled || newImage.pipeline) {
-                    let filenameToShow = newImage.original;
-                    if (newImage.pipeline_upscaled) filenameToShow = newImage.pipeline_upscaled;
-                    else if (newImage.pipeline) filenameToShow = newImage.pipeline;
-                    else if (newImage.upscaled) filenameToShow = newImage.upscaled;
-                    imageToShow = {
-                        filename: filenameToShow,
-                        base: newImage.base,
-                        upscaled: newImage.upscaled,
-                        pipeline: newImage.pipeline,
-                        pipeline_upscaled: newImage.pipeline_upscaled
-                    };
-                } else {
-                    imageToShow = {
-                        filename: newImage.upscaled || newImage.original,
-                        base: newImage.base,
-                        upscaled: newImage.upscaled
-                    };
+        
+        // Check if we're in wide viewport mode and manual modal is open
+        const isWideViewport = window.innerWidth >= 1400;
+        const manualModal = document.getElementById('manualModal');
+        const isManualModalOpen = manualModal && manualModal.style.display === 'block';
+        
+        if (isWideViewport && isManualModalOpen) {
+            // Update manual modal preview instead of opening lightbox
+            // Don't clear context when modal is open in wide viewport mode
+            updateManualPreview(imageUrl, blob);
+        } else {
+            // Clear context only when modal is not open or not in wide viewport mode
+            if (typeof clearContextFn === "function") clearContextFn();
+            
+            // Normal behavior - open lightbox
+            setTimeout(async () => {
+                await loadGallery();
+                if (typeof loadBalance === "function") await loadBalance();
+                if (allImages.length > 0) {
+                    const newImage = allImages[0];
+                    let imageToShow;
+                    if (newImage.pipeline_upscaled || newImage.pipeline) {
+                        let filenameToShow = newImage.original;
+                        if (newImage.pipeline_upscaled) filenameToShow = newImage.pipeline_upscaled;
+                        else if (newImage.pipeline) filenameToShow = newImage.pipeline;
+                        else if (newImage.upscaled) filenameToShow = newImage.upscaled;
+                        imageToShow = {
+                            filename: filenameToShow,
+                            base: newImage.base,
+                            upscaled: newImage.upscaled,
+                            pipeline: newImage.pipeline,
+                            pipeline_upscaled: newImage.pipeline_upscaled
+                        };
+                    } else {
+                        imageToShow = {
+                            filename: newImage.upscaled || newImage.original,
+                            base: newImage.base,
+                            upscaled: newImage.upscaled
+                        };
+                    }
+                    showLightbox(imageToShow);
                 }
-                showLightbox(imageToShow);
-            }
-        }, 1000);
+            }, 1000);
+        }
     };
     img.src = imageUrl;
+}
+
+// Function to update manual modal preview
+function updateManualPreview(imageUrl, blob) {
+    const previewImage = document.getElementById('manualPreviewImage');
+    const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
+    const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
+    const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
+    const rerollBtn = document.getElementById('manualPreviewRerollBtn');
+    const variationBtn = document.getElementById('manualPreviewVariationBtn');
+    
+    if (previewImage && previewPlaceholder) {
+        // Show the image and hide placeholder
+        previewImage.src = imageUrl;
+        previewImage.style.display = 'block';
+        previewPlaceholder.style.display = 'none';
+        
+        // Store the blob URL for download functionality
+        previewImage.dataset.blobUrl = imageUrl;
+        
+        // Show control buttons
+        if (downloadBtn) downloadBtn.style.display = 'flex';
+        if (upscaleBtn) upscaleBtn.style.display = 'flex';
+        if (rerollBtn) rerollBtn.style.display = 'flex';
+        if (variationBtn) variationBtn.style.display = 'flex';
+        
+        // Initialize zoom functionality
+        setTimeout(() => {
+            initializeManualPreviewZoom();
+        }, 100);
+    }
+}
+
+// Function to reset manual modal preview
+function resetManualPreview() {
+    const previewImage = document.getElementById('manualPreviewImage');
+    const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
+    const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
+    const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
+    const rerollBtn = document.getElementById('manualPreviewRerollBtn');
+    const variationBtn = document.getElementById('manualPreviewVariationBtn');
+    
+    if (previewImage && previewPlaceholder) {
+        // Hide the image and show placeholder
+        previewImage.style.display = 'none';
+        previewImage.src = '';
+        previewImage.dataset.blobUrl = '';
+        previewPlaceholder.style.display = 'flex';
+        
+        // Hide control buttons
+        if (downloadBtn) downloadBtn.style.display = 'none';
+        if (upscaleBtn) upscaleBtn.style.display = 'none';
+        if (rerollBtn) rerollBtn.style.display = 'none';
+        if (variationBtn) variationBtn.style.display = 'none';
+        
+        // Reset zoom functionality
+        resetManualPreviewZoom();
+    }
 }
 
 async function handleManualGeneration(e) {
@@ -3687,7 +3873,7 @@ async function handleManualGeneration(e) {
         let pipelineContext = { ...window.currentPipelineEdit };
         const useLayer1Seed = layer1SeedToggle.getAttribute('data-state') === 'on';
 
-        showLoading(true, 'Generating pipeline...');
+        showManualLoading(true, 'Generating pipeline...');
 
         try {
             // Build layer2 config
@@ -3717,7 +3903,7 @@ async function handleManualGeneration(e) {
                 manualMaskBiasDropdown.style.display !== 'none' && manualMaskBiasHidden) {
                 pipelineRequestBody.mask_bias = parseInt(manualMaskBiasHidden.value);
             }
-            hideManualModal();
+            hideManualModal(undefined, true);
             const pipelineUrl = `/pipeline/generate`;
             const generateResponse = await fetch(pipelineUrl, {
                 method: 'POST',
@@ -3729,12 +3915,12 @@ async function handleManualGeneration(e) {
             const blob = await generateResponse.blob();
             handleImageResult(blob, 'Pipeline edited successfully!', () => { window.currentPipelineEdit = null; });
         } catch (error) {
-            hideManualModal();
+            hideManualModal(undefined, true);
             console.error('Pipeline edit generation error:', error);
             showError('Pipeline generation failed. Please try again.');
             window.currentPipelineEdit = null;
         } finally {
-            showLoading(false);
+            showManualLoading(false);
         }
     } else if (isVariationEdit || currentRequestType === 'variation' || (currentRequestType === 'reroll' && isVariationEdit)) {
         // Variation Edit/Reroll
@@ -3804,8 +3990,8 @@ async function handleManualGeneration(e) {
 
         addSharedFieldsToRequestBody(requestBody, values);
 
-        hideManualModal();
-        showLoading(true, 'Generating variation...');
+        hideManualModal(undefined, true);
+        showManualLoading(true, 'Generating variation...');
 
         try {
             const url = `/${values.model.toLowerCase()}/generate`;
@@ -3819,12 +4005,12 @@ async function handleManualGeneration(e) {
             const blob = await response.blob();
             handleImageResult(blob, 'Variation generated successfully!', () => { window.currentVariationEdit = null; });
         } catch (error) {
+            hideManualModal(undefined, true);
             console.error('Variation generation error:', error);
             showError('Variation generation failed. Please try again.');
             window.currentVariationEdit = null;
         } finally {
-            showLoading(false);
-            hideManualModal();
+            showManualLoading(false);
         }
     } else if (currentRequestType === 'reroll' || !currentRequestType) {
         // Regular manual generation or reroll
@@ -3843,9 +4029,9 @@ async function handleManualGeneration(e) {
 
         addSharedFieldsToRequestBody(requestBody, values);
 
-        showLoading(true, 'Generating image...');
+        showManualLoading(true, 'Generating image...');
 
-        hideManualModal();
+        hideManualModal(undefined, true);
         try {
             const url = `/${values.model.toLowerCase()}/generate`;
             const response = await fetch(url, {
@@ -3858,11 +4044,11 @@ async function handleManualGeneration(e) {
             const blob = await response.blob();
             handleImageResult(blob, 'Image generated successfully!');
         } catch (error) {
-            hideManualModal();
+            hideManualModal(undefined, true);
             console.error('Manual generation error:', error);
             showError('Image generation failed. Please try again.');
         } finally {
-            showLoading(false);
+            showManualLoading(false);
         }
     }
 }
@@ -3893,7 +4079,7 @@ async function saveManualPreset(presetName, config) {
             updateGenerateButton();
             
             // Close the manual modal
-            hideManualModal();
+            hideManualModal(undefined, true);
         } else {
             const error = await response.json();
             throw new Error(error.error || 'Failed to save preset');
@@ -3971,127 +4157,6 @@ async function handleManualSave() {
     await saveManualPreset(presetName, presetData);
 }
 
-// Autocomplete functions
-function handleAutocompleteInput(e) {
-    const target = e.target;
-    const value = target.value;
-    const cursorPos = target.selectionStart;
-    
-    // Find if we're inside a <placeholder> tag
-    const beforeCursor = value.substring(0, cursorPos);
-    const match = beforeCursor.match(/<([^>]*)$/);
-    
-    if (match) {
-        const partial = match[1];
-        showAutocompleteSuggestions(partial, target);
-    } else {
-        hideAutocomplete();
-    }
-}
-
-function handleAutocompleteKeydown(e) {
-    if (!autocompleteOverlay.classList.contains('hidden')) {
-        const items = autocompleteList.querySelectorAll('.autocomplete-item');
-        
-        switch (e.key) {
-            case 'ArrowDown':
-                e.preventDefault();
-                selectedAutocompleteIndex = Math.min(selectedAutocompleteIndex + 1, items.length - 1);
-                updateAutocompleteSelection();
-                break;
-            case 'ArrowUp':
-                e.preventDefault();
-                selectedAutocompleteIndex = Math.max(selectedAutocompleteIndex - 1, -1);
-                updateAutocompleteSelection();
-                break;
-            case 'Enter':
-                e.preventDefault();
-                if (selectedAutocompleteIndex >= 0 && items[selectedAutocompleteIndex]) {
-                    insertAutocompleteSuggestion(items[selectedAutocompleteIndex].dataset.value);
-                }
-                break;
-            case 'Escape':
-                hideAutocomplete();
-                break;
-        }
-    }
-}
-
-function showAutocompleteSuggestions(partial, target) {
-    currentAutocompleteTarget = target;
-    selectedAutocompleteIndex = -1;
-    
-    // Filter text replacements that match the partial
-    const suggestions = Object.keys(textReplacements).filter(key => 
-        key.toLowerCase().includes(partial.toLowerCase())
-    ).slice(0, 10); // Limit to 10 suggestions
-    
-    if (suggestions.length === 0) {
-        hideAutocomplete();
-        return;
-    }
-    
-    // Populate autocomplete list
-    autocompleteList.innerHTML = '';
-    suggestions.forEach((key, index) => {
-        const item = document.createElement('div');
-        item.className = 'autocomplete-item';
-        item.dataset.value = key;
-        item.innerHTML = `
-            <div class="placeholder-name">${key}</div>
-            <div class="placeholder-desc">${textReplacements[key]}</div>
-        `;
-        item.addEventListener('click', () => insertAutocompleteSuggestion(key));
-        autocompleteList.appendChild(item);
-    });
-    
-    // Position overlay
-    const rect = target.getBoundingClientRect();
-    autocompleteOverlay.style.left = rect.left + 'px';
-    autocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
-    autocompleteOverlay.style.width = rect.width + 'px';
-    
-    autocompleteOverlay.classList.remove('hidden');
-}
-
-function updateAutocompleteSelection() {
-    const items = autocompleteList.querySelectorAll('.autocomplete-item');
-    items.forEach((item, index) => {
-        item.classList.toggle('selected', index === selectedAutocompleteIndex);
-    });
-}
-
-function insertAutocompleteSuggestion(value) {
-    if (!currentAutocompleteTarget) return;
-    
-    const target = currentAutocompleteTarget;
-    const cursorPos = target.selectionStart;
-    const value_before = target.value.substring(0, cursorPos);
-    const value_after = target.value.substring(cursorPos);
-    
-    // Find the start of the <placeholder> tag
-    const beforeCursor = value_before;
-    const match = beforeCursor.match(/<([^>]*)$/);
-    
-    if (match) {
-        const startPos = beforeCursor.lastIndexOf('<');
-        const newValue = value_before.substring(0, startPos) + '<' + value + '>' + value_after;
-        target.value = newValue;
-        
-        // Set cursor position after the inserted placeholder
-        const newCursorPos = startPos + value.length + 2; // +2 for < and >
-        target.setSelectionRange(newCursorPos, newCursorPos);
-    }
-    
-    hideAutocomplete();
-}
-
-function hideAutocomplete() {
-    autocompleteOverlay.classList.add('hidden');
-    currentAutocompleteTarget = null;
-    selectedAutocompleteIndex = -1;
-}
-
 // Character autocomplete functions
 function handleCharacterAutocompleteInput(e) {
     const target = e.target;
@@ -4144,6 +4209,15 @@ function handleCharacterAutocompleteKeydown(e) {
                 e.preventDefault();
                 selectedCharacterAutocompleteIndex = Math.max(selectedCharacterAutocompleteIndex - 1, -1);
                 updateCharacterAutocompleteSelection();
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                if (selectedCharacterAutocompleteIndex >= 0 && items[selectedCharacterAutocompleteIndex]) {
+                    const selectedItem = items[selectedCharacterAutocompleteIndex];
+                    if (selectedItem.dataset.type === 'textReplacement') {
+                        selectTextReplacementFullText(selectedItem.dataset.placeholder);
+                    }
+                }
                 break;
             case 'Enter':
                 e.preventDefault();
@@ -4219,8 +4293,13 @@ function showCharacterAutocompleteSuggestions(results, target) {
             item.dataset.placeholder = result.placeholder;
             
             item.innerHTML = `
-                <span class="character-name">${result.placeholder}</span>
-                <span class="character-copyright">Text Replacement</span>
+                <div class="character-info-row">
+                    <span class="character-name">${result.placeholder}</span>
+                    <span class="character-copyright">Text Replacement</span>
+                </div>
+                <div class="character-info-row">
+                    <div class="placeholder-desc"><span class="placeholder-desc-text">${result.description}</span></div>
+                </div>
             `;
             
             item.addEventListener('click', () => selectTextReplacement(result.placeholder));
@@ -4328,6 +4407,68 @@ function selectTextReplacement(placeholder) {
     target.value = newPrompt;
     
     // Set cursor position after the inserted placeholder
+    const newCursorPosition = newPrompt.length - textAfter.length;
+    target.setSelectionRange(newCursorPosition, newCursorPosition);
+    
+    // Hide character autocomplete
+    hideCharacterAutocomplete();
+    
+    // Focus back on the target field
+    if (target) {
+        target.focus();
+    }
+}
+
+function selectTextReplacementFullText(placeholder) {
+    if (!currentCharacterAutocompleteTarget) return;
+    
+    const target = currentCharacterAutocompleteTarget;
+    const currentValue = target.value;
+    const cursorPosition = target.selectionStart;
+    
+    // Get the text before the cursor
+    const textBeforeCursor = currentValue.substring(0, cursorPosition);
+    
+    // Find the last delimiter (:, |, ,) before the cursor, or start from the beginning
+    const lastDelimiterIndex = Math.max(
+        textBeforeCursor.lastIndexOf('{'),
+        textBeforeCursor.lastIndexOf('}'),
+        textBeforeCursor.lastIndexOf('['),
+        textBeforeCursor.lastIndexOf(']'),
+        textBeforeCursor.lastIndexOf(':'),
+        textBeforeCursor.lastIndexOf('|'),
+        textBeforeCursor.lastIndexOf(',')
+    );
+    const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
+    
+    // Get the text after the cursor
+    const textAfterCursor = currentValue.substring(cursorPosition);
+    
+    // Build the new prompt
+    let newPrompt = '';
+    
+    // Keep the text before the current term (trim any trailing delimiters and spaces)
+    const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
+    newPrompt = textBefore;
+    
+    // Add the full text replacement description
+    const fullText = textReplacements[placeholder];
+    if (newPrompt) {
+        newPrompt += ', ' + fullText;
+    } else {
+        newPrompt = fullText;
+    }
+    
+    // Add the text after the cursor (trim any leading delimiters and spaces)
+    const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
+    if (textAfter) {
+        newPrompt += ', ' + textAfter;
+    }
+    
+    // Update the target field
+    target.value = newPrompt;
+    
+    // Set cursor position after the inserted text
     const newCursorPosition = newPrompt.length - textAfter.length;
     target.setSelectionRange(newCursorPosition, newCursorPosition);
     
@@ -5534,6 +5675,189 @@ function getTouchDistance(touches) {
     return Math.sqrt(dx * dx + dy * dy);
 }
 
+// Manual preview zoom and pan functionality
+let manualPreviewZoom = 1;
+let manualPreviewPanX = 0;
+let manualPreviewPanY = 0;
+let isManualPreviewDragging = false;
+let lastManualPreviewMouseX = 0;
+let lastManualPreviewMouseY = 0;
+let lastManualPreviewTouchDistance = 0;
+
+function initializeManualPreviewZoom() {
+    const imageContainer = document.querySelector('.manual-preview-image-container');
+    const image = document.getElementById('manualPreviewImage');
+    
+    if (!imageContainer || !image) return;
+    
+    // Reset zoom and pan
+    resetManualPreviewZoom();
+    
+    // Mouse wheel zoom
+    imageContainer.addEventListener('wheel', handleManualPreviewWheelZoom, { passive: false });
+    
+    // Mouse drag pan
+    imageContainer.addEventListener('mousedown', handleManualPreviewMouseDown);
+    imageContainer.addEventListener('mousemove', handleManualPreviewMouseMove);
+    imageContainer.addEventListener('mouseup', handleManualPreviewMouseUp);
+    imageContainer.addEventListener('mouseleave', handleManualPreviewMouseUp);
+    
+    // Touch zoom and pan
+    imageContainer.addEventListener('touchstart', handleManualPreviewTouchStart, { passive: false });
+    imageContainer.addEventListener('touchmove', handleManualPreviewTouchMove, { passive: false });
+    imageContainer.addEventListener('touchend', handleManualPreviewTouchEnd);
+    
+    // Double click to reset zoom
+    imageContainer.addEventListener('dblclick', resetManualPreviewZoom);
+}
+
+function resetManualPreviewZoom() {
+    manualPreviewZoom = 1;
+    manualPreviewPanX = 0;
+    manualPreviewPanY = 0;
+    updateManualPreviewImageTransform();
+    
+    const imageContainer = document.querySelector('.manual-preview-image-container');
+    if (imageContainer) {
+        imageContainer.classList.remove('zoomed');
+    }
+}
+
+function updateManualPreviewImageTransform() {
+    const image = document.getElementById('manualPreviewImage');
+    if (image) {
+        image.style.transform = `translate(${manualPreviewPanX}px, ${manualPreviewPanY}px) scale(${manualPreviewZoom})`;
+    }
+}
+
+function handleManualPreviewWheelZoom(e) {
+    e.preventDefault();
+    
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.max(1, Math.min(5, manualPreviewZoom * delta));
+    
+    // If zooming out to original size, reset pan to center
+    if (newZoom <= 1 && manualPreviewZoom > 1) {
+        manualPreviewPanX = 0;
+        manualPreviewPanY = 0;
+    } else {
+        // Zoom towards mouse position only when zooming in or when already zoomed
+        const rect = e.currentTarget.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
+        const zoomChange = newZoom / manualPreviewZoom;
+        manualPreviewPanX = mouseX - (mouseX - manualPreviewPanX) * zoomChange;
+        manualPreviewPanY = mouseY - (mouseY - manualPreviewPanY) * zoomChange;
+    }
+    
+    manualPreviewZoom = newZoom;
+    updateManualPreviewImageTransform();
+    
+    const imageContainer = document.querySelector('.manual-preview-image-container');
+    if (imageContainer) {
+        imageContainer.classList.toggle('zoomed', manualPreviewZoom > 1);
+    }
+}
+
+function handleManualPreviewMouseDown(e) {
+    if (manualPreviewZoom > 1) {
+        isManualPreviewDragging = true;
+        lastManualPreviewMouseX = e.clientX;
+        lastManualPreviewMouseY = e.clientY;
+        e.preventDefault();
+    }
+}
+
+function handleManualPreviewMouseMove(e) {
+    if (isManualPreviewDragging && manualPreviewZoom > 1) {
+        const deltaX = e.clientX - lastManualPreviewMouseX;
+        const deltaY = e.clientY - lastManualPreviewMouseY;
+        
+        manualPreviewPanX += deltaX;
+        manualPreviewPanY += deltaY;
+        
+        lastManualPreviewMouseX = e.clientX;
+        lastManualPreviewMouseY = e.clientY;
+        
+        updateManualPreviewImageTransform();
+        e.preventDefault();
+    }
+}
+
+function handleManualPreviewMouseUp() {
+    isManualPreviewDragging = false;
+}
+
+function handleManualPreviewTouchStart(e) {
+    if (e.touches.length === 1) {
+        // Single touch - start pan
+        isManualPreviewDragging = true;
+        lastManualPreviewMouseX = e.touches[0].clientX;
+        lastManualPreviewMouseY = e.touches[0].clientY;
+    } else if (e.touches.length === 2) {
+        // Two touches - start pinch zoom
+        lastManualPreviewTouchDistance = getTouchDistance(e.touches);
+    }
+}
+
+function handleManualPreviewTouchMove(e) {
+    if (e.touches.length === 1 && isManualPreviewDragging && manualPreviewZoom > 1) {
+        // Single touch pan
+        const deltaX = e.touches[0].clientX - lastManualPreviewMouseX;
+        const deltaY = e.touches[0].clientY - lastManualPreviewMouseY;
+        
+        manualPreviewPanX += deltaX;
+        manualPreviewPanY += deltaY;
+        
+        lastManualPreviewMouseX = e.touches[0].clientX;
+        lastManualPreviewMouseY = e.touches[0].clientY;
+        
+        updateManualPreviewImageTransform();
+        e.preventDefault();
+    } else if (e.touches.length === 2) {
+        // Two touch pinch zoom
+        const currentDistance = getTouchDistance(e.touches);
+        const delta = currentDistance / lastManualPreviewTouchDistance;
+        
+        const newZoom = Math.max(1, Math.min(5, manualPreviewZoom * delta));
+        
+        // If zooming out to original size, reset pan to center
+        if (newZoom <= 1 && manualPreviewZoom > 1) {
+            manualPreviewPanX = 0;
+            manualPreviewPanY = 0;
+        } else {
+            // Zoom towards center of touches only when zooming in or when already zoomed
+            const rect = e.currentTarget.getBoundingClientRect();
+            const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+            const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+            
+            const zoomChange = newZoom / manualPreviewZoom;
+            manualPreviewPanX = centerX - (centerX - manualPreviewPanX) * zoomChange;
+            manualPreviewPanY = centerY - (centerY - manualPreviewPanY) * zoomChange;
+        }
+        
+        manualPreviewZoom = newZoom;
+        lastManualPreviewTouchDistance = currentDistance;
+        
+        updateManualPreviewImageTransform();
+        
+        const imageContainer = document.querySelector('.manual-preview-image-container');
+        if (imageContainer) {
+            imageContainer.classList.toggle('zoomed', manualPreviewZoom > 1);
+        }
+        
+        e.preventDefault();
+    }
+}
+
+function handleManualPreviewTouchEnd(e) {
+    if (e.touches.length === 0) {
+        isManualPreviewDragging = false;
+        lastManualPreviewTouchDistance = 0;
+    }
+}
+
 // Download image
 function downloadImage(image) {
     let filename, url;
@@ -5718,6 +6042,37 @@ function showLoading(show, message = 'Generating your image...') {
         }
     } else {
         loadingOverlay.classList.add('hidden');
+    }
+}
+
+// Show manual modal loading overlay
+function showManualLoading(show, message = 'Generating your image...') {
+    const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
+    const manualModal = document.getElementById('manualModal');
+    
+    // Check if manual modal is open and screen is wide enough for preview section
+    const isManualModalOpen = manualModal && manualModal.style.display !== 'none';
+    const isWideScreen = window.innerWidth > 1400;
+    
+    if (show && isManualModalOpen && isWideScreen) {
+        // Use manual loading overlay for wide screens with modal open
+        if (manualLoadingOverlay) {
+            manualLoadingOverlay.classList.remove('hidden');
+            // Update the loading message
+            const loadingText = manualLoadingOverlay.querySelector('p');
+            if (loadingText) {
+                loadingText.textContent = message;
+            }
+        }
+    } else if (show) {
+        // Fall back to regular loading overlay for narrow screens or when modal is closed
+        showLoading(true, message);
+    } else {
+        // Hide both overlays
+        if (manualLoadingOverlay) {
+            manualLoadingOverlay.classList.add('hidden');
+        }
+        showLoading(false);
     }
 }
 
@@ -5926,6 +6281,7 @@ function calculateImagesPerPage() {
     return newImagesPerPage;
 }
 
+let resizeTimeout = null;
 // Debounced resize handler
 function handleResize() {
     if (resizeTimeout) {
@@ -5945,6 +6301,28 @@ function handleResize() {
             
             // Redisplay current page
             displayCurrentPage();
+        }
+        
+        // Handle loading overlay switching on resize
+        const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
+        const manualModal = document.getElementById('manualModal');
+        
+        if (manualLoadingOverlay && manualModal) {
+            const isManualModalOpen = manualModal.style.display !== 'none';
+            const isWideScreen = window.innerWidth > 1400;
+            const isManualOverlayVisible = !manualLoadingOverlay.classList.contains('hidden');
+            
+            if (isManualOverlayVisible && isManualModalOpen) {
+                if (isWideScreen) {
+                    // Switch to manual overlay for wide screens
+                    showLoading(false);
+                    manualLoadingOverlay.classList.remove('hidden');
+                } else {
+                    // Switch to regular overlay for narrow screens
+                    manualLoadingOverlay.classList.add('hidden');
+                    showLoading(true, manualLoadingOverlay.querySelector('p')?.textContent || 'Generating your image...');
+                }
+            }
         }
     }, 250); // 250ms delay
 }
@@ -7482,6 +7860,105 @@ async function handleBulkSequenzia() {
 let characterPromptCounter = 0;
 let currentPositionCharacterId = null;
 let selectedPositionCell = null;
+let lastPromptState = null;
+let savedRandomPromptState = null;
+
+/**
+ * Determines the request type for random prompt generation based on the selected model.
+ * @returns {number} - The request type (0, 1, or 2).
+ */
+function getRequestTypeForRandomPrompt() {
+    const modelValue = document.getElementById('manualModel').value || '';
+    const modelLower = modelValue.toLowerCase();
+
+    if (modelLower.includes('v4.5') || modelLower.includes('v4')) {
+        return 2;
+    } else if (modelLower.includes('furry')) {
+        return 1;
+    } else if (modelLower.includes('anime')) {
+        return 0;
+    }
+    return 0; // Default to Anime
+}
+
+/**
+ * Executes the random prompt generation and populates the form.
+ */
+async function executeRandomPrompt() {
+    const requestType = getRequestTypeForRandomPrompt();
+    const nsfw = document.getElementById('randomPromptNsfwBtn').dataset.state === 'on';
+    
+    const promptData = await randomPrompt(requestType, nsfw);
+
+    if (promptData && Array.isArray(promptData)) {
+        document.getElementById('manualPrompt').value = promptData[0] || '';
+        document.getElementById('manualUc').value = '<NUC_3>';
+
+        const characterPrompts = promptData.slice(1).map(p => ({ prompt: p, uc: '', enabled: true }));
+        savedRandomPromptState = {
+            basePrompt: promptData[0],
+            baseUc: '<NUC_3>',
+            characters: characterPrompts
+        };
+        loadCharacterPrompts(characterPrompts, false);
+    }
+}
+
+/**
+ * Toggles the random prompt generation feature on and off.
+ */
+async function toggleRandomPrompt() {
+    const toggleBtn = document.getElementById('randomPromptToggleBtn');
+    const refreshBtn = document.getElementById('randomPromptRefreshBtn');
+    const nsfwBtn = document.getElementById('randomPromptNsfwBtn');
+    const isEnabled = toggleBtn.dataset.state === 'on';
+
+    if (isEnabled) {
+        // Turning OFF - save current random prompt state
+        savedRandomPromptState = {
+            basePrompt: document.getElementById('manualPrompt').value,
+            baseUc: document.getElementById('manualUc').value,
+            characters: getCharacterPrompts()
+        };
+        
+        toggleBtn.dataset.state = 'off';
+        toggleBtn.classList.remove('active');
+        refreshBtn.style.display = 'none';
+        nsfwBtn.style.display = 'none';
+
+        if (lastPromptState) {
+            document.getElementById('manualPrompt').value = lastPromptState.basePrompt;
+            document.getElementById('manualUc').value = lastPromptState.baseUc;
+            loadCharacterPrompts(lastPromptState.characters, false);
+        }
+        lastPromptState = null;
+
+    } else {
+        // Turning ON
+        // Save current state before doing anything
+        lastPromptState = {
+            basePrompt: document.getElementById('manualPrompt').value,
+            baseUc: document.getElementById('manualUc').value,
+            characters: getCharacterPrompts()
+        };
+        
+        toggleBtn.dataset.state = 'on';
+        toggleBtn.classList.add('active');
+        refreshBtn.style.display = '';
+        nsfwBtn.style.display = '';
+        
+        // Check if we have a saved random prompt state
+        if (savedRandomPromptState) {
+            // Restore the last random prompt values
+            document.getElementById('manualPrompt').value = savedRandomPromptState.basePrompt;
+            document.getElementById('manualUc').value = savedRandomPromptState.baseUc;
+            loadCharacterPrompts(savedRandomPromptState.characters, false);
+        } else {
+            // No saved state, generate new random prompt
+            await executeRandomPrompt();
+        }
+    }
+}
 
 function addCharacterPrompt() {
     const container = document.getElementById('characterPromptsContainer');
@@ -7499,41 +7976,48 @@ function addCharacterPrompt() {
                             <i class="nai-pen-tip-light"></i> Prompt
                         </button>
                         <button type="button" class="tab-btn" data-tab="uc">
-                            <i class="fas fa-ban"></i> Undesired Content
+                            <i class="fas fa-ban"></i> UC
                         </button>
                         <div class="character-name-editable" onclick="editCharacterName('${characterId}')">
                             <span class="character-name-text">Character ${characterPromptCounter}</span>
                             <i class="nai-settings"></i>
                         </div>
                     </div>
-                <div class="character-prompt-controls">
-                                    <button type="button" class="btn-secondary move-up-btn" onclick="moveCharacterPrompt('${characterId}', 'up')" style="display: inline-flex;">
-                    <i class="nai-directional-arrow-up"></i>
-                </button>
-                <button type="button" class="btn-secondary move-down-btn" onclick="moveCharacterPrompt('${characterId}', 'down')" style="display: inline-flex;">
-                    <i class="nai-directional-arrow-down"></i>
-                </button>
-                    <button type="button" class="btn-secondary position-btn" onclick="showPositionDialog('${characterId}')" style="display: none;">
-                        <i class="fas fa-crosshairs"></i> Position
-                    </button>
-                    <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${characterId}')">
-                        <i class="nai-trash"></i>
-                    </button>
-                    <button type="button" class="btn-secondary toggle-btn" id="${characterId}_enabled" data-state="on" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
-                        <i class="fas fa-power-off"></i>
-                    </button>
+                    
+                <div class="character-prompt-preview">
+                    <input type="text" id="${characterId}_preview" readonly placeholder="Click to expand and edit prompt..."></input>
+                </div>
+                    <div class="character-prompt-controls">
+                        <button type="button" class="btn-secondary character-prompt-collapse-toggle" onclick="toggleCharacterPromptCollapse('${characterId}')" title="Collapse/Expand">
+                            <i class="nai-fold"></i>
+                        </button>
+                        <button type="button" class="btn-secondary move-up-btn" onclick="moveCharacterPrompt('${characterId}', 'up')" style="display: inline-flex;">
+                            <i class="nai-directional-arrow-up"></i>
+                        </button>
+                        <button type="button" class="btn-secondary move-down-btn" onclick="moveCharacterPrompt('${characterId}', 'down')" style="display: inline-flex;">
+                            <i class="nai-directional-arrow-down"></i>
+                        </button>
+                        <button type="button" class="btn-secondary position-btn" onclick="showPositionDialog('${characterId}')" style="display: none;">
+                            <i class="fas fa-crosshairs"></i> Position
+                        </button>
+                        <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${characterId}')">
+                            <i class="nai-trash"></i>
+                        </button>
+                        <button type="button" class="btn-secondary toggle-btn" id="${characterId}_enabled" data-state="on" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
+                            <i class="fas fa-power-off"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="tab-content">
+                    <div class="tab-pane active" id="${characterId}_prompt-tab" data-label="Prompt">
+                        <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt..."></textarea>
+                    </div>
+                    <div class="tab-pane" id="${characterId}_uc-tab" data-label="UC">
+                        <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content..."></textarea>
+                    </div>
                 </div>
             </div>
-            <div class="tab-content">
-                <div class="tab-pane active" id="${characterId}_prompt-tab" data-label="Prompt">
-                    <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt..."></textarea>
-                </div>
-                <div class="tab-pane" id="${characterId}_uc-tab" data-label="UC">
-                    <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content..."></textarea>
-                </div>
-            </div>
-        </div>
-    `;
+        `;
     
     // Store character name in dataset
     characterItem.dataset.charaName = `Character ${characterPromptCounter}`;
@@ -7547,15 +8031,11 @@ function addCharacterPrompt() {
     const ucField = document.getElementById(`${characterId}_uc`);
     
     if (promptField) {
-        promptField.addEventListener('input', handleAutocompleteInput);
-        promptField.addEventListener('keydown', handleAutocompleteKeydown);
         promptField.addEventListener('input', handleCharacterAutocompleteInput);
         promptField.addEventListener('keydown', handleCharacterAutocompleteKeydown);
     }
     
     if (ucField) {
-        ucField.addEventListener('input', handleAutocompleteInput);
-        ucField.addEventListener('keydown', handleAutocompleteKeydown);
         ucField.addEventListener('input', handleCharacterAutocompleteInput);
         ucField.addEventListener('keydown', handleCharacterAutocompleteKeydown);
     }
@@ -7577,6 +8057,25 @@ function addCharacterPrompt() {
             document.getElementById(`${characterId}_${targetTab}-tab`).classList.add('active');
         });
     });
+    
+    // Add preview textarea click handler
+    const previewTextarea = document.getElementById(`${characterId}_preview`);
+    if (previewTextarea) {
+        previewTextarea.addEventListener('click', () => {
+            toggleCharacterPromptCollapse(characterId);
+        });
+    }
+    
+    // Update preview content when prompt changes
+    if (promptField) {
+        promptField.addEventListener('input', () => {
+            updateCharacterPromptPreview(characterId);
+        });
+    }
+    
+    // Set initial collapsed state for new characters
+    characterItem.classList.add('collapsed');
+    updateCharacterPromptCollapseButton(characterId, true);
     
     // Update auto position toggle visibility
     updateAutoPositionToggle();
@@ -7835,14 +8334,20 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                             <i class="nai-pen-tip-light"></i> Prompt
                         </button>
                         <button type="button" class="tab-btn" data-tab="uc">
-                            <i class="fas fa-ban"></i> Undesired Content
+                            <i class="fas fa-ban"></i> UC
                         </button>
                         <div class="character-name-editable" onclick="editCharacterName('${characterId}')">
                             <span class="character-name-text">${character.chara_name || `Character ${index + 1}`}</span>
                             <i class="nai-settings"></i>
                         </div>
                     </div>
+                    <div class="character-prompt-preview">
+                        <input type="text" id="${characterId}_preview" readonly placeholder="Click to expand and edit prompt..." value="${character.prompt || ''}"></input>
+                    </div>
                     <div class="character-prompt-controls">
+                        <button type="button" class="btn-secondary character-prompt-collapse-toggle" onclick="toggleCharacterPromptCollapse('${characterId}')" title="Collapse/Expand">
+                            <i class="nai-fold"></i>
+                        </button>
                         <button type="button" class="btn-secondary move-up-btn" onclick="moveCharacterPrompt('${characterId}', 'up')" style="display: inline-flex;">
                             <i class="nai-directional-arrow-up"></i>
                         </button>
@@ -7892,15 +8397,11 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
         const ucField = document.getElementById(`${characterId}_uc`);
         
         if (promptField) {
-            promptField.addEventListener('input', handleAutocompleteInput);
-            promptField.addEventListener('keydown', handleAutocompleteKeydown);
             promptField.addEventListener('input', handleCharacterAutocompleteInput);
             promptField.addEventListener('keydown', handleCharacterAutocompleteKeydown);
         }
         
         if (ucField) {
-            ucField.addEventListener('input', handleAutocompleteInput);
-            ucField.addEventListener('keydown', handleAutocompleteKeydown);
             ucField.addEventListener('input', handleCharacterAutocompleteInput);
             ucField.addEventListener('keydown', handleCharacterAutocompleteKeydown);
         }
@@ -7922,6 +8423,25 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                 document.getElementById(`${characterId}_${targetTab}-tab`).classList.add('active');
             });
         });
+        
+        // Add preview textarea click handler
+        const previewTextarea = document.getElementById(`${characterId}_preview`);
+        if (previewTextarea) {
+            previewTextarea.addEventListener('click', () => {
+                toggleCharacterPromptCollapse(characterId);
+            });
+        }
+        
+        // Update preview content when prompt changes
+        if (promptField) {
+            promptField.addEventListener('input', () => {
+                updateCharacterPromptPreview(characterId);
+            });
+        }
+        
+        // Set default collapsed state for loaded characters
+        characterItem.classList.add('collapsed');
+        updateCharacterPromptCollapseButton(characterId, true);
     });
     
     // Update auto position toggle after loading
@@ -8809,4 +9329,50 @@ function updateMaskPreview() {
 function setupMaskEditorButton() {
     // This function is now handled by the inpaint button
     // The inpaint button will call openMaskEditor when clicked
+}
+
+// Character Prompt Collapse/Expand Functions
+function toggleCharacterPromptCollapse(characterId) {
+    const characterItem = document.getElementById(characterId);
+    if (!characterItem) return;
+    
+    const isCollapsed = characterItem.classList.contains('collapsed');
+    const newCollapsedState = !isCollapsed;
+    
+    if (newCollapsedState) {
+        characterItem.classList.add('collapsed');
+    } else {
+        characterItem.classList.remove('collapsed');
+    }
+    
+    updateCharacterPromptCollapseButton(characterId, newCollapsedState);
+}
+
+function updateCharacterPromptCollapseButton(characterId, isCollapsed) {
+    const characterItem = document.getElementById(characterId);
+    if (!characterItem) return;
+    
+    const collapseToggle = characterItem.querySelector('.character-prompt-collapse-toggle');
+    if (!collapseToggle) return;
+    
+    const icon = collapseToggle.querySelector('i');
+    
+    if (isCollapsed) {
+        icon.className = 'nai-unfold';
+    } else {
+        icon.className = 'nai-fold';
+    }
+}
+
+function updateCharacterPromptPreview(characterId) {
+    const characterItem = document.getElementById(characterId);
+    if (!characterItem) return;
+    
+    const promptField = document.getElementById(`${characterId}_prompt`);
+    const previewField = document.getElementById(`${characterId}_preview`);
+    
+    if (promptField && previewField) {
+        const promptText = promptField.value.trim();
+        previewField.value = promptText || 'No prompt entered';
+    }
 }

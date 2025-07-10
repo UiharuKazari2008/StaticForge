@@ -427,7 +427,20 @@ const buildOptions = async (model, body, preset = null, isImg2Img = false, query
     
     try {
         const processedPrompt = applyTextReplacements(rawPrompt, presetName, model);
-        const processedNegativePrompt = applyTextReplacements(rawNegativePrompt, presetName, model);
+        let processedNegativePrompt = applyTextReplacements(rawNegativePrompt, presetName, model);
+        
+        // Process NSFW removal from negative prompt
+        if (processedNegativePrompt && processedNegativePrompt.startsWith("nsfw")) {
+            let j = processedNegativePrompt.slice(4);
+            let A = "nsfw";
+            if (j.startsWith(", ")) {
+                j = j.slice(2);
+                A += ", ";
+            }
+            
+            // Remove NSFW from the beginning of the negative prompt
+            processedNegativePrompt = j;
+        }
         
         const usedPromptReplacements = getUsedReplacements(rawPrompt, model);
         const usedNegativeReplacements = getUsedReplacements(rawNegativePrompt, model);
@@ -594,8 +607,14 @@ async function handleGeneration(opts, returnImage = false, presetName = null) {
     
     // Process character prompts: only enabled characters go to API, all characters go to forge_data
     if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts)) {
+        // Post-process character prompts: replace 1girl/1boy with girl/boy
+        const processedCharacterPrompts = opts.allCharacterPrompts.map(char => ({
+            ...char,
+            prompt: char.prompt.replace(/1girl/g, "girl").replace(/1boy/g, "boy")
+        }));
+        
         // Filter enabled characters for API request
-        const enabledCharacters = opts.allCharacterPrompts.filter(char => char.enabled);
+        const enabledCharacters = processedCharacterPrompts.filter(char => char.enabled);
         
         // Convert to API format: remove chara_name and use_coords from individual characters
         const apiCharacters = enabledCharacters.map(char => ({
@@ -644,10 +663,16 @@ async function handleGeneration(opts, returnImage = false, presetName = null) {
         
         // Add disabled characters and character names to forge metadata if present
         if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts) && opts.allCharacterPrompts.length > 0) {
+            // Post-process character prompts for forge metadata: replace 1girl/1boy with girl/boy
+            const processedCharacterPrompts = opts.allCharacterPrompts.map(char => ({
+                ...char,
+                prompt: char.prompt.replace(/1girl/g, "girl").replace(/1boy/g, "boy")
+            }));
+            
             const disabledCharacters = [];
             const characterNames = [];
             
-            opts.allCharacterPrompts.forEach((char, index) => {
+            processedCharacterPrompts.forEach((char, index) => {
                 characterNames.push(char.chara_name);
                 if (!char.enabled) {
                     disabledCharacters.push({
@@ -3547,7 +3572,7 @@ app.get('/auto-complete', authMiddleware, async (req, res) => {
         });
         
         // Limit results to 10 items
-        const limitedResults = results.slice(0, 10);
+        const limitedResults = results.slice(0, 30);
         
         res.json(limitedResults);
         
