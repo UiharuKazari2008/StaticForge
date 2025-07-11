@@ -4879,13 +4879,6 @@ async function generateImage() {
         const img = new Image();
         img.onload = async function() {
             createConfetti();
-            showSuccess('Image generated successfully!');
-            
-            // Reset variety flag if it was enabled
-            if (varietyEnabled) {
-                varietyEnabled = false;
-                if (document.getElementById('varietyBtn')) document.getElementById('varietyBtn').setAttribute('data-state', 'off');
-            }
             
             await loadGallery();
             
