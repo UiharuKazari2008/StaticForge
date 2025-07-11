@@ -3138,6 +3138,18 @@ textarea:focus {
     border: 1px solid #8d8d8d;
     border-radius: 4px;
     background: #929292ab;
+    position: relative;
+    overflow: hidden;
+}
+
+#maskPreviewCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
 }
 
 /* Request Type Toggle */
@@ -5425,4 +5437,70 @@ button#layer1SeedToggle {
     .manual-loading-overlay {
         display: none !important;
     }
+}
+
+.bokeh {
+    height: 130vh;
+    width: 130vw;
+    background-color: #124;
+    position: fixed;
+    top: -15vh;
+    left: -15vw;
+    filter: blur(50px);
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
+.bokeh circle {
+  animation: rotate 120s linear infinite;
+  fill: #124;
+  opacity: 0.43;
+  transform-origin: 50%;
+}
+.bokeh circle:nth-child(2n) {
+  fill: #614;
+  transform-origin: 20% 110%;
+  animation-delay: -60s;
+  animation-duration: 82.632s;
+  opacity: 0.2;
+}
+.bokeh circle:nth-child(3n) {
+  opacity: 0.65;
+  fill: #469;
+  transform-origin: 70% 30%;
+  animation-delay: -30s;
+  animation-duration: 159.996s;
+}
+.bokeh circle:nth-child(4n) {
+  fill: #c63;
+  transform-origin: 110% 70%;
+  animation-delay: -40s;
+  animation-duration: 95.5992s;
+}
+.bokeh circle:nth-child(5n) {
+  fill: #266;
+  transform-origin: 30% 40%;
+}
+.bokeh circle:nth-child(6n) {
+  fill: #124;
+  transform-origin: -10% 80%;
+  animation-delay: -156s;
+}
+.bokeh circle:nth-child(7n) {
+  fill: #614;
+  transform-origin: 70% -10%;
+}
+.bokeh circle:nth-child(8n) {
+  fill: #c63;
+  transform-origin: -30% 50%;
+  animation-delay: -48s;
+}
+
+@keyframes rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }

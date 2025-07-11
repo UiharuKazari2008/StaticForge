@@ -621,14 +621,7 @@ function selectManualResolution(value, group) {
         window.uploadedImageData.bias = resetBias;
         
         // Re-crop and update preview with reset bias
-        cropImageToResolution(window.uploadedImageData.originalDataUrl, resetBias).then(croppedDataUrl => {
-            const variationImage = document.getElementById('manualVariationImage');
-            if (variationImage) {
-                variationImage.src = croppedDataUrl;
-                variationImage.style.display = 'block';
-            }
-            window.uploadedImageData.dataUrl = croppedDataUrl;
-        });
+        repositionBiasImage();
         // Only show bias dropdown if not already visible
         if (imageBiasGroup && imageBiasGroup.style.display !== 'block') {
             showImageBiasDropdown();
@@ -640,6 +633,9 @@ function selectManualResolution(value, group) {
         const isPortraitImage = window.uploadedImageData.height > window.uploadedImageData.width;
         updateImageBiasDisplay(resetBias.toString(), isPortraitImage);
     }
+    
+    // Update variation container aspect ratio
+    updateVariationContainerAspectRatio();
 }
 
 function openManualResolutionDropdown() {
@@ -746,6 +742,9 @@ async function loadIntoManualForm(source, image = null) {
         selectManualModel(data.model || 'v4_5', '');
         selectManualResolution(data.resolution || 'normal_portrait', type === 'metadata' && data.resolution === 'custom' ? 'Custom' : '');
         if (manualSteps) manualSteps.value = data.steps || (type === 'metadata' ? 25 : undefined);
+        
+        // Update variation container aspect ratio after resolution is set
+        updateVariationContainerAspectRatio();
         if (manualGuidance) manualGuidance.value = data.scale || data.guidance || (type === 'metadata' ? 5.0 : undefined);
         if (manualRescale) manualRescale.value = data.cfg_rescale || data.rescale || (type === 'metadata' ? 0.0 : undefined);
         if (manualSeed) manualSeed.value = ''; // Do not autofill for metadata, undefined for others
@@ -767,9 +766,73 @@ async function loadIntoManualForm(source, image = null) {
 
         // Handle variation data
         const hasVariation = data.variation && data.variation.file;
+        const hasBaseImage = data.image_source;
+
         const variationRow = document.getElementById('manualVariationRow');
         const variationImage = document.getElementById('manualVariationImage');
-        if (hasVariation) {
+        const strengthValue = document.getElementById('manualStrengthValue');
+        const noiseValue = document.getElementById('manualNoiseValue');
+
+
+        if (hasBaseImage) {
+            const [imageType, identifier] = data.image_source.split(':', 2);
+            let previewUrl = '';
+            if (imageType === 'cache') {
+                previewUrl = `/cache/preview/${identifier}.webp`;
+
+                // Fetch dimensions for cached image
+                fetchWithAuth(`/cache/info/${identifier}`)
+                    .then(res => res.json())
+                    .then(info => {
+                        if(info.success) {
+                            window.uploadedImageData.width = info.width;
+                            window.uploadedImageData.height = info.height;
+                            repositionBiasImage();
+                        }
+                    });
+
+            } else if (imageType === 'file') {
+                previewUrl = `/images/${identifier}`;
+                // For file-based images, we might need to load it to get dimensions if not in metadata
+                const tempImg = new Image();
+                tempImg.onload = () => {
+                    window.uploadedImageData.width = tempImg.width;
+                    window.uploadedImageData.height = tempImg.height;
+                    repositionBiasImage();
+                };
+                tempImg.src = previewUrl;
+            }
+
+            if (previewUrl) {
+                variationImage.src = previewUrl;
+                variationImage.style.display = 'block';
+                variationImage.onload = repositionBiasImage;
+                variationRow.style.display = 'flex';
+                updateMaskEditorButton();
+            }
+            
+            window.uploadedImageData = {
+                image_source: data.image_source,
+                bias: data.image_bias || 2,
+                isBiasMode: true,
+                isClientSide: false
+            };
+            
+            if(data.image_bias !== undefined) {
+                showImageBiasDropdown();
+                setupImageBiasDropdown();
+                renderImageBiasDropdown(data.image_bias.toString());
+            }
+
+            if (strengthValue && data.strength !== undefined) {
+                strengthValue.value = data.strength;
+                window.strengthValueLoaded = true;
+            }
+            if (noiseValue && data.noise !== undefined) {
+                noiseValue.value = data.noise;
+            }
+
+        } else if (hasVariation) {
             window.currentVariationEdit = {
                 sourceFilename: data.variation.file,
                 isVariationEdit: true
@@ -918,14 +981,7 @@ function updateCustomResolutionValue() {
                 window.uploadedImageData.bias = resetBias;
                 
                 // Re-crop and update preview with reset bias
-                cropImageToResolution(window.uploadedImageData.originalDataUrl, resetBias).then(croppedDataUrl => {
-                    const variationImage = document.getElementById('manualVariationImage');
-                    if (variationImage) {
-                        variationImage.src = croppedDataUrl;
-                        variationImage.style.display = 'block';
-                    }
-                    window.uploadedImageData.dataUrl = croppedDataUrl;
-                });
+                repositionBiasImage();
                 // Only show bias dropdown if not already visible
                 if (imageBiasGroup && imageBiasGroup.style.display !== 'block') {
                     showImageBiasDropdown();
@@ -937,6 +993,9 @@ function updateCustomResolutionValue() {
                 const isPortraitImage = window.uploadedImageData.height > window.uploadedImageData.width;
                 updateImageBiasDisplay(resetBias.toString(), isPortraitImage);
             }
+            
+            // Update variation container aspect ratio
+            updateVariationContainerAspectRatio();
         }
     }
 }
@@ -1318,9 +1377,6 @@ async function initializeApp() {
         }
         await loadGallery();
         updateGenerateButton();
-        
-        // Start background image rotation
-        startBackgroundImageRotation();
     } catch (error) {
         console.error('Failed to initialize app:', error);
         showError('Failed to load application data');
@@ -1947,9 +2003,6 @@ async function loadGallery() {
         if (response.ok) {
             allImages = await response.json();
             
-            // Set background image after loading gallery
-            setBackgroundImage();
-            
             displayCurrentPage();
             updatePagination();
             updateControlsVisibility();
@@ -2213,7 +2266,7 @@ async function variationImage(image) {
         }
         
         // Show loading
-        showLoading(true, 'Creating variation...');
+        showManualLoading(true, 'Creating variation...');
         
         // Use variation endpoint with default settings
         const url = `/variation/${filenameForMetadata}`;
@@ -2270,7 +2323,7 @@ async function variationImage(image) {
         console.error('Direct variation error:', error);
         showError('Image variation failed: ' + error.message);
     } finally {
-        showLoading(false);
+        showManualLoading(false);
     }
 }
 
@@ -2455,7 +2508,7 @@ async function rerollImage(image) {
         }
         
             // Show loading
-    showLoading(true, 'Rerolling image...');
+    showManualLoading(true, 'Rerolling image...');
 
         // Check if this is a pipeline image
         const isPipeline = image.pipeline || image.pipeline_upscaled;
@@ -2730,7 +2783,7 @@ async function rerollImage(image) {
         console.error('Direct reroll error:', error);
         showError('Image reroll failed: ' + error.message);
     } finally {
-        showLoading(false);
+        showManualLoading(false);
     }
 }
 
@@ -2742,247 +2795,207 @@ async function rerollImageWithEdit(image) {
     }
 
     try {
-        // Determine which filename to use for metadata
-        // For gallery items, determine the filename based on available properties
-        let filenameForMetadata = image.filename;
-        
-        if (!filenameForMetadata) {
-            // If no filename property, determine from gallery image object
-            if (image.pipeline_upscaled) {
-                filenameForMetadata = image.pipeline_upscaled;
-            } else if (image.pipeline) {
-                filenameForMetadata = image.pipeline;
-            } else if (image.upscaled) {
-                filenameForMetadata = image.upscaled;
-            } else if (image.original) {
-                filenameForMetadata = image.original;
-            }
-        }
-        
+        // Determine filename for metadata
+        let filenameForMetadata = image.filename || image.pipeline_upscaled || image.pipeline || image.upscaled || image.original;
         if (!filenameForMetadata) {
             throw new Error('No filename available for metadata lookup');
         }
-        
-        // Get metadata from the image
+
+        // Get metadata
         const response = await fetchWithAuth(`/metadata/${filenameForMetadata}`);
-        
         if (!response.ok) {
             throw new Error(`Failed to load image metadata: ${response.status} ${response.statusText}`);
         }
-
         const metadata = await response.json();
-        
         if (!metadata) {
             throw new Error('No metadata found for this image');
         }
 
-        // Close lightbox if it's open
+        // Close lightbox
         if (lightboxModal.style.display === 'block') {
             hideLightbox();
         }
 
-        // Show request type toggle row
-        const requestTypeRow = document.getElementById('requestTypeRow');
-        if (requestTypeRow) {
-            requestTypeRow.style.display = 'flex';
-        }
-        
-        // Set initial state based on image type
-        const isVariation = metadata.base_image === true;
-        const isPipeline = image.pipeline || image.pipeline_upscaled;
-        
-        // Store the current image metadata for both modes
+        // Store metadata and image
         window.currentEditMetadata = metadata;
         window.currentEditImage = image;
 
-        // Update button visibility based on available image
+        // Load form values from metadata
+        loadIntoManualForm(metadata, image);
+
+        // Show request type row
+        const requestTypeRow = document.getElementById('requestTypeRow');
+        if (requestTypeRow) requestTypeRow.style.display = 'flex';
+
+        // Determine types
+        const isVariation = metadata.base_image === true;
+        const isPipeline = image.pipeline || image.pipeline_upscaled;
+
+        // Update button visibility
         updateRequestTypeButtonVisibility();
-        
-        // Set initial button states based on image type
-        if (isVariation) {
-            // For variations, default to reroll mode
-            rerollTypeBtn.setAttribute('data-state', 'on');
-            variationTypeBtn.setAttribute('data-state', 'off');
-            window.currentRequestType = 'reroll';
-        } else if (isPipeline) {
-            // For pipelines, default to reroll mode
-            rerollTypeBtn.setAttribute('data-state', 'on');
-            variationTypeBtn.setAttribute('data-state', 'off');
-            window.currentRequestType = 'reroll';
-        } else {
-            // For regular images, no request type buttons should be active
-            rerollTypeBtn.setAttribute('data-state', 'off');
-            variationTypeBtn.setAttribute('data-state', 'off');
-            window.currentRequestType = null;
-        }
 
-        // Check if this is a pipeline image
+        // Set initial state
+        const variationRow = document.getElementById('manualVariationRow');
+        const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
+        const saveButton = document.getElementById('manualSaveBtn');
+        const layer1SeedToggle = document.getElementById('layer1SeedToggle');
+        const manualMaskBiasGroup = document.getElementById('manualMaskBiasGroup');
+
         if (isPipeline) {
-            // Handle pipeline edit reroll
-            loadIntoManualForm(metadata, image);
+            window.currentRequestType = 'pipeline_reroll';
+            rerollTypeBtn.setAttribute('data-state', 'on');
+            variationTypeBtn.setAttribute('data-state', 'off');
 
-            // Show preset name field but disable it for pipeline editing
-            const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
-            const saveButton = document.getElementById('manualSaveBtn');
-            
             if (presetNameGroup) {
                 presetNameGroup.style.display = 'block';
                 manualPresetName.disabled = true;
                 manualPresetName.style.opacity = '0.6';
             }
-            if (saveButton) {
-                saveButton.style.display = 'none';
+            if (saveButton) saveButton.style.display = 'none';
+            if (layer1SeedToggle) {
+                layer1SeedToggle.style.display = 'inline-block';
+                layer1SeedToggle.setAttribute('data-state', metadata.layer1Seed ? 'on' : 'off');
             }
-
-            // Set layer1 seed toggle to ON by default for pipelines if we have a layer1 seed
-            if (metadata.layer1Seed) {
-                layer1SeedToggle.setAttribute('data-state', 'on');
-            }
-
-            // Extract pipeline name from filename
-            const parts = image.base.split('_');
-            let pipelineName = 'generated';
-            
-            if (parts.length >= 4) {
-                const presetParts = parts.slice(1, -2);
-                pipelineName = presetParts.join('_') || 'generated';
-            } else if (parts.length === 3) {
-                pipelineName = parts[1] || 'generated';
-            }
-
-            // Store pipeline context
-            window.currentPipelineEdit = {
-                pipelineName: pipelineName,
-                layer1Seed: metadata.layer1Seed || metadata.seed,
-                layer2Seed: metadata.layer2Seed || metadata.seed,
-                isPipelineEdit: true
-            };
-
-                // Check if mask bias dropdown should be shown
-    const pipelinePresetRes = getPipelinePresetResolution(pipelineName);
-    const selectedRes = metadata.resolution;
-    if (pipelinePresetRes && selectedRes) {
-        const presetDims = getDimensionsFromResolution(pipelinePresetRes);
-        const selectedDims = getDimensionsFromResolution(selectedRes);
-        if (presetDims && selectedDims) {
-            // Calculate aspect ratios
-            const presetAspectRatio = presetDims.width / presetDims.height;
-            const selectedAspectRatio = selectedDims.width / selectedDims.height;
-            
-            // Show mask bias dropdown only if aspect ratios are different
-            if (Math.abs(presetAspectRatio - selectedAspectRatio) > 0.01) {
-                // Show mask bias dropdown for pipeline edits with aspect ratio mismatch
-                if (manualMaskBiasGroup) {
-                    manualMaskBiasGroup.style.display = 'block';
-                    // Update mask bias options based on current resolution
-                    selectManualMaskBias(manualSelectedMaskBias);
-                }
-            } else {
-                // Hide mask bias dropdown if aspect ratios are the same
-                if (manualMaskBiasGroup) {
-                    manualMaskBiasGroup.style.display = 'none';
-                }
-            }
-        } else {
             if (manualMaskBiasGroup) {
-                manualMaskBiasGroup.style.display = 'none';
+                manualMaskBiasGroup.style.display = 'block';
+                selectManualMaskBias(manualSelectedMaskBias);
             }
-        }
-    } else {
-        if (manualMaskBiasGroup) {
-            manualMaskBiasGroup.style.display = 'none';
-        }
-    }
+            if (variationRow) variationRow.style.display = 'none';
 
-            // Show the layer1 seed toggle for pipeline edits
-            layer1SeedToggle.style.display = 'inline-block';
+            // Extract pipeline name
+            const parts = image.base.split('_');
+            window.currentPipelineName = parts.length >= 4 ? parts.slice(1, -2).join('_') : (parts.length === 3 ? parts[1] : 'generated');
+            window.currentLayer1Seed = metadata.layer1Seed || metadata.seed;
+
+        } else if (isVariation) {
+            window.currentRequestType = 'reroll';
+            rerollTypeBtn.setAttribute('data-state', 'on');
+            variationTypeBtn.setAttribute('data-state', 'off');
+
+            const [type, id] = metadata.image_source.split(':');
+            const previewUrl = type === 'file' ? `/images/${id}` : `/cache/preview/${id}.webp`;
+            window.uploadedImageData = {
+                image_source: metadata.image_source,
+                bias: metadata.image_bias || 2,
+                isBiasMode: true,
+                isClientSide: false
+            };
+            const variationImage = document.getElementById('manualVariationImage');
+            if (variationImage) {
+                variationImage.src = previewUrl;
+                variationImage.style.display = 'block';
+            }
+            if (variationRow) variationRow.style.display = 'flex';
+            updateMaskEditorButton();
+            showImageBiasDropdown();
+            renderImageBiasDropdown((metadata.image_bias || 2).toString());
+
+            if (presetNameGroup) presetNameGroup.style.display = 'block';
+            if (saveButton) saveButton.style.display = 'inline-block';
+            if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
+            if (manualMaskBiasGroup) manualMaskBiasGroup.style.display = 'none';
         } else {
-            // Handle regular image or variation in reroll mode
-            if (isVariation) {
-                // For variations in reroll mode, load manual form but show variation fields
-                loadIntoManualForm(metadata, image);
-                
-                // Show variation-specific fields for variations in reroll mode
-                const variationRow = document.getElementById('manualVariationRow');
-                if (variationRow) {
-                    variationRow.style.display = 'flex';
-                }
-                
-                // Set the variation image to the original base image
-                const variationImage = document.getElementById('manualVariationImage');
-                if (variationImage && metadata.original_filename) {
-                    variationImage.src = `/images/${metadata.original_filename}`;
-                    variationImage.style.display = 'block';
-                    
-                    // Show mask editor button
-                    updateMaskEditorButton();
-                }
-                
-                // Show preset name and save button for variations in reroll mode
-                const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
-                const saveButton = document.getElementById('manualSaveBtn');
-                
-                if (presetNameGroup) {
-                    presetNameGroup.style.display = 'block';
-                    manualPresetName.disabled = false;
-                    manualPresetName.style.opacity = '1';
-                }
-                if (saveButton) {
-                    saveButton.style.display = 'inline-block';
-                }
-                
-                // Hide mask bias dropdown for variations
-                if (manualMaskBiasGroup) {
-                    manualMaskBiasGroup.style.display = 'none';
-                }
-                
-                // Hide the layer1 seed toggle for variations
-                layer1SeedToggle.style.display = 'none';
-                
-                // Store variation context for reroll
-                window.currentVariationEdit = {
-                    sourceFilename: metadata.original_filename,
-                    isVariationEdit: true
-                };
-            } else {
-                // Handle regular image
-                loadIntoManualForm(metadata, image);
-                
-                // Show preset name and save button for regular images
-                const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
-                const saveButton = document.getElementById('manualSaveBtn');
-                
-                if (presetNameGroup) {
-                    presetNameGroup.style.display = 'block';
-                    manualPresetName.disabled = false;
-                    manualPresetName.style.opacity = '1';
-                }
-                if (saveButton) {
-                    saveButton.style.display = 'inline-block';
-                }
-                
-                // Set layer1 seed toggle to OFF for regular images
-                layer1SeedToggle.setAttribute('data-state', 'off');
-                
-                // Clear any pipeline context
-                window.currentPipelineEdit = null;
-                
-                // Hide mask bias dropdown for regular images
-                if (manualMaskBiasGroup) {
-                    manualMaskBiasGroup.style.display = 'none';
-                }
-                
-                // Hide the layer1 seed toggle for non-pipeline edits
-                layer1SeedToggle.style.display = 'none';
-            }
+            window.currentRequestType = null;
+            rerollTypeBtn.setAttribute('data-state', 'off');
+            variationTypeBtn.setAttribute('data-state', 'off');
+
+            if (variationRow) variationRow.style.display = 'none';
+            if (presetNameGroup) presetNameGroup.style.display = 'block';
+            if (saveButton) saveButton.style.display = 'inline-block';
+            if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
+            if (manualMaskBiasGroup) manualMaskBiasGroup.style.display = 'none';
         }
 
-        // Show manual modal
+        // Show modal
         manualModal.style.display = 'block';
         if (manualPrompt) manualPrompt.focus();
 
     } catch (error) {
         console.error('Reroll with edit error:', error);
+        showError('Failed to load image metadata: ' + error.message);
+    }
+}
+
+// Similar changes for variationImageWithEdit
+async function variationImageWithEdit(image) {
+    if (!isAuthenticated) {
+        showError('Please login first');
+        return;
+    }
+
+    try {
+        // Determine filename
+        let filenameForMetadata = image.filename || image.pipeline_upscaled || image.pipeline || image.upscaled || image.original;
+        if (!filenameForMetadata) {
+            throw new Error('No filename available for metadata lookup');
+        }
+
+        // Get metadata
+        const response = await fetchWithAuth(`/metadata/${filenameForMetadata}`);
+        if (!response.ok) {
+            throw new Error(`Failed to load image metadata: ${response.status} ${response.statusText}`);
+        }
+        const metadata = await response.json();
+        if (!metadata) {
+            throw new Error('No metadata found for this image');
+        }
+
+        // Close lightbox
+        if (lightboxModal.style.display === 'block') {
+            hideLightbox();
+        }
+
+        // Store
+        window.currentEditMetadata = metadata;
+        window.currentEditImage = image;
+
+        // Load form
+        loadIntoManualForm(metadata, image);
+
+        // Update button visibility
+        updateRequestTypeButtonVisibility();
+
+        // Set to variation mode
+        window.currentRequestType = 'variation';
+        rerollTypeBtn.setAttribute('data-state', 'off');
+        variationTypeBtn.setAttribute('data-state', 'on');
+
+        const sourceFilename = filenameForMetadata.replace('_upscaled.png', '.png');
+        window.uploadedImageData = {
+            image_source: `file:${sourceFilename}`,
+            bias: 2,
+            isBiasMode: true,
+            isClientSide: false
+        };
+        const variationImage = document.getElementById('manualVariationImage');
+        if (variationImage) {
+            variationImage.src = `/images/${sourceFilename}`;
+            variationImage.style.display = 'block';
+            updateMaskEditorButton();
+        }
+        const variationRow = document.getElementById('manualVariationRow');
+        if (variationRow) variationRow.style.display = 'flex';
+
+        showImageBiasDropdown();
+        renderImageBiasDropdown('2');
+
+        const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
+        const saveButton = document.getElementById('manualSaveBtn');
+        if (presetNameGroup) presetNameGroup.style.display = 'none';
+        if (saveButton) saveButton.style.display = 'none';
+
+        const maskBiasRow = document.getElementById('manualMaskBiasRow');
+        if (maskBiasRow) maskBiasRow.style.display = 'none';
+
+        const layer1SeedToggle = document.getElementById('layer1SeedToggle');
+        if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
+
+        // Show modal
+        manualModal.style.display = 'block';
+        if (manualPrompt) manualPrompt.focus();
+
+    } catch (error) {
+        console.error('Variation with edit error:', error);
         showError('Failed to load image metadata: ' + error.message);
     }
 }
@@ -2995,7 +3008,7 @@ async function upscaleImage(image) {
     }
 
     // Show loading overlay (same as generation)
-    showLoading(true, 'Upscaling image...');
+    showManualLoading(true, 'Upscaling image...');
 
     try {
         const response = await fetchWithAuth(`/upscale/${image.original}`, {
@@ -3055,7 +3068,7 @@ async function upscaleImage(image) {
         console.error('Upscaling error:', error);
         showError('Image upscaling failed. Please try again.');
     } finally {
-        showLoading(false);
+        showManualLoading(false);
     }
 }
 
@@ -3137,6 +3150,9 @@ function showManualModal() {
     
     // Calculate initial price display
     updateManualPriceDisplay();
+    
+    // Update variation container aspect ratio
+    updateVariationContainerAspectRatio();
     
     // Update button visibility
     updateRequestTypeButtonVisibility();
@@ -3296,6 +3312,9 @@ function clearManualForm() {
     // Update button visibility
     updateRequestTypeButtonVisibility();
     updateUploadDeleteButtonVisibility();
+    
+    // Update variation container aspect ratio
+    updateVariationContainerAspectRatio();
 }
 
 // Load preset into manual form
@@ -3778,8 +3797,7 @@ async function handleManualGeneration(e) {
     }
 
     const isPipelineEdit = window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit;
-    const isVariationEdit = window.currentVariationEdit && window.currentVariationEdit.isVariationEdit;
-    const currentRequestType = window.currentRequestType;
+    const isImg2Img = window.uploadedImageData || (window.currentVariationEdit && window.currentVariationEdit.isVariationEdit);
     const values = collectManualFormValues();
 
     // Helper: Validate required fields
@@ -3808,7 +3826,7 @@ async function handleManualGeneration(e) {
         let pipelineContext = { ...window.currentPipelineEdit };
         const useLayer1Seed = layer1SeedToggle.getAttribute('data-state') === 'on';
 
-        showManualLoading(true, 'Generating pipeline...');
+        showManualLoading(true, 'Running Pipeline...');
 
         try {
             // Build layer2 config
@@ -3857,8 +3875,8 @@ async function handleManualGeneration(e) {
         } finally {
             showManualLoading(false);
         }
-    } else if (isVariationEdit || currentRequestType === 'variation' || (currentRequestType === 'reroll' && isVariationEdit)) {
-        // Variation Edit/Reroll
+    } else if (isImg2Img) {
+        // Img2Img / Variation Edit/Reroll
         if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
         const resolution = getResolution(values.resolutionValue);
 
@@ -3876,34 +3894,10 @@ async function handleManualGeneration(e) {
 
         // Handle uploaded image data
         if (window.uploadedImageData) {
-            if (window.uploadedImageData.isBiasMode) {
-                if (window.uploadedImageData.originalDataUrl) {
-                    if (window.uploadedImageData.isClientSide) {
-                        const resizedDataUrl = await resizeImageToResolution(window.uploadedImageData.originalDataUrl);
-                        const base64Data = resizedDataUrl.split(',')[1];
-                        requestBody.image = base64Data;
-                        requestBody.unbiased_original_image = base64Data;
-                    } else {
-                        const base64Data = window.uploadedImageData.originalDataUrl.split(',')[1];
-                        requestBody.image = base64Data;
-                        requestBody.unbiased_original_image = base64Data;
-                    }
-                }
-            } else {
-                if (window.uploadedImageData.dataUrl) {
-                    if (window.uploadedImageData.isClientSide) {
-                        const resizedDataUrl = await resizeImageToResolution(window.uploadedImageData.dataUrl);
-                        const base64Data = resizedDataUrl.split(',')[1];
-                        requestBody.image = base64Data;
-                    } else {
-                        const base64Data = window.uploadedImageData.dataUrl.split(',')[1];
-                        requestBody.image = base64Data;
-                    }
-                }
-            }
-            requestBody.is_frontend_upload = true;
+            requestBody.image = window.uploadedImageData.image_source;
+            requestBody.image_bias = window.uploadedImageData.bias;
         } else if (window.currentVariationEdit && window.currentVariationEdit.sourceFilename) {
-            requestBody.image = window.currentVariationEdit.sourceFilename;
+            requestBody.image = `file:${window.currentVariationEdit.sourceFilename}`;
         }
 
         if (!requestBody.image) {
@@ -3911,22 +3905,10 @@ async function handleManualGeneration(e) {
             return;
         }
 
-        // Add bias mode fields if applicable
-        if (window.uploadedImageData && window.uploadedImageData.isBiasMode) {
-            if (window.uploadedImageData.originalFilename) {
-                requestBody.unbiased_original_image = window.uploadedImageData.originalFilename;
-            }
-            requestBody.original_image_bias = window.uploadedImageData.bias;
-        }
-        // If this is a frontend upload being edited, mark it as such
-        if (window.uploadedImageData && !window.uploadedImageData.isClientSide) {
-            requestBody.is_frontend_upload = true;
-        }
-
         addSharedFieldsToRequestBody(requestBody, values);
 
         hideManualModal(undefined, true);
-        showManualLoading(true, 'Generating variation...');
+        showManualLoading(true, 'Generating Image...');
 
         try {
             const url = `/${values.model.toLowerCase()}/generate`;
@@ -3938,16 +3920,15 @@ async function handleManualGeneration(e) {
 
             if (!response.ok) throw new Error(`Variation generation failed: ${response.statusText}`);
             const blob = await response.blob();
-            handleImageResult(blob, 'Variation generated successfully!', () => { window.currentVariationEdit = null; });
+            handleImageResult(blob, 'Variation generated successfully!', () => { });
         } catch (error) {
             hideManualModal(undefined, true);
             console.error('Variation generation error:', error);
             showError('Variation generation failed. Please try again.');
-            window.currentVariationEdit = null;
         } finally {
             showManualLoading(false);
         }
-    } else if (currentRequestType === 'reroll' || !currentRequestType) {
+    } else {
         // Regular manual generation or reroll
         if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
         const resolution = getResolution(values.resolutionValue);
@@ -3964,7 +3945,7 @@ async function handleManualGeneration(e) {
 
         addSharedFieldsToRequestBody(requestBody, values);
 
-        showManualLoading(true, 'Generating image...');
+        showManualLoading(true, 'Generating Image...');
 
         hideManualModal(undefined, true);
         try {
@@ -4854,7 +4835,7 @@ async function generateImage() {
         return;
     }
 
-    showLoading(true, 'Generating image...');
+    showManualLoading(true, 'Generating image...');
 
     try {
         let url;
@@ -4934,7 +4915,7 @@ async function generateImage() {
         console.error('Generation error:', error);
         showError('Image generation failed. Please try again.');
     } finally {
-        showLoading(false);
+        showManualLoading(false);
     }
 }
 
@@ -6050,7 +6031,7 @@ function createConfetti() {
 }
 
 // Show loading overlay
-function showLoading(show, message = 'Generating your image...') {
+function showLoading(show, message = 'Generating Image...') {
     if (show) {
         loadingOverlay.classList.remove('hidden');
         // Update the loading message
@@ -6064,7 +6045,7 @@ function showLoading(show, message = 'Generating your image...') {
 }
 
 // Show manual modal loading overlay
-function showManualLoading(show, message = 'Generating your image...') {
+function showManualLoading(show, message = 'Generating Image...') {
     const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
     const manualModal = document.getElementById('manualModal');
     
@@ -6452,250 +6433,131 @@ function toggleRequestType(requestType) {
     const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
     const saveButton = document.getElementById('manualSaveBtn');
     const layer1SeedToggle = document.getElementById('layer1SeedToggle');
-    
-    // Check if the button is already active - if so, clear and revert to initial state
+    const manualMaskBiasGroup = document.getElementById('manualMaskBiasGroup');
+    const variationImage = document.getElementById('manualVariationImage');
+
     const currentButton = requestType === 'reroll' ? rerollTypeBtn : variationTypeBtn;
     const isCurrentlyActive = currentButton.getAttribute('data-state') === 'on';
-    
+
     if (isCurrentlyActive) {
-        // Clear image preview and revert to initial request mode
-        const variationImage = document.getElementById('manualVariationImage');
+        let confirmed = true;
+        if (window.uploadedImageData && window.uploadedImageData.isClientSide) {
+            confirmed = confirm('Turning off will clear the uploaded image data. Are you sure?');
+        }
+        if (!confirmed) return;
+
+        // Clear data
         if (variationImage) {
             variationImage.style.display = 'none';
             variationImage.src = '';
         }
-        
-        // Clear uploaded image data
-        if (window.uploadedImageData) {
-            window.uploadedImageData = null;
-        }
-        
-        // Hide image bias dropdown
+        window.uploadedImageData = null;
         hideImageBiasDropdown();
-        
-        // Clear any variation context
-        window.currentVariationEdit = null;
-        
-        // Reset button states to off
         rerollTypeBtn.setAttribute('data-state', 'off');
         variationTypeBtn.setAttribute('data-state', 'off');
         window.currentRequestType = null;
-        
-        // Hide variation-specific fields
-        if (variationRow) {
-            variationRow.style.display = 'none';
-        }
-        
-        // Show preset name and save button
+        if (variationRow) variationRow.style.display = 'none';
         if (presetNameGroup) {
             presetNameGroup.style.display = 'block';
             manualPresetName.disabled = false;
             manualPresetName.style.opacity = '1';
         }
-        if (saveButton) {
-            saveButton.style.display = 'inline-block';
-        }
-        
-        // Hide the layer1 seed toggle
-        if (layer1SeedToggle) {
-            layer1SeedToggle.style.display = 'none';
-        }
-        
-        // Update mask preview
+        if (saveButton) saveButton.style.display = 'inline-block';
+        if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
         updateMaskPreview();
-        
-        // Update button visibility
         updateRequestTypeButtonVisibility();
         updateUploadDeleteButtonVisibility();
         return;
     }
-    
-    // Check if there's an uploaded image that would be replaced
-    if (window.uploadedImageData) {
-        const confirmed = confirm('This will replace the uploaded image. Are you sure you want to continue?');
-        if (!confirmed) {
-            return;
-        }
-        // Clear uploaded image data
-        window.uploadedImageData = null;
-        const variationImage = document.getElementById('manualVariationImage');
-        if (variationImage) {
-            variationImage.style.display = 'none';
-            variationImage.src = '';
-        }
-        updateMaskPreview();
-        
-        // Hide image bias dropdown when switching away from bias mode
-        hideImageBiasDropdown();
+
+    let confirmed = true;
+    if (window.uploadedImageData && window.uploadedImageData.isClientSide) {
+        confirmed = confirm('This will replace the uploaded image with the ' + (requestType === 'reroll' ? 'previous' : 'current') + ' image. Are you sure?');
     }
-    
+    if (!confirmed) return;
+
+    // Clear existing
+    window.uploadedImageData = null;
+    if (variationImage) {
+        variationImage.style.display = 'none';
+        variationImage.src = '';
+    }
+    hideImageBiasDropdown();
+    updateMaskPreview();
+
+    // Set new state
+    const otherButton = requestType === 'reroll' ? variationTypeBtn : rerollTypeBtn;
+    currentButton.setAttribute('data-state', 'on');
+    otherButton.setAttribute('data-state', 'off');
+    if (inpaintBtn) {
+        inpaintBtn.setAttribute('data-state', 'off');
+        inpaintBtn.classList.remove('active');
+    }
+    window.currentRequestType = requestType;
+
+    const metadata = window.currentEditMetadata;
+    const image = window.currentEditImage;
+    if (!metadata || !image) return;
+
+    let source, previewUrl, bias = 2;
     if (requestType === 'reroll') {
-        // Switch to reroll mode
-        rerollTypeBtn.setAttribute('data-state', 'on');
-        variationTypeBtn.setAttribute('data-state', 'off');
-        if (inpaintBtn) {
-            inpaintBtn.setAttribute('data-state', 'off');
-            inpaintBtn.classList.remove('active');
-        }
-        window.currentRequestType = 'reroll';
-        
-        // Hide variation-specific fields
-        if (variationRow) {
-            variationRow.style.display = 'none';
-        }
-        
-        // Show preset name and save button for regular images
+        if (!metadata.image_source) return; // Should not happen if button hidden
+        source = metadata.image_source;
+        bias = metadata.image_bias || 2;
+        const [type, id] = source.split(':');
+        previewUrl = type === 'file' ? `/images/${id}` : `/cache/preview/${id}.webp`;
+    } else {
+        const filename = image.filename || image.original || image.pipeline || image.pipeline_upscaled;
+        if (!filename) return;
+        source = `file:${filename}`;
+        previewUrl = `/images/${filename}`;
+        // For pipeline, it might be pipeline image, but we can treat as base
+    }
+
+    window.uploadedImageData = {
+        image_source: source,
+        bias: bias,
+        isBiasMode: true,
+        isClientSide: false
+    };
+
+    if (variationImage && previewUrl) {
+        variationImage.src = previewUrl;
+        variationImage.style.display = 'block';
+        variationImage.onload = repositionBiasImage;
+    }
+    if (variationRow) variationRow.style.display = 'flex';
+    updateMaskEditorButton();
+
+    // Show bias dropdown
+    showImageBiasDropdown();
+    renderImageBiasDropdown(bias.toString());
+
+    // Hide preset name and save for variation
+    if (presetNameGroup) presetNameGroup.style.display = 'none';
+    if (saveButton) saveButton.style.display = 'none';
+    if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
+    if (manualMaskBiasGroup) manualMaskBiasGroup.style.display = 'none';
+
+    // For pipeline specific
+    if (requestType === 'reroll' && (image.pipeline || image.pipeline_upscaled)) {
+        // Pipeline reroll logic, no uploadedImageData for image, but use pipeline endpoint in generation
+        window.currentRequestType = 'pipeline_reroll';
+        // Set other fields for pipeline
         if (presetNameGroup) {
             presetNameGroup.style.display = 'block';
-            manualPresetName.disabled = false;
-            manualPresetName.style.opacity = '1';
+            manualPresetName.disabled = true;
+            manualPresetName.style.opacity = '0.6';
         }
-        if (saveButton) {
-            saveButton.style.display = 'inline-block';
+        if (saveButton) saveButton.style.display = 'none';
+        if (layer1SeedToggle) {
+            layer1SeedToggle.style.display = 'inline-block';
+            layer1SeedToggle.setAttribute('data-state', metadata.layer1Seed ? 'on' : 'off');
         }
-        
-        // Load metadata into manual form for reroll
-        if (window.currentEditMetadata && window.currentEditImage) {
-            const metadata = window.currentEditMetadata;
-            const image = window.currentEditImage;
-            
-            // Check if this is a variation and we have the original base image
-            const isVariation = metadata.base_image === true;
-            const hasOriginalFilename = metadata.original_filename;
-            
-            if (isVariation && hasOriginalFilename) {
-                // For variations, use the original base image for reroll                
-                // Load metadata into manual form
-                loadIntoManualForm(metadata, image);
-                
-                // Show variation-specific fields for variations in reroll mode
-                if (variationRow) {
-                    variationRow.style.display = 'flex';
-                }
-                
-                // Set the variation image to the original base image
-                const variationImage = document.getElementById('manualVariationImage');
-                if (variationImage) {
-                    variationImage.src = `/images/${hasOriginalFilename}`;
-                    variationImage.style.display = 'block';
-                }
-                
-                // Store variation context for reroll
-                window.currentVariationEdit = {
-                    sourceFilename: hasOriginalFilename,
-                    isVariationEdit: true
-                };
-            } else {
-                // For regular images, use the current image
-                loadIntoManualForm(metadata, image);
-                
-                // Hide variation-specific fields for regular images
-                if (variationRow) {
-                    variationRow.style.display = 'none';
-                }
-                
-                // Clear any variation context
-                window.currentVariationEdit = null;
-            }
-            
-            // Set layer1 seed toggle to OFF for reroll
-            if (layer1SeedToggle) {
-                layer1SeedToggle.setAttribute('data-state', 'off');
-                layer1SeedToggle.style.display = 'none';
-            }
-            
-            // Hide mask bias dropdown for reroll
-            if (manualMaskBiasGroup) {
-                manualMaskBiasGroup.style.display = 'none';
-            }
-        }
-        
-    } else if (requestType === 'variation') {
-        // Switch to variation mode
-        rerollTypeBtn.setAttribute('data-state', 'off');
-        variationTypeBtn.setAttribute('data-state', 'on');
-        if (inpaintBtn) {
-            inpaintBtn.setAttribute('data-state', 'off');
-            inpaintBtn.classList.remove('active');
-        }
-        window.currentRequestType = 'variation';
-        
-        // Show variation-specific fields
-        if (variationRow) {
-            variationRow.style.display = 'flex';
-        }
-        
-        // Hide preset name and save button for variations
-        if (presetNameGroup) {
-            presetNameGroup.style.display = 'none';
-        }
-        if (saveButton) {
-            saveButton.style.display = 'none';
-        }
-        
-        // Load metadata into variation form
-        if (window.currentEditMetadata && window.currentEditImage) {
-            const metadata = window.currentEditMetadata;
-            const image = window.currentEditImage;
-            
-            // Check if this is a variation and we have the original base image
-            const isVariation = metadata.base_image === true;
-            const hasOriginalFilename = metadata.original_filename;
-            
-            if (isVariation && hasOriginalFilename) {
-                // For variations, use the current image as the new base                
-                // Load metadata into variation form
-                loadIntoManualForm(metadata, image);
-                
-                // Set the variation image to the current image
-                const variationImage = document.getElementById('manualVariationImage');
-                if (variationImage) {
-                    variationImage.src = `/images/${image.filename || image.original || image.pipeline || image.pipeline_upscaled}`;
-                    variationImage.style.display = 'block';
-                    
-                    // Show mask editor button
-                    updateMaskEditorButton();
-                }
-                
-                // Store variation context using current image
-                window.currentVariationEdit = {
-                    sourceFilename: image.filename || image.original || image.pipeline || image.pipeline_upscaled,
-                    isVariationEdit: true
-                };
-            } else {
-                // For regular images, use the current image as base
-                loadIntoManualForm(metadata, image);
-                
-                // Set the variation image to the current image
-                const variationImage = document.getElementById('manualVariationImage');
-                if (variationImage) {
-                    variationImage.src = `/images/${image.filename || image.original || image.pipeline || image.pipeline_upscaled}`;
-                    variationImage.style.display = 'block';
-                    
-                    // Show mask editor button
-                    updateMaskEditorButton();
-                }
-                
-                // Store variation context
-                window.currentVariationEdit = {
-                    sourceFilename: image.filename || image.original || image.pipeline || image.pipeline_upscaled,
-                    isVariationEdit: true
-                };
-            }
-            
-            // Hide the layer1 seed toggle for variations
-            if (layer1SeedToggle) {
-                layer1SeedToggle.style.display = 'none';
-            }
-            
-            // Hide mask bias dropdown for variations
-            if (manualMaskBiasGroup) {
-                manualMaskBiasGroup.style.display = 'none';
-            }
-        }
+        if (manualMaskBiasGroup) manualMaskBiasGroup.style.display = 'block';
+        // ... other pipeline specific
     }
-    
-    // Update button visibility
+
     updateRequestTypeButtonVisibility();
     updateUploadDeleteButtonVisibility();
 }
@@ -7166,25 +7028,67 @@ async function handleManualImageUpload(file) {
     }
     
     try {
-        // Create a preview URL for the uploaded image
-        const reader = new FileReader();
-        reader.onload = async function(e) {
-            const img = new Image();
-            img.onload = async function() {
-                // Skip aspect ratio dialog and directly use bias option
-                await processUploadedImageWithBias(file, e.target.result);
-            };
-            img.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
+        showManualLoading(true, 'Uploading base image...');
         
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const response = await fetchWithAuth('/upload-base', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`Upload failed: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        if (!result.success || !result.hash) {
+            throw new Error(result.error || 'Upload failed to return hash.');
+        }
+
+        const { hash, width, height } = result;
+        
+        const previewUrl = `/cache/preview/${hash}.webp`;
+        const variationImage = document.getElementById('manualVariationImage');
+        if (variationImage) {
+            variationImage.src = previewUrl;
+            variationImage.style.display = 'block';
+            variationImage.onload = repositionBiasImage; 
+        }
+
+        const biasToUse = 2;
+
+        window.uploadedImageData = {
+            image_source: `cache:${hash}`,
+            previewUrl: previewUrl,
+            width: width,
+            height: height,
+            bias: biasToUse,
+            isBiasMode: true,
+            isClientSide: true 
+        };
+
+        if (imageBiasHidden != null) imageBiasHidden.value = biasToUse.toString();
+        showImageBiasDropdown();
+        updateImageBiasDisplay(biasToUse.toString(), height > width);
+        renderImageBiasDropdown(biasToUse.toString());
+
+        if (rerollTypeBtn) rerollTypeBtn.setAttribute('data-state', 'off');
+        if (variationTypeBtn) variationTypeBtn.setAttribute('data-state', 'off');
+        const manualVariationRow = document.getElementById('manualVariationRow');
+        if (manualVariationRow) manualVariationRow.style.display = 'flex';
+        updateMaskPreview();
+        updateUploadDeleteButtonVisibility();
+        showSuccess('Base image uploaded.');
+
     } catch (error) {
         console.error('Manual upload error:', error);
         showError(`Upload failed: ${error.message}`);
+    } finally {
+        showManualLoading(false);
     }
 }
-
-
 
 // Show image bias dropdown
 function showImageBiasDropdown() {
@@ -7398,6 +7302,9 @@ function updateImageBiasDisplay(value, isPortraitImage) {
         }
     }
     
+    // Update variation container aspect ratio when bias changes
+    updateVariationContainerAspectRatio();
+    
     handleImageBiasChange();
     
     closeImageBiasDropdown();
@@ -7427,205 +7334,6 @@ function hideImageBiasDropdown() {
     }
 }
 
-// Process uploaded image normally (no aspect ratio mismatch)
-async function processUploadedImage(file, dataUrl) {
-            const variationImage = document.getElementById('manualVariationImage');
-            if (variationImage) {
-        variationImage.src = dataUrl;
-                variationImage.style.display = 'block';
-                
-        // Store the uploaded image data (client-side only for aspect ratio dialog)
-                window.uploadedImageData = {
-                    file: file,
-            dataUrl: dataUrl,
-            originalDataUrl: dataUrl, // Store original for potential bias mode switching
-            isClientSide: true // Mark as client-side only
-                };
-                
-                if (rerollTypeBtn) {
-                    rerollTypeBtn.setAttribute('data-state', 'off');
-                }
-                if (variationTypeBtn) {
-                    variationTypeBtn.setAttribute('data-state', 'off');
-                }
-                
-                // Show variation row
-                const manualVariationRow = document.getElementById('manualVariationRow');
-                if (manualVariationRow) {
-                    manualVariationRow.style.display = 'flex';
-                }
-                
-                // Update mask preview
-                updateMaskPreview();
-                
-                // Update button visibility
-                updateRequestTypeButtonVisibility();
-                updateUploadDeleteButtonVisibility();
-                
-        showSuccess('Image processed successfully!');
-    }
-}
-
-// Process uploaded image with bias mode
-async function processUploadedImageWithBias(file, dataUrl) {
-    const variationImage = document.getElementById('manualVariationImage');
-    if (variationImage) {
-        // Always start with center bias (2) for new images
-        const biasToUse = 2;
-        
-        // Create cropped version based on current bias
-        const croppedDataUrl = await cropImageToResolution(dataUrl, biasToUse);
-        variationImage.src = croppedDataUrl;
-        variationImage.style.display = 'block';
-        
-        // Store the uploaded image data with bias info (client-side only)
-        // Get image dimensions from the original image
-        const img = new Image();
-        img.onload = function() {
-            window.uploadedImageData = {
-                file: file,
-                dataUrl: croppedDataUrl,
-                originalDataUrl: dataUrl, // Keep original for bias mode switching
-                width: img.width,
-                height: img.height,
-                bias: biasToUse,
-                isBiasMode: true,
-                isClientSide: true // Mark as client-side only
-            };
-            
-            // Update the button preview grid orientation immediately
-            const currentBias = imageBiasHidden != null ? imageBiasHidden.value : '2';
-            updateImageBiasDisplay(currentBias, img.height > img.width);
-            renderImageBiasDropdown(currentBias);
-        };
-        img.src = dataUrl;
-        
-        if (rerollTypeBtn) {
-            rerollTypeBtn.setAttribute('data-state', 'off');
-        }
-        if (variationTypeBtn) {
-            variationTypeBtn.setAttribute('data-state', 'off');
-        }
-        
-        // Show variation row
-        const manualVariationRow = document.getElementById('manualVariationRow');
-        if (manualVariationRow) {
-            manualVariationRow.style.display = 'flex';
-        }
-        
-        // Show image bias dropdown and hide mask bias dropdown
-        showImageBiasDropdown();
-        
-        // Update mask preview
-        updateMaskPreview();
-        
-        // Update button visibility
-        updateUploadDeleteButtonVisibility();
-        
-        showSuccess('Image processed with bias mode!');
-    }
-}
-
-// Resize image to match selected resolution (shortest edge becomes largest edge)
-function resizeImageToResolution(dataUrl) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = function() {
-            const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-            const resolutionDims = getDimensionsFromResolution(currentResolution);
-            
-            if (!resolutionDims) {
-                resolve(dataUrl);
-                return;
-            }
-            
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            canvas.width = resolutionDims.width;
-            canvas.height = resolutionDims.height;
-            
-            // Calculate resize dimensions - shortest edge becomes largest edge
-            const imageAR = img.width / img.height;
-            const targetAR = resolutionDims.width / resolutionDims.height;
-            
-            let resizeWidth, resizeHeight;
-            
-            if (imageAR > targetAR) {
-                // Image is wider than target - fit to height
-                resizeHeight = resolutionDims.height;
-                resizeWidth = resolutionDims.height * imageAR;
-            } else {
-                // Image is taller than target - fit to width
-                resizeWidth = resolutionDims.width;
-                resizeHeight = resolutionDims.width / imageAR;
-            }
-            
-            // Draw resized image
-            ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, resizeWidth, resizeHeight);
-            
-            resolve(canvas.toDataURL('image/png'));
-        };
-        img.src = dataUrl;
-    });
-}
-
-// Crop image to match current resolution using bias
-function cropImageToResolution(dataUrl, bias) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = function() {
-            const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-            const resolutionDims = getDimensionsFromResolution(currentResolution);
-            
-            if (!resolutionDims) {
-                resolve(dataUrl);
-                return;
-            }
-            
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            canvas.width = resolutionDims.width;
-            canvas.height = resolutionDims.height;
-            
-            // Calculate crop dimensions
-            const imageAR = img.width / img.height;
-            const targetAR = resolutionDims.width / resolutionDims.height;
-            
-            let cropWidth, cropHeight, cropX, cropY;
-            
-            if (imageAR > targetAR) {
-                // Image is wider than target, crop width
-                cropHeight = img.height;
-                cropWidth = img.height * targetAR;
-                cropY = 0;
-                
-                // Apply bias to crop position - fix: handle 0 value correctly
-                const biasFractions = [0, 0.25, 0.5, 0.75, 1];
-                const biasFrac = biasFractions[bias] !== undefined ? biasFractions[bias] : 0.5;
-                cropX = (img.width - cropWidth) * biasFrac;
-            } else {
-                // Image is taller than target, crop height
-                cropWidth = img.width;
-                cropHeight = img.width / targetAR;
-                cropX = 0;
-                
-                // Apply bias to crop position - fix: handle 0 value correctly
-                const biasFractions = [0, 0.25, 0.5, 0.75, 1];
-                const biasFrac = biasFractions[bias] !== undefined ? biasFractions[bias] : 0.5;
-                cropY = (img.height - cropHeight) * biasFrac;
-            }
-            
-            // Draw cropped image
-            ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, resolutionDims.width, resolutionDims.height);
-            
-            resolve(canvas.toDataURL('image/png'));
-        };
-        img.src = dataUrl;
-    });
-}
-
 // Handle mask bias changes
 async function handleMaskBiasChange() {
     if (!window.uploadedImageData || !window.uploadedImageData.isBiasMode) return;
@@ -7645,18 +7353,108 @@ async function handleImageBiasChange() {
     // Don't fall back - if it's NaN, don't update
     if (isNaN(newBias)) return;
     
-    // Update the cropped image
-    const croppedDataUrl = await cropImageToResolution(window.uploadedImageData.originalDataUrl, newBias);
+    // Update stored data
+    window.uploadedImageData.bias = newBias;
+
+    // Update the image position
+    repositionBiasImage();
+}
+
+function updateVariationContainerAspectRatio() {
+    const wrapper = document.querySelector('.variation-image-wrapper');
+    if (!wrapper) return;
     
-    // Update the displayed image
-    const variationImage = document.getElementById('manualVariationImage');
-    if (variationImage) {
-        variationImage.src = croppedDataUrl;
+    // Get current resolution
+    const resolutionValue = manualResolutionHidden ? manualResolutionHidden.value : '';
+    let width, height;
+    
+    if (resolutionValue === 'custom' && manualWidth && manualHeight) {
+        width = parseInt(manualWidth.value) || 512;
+        height = parseInt(manualHeight.value) || 512;
+    } else if (resolutionValue) {
+        const dimensions = getDimensionsFromResolution(resolutionValue);
+        if (dimensions) {
+            width = dimensions.width;
+            height = dimensions.height;
+        } else {
+            // Default to square if resolution not found
+            width = 512;
+            height = 512;
+        }
+    } else {
+        // Default to square
+        width = 512;
+        height = 512;
     }
     
-    // Update stored data
-    window.uploadedImageData.dataUrl = croppedDataUrl;
-    window.uploadedImageData.bias = newBias;
+    // Calculate aspect ratio
+    const aspectRatio = width / height;
+    
+    // Set wrapper dimensions maintaining a reasonable max size
+    const maxSize = 200;
+    let wrapperWidth, wrapperHeight;
+    
+    if (aspectRatio >= 1) {
+        // Landscape or square
+        wrapperWidth = maxSize;
+        wrapperHeight = maxSize / aspectRatio;
+    } else {
+        // Portrait
+        wrapperWidth = maxSize * aspectRatio;
+        wrapperHeight = maxSize;
+    }
+    
+    // Update wrapper dimensions
+    wrapper.style.width = `${wrapperWidth}px`;
+    wrapper.style.height = `${wrapperHeight}px`;
+}
+
+function repositionBiasImage() {
+    const variationImage = document.getElementById('manualVariationImage');
+    if (!variationImage || !window.uploadedImageData) return;
+
+    const container = variationImage.closest('.variation-image-wrapper');
+    if (!container) return;
+
+    container.style.position = 'relative';
+    container.style.overflow = 'hidden';
+
+    variationImage.style.position = 'absolute';
+    
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
+    
+    if (containerWidth === 0 || containerHeight === 0) return; // Not visible yet
+
+    const imageWidth = window.uploadedImageData.width;
+    const imageHeight = window.uploadedImageData.height;
+
+    const containerAR = containerWidth / containerHeight;
+    const imageAR = imageWidth / imageHeight;
+
+    const biasFractions = [0, 0.25, 0.5, 0.75, 1];
+    const bias = window.uploadedImageData.bias;
+    const biasFrac = biasFractions[bias] !== undefined ? biasFractions[bias] : 0.5;
+
+    if (imageAR > containerAR) {
+        // Wider image. Fit height, crop width.
+        const scaledWidth = imageWidth * (containerHeight / imageHeight);
+        variationImage.style.width = `${scaledWidth}px`;
+        variationImage.style.height = `${containerHeight}px`;
+
+        const xOffset = (scaledWidth - containerWidth) * biasFrac;
+        variationImage.style.left = `-${xOffset}px`;
+        variationImage.style.top = '0px';
+    } else {
+        // Taller image. Fit width, crop height.
+        const scaledHeight = imageHeight * (containerWidth / imageWidth);
+        variationImage.style.width = `${containerWidth}px`;
+        variationImage.style.height = `${scaledHeight}px`;
+
+        const yOffset = (scaledHeight - containerHeight) * biasFrac;
+        variationImage.style.left = '0px';
+        variationImage.style.top = `-${yOffset}px`;
+    }
 }
 
 // Handle deleting uploaded base image
@@ -7695,7 +7493,7 @@ function handleDeleteBaseImage() {
 // Update upload/delete button visibility based on whether an image is uploaded
 function updateUploadDeleteButtonVisibility() {
     if (uploadImageBaseBtn && deleteImageBaseBtn) {
-        if (window.uploadedImageData) {
+        if (window.uploadedImageData && window.uploadedImageData.isClientSide) {
             // Image is uploaded, show delete button, hide upload button
             uploadImageBaseBtn.style.display = 'none';
             deleteImageBaseBtn.style.display = 'inline-block';
@@ -8743,52 +8541,6 @@ function updateManualPriceDisplay() {
     }
 }
 
-// Set background image from one of the last 5 images
-function setBackgroundImage() {
-    if (allImages.length === 0) {
-        // If no images, remove background image and use default gradient
-        document.documentElement.style.setProperty('--background-image', 'none');
-        return;
-    }
-    
-    // Get the last 5 images (or all if less than 5)
-    const recentImages = allImages.slice(-5);
-    
-    // Randomly select one of the recent images
-    const randomIndex = Math.floor(Math.random() * recentImages.length);
-    const selectedImage = recentImages[randomIndex];
-    
-    // Determine which image file to use (prefer highest quality)
-    let imageFilename = null;
-    if (selectedImage.pipeline_upscaled) {
-        imageFilename = selectedImage.pipeline_upscaled;
-    } else if (selectedImage.pipeline) {
-        imageFilename = selectedImage.pipeline;
-    } else if (selectedImage.upscaled) {
-        imageFilename = selectedImage.upscaled;
-    } else if (selectedImage.original) {
-        imageFilename = selectedImage.original;
-    }
-    
-    if (imageFilename) {
-        // Set the background image CSS variable using the /images/ endpoint
-        const imageUrl = `url('/images/${imageFilename}')`;
-        document.documentElement.style.setProperty('--background-image', imageUrl);
-    } else {
-        // Fallback to default gradient if no valid image found
-        document.documentElement.style.setProperty('--background-image', 'none');
-    }
-}
-
-// Periodically refresh background image (every 30 seconds)
-function startBackgroundImageRotation() {
-    setInterval(() => {
-        if (allImages.length > 0) {
-            setBackgroundImage();
-        }
-    }, 30000); // 30 seconds
-}
-
 // Mask Editor Functionality
 let maskEditorCanvas = null;
 let maskEditorCtx = null;
@@ -9300,8 +9052,10 @@ function updateMaskPreview() {
         return;
     }
     
-    // Set canvas size to match the variation image
-    const rect = variationImage.getBoundingClientRect();
+    // Set canvas size to match the variation image wrapper
+    const container = variationImage.closest('.variation-image-wrapper');
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
     maskPreviewCanvas.width = rect.width;
     maskPreviewCanvas.height = rect.height;
     

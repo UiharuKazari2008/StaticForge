@@ -12,6 +12,25 @@
     <script src="/tagSets.js"></script>
 </head>
 <body>
+    <svg 
+  class="bokeh" 
+  viewBox="0 0 10 10" 
+  xmlns="http://www.w3.org/2000/svg" 
+
+     >
+  
+  <circle cx="10%" cy="85%" r="75%"  />
+  <circle cx="45%" cy="50%" r="15%"   />
+  <circle cx="85%" cy="35%" r="30%"  />
+  <circle cx="60%" cy="85%" r="20%"   />
+  <circle cx="45%" cy="50%" r="30%"   />
+  <circle cx="35%" cy="25%" r="20%"   />
+  <circle cx="90%" cy="-25%" r="35%"  />
+  <circle cx="-15%" cy="30%" r="30%"  />
+  <circle cx="65%" cy="85%" r="55%"   />
+  <circle cx="45%" cy="50%" r="20%"   />
+
+</svg>
     <!-- Manual Generation Modal -->
     <div id="manualModal" class="modal">
         <div class="modal-content manual-modal-content">
@@ -103,10 +122,8 @@
                     <div class="form-row" id="manualVariationRow" style="display: none;">
                         <div class="form-group">
                             <div class="variation-image-container">
-                                <div class="variation-image-wrapper" style="position: relative; display: inline-block;">
-                                    <img id="manualVariationImage" src="" alt="Source Image" style="max-width: 200px; max-height: 200px; border-radius: 8px; display: none;">
-                                    <canvas id="maskPreviewCanvas" style="position: absolute; top: 0; left: 0; max-width: 200px; max-height: 200px; border-radius: 8px; display: none; pointer-events: none;"></canvas>
-                                </div>
+                                <img id="manualVariationImage" src="" alt="Source Image" style="max-width: 200px; max-height: 200px; display: none;">
+                                <canvas id="maskPreviewCanvas" style="max-width: 200px; max-height: 200px; pointer-events: none;"></canvas>
                             </div>
                         </div>
                         <div class="form-group">
