@@ -99,7 +99,7 @@
                             <span class="character-prompts-title">Transformation</span>
                             <div class="character-prompts-controls">    
                                 <button type="button" id="rerollTypeBtn" class="btn-secondary toggle-btn" data-state="on">
-                                    <i class="nai-history"></i> Previous
+                                    <i class="nai-img2img"></i> Previous
                                 </button>
                                 <button type="button" id="variationTypeBtn" class="btn-secondary toggle-btn" data-state="off">
                                     <i class="nai-img2img"></i> Current
@@ -107,6 +107,9 @@
 
                                 <button type="button" id="inpaintBtn" class="btn-secondary toggle-btn" data-state="off">
                                     <i class="nai-inpaint"></i> Inpaint
+                                </button>
+                                <button type="button" id="browseCacheBtn" class="btn-secondary">
+                                    <i class="nai-history"></i>
                                 </button>
                                 <button type="button" id="uploadImageBaseBtn" class="btn-secondary">
                                     <i class="nai-import"></i> Upload
@@ -329,16 +332,16 @@
                             <i class="nai-anla"></i>
                             <span id="manualPriceList" class="price-list">-</span>
                         </div>
-                        <button type="submit" id="manualGenerateBtn" class="btn-primary">
-                            <i class="fas fa-star-of-life"></i> Generate
-                        </button>
                         <button type="button" id="closeManualBtn" class="btn-secondary">Cancel</button>
+                        <button type="submit" id="manualGenerateBtn" class="btn-primary">
+                            <i class="nai-sparkles"></i> Generate
+                        </button>
                     </div>
                 </div>
             </form>
                 </div>
-                <div class="manual-modal-preview-section">
-                    <div class="manual-preview-container">
+                <div class="manual-modal-preview-section" id="manualPanelSection">
+                    <div class="manual-preview-container" id="manualPreviewContainer">
                         <!-- Manual Modal Loading Overlay -->
                         <div id="manualLoadingOverlay" class="manual-loading-overlay hidden">
                             <div class="manual-loading-content">
@@ -364,6 +367,25 @@
                                 <button id="manualPreviewVariationBtn" class="btn-primary round-button" style="display: none;">
                                     <i class="nai-inpaint"></i>
                                 </button>
+                                <button id="manualPreviewSeedBtn" class="btn-primary round-button" style="display: none;" title="Copy seed to form">
+                                    <i class="nai-seed"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Cache Browser Container (Desktop Only) -->
+                    <div id="cacheBrowserContainer" class="cache-browser-container">
+                        <div class="cache-browser-header">
+                            <h3>Browse Cache Images</h3>
+                            <button id="closeCacheBrowserContainerBtn" class="close-dialog">&times;</button>
+                        </div>
+                        <div class="cache-browser-body">
+                            <div id="cacheGalleryContainer" class="cache-gallery">
+                                <!-- Cache images will be loaded here -->
+                            </div>
+                            <div class="cache-browser-loading" id="cacheBrowserLoadingContainer" style="display: none;">
+                                <div class="spinner"></div>
+                                <p>Loading cache images...</p>
                             </div>
                         </div>
                     </div>
@@ -764,7 +786,7 @@
                             <i class="nai-settings"></i>
                         </button>
                         <button id="generateBtn" class="btn-primary generate-btn" disabled>
-                            <i class="fas fa-star-of-life"></i> Generate
+                            <i class="nai-sparkles"></i> Generate
                         </button>
                     </div>
                 </div>
@@ -812,6 +834,25 @@
             <div class="loading-content">
                 <div class="spinner"></div>
                 <p>Generating your image...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cache Browser Modal -->
+    <div id="cacheBrowserModal" class="modal">
+        <div class="modal-content cache-browser-content">
+            <div class="cache-browser-header">
+                <h3>Browse Cache Images</h3>
+                <button id="closeCacheBrowserBtn" class="close-dialog">&times;</button>
+            </div>
+            <div class="cache-browser-body">
+                <div id="cacheGallery" class="cache-gallery">
+                    <!-- Cache images will be loaded here -->
+                </div>
+                <div class="cache-browser-loading" id="cacheBrowserLoading" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>Loading cache images...</p>
+                </div>
             </div>
         </div>
     </div>

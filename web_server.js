@@ -24,7 +24,7 @@ console.log(config);
 const client = new NovelAI({ 
     token: config.apiKey,
     timeout: 100000,
-    verbose: false
+    verbose: true
  });
 
 // Create Express app
@@ -497,9 +497,9 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
         prompt: processedPrompt,
         negative_prompt: processedNegativePrompt,
         model: Model[model.toUpperCase() + (body.mask && body.image && !model.toUpperCase().includes('_INP') ? '_INP' : '')],
-        steps,
-        scale: body.guidance || preset?.guidance || 5.5,
-        cfg_rescale: body.rescale || preset?.rescale || 0.0,
+        steps: parseInt(body.steps || preset?.steps || '24'),
+        scale: parseFloat((body.guidance || preset?.guidance || '5.5').toString()),
+        cfg_rescale: parseFloat((body.rescale || preset?.rescale || '0.0').toString()),
         skip_cfg_above_sigma: (body?.variety || preset?.variety || queryParams?.variety === 'true') ? 58 : undefined,
         sampler: body.sampler ? Sampler[body.sampler.toUpperCase()] : (preset?.sampler ? Sampler[preset.sampler.toUpperCase()] : Sampler.EULER_ANC),
         noise_schedule: body.noiseScheduler ? Noise[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? Noise[preset.noiseScheduler.toUpperCase()] : Noise.KARRAS),
@@ -507,87 +507,79 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
         qualityToggle: false,
         ucPreset: 4,
         dynamicThresholding: body.dynamicThresholding || preset?.dynamicThresholding,
-        seed: body.seed || preset?.seed,
+        seed: parseInt((body.seed || preset?.seed || '0').toString()),
         upscale: upscaleValue,
         characterPrompts: body.characterPrompts || preset?.characterPrompts || undefined,
         allCharacterPrompts: processedCharacterPrompts || undefined,
-        use_coords: body.use_coords || preset?.use_coords || undefined,
     };
 
     if (baseOptions.upscale && baseOptions.upscale > 1 && !allowPaid) {
         throw new Error(`Upscaling with scale ${baseOptions.upscale} requires Opus credits. Set "allow_paid": true to confirm you accept using Opus credits for upscaling.`);
     }
 
-    if (resolution && Resolution[resolution.toUpperCase()]) {
+    if (body.width && body.height) {
+        baseOptions.width = parseInt(body.width.toString());
+        baseOptions.height = parseInt(body.height.toString());
+    } else if (resolution && Resolution[resolution.toUpperCase()]) {
         baseOptions.resPreset = Resolution[resolution.toUpperCase()];
     } else {
-        baseOptions.width = width;
-        baseOptions.height = height;
+        baseOptions.resPreset = "NORMAL_SQUARE";
     }
     
     if (!!body.image) {
-        baseOptions.action = (body.mask) ? Action.INPAINT : Action.IMG2IMG;
-        if (body.mask) {
-            baseOptions.mask = body.mask;
-            baseOptions.inpaintImg2ImgStrength = body.inpainting_strength || body.strength || 1;
-            baseOptions.strength = 1;
-            baseOptions.noise = 0.1;
-            baseOptions.img2img = {
-                strength: baseOptions.inpaintImg2ImgStrength,
-                color_correct: true
+        if (!body.image.includes(":")) throw new Error(`No Image Format Passed`);
+
+        let imageBuffer;
+        let originalSource = body.image;
+        const [imageType, imageIdentifier] = body.image.split(':', 2);
+
+        switch (imageType) {
+            case 'cache':
+                const cachedImagePath = path.join(uploadCacheDir, imageIdentifier);
+                if (!fs.existsSync(cachedImagePath)) throw new Error(`Cached image not found: ${imageIdentifier}`);
+                imageBuffer = fs.readFileSync(cachedImagePath);
+                break;
+            case 'file':
+                const filePath = path.join(imagesDir, imageIdentifier);
+                if (!fs.existsSync(filePath)) throw new Error(`Image not found: ${imageIdentifier}`);
+                imageBuffer = fs.readFileSync(filePath);
+                break;
+            case 'data': // For new uploads from client, not yet cached.
+                imageBuffer = Buffer.from(imageIdentifier, 'base64');
+                originalSource = 'data:base64'; // Don't store full base64 in metadata
+                break;
+            default:
+                throw new Error(`Unsupported image type: ${imageType}`);
+        }
+        imageBuffer = stripPngTextChunks(imageBuffer);
+        const targetDims = { width: baseOptions.width, height: baseOptions.height };
+        if (!targetDims.width || !targetDims.height) {
+            const dims = getDimensionsFromResolution(baseOptions.resPreset?.toLowerCase() || "");
+            if (dims) {
+                targetDims.width = dims.width;
+                targetDims.height = dims.height;
             }
-        } else {
-            baseOptions.strength = body.strength || 0.8;
-            baseOptions.noise = body.noise || 0.1;
         }
         
-
-        // Regular img2img - handle both filename and base64 data
-        if (body.image) {
-            const [imageType, imageIdentifier] = body.image.split(':', 2);
-            let imageBuffer;
-            let originalSource = body.image;
-
-            switch (imageType) {
-                case 'cache':
-                    const cachedImagePath = path.join(uploadCacheDir, imageIdentifier);
-                    if (!fs.existsSync(cachedImagePath)) throw new Error(`Cached image not found: ${imageIdentifier}`);
-                    imageBuffer = fs.readFileSync(cachedImagePath);
-                    break;
-                case 'file':
-                    const filePath = path.join(imagesDir, imageIdentifier);
-                    if (!fs.existsSync(filePath)) throw new Error(`Image not found: ${imageIdentifier}`);
-                    imageBuffer = fs.readFileSync(filePath);
-                    break;
-                case 'data': // For new uploads from client, not yet cached.
-                    imageBuffer = Buffer.from(imageIdentifier, 'base64');
-                    originalSource = 'data:base64_upload'; // Don't store full base64 in metadata
-                    break;
-                default:
-                    throw new Error(`Unsupported image type: ${imageType}`);
-            }
-
-            // Processing
-            imageBuffer = stripPngTextChunks(imageBuffer);
-
-            const targetDims = { width: baseOptions.width, height: baseOptions.height };
-            if (!targetDims.width || !targetDims.height) {
-                const dims = getDimensionsFromResolution(baseOptions.resPreset?.toLowerCase() || "");
-                if (dims) {
-                    targetDims.width = dims.width;
-                    targetDims.height = dims.height;
-                }
-            }
-            
-            if (targetDims.width && targetDims.height) {
-                    imageBuffer = await processImageToResolutionWithBias(imageBuffer, targetDims, body.image_bias);
-                    console.log(`📏 Resized base image to ${targetDims.width}x${targetDims.height} with bias ${body.image_bias}`);
-            }
-            
-            baseOptions.image = imageBuffer.toString('base64');
-            baseOptions.image_source = originalSource;
-            baseOptions.image_bias = body.image_bias;
+        if (targetDims.width && targetDims.height) {
+            imageBuffer = await processImageToResolutionWithBias(imageBuffer, targetDims, body.image_bias);
+            console.log(`📏 Resized base image to ${targetDims.width}x${targetDims.height} with bias ${body.image_bias}`);
         }
+
+        baseOptions.action = (body.mask) ? Action.INPAINT : Action.IMG2IMG;
+        baseOptions.color_correct = false;
+        if (body.mask) {
+            baseOptions.mask = body.mask;
+            baseOptions.strength = parseFloat((body.inpainting_strength || body.strength || "1").toString());
+            baseOptions.noise = 0.0;
+        } else {
+            baseOptions.strength = parseFloat((body.strength || 0.8).toString());
+            baseOptions.noise = parseFloat((body.noise || 0.1).toString());
+        }
+
+        baseOptions.image = imageBuffer.toString('base64');
+        baseOptions.image_source = originalSource;
+        baseOptions.image_bias = body.image_bias;
     }
 
     if (!allowPaid) {
@@ -617,6 +609,8 @@ async function handleGeneration(opts, returnImage = false, presetName = null) {
     if (opts.action === Action.INPAINT) {
         opts.add_original_image = false;
         opts.extra_noise_seed = seed;
+    } else if (opts.action === Action.IMG2IMG) {
+        opts.color_correct = false;
     }
     console.log(`🚀 Starting image generation (seed: ${seed})...`);
     
@@ -629,7 +623,11 @@ async function handleGeneration(opts, returnImage = false, presetName = null) {
     delete apiOpts.isPipeline;
     delete apiOpts.layer1Seed;
     delete apiOpts.allCharacterPrompts;
-    
+    delete apiOpts.original_filename;
+    delete apiOpts.image_bias;
+    delete apiOpts.mask_bias;
+    delete apiOpts.image_source;
+
     // Process character prompts: only enabled characters go to API, all characters go to forge_data
     if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts)) {
         // Post-process character prompts: replace 1girl/1boy with girl/boy
@@ -741,7 +739,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null) {
         }
 
         // Add variation info if applicable
-        if (opts.action === Action.IMG2IMG && opts.image) {
+        if ((opts.action === Action.IMG2IMG || opts.action === Action.INPAINT) && opts.image) {
             forgeData.generation_type = 'variation';
             if (opts.image_source) {
                 forgeData.image_source = opts.image_source;
@@ -1163,7 +1161,7 @@ app.get('/preset/:name/:resolution', authMiddleware, async (req, res) => {
     const bodyOverrides = { resolution };
     // Check if this is a variation preset
     const opts = await buildOptions(p.model, bodyOverrides, p, req.query);
-        let result = await handleGeneration(opts, true, req.params.name);
+    let result = await handleGeneration(opts, true, req.params.name);
     // Cache the result if generation was successful
     if (!forceGenerate) {
         const cacheKey = getPresetCacheKey(req.params.name, { ...req.query, resolution });
@@ -1269,7 +1267,7 @@ app.post('/preset/:name/:resolution', authMiddleware, async (req, res) => {
     
     // Check if this is a variation preset
     const opts = await buildOptions(p.model, bodyOverrides, p, req.query);
-        let result = await handleGeneration(opts, true, req.params.name);
+    let result = await handleGeneration(opts, true, req.params.name);
     // Cache the result if generation was successful and no body overrides (except resolution)
     if (!forceGenerate && Object.keys(req.body).length === 0) {
         const cacheKey = getPresetCacheKey(req.params.name, { ...req.query, resolution });
@@ -1307,7 +1305,7 @@ app.post('/preset/:name/:resolution', authMiddleware, async (req, res) => {
     }
 });
 
-app.get('/options', authMiddleware, (req, res) => {
+app.options('/', authMiddleware, (req, res) => {
     try {
         const currentPromptConfig = loadPromptConfig();
         const cacheStatus = getCacheStatus();
@@ -1443,6 +1441,63 @@ app.get('/cache/status', authMiddleware, (req, res) => {
         const cacheStatus = getCacheStatus();
         res.json(cacheStatus);
         console.log('✅ Cache status request completed successfully\n');
+    } catch(e) {
+        console.log('❌ Error occurred:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// List cache files for browsing
+app.get('/cache/list', authMiddleware, (req, res) => {
+    try {
+        const files = fs.readdirSync(uploadCacheDir);
+        const cacheFiles = [];
+        
+        for (const file of files) {
+            const filePath = path.join(uploadCacheDir, file);
+            const stats = fs.statSync(filePath);
+            const previewPath = path.join(previewCacheDir, `${file}.webp`);
+            
+            cacheFiles.push({
+                hash: file,
+                filename: file,
+                mtime: stats.mtime,
+                size: stats.size,
+                hasPreview: fs.existsSync(previewPath)
+            });
+        }
+        
+        // Sort by newest first
+        cacheFiles.sort((a, b) => b.mtime - a.mtime);
+        res.json(cacheFiles);
+    } catch (error) {
+        console.error('Error reading cache directory:', error);
+        res.status(500).json({ error: 'Failed to load cache files' });
+    }
+});
+
+// Delete cache file
+app.delete('/cache/:hash', authMiddleware, (req, res) => {
+    try {
+        const hash = req.params.hash;
+        const filePath = path.join(uploadCacheDir, hash);
+        const previewPath = path.join(previewCacheDir, `${hash}.webp`);
+        
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'Cache file not found' });
+        }
+        
+        // Delete main file
+        fs.unlinkSync(filePath);
+        
+        // Delete preview if it exists
+        if (fs.existsSync(previewPath)) {
+            fs.unlinkSync(previewPath);
+        }
+        
+        res.json({ success: true });
+        console.log(`✅ Cache file deleted: ${hash}\n`);
     } catch(e) {
         console.log('❌ Error occurred:', e.message);
         res.status(500).json({ error: e.message });
@@ -2078,7 +2133,7 @@ function isValidPngHeader(data) {
     );
 }
 
-function extractRelevantFields(meta, filename) {
+async function extractRelevantFields(meta, filename) {
     if (!meta) return null;
     
     const model = determineModelFromMetadata(meta);
@@ -2212,6 +2267,23 @@ function extractRelevantFields(meta, filename) {
     if (forgeData.variation_source) {
         result.image_source = forgeData.variation_source;
     }
+    // If image_source is present, get width and height from the file and add to result
+    if (result.image_source) {
+        try {
+            const imagePath = result.image_source.startsWith('file:')
+                ? path.join(imagesDir, result.image_source.replace('file:', ''))
+                : result.image_source.startsWith('cache:')
+                    ? path.join(uploadCacheDir, result.image_source.replace('cache:', ''))
+                    : null;
+            if (imagePath && fs.existsSync(imagePath)) {
+                const { width, height } = await getImageDimensions(fs.readFileSync(imagePath));
+                result.image_source_width = width;
+                result.image_source_height = height;
+            }
+        } catch (e) {
+            // Ignore errors, do not set width/height
+        }
+    }
     
     if (forgeData.layer1_seed !== undefined) {
         result.layer1Seed = forgeData.layer1_seed;
@@ -2276,7 +2348,7 @@ app.get('/metadata/:filename', authMiddleware, async (req, res) => {
             matchedPreset = matchOriginalResolution(meta, currentPromptConfig.resolutions || {});
         }
         
-        const result = extractRelevantFields(meta, filename);
+        const result = await extractRelevantFields(meta, filename);
         if (matchedPreset) result.matchedPreset = matchedPreset;
         
         // Debug: Log the metadata values
@@ -2977,43 +3049,20 @@ async function executePipeline(pipelineName, queryParams = {}, customPipeline = 
             layer1Seed = baseResult.seed;
         }
         
-        // Step 2: Generate mask
-        let mask;
+        // Step 2: Generate and pad mask in one operation
         let maskBias = (queryParams.mask_bias !== undefined) ? parseInt(queryParams.mask_bias) : 2; // default center
-        let presetResolution = pipeline.resolution;
-        let presetDims = getDimensionsFromResolution(presetResolution);
         let targetDims = getDimensionsFromResolution(resolution);
-        if (Array.isArray(pipeline.mask)) {
-            // Coordinates array [x, y, width, height]
-            mask = await generateMaskFromCoordinates(pipeline.mask, presetResolution); // generate at preset res
-            // Pad if needed
-            if (presetDims && targetDims && (presetDims.width !== targetDims.width || presetDims.height !== targetDims.height)) {
-                mask = await padMaskToAspectRatio(mask, presetDims, targetDims, maskBias);
-            }
-            // Resize to target
-            mask = await sharp(mask).resize(targetDims.width, targetDims.height, { fit: 'fill' }).png().toBuffer();
-            mask = mask.toString('base64');
-        } else if (typeof pipeline.mask === 'string') {
-            // Base64 encoded image
-            let maskBuffer = Buffer.from(pipeline.mask, 'base64');
-            // Try to get original mask size
-            let meta = await sharp(maskBuffer).metadata();
-            let origDims = { width: meta.width, height: meta.height };
-            // Pad if needed
-            if (origDims && targetDims && (origDims.width !== targetDims.width || origDims.height !== targetDims.height)) {
-                maskBuffer = await padMaskToAspectRatio(maskBuffer, origDims, targetDims, maskBias);
-            }
-            // Resize to target
-            maskBuffer = await sharp(maskBuffer).resize(targetDims.width, targetDims.height, { fit: 'fill' }).png().toBuffer();
-            mask = maskBuffer.toString('base64');
-        } else {
-            throw new Error('Mask must be either an array of coordinates or base64 encoded image');
+        if (!targetDims) {
+            throw new Error(`Invalid resolution: ${resolution}`);
         }
+        
+        const maskResult = await generateAndPadMask(pipeline.mask, targetDims, maskBias);
+        const mask = typeof maskResult === 'string' ? maskResult : maskResult.toString('base64');
         
         // Step 3: Generate inpainting image using layer2 preset
         const layer2Opts = await buildOptions(preset2.model, {}, preset2, queryParams);
         layer2Opts.n_samples = 1;
-        layer2Opts.inpaintImg2ImgStrength = pipeline.inpainting_strength || 0.7;
+        layer2Opts.inpaintImg2ImgStrength = pipeline.inpainting_strength || 1;
         layer2Opts.action = Action.INPAINT;
         layer2Opts.model = Model[inpaintingModelName];
         layer2Opts.image = baseImage;
@@ -3457,17 +3506,14 @@ app.get('/pipeline/:name/mask', authMiddleware, async (req, res) => {
             return res.status(404).json({ error: 'Pipeline not found' });
         }
         
-        // Generate the mask
-        let maskBuffer;
-        if (Array.isArray(pipeline.mask)) {
-            // Coordinates array [x, y, width, height]
-            maskBuffer = await generateMaskFromCoordinates(pipeline.mask, pipeline.resolution);
-        } else if (typeof pipeline.mask === 'string') {
-            // Base64 encoded image
-            maskBuffer = await generateMaskFromBase64(pipeline.mask, pipeline.resolution);
-        } else {
-            return res.status(400).json({ error: 'Invalid mask format' });
+        // Generate the mask at pipeline resolution
+        const pipelineDims = getDimensionsFromResolution(pipeline.resolution);
+        if (!pipelineDims) {
+            return res.status(400).json({ error: `Invalid pipeline resolution: ${pipeline.resolution}` });
         }
+        
+        const maskResult = await generateAndPadMask(pipeline.mask, pipelineDims, 2); // Default center bias for preview
+        const maskBuffer = typeof maskResult === 'string' ? Buffer.from(maskResult, 'base64') : maskResult;
         
         // Return the mask as an image
         res.setHeader('Content-Type', 'image/png');
@@ -3548,13 +3594,6 @@ app.post('/:model/generate', authMiddleware, async (req, res) => {
 
         let body = req.body;
         let baseFilename = null;
-
-        if (body?.image) {
-            if (!body.mask) {
-                if (!body.strength) body.strength = 0.8;
-                if (!body.noise) body.noise = 0.1;
-            }
-        }
         
         const opts = await buildOptions(key, body, null, req.query);
         // Add original filename for metadata tracking if this is img2img and not a frontend upload
@@ -3676,7 +3715,7 @@ app.get('/variation/:filename', authMiddleware, async (req, res) => {
             return res.status(404).json({ error: 'No NovelAI metadata found' });
         }
         // Extract relevant fields including proper resolution
-        const relevantMeta = extractRelevantFields(meta, baseFilename);
+        const relevantMeta = await extractRelevantFields(meta, baseFilename);
         if (!relevantMeta) {
             return res.status(404).json({ error: 'Failed to extract metadata fields' });
         }
@@ -3717,12 +3756,6 @@ app.get('/variation/:filename', authMiddleware, async (req, res) => {
         // Add character prompts if available
         if (relevantMeta.characterPrompts && Array.isArray(relevantMeta.characterPrompts) && relevantMeta.characterPrompts.length > 0) {
             requestBody.allCharacterPrompts = relevantMeta.characterPrompts;
-            requestBody.use_coords = false;
-            
-            // Check for manual positions
-            if (relevantMeta.characterPrompts.some(char => char.center && char.use_coords)) {
-                requestBody.use_coords = true;
-            }
         }
         
         // Build options and generate
@@ -3797,4 +3830,142 @@ async function processImageToResolutionWithBias(imageBuffer, targetDims, bias = 
         .resize(targetDims.width, targetDims.height, { fit: 'fill' })
         .png() // Ensure output is PNG
         .toBuffer();
+}
+
+// Utility: Resize mask using Canvas (replaces Sharp operations)
+async function resizeMaskWithCanvas(maskBuffer, targetWidth, targetHeight) {
+    const img = await loadImage(maskBuffer);
+    const canvas = createCanvas(targetWidth, targetHeight);
+    const ctx = canvas.getContext('2d');
+    
+    // Fill with black background
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
+    
+    // Draw the mask image, stretched to fit
+    ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+    
+    // Binarize to ensure only black/white
+    const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+        const isWhite = data[i] > 127 && data[i+1] > 127 && data[i+2] > 127;
+        if (isWhite) {
+            data[i] = 255; data[i+1] = 255; data[i+2] = 255; data[i+3] = 255;
+        } else {
+            data[i] = 0; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
+        }
+    }
+    ctx.putImageData(imageData, 0, 0);
+    
+    return canvas.toBuffer('image/png');
+}
+
+// Utility: Get image dimensions using Canvas (replaces Sharp metadata)
+async function getImageDimensionsWithCanvas(imageBuffer) {
+    const img = await loadImage(imageBuffer);
+    return { width: img.width, height: img.height };
+}
+
+// Utility: Generate and pad mask in one operation
+async function generateAndPadMask(maskInput, targetDims, maskBias = 2) {
+    // targetDims: {width, height}, maskBias: 0-4 (left/top to right/bottom)
+    if (!targetDims || !targetDims.width || !targetDims.height) {
+        throw new Error('Target dimensions are required');
+    }
+    
+    let maskBuffer;
+    let origDims;
+    
+    if (Array.isArray(maskInput)) {
+        // Coordinates array [x, y, width, height] - generate at target resolution directly
+        const canvas = createCanvas(targetDims.width, targetDims.height);
+        const ctx = canvas.getContext('2d');
+        
+        // Fill black background
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, targetDims.width, targetDims.height);
+        
+        // Draw white rectangle if coordinates provided
+        if (maskInput && maskInput.length === 4) {
+            const [x, y, w, h] = maskInput;
+            ctx.fillStyle = 'white';
+            ctx.fillRect(x, y, w, h);
+        }
+        
+        maskBuffer = canvas.toBuffer('image/png');
+        origDims = { width: targetDims.width, height: targetDims.height };
+        
+    } else if (typeof maskInput === 'string') {
+        // Base64 encoded image
+        maskBuffer = Buffer.from(maskInput, 'base64');
+        origDims = await getImageDimensionsWithCanvas(maskBuffer);
+        
+        // Check if dimensions already match target (with small tolerance for floating point)
+        if (Math.abs(origDims.width - targetDims.width) < 1 && Math.abs(origDims.height - targetDims.height) < 1) {
+            // Dimensions match exactly, return the original base64 string without processing
+            return maskInput; // Return the original base64 string, not a buffer
+        }
+        
+        // Load the mask image
+        const img = await loadImage(maskBuffer);
+        
+        // Calculate aspect ratios
+        const origAR = origDims.width / origDims.height;
+        const targetAR = targetDims.width / targetDims.height;
+        
+        // Create canvas at target dimensions
+        const canvas = createCanvas(targetDims.width, targetDims.height);
+        const ctx = canvas.getContext('2d');
+        
+        // Fill black background
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, targetDims.width, targetDims.height);
+        
+        if (Math.abs(origAR - targetAR) < 0.01) {
+            // Aspect ratios match, just resize
+            ctx.drawImage(img, 0, 0, targetDims.width, targetDims.height);
+        } else {
+            // Aspect ratios don't match, need padding
+            let padLeft = 0, padRight = 0, padTop = 0, padBottom = 0;
+            
+            if (origAR > targetAR) {
+                // Pad top/bottom
+                const newHeight = Math.round(origDims.width / targetAR);
+                const padTotal = newHeight - origDims.height;
+                const biasFrac = [0, 0.25, 0.5, 0.75, 1][maskBias] || 0.5;
+                padTop = Math.floor(padTotal * biasFrac);
+                padBottom = padTotal - padTop;
+            } else {
+                // Pad left/right
+                const newWidth = Math.round(origDims.height * targetAR);
+                const padTotal = newWidth - origDims.width;
+                const biasFrac = [0, 0.25, 0.5, 0.75, 1][maskBias] || 0.5;
+                padLeft = Math.floor(padTotal * biasFrac);
+                padRight = padTotal - padLeft;
+            }
+            
+            // Draw mask with padding
+            ctx.drawImage(img, padLeft, padTop, origDims.width, origDims.height);
+        }
+        
+        // Binarize to ensure only black/white
+        const imageData = ctx.getImageData(0, 0, targetDims.width, targetDims.height);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+            const isWhite = data[i] > 127 && data[i+1] > 127 && data[i+2] > 127;
+            if (isWhite) {
+                data[i] = 255; data[i+1] = 255; data[i+2] = 255; data[i+3] = 255;
+            } else {
+                data[i] = 0; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
+            }
+        }
+        ctx.putImageData(imageData, 0, 0);
+        
+        maskBuffer = canvas.toBuffer('image/png');
+    } else {
+        throw new Error('Mask must be either an array of coordinates or base64 encoded image');
+    }
+    
+    return maskBuffer;
 }
