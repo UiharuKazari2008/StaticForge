@@ -1,6 +1,7 @@
 // Global variables
 let isAuthenticated = true;
 let subscriptionData = null;
+let forcePaidRequest = false;
 let allImages = [];
 let currentPage = 1;
 let imagesPerPage = 12;
@@ -38,35 +39,24 @@ const RESOLUTIONS = [
     { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024 },
     { value: 'large_square', display: 'Large Square', width: 1472, height: 1472 },
     { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920 },
-    { value: 'wallpaper_landscape', display: 'Wallpaper Landscape', width: 1920, height: 1088 }
+    { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088 }
 ];
 
 // Generate resolution groups from global RESOLUTIONS array
 const resolutionGroups = [
     {
-        group: 'Default',
-        options: [
-            { value: '', name: 'Keep Original' },
-        ]
-    },
-    {
-        group: 'Custom',
-        options: [
-            { value: 'custom', name: 'Custom Resolution' },
-        ]
-    },
-    {
         group: 'Normal',
-        badge: 'Normal',
+        badge: 'N',
         options: RESOLUTIONS.filter(r => r.value.startsWith('normal_')).map(r => ({
             value: r.value,
             name: r.display.replace('Normal ', ''),
             dims: `${r.width}x${r.height}`
-        }))
+        })), 
+        free: true
     },
     {
         group: 'Large',
-        badge: 'Large',
+        badge: 'L',
         options: RESOLUTIONS.filter(r => r.value.startsWith('large_')).map(r => ({
             value: r.value,
             name: r.display.replace('Large ', ''),
@@ -75,7 +65,7 @@ const resolutionGroups = [
     },
     {
         group: 'Wallpaper',
-        badge: 'Wallpaper',
+        badge: 'WP',
         options: RESOLUTIONS.filter(r => r.value.startsWith('wallpaper_')).map(r => ({
             value: r.value,
             name: r.display.replace('Wallpaper ', ''),
@@ -84,12 +74,19 @@ const resolutionGroups = [
     },
     {
         group: 'Small',
-        badge: 'Small',
+        badge: 'S',
         options: RESOLUTIONS.filter(r => r.value.startsWith('small_')).map(r => ({
             value: r.value,
             name: r.display.replace('Small ', ''),
             dims: `${r.width}x${r.height}`
-        }))
+        })), 
+        free: true
+    },
+    {
+        group: 'Custom',
+        options: [
+            { value: 'custom', name: 'Custom Resolution' },
+        ]
     }
 ];
 
@@ -247,6 +244,10 @@ let manualSelectedModel = '';
 // Character autocomplete elements
 const characterAutocompleteOverlay = document.getElementById('characterAutocompleteOverlay');
 const characterAutocompleteList = document.querySelector('.character-autocomplete-list');
+
+// Preset autocomplete elements
+const presetAutocompleteOverlay = document.getElementById('presetAutocompleteOverlay');
+const presetAutocompleteList = document.querySelector('.preset-autocomplete-list');
 const metadataDialog = document.getElementById('metadataDialog');
 const closeMetadataDialog = document.getElementById('closeMetadataDialog');
 const dialogPromptBtn = document.getElementById('dialogPromptBtn');
@@ -256,11 +257,20 @@ const dialogUcExpanded = document.getElementById('dialogUcExpanded');
 const dialogPromptContent = document.getElementById('dialogPromptContent');
 const dialogUcContent = document.getElementById('dialogUcContent');
 
-const rerollTypeBtn = document.getElementById('rerollTypeBtn');
-const variationTypeBtn = document.getElementById('variationTypeBtn');
 const inpaintBtn = document.getElementById('inpaintBtn');
-const uploadImageBaseBtn = document.getElementById('uploadImageBaseBtn');
 const deleteImageBaseBtn = document.getElementById('deleteImageBaseBtn');
+const transformationDropdown = document.getElementById('transformationDropdown');
+const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
+const transformationDropdownMenu = document.getElementById('transformationDropdownMenu');
+
+
+const manualPreviewDownloadBtn = document.getElementById('manualPreviewDownloadBtn');
+const manualPreviewUpscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
+const manualPreviewVariationBtn = document.getElementById('manualPreviewVariationBtn');
+const manualPreviewSeedBtn = document.getElementById('manualPreviewSeedBtn');
+const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
+const manualStrengthValue = document.getElementById('manualStrengthValue');
+const manualNoiseValue = document.getElementById('manualNoiseValue');
 
 // Global variables for character autocomplete
 let characterAutocompleteTimeout = null;
@@ -269,6 +279,12 @@ let currentCharacterAutocompleteTarget = null;
 // Global variables for character autocomplete
 let characterSearchResults = [];
 let characterData = null;
+
+// Global variables for preset autocomplete
+let presetAutocompleteTimeout = null;
+let currentPresetAutocompleteTarget = null;
+let selectedPresetAutocompleteIndex = -1;
+let presetSearchResults = [];
 
 const RESOLUTION_GROUPS = {
     'Standard': ['1024x1024', '1152x896', '896x1152', '1216x832', '832x1216', '1344x768', '768x1344', '1536x640', '640x1536'],
@@ -336,7 +352,7 @@ function selectCustomResolution(value, group) {
     const groupObj = resolutionGroups.find(g => g.group === group);
     const optObj = groupObj ? groupObj.options.find(o => o.value === value) : null;
     if (optObj) {
-        customResolutionSelected.innerHTML = `${optObj.name}${groupObj.badge ? '<span class="custom-dropdown-badge">' + groupObj.badge + '</span>' : ''}`;
+        customResolutionSelected.innerHTML = `${optObj.name}${groupObj.badge ? '<span class="custom-dropdown-badge' + (groupObj.free ? ' free-badge' : '') + '">' + groupObj.badge + '</span>' : ''}`;
     } else {
         customResolutionSelected.textContent = 'Select resolution...';
     }
@@ -531,12 +547,12 @@ function renderManualResolutionDropdown(selectedVal) {
 }
 
 async function selectManualResolution(value, group) {
-    manualSelectedResolution = value;
+    manualSelectedResolution = value.toLowerCase();
     
     // If group is not provided, find it automatically
     if (!group) {
         for (const g of resolutionGroups) {
-            const found = g.options.find(o => o.value === value);
+            const found = g.options.find(o => o.value === value.toLowerCase());
             if (found) {
                 group = g.group;
                 break;
@@ -551,6 +567,7 @@ async function selectManualResolution(value, group) {
         manualResolutionDropdown.style.display = 'none';
         manualCustomResolution.style.display = 'flex';
         manualCustomResolutionBtn.setAttribute('data-state', 'on');
+        manualResolutionGroup.classList.add('expanded');
         // Set default values if empty
         if (!manualWidth.value) manualWidth.value = '1024';
         if (!manualHeight.value) manualHeight.value = '1024';
@@ -560,18 +577,19 @@ async function selectManualResolution(value, group) {
         manualResolutionDropdown.style.display = 'block';
         manualCustomResolution.style.display = 'none';
         manualCustomResolutionBtn.setAttribute('data-state', 'off');
+        manualResolutionGroup.classList.remove('expanded');
     }
     
     // Update button display
     const groupObj = resolutionGroups.find(g => g.group === group);
-    const optObj = groupObj ? groupObj.options.find(o => o.value === value) : null;
+    const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
     if (optObj) {
-        manualResolutionSelected.innerHTML = `${optObj.name}${groupObj.badge ? '<span class="custom-dropdown-badge">' + groupObj.badge + '</span>' : ''}`;
+        manualResolutionSelected.innerHTML = `${optObj.name}${groupObj.badge ? '<span class="custom-dropdown-badge' + (groupObj.free ? ' free-badge' : '') + '">' + groupObj.badge + '</span>' : ''}`;
     } else {
         manualResolutionSelected.textContent = 'Select resolution...';
     }
     // Sync with hidden input for compatibility
-    if (manualResolutionHidden) manualResolutionHidden.value = value;
+    if (manualResolutionHidden) manualResolutionHidden.value = value.toLowerCase();
     
     // Update mask bias dropdown to reflect new resolution
     if (manualMaskBiasSelected) {
@@ -612,7 +630,7 @@ async function selectManualResolution(value, group) {
     updateManualPriceDisplay();
 
     // --- ADDED: Refresh preview image if in bias mode ---
-    if (window.uploadedImageData && window.uploadedImageData.isBiasMode) {
+    if (window.uploadedImageData && window.uploadedImageData.isBiasMode && manualModal && manualModal.style.display === 'block') {
         // Reset bias to center (2) when resolution changes
         const resetBias = 2;
         if (imageBiasHidden != null) {
@@ -691,9 +709,6 @@ async function loadIntoManualForm(source, image = null) {
             type = 'metadata';
             data = source;
 
-            // Handle model
-            data.model = data.model ? data.model.toLowerCase() : 'v4_5';
-
             // Handle resolution
             data.resolution = (data.resolution || 'normal_portrait').toLowerCase();
             if (!data.resolution.match(/^(small_|normal_|large_|wallpaper_)/) && data.width && data.height) {
@@ -709,19 +724,8 @@ async function loadIntoManualForm(source, image = null) {
 
             const noiseObj = getNoiseByMeta(data.noise_schedule);
             data.noiseScheduler = noiseObj ? noiseObj.meta : 'karras';
-
-            // Set variety based on skip_cfg_above_sigma
-            if (document.getElementById('varietyBtn')) {
-                const varietyBtn = document.getElementById('varietyBtn');
-                varietyEnabled = data.skip_cfg_above_sigma !== null && data.skip_cfg_above_sigma !== undefined;
-                varietyBtn.setAttribute('data-state', varietyEnabled ? 'on' : 'off');
-            }
-
-            // Determine preset name from image
-            if (image && image.base) {
-                const parts = image.base.split('_');
-                name = parts.length >= 3 ? parts.slice(1, -1).join('_') : 'generated';
-            }
+            
+            name = data.preset_name;
         } else {
             throw new Error('Invalid source');
         }
@@ -730,13 +734,47 @@ async function loadIntoManualForm(source, image = null) {
         if (manualPrompt) manualPrompt.value = data.prompt || '';
         if (manualUc) manualUc.value = data.uc || '';
         selectManualModel(data.model || 'v4_5', '');
-        selectManualResolution(data.resolution || 'normal_portrait', type === 'metadata' && data.resolution === 'custom' ? 'Custom' : '');
+        
+        // Handle resolution loading with proper custom dimension support
+        let resolutionToSet = (data.resolution || 'normal_portrait').toLowerCase();
+        let resolutionGroup = undefined;
+        
+        if (data.width && data.height && (!data.resolution || !data.resolution.match(/^(small_|normal_|large_|wallpaper_)/))) {
+            resolutionToSet = 'custom';
+            resolutionGroup = 'Custom';
+            // Set custom dimensions before calling selectManualResolution
+            if (manualWidth) manualWidth.value = data.width;
+            if (manualHeight) manualHeight.value = data.height;
+        }
+        
+        selectManualResolution(resolutionToSet, resolutionGroup);
+        
+        // Handle custom dimensions after resolution is set
+        if (data.width && data.height && resolutionToSet === 'custom') {
+            const customWidth = document.getElementById('manualCustomWidth');
+            const customHeight = document.getElementById('manualCustomHeight');
+            if (customWidth && customHeight) {
+                customWidth.value = data.width;
+                customHeight.value = data.height;
+            }
+            // Sanitize dimensions after setting
+            sanitizeCustomDimensions();
+        }
         if (manualSteps) manualSteps.value = data.steps || (type === 'metadata' ? 25 : undefined);
         if (manualGuidance) manualGuidance.value = data.scale || data.guidance || (type === 'metadata' ? 5.0 : undefined);
         if (manualRescale) manualRescale.value = data.cfg_rescale || data.rescale || (type === 'metadata' ? 0.0 : undefined);
         if (manualSeed) manualSeed.value = ''; // Do not autofill for metadata, undefined for others
+        if (data.seed) {
+            window.lastGeneratedSeed = data.layer2_seed || data.seed;
+            manualPreviewSeedNumber.textContent = parseInt(window.lastGeneratedSeed);
+        }
         selectManualSampler(data.sampler || 'k_euler_ancestral');
         selectManualNoiseScheduler(data.noiseScheduler || 'karras');
+        if (document.getElementById('varietyBtn')) {
+            const varietyBtn = document.getElementById('varietyBtn');
+            varietyEnabled = data.skip_cfg_above_sigma !== null && data.skip_cfg_above_sigma !== undefined;
+            varietyBtn.setAttribute('data-state', varietyEnabled ? 'on' : 'off');
+        }
 
         // Handle upscale
         const upscaleState = data.upscale ? 'on' : 'off';
@@ -747,19 +785,113 @@ async function loadIntoManualForm(source, image = null) {
         if (data.characterPrompts && Array.isArray(data.characterPrompts)) {
             loadCharacterPrompts(data.characterPrompts, data.use_coords);
             autoPositionBtn.setAttribute('data-state', data.use_coords ? 'on' : 'off');
+        } else if (data.allCharacterPrompts && Array.isArray(data.allCharacterPrompts)) {
+            // Handle new allCharacterPrompts format
+            loadCharacterPrompts(data.allCharacterPrompts, data.use_coords);
+            autoPositionBtn.setAttribute('data-state', data.use_coords ? 'on' : 'off');
         } else {
             clearCharacterPrompts();
         }
+        
+        // Handle new parameters
+        // Handle allow_paid setting
+        if (data.allow_paid !== undefined) {
+            // This would need a UI element to display/set allow_paid
+            // For now, we'll just store it in a global variable
+            window.currentAllowPaid = data.allow_paid;
+        }
 
-        // Handle variation data
-        const hasVariation = data.variation && data.variation.file;
+        // Handle image source data
         const hasBaseImage = data.image_source;
+        const isPipeline = data.request_type === 'pipeline';
 
-        const variationRow = document.getElementById('manualVariationRow');
+        const variationRow = document.getElementById('transformationSection');
         const variationImage = document.getElementById('manualVariationImage');
         const strengthValue = document.getElementById('manualStrengthValue');
         const noiseValue = document.getElementById('manualNoiseValue');
 
+        // Handle pipeline images - show inpaint button and load pipeline mask if no mask exists
+        if (isPipeline) { 
+            if (data.mask_compressed) {
+                // Store the compressed mask data for later use
+                window.currentMaskCompressed = data.mask_compressed;
+                
+                // Process compressed mask to display resolution
+                const targetWidth = data.width || 1024;
+                const targetHeight = data.height || 1024;
+                
+                window.pipelineMaskData = window.currentMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
+            } else if (data.mask) {
+                window.pipelineMaskData = window.currentMaskData = "data:image/png;base64," + data.mask;
+            } else {
+                // Get pipeline name from metadata (pipeline_name then preset_name)
+                let pipelineName = data.pipeline_name || data.preset_name || 'generated';
+                
+                // Load pipeline mask from server
+                try {
+                    const maskResponse = await fetchWithAuth(`/pipeline/${pipelineName}?render_mask=true`, {
+                        method: 'OPTIONS',
+                    });
+                    if (maskResponse.ok) {
+                        const maskData = await maskResponse.json();
+                        if (maskData.mask) {
+                            window.currentMaskData = "data:image/png;base64," + maskData.mask;
+                            window.pipelineMaskData = "data:image/png;base64," + maskData.mask;
+                            console.log(`🎭 Loaded pipeline mask for: ${pipelineName}`);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load pipeline mask:', error);
+                }
+            }
+            
+            // For pipeline images, get the current image and set it as placeholder
+            if (image) {
+                let imageToShow = image.filename;
+                if (image.pipeline_upscaled) {
+                    imageToShow = image.pipeline_upscaled;
+                } else if (image.pipeline) {
+                    imageToShow = image.pipeline;
+                } else if (image.upscaled) {
+                    imageToShow = image.upscaled;
+                } else if (image.original) {
+                    imageToShow = image.original;
+                }
+                
+                if (imageToShow) {
+                    // Set up uploaded image data with the current image as placeholder
+                    window.uploadedImageData = {
+                        image_source: `file:${imageToShow}`,
+                        width: data.width || 1024,
+                        height: data.height || 1024,
+                        bias: 2,
+                        isBiasMode: true,
+                        isClientSide: false,
+                        isPlaceholder: true
+                    };
+                    
+                    // Show the variation image
+                    if (variationImage) {
+                        variationImage.style.display = 'block';
+                    }
+                }
+            }
+            
+            // Hide the image bias dropdown for pipeline images
+            hideImageBiasDropdown();
+            
+            // Disable transformation dropdown for pipeline images
+            const transformationDropdown = document.getElementById('transformationDropdown');
+            if (transformationDropdown) {
+                transformationDropdown.classList.add('disabled');
+            }
+            
+            window.currentPipelineEdit = {
+                isPipelineEdit: true,
+                pipelineName: name,
+                layer1Seed: data.layer1Seed
+            };
+        }
 
         if (hasBaseImage) {
             const [imageType, identifier] = data.image_source.split(':', 2);
@@ -767,92 +899,89 @@ async function loadIntoManualForm(source, image = null) {
             
             window.uploadedImageData = {
                 image_source: data.image_source,
-                width: data.width || 512,
-                height: data.height || 512,
-                bias: data.image_bias || 2,
+                bias: typeof data.image_bias === 'number' ? data.image_bias : 2,
+                image_bias: typeof data.image_bias === 'object' ? data.image_bias : undefined,
                 isBiasMode: true,
                 isClientSide: false
             };
-            if (data.image_source_width && data.image_source_height) {
-                window.uploadedImageData.width = data.image_source_width;
-                window.uploadedImageData.height = data.image_source_height;
-            } else {
-                if (imageType === 'cache') {
-                    previewUrl = `/cache/preview/${identifier}.webp`;
-                } else if (imageType === 'file') {
-                    previewUrl = `/images/${identifier}`;
-
-                }
-                if (previewUrl) {
-                const tempImg = new Image();
+            if (typeof data.image_bias === 'object') {
+                imageBiasAdjustmentData.currentBias = data.image_bias;
+            }
+            if (imageType === 'cache') {
+                previewUrl = `/cache/preview/${identifier}.webp`;
+            } else if (imageType === 'file') {
+                previewUrl = `/images/${identifier}`;
+            }
+            if (previewUrl) {
+                console.log(previewUrl);
+                await new Promise((resolve) => {
+                    const tempImg = new Image();
                     tempImg.onload = () => {
                         window.uploadedImageData.width = tempImg.width;
                         window.uploadedImageData.height = tempImg.height;
+                        resolve();
                     };
                     tempImg.src = previewUrl;
+                })    
+                if (variationImage) {
+                    // Image is always visible now, just set the source
+                }
+                // Show transformation section content
+                const transformationSection = document.getElementById('transformationSection');
+                if (transformationSection) {
+                    transformationSection.classList.add('display-image');
                 }
             }
-            updateInpaintButtonState();
-
-            // Crop and update preview
-            await cropImageToResolution();
             
-            if(data.image_bias !== undefined) {
-                renderImageBiasDropdown(data.image_bias.toString());
+            if (data.mask_compressed !== undefined && data.mask_compressed !== null) {
+                // Store the compressed mask data for later use
+                window.currentMaskCompressed = data.mask_compressed;
+                
+                // Process compressed mask to display resolution
+                const targetWidth = data.width || 1024;
+                const targetHeight = data.height || 1024;
+                
+                window.currentMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
+            } else if (data.mask !== undefined && data.mask !== null) {
+                window.currentMaskData = "data:image/png;base64," + data.mask;
+            }
+            
+            if(data.image_bias !== undefined && data.image_bias !== null) {
+                // Handle both legacy (number) and dynamic (object) bias
+                if (typeof data.image_bias === 'object') {
+                    renderImageBiasDropdown('custom');
+                } else {
+                    renderImageBiasDropdown(data.image_bias.toString());
+                }
             }
 
-            if (strengthValue && data.strength !== undefined) {
+            if (strengthValue && data.strength !== undefined && data.strength !== null) {
                 strengthValue.value = data.strength;
                 window.strengthValueLoaded = true;
             }
-            if (noiseValue && data.noise !== undefined) {
+            if (noiseValue && data.noise !== undefined && data.noise !== null) {
                 noiseValue.value = data.noise;
             }
 
-        } else if (hasVariation) {
-            window.currentVariationEdit = {
-                sourceFilename: data.variation.file,
-                isVariationEdit: true
-            };
-            
-            // Set up uploaded image data for variation
-            window.uploadedImageData = {
-                image_source: `file:${data.variation.file}`,
-                width: data.variation.width || 512,
-                height: data.variation.height || 512,
-                bias: 2,
-                isBiasMode: true,
-                isClientSide: false
-            };
-            updateInpaintButtonState();
-            
-            // Crop and update preview
-            await cropImageToResolution();
-            if (data.variation.mask) {
-                window.currentMaskData = data.variation.mask;
-                updateInpaintButtonState();
-            }
-            const strengthValue = document.getElementById('manualStrengthValue');
-            if (strengthValue && data.variation.strength !== undefined) {
-                strengthValue.value = data.variation.strength;
-                window.strengthValueLoaded = true;
-            }
-            const noiseValue = document.getElementById('manualNoiseValue');
-            if (noiseValue && data.variation.noise !== undefined) {
-                noiseValue.value = data.variation.noise;
-            }
-            if (variationRow) variationRow.style.display = 'flex';
         } else {
-            window.currentVariationEdit = null;
+            // No image source - clear any existing image data
+            if (window.currentEditMetadata) {
+                delete window.currentEditMetadata.sourceFilename;
+                delete window.currentEditMetadata.isVariationEdit;
+            }
             if (variationImage) {
-                variationImage.style.display = 'none';
                 variationImage.src = '';
             }
-            if (variationRow) variationRow.style.display = 'none';
+            
+            // Hide transformation section content
+            const transformationSection = document.getElementById('transformationSection');
+            if (transformationSection) {
+                transformationSection.classList.remove('display-image');
+            }
         }
 
         // Type-specific handling
-        if (type !== 'metadata') {
+        if (name) {
             manualPresetName.value = name;
         }
 
@@ -880,25 +1009,38 @@ async function loadIntoManualForm(source, image = null) {
                 manualPresetName.style.opacity = '1';
             }
             const saveButton = document.getElementById('manualSaveBtn');
-            if (saveButton) saveButton.style.display = 'inline-block';
+            if (saveButton) saveButton.style.display = 'flex';
             window.currentPipelineEdit = null;
         } else if (type === 'metadata') {
             // Metadata-specific: strength, noise, upscale off
-            const manualStrengthValue = document.getElementById('manualStrengthValue');
             if (manualStrengthValue) {
                 manualStrengthValue.value = data.strength || 0.8;
                 window.strengthValueLoaded = true;
             }
-            const manualNoiseValue = document.getElementById('manualNoiseValue');
             if (manualNoiseValue) manualNoiseValue.value = data.noise || 0.1;
             if (manualUpscale) manualUpscale.checked = false;
+            // Load image into preview panel when loading from metadata
+            if (image) {
+                let imageToShow = image.filename;
+                if (image.pipeline_upscaled) {
+                    imageToShow = image.pipeline_upscaled;
+                } else if (image.pipeline) {
+                    imageToShow = image.pipeline;
+                } else if (image.upscaled) {
+                    imageToShow = image.upscaled;
+                } else if (image.original) {
+                    imageToShow = image.original;
+                }
+                if (imageToShow) {
+                    updateManualPreview("/images/" + imageToShow);
+                }
+            }
         }
 
-        // Common updates
+        updateInpaintButtonState();
         updateManualPriceDisplay();
         updateRequestTypeButtonVisibility();
         updateUploadDeleteButtonVisibility();
-
     } catch (error) {
         console.error('Error loading into form:', error);
         showError('Failed to load data');
@@ -1286,7 +1428,7 @@ function selectManualModel(value, group) {
   // If group is not provided, find it automatically
   if (!group) {
     for (const g of modelGroups) {
-      const found = g.options.find(o => o.value === value);
+      const found = g.options.find(o => o.value === value.toLowerCase());
       if (found) {
         group = g.group;
         break;
@@ -1296,7 +1438,7 @@ function selectManualModel(value, group) {
   
   // Update button display
   const groupObj = modelGroups.find(g => g.group === group);
-  const optObj = groupObj ? groupObj.options.find(o => o.value === value) : null;
+  const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
   if (optObj) {
     manualModelSelected.innerHTML = `${optObj.display}${groupObj.badge ? '<span class="custom-dropdown-badge">' + groupObj.badge + '</span>' : ''}`;
   } else {
@@ -1304,7 +1446,7 @@ function selectManualModel(value, group) {
   }
   
   // Sync with hidden input for compatibility
-  if (manualModelHidden) manualModelHidden.value = value;
+  if (manualModelHidden) manualModelHidden.value = value.toLowerCase();
   
   // Trigger any listeners (e.g., updateGenerateButton or manual form update)
   if (typeof updateGenerateButton === 'function') updateGenerateButton();
@@ -1318,10 +1460,234 @@ function closeManualModelDropdown() {
 
 setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel);
 
+// Transformation Dropdown Functions
+function renderTransformationDropdown(selectedVal) {
+    const hasValidImage = window.currentEditImage && window.currentEditMetadata;
+    const hasBaseImage = hasValidImage && (
+        window.currentEditMetadata.original_filename || 
+        (window.currentEditImage.filename || window.currentEditImage.original || window.currentEditImage.pipeline || window.currentEditImage.pipeline_upscaled)
+    );
+    
+    // Check if this is an img2img (has base image) or pipeline image
+    const isImg2Img = hasValidImage && window.currentEditMetadata.base_image === true;
+    const isPipeline = hasValidImage && (window.currentEditImage.pipeline || window.currentEditImage.pipeline_upscaled);
+    
+    // Show reroll button only if there's a base image available (for img2img) or if it's a pipeline
+    const shouldShowReroll = hasValidImage && (isImg2Img || isPipeline);
+    
+    // Get all option elements
+    const rerollOption = transformationDropdownMenu.querySelector('[data-value="reroll"]');
+    const variationOption = transformationDropdownMenu.querySelector('[data-value="variation"]');
+    const browseOption = transformationDropdownMenu.querySelector('[data-value="browse"]');
+    const uploadOption = transformationDropdownMenu.querySelector('[data-value="upload"]');
+    
+    // Show/hide options based on availability
+    if (rerollOption) {
+        rerollOption.style.display = shouldShowReroll ? 'flex' : 'none';
+        rerollOption.classList.toggle('selected', selectedVal === 'reroll');
+    }
+    
+    if (variationOption) {
+        variationOption.style.display = hasBaseImage ? 'flex' : 'none';
+        variationOption.classList.toggle('selected', selectedVal === 'variation');
+    }
+    
+    if (browseOption) {
+        browseOption.classList.toggle('selected', selectedVal === 'browse');
+    }
+    
+    if (uploadOption) {
+        uploadOption.classList.toggle('selected', selectedVal === 'upload');
+    }
+}
+
+function selectTransformation(value) {
+    // Handle specific actions
+    switch(value) {
+        case 'browse':
+            showCacheBrowser();
+            break;
+        case 'upload':
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = 'image/*';
+            fileInput.style.display = 'none';
+            
+            fileInput.addEventListener('change', async (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    await handleManualImageUpload(file);
+                }
+                // Clean up
+                document.body.removeChild(fileInput);
+            });
+            
+            document.body.appendChild(fileInput);
+            fileInput.click();
+            break;
+        case 'reroll':
+        case 'variation':
+            // Update button display for immediate actions
+            const options = {
+                'reroll': 'Referance',
+                'variation': 'Current Image'
+            };
+            const displayText = options[value] || 'Select';
+            updateTransformationDropdownState(value, displayText);
+            
+            // Handle reroll/variation logic
+            handleTransformationTypeChange(value);
+            break;
+    }
+    
+    // Update button states for reroll/variation
+    updateRequestTypeButtonVisibility();
+}
+
+function handleTransformationTypeChange(requestType) {
+        const variationRow = document.getElementById('transformationSection');
+        const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
+        const saveButton = document.getElementById('manualSaveBtn');
+        const layer1SeedToggle = document.getElementById('layer1SeedToggle');
+        const manualMaskBiasGroup = document.getElementById('manualMaskBiasGroup');
+        const variationImage = document.getElementById('manualVariationImage');
+
+    // Clear existing data
+    window.uploadedImageData = null;
+    if (variationImage) {
+        variationImage.src = '';
+    }
+    hideImageBiasDropdown();
+
+    // Set new state
+    window.currentRequestType = requestType;
+
+    const metadata = window.currentEditMetadata;
+    const image = window.currentEditImage;
+    if (!metadata || !image) return;
+
+    let source, previewUrl, bias = 2;
+    let customBias = undefined;
+    if (requestType === 'reroll') {
+        if (!metadata.image_source) return; // Should not happen if button hidden
+        source = metadata.image_source;
+        bias = typeof metadata.image_bias === 'number' ? metadata.image_bias : 2;
+        customBias = typeof metadata.image_bias === 'object' ? metadata.image_bias : undefined;
+        const [type, id] = source.split(':');
+        previewUrl = type === 'file' ? `/images/${id}` : `/cache/preview/${id}.webp`;
+    } else {
+        const filename = image.filename || image.original || image.pipeline || image.pipeline_upscaled;
+        if (!filename) return;
+        source = `file:${filename}`;
+        previewUrl = `/images/${filename}`;
+        // For pipeline, it might be pipeline image, but we can treat as base
+    }
+
+    window.uploadedImageData = {
+        image_source: source,
+        bias: bias,
+        isBiasMode: true,
+        isClientSide: false
+    };
+    
+    // Show transformation section content
+    const transformationSection = document.getElementById('transformationSection');
+    if (transformationSection) {
+        transformationSection.classList.add('display-image');
+    }
+
+    cropImageToResolution();
+    updateInpaintButtonState();
+
+    // Show bias dropdown
+    renderImageBiasDropdown(bias.toString());
+
+    // Hide preset name and save for variation
+    if (presetNameGroup) presetNameGroup.style.display = 'none';
+    if (saveButton) saveButton.style.display = 'none';
+    if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
+    if (manualMaskBiasGroup) manualMaskBiasGroup.style.display = 'none';
+
+    // For pipeline specific
+    if (requestType === 'reroll' && (image.pipeline || image.pipeline_upscaled)) {
+        // Pipeline reroll logic, no uploadedImageData for image, but use pipeline endpoint in generation
+        window.currentRequestType = 'pipeline_reroll';
+        // Set other fields for pipeline
+        if (presetNameGroup) {
+            presetNameGroup.style.display = 'block';
+            manualPresetName.disabled = true;
+            manualPresetName.style.opacity = '0.6';
+        }
+        if (saveButton) saveButton.style.display = 'none';
+        if (layer1SeedToggle) {
+            layer1SeedToggle.style.display = 'inline-block';
+            layer1SeedToggle.setAttribute('data-state', metadata.layer1Seed ? 'on' : 'off');
+        }
+        if (manualMaskBiasGroup) manualMaskBiasGroup.style.display = 'block';
+        // ... other pipeline specific
+    }
+
+    updateRequestTypeButtonVisibility();
+    updateUploadDeleteButtonVisibility();
+}
+
+function openTransformationDropdown() {
+    openDropdown(transformationDropdownMenu, transformationDropdownBtn);
+}
+
+function closeTransformationDropdown() {
+    closeDropdown(transformationDropdownMenu, transformationDropdownBtn);
+}
+
+// Function to set up event listeners for transformation dropdown options
+function setupTransformationDropdownListeners() {
+    const options = transformationDropdownMenu.querySelectorAll('.custom-dropdown-option');
+    
+    options.forEach(option => {
+        option.tabIndex = 0;
+        
+        option.addEventListener('click', () => {
+            const value = option.dataset.value;
+            selectTransformation(value);
+            closeTransformationDropdown();
+        });
+        
+        option.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                const value = option.dataset.value;
+                selectTransformation(value);
+                closeTransformationDropdown();
+            }
+        });
+    });
+}
+
+// Function to update transformation dropdown state and text
+function updateTransformationDropdownState(type, text) {
+    const transformationType = document.getElementById('transformationType');
+    const transformationSelected = document.getElementById('transformationSelected');
+    const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
+    
+    if (transformationType) transformationType.value = type || '';
+    if (transformationSelected) transformationSelected.textContent = text || 'Select';
+    
+    // Update toggle button state
+    if (transformationDropdownBtn) {
+        if (type) {
+            transformationDropdownBtn.setAttribute('data-state', 'on');
+        } else {
+            transformationDropdownBtn.setAttribute('data-state', 'off');
+        }
+    }
+}
+
+setupDropdown(transformationDropdown, transformationDropdownBtn, transformationDropdownMenu, renderTransformationDropdown, () => document.getElementById('transformationType').value);
+setupTransformationDropdownListeners();
+
 renderManualSamplerDropdown(manualSelectedSampler);
 selectManualSampler('k_euler_ancestral');
 renderManualResolutionDropdown(manualSelectedResolution);
-selectManualResolution('normal_portrait', '');
+selectManualResolution('normal_square', 'Normal');
 renderCustomResolutionDropdown(selectedResolution);
 selectCustomResolution('', 'Default');
 renderManualNoiseSchedulerDropdown(manualSelectedNoiseScheduler);
@@ -1352,6 +1718,9 @@ async function initializeApp() {
         }
         await loadGallery();
         updateGenerateButton();
+        
+        // Initialize image bias adjustment functionality
+        initializeImageBiasAdjustment();
     } catch (error) {
         console.error('Failed to initialize app:', error);
         showError('Failed to load application data');
@@ -1369,12 +1738,7 @@ function setupEventListeners() {
     manualForm.addEventListener('submit', handleManualGeneration);
     manualSaveBtn.addEventListener('click', handleManualSave);
     
-    // Manual preview control events
-    const manualPreviewDownloadBtn = document.getElementById('manualPreviewDownloadBtn');
-    const manualPreviewUpscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
-    const manualPreviewVariationBtn = document.getElementById('manualPreviewVariationBtn');
-    const manualPreviewSeedBtn = document.getElementById('manualPreviewSeedBtn');
-    
+    // Manual preview control events    
     if (manualPreviewDownloadBtn) {
         manualPreviewDownloadBtn.addEventListener('click', () => {
             const previewImage = document.getElementById('manualPreviewImage');
@@ -1421,9 +1785,14 @@ function setupEventListeners() {
     // Layer1 seed toggle
     layer1SeedToggle.addEventListener('click', toggleLayer1Seed);
     
-    // Variation range inputs
-    const manualStrengthValue = document.getElementById('manualStrengthValue');
-    const manualNoiseValue = document.getElementById('manualNoiseValue');
+    // Paid request toggle
+    const paidRequestToggle = document.getElementById('paidRequestToggle');
+    if (paidRequestToggle) {
+        paidRequestToggle.addEventListener('click', () => {
+            forcePaidRequest = !forcePaidRequest;
+            paidRequestToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
+        });
+    }
     
     function syncSliderWithInput(slider, input, min, max, step) {
         if (!slider || !input) return;
@@ -1462,7 +1831,12 @@ function setupEventListeners() {
     manualPrompt.addEventListener('keydown', handleCharacterAutocompleteKeydown);
     manualUc.addEventListener('input', handleCharacterAutocompleteInput);
     manualUc.addEventListener('keydown', handleCharacterAutocompleteKeydown);
+    
+    // Preset autocomplete events
+    manualPresetName.addEventListener('input', handlePresetAutocompleteInput);
+    manualPresetName.addEventListener('keydown', handlePresetAutocompleteKeydown);
     document.addEventListener('click', hideCharacterAutocomplete);
+    document.addEventListener('click', hidePresetAutocomplete);
     
     // Character detail events - no longer needed since we're using inline onclick handlers
     // The close button is now created dynamically in the character detail content
@@ -1599,13 +1973,7 @@ function setupEventListeners() {
 
     // Request type toggle functionality
     
-    if (rerollTypeBtn) {
-        rerollTypeBtn.addEventListener('click', () => toggleRequestType('reroll'));
-    }
     
-    if (variationTypeBtn) {
-        variationTypeBtn.addEventListener('click', () => toggleRequestType('variation'));
-    }
     
     if (inpaintBtn) {
         inpaintBtn.addEventListener('click', () => {
@@ -1614,41 +1982,14 @@ function setupEventListeners() {
         });
     }
     
-    if (uploadImageBaseBtn) {
-        uploadImageBaseBtn.addEventListener('click', () => {
-            // Trigger file input for image upload
-            const fileInput = document.createElement('input');
-            fileInput.type = 'file';
-            fileInput.accept = 'image/*';
-            fileInput.style.display = 'none';
-            
-            fileInput.addEventListener('change', async (event) => {
-                const file = event.target.files[0];
-                if (file) {
-                    await handleManualImageUpload(file);
-                }
-                // Clean up
-                document.body.removeChild(fileInput);
-            });
-            
-            document.body.appendChild(fileInput);
-            fileInput.click();
-        });
-    }
+
     
     if (deleteImageBaseBtn) {
         deleteImageBaseBtn.addEventListener('click', handleDeleteBaseImage);
     }
     
-    // Cache browser functionality
-    const browseCacheBtn = document.getElementById('browseCacheBtn');
-    const cacheBrowserModal = document.getElementById('cacheBrowserModal');
     const closeCacheBrowserBtn = document.getElementById('closeCacheBrowserBtn');
     const closeCacheBrowserContainerBtn = document.getElementById('closeCacheBrowserContainerBtn');
-    
-    if (browseCacheBtn) {
-        browseCacheBtn.addEventListener('click', showCacheBrowser);
-    }
     
     if (closeCacheBrowserBtn) {
         closeCacheBrowserBtn.addEventListener('click', hideCacheBrowser);
@@ -2173,17 +2514,6 @@ function createGalleryItem(image) {
         rerollImageWithEdit(image);
     };
     
-    // Variation button (blender icon)
-    const variationBtn = document.createElement('button');
-    variationBtn.className = 'btn-primary round-button';
-    variationBtn.innerHTML = '<i class="nai-inpaint"></i>';
-    variationBtn.title = 'Variation';
-    variationBtn.onclick = (e) => {
-        e.stopPropagation();
-        variationImage(image);
-    };
-    
-    
     // Upscale button (only for non-upscaled images)
     const upscaleBtn = document.createElement('button');
     upscaleBtn.className = 'btn-primary round-button';
@@ -2204,7 +2534,6 @@ function createGalleryItem(image) {
     actionsDiv.appendChild(downloadBtn);
     actionsDiv.appendChild(upscaleBtn);
     actionsDiv.appendChild(rerollBtn);
-    actionsDiv.appendChild(variationBtn);
     actionsDiv.appendChild(rerollEditBtn);
     
     overlay.appendChild(actionsDiv);
@@ -2242,243 +2571,7 @@ function createGalleryItem(image) {
     return item;
 }
 
-// Direct variation of an image (img2img with same settings)
-async function variationImage(image) {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
 
-    try {
-        // Determine which filename to use for metadata
-        let filenameForMetadata = image.filename;
-        
-        if (!filenameForMetadata) {
-            // If no filename property, determine from gallery image object
-            if (image.pipeline_upscaled) {
-                filenameForMetadata = image.pipeline_upscaled;
-            } else if (image.pipeline) {
-                filenameForMetadata = image.pipeline;
-            } else if (image.upscaled) {
-                filenameForMetadata = image.upscaled;
-            } else if (image.original) {
-                filenameForMetadata = image.original;
-            }
-        }
-        
-        if (!filenameForMetadata) {
-            throw new Error('No filename available for metadata lookup');
-        }
-        
-        // Show loading
-        showManualLoading(true, 'Creating variation...');
-        
-        // Use variation endpoint with default settings
-        const url = `/variation/${filenameForMetadata}`;
-        const generateResponse = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!generateResponse.ok) {
-            throw new Error(`Variation generation failed: ${generateResponse.statusText}`);
-        }
-
-        const blob = await generateResponse.blob();
-        const imageUrl = URL.createObjectURL(blob);
-        
-        // Create a temporary image to get dimensions
-        const img = new Image();
-        img.onload = function() {
-            createConfetti();
-            showSuccess('Variation created successfully!');
-        
-            // Refresh gallery and show the new image in lightbox
-            setTimeout(async () => {
-                await loadGallery();
-            
-                // Find the newly generated image (should be the first one)
-                if (allImages.length > 0) {
-                    const newImage = allImages[0]; // Newest image is first
-                    let filenameToShow = newImage.original;
-                    if (newImage.pipeline_upscaled) {
-                        filenameToShow = newImage.pipeline_upscaled;
-                    } else if (newImage.pipeline) {
-                        filenameToShow = newImage.pipeline;
-                    } else if (newImage.upscaled) {
-                        filenameToShow = newImage.upscaled;
-                    }
-                    
-                    const imageToShow = {
-                        filename: filenameToShow,
-                        base: newImage.base,
-                        upscaled: newImage.upscaled,
-                        pipeline: newImage.pipeline,
-                        pipeline_upscaled: newImage.pipeline_upscaled
-                    };
-                    showLightbox(imageToShow);
-                }
-            }, 1000);
-        };
-        img.src = imageUrl;
-
-    } catch (error) {
-        console.error('Direct variation error:', error);
-        showError('Image variation failed: ' + error.message);
-    } finally {
-        showManualLoading(false);
-    }
-}
-
-// Variation with edit functionality
-async function variationImageWithEdit(image) {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-
-    try {
-        // Determine which filename to use for metadata
-        let filenameForMetadata = image.filename;
-        
-        if (!filenameForMetadata) {
-            // If no filename property, determine from gallery image object
-            if (image.pipeline_upscaled) {
-                filenameForMetadata = image.pipeline_upscaled;
-            } else if (image.pipeline) {
-                filenameForMetadata = image.pipeline;
-            } else if (image.upscaled) {
-                filenameForMetadata = image.upscaled;
-            } else if (image.original) {
-                filenameForMetadata = image.original;
-            }
-        }
-        
-        if (!filenameForMetadata) {
-            throw new Error('No filename available for metadata lookup');
-        }
-        
-        // Get metadata from the image
-        const response = await fetchWithAuth(`/metadata/${filenameForMetadata}`);
-        
-        if (!response.ok) {
-            throw new Error(`Failed to load image metadata: ${response.status} ${response.statusText}`);
-        }
-
-        const metadata = await response.json();
-        
-        if (!metadata) {
-            throw new Error('No metadata found for this image');
-        }
-
-        // Close lightbox if it's open
-        if (lightboxModal.style.display === 'block') {
-            hideLightbox();
-        }
-
-        // Store the current image metadata for both modes
-        window.currentEditMetadata = metadata;
-        window.currentEditImage = image;
-
-        // Update button visibility based on available image
-        updateRequestTypeButtonVisibility();
-
-        // Load metadata into manual form for variation editing
-        loadIntoManualForm(metadata, image);
-
-        // Show variation-specific fields
-        const variationRow = document.getElementById('manualVariationRow');
-        if (variationRow) {
-            variationRow.style.display = 'flex';
-        }
-
-        // Set up uploaded image data for base image selection
-        let sourceFilename = filenameForMetadata;
-        if (sourceFilename.includes('_upscaled')) {
-            sourceFilename = sourceFilename.replace('_upscaled.png', '.png');
-        }
-        
-        window.uploadedImageData = {
-            image_source: `file:${sourceFilename}`,
-            width: metadata.width || 512,
-            height: metadata.height || 512,
-            bias: metadata.image_bias || 2, // Default to center
-            isBiasMode: true,
-            isClientSide: false
-        };
-        
-        // Show image bias dropdown
-        renderImageBiasDropdown('2');
-        
-        // Crop and update preview
-        await cropImageToResolution();
-        
-        // Show mask editor button
-        updateInpaintButtonState();
-
-        // Hide preset name and save button for variations
-        const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
-        const saveButton = document.getElementById('manualSaveBtn');
-        
-        if (presetNameGroup) {
-            presetNameGroup.style.display = 'none';
-        }
-        if (saveButton) {
-            saveButton.style.display = 'none';
-        }
-        
-        // Clear any pipeline context
-        window.currentPipelineEdit = null;
-        
-        // Hide mask bias dropdown for variations
-        const maskBiasRow = document.getElementById('manualMaskBiasRow');
-        if (maskBiasRow) {
-            maskBiasRow.style.display = 'none';
-        }
-        
-        // Hide the layer1 seed toggle for variations
-        const layer1SeedToggle = document.getElementById('layer1SeedToggle');
-        if (layer1SeedToggle) {
-            layer1SeedToggle.style.display = 'none';
-        }
-
-        // Store variation context
-        window.currentVariationEdit = {
-            sourceFilename: filenameForMetadata,
-            isVariationEdit: true
-        };
-        
-        // Handle frontend upload data if present in metadata
-        if (metadata.is_frontend_upload) {
-            // Set up the uploaded image data for editing
-            window.uploadedImageData = {
-                isClientSide: false, // This is now server-side
-                isBiasMode: metadata.original_image_bias !== undefined,
-                bias: metadata.original_image_bias || 2,
-                originalFilename: metadata.unbiased_original_image || null
-            };
-            
-            // Show the image bias dropdown if this was a bias mode generation
-            if (metadata.original_image_bias !== undefined) {
-                renderImageBiasDropdown(metadata.original_image_bias.toString());
-            }
-        }
-
-        // Show manual modal
-        manualModal.style.display = 'block';
-        if (manualPrompt) manualPrompt.focus();
-        updateInpaintButtonState();
-        cropImageToResolution();
-
-    } catch (error) {
-        console.error('Variation with edit error:', error);
-        showError('Failed to load image metadata: ' + error.message);
-    }
-}
-
-// Direct reroll an image (same settings)
 async function rerollImage(image) {
     if (!isAuthenticated) {
         showError('Please login first');
@@ -2552,11 +2645,21 @@ async function rerollImage(image) {
                 steps: metadata.steps || 25,
                 guidance: metadata.scale || 5.0,
                 rescale: metadata.cfg_rescale || 0.0,
-                allow_paid: true
+                allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : true
             };
 
             if (metadata.skip_cfg_above_sigma) {
                 layer2Config.variety = true;
+            }
+            
+            // Add upscale if it was used in original generation
+            if (metadata.upscaled) {
+                layer2Config.upscale = true;
+            }
+            
+            // Add seed if available
+            if (metadata.layer2Seed) {
+                layer2Config.seed = parseInt(metadata.layer2Seed);
             }
             
             // Add character prompts if available
@@ -2587,6 +2690,11 @@ async function rerollImage(image) {
                 resolution: metadata.resolution || undefined
             };
             
+            // Add mask_bias if available in metadata
+            if (metadata.mask_bias !== undefined) {
+                pipelineRequestBody.mask_bias = parseInt(metadata.mask_bias);
+            }
+            
             // Check if layer1 seed toggle is enabled and we have a layer1 seed
             const useLayer1Seed = layer1SeedToggle.getAttribute('data-state') === 'on' && metadata.layer1Seed;
             if (useLayer1Seed) {
@@ -2608,6 +2716,27 @@ async function rerollImage(image) {
 
             const blob = await generateResponse.blob();
             const imageUrl = URL.createObjectURL(blob);
+            
+            // Extract seed from response header if available
+            const headerSeed = generateResponse.headers.get('X-Seed');
+            if (headerSeed) {
+                window.lastGeneratedSeed = parseInt(headerSeed);
+                manualPreviewSeedNumber.textContent = parseInt(headerSeed);
+            }
+            
+            // Fetch metadata for the generated image if we have a filename
+            const generatedFilename = generateResponse.headers.get('X-Generated-Filename');
+            if (generatedFilename) {
+                try {
+                    const metadataResponse = await fetchWithAuth(`/metadata/${generatedFilename}`);
+                    if (metadataResponse.ok) {
+                        const metadata = await metadataResponse.json();
+                        window.lastGeneration = metadata;
+                    }
+                } catch (error) {
+                    console.warn('Failed to fetch metadata for generated image:', error);
+                }
+            }
             
             // Create a temporary image to get dimensions
             const img = new Image();
@@ -2657,24 +2786,35 @@ async function rerollImage(image) {
                 // Handle variation reroll - use the original base image                
                 // Build request body from metadata
                 const requestBody = {
-                    image: hasOriginalFilename, // Use the original filename
+                    image: `file:${hasOriginalFilename}`, // Use the original filename with file: prefix
                     strength: metadata.strength || 0.8, // Use strength from metadata or default
                     noise: metadata.noise || 0.1, // Use noise from metadata or default
                     prompt: metadata.prompt || '',
                     resolution: metadata.resolution || '',
                     steps: metadata.steps || 25,
                     guidance: metadata.scale || 5.0,
-                    rescale: metadata.cfg_rescale || 0.0
+                    rescale: metadata.cfg_rescale || 0.0,
+                    allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : false
                 };
 
                 // Add mask data if it exists
                 if (window.currentMaskData) {
-                    requestBody.mask = window.currentMaskData.replace('data:image/png;base64,', '');
+                    const compressedMask = saveMaskCompressed();
+                    if (compressedMask) {
+                        requestBody.mask_compressed = compressedMask;
+                    } else {
+                        requestBody.mask = window.currentMaskData.replace('data:image/png;base64,', '');
+                    }
                 }
                 
                 // Add optional fields if they have values
                 if (metadata.uc) {
                     requestBody.uc = metadata.uc;
+                }
+                
+                // Add seed if available
+                if (metadata.seed) {
+                    requestBody.seed = parseInt(metadata.seed);
                 }
                 
                 if (metadata.sampler) {
@@ -2689,6 +2829,21 @@ async function rerollImage(image) {
                 
                 if (metadata.skip_cfg_above_sigma) {
                     requestBody.variety = true;
+                }
+                
+                // Add upscale if it was used in original generation
+                if (metadata.upscaled) {
+                    requestBody.upscale = true;
+                }
+                
+                // Add preset if available
+                if (metadata.preset_name) {
+                    requestBody.preset = metadata.preset_name;
+                }
+                
+                // Add image_bias if available (for variations)
+                if (metadata.image_bias !== undefined) {
+                    requestBody.image_bias = metadata.image_bias;
                 }
                 
                 // Add character prompts if available
@@ -2715,12 +2870,18 @@ async function rerollImage(image) {
                     resolution: metadata.resolution || '',
                     steps: metadata.steps || 25,
                     guidance: metadata.scale || 5.0,
-                    rescale: metadata.cfg_rescale || 0.0
+                    rescale: metadata.cfg_rescale || 0.0,
+                    allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : false
                 };
                 
                 // Add optional fields if they have values
                 if (metadata.uc) {
                     requestBody.uc = metadata.uc;
+                }
+                
+                // Add seed if available
+                if (metadata.seed) {
+                    requestBody.seed = parseInt(metadata.seed);
                 }
                 
                 if (metadata.sampler) {
@@ -2737,10 +2898,25 @@ async function rerollImage(image) {
                     requestBody.variety = true;
                 }
                 
+                // Add upscale if it was used in original generation
+                if (metadata.upscaled) {
+                    requestBody.upscale = true;
+                }
+                
+                // Add preset if available
+                if (metadata.preset_name) {
+                    requestBody.preset = metadata.preset_name;
+                }
+                
                 // Add character prompts if available
                 if (metadata.characterPrompts && Array.isArray(metadata.characterPrompts) && metadata.characterPrompts.length > 0) {
                     requestBody.allCharacterPrompts = metadata.characterPrompts;
                     requestBody.use_coords = !!metadata.use_coords;
+                }
+
+                // Add mask data if it exists
+                if (requestBody.mask_compressed) {
+                    requestBody.mask = requestBody.mask_compressed;
                 }
 
                 // Generate image with same settings
@@ -2761,6 +2937,27 @@ async function rerollImage(image) {
 
             const blob = await generateResponse.blob();
             const imageUrl = URL.createObjectURL(blob);
+            
+            // Extract seed from response header if available
+            const headerSeed = generateResponse.headers.get('X-Seed');
+            if (headerSeed) {
+                window.lastGeneratedSeed = parseInt(headerSeed);
+                manualPreviewSeedNumber.textContent = parseInt(headerSeed);
+            }
+            
+            // Fetch metadata for the generated image if we have a filename
+            const generatedFilename = generateResponse.headers.get('X-Generated-Filename');
+            if (generatedFilename) {
+                try {
+                    const metadataResponse = await fetchWithAuth(`/metadata/${generatedFilename}`);
+                    if (metadataResponse.ok) {
+                        const metadata = await metadataResponse.json();
+                        window.lastGeneration = metadata;
+                    }
+                } catch (error) {
+                    console.warn('Failed to fetch metadata for generated image:', error);
+                }
+            }
             
             // Create a temporary image to get dimensions
             const img = new Image();
@@ -2840,7 +3037,7 @@ async function rerollImageWithEdit(image) {
         window.currentEditImage = image;
 
         // Load form values from metadata
-        loadIntoManualForm(metadata, image);
+        await loadIntoManualForm(metadata, image);
 
         // Show request type row
         const requestTypeRow = document.getElementById('requestTypeRow');
@@ -2854,7 +3051,6 @@ async function rerollImageWithEdit(image) {
         updateRequestTypeButtonVisibility();
 
         // Set initial state
-        const variationRow = document.getElementById('manualVariationRow');
         const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
         const saveButton = document.getElementById('manualSaveBtn');
         const layer1SeedToggle = document.getElementById('layer1SeedToggle');
@@ -2862,8 +3058,8 @@ async function rerollImageWithEdit(image) {
 
         if (isPipeline) {
             window.currentRequestType = 'pipeline_reroll';
-            rerollTypeBtn.setAttribute('data-state', 'on');
-            variationTypeBtn.setAttribute('data-state', 'off');
+            // Set transformation type to reroll
+            updateTransformationDropdownState('reroll', 'Referance Image');
 
             if (presetNameGroup) {
                 presetNameGroup.style.display = 'block';
@@ -2879,17 +3075,14 @@ async function rerollImageWithEdit(image) {
                 manualMaskBiasGroup.style.display = 'block';
                 selectManualMaskBias(manualSelectedMaskBias);
             }
-            if (variationRow) variationRow.style.display = 'none';
 
-            // Extract pipeline name
-            const parts = image.base.split('_');
-            window.currentPipelineName = parts.length >= 4 ? parts.slice(1, -2).join('_') : (parts.length === 3 ? parts[1] : 'generated');
+            window.currentPipelineName = metadata.preset_name;
             window.currentLayer1Seed = metadata.layer1Seed || metadata.seed;
 
         } else if (isVariation) {
             window.currentRequestType = 'reroll';
-            rerollTypeBtn.setAttribute('data-state', 'on');
-            variationTypeBtn.setAttribute('data-state', 'off');
+            // Set transformation type to reroll
+            updateTransformationDropdownState('reroll', 'Referance Image');
 
             const [type, id] = metadata.image_source.split(':');
             const previewUrl = type === 'file' ? `/images/${id}` : `/cache/preview/${id}.webp`;
@@ -2897,21 +3090,21 @@ async function rerollImageWithEdit(image) {
                 image_source: metadata.image_source,
                 width: metadata.width || 512,
                 height: metadata.height || 512,
-                bias: metadata.image_bias || 2,
+                bias: typeof metadata.image_bias === 'number' ? metadata.image_bias : 2,
+                image_bias: typeof metadata.image_bias === 'object' ? metadata.image_bias : undefined,
                 isBiasMode: true,
                 isClientSide: false
             };
-            
-            // Crop and update preview
-            await cropImageToResolution();
+            if (typeof metadata.image_bias === 'object') {
+                imageBiasAdjustmentData.currentBias = metadata.image_bias;
+            }
             
             const variationImage = document.getElementById('manualVariationImage');
             if (variationImage) {
                 variationImage.style.display = 'block';
             }
-            if (variationRow) variationRow.style.display = 'flex';
             updateInpaintButtonState();
-            renderImageBiasDropdown((metadata.image_bias || 2).toString());
+            renderImageBiasDropdown((typeof metadata.image_bias === 'number' ? metadata.image_bias : 2).toString());
 
             if (presetNameGroup) presetNameGroup.style.display = 'block';
             if (saveButton) saveButton.style.display = 'inline-block';
@@ -2919,10 +3112,9 @@ async function rerollImageWithEdit(image) {
             if (manualMaskBiasGroup) manualMaskBiasGroup.style.display = 'none';
         } else {
             window.currentRequestType = null;
-            rerollTypeBtn.setAttribute('data-state', 'off');
-            variationTypeBtn.setAttribute('data-state', 'off');
+            // Clear transformation type
+            updateTransformationDropdownState(undefined, 'Select');
 
-            if (variationRow) variationRow.style.display = 'none';
             if (presetNameGroup) presetNameGroup.style.display = 'block';
             if (saveButton) saveButton.style.display = 'inline-block';
             if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
@@ -2931,98 +3123,11 @@ async function rerollImageWithEdit(image) {
 
         // Show modal
         manualModal.style.display = 'block';
+        await cropImageToResolution();
         if (manualPrompt) manualPrompt.focus();
-        cropImageToResolution();
 
     } catch (error) {
         console.error('Reroll with edit error:', error);
-        showError('Failed to load image metadata: ' + error.message);
-    }
-}
-
-// Similar changes for variationImageWithEdit
-async function variationImageWithEdit(image) {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-
-    try {
-        // Determine filename
-        let filenameForMetadata = image.filename || image.pipeline_upscaled || image.pipeline || image.upscaled || image.original;
-        if (!filenameForMetadata) {
-            throw new Error('No filename available for metadata lookup');
-        }
-
-        // Get metadata
-        const response = await fetchWithAuth(`/metadata/${filenameForMetadata}`);
-        if (!response.ok) {
-            throw new Error(`Failed to load image metadata: ${response.status} ${response.statusText}`);
-        }
-        const metadata = await response.json();
-        if (!metadata) {
-            throw new Error('No metadata found for this image');
-        }
-
-        // Close lightbox
-        if (lightboxModal.style.display === 'block') {
-            hideLightbox();
-        }
-
-        // Store
-        window.currentEditMetadata = metadata;
-        window.currentEditImage = image;
-
-        // Load form
-        loadIntoManualForm(metadata, image);
-
-        // Update button visibility
-        updateRequestTypeButtonVisibility();
-
-        // Set to variation mode
-        window.currentRequestType = 'variation';
-        rerollTypeBtn.setAttribute('data-state', 'off');
-        variationTypeBtn.setAttribute('data-state', 'on');
-
-        const sourceFilename = filenameForMetadata.replace('_upscaled.png', '.png');
-        
-        window.uploadedImageData = {
-            image_source: `file:${sourceFilename}`,
-            width: metadata.width || 512,
-            height: metadata.height || 512,
-            bias: 2,
-            isBiasMode: true,
-            isClientSide: false
-        };
-        
-        // Show image bias dropdown
-        renderImageBiasDropdown(metadata.image_bias !== undefined && metadata.image_bias !== null ? metadata.image_bias.toString() : '2');
-        
-        // Crop and update preview
-        await cropImageToResolution();
-        
-        updateInpaintButtonState();
-        const variationRow = document.getElementById('manualVariationRow');
-        if (variationRow) variationRow.style.display = 'flex';
-
-        const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
-        const saveButton = document.getElementById('manualSaveBtn');
-        if (presetNameGroup) presetNameGroup.style.display = 'none';
-        if (saveButton) saveButton.style.display = 'none';
-
-        const maskBiasRow = document.getElementById('manualMaskBiasRow');
-        if (maskBiasRow) maskBiasRow.style.display = 'none';
-
-        const layer1SeedToggle = document.getElementById('layer1SeedToggle');
-        if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
-
-        // Show modal
-        manualModal.style.display = 'block';
-        if (manualPrompt) manualPrompt.focus();
-        cropImageToResolution();
-
-    } catch (error) {
-        console.error('Variation with edit error:', error);
         showError('Failed to load image metadata: ' + error.message);
     }
 }
@@ -3146,7 +3251,7 @@ function updateControlsVisibility() {
 }
 
 // Show manual modal
-function showManualModal() {
+async function showManualModal() {
     
     // Check if a preset is selected for editing
     const selectedValue = presetSelect.value;
@@ -3156,10 +3261,10 @@ function showManualModal() {
         
         if (type === 'preset') {
             // Load preset for editing
-            loadIntoManualForm(selectedValue);
+            await loadIntoManualForm(selectedValue);
         } else if (type === 'pipeline') {
             // Load pipeline for limited editing (layer2 only)
-            loadIntoManualForm(selectedValue);
+            await loadIntoManualForm(selectedValue);
         }
     } else {
         // Clear form for new generation
@@ -3168,21 +3273,13 @@ function showManualModal() {
     
     manualModal.style.display = 'block';
     manualPrompt.focus();
-    
-    // Ensure resolution is properly set if it's empty
-    const resolutionValue = document.getElementById('manualResolution').value.toLowerCase();
-    if (!resolutionValue) {
-        selectManualResolution('normal_portrait', '');
-    }
+    await cropImageToResolution();
     
     // Calculate initial price display
     updateManualPriceDisplay();
     
     // Update button visibility
     updateRequestTypeButtonVisibility();
-
-    // Crop and update preview
-    cropImageToResolution();
 }
 
 // Hide manual modal
@@ -3256,19 +3353,26 @@ function clearManualForm() {
     
     // Reset custom dropdowns to defaults
     selectManualModel('v4_5', '');
-    selectManualResolution('normal_portrait', '');
+    selectManualResolution('normal_square', 'Normal');
     selectManualSampler('k_euler_ancestral');
     selectManualNoiseScheduler('karras');
     
     // Reset custom resolution fields
     if (manualWidth) manualWidth.value = '';
     if (manualHeight) manualHeight.value = '';
-    // Reset custom resolution hidden value
-    if (manualResolutionHidden) manualResolutionHidden.value = '';
+    // Ensure manualResolutionHidden is set correctly after selectManualResolution
+    if (manualResolutionHidden) manualResolutionHidden.value = 'normal_square';
     
     // Reset upscale toggle
     manualUpscale.setAttribute('data-state', 'off');
     layer1SeedToggle.setAttribute('data-state', 'off');
+    
+    // Reset paid request toggle
+    forcePaidRequest = false;
+    const paidRequestToggle = document.getElementById('paidRequestToggle');
+    if (paidRequestToggle) {
+        paidRequestToggle.setAttribute('data-state', 'off');
+    }
     
     // Reset preset name field
     manualPresetName.disabled = false;
@@ -3282,20 +3386,37 @@ function clearManualForm() {
         manualMaskBiasGroup.style.display = 'none';
     }
     
-    // Hide variation fields
-    const variationRow = document.getElementById('manualVariationRow');
-    if (variationRow) {
-        variationRow.style.display = 'none';
-    }
+            // Hide transformation section
+        const variationRow = document.getElementById('transformationSection');
+        if (variationRow) {
+        }
     
     const variationImage = document.getElementById('manualVariationImage');
     if (variationImage) {
-        variationImage.style.display = 'none';
         variationImage.src = '';
     }
     
+    // Reset transformation section states
+    const transformationSection = document.getElementById('transformationSection');
+    if (transformationSection) {
+        transformationSection.classList.remove('display-image');
+    }
+    
+    const transformationSectionRight = document.getElementById('transformationSectionRight');
+    if (transformationSectionRight) {
+        transformationSectionRight.classList.remove('disabled');
+    }
+    
+    const transformationDropdown = document.getElementById('transformationDropdown');
+    if (transformationDropdown) {
+        transformationDropdown.classList.remove('disabled');
+    }
+    
     // Clear variation context
-    window.currentVariationEdit = null;
+    if (window.currentEditMetadata) {
+        delete window.currentEditMetadata.sourceFilename;
+        delete window.currentEditMetadata.isVariationEdit;
+    }
     
     // Restore UI elements
     const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
@@ -3327,9 +3448,26 @@ function clearManualForm() {
         inpaintBtn.classList.remove('active');
     }
     window.currentMaskData = null;
+    window.currentMaskCompressed = null;
+    window.pipelineMaskData = null;
     window.strengthValueLoaded = false;
     window.uploadedImageData = null;
+    // Clear any stored previous bias
+    if (window.uploadedImageData) {
+        delete window.uploadedImageData.previousBias;
+    }
+    imageBiasAdjustmentData = {
+        originalImage: null,
+        targetDimensions: null,
+        currentBias: { x: 0, y: 0, scale: 1.0, rotate: 0 },
+        isDragging: false,
+        dragStart: { x: 0, y: 0 },
+        originalTransform: { x: 0, y: 0 },
+        previewMode: 'css' // Default to CSS view
+    };
     window.lastGeneratedSeed = null;
+    manualPreviewSeedNumber.textContent = '---'
+
     updateInpaintButtonState();
     updateMaskPreview();
     
@@ -3340,16 +3478,28 @@ function clearManualForm() {
     const clearSeedBtn = document.getElementById('clearSeedBtn');
     if (clearSeedBtn) clearSeedBtn.style.display = 'inline-block';
     
+    // Reset transformation dropdown state
+    updateTransformationDropdownState(undefined, 'Select');
+    
     // Update button visibility
     updateRequestTypeButtonVisibility();
     updateUploadDeleteButtonVisibility();
+    
+    // Hide autocomplete overlays
+    hideCharacterAutocomplete();
+    hidePresetAutocomplete();
 }
 
 
 // Handle manual generation
 // Utility: Collect common form values
 function collectManualFormValues() {
-    return {
+    // Ensure manualResolutionHidden has a value
+    if (manualResolutionHidden && !manualResolutionHidden.value) {
+        manualResolutionHidden.value = 'normal_square';
+    }
+    
+    const values = {
         model: manualModel.value,
         prompt: manualPrompt.value.trim(),
         resolutionValue: manualResolution.value,
@@ -3367,6 +3517,23 @@ function collectManualFormValues() {
         characterItems: document.getElementById('characterPromptsContainer') ? document.getElementById('characterPromptsContainer').querySelectorAll('.character-prompt-item') : [],
         characterPrompts: getCharacterPrompts()
     };
+
+    // Handle image bias - support both legacy and dynamic bias
+    const imageBiasHidden = document.getElementById('imageBias');
+    if (window.uploadedImageData && window.uploadedImageData.image_bias) {
+        values.image_bias = window.uploadedImageData.image_bias;
+    } else if (imageBiasHidden && imageBiasHidden.value) {
+
+        values.image_bias = parseInt(imageBiasHidden.value);
+    }
+
+    // Handle mask bias
+    const maskBiasHidden = document.getElementById('manualMaskBias');
+    if (maskBiasHidden && maskBiasHidden.value) {
+        values.mask_bias = parseInt(maskBiasHidden.value);
+    }
+
+    return values;
 }
 
 // Utility: Add shared fields to request body
@@ -3403,10 +3570,36 @@ function addSharedFieldsToRequestBody(requestBody, values) {
 }
 
 // Utility: Show image and confetti, refresh gallery, etc.
-function handleImageResult(blob, successMsg, clearContextFn, seed = null) {
+async function handleImageResult(blob, successMsg, clearContextFn, seed = null, response = null) {
     // Store the seed for manual preview
     if (seed !== null) {
         window.lastGeneratedSeed = seed;
+        manualPreviewSeedNumber.textContent = parseInt(seed);
+    }
+    
+    // Extract seed from response header if available
+    if (response && response.headers) {
+        const headerSeed = response.headers.get('X-Seed');
+        if (headerSeed) {
+            window.lastGeneratedSeed = parseInt(headerSeed);
+            manualPreviewSeedNumber.textContent = parseInt(headerSeed);
+        }
+    }
+    
+    // Fetch metadata for the generated image if we have a filename
+    if (response && response.headers) {
+        const filename = response.headers.get('X-Generated-Filename');
+        if (filename) {
+            try {
+                const metadataResponse = await fetchWithAuth(`/metadata/${filename}`);
+                if (metadataResponse.ok) {
+                    const metadata = await metadataResponse.json();
+                    window.lastGeneration = metadata;
+                }
+            } catch (error) {
+                console.warn('Failed to fetch metadata for generated image:', error);
+            }
+        }
     }
     
     const imageUrl = URL.createObjectURL(blob);
@@ -3424,6 +3617,37 @@ function handleImageResult(blob, successMsg, clearContextFn, seed = null) {
             // Update manual modal preview instead of opening lightbox
             // Don't clear context when modal is open in wide viewport mode
             updateManualPreview(imageUrl, blob);
+            
+            // Update placeholder image for pipeline edits
+            if (window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit) {
+                // Update the placeholder image with the newly generated image
+                const generatedFilename = response && response.headers ? response.headers.get('X-Generated-Filename') : null;
+                if (generatedFilename) {
+                    window.uploadedImageData.image_source = `file:${generatedFilename}`;
+                    window.uploadedImageData.isPlaceholder = true; // Keep as placeholder since it's the current pipeline image
+                }
+                
+                // Update variation image display if it exists
+                const variationImage = document.getElementById('manualVariationImage');
+                if (variationImage) {
+                    variationImage.src = imageUrl;
+                    variationImage.style.display = 'block';
+                }
+                
+                // Update mask editor background if it's currently open
+                const maskEditorDialog = document.getElementById('maskEditorDialog');
+                if (maskEditorDialog && maskEditorDialog.style.display === 'block') {
+                    const canvasInner = document.querySelector('.mask-editor-canvas-inner');
+                    if (canvasInner) {
+                        const backgroundImageValue = `url(${imageUrl})`;
+                        canvasInner.style.setProperty('--background-image', backgroundImageValue);
+                        console.log('🖼️ Updated mask editor background with newly generated pipeline image');
+                    }
+                }
+                
+                console.log('🖼️ Updated placeholder image with newly generated pipeline image');
+            }
+            
             loadGallery();
         } else {
             // Clear context only when modal is not open or not in wide viewport mode
@@ -3525,6 +3749,7 @@ function resetManualPreview() {
         
         // Clear stored seed
         window.lastGeneratedSeed = null;
+        manualPreviewSeedNumber.textContent = '---';
     }
 }
 
@@ -3537,7 +3762,7 @@ async function handleManualGeneration(e) {
     }
 
     const isPipelineEdit = window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit;
-    const isImg2Img = window.uploadedImageData || (window.currentVariationEdit && window.currentVariationEdit.isVariationEdit);
+    const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
     const values = collectManualFormValues();
 
     // Helper: Validate required fields
@@ -3577,7 +3802,7 @@ async function handleManualGeneration(e) {
                 steps: values.steps,
                 guidance: values.guidance,
                 rescale: values.rescale,
-                allow_paid: true
+                allow_paid: forcePaidRequest
             };
             addSharedFieldsToRequestBody(layer2Config, values);
 
@@ -3591,11 +3816,19 @@ async function handleManualGeneration(e) {
                 pipelineRequestBody.layer1_seed = pipelineContext.layer1Seed;
             }
             if (window.currentMaskData) {
-                pipelineRequestBody.mask = window.currentMaskData.replace('data:image/png;base64,', '');
+                const compressedMask = saveMaskCompressed();
+                if (compressedMask) {
+                    pipelineRequestBody.mask_compressed = compressedMask;
+                } else {
+                    pipelineRequestBody.mask = window.currentMaskData.replace('data:image/png;base64,', '');
+                }
             } else if (typeof manualMaskBiasDropdown !== "undefined" && manualMaskBiasDropdown && 
                 manualMaskBiasDropdown.style.display !== 'none' && manualMaskBiasHidden) {
                 pipelineRequestBody.mask_bias = parseInt(manualMaskBiasHidden.value);
             }
+            
+            // For pipeline images, don't send image data since they don't have image_source
+            // and are generated at runtime without requiring a base image
             hideManualModal(undefined, true);
             const pipelineUrl = `/pipeline/generate`;
             const generateResponse = await fetch(pipelineUrl, {
@@ -3606,12 +3839,11 @@ async function handleManualGeneration(e) {
 
             if (!generateResponse.ok) throw new Error(`Pipeline generation failed: ${generateResponse.statusText}`);
             const blob = await generateResponse.blob();
-            handleImageResult(blob, 'Pipeline edited successfully!', () => { window.currentPipelineEdit = null; }, values.seed);
+            await handleImageResult(blob, 'Pipeline edited successfully!', () => {  }, values.seed, generateResponse);
         } catch (error) {
             hideManualModal(undefined, true);
             console.error('Pipeline edit generation error:', error);
             showError('Pipeline generation failed. Please try again.');
-            window.currentPipelineEdit = null;
         } finally {
             showManualLoading(false);
         }
@@ -3629,16 +3861,16 @@ async function handleManualGeneration(e) {
             steps: values.steps,
             guidance: values.guidance,
             rescale: values.rescale,
-            allow_paid: true
+            allow_paid: forcePaidRequest
         };
 
         // Handle uploaded image data
-        if (window.uploadedImageData) {
+        if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
             requestBody.image = window.uploadedImageData.image_source;
-            requestBody.image_bias = window.uploadedImageData.bias;
-        } else if (window.currentVariationEdit && window.currentVariationEdit.sourceFilename) {
-            requestBody.image = `file:${window.currentVariationEdit.sourceFilename}`;
+        } else if (window.currentEditMetadata && window.currentEditMetadata.sourceFilename) {
+            requestBody.image = `file:${window.currentEditMetadata.sourceFilename}`;
         }
+        requestBody.image_bias = window.uploadedImageData.image_bias || window.uploadedImageData.bias;
 
         if (!requestBody.image) {
             showError('No source image found for variation');
@@ -3647,10 +3879,19 @@ async function handleManualGeneration(e) {
         
         // Add mask data if it exists
         if (window.currentMaskData) {
-            requestBody.mask = window.currentMaskData.replace('data:image/png;base64,', '');
+            // Add compressed mask for server processing
+            const compressedMask = saveMaskCompressed();
+            if (compressedMask) {
+                requestBody.mask_compressed = compressedMask;
+            } else {
+                requestBody.mask = window.currentMaskData.replace('data:image/png;base64,', '');
+            }
         }
 
         addSharedFieldsToRequestBody(requestBody, values);
+        
+        // Add preset name if available
+        if (values.presetName) requestBody.preset = values.presetName;
 
         hideManualModal(undefined, true);
         showManualLoading(true, 'Generating Image...');
@@ -3665,7 +3906,7 @@ async function handleManualGeneration(e) {
 
             if (!response.ok) throw new Error(`Variation generation failed: ${response.statusText}`);
             const blob = await response.blob();
-            handleImageResult(blob, 'Variation generated successfully!', () => { }, values.seed);
+            await handleImageResult(blob, 'Variation generated successfully!', () => { }, values.seed, response);
         } catch (error) {
             hideManualModal(undefined, true);
             console.error('Variation generation error:', error);
@@ -3684,7 +3925,7 @@ async function handleManualGeneration(e) {
             steps: values.steps,
             guidance: values.guidance,
             rescale: values.rescale,
-            allow_paid: true
+            allow_paid: forcePaidRequest
         };
         if (values.presetName) requestBody.preset = values.presetName;
 
@@ -3703,7 +3944,7 @@ async function handleManualGeneration(e) {
 
             if (!response.ok) throw new Error(`Generation failed: ${response.statusText}`);
             const blob = await response.blob();
-            handleImageResult(blob, 'Image generated successfully!', undefined, values.seed);
+            await handleImageResult(blob, 'Image generated successfully!', undefined, values.seed, response);
         } catch (error) {
             hideManualModal(undefined, true);
             console.error('Manual generation error:', error);
@@ -3717,13 +3958,13 @@ async function handleManualGeneration(e) {
 // Save manual preset (this would need a backend endpoint)
 async function saveManualPreset(presetName, config) {
     try {
-        const response = await fetchWithAuth('/preset/save', {
-            method: 'POST',
+        let response;
+        response = await fetchWithAuth(`/preset/${presetName}`, {
+            method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                name: presetName,
                 ...config
             })
         });
@@ -3768,7 +4009,7 @@ async function handleManualSave() {
         return;
     }
     
-    // Build preset data
+    // Build preset data with all available parameters
     const presetData = {
         prompt: prompt,
         uc: manualUc.value.trim(),
@@ -3778,6 +4019,8 @@ async function handleManualSave() {
         guidance: parseFloat(manualGuidance.value) || 5.0,
         rescale: parseFloat(manualRescale.value) || 0.0,
         upscale: manualUpscale.getAttribute('data-state') === 'on',
+        allow_paid: forcePaidRequest, // Default to true for presets
+        variety: false, // Will be set below if enabled
         characterPrompts: getCharacterPrompts()
     };
     
@@ -3785,21 +4028,11 @@ async function handleManualSave() {
     const autoPositionBtn = document.getElementById('autoPositionBtn');
     presetData.use_coords = autoPositionBtn.getAttribute('data-state') === 'on';
     
-    // Check if this is a variation/reroll with base image
-    const variationImage = document.getElementById('manualVariationImage');
-    if (variationImage && variationImage.style.display !== 'none' && window.currentVariationEdit) {
-        presetData.variation = {
-            file: window.currentVariationEdit.sourceFilename,
-            strength: parseFloat(document.getElementById('manualStrengthValue').value) || 0.8,
-            noise: parseFloat(document.getElementById('manualNoiseValue').value) || 0.1
-        };
-        
-        // Include mask data if it exists
-        if (window.currentMaskData) {
-            presetData.variation.mask = window.currentMaskData;
-        }
+    // Add variety setting if enabled
+    if (typeof varietyEnabled !== "undefined" && varietyEnabled) {
+        presetData.variety = true;
     }
-
+    
     // Add optional fields if they have values
     if (manualSeed.value.trim()) {
         presetData.seed = parseInt(manualSeed.value);
@@ -3813,6 +4046,51 @@ async function handleManualSave() {
     if (manualNoiseScheduler.value) {
         const noiseObj = getNoiseByMeta(manualNoiseScheduler.value);
         presetData.noiseScheduler = noiseObj ? noiseObj.request : manualNoiseScheduler.value;
+    }
+    
+    // Add custom dimensions if resolution is custom
+    if (manualResolution.value === 'custom') {
+        const customWidth = document.getElementById('manualCustomWidth');
+        const customHeight = document.getElementById('manualCustomHeight');
+        if (customWidth && customHeight) {
+            presetData.width = parseInt(customWidth.value) || undefined;
+            presetData.height = parseInt(customHeight.value) || undefined;
+        }
+    }
+    
+    // Check if this is an img2img with base image
+    const variationImage = document.getElementById('manualVariationImage');
+    if (variationImage && variationImage.style.display !== 'none' && window.uploadedImageData && window.uploadedImageData.image_source) {
+        // Add image source in the correct format type:value
+        presetData.image_source = window.uploadedImageData.image_source;
+        
+        // Include mask data if it exists
+        if (window.currentMaskData) {
+            presetData.mask_compressed = window.currentMaskData;
+        }
+        
+        presetData.strength = parseFloat(document.getElementById('manualStrengthValue').value) || 0.8;
+        presetData.noise = parseFloat(document.getElementById('manualNoiseValue').value) || 0.1;
+        
+        // Add image bias if available
+        const imageBiasHidden = document.getElementById('manualImageBias');
+        if (window.uploadedImageData && window.uploadedImageData.image_bias) {
+            presetData.image_bias = window.uploadedImageData.image_bias;
+        } else if (imageBiasHidden && imageBiasHidden.value) {
+            presetData.image_bias = parseInt(imageBiasHidden.value);
+        }
+    }
+    
+    // Add compressed mask if available
+    const compressedMask = saveMaskCompressed();
+    if (compressedMask) {
+        presetData.mask_compressed = compressedMask;
+    }
+    
+    // Add mask bias if available
+    const maskBiasHidden = document.getElementById('manualMaskBias');
+    if (maskBiasHidden && maskBiasHidden.value) {
+        presetData.mask_bias = parseInt(maskBiasHidden.value);
     }
     
     await saveManualPreset(presetName, presetData);
@@ -4003,6 +4281,15 @@ function updateCharacterAutocompleteSelection() {
     items.forEach((item, index) => {
         item.classList.toggle('selected', index === selectedCharacterAutocompleteIndex);
     });
+    
+    // Scroll the selected item into view
+    if (selectedCharacterAutocompleteIndex >= 0 && items[selectedCharacterAutocompleteIndex]) {
+        const selectedItem = items[selectedCharacterAutocompleteIndex];
+        selectedItem.scrollIntoView({
+            block: 'nearest',
+            behavior: 'smooth'
+        });
+    }
 }
 
 async function selectCharacterItem(index) {
@@ -4521,6 +4808,179 @@ function hideCharacterDetail() {
     }
 }
 
+// Preset autocomplete functions
+function handlePresetAutocompleteInput(e) {
+    const target = e.target;
+    const value = target.value;
+    
+    // Clear existing timeout
+    if (presetAutocompleteTimeout) {
+        clearTimeout(presetAutocompleteTimeout);
+    }
+    
+    // Set timeout to search after user stops typing
+    presetAutocompleteTimeout = setTimeout(() => {
+        if (value.length >= 2) {
+            searchPresets(value, target);
+        } else {
+            hidePresetAutocomplete();
+        }
+    }, 300);
+}
+
+function handlePresetAutocompleteKeydown(e) {
+    if (presetAutocompleteOverlay && !presetAutocompleteOverlay.classList.contains('hidden')) {
+        const items = presetAutocompleteList ? presetAutocompleteList.querySelectorAll('.preset-autocomplete-item') : [];
+        
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                selectedPresetAutocompleteIndex = Math.min(selectedPresetAutocompleteIndex + 1, items.length - 1);
+                updatePresetAutocompleteSelection();
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                selectedPresetAutocompleteIndex = Math.max(selectedPresetAutocompleteIndex - 1, -1);
+                updatePresetAutocompleteSelection();
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (selectedPresetAutocompleteIndex >= 0 && items[selectedPresetAutocompleteIndex]) {
+                    selectPresetItem(items[selectedPresetAutocompleteIndex].dataset.name);
+                }
+                break;
+            case 'Escape':
+                hidePresetAutocomplete();
+                break;
+        }
+    }
+}
+
+async function searchPresets(query, target) {
+    try {
+        const response = await fetchWithAuth(`/preset-autocomplete?q=${encodeURIComponent(query)}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to search presets');
+        }
+        
+        const presetResults = await response.json();
+        presetSearchResults = presetResults;
+        
+        if (presetResults.length > 0) {
+            showPresetAutocompleteSuggestions(presetResults, target);
+        } else {
+            hidePresetAutocomplete();
+        }
+    } catch (error) {
+        console.error('Preset search error:', error);
+        hidePresetAutocomplete();
+    }
+}
+
+function showPresetAutocompleteSuggestions(results, target) {
+    if (!presetAutocompleteList || !presetAutocompleteOverlay) {
+        console.error('Preset autocomplete elements not found');
+        return;
+    }
+    
+    currentPresetAutocompleteTarget = target;
+    selectedPresetAutocompleteIndex = -1;
+    
+    // Populate preset autocomplete list
+    presetAutocompleteList.innerHTML = '';
+    results.forEach((result, index) => {
+        const item = document.createElement('div');
+        item.className = 'preset-autocomplete-item';
+        item.dataset.name = result.name;
+        
+        item.innerHTML = `
+            <span class="preset-name">${result.name}</span>
+            <span class="preset-details">${modelsShort[result.model.toUpperCase()] || result.model || 'Default'}</span>
+        `;
+        
+        item.addEventListener('click', () => selectPresetItem(result.name));
+        
+        presetAutocompleteList.appendChild(item);
+    });
+    
+    // Determine size class based on number of results
+    presetAutocompleteOverlay.classList.remove('size-small', 'size-medium', 'size-large');
+    if (results.length <= 3) {
+        presetAutocompleteOverlay.classList.add('size-small');
+    } else if (results.length <= 8) {
+        presetAutocompleteOverlay.classList.add('size-medium');
+    } else {
+        presetAutocompleteOverlay.classList.add('size-large');
+    }
+    
+    // Position overlay above the input field
+    const rect = target.getBoundingClientRect();
+    const overlayHeight = Math.min(400, window.innerHeight * 0.5);
+    const spaceAbove = rect.top;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    
+    presetAutocompleteOverlay.style.left = rect.left + 'px';
+    presetAutocompleteOverlay.style.width = rect.width + 'px';
+    
+    // Check if there's enough space above, otherwise show below
+    if (spaceAbove >= overlayHeight) {
+        // Position above
+        presetAutocompleteOverlay.style.top = (rect.top - 5) + 'px';
+        presetAutocompleteOverlay.style.transform = 'translateY(-100%)';
+        presetAutocompleteOverlay.style.maxHeight = overlayHeight + 'px';
+    } else {
+        // Position below if not enough space above
+        presetAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
+        presetAutocompleteOverlay.style.transform = 'none';
+        presetAutocompleteOverlay.style.maxHeight = Math.min(spaceBelow - 10, overlayHeight) + 'px';
+    }
+    
+    presetAutocompleteOverlay.classList.remove('hidden');
+}
+
+function updatePresetAutocompleteSelection() {
+    if (!presetAutocompleteList) return;
+    
+    const items = presetAutocompleteList.querySelectorAll('.preset-autocomplete-item');
+    items.forEach((item, index) => {
+        item.classList.toggle('selected', index === selectedPresetAutocompleteIndex);
+    });
+    
+    // Scroll the selected item into view
+    if (selectedPresetAutocompleteIndex >= 0 && items[selectedPresetAutocompleteIndex]) {
+        const selectedItem = items[selectedPresetAutocompleteIndex];
+        selectedItem.scrollIntoView({
+            block: 'nearest',
+            behavior: 'smooth'
+        });
+    }
+}
+
+function selectPresetItem(presetName) {
+    if (!currentPresetAutocompleteTarget) return;
+    
+    const target = currentPresetAutocompleteTarget;
+    target.value = presetName;
+    
+    // Hide preset autocomplete
+    hidePresetAutocomplete();
+    
+    // Focus back on the target field
+    if (target) {
+        target.focus();
+    }
+}
+
+function hidePresetAutocomplete() {
+    if (presetAutocompleteOverlay) {
+        presetAutocompleteOverlay.classList.add('hidden');
+    }
+    currentPresetAutocompleteTarget = null;
+    selectedPresetAutocompleteIndex = -1;
+    presetSearchResults = [];
+}
+
 // Update generate button state
 function updateGenerateButton() {
     const selectedValue = presetSelect.value;
@@ -4620,6 +5080,24 @@ async function generateImage() {
             showError('No generated filename returned by server.');
             return;
         }
+        
+        // Extract seed from response header if available
+        const headerSeed = response.headers.get('X-Seed');
+        if (headerSeed) {
+            window.lastGeneratedSeed = parseInt(headerSeed);
+            manualPreviewSeedNumber.textContent = parseInt(headerSeed);
+        }
+        
+        // Fetch metadata for the generated image
+        try {
+            const metadataResponse = await fetchWithAuth(`/metadata/${generatedFilename}`);
+            if (metadataResponse.ok) {
+                const metadata = await metadataResponse.json();
+                window.lastGeneration = metadata;
+            }
+        } catch (error) {
+            console.warn('Failed to fetch metadata for generated image:', error);
+        }
         // Wait for the image to load, then refresh gallery and open the correct image
         const img = new Image();
         img.onload = async function() {
@@ -4698,6 +5176,15 @@ async function showLightbox(image) {
 // Helper: Format resolution name for display
 function formatResolution(resolution) {
     if (!resolution) return '';
+    
+    // Handle custom resolution format: custom_1024x768
+    if (resolution.startsWith('custom_')) {
+        const dimensions = resolution.replace('custom_', '');
+        const [width, height] = dimensions.split('x').map(Number);
+        if (width && height) {
+            return `Custom ${width}×${height}`;
+        }
+    }
     
     // Try to find the resolution in our global array first
     const res = RESOLUTIONS.find(r => r.value.toLowerCase() === resolution.toLowerCase());
@@ -6137,160 +6624,30 @@ function toggleManualUpscale() {
 // Update button visibility based on available image
 function updateRequestTypeButtonVisibility() {
     const hasValidImage = window.currentEditImage && window.currentEditMetadata;
-    const hasVariationImage = hasValidImage && (
+    const hasBaseImage = hasValidImage && (
         window.currentEditMetadata.original_filename || 
         (window.currentEditImage.filename || window.currentEditImage.original || window.currentEditImage.pipeline || window.currentEditImage.pipeline_upscaled)
     );
     
-    // Check if this is a variation (has original_filename) or pipeline image
-    const isVariation = hasValidImage && window.currentEditMetadata.base_image === true;
+    // Check if this is an img2img (has base image) or pipeline image
+    const isImg2Img = hasValidImage && window.currentEditMetadata.base_image === true;
     const isPipeline = hasValidImage && (window.currentEditImage.pipeline || window.currentEditImage.pipeline_upscaled);
     
-    // Show reroll button only if there's a variation image available (for variations) or if it's a pipeline
-    const shouldShowReroll = hasValidImage && (isVariation || isPipeline);
+    // Show reroll button only if there's a base image available (for img2img) or if it's a pipeline
+    const shouldShowReroll = hasValidImage && (isImg2Img || isPipeline);
     
-    if (rerollTypeBtn) {
-        rerollTypeBtn.style.display = shouldShowReroll ? 'inline-block' : 'none';
-        // Disable button if no valid image for reroll
-        rerollTypeBtn.disabled = !shouldShowReroll;
-    }
-    
-    // Show variation button only if there's a valid image for variation
-    if (variationTypeBtn) {
-        variationTypeBtn.style.display = hasVariationImage ? 'inline-block' : 'none';
-        // Disable button if no valid image for variation
-        variationTypeBtn.disabled = !hasVariationImage;
-    }
-}
-
-// Toggle request type functionality
-function toggleRequestType(requestType) {
-    const variationRow = document.getElementById('manualVariationRow');
-    const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
-    const saveButton = document.getElementById('manualSaveBtn');
-    const layer1SeedToggle = document.getElementById('layer1SeedToggle');
-    const manualMaskBiasGroup = document.getElementById('manualMaskBiasGroup');
-    const variationImage = document.getElementById('manualVariationImage');
-
-    const currentButton = requestType === 'reroll' ? rerollTypeBtn : variationTypeBtn;
-    const isCurrentlyActive = currentButton.getAttribute('data-state') === 'on';
-
-    if (isCurrentlyActive) {
-        let confirmed = true;
-        if (window.uploadedImageData && window.uploadedImageData.isClientSide == 1) {
-            confirmed = confirm('Turning off will clear the uploaded image data. Are you sure?');
+    // Update transformation dropdown options based on available images
+    const transformationDropdown = document.getElementById('transformationDropdown');
+    if (transformationDropdown) {
+        // For pipeline images, hide the transformation dropdown
+        const isPipeline = window.currentEditMetadata && window.currentEditMetadata.request_type === 'pipeline';
+        if (isPipeline) {
+            transformationDropdown.style.display = 'none';
+        } else {
+            transformationDropdown.style.display = 'inline-block';
+            renderTransformationDropdown(document.getElementById('transformationType').value);
         }
-        if (!confirmed) return;
-
-        // Clear data
-        if (variationImage) {
-            variationImage.style.display = 'none';
-            variationImage.src = '';
-        }
-        window.uploadedImageData = null;
-        hideImageBiasDropdown();
-        rerollTypeBtn.setAttribute('data-state', 'off');
-        variationTypeBtn.setAttribute('data-state', 'off');
-        window.currentRequestType = null;
-        if (variationRow) variationRow.style.display = 'none';
-        if (presetNameGroup) {
-            presetNameGroup.style.display = 'block';
-            manualPresetName.disabled = false;
-            manualPresetName.style.opacity = '1';
-        }
-        if (saveButton) saveButton.style.display = 'inline-block';
-        if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
-        updateMaskPreview();
-        updateInpaintButtonState();
-        updateRequestTypeButtonVisibility();
-        updateUploadDeleteButtonVisibility();
-        return;
     }
-
-    let confirmed = true;
-    if (window.uploadedImageData && window.uploadedImageData.isClientSide == 1) {
-        confirmed = confirm('This will replace the uploaded image with the ' + (requestType === 'reroll' ? 'previous' : 'current') + ' image. Are you sure?');
-    }
-    if (!confirmed) return;
-
-    // Clear existing
-    window.uploadedImageData = null;
-    if (variationImage) {
-        variationImage.style.display = 'none';
-        variationImage.src = '';
-    }
-    hideImageBiasDropdown();
-
-    // Set new state
-    const otherButton = requestType === 'reroll' ? variationTypeBtn : rerollTypeBtn;
-    currentButton.setAttribute('data-state', 'on');
-    otherButton.setAttribute('data-state', 'off');
-    if (inpaintBtn) {
-        inpaintBtn.setAttribute('data-state', 'off');
-        inpaintBtn.classList.remove('active');
-    }
-    window.currentRequestType = requestType;
-
-    const metadata = window.currentEditMetadata;
-    const image = window.currentEditImage;
-    if (!metadata || !image) return;
-
-    let source, previewUrl, bias = 2;
-    if (requestType === 'reroll') {
-        if (!metadata.image_source) return; // Should not happen if button hidden
-        source = metadata.image_source;
-        bias = metadata.image_bias || 2;
-        const [type, id] = source.split(':');
-        previewUrl = type === 'file' ? `/images/${id}` : `/cache/preview/${id}.webp`;
-    } else {
-        const filename = image.filename || image.original || image.pipeline || image.pipeline_upscaled;
-        if (!filename) return;
-        source = `file:${filename}`;
-        previewUrl = `/images/${filename}`;
-        // For pipeline, it might be pipeline image, but we can treat as base
-    }
-
-    window.uploadedImageData = {
-        image_source: source,
-        bias: bias,
-        isBiasMode: true,
-        isClientSide: false
-    };
-    if (variationRow) variationRow.style.display = 'flex';
-
-    cropImageToResolution();
-    updateInpaintButtonState();
-
-    // Show bias dropdown
-    renderImageBiasDropdown(bias.toString());
-
-    // Hide preset name and save for variation
-    if (presetNameGroup) presetNameGroup.style.display = 'none';
-    if (saveButton) saveButton.style.display = 'none';
-    if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
-    if (manualMaskBiasGroup) manualMaskBiasGroup.style.display = 'none';
-
-    // For pipeline specific
-    if (requestType === 'reroll' && (image.pipeline || image.pipeline_upscaled)) {
-        // Pipeline reroll logic, no uploadedImageData for image, but use pipeline endpoint in generation
-        window.currentRequestType = 'pipeline_reroll';
-        // Set other fields for pipeline
-        if (presetNameGroup) {
-            presetNameGroup.style.display = 'block';
-            manualPresetName.disabled = true;
-            manualPresetName.style.opacity = '0.6';
-        }
-        if (saveButton) saveButton.style.display = 'none';
-        if (layer1SeedToggle) {
-            layer1SeedToggle.style.display = 'inline-block';
-            layer1SeedToggle.setAttribute('data-state', metadata.layer1Seed ? 'on' : 'off');
-        }
-        if (manualMaskBiasGroup) manualMaskBiasGroup.style.display = 'block';
-        // ... other pipeline specific
-    }
-
-    updateRequestTypeButtonVisibility();
-    updateUploadDeleteButtonVisibility();
 }
 
 // Metadata dialog functions
@@ -6542,6 +6899,16 @@ function getPipelinePresetResolution(pipelineName) {
 
 // Helper: Get dimensions from resolution name
 function getDimensionsFromResolution(resolution) {
+    // Handle custom resolution format: custom_1024x768
+    if (resolution && resolution.startsWith('custom_')) {
+        const dimensions = resolution.replace('custom_', '');
+        const [width, height] = dimensions.split('x').map(Number);
+        if (width && height) {
+            return { width, height };
+        }
+    }
+    
+    // Handle predefined resolutions
     const res = RESOLUTIONS.find(r => r.value === (resolution && resolution.toLowerCase()));
     return res ? { width: res.width, height: res.height } : null;
 }
@@ -6794,10 +7161,14 @@ async function handleManualImageUpload(file) {
         if (imageBiasHidden != null) imageBiasHidden.value = biasToUse.toString();
         renderImageBiasDropdown(biasToUse.toString());
 
-        if (rerollTypeBtn) rerollTypeBtn.setAttribute('data-state', 'off');
-        if (variationTypeBtn) variationTypeBtn.setAttribute('data-state', 'off');
-        const manualVariationRow = document.getElementById('manualVariationRow');
-        if (manualVariationRow) manualVariationRow.style.display = 'flex';
+        // Set transformation type to upload (successful)
+        updateTransformationDropdownState('upload', 'Upload');
+        
+        // Show transformation section content
+        const transformationSection = document.getElementById('transformationSection');
+        if (transformationSection) {
+            transformationSection.classList.add('display-image');
+        }
         updateUploadDeleteButtonVisibility();
         updateInpaintButtonState();
         
@@ -6822,7 +7193,7 @@ async function renderImageBiasDropdown(selectedVal) {
     const imageBiasDropdownMenu = document.getElementById('imageBiasDropdownMenu');
     if (!imageBiasDropdownMenu) return;
 
-    if (!window.uploadedImageData) {
+    if (!window.uploadedImageData || window.uploadedImageData.isPlaceholder) {
         if (imageBiasGroup) {
             imageBiasGroup.style.display = 'none';
         }
@@ -6850,12 +7221,15 @@ async function renderImageBiasDropdown(selectedVal) {
         imageBiasDropdownBtn.setAttribute('data-setup', 'true');
     }
     
+    // Check if we have dynamic bias (object) instead of legacy bias (number)
+    const hasDynamicBias = window.uploadedImageData && window.uploadedImageData.image_bias && typeof window.uploadedImageData.image_bias === 'object';
+    
     // Render image bias options with correct labels
     function renderImageBiasOptions() {
         const isPortraitImage = imageAR < targetAR;
         imageBiasDropdownMenu.innerHTML = '';
         
-        // Create bias options based on image orientation
+        // Create bias options based on image orientation (exclude Custom from dropdown)
         const biasOptions = [
             { value: '0', display: isPortraitImage ? 'Top' : 'Left' },
             { value: '1', display: isPortraitImage ? 'Mid-Top' : 'Mid-Left' },
@@ -6898,16 +7272,39 @@ async function renderImageBiasDropdown(selectedVal) {
             
             imageBiasDropdownMenu.appendChild(optionElement);
         });
+        
+        // Update button display
         if (imageBiasDropdownBtn) {
             const buttonGrid = imageBiasDropdownBtn.querySelector('.mask-bias-grid');
             if (buttonGrid) {
-                buttonGrid.setAttribute('data-bias', selectedVal);
-                buttonGrid.setAttribute('data-orientation', isPortraitImage ? 'portrait' : 'landscape');
+                if (hasDynamicBias) {
+                    // Show custom bias with diagonal grid
+                    buttonGrid.setAttribute('data-bias', 'custom');
+                    buttonGrid.setAttribute('data-orientation', isPortraitImage ? 'portrait' : 'landscape');
+                    buttonGrid.classList.add('custom-bias');
+                } else {
+                    // Show normal bias
+                    buttonGrid.setAttribute('data-bias', selectedVal);
+                    buttonGrid.setAttribute('data-orientation', isPortraitImage ? 'portrait' : 'landscape');
+                    buttonGrid.classList.remove('custom-bias');
+                }
             }
         }
-        updateImageBiasDisplay(selectedVal);
-
+        
+        // Call updateImageBiasDisplay with appropriate value
+        if (hasDynamicBias) {
+            updateImageBiasDisplay('custom');
+        } else {
+            updateImageBiasDisplay(selectedVal);
+        }
     }
+
+    if (hasDynamicBias) {
+        imageBiasGroup.style.display = 'flex';
+        renderImageBiasOptions();
+        return;
+    }
+    
     const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
     if (currentResolution === 'custom' && manualWidth && manualHeight) {
         const width = parseInt(manualWidth.value);
@@ -6935,10 +7332,14 @@ async function renderImageBiasDropdown(selectedVal) {
         }
     }
 
-    // Only show image bias group if aspect ratios are different enough
+    // Show image bias group if aspect ratios are different enough OR if both are square (bias still useful for cropping)
     if (imageBiasGroup) {
-        if (Math.abs(imageAR - targetAR) > 0.05) {
-            imageBiasGroup.style.display = 'block';
+        const aspectRatioDifference = Math.abs(imageAR - targetAR);
+        const isImageSquare = Math.abs(imageAR - 1.0) < 0.05;
+        const isTargetSquare = Math.abs(targetAR - 1.0) < 0.05;
+        
+        if (aspectRatioDifference > 0.05 || (isImageSquare && isTargetSquare)) {
+            imageBiasGroup.style.display = 'flex';
         } else {
             imageBiasGroup.style.display = 'none';
             return;
@@ -6950,11 +7351,25 @@ async function renderImageBiasDropdown(selectedVal) {
 
 // Select image bias
 function selectImageBias(value) {
+    // Clear dynamic bias data when selecting a preset
+    if (window.uploadedImageData && window.uploadedImageData.image_bias && typeof window.uploadedImageData.image_bias === 'object') {
+        delete window.uploadedImageData.image_bias;
+    }
+    
     // Fix: Ensure value is properly set, even if it's 0
     if (imageBiasHidden != null) {
         imageBiasHidden.value = value.toString();
     }
+    
+    // Update the uploaded image data with the new bias value
+    if (window.uploadedImageData) {
+        window.uploadedImageData.bias = parseInt(value);
+    }
+    
     updateImageBiasDisplay(value);
+    
+    // Reload the preview image with the new bias
+    cropImageToResolution();
 }
 
 // Update image bias display
@@ -6963,21 +7378,33 @@ function updateImageBiasDisplay(value) {
     if (!buttonGrid) return;
 
     const isPortraitImage = buttonGrid.getAttribute('data-orientation') === 'portrait';
-    // Create bias options based on image orientation
-    const biasOptions = [
-        { value: '0', display: isPortraitImage ? 'Top' : 'Left' },
-        { value: '1', display: isPortraitImage ? 'Mid-Top' : 'Mid-Left' },
-        { value: '2', display: 'Center' },
-        { value: '3', display: isPortraitImage ? 'Mid-Bottom' : 'Mid-Right' },
-        { value: '4', display: isPortraitImage ? 'Bottom' : 'Right' }
-    ];
+    const hasDynamicBias = window.uploadedImageData && window.uploadedImageData.image_bias;
     
-    // Fix: Use string comparison to handle '0' value correctly
-    const selectedOption = biasOptions.find(opt => opt.value === value.toString());
-    if (imageBiasSelected && selectedOption) {
-        imageBiasSelected.textContent = selectedOption.display;
+    if (hasDynamicBias) {
+        // Show "Custom" for dynamic bias
+        if (imageBiasSelected) {
+            imageBiasSelected.textContent = 'Custom';
+        }
+        buttonGrid.setAttribute('data-bias', 'custom');
+        buttonGrid.classList.add('custom-bias');
+    } else {
+        // Show normal bias options
+        const biasOptions = [
+            { value: '0', display: isPortraitImage ? 'Top' : 'Left' },
+            { value: '1', display: isPortraitImage ? 'Mid-Top' : 'Mid-Left' },
+            { value: '2', display: 'Center' },
+            { value: '3', display: isPortraitImage ? 'Mid-Bottom' : 'Mid-Right' },
+            { value: '4', display: isPortraitImage ? 'Bottom' : 'Right' }
+        ];
+        
+        // Fix: Use string comparison to handle '0' value correctly
+        const selectedOption = biasOptions.find(opt => opt.value === value.toString());
+        if (imageBiasSelected && selectedOption) {
+            imageBiasSelected.textContent = selectedOption.display;
+        }
+        buttonGrid.setAttribute('data-bias', value);
+        buttonGrid.classList.remove('custom-bias');
     }
-    buttonGrid.setAttribute('data-bias', value);
     
     handleImageBiasChange();
     
@@ -7046,25 +7473,30 @@ async function cropImageToResolution() {
         // Clean up any existing blob URLs before creating new ones
         cleanupBlobUrls();
         
-        // Get the image data URL - handle both file: and cache: types
+        // Get the image data URL - handle file:, cache:, and data: types
         let imageDataUrl = window.uploadedImageData.originalDataUrl;
         
         if (!imageDataUrl) {
             // Fetch the image based on the image source
             const imageSource = window.uploadedImageData.image_source;
             if (imageSource) {
-                let imageUrl = null;
-                if (imageSource.startsWith('file:')) {
-                    // Handle file: type - fetch from /images/
-                    imageUrl = `/images/${imageSource.replace('file:', '')}`;
-                } else if (imageSource.startsWith('cache:')) {
-                    // Handle cache: type - fetch from /cache/preview/
-                    imageUrl = `/cache/preview/${imageSource.replace('cache:', '')}.webp`;
-                }
-                if (imageUrl) {
-                    const response = await fetch(imageUrl);
-                    const blob = await response.blob();
-                    imageDataUrl = URL.createObjectURL(blob);
+                if (imageSource.startsWith('data:')) {
+                    // Handle data: URLs (like placeholder images)
+                    imageDataUrl = imageSource;
+                } else {
+                    let imageUrl = null;
+                    if (imageSource.startsWith('file:')) {
+                        // Handle file: type - fetch from /images/
+                        imageUrl = `/images/${imageSource.replace('file:', '')}`;
+                    } else if (imageSource.startsWith('cache:')) {
+                        // Handle cache: type - fetch from /cache/preview/
+                        imageUrl = `/cache/preview/${imageSource.replace('cache:', '')}.webp`;
+                    }
+                    if (imageUrl) {
+                        const response = await fetch(imageUrl);
+                        const blob = await response.blob();
+                        imageDataUrl = URL.createObjectURL(blob);
+                    }
                 }
                 
                 // Store the data URL for future use
@@ -7175,24 +7607,26 @@ function handleDeleteBaseImage() {
     // Clear the uploaded image data
     window.uploadedImageData = null;
     
-    // Hide the variation image
+    // Clear the variation image
     const variationImage = document.getElementById('manualVariationImage');
     if (variationImage) {
-        variationImage.style.display = 'none';
         variationImage.src = '';
     }
     
-    // Hide the variation row
-    const manualVariationRow = document.getElementById('manualVariationRow');
-    if (manualVariationRow) {
-        manualVariationRow.style.display = 'none';
+    // Hide transformation section content
+    const transformationSection = document.getElementById('transformationSection');
+    if (transformationSection) {
+        transformationSection.classList.remove('display-image');
     }
     
     // Hide image bias dropdown
     hideImageBiasDropdown();
     
     // Clear variation context
-    window.currentVariationEdit = null;
+    if (window.currentEditMetadata) {
+        delete window.currentEditMetadata.sourceFilename;
+        delete window.currentEditMetadata.isVariationEdit;
+    }
     
     // Update button visibility
     updateUploadDeleteButtonVisibility();
@@ -7201,28 +7635,22 @@ function handleDeleteBaseImage() {
     updateInpaintButtonState();
     updateMaskPreview();
     
-    showSuccess('Base image deleted successfully!');
+    updateTransformationDropdownState();
 }
 
 // Update upload/delete button visibility based on whether an image is uploaded
 function updateUploadDeleteButtonVisibility() {
-    const browseCacheBtn = document.getElementById('browseCacheBtn');
-    
-    if (uploadImageBaseBtn && deleteImageBaseBtn) {
-        if (window.uploadedImageData && window.uploadedImageData.isClientSide) {
-            // Image is uploaded, show delete button, hide upload and browse buttons
-            uploadImageBaseBtn.style.display = 'none';
-            deleteImageBaseBtn.style.display = 'inline-block';
-            if (browseCacheBtn) {
-                browseCacheBtn.style.display = 'none';
-            }
-        } else {
-            // No image uploaded, show upload and browse buttons, hide delete button
-            uploadImageBaseBtn.style.display = 'inline-block';
+    if (deleteImageBaseBtn) {
+        // For pipeline images, don't show delete button since they use placeholder images
+        const isPipeline = window.currentEditMetadata && window.currentEditMetadata.request_type === 'pipeline';
+        if (isPipeline) {
             deleteImageBaseBtn.style.display = 'none';
-            if (browseCacheBtn) {
-                browseCacheBtn.style.display = 'inline-block';
-            }
+        } else if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
+            // Image is uploaded (not a placeholder), show delete button
+            deleteImageBaseBtn.style.display = 'inline-block';
+        } else {
+            // No image uploaded or it's a placeholder, hide delete button
+            deleteImageBaseBtn.style.display = 'none';
         }
     }
 }
@@ -7800,7 +8228,7 @@ function getCharacterPrompts() {
         const uc = document.getElementById(`${characterId}_uc`).value.trim();
         const charaName = item.dataset.charaName || `Character ${index + 1}`;
         
-        let center = { x: 0.5, y: 0.5 };
+        let center = null;
         
         if (!isAutoPosition)  {
             // Manual position: use stored position or default
@@ -8230,7 +8658,7 @@ function updateManualPriceDisplay() {
         }
         
         // Determine if this is an img2img request
-        const isImg2Img = document.getElementById('manualMaskBiasRow')?.style?.display !== 'none' || document.getElementById('manualVariationRow')?.style?.display !== 'none';
+        const isImg2Img = document.getElementById('manualMaskBiasRow')?.style?.display !== 'none' || !document.getElementById('transformationSection')?.classList.contains('hidden');
         
         // Get sampler object
         const samplerObj = getSamplerByMeta(sampler) || { meta: 'k_euler_ancestral' };
@@ -8249,7 +8677,7 @@ function updateManualPriceDisplay() {
         });
         
         // Update display
-        priceList.textContent = `${price.list}`;
+        priceList.textContent = `${price.opus === 0 ? 0 : price.list}`;
         
         // Apply styling for free opus price
         priceDisplay.classList.toggle('free', price.opus === 0);
@@ -8265,17 +8693,21 @@ function updateManualPriceDisplay() {
 
 // Mask Editor Functionality
 let maskEditorCanvas = null;
+let maskEditorCanvasInner = null;
 let maskEditorCtx = null;
 let isDrawing = false;
 let currentTool = 'brush'; // 'brush' or 'eraser'
-let brushSize = 30;
+let brushSize = 3;
 let brushSizePercent = 0.03; // 3% of canvas size as default
+let brushShape = 'square'; // 'square' or 'circle'
 let maskImageData = null;
 let displayScale = 1; // Track the display scale for cursor positioning
+let globalMouseDown = false; // Track global mouse state for continuous drawing
 
 // Initialize mask editor
 function initializeMaskEditor() {
     maskEditorCanvas = document.getElementById('maskCanvas');
+    maskEditorCanvasInner = document.getElementById('maskEditorCanvasInner');
     if (!maskEditorCanvas) return;
     
     maskEditorCtx = maskEditorCanvas.getContext('2d');
@@ -8293,16 +8725,20 @@ function initializeMaskEditor() {
     maskEditorCanvas.addEventListener('mousedown', startDrawing);
     maskEditorCanvas.addEventListener('mousemove', draw);
     maskEditorCanvas.addEventListener('mouseup', stopDrawing);
-    maskEditorCanvas.addEventListener('mouseout', stopDrawing);
     
     // Brush cursor events
     maskEditorCanvas.addEventListener('mousemove', updateBrushCursor);
-    maskEditorCanvas.addEventListener('mouseenter', () => {
-        if (brushCursor) brushCursor.style.display = 'block';
-    });
+    maskEditorCanvas.addEventListener('mouseenter', handleCanvasMouseEnter);
     maskEditorCanvas.addEventListener('mouseleave', () => {
         if (brushCursor) brushCursor.style.display = 'none';
     });
+    
+    // Wheel event for brush size adjustment
+    maskEditorCanvas.addEventListener('wheel', handleCanvasWheel);
+    
+    // Global mouse events for continuous drawing
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    document.addEventListener('mousemove', handleGlobalMouseMove);
     
     // Touch events for mobile
     maskEditorCanvas.addEventListener('touchstart', handleTouchStart);
@@ -8312,13 +8748,13 @@ function initializeMaskEditor() {
     // Tool buttons
     const brushBtn = document.getElementById('maskBrushBtn');
     const eraserBtn = document.getElementById('maskEraserBtn');
+    const brushShapeBtn = document.getElementById('brushShapeBtn');
     const clearBtn = document.getElementById('clearMaskBtn');
     const saveBtn = document.getElementById('saveMaskBtn');
     const deleteBtn = document.getElementById('deleteMaskBtn');
     const cancelBtn = document.getElementById('cancelMaskBtn');
     const closeBtn = document.getElementById('closeMaskEditorBtn');
     const brushSizeInput = document.getElementById('brushSize');
-    const brushSizeValue = document.getElementById('brushSizeValue');
     
     if (brushBtn) {
         brushBtn.addEventListener('click', () => setTool('brush'));
@@ -8326,6 +8762,10 @@ function initializeMaskEditor() {
     
     if (eraserBtn) {
         eraserBtn.addEventListener('click', () => setTool('eraser'));
+    }
+    
+    if (brushShapeBtn) {
+        brushShapeBtn.addEventListener('click', toggleBrushShape);
     }
     
     if (clearBtn) {
@@ -8337,7 +8777,7 @@ function initializeMaskEditor() {
     }
     
     if (deleteBtn) {
-        deleteBtn.addEventListener('click', deleteMask);
+        deleteBtn.addEventListener('click', () => deleteMask());
     }
     
     if (cancelBtn) {
@@ -8348,10 +8788,41 @@ function initializeMaskEditor() {
         closeBtn.addEventListener('click', closeMaskEditor);
     }
     
-    if (brushSizeInput && brushSizeValue) {
+    if (brushSizeInput) {
+        // Set initial value
+        brushSizeInput.value = brushSize;
+        
+        // Input change handler
         brushSizeInput.addEventListener('input', (e) => {
-            brushSize = parseInt(e.target.value);
-            brushSizeValue.textContent = brushSize;
+            let val = parseInt(e.target.value);
+            if (isNaN(val)) val = 1;
+            val = Math.max(1, Math.min(15, val));
+            brushSize = val;
+            e.target.value = val;
+            
+            // Calculate and store the percentage for future reference
+            if (maskEditorCanvas) {
+                const canvasDiagonal = Math.sqrt(maskEditorCanvas.width * maskEditorCanvas.width + maskEditorCanvas.height * maskEditorCanvas.height);
+                brushSizePercent = brushSize / canvasDiagonal;
+            }
+            
+            // Update cursor size if it exists
+            const brushCursor = document.querySelector('.brush-cursor');
+            if (brushCursor && brushCursor.style.display !== 'none') {
+                const cursorSize = brushSize * displayScale;
+                brushCursor.style.width = cursorSize + 'px';
+                brushCursor.style.height = cursorSize + 'px';
+            }
+        });
+        
+        // Mouse wheel handler for scrolling
+        brushSizeInput.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -1 : 1;
+            const currentValue = parseInt(this.value) || 3;
+            const newValue = Math.max(1, Math.min(15, currentValue + delta));
+            this.value = newValue;
+            brushSize = newValue;
             
             // Calculate and store the percentage for future reference
             if (maskEditorCanvas) {
@@ -8386,9 +8857,107 @@ function setTool(tool) {
     }
 }
 
+// Toggle brush shape
+function toggleBrushShape() {
+    brushShape = brushShape === 'square' ? 'circle' : 'square';
+    
+    // Update the toggle button icon
+    const brushShapeBtn = document.getElementById('brushShapeBtn');
+    if (brushShapeBtn) {
+        const icon = brushShapeBtn.querySelector('i');
+        if (icon) {
+            if (brushShape === 'circle') {
+                icon.className = 'fas fa-circle';
+            } else {
+                icon.className = 'fas fa-square';
+            }
+        }
+    }
+    
+    // Update cursor if it's visible
+    const brushCursor = document.querySelector('.brush-cursor');
+    if (brushCursor && brushCursor.style.display !== 'none') {
+        if (brushShape === 'circle') {
+            brushCursor.style.borderRadius = '50%';
+        } else {
+            brushCursor.style.borderRadius = '0';
+        }
+    }
+}
+
+// Handle canvas wheel for brush size adjustment
+function handleCanvasWheel(e) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -1 : 1;
+    const currentValue = brushSize;
+    const newValue = Math.max(1, Math.min(15, currentValue + delta));
+    brushSize = newValue;
+    
+    // Update brush size input if it exists
+    const brushSizeInput = document.getElementById('brushSize');
+    if (brushSizeInput) {
+        brushSizeInput.value = newValue;
+    }
+    
+    // Calculate and store the percentage for future reference
+    if (maskEditorCanvas) {
+        const canvasDiagonal = Math.sqrt(maskEditorCanvas.width * maskEditorCanvas.width + maskEditorCanvas.height * maskEditorCanvas.height);
+        brushSizePercent = brushSize / canvasDiagonal;
+    }
+    
+    // Update cursor size if it exists
+    const brushCursor = document.querySelector('.brush-cursor');
+    if (brushCursor && brushCursor.style.display !== 'none') {
+        const rect = maskEditorCanvas.getBoundingClientRect();
+        const visualScaleX = rect.width / maskEditorCanvas.width;
+        const visualScaleY = rect.height / maskEditorCanvas.height;
+        const visualScale = Math.min(visualScaleX, visualScaleY);
+        const cursorSize = brushSize * visualScale;
+        brushCursor.style.width = cursorSize + 'px';
+        brushCursor.style.height = cursorSize + 'px';
+    }
+}
+
+// Handle canvas mouse enter for continuous drawing
+function handleCanvasMouseEnter(e) {
+    const brushCursor = document.querySelector('.brush-cursor');
+    if (brushCursor) brushCursor.style.display = 'block';
+    
+    // If global mouse is down, resume drawing
+    if (globalMouseDown && !isDrawing) {
+        isDrawing = true;
+        draw(e);
+    }
+}
+
+// Handle global mouse up to stop drawing
+function handleGlobalMouseUp() {
+    if (isDrawing) {
+        isDrawing = false;
+        globalMouseDown = false;
+    }
+}
+
+// Handle global mouse move for continuous drawing
+function handleGlobalMouseMove(e) {
+    // Only handle if we're drawing and mouse is over the canvas
+    if (globalMouseDown && !isDrawing && maskEditorCanvas) {
+        const rect = maskEditorCanvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        // Check if mouse is over the canvas
+        if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+            isDrawing = true;
+            draw(e);
+        }
+    }
+}
+
 // Start drawing
 function startDrawing(e) {
     isDrawing = true;
+    globalMouseDown = true;
     draw(e);
 }
 
@@ -8399,28 +8968,117 @@ function draw(e) {
     e.preventDefault();
     
     const rect = maskEditorCanvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
     
-    // Scale coordinates to canvas size
-    const canvasX = (x / rect.width) * maskEditorCanvas.width;
-    const canvasY = (y / rect.height) * maskEditorCanvas.height;
+    // Calculate the actual canvas content area (accounting for object-fit: contain)
+    const visualScaleX = rect.width / maskEditorCanvas.width;
+    const visualScaleY = rect.height / maskEditorCanvas.height;
+    const visualScale = Math.min(visualScaleX, visualScaleY);
     
-    maskEditorCtx.globalCompositeOperation = currentTool === 'brush' ? 'source-over' : 'destination-out';
-    maskEditorCtx.fillStyle = currentTool === 'brush' ? '#ffffff' : '#000000';
+    // Calculate the actual canvas content dimensions
+    const actualCanvasWidth = maskEditorCanvas.width * visualScale;
+    const actualCanvasHeight = maskEditorCanvas.height * visualScale;
     
-    if (currentTool === 'brush') {
-        // Draw square brush
-        maskEditorCtx.fillRect(canvasX - brushSize / 2, canvasY - brushSize / 2, brushSize, brushSize);
-    } else {
-        // Draw square eraser
-        maskEditorCtx.clearRect(canvasX - brushSize / 2, canvasY - brushSize / 2, brushSize, brushSize);
+    // Calculate padding around the canvas content
+    const paddingX = (rect.width - actualCanvasWidth) / 2;
+    const paddingY = (rect.height - actualCanvasHeight) / 2;
+    
+    // Calculate position relative to the actual canvas content
+    const x = e.clientX - rect.left - paddingX;
+    const y = e.clientY - rect.top - paddingY;
+    
+    // Only draw if mouse is over the actual canvas content
+    if (x >= 0 && x <= actualCanvasWidth && y >= 0 && y <= actualCanvasHeight) {
+        // Scale coordinates to canvas size
+        const canvasX = (x / actualCanvasWidth) * maskEditorCanvas.width;
+        const canvasY = (y / actualCanvasHeight) * maskEditorCanvas.height;
+        
+        if (currentTool === 'brush') {
+            if (brushShape === 'circle') {
+                // Draw circle brush using direct pixel manipulation
+                drawCircle(canvasX, canvasY, brushSize / 2, '#ffffff', 1);
+            } else {
+                // Draw square brush using direct pixel manipulation
+                drawSquare(canvasX, canvasY, brushSize, '#ffffff', 1);
+            }
+        } else {
+            if (brushShape === 'circle') {
+                // Draw circle eraser using direct pixel manipulation
+                drawCircle(canvasX, canvasY, brushSize / 2, '#000000', 0);
+            } else {
+                // Draw square eraser using direct pixel manipulation
+                drawSquare(canvasX, canvasY, brushSize, '#000000', 0);
+            }
+        }
     }
+}
+
+// Draw circle using direct pixel manipulation (like the inpainting editor)
+function drawCircle(x, y, radius, color, alpha) {
+    const roundedX = Math.round(x);
+    const roundedY = Math.round(y);
+    const roundedRadius = Math.round(radius);
+    
+    const startX = roundedX - roundedRadius;
+    const startY = roundedY - roundedRadius;
+    const size = 2 * roundedRadius + 1;
+    
+    const imageData = maskEditorCtx.getImageData(startX, startY, size, size);
+    
+    for (let i = 0; i <= roundedRadius; i++) {
+        for (let j = 0; j <= roundedRadius; j++) {
+            // Check if pixel is within circle using distance calculation
+            const minDist = Math.min(
+                Math.sqrt((j + 0.5) * (j + 0.5) + (i + 0.5) * (i + 0.5)),
+                Math.sqrt((j - 0.5) * (j - 0.5) + (i - 0.5) * (i - 0.5))
+            );
+            
+            if (minDist <= roundedRadius) {
+                // Set pixels in all four quadrants
+                const positions = [
+                    (roundedRadius + j) * 4 + (roundedRadius + i) * size * 4,
+                    (roundedRadius - j) * 4 + (roundedRadius + i) * size * 4,
+                    (roundedRadius + j) * 4 + (roundedRadius - i) * size * 4,
+                    (roundedRadius - j) * 4 + (roundedRadius - i) * size * 4
+                ];
+                
+                positions.forEach(pos => {
+                    if (pos >= 0 && pos < imageData.data.length) {
+                        imageData.data[pos] = parseInt(color.slice(1, 3), 16);     // Red
+                        imageData.data[pos + 1] = parseInt(color.slice(3, 5), 16); // Green
+                        imageData.data[pos + 2] = parseInt(color.slice(5, 7), 16); // Blue
+                        imageData.data[pos + 3] = 255 * alpha;                    // Alpha
+                    }
+                });
+            }
+        }
+    }
+    
+    maskEditorCtx.putImageData(imageData, startX, startY);
+}
+
+// Draw square using direct pixel manipulation (like the inpainting editor)
+function drawSquare(x, y, size, color, alpha) {
+    const startX = x - Math.floor(size / 2);
+    const startY = y - Math.floor(size / 2);
+    const endX = startX + size;
+    const endY = startY + size;
+    
+    const imageData = maskEditorCtx.getImageData(startX, startY, endX - startX, endY - startY);
+    
+    for (let i = 0; i < imageData.data.length; i += 4) {
+        imageData.data[i] = parseInt(color.slice(1, 3), 16);     // Red
+        imageData.data[i + 1] = parseInt(color.slice(3, 5), 16); // Green
+        imageData.data[i + 2] = parseInt(color.slice(5, 7), 16); // Blue
+        imageData.data[i + 3] = 255 * alpha;                    // Alpha
+    }
+    
+    maskEditorCtx.putImageData(imageData, startX, startY);
 }
 
 // Stop drawing
 function stopDrawing() {
     isDrawing = false;
+    globalMouseDown = false;
 }
 
 // Update brush cursor position and size
@@ -8429,17 +9087,47 @@ function updateBrushCursor(e) {
     if (!brushCursor || !maskEditorCanvas) return;
     
     const rect = maskEditorCanvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const containerRect = maskEditorCanvasInner.getBoundingClientRect();
     
-    // Calculate cursor size based on display scale
-    const cursorSize = brushSize * displayScale;
+    // Calculate the actual canvas content area (accounting for object-fit: contain)
+    const visualScaleX = rect.width / maskEditorCanvas.width;
+    const visualScaleY = rect.height / maskEditorCanvas.height;
+    const visualScale = Math.min(visualScaleX, visualScaleY);
     
-    // Position cursor relative to the canvas
-    brushCursor.style.left = (rect.left + x - cursorSize / 2) + 'px';
-    brushCursor.style.top = (rect.top + y - cursorSize / 2) + 'px';
-    brushCursor.style.width = cursorSize + 'px';
-    brushCursor.style.height = cursorSize + 'px';
+    // Calculate the actual canvas content dimensions
+    const actualCanvasWidth = maskEditorCanvas.width * visualScale;
+    const actualCanvasHeight = maskEditorCanvas.height * visualScale;
+    
+    // Calculate padding around the canvas content
+    const paddingX = (rect.width - actualCanvasWidth) / 2;
+    const paddingY = (rect.height - actualCanvasHeight) / 2;
+    
+    // Calculate position relative to the actual canvas content
+    const x = e.clientX - rect.left - paddingX;
+    const y = e.clientY - rect.top - paddingY;
+    
+    // Only show cursor if mouse is over the actual canvas content
+    if (x >= 0 && x <= actualCanvasWidth && y >= 0 && y <= actualCanvasHeight) {
+        brushCursor.style.display = 'block';
+        
+        // Calculate cursor size based on visual scale
+        const cursorSize = brushSize * visualScale;
+        
+        // Position cursor relative to the actual canvas content
+        brushCursor.style.left = (rect.left + paddingX + x - cursorSize / 2) + 'px';
+        brushCursor.style.top = (rect.top + paddingY + y - cursorSize / 2) + 'px';
+        brushCursor.style.width = cursorSize + 'px';
+        brushCursor.style.height = cursorSize + 'px';
+        
+        // Update cursor shape
+        if (brushShape === 'circle') {
+            brushCursor.style.borderRadius = '50%';
+        } else {
+            brushCursor.style.borderRadius = '0';
+        }
+    } else {
+        brushCursor.style.display = 'none';
+    }
 }
 
 // Touch event handlers
@@ -8477,24 +9165,59 @@ function clearMask() {
     maskEditorCtx.clearRect(0, 0, maskEditorCanvas.width, maskEditorCanvas.height);
 }
 
-// Save mask
+// Save mask (upscaled version for display)
 function saveMask() {
     if (!maskEditorCanvas) return;
     
     try {
-        // Create a temporary canvas with the same resolution as the editing canvas
+        // Get target dimensions for scaling up
+        const targetWidth = maskEditorCanvas.targetWidth || maskEditorCanvas.width * 8;
+        const targetHeight = maskEditorCanvas.targetHeight || maskEditorCanvas.height * 8;
+        
+        // Create a temporary canvas with the target resolution
         const tempCanvas = document.createElement('canvas');
         const tempCtx = tempCanvas.getContext('2d');
         
-        tempCanvas.width = maskEditorCanvas.width;
-        tempCanvas.height = maskEditorCanvas.height;
+        tempCanvas.width = targetWidth;
+        tempCanvas.height = targetHeight;
         
         // Fill with black background
         tempCtx.fillStyle = '#000000';
         tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
         
-        // Draw the mask canvas directly (no scaling needed)
-        tempCtx.drawImage(maskEditorCanvas, 0, 0);
+        // Disable image smoothing for nearest neighbor scaling
+        tempCtx.imageSmoothingEnabled = false;
+        
+        // Draw the mask canvas scaled up to target resolution
+        tempCtx.drawImage(maskEditorCanvas, 0, 0, maskEditorCanvas.width, maskEditorCanvas.height, 0, 0, targetWidth, targetHeight);
+        
+        // Binarize the image data to ensure crisp 1-bit mask
+        const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        const data = imageData.data;
+        
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const a = data[i + 3];
+            
+            // If pixel is not black (has been drawn on), make it pure white
+            if (r > 0 || g > 0 || b > 0) {
+                data[i] = 255;     // Red
+                data[i + 1] = 255; // Green
+                data[i + 2] = 255; // Blue
+                data[i + 3] = 255; // Alpha
+            } else {
+                // Black pixels (background) stay pure black
+                data[i] = 0;       // Red
+                data[i + 1] = 0;   // Green
+                data[i + 2] = 0;   // Blue
+                data[i + 3] = 255; // Alpha
+            }
+        }
+        
+        // Put the binarized image data back
+        tempCtx.putImageData(imageData, 0, 0);
         
         // Convert to base64
         const base64Data = tempCanvas.toDataURL('image/png');
@@ -8516,8 +9239,139 @@ function saveMask() {
     }
 }
 
+// Save unupscaled mask for server processing
+function saveMaskCompressed() {
+    if (!maskEditorCanvas) return null;
+    
+    try {
+        // Create a temporary canvas with the original (unupscaled) dimensions
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        tempCanvas.width = maskEditorCanvas.width;
+        tempCanvas.height = maskEditorCanvas.height;
+        
+        // Fill with black background
+        tempCtx.fillStyle = '#000000';
+        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+        
+        // Draw the mask canvas at original size
+        tempCtx.drawImage(maskEditorCanvas, 0, 0);
+        
+        // Binarize the image data to ensure crisp 1-bit mask
+        const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        const data = imageData.data;
+        
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const a = data[i + 3];
+            
+            // If pixel is not black (has been drawn on), make it pure white
+            if (r > 0 || g > 0 || b > 0) {
+                data[i] = 255;     // Red
+                data[i + 1] = 255; // Green
+                data[i + 2] = 255; // Blue
+                data[i + 3] = 255; // Alpha
+            } else {
+                // Black pixels (background) stay pure black
+                data[i] = 0;       // Red
+                data[i + 1] = 0;   // Green
+                data[i + 2] = 0;   // Blue
+                data[i + 3] = 255; // Alpha
+            }
+        }
+        
+        // Put the binarized image data back
+        tempCtx.putImageData(imageData, 0, 0);
+        
+        // Convert to base64 (without data URL prefix)
+        const base64Data = tempCanvas.toDataURL('image/png').replace('data:image/png;base64,', '');
+        
+        return base64Data;
+    } catch (error) {
+        console.error('Error saving compressed mask:', error);
+        return null;
+    }
+}
+// Helper function to process compressed mask to display resolution
+function processCompressedMask(compressedMaskBase64, targetWidth, targetHeight, callback) {
+    return new Promise((resolve, reject) => {
+        // Create a temporary canvas to process the compressed mask
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        tempCanvas.width = targetWidth;
+        tempCanvas.height = targetHeight;
+        
+        // Fill with black background
+        tempCtx.fillStyle = '#000000';
+        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+        
+        // Disable image smoothing for nearest neighbor scaling
+        tempCtx.imageSmoothingEnabled = false;
+        
+        // Create image from compressed mask
+        const img = new Image();
+        img.onload = function() {
+            try {
+                // Draw the compressed mask scaled up to target resolution
+                tempCtx.drawImage(img, 0, 0, img.width, img.height, 0, 0, targetWidth, targetHeight);
+                
+                // Binarize the image data to ensure crisp 1-bit mask
+                const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+                const data = imageData.data;
+                
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    const a = data[i + 3];
+                    
+                    // If pixel is not black (has been drawn on), make it pure white
+                    if (r > 0 || g > 0 || b > 0) {
+                        data[i] = 255;     // Red
+                        data[i + 1] = 255; // Green
+                        data[i + 2] = 255; // Blue
+                        data[i + 3] = 255; // Alpha
+                    } else {
+                        // Black pixels (background) stay pure black
+                        data[i] = 0;       // Red
+                        data[i + 1] = 0;   // Green
+                        data[i + 2] = 0;   // Blue
+                        data[i + 3] = 255; // Alpha
+                    }
+                }
+                
+                // Put the binarized image data back
+                tempCtx.putImageData(imageData, 0, 0);
+                
+                // Convert to base64
+                const base64Data = tempCanvas.toDataURL('image/png');
+                
+                // Call the callback with the processed mask if provided
+                if (callback) {
+                    callback(base64Data);
+                }
+                
+                // Resolve the promise
+                resolve(base64Data);
+            } catch (error) {
+                reject(error);
+            }
+        };
+        
+        img.onerror = function() {
+            reject(new Error('Failed to load compressed mask image'));
+        };
+        
+        img.src = "data:image/png;base64," + compressedMaskBase64;
+    });
+}
+
 // Delete mask
-function deleteMask() {
+async function deleteMask() {
     // Clear the stored mask data
     window.currentMaskData = null;
     
@@ -8532,7 +9386,12 @@ function deleteMask() {
         maskEditorCtx.clearRect(0, 0, maskEditorCanvas.width, maskEditorCanvas.height);
     }
     
-    showSuccess('Mask deleted successfully!');
+    // For pipeline images, restore the original pipeline mask
+    const isPipeline = window.currentEditMetadata && window.currentEditMetadata.request_type === 'pipeline';
+    if (isPipeline && window.pipelineMaskData) {
+        window.currentMaskData = window.pipelineMaskData + "";
+    }
+    
     closeMaskEditor();
 }
 
@@ -8542,6 +9401,14 @@ function closeMaskEditor() {
     if (maskEditorDialog) {
         maskEditorDialog.style.display = 'none';
     }
+    
+    // Reset drawing state
+    isDrawing = false;
+    globalMouseDown = false;
+    
+    // Remove global event listeners
+    document.removeEventListener('mouseup', handleGlobalMouseUp);
+    document.removeEventListener('mousemove', handleGlobalMouseMove);
     
     // Update inpaint button state and mask preview
     updateInpaintButtonState();
@@ -8609,11 +9476,15 @@ function openMaskEditor() {
         canvasHeight = dimensions.height;
     }
     
-    // Ensure dimensions are multiples of 8 (for AI processing)
-    canvasWidth = Math.floor(canvasWidth / 8) * 8;
-    canvasHeight = Math.floor(canvasHeight / 8) * 8;
+    // Store target dimensions for saving
+    const targetWidth = canvasWidth;
+    const targetHeight = canvasHeight;
     
-    // Set canvas dimensions to the actual resolution
+    // Calculate 8x smaller canvas dimensions for editing
+    canvasWidth = Math.ceil(canvasWidth / 8);
+    canvasHeight = Math.ceil(canvasHeight / 8);
+    
+    // Set canvas dimensions to the 8x smaller size
     maskEditorCanvas.width = canvasWidth;
     maskEditorCanvas.height = canvasHeight;
     
@@ -8624,39 +9495,74 @@ function openMaskEditor() {
     displayScale = Math.min(scaleX, scaleY, 1); // Don't scale up, only down
     
     // Set the canvas display size
-    maskEditorCanvas.style.width = (canvasWidth * displayScale) + 'px';
-    maskEditorCanvas.style.height = (canvasHeight * displayScale) + 'px';
+    maskEditorCanvasInner.style.aspectRatio = `${canvasWidth} / ${canvasHeight}`;
     
-    // Calculate brush size based on canvas resolution
+    // Set nearest neighbor scaling
+    maskEditorCanvas.style.imageRendering = 'pixelated';
+    maskEditorCanvas.style.imageRendering = '-moz-crisp-edges';
+    maskEditorCanvas.style.imageRendering = 'crisp-edges';
+    
+    // Store target dimensions for saving
+    maskEditorCanvas.targetWidth = targetWidth;
+    maskEditorCanvas.targetHeight = targetHeight;
+    
+    // Calculate brush size based on canvas resolution (8x smaller canvas)
     const canvasDiagonal = Math.sqrt(canvasWidth * canvasWidth + canvasHeight * canvasHeight);
     brushSize = Math.round(canvasDiagonal * brushSizePercent);
     
-    // Update brush size slider and display
+    // Ensure brush size is within bounds (1-15)
+    brushSize = Math.max(1, Math.min(15, brushSize));
+    
+    // Update brush size input
     const brushSizeInput = document.getElementById('brushSize');
-    const brushSizeValue = document.getElementById('brushSizeValue');
-    if (brushSizeInput && brushSizeValue) {
+    if (brushSizeInput) {
         brushSizeInput.value = brushSize;
-        brushSizeValue.textContent = brushSize;
     }
     
-    // Set the background image in the container with exact canvas dimensions
-    const canvasContainer = document.querySelector('.mask-editor-canvas-container');
-    if (canvasContainer) {
-        if (isPipelineEdit || !variationImage || !variationImage.src) {
-            // For pipeline editing or when no variation image, use a blank background
-            canvasContainer.style.setProperty('--background-image', 'none');
-            canvasContainer.style.setProperty('--background-width', `${canvasWidth * displayScale}px`);
-            canvasContainer.style.setProperty('--background-height', `${canvasHeight * displayScale}px`);
-            canvasContainer.style.setProperty('--background-size', `${canvasWidth * displayScale}px ${canvasHeight * displayScale}px`);
+    // Set the background image in the inner container with aspect ratio scaling
+    const canvasInner = document.querySelector('.mask-editor-canvas-inner');
+    if (canvasInner) {
+        // Check if we have a placeholder image (current image for pipeline or regular image)
+        if (window.uploadedImageData && window.uploadedImageData.isPlaceholder) {
+            // Use the placeholder image as background
+            const backgroundImageValue = `url(${window.uploadedImageData.image_source.replace('file:', '/images/')})`;
+            console.log('Using placeholder image as background:', backgroundImageValue);
+            canvasInner.style.setProperty('--background-image', backgroundImageValue);
+            canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
+            canvasInner.style.setProperty('--background-size', 'contain');
+            canvasInner.style.setProperty('--background-width', '100%');
+            canvasInner.style.setProperty('--background-height', '100%');
+        } else if (isPipelineEdit || !variationImage || !variationImage.src) {
+            // For pipeline editing or when no variation image, create a black placeholder
+            const placeholderCanvas = document.createElement('canvas');
+            const placeholderCtx = placeholderCanvas.getContext('2d');
+            placeholderCanvas.width = targetWidth;
+            placeholderCanvas.height = targetHeight;
+            
+            // Fill with black
+            placeholderCtx.fillStyle = '#000000';
+            placeholderCtx.fillRect(0, 0, targetWidth, targetHeight);
+            
+            // Convert to data URL and store as placeholder
+            window.uploadedImageData.image_source = placeholderCanvas.toDataURL('image/png');
+            window.uploadedImageData.isPlaceholder = true;
+            
+            // Use the placeholder as background
+            const backgroundImageValue = `url(${window.uploadedImageData.image_source})`;
+            canvasInner.style.setProperty('--background-image', backgroundImageValue);
+            canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
+            canvasInner.style.setProperty('--background-size', 'contain');
+            canvasInner.style.setProperty('--background-width', '100%');
+            canvasInner.style.setProperty('--background-height', '100%');
         } else {
-            // Use the variation image as background
-            // For blob URLs and data URLs, use them directly without url() wrapper
+            // Use the variation image as background with aspect ratio scaling
             const backgroundImageValue = `url(${variationImage.src})`;
             console.log(backgroundImageValue);
-            canvasContainer.style.setProperty('--background-image', backgroundImageValue);
-            canvasContainer.style.setProperty('--background-width', `${canvasWidth * displayScale}px`);
-            canvasContainer.style.setProperty('--background-height', `${canvasHeight * displayScale}px`);
-            canvasContainer.style.setProperty('--background-size', `${canvasWidth * displayScale}px ${canvasHeight * displayScale}px`);
+            canvasInner.style.setProperty('--background-image', backgroundImageValue);
+            canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
+            canvasInner.style.setProperty('--background-size', 'contain');
+            canvasInner.style.setProperty('--background-width', '100%');
+            canvasInner.style.setProperty('--background-height', '100%');
         }
     }
     
@@ -8667,11 +9573,20 @@ function openMaskEditor() {
     if (window.currentMaskData) {
         const maskImg = new Image();
         maskImg.onload = function() {
-            // Draw the mask image onto the canvas
-            maskEditorCtx.drawImage(maskImg, 0, 0, canvasWidth, canvasHeight);
+            // Create a temporary canvas to scale down the mask
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = canvasWidth;
+            tempCanvas.height = canvasHeight;
             
-            // Convert black areas to transparent
-            const imageData = maskEditorCtx.getImageData(0, 0, canvasWidth, canvasHeight);
+            // Disable image smoothing for nearest neighbor scaling
+            tempCtx.imageSmoothingEnabled = false;
+            
+            // Draw the mask image onto the temp canvas (scaled down)
+            tempCtx.drawImage(maskImg, 0, 0, canvasWidth, canvasHeight);
+            
+            // Get the scaled down image data
+            const imageData = tempCtx.getImageData(0, 0, canvasWidth, canvasHeight);
             const data = imageData.data;
             
             for (let i = 0; i < data.length; i += 4) {
@@ -8679,13 +9594,19 @@ function openMaskEditor() {
                 const g = data[i + 1];
                 const b = data[i + 2];
                 
-                // If pixel is black (or very dark), make it transparent
-                if (r < 10 && g < 10 && b < 10) {
+                // If pixel is pure black (0,0,0), make it transparent for editing
+                if (r === 0 && g === 0 && b === 0) {
                     data[i + 3] = 0; // Set alpha to 0 (transparent)
+                } else if (r > 0 || g > 0 || b > 0) {
+                    // Any non-black pixel becomes white with full opacity
+                    data[i] = 255;     // Red
+                    data[i + 1] = 255; // Green
+                    data[i + 2] = 255; // Blue
+                    data[i + 3] = 255; // Alpha
                 }
             }
             
-            // Put the modified image data back onto the canvas
+            // Put the modified image data back to the main canvas
             maskEditorCtx.putImageData(imageData, 0, 0);
         };
         maskImg.src = window.currentMaskData;
@@ -8693,6 +9614,10 @@ function openMaskEditor() {
     
     // Show the dialog
     maskEditorDialog.style.display = 'block';
+    
+    // Add global event listeners for continuous drawing
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    document.addEventListener('mousemove', handleGlobalMouseMove);
 }
 
 // Update inpaint button state
@@ -8721,7 +9646,9 @@ function updateInpaintButtonState() {
         }
     }
 
-    if (window.uploadedImageData) {
+    // Show inpaint button for pipeline images or when there's uploaded image data
+    const shouldShowInpaint = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.request_type === 'pipeline');    
+    if (shouldShowInpaint) {
         if (inpaintBtn) {
             inpaintBtn.classList.remove('hidden');
         }
@@ -8747,20 +9674,42 @@ function updateInpaintButtonState() {
 }
 
 // Update mask preview overlay
-function updateMaskPreview() {
+async function updateMaskPreview() {
     const maskPreviewCanvas = document.getElementById('maskPreviewCanvas');
     const variationImage = document.getElementById('manualVariationImage');
-    const isPipelineEdit = window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit;
     
-    // For pipeline editing, don't show mask preview since there's no variation image
-    if (isPipelineEdit) {
+    if (!maskPreviewCanvas || !variationImage) {
         if (maskPreviewCanvas) {
             maskPreviewCanvas.style.display = 'none';
         }
         return;
     }
     
-    if (!maskPreviewCanvas || !variationImage || !window.currentMaskData) {
+    // Check if we have a compressed mask first
+    let maskData = window.currentMaskData;
+    if (window.currentMaskCompressed && !maskData) {
+        // Get the current resolution for scaling
+        let dims = null;
+        if (manualHeight.value && manualWidth.value) {
+            dims = { width: manualWidth.value, height: manualHeight.value };
+        } else {
+            const resolutionValue = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
+            dims = getDimensionsFromResolution(resolutionValue);
+        }
+
+        if (dims) {
+            try {
+                // Process the compressed mask to display resolution
+                maskData = await processCompressedMask(window.currentMaskCompressed, dims.width, dims.height);
+            } catch (error) {
+                console.error('Error processing compressed mask:', error);
+                // Fallback to regular mask if available
+                maskData = window.currentMaskData;
+            }
+        }
+    }
+    
+    if (!maskData) {
         if (maskPreviewCanvas) {
             maskPreviewCanvas.style.display = 'none';
         }
@@ -8802,8 +9751,8 @@ function updateMaskPreview() {
             const g = data[i + 1];
             const b = data[i + 2];
             
-            // If pixel is white (masked area), make it red
-            if (r > 240 && g > 240 && b > 240) {
+            // If pixel is white (masked area), make it green overlay
+            if (r === 255 && g === 255 && b === 255) {
                 data[i] = 149;     // Red
                 data[i + 1] = 254;   // Green
                 data[i + 2] = 108;   // Blue
@@ -8820,7 +9769,7 @@ function updateMaskPreview() {
         // Show the preview canvas
         maskPreviewCanvas.style.display = 'block';
     };
-    maskImg.src = window.currentMaskData;
+    maskImg.src = maskData;
 }
 
 // Character Prompt Collapse/Expand Functions
@@ -9083,25 +10032,19 @@ async function selectCacheImage(cacheImage) {
             isClientSide: 2
         };
         
-        // Update UI
-        const variationRow = document.getElementById('manualVariationRow');
-        const variationImage = document.getElementById('manualVariationImage');
-        
-        if (variationImage) {
-            variationImage.style.display = 'block';
-        }
-        
-        if (variationRow) {
-            variationRow.style.display = 'flex';
+
+        // Show transformation section content
+        const transformationSection = document.getElementById('transformationSection');
+        if (transformationSection) {
+            transformationSection.classList.add('display-image');
         }
         
         // Update image bias
         if (imageBiasHidden != null) imageBiasHidden.value = '2';
         renderImageBiasDropdown('2');
         
-        // Update request type buttons
-        if (rerollTypeBtn) rerollTypeBtn.setAttribute('data-state', 'off');
-        if (variationTypeBtn) variationTypeBtn.setAttribute('data-state', 'off');
+        // Set transformation type to browse (successful)
+        updateTransformationDropdownState('browse', 'Upload');
         
         // Update mask preview and button visibility
         updateUploadDeleteButtonVisibility();
@@ -9148,3 +10091,1327 @@ async function deleteCacheImage(cacheImage) {
         showError('Failed to delete cache image');
     }
 }
+
+// Image Bias Adjustment Modal Functions
+let imageBiasAdjustmentData = {
+    originalImage: null,
+    targetDimensions: null,
+    currentBias: { x: 0, y: 0, scale: 1.0, rotate: 0 },
+    isDragging: false,
+    dragStart: { x: 0, y: 0 },
+    originalTransform: { x: 0, y: 0 },
+    previewMode: 'css' // Default to CSS view
+};
+
+// Show image bias adjustment modal
+async function showImageBiasAdjustmentModal() {
+    if (!window.uploadedImageData) {
+        showError('No base image available for adjustment');
+        return;
+    }
+
+    const modal = document.getElementById('imageBiasAdjustmentModal');
+    if (!modal) return;
+
+    // Get target dimensions
+    const resolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
+    const targetDims = getDimensionsFromResolution(resolution);
+    if (!targetDims) {
+        showError('Invalid resolution for bias adjustment');
+        return;
+    }
+
+    // Get original image data
+    let imageDataUrl = window.uploadedImageData.originalDataUrl;
+    if (!imageDataUrl) {
+        // Fetch the image based on the image source
+        const imageSource = window.uploadedImageData.image_source;
+        if (imageSource.startsWith('data:')) {
+            imageDataUrl = imageSource;
+        } else {
+            let imageUrl = null;
+            if (imageSource.startsWith('file:')) {
+                imageUrl = `/images/${imageSource.replace('file:', '')}`;
+            } else if (imageSource.startsWith('cache:')) {
+                imageUrl = `/cache/preview/${imageSource.replace('cache:', '')}.webp`;
+            }
+            if (imageUrl) {
+                const response = await fetch(imageUrl);
+                const blob = await response.blob();
+                imageDataUrl = URL.createObjectURL(blob);
+            }
+        }
+    }
+
+    if (!imageDataUrl) {
+        showError('Could not load image for adjustment');
+        return;
+    }
+
+    // Load original image to get dimensions
+    const originalImage = new Image();
+    originalImage.onload = function() {
+        imageBiasAdjustmentData.originalImage = originalImage;
+        imageBiasAdjustmentData.targetDimensions = targetDims;
+        
+        // Initialize bias values from current bias setting
+        // Check if we have existing bias data from the uploaded image data
+        if (window.uploadedImageData.image_bias && typeof window.uploadedImageData.image_bias === 'object') {
+            // Use existing bias values from uploaded image data
+            imageBiasAdjustmentData.currentBias = { ...window.uploadedImageData.image_bias };
+        } else if (imageBiasAdjustmentData.currentBias && typeof imageBiasAdjustmentData.currentBias === 'object' && 
+                   (imageBiasAdjustmentData.currentBias.x !== 0 || imageBiasAdjustmentData.currentBias.y !== 0 || 
+                    imageBiasAdjustmentData.currentBias.scale !== 1.0 || imageBiasAdjustmentData.currentBias.rotate !== 0)) {
+            // Use existing bias values from previous adjustment (only if they're not default values)
+            // currentBias is already set from the uploaded image data
+        } else {
+            // Fall back to legacy bias system or default values
+            const currentBias = window.uploadedImageData.bias || 2;
+            const biasFractions = [0, 0.25, 0.5, 0.75, 1];
+            const biasFrac = biasFractions[currentBias] || 0.5;
+            
+            // Calculate initial position based on current bias
+            // For the new system, we'll start with centered position and let user adjust
+            imageBiasAdjustmentData.currentBias = {
+                x: 0,
+                y: 0,
+                scale: 1.0,
+                rotate: 0
+            };
+        }
+        
+        // Show modal first
+        modal.style.display = 'flex';
+        
+        // Update UI after modal is visible (so we can get proper container dimensions)
+        setTimeout(() => {
+            updateBiasAdjustmentUI();
+            updateBiasAdjustmentImage();
+        }, 100);
+    };
+    originalImage.src = imageDataUrl;
+}
+
+// Update bias adjustment UI controls
+function updateBiasAdjustmentUI() {
+    const { x, y, scale, rotate } = imageBiasAdjustmentData.currentBias;
+    
+    document.getElementById('biasX').value = x;
+    document.getElementById('biasY').value = y;
+    document.getElementById('biasScale').value = scale;
+    document.getElementById('biasRotate').value = rotate;
+}
+
+// Update bias adjustment image display
+function updateBiasAdjustmentImage() {
+    const image = document.getElementById('biasAdjustmentImage');
+    const wrapper = document.getElementById('biasAdjustmentImageWrapper');
+    const targetOverlay = document.getElementById('targetAreaOverlay');
+    const targetBorder = targetOverlay.querySelector('.target-area-border');
+    
+    if (!imageBiasAdjustmentData.originalImage || !imageBiasAdjustmentData.targetDimensions) return;
+    
+    const { originalImage, targetDimensions, currentBias } = imageBiasAdjustmentData;
+    
+    // Set image source
+    image.src = originalImage.src;
+    
+    // Calculate display dimensions - use the actual container size with padding accounted for
+    const container = document.getElementById('imagePreviewContainer');
+    const containerRect = container.getBoundingClientRect();
+    const padding = 32; // 2em = 32px (assuming 1em = 16px)
+    const containerWidth = containerRect.width - (padding * 2);
+    const containerHeight = containerRect.height - (padding * 2);
+    
+    // Calculate target area size in display units
+    const targetAR = targetDimensions.width / targetDimensions.height;
+    let targetDisplayWidth, targetDisplayHeight;
+    
+    if (targetAR > containerWidth / containerHeight) {
+        targetDisplayWidth = containerWidth;
+        targetDisplayHeight = containerWidth / targetAR;
+    } else {
+        targetDisplayHeight = containerHeight;
+        targetDisplayWidth = containerHeight * targetAR;
+    }
+    
+    // Set target area border size
+    targetBorder.style.width = `${targetDisplayWidth}px`;
+    targetBorder.style.height = `${targetDisplayHeight}px`;
+    
+    // Calculate scale factor to make image fill target area at scale 1.0
+    const imageAR = originalImage.width / originalImage.height;
+    let imageDisplayWidth, imageDisplayHeight;
+    
+    if (imageAR > targetAR) {
+        // Image is wider than target, scale to match target height
+        imageDisplayHeight = targetDisplayHeight;
+        imageDisplayWidth = targetDisplayHeight * imageAR;
+    } else {
+        // Image is taller than target, scale to match target width
+        imageDisplayWidth = targetDisplayWidth;
+        imageDisplayHeight = targetDisplayWidth / imageAR;
+    }
+    
+    // Set image size to fill target area
+    image.style.width = `${imageDisplayWidth}px`;
+    image.style.height = `${imageDisplayHeight}px`;
+    
+    // Calculate scale factor between target dimensions and display dimensions
+    const scaleX = targetDisplayWidth / targetDimensions.width;
+    const scaleY = targetDisplayHeight / targetDimensions.height;
+    
+    // Scale the bias position values to match the display dimensions
+    const scaledX = currentBias.x * scaleX;
+    const scaledY = currentBias.y * scaleY;
+    
+    // Position the wrapper relative to the target area overlay (top-left is 0,0)
+    // The target area overlay is centered in the container, so we need to calculate its position
+    // The container has 2em padding, so the target area is centered within the padded area
+    const targetAreaX = (containerWidth - targetDisplayWidth) / 2;
+    const targetAreaY = (containerHeight - targetDisplayHeight) / 2;
+    
+    // Apply position to wrapper (scaled to match display dimensions, referenced to target area top-left)
+    // The wrapper is positioned relative to the container, and the target area is already centered within the padded area
+    wrapper.style.transform = `translate(${targetAreaX + scaledX}px, ${targetAreaY + scaledY}px)`;
+    
+    // Apply rotation and scale to image (from top-left corner)
+    const { scale, rotate } = currentBias;
+    image.style.transform = `rotate(${rotate}deg) scale(${scale})`;
+}
+
+// Handle bias control changes
+function handleBiasControlChange() {
+    const x = parseInt(document.getElementById('biasX').value) || 0;
+    const y = parseInt(document.getElementById('biasY').value) || 0;
+    const scale = parseFloat(document.getElementById('biasScale').value) || 1.0;
+    const rotate = parseInt(document.getElementById('biasRotate').value) || 0;
+    
+    imageBiasAdjustmentData.currentBias = { x, y, scale, rotate };
+    updateBiasAdjustmentImage();
+    
+    // Update client preview if it's active
+    if (imageBiasAdjustmentData.previewMode === 'client') {
+        updateClientPreview();
+    }
+}
+
+// Image Bias Preset Functions
+function getImageBiasPresetOptions() {
+    // Get current resolution to determine if we're in portrait or landscape mode
+    const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
+    let isPortrait = currentResolution.toLowerCase().includes('portrait');
+    
+    // For custom resolutions, determine based on width/height
+    if (currentResolution === 'custom' && manualWidth && manualHeight) {
+        const width = parseInt(manualWidth.value);
+        const height = parseInt(manualHeight.value);
+        isPortrait = height > width;
+    }
+    
+    if (!isPortrait) {
+        return [
+            { value: '0', display: 'Top' },
+            { value: '1', display: 'Mid-Top' },
+            { value: '2', display: 'Center' },
+            { value: '3', display: 'Mid-Bottom' },
+            { value: '4', display: 'Bottom' }
+        ];
+    } else {
+        // Landscape or square - use same position names
+        return [
+            { value: '0', display: 'Left' },
+            { value: '1', display: 'Mid-Left' },
+            { value: '2', display: 'Center' },
+            { value: '3', display: 'Mid-Right' },
+            { value: '4', display: 'Right' }
+        ];
+    }
+}
+
+function renderImageBiasPresetDropdown(selectedVal) {
+    const menu = document.getElementById('imageBiasPresetMenu');
+    if (!menu) return;
+    
+    menu.innerHTML = '';
+    
+    const presetOptions = getImageBiasPresetOptions();
+    
+    presetOptions.forEach(option => {
+        const optionElement = document.createElement('div');
+        optionElement.className = 'custom-dropdown-option';
+        optionElement.dataset.value = option.value;
+        
+        // Determine grid layout based on aspect ratio
+        const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
+        const isPortrait = currentResolution.includes('portrait');
+        
+        // For custom resolutions, determine based on width/height
+        let isPortraitMode = isPortrait;
+        if (currentResolution === 'custom' && manualWidth && manualHeight) {
+            const width = parseInt(manualWidth.value);
+            const height = parseInt(manualHeight.value);
+            isPortraitMode = height > width;
+        }
+        
+        // Create grid based on orientation
+        let gridHTML = '';
+        if (isPortraitMode) {
+            // Portrait: 3 columns, 5 rows (vertical layout)
+            for (let i = 0; i < 15; i++) {
+                gridHTML += '<div class="grid-cell"></div>';
+            }
+        } else {
+            // Landscape: 5 columns, 3 rows (horizontal layout)
+            for (let i = 0; i < 15; i++) {
+                gridHTML += '<div class="grid-cell"></div>';
+            }
+        }
+        
+        optionElement.innerHTML = `
+            <div class="mask-bias-option-content">
+                <div class="mask-bias-grid" data-bias="${option.value}" data-orientation="${isPortraitMode ? 'portrait' : 'landscape'}">
+                    ${gridHTML}
+                </div>
+                <span class="mask-bias-label">${option.display}</span>
+            </div>
+        `;
+        
+        optionElement.addEventListener('click', () => {
+            applyImageBiasPreset(option.value);
+            closeImageBiasPresetDropdown();
+        });
+        
+        menu.appendChild(optionElement);
+    });
+}
+
+function selectImageBiasPreset(value) {
+    const btn = document.getElementById('imageBiasPresetBtn');
+    const grid = btn.querySelector('.mask-bias-grid');
+    const label = btn.querySelector('.mask-bias-label');
+    
+    const presetOptions = getImageBiasPresetOptions();
+    const selectedOption = presetOptions.find(option => option.value === value);
+    
+    if (selectedOption) {
+        label.textContent = selectedOption.display;
+    } else {
+        label.textContent = 'Center';
+    }
+    
+    // Update the button's grid preview
+    if (grid) {
+        grid.setAttribute('data-bias', value);
+        
+        // Update orientation based on current resolution
+        const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
+        const isPortrait = currentResolution.includes('portrait');
+        
+        // For custom resolutions, determine based on width/height
+        let isPortraitMode = isPortrait;
+        if (currentResolution === 'custom' && manualWidth && manualHeight) {
+            const width = parseInt(manualWidth.value);
+            const height = parseInt(manualHeight.value);
+            isPortraitMode = height > width;
+        }
+        
+        grid.setAttribute('data-orientation', isPortraitMode ? 'portrait' : 'landscape');
+    }
+    
+    // Calculate and apply the preset position
+    applyImageBiasPreset(value);
+}
+
+function applyImageBiasPreset(presetValue) {
+    if (!imageBiasAdjustmentData.targetDimensions) return;
+    
+    const { width: targetWidth, height: targetHeight } = imageBiasAdjustmentData.targetDimensions;
+    const { width: imageWidth, height: imageHeight } = imageBiasAdjustmentData.originalImage;
+    
+    // Calculate how the image fills the target area
+    const imageAR = imageWidth / imageHeight;
+    const targetAR = targetWidth / targetHeight;
+    
+    let imageFillWidth, imageFillHeight;
+    
+    if (imageAR > targetAR) {
+        // Image is wider than target, scale to match target height
+        imageFillHeight = targetHeight;
+        imageFillWidth = targetHeight * imageAR;
+    } else {
+        // Image is taller than target, scale to match target width
+        imageFillWidth = targetWidth;
+        imageFillHeight = targetWidth / imageAR;
+    }
+    
+    // Calculate position based on preset
+    let x = 0, y = 0;
+    
+    switch (presetValue) {
+        case '0': // Top/Left
+            x = 0;
+            y = 0;
+            break;
+        case '1': // Mid-Top/Mid-Left
+            x = (targetWidth - imageFillWidth) / 2;
+            y = 0;
+            break;
+        case '2': // Center
+            x = (targetWidth - imageFillWidth) / 2;
+            y = (targetHeight - imageFillHeight) / 2;
+            break;
+        case '3': // Mid-Bottom/Mid-Right
+            x = (targetWidth - imageFillWidth) / 2;
+            y = targetHeight - imageFillHeight;
+            break;
+        case '4': // Bottom/Right
+            x = targetWidth - imageFillWidth;
+            y = targetHeight - imageFillHeight;
+            break;
+    }
+    
+    // Update the bias values
+    imageBiasAdjustmentData.currentBias.x = Math.round(x);
+    imageBiasAdjustmentData.currentBias.y = Math.round(y);
+    
+    // Update the UI
+    document.getElementById('biasX').value = Math.round(x);
+    document.getElementById('biasY').value = Math.round(y);
+    
+    updateBiasAdjustmentImage();
+    
+    // Update client preview if it's active
+    if (imageBiasAdjustmentData.previewMode === 'client') {
+        updateClientPreview();
+    }
+}
+
+function openImageBiasPresetDropdown() {
+    const menu = document.getElementById('imageBiasPresetMenu');
+    const btn = document.getElementById('imageBiasPresetBtn');
+    if (menu && btn) {
+        menu.style.display = 'block';
+        btn.classList.add('active');
+    }
+}
+
+function closeImageBiasPresetDropdown() {
+    const menu = document.getElementById('imageBiasPresetMenu');
+    const btn = document.getElementById('imageBiasPresetBtn');
+    if (menu && btn) {
+        menu.style.display = 'none';
+        btn.classList.remove('active');
+    }
+}
+
+// Reset bias controls
+function resetBiasControls() {
+    imageBiasAdjustmentData.currentBias = { x: 0, y: 0, scale: 1.0, rotate: 0 };
+    updateBiasAdjustmentUI();
+    updateBiasAdjustmentImage();
+}
+
+// Handle image dragging
+function handleBiasImageMouseDown(e) {
+    if (e.target.id !== 'biasAdjustmentImage') return;
+    
+    imageBiasAdjustmentData.isDragging = true;
+    imageBiasAdjustmentData.dragStart = { x: e.clientX, y: e.clientY };
+    imageBiasAdjustmentData.originalTransform = { ...imageBiasAdjustmentData.currentBias };
+    
+    e.preventDefault();
+}
+
+function handleBiasImageMouseMove(e) {
+    if (!imageBiasAdjustmentData.isDragging) return;
+    
+    const deltaX = e.clientX - imageBiasAdjustmentData.dragStart.x;
+    const deltaY = e.clientY - imageBiasAdjustmentData.dragStart.y;
+    
+    imageBiasAdjustmentData.currentBias.x = imageBiasAdjustmentData.originalTransform.x + deltaX;
+    imageBiasAdjustmentData.currentBias.y = imageBiasAdjustmentData.originalTransform.y + deltaY;
+    
+    updateBiasAdjustmentUI();
+    updateBiasAdjustmentImage();
+}
+
+function handleBiasImageMouseUp() {
+    imageBiasAdjustmentData.isDragging = false;
+}
+
+// Toggle between CSS view and client preview
+function togglePreviewMode() {
+    const toggleBtn = document.getElementById('previewToggleBtn');
+    const cssWrapper = document.getElementById('biasAdjustmentImageWrapper');
+    const clientImage = document.getElementById('clientPreviewImage');
+    
+    const currentState = toggleBtn.getAttribute('data-state');
+    const newState = currentState === 'on' ? 'off' : 'on';
+    
+    imageBiasAdjustmentData.previewMode = newState === 'on' ? 'client' : 'css';
+    
+    if (newState === 'off') {
+        // Show CSS interactive view
+        toggleBtn.setAttribute('data-state', 'off');
+        toggleBtn.innerHTML = '<i class="nai-sparkles"></i> Client Preview';
+        cssWrapper.style.display = 'block';
+        clientImage.style.display = 'none';
+        updateBiasAdjustmentImage();
+    } else {
+        // Show client preview
+        toggleBtn.setAttribute('data-state', 'on');
+        toggleBtn.innerHTML = '<i class="nai-easel"></i> Interactive View';
+        cssWrapper.style.display = 'none';
+        clientImage.style.display = 'block';
+        updateClientPreview();
+    }
+}
+
+// Update client preview image
+async function updateClientPreview() {
+    if (!imageBiasAdjustmentData.originalImage || !imageBiasAdjustmentData.targetDimensions) return;
+    
+    try {
+        const clientPreview = await generateClientBiasPreview();
+        const clientImage = document.getElementById('clientPreviewImage');
+        clientImage.src = clientPreview;
+    } catch (error) {
+        console.error('Failed to update client preview:', error);
+    }
+}
+
+// Test bias adjustment
+async function testBiasAdjustment() {
+    if (!imageBiasAdjustmentData.originalImage || !imageBiasAdjustmentData.targetDimensions) {
+        showError('No image data available for testing');
+        return;
+    }
+    
+    const testBtn = document.getElementById('biasTestBtn');
+    const resultsDiv = document.getElementById('biasTestResults');
+    
+    testBtn.disabled = true;
+    testBtn.innerHTML = '<i class="spinner"></i> Testing...';
+    
+    try {
+        // Generate client-side preview
+        const clientPreview = await generateClientBiasPreview();
+        document.getElementById('clientTestImage').src = clientPreview;
+        
+        // Generate server-side preview
+        const serverPreview = await generateServerBiasPreview();
+        document.getElementById('serverTestImage').src = serverPreview;
+        
+        resultsDiv.style.display = 'flex';
+        
+    } catch (error) {
+        console.error('Bias test error:', error);
+        showError('Failed to test bias adjustment: ' + error.message);
+    } finally {
+        testBtn.disabled = false;
+        testBtn.innerHTML = '<i class="nai-sparkles"></i> Test Adjustment';
+    }
+}
+
+// Generate client-side bias preview
+async function generateClientBiasPreview() {
+    return new Promise((resolve) => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        const { originalImage, targetDimensions, currentBias } = imageBiasAdjustmentData;
+        
+        canvas.width = targetDimensions.width;
+        canvas.height = targetDimensions.height;
+        
+        // Calculate how to fill the canvas while maintaining aspect ratio
+        const imageAR = originalImage.width / originalImage.height;
+        const targetAR = targetDimensions.width / targetDimensions.height;
+        
+        let drawWidth, drawHeight, drawX, drawY;
+        
+        if (imageAR > targetAR) {
+            // Image is wider than target, scale to match target height
+            drawHeight = targetDimensions.height;
+            drawWidth = targetDimensions.height * imageAR;
+            // Position at top-left corner, not centered
+            drawX = 0;
+            drawY = 0;
+        } else {
+            // Image is taller than target, scale to match target width
+            drawWidth = targetDimensions.width;
+            drawHeight = targetDimensions.width / imageAR;
+            // Position at top-left corner, not centered
+            drawX = 0;
+            drawY = 0;
+        }
+        
+        // Apply bias transformations - all referenced to top-left corner
+        ctx.save();
+        
+        // Apply position offset (absolute pixels, not affected by scale)
+        // Client preview should not have padding - it represents the actual target resolution
+        ctx.translate(currentBias.x, currentBias.y);
+        
+        // Apply rotation and scale from top-left corner
+        ctx.rotate((currentBias.rotate * Math.PI) / 180);
+        ctx.scale(currentBias.scale, currentBias.scale);
+        
+        // Draw the image to fill the canvas (like object-fit: cover)
+        ctx.drawImage(originalImage, drawX, drawY, drawWidth, drawHeight);
+        
+        ctx.restore();
+        
+        canvas.toBlob((blob) => {
+            const url = URL.createObjectURL(blob);
+            resolve(url);
+        }, 'image/png');
+    });
+}
+
+// Generate server-side bias preview
+async function generateServerBiasPreview() {
+    const { targetDimensions, currentBias } = imageBiasAdjustmentData;
+    
+    // Get the image source path from uploaded image data
+    if (!window.uploadedImageData || !window.uploadedImageData.image_source) {
+        throw new Error('No image source available for server test');
+    }
+    
+    const imageSource = window.uploadedImageData.image_source;
+    
+    // Send to server for processing
+    const response = await fetch('/test-bias-adjustment', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            image_source: imageSource,
+            target_width: targetDimensions.width,
+            target_height: targetDimensions.height,
+            bias: currentBias
+        })
+    });
+    
+    if (!response.ok) {
+        throw new Error(`Server test failed: ${response.statusText}`);
+    }
+    
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+}
+
+// Save bias adjustment
+async function saveBiasAdjustment() {
+    if (!imageBiasAdjustmentData.currentBias) {
+        showError('No bias adjustment to save');
+        return;
+    }
+    
+    // Show confirmation dialog with previews
+    await showBiasAdjustmentConfirmDialog();
+}
+
+// Show bias adjustment confirmation dialog
+async function showBiasAdjustmentConfirmDialog() {
+    const dialog = document.getElementById('biasAdjustmentConfirmDialog');
+    if (!dialog) {
+        console.error('Bias adjustment confirmation dialog not found');
+        return;
+    }
+    
+    // Generate previews
+    await generateConfirmationPreviews();
+    
+    // Show dialog
+    dialog.style.display = 'flex';
+}
+
+// Generate previews for confirmation dialog
+async function generateConfirmationPreviews() {
+    try {
+        // Generate client preview
+        const clientPreview = await generateClientBiasPreview();
+        const confirmClientPreview = document.getElementById('confirmClientPreview');
+        if (confirmClientPreview && clientPreview) {
+            confirmClientPreview.src = clientPreview;
+        }
+        
+        // Generate server preview
+        const serverPreview = await generateServerBiasPreview();
+        const confirmServerPreview = document.getElementById('confirmServerPreview');
+        if (confirmServerPreview && serverPreview) {
+            confirmServerPreview.src = serverPreview;
+        }
+    } catch (error) {
+        console.error('Failed to generate confirmation previews:', error);
+        showError('Failed to generate previews');
+    }
+}
+
+// Function to detect transparent pixels in an image
+function detectTransparentPixels(imageDataUrl) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            
+            ctx.drawImage(img, 0, 0);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            let transparentPixels = 0;
+            const totalPixels = canvas.width * canvas.height;
+            
+            for (let i = 0; i < data.length; i += 4) {
+                const alpha = data[i + 3];
+                if (alpha < 128) { // Consider pixels with alpha < 128 as transparent
+                    transparentPixels++;
+                }
+            }
+            
+            const transparentPercentage = (transparentPixels / totalPixels) * 100;
+            resolve({
+                hasTransparentPixels: transparentPixels > 0,
+                transparentPercentage: transparentPercentage,
+                transparentPixels: transparentPixels,
+                totalPixels: totalPixels
+            });
+        };
+        img.src = imageDataUrl;
+    });
+}
+
+// Function to auto-fill mask based on transparent pixels
+async function autoFillMaskFromTransparentPixels() {
+    if (!window.uploadedImageData || !window.uploadedImageData.originalDataUrl) {
+        showError('No image data available for auto-fill');
+        return;
+    }
+
+    if (!window.currentMaskData) {
+        showError('No existing mask found for auto-fill');
+        return;
+    }
+
+    try {
+        // Get the current resolution
+        const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
+        const resolutionDims = getDimensionsFromResolution(currentResolution);
+        if (!resolutionDims) {
+            showError('Invalid resolution for auto-fill');
+            return;
+        }
+
+        // Load the existing mask
+        const maskImg = new Image();
+        maskImg.onload = function() {
+            // Step 1: Upscale the mask 8x with nearest neighbor
+            const upscaledCanvas = document.createElement('canvas');
+            const upscaledCtx = upscaledCanvas.getContext('2d');
+            upscaledCanvas.width = resolutionDims.width;
+            upscaledCanvas.height = resolutionDims.height;
+            
+            // Use nearest neighbor scaling for upscaling
+            upscaledCtx.imageSmoothingEnabled = false;
+            upscaledCtx.drawImage(maskImg, 0, 0, upscaledCanvas.width, upscaledCanvas.height);
+            
+            // Step 2: Apply the same transforms as the image bias
+            const transformedCanvas = document.createElement('canvas');
+            const transformedCtx = transformedCanvas.getContext('2d');
+            transformedCanvas.width = resolutionDims.width;
+            transformedCanvas.height = resolutionDims.height;
+            
+            // Fill with white background
+            transformedCtx.fillStyle = '#FFFFFF';
+            transformedCtx.fillRect(0, 0, transformedCanvas.width, transformedCanvas.height);
+            
+            // Apply the same transforms as the image bias, calculating delta from original bias
+            const dynamicBias = window.uploadedImageData.image_bias;
+            const previousBias = window.uploadedImageData.previousBias; // The bias that was active when mask was created
+            
+            if (dynamicBias && typeof dynamicBias === 'object') {
+                transformedCtx.save();
+                
+                // Calculate the difference between current bias and the bias that was active when mask was created
+                if (previousBias && typeof previousBias === 'object') {
+                    // Calculate delta from previous bias to current bias
+                    const deltaX = (dynamicBias.x || 0) - (previousBias.x || 0);
+                    const deltaY = (dynamicBias.y || 0) - (previousBias.y || 0);
+                    const deltaRotate = (dynamicBias.rotate || 0) - (previousBias.rotate || 0);
+                    
+                    // For scale, we need to calculate the relative change
+                    // If previous scale was 1.2 and current is 1.5, delta should be 1.5/1.2 = 1.25
+                    const previousScale = previousBias.scale || 1;
+                    const currentScale = dynamicBias.scale || 1;
+                    const deltaScale = currentScale / previousScale;
+                    
+                    // Calculate the source image position when the mask was created
+                    // The source image fills the target area, so we need to find its top-left corner
+                    const sourceImageWidth = upscaledCanvas.width;
+                    const sourceImageHeight = upscaledCanvas.height;
+                    const targetWidth = resolutionDims.width;
+                    const targetHeight = resolutionDims.height;
+                    
+                    // Calculate how the source image was positioned (like in cropImageWithDynamicBias)
+                    const imageAR = sourceImageWidth / sourceImageHeight;
+                    const targetAR = targetWidth / targetHeight;
+                    
+                    let sourceX, sourceY, sourceWidth, sourceHeight;
+                    if (imageAR > targetAR) {
+                        // Image is wider than target, scale to match target height
+                        sourceHeight = targetHeight;
+                        sourceWidth = targetHeight * imageAR;
+                        sourceX = 0;
+                        sourceY = 0;
+                    } else {
+                        // Image is taller than target, scale to match target width
+                        sourceWidth = targetWidth;
+                        sourceHeight = targetWidth / imageAR;
+                        sourceX = 0;
+                        sourceY = 0;
+                    }
+                    
+                    // Apply transformations from the source image's top-left origin (like cropImageWithDynamicBias)
+                    transformedCtx.translate(deltaX, deltaY);
+                    transformedCtx.rotate(deltaRotate * Math.PI / 180);
+                    transformedCtx.scale(deltaScale, deltaScale);
+                } else {
+                    // No previous bias, apply the full current bias transformations
+                    // Calculate the source image position (same logic as above)
+                    const sourceImageWidth = upscaledCanvas.width;
+                    const sourceImageHeight = upscaledCanvas.height;
+                    const targetWidth = resolutionDims.width;
+                    const targetHeight = resolutionDims.height;
+                    
+                    const imageAR = sourceImageWidth / sourceImageHeight;
+                    const targetAR = targetWidth / targetHeight;
+                    
+                    let sourceX, sourceY, sourceWidth, sourceHeight;
+                    if (imageAR > targetAR) {
+                        sourceHeight = targetHeight;
+                        sourceWidth = targetHeight * imageAR;
+                        sourceX = 0;
+                        sourceY = 0;
+                    } else {
+                        sourceWidth = targetWidth;
+                        sourceHeight = targetWidth / imageAR;
+                        sourceX = 0;
+                        sourceY = 0;
+                    }
+                    
+                    // Apply transformations from the source image's top-left origin
+                    transformedCtx.translate(dynamicBias.x || 0, dynamicBias.y || 0);
+                    transformedCtx.rotate((dynamicBias.rotate || 0) * Math.PI / 180);
+                    transformedCtx.scale(dynamicBias.scale || 1, dynamicBias.scale || 1);
+                }
+                
+                transformedCtx.drawImage(upscaledCanvas, 0, 0);
+                transformedCtx.restore();
+            } else {
+                // For regular bias, apply the standard crop transform
+                const bias = window.uploadedImageData.bias || 2;
+                const originalWidth = window.uploadedImageData.originalWidth;
+                const originalHeight = window.uploadedImageData.originalHeight;
+                
+                const scale = Math.max(resolutionDims.width / originalWidth, resolutionDims.height / originalHeight) * (bias / 2);
+                const scaledWidth = originalWidth * scale;
+                const scaledHeight = originalHeight * scale;
+                const x = (resolutionDims.width - scaledWidth) / 2;
+                const y = (resolutionDims.height - scaledHeight) / 2;
+                
+                // If there was a previous bias, calculate the delta
+                if (previousBias && typeof previousBias === 'number') {
+                    const previousScale = Math.max(resolutionDims.width / originalWidth, resolutionDims.height / originalHeight) * (previousBias / 2);
+                    const previousScaledWidth = originalWidth * previousScale;
+                    const previousScaledHeight = originalHeight * previousScale;
+                    const previousX = (resolutionDims.width - previousScaledWidth) / 2;
+                    const previousY = (resolutionDims.height - previousScaledHeight) / 2;
+                    
+                    // Calculate the offset to align the mask
+                    const offsetX = x - previousX;
+                    const offsetY = y - previousY;
+                    const scaleRatio = scale / previousScale;
+                    
+                    transformedCtx.save();
+                    transformedCtx.translate(offsetX, offsetY);
+                    transformedCtx.scale(scaleRatio, scaleRatio);
+                    transformedCtx.drawImage(upscaledCanvas, previousX, previousY, previousScaledWidth, previousScaledHeight);
+                    transformedCtx.restore();
+                } else {
+                    transformedCtx.drawImage(upscaledCanvas, x, y, scaledWidth, scaledHeight);
+                }
+            }
+            
+            // Step 3: Scale down 8x with nearest neighbor
+            const finalCanvas = document.createElement('canvas');
+            const finalCtx = finalCanvas.getContext('2d');
+            finalCanvas.width = Math.floor(resolutionDims.width / 8);
+            finalCanvas.height = Math.floor(resolutionDims.height / 8);
+            
+            // Use nearest neighbor scaling
+            finalCtx.imageSmoothingEnabled = false;
+            finalCtx.drawImage(transformedCanvas, 0, 0, finalCanvas.width, finalCanvas.height);
+            
+            // Convert mask to base64
+            const maskBase64 = finalCanvas.toDataURL('image/png');
+            
+            // Store the mask data
+            window.currentMaskData = maskBase64;
+            
+            // Set inpaint button to on
+            if (inpaintBtn) {
+                inpaintBtn.setAttribute('data-state', 'on');
+                inpaintBtn.classList.add('active');
+            }
+            
+            // Update mask preview
+            updateMaskPreview();
+            
+            showSuccess('Mask auto-filled and aligned with image bias');
+        };
+        
+        // Load the existing mask
+        maskImg.src = window.currentMaskData;
+        
+    } catch (error) {
+        console.error('Error auto-filling mask:', error);
+        showError('Failed to auto-fill mask');
+    }
+}
+
+// Show mask adjustment modal after bias adjustment
+function showMaskAdjustmentModal() {
+    const modal = document.getElementById('maskAdjustmentModal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+// Hide mask adjustment modal
+function hideMaskAdjustmentModal() {
+    const modal = document.getElementById('maskAdjustmentModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Accept bias adjustment and save
+function acceptBiasAdjustment() {
+    if (!imageBiasAdjustmentData.currentBias) {
+        showError('No bias adjustment to save');
+        return;
+    }
+    
+    // Store the bias adjustment data
+    if (!window.uploadedImageData) {
+        window.uploadedImageData = {};
+    }
+    
+    // Store the previous bias before applying the new one
+    window.uploadedImageData.previousBias = window.uploadedImageData.image_bias || window.uploadedImageData.bias || 2;
+    
+    window.uploadedImageData.image_bias = imageBiasAdjustmentData.currentBias;
+    
+    // Update the hidden input for form submission
+    const imageBiasHidden = document.getElementById('imageBias');
+    if (imageBiasHidden) {
+        imageBiasHidden.value = JSON.stringify(imageBiasAdjustmentData.currentBias);
+    }
+    
+    // Close both dialogs
+    hideBiasAdjustmentConfirmDialog();
+    hideImageBiasAdjustmentModal();
+    
+    // Update the main preview
+    cropImageToResolution();
+
+    renderImageBiasDropdown();
+    
+    // Check if we need to show mask adjustment modal
+    checkAndShowMaskAdjustmentModal();
+    
+    showSuccess('Bias adjustment saved');
+}
+
+// Check if mask adjustment modal should be shown
+async function checkAndShowMaskAdjustmentModal() {
+    // Check if there's an existing mask
+    const hasExistingMask = window.currentMaskData !== null && window.currentMaskData !== undefined;
+    
+    // Check for transparent pixels in the processed image
+    let hasTransparentPixels = false;
+    let transparentPercentage = 0;
+    
+    if (window.uploadedImageData && window.uploadedImageData.originalDataUrl) {
+        try {
+            // Get the processed image with bias applied
+            const dynamicBias = window.uploadedImageData.image_bias;
+            let processedImageUrl;
+            
+            if (dynamicBias && typeof dynamicBias === 'object') {
+                processedImageUrl = await cropImageWithDynamicBias(window.uploadedImageData.originalDataUrl, dynamicBias);
+            } else {
+                const bias = window.uploadedImageData.bias || 2;
+                processedImageUrl = await cropImageToResolutionInternal(window.uploadedImageData.originalDataUrl, bias);
+            }
+            
+            const transparentInfo = await detectTransparentPixels(processedImageUrl);
+            hasTransparentPixels = transparentInfo.hasTransparentPixels;
+            transparentPercentage = transparentInfo.transparentPercentage;
+        } catch (error) {
+            console.error('Error detecting transparent pixels:', error);
+        }
+    }
+    
+    // Show modal if there's a mask or more than 5% transparent pixels
+    if (hasExistingMask || (hasTransparentPixels && transparentPercentage > 5)) {
+        showMaskAdjustmentModal();
+    }
+}
+
+// Hide bias adjustment confirmation dialog
+function hideBiasAdjustmentConfirmDialog() {
+    const dialog = document.getElementById('biasAdjustmentConfirmDialog');
+    if (dialog) {
+        dialog.style.display = 'none';
+    }
+}
+
+// Hide image bias adjustment modal
+function hideImageBiasAdjustmentModal() {
+    const modal = document.getElementById('imageBiasAdjustmentModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    
+    // Clean up test results
+    const resultsDiv = document.getElementById('biasTestResults');
+    if (resultsDiv) {
+        resultsDiv.style.display = 'none';
+    }
+    
+    // Reset dragging state
+    imageBiasAdjustmentData.isDragging = false;
+}
+
+// Enhanced cropImageToResolution function to handle dynamic bias adjustments
+async function cropImageToResolution() {
+    if (!window.uploadedImageData) {
+        console.warn('No uploaded image data available for cropping');
+        return;
+    }
+
+    try {
+        // Clean up any existing blob URLs before creating new ones
+        cleanupBlobUrls();
+        
+        // Get the image data URL
+        let imageDataUrl = window.uploadedImageData.originalDataUrl;
+        
+        if (!imageDataUrl) {
+            const imageSource = window.uploadedImageData.image_source;
+            if (imageSource.startsWith('data:')) {
+                imageDataUrl = imageSource;
+            } else {
+                let imageUrl = null;
+                if (imageSource.startsWith('file:')) {
+                    imageUrl = `/images/${imageSource.replace('file:', '')}`;
+                } else if (imageSource.startsWith('cache:')) {
+                    imageUrl = `/cache/preview/${imageSource.replace('cache:', '')}.webp`;
+                }
+                if (imageUrl) {
+                    const response = await fetch(imageUrl);
+                    const blob = await response.blob();
+                    imageDataUrl = URL.createObjectURL(blob);
+                }
+            }
+            window.uploadedImageData.originalDataUrl = imageDataUrl;
+        }
+        
+        if (!imageDataUrl) {
+            console.warn('Could not get image data URL for cropping');
+            return;
+        }
+
+        // Check if we have dynamic bias adjustment data
+        const dynamicBias = window.uploadedImageData.image_bias;
+        let croppedBlobUrl;
+        
+        if (dynamicBias && typeof dynamicBias === 'object') {
+            // Use dynamic bias adjustment
+            croppedBlobUrl = await cropImageWithDynamicBias(imageDataUrl, dynamicBias);
+        } else {
+            // Use legacy bias system
+            const bias = (window.uploadedImageData.bias !== undefined && window.uploadedImageData.bias !== null) ? window.uploadedImageData.bias : 2;
+            croppedBlobUrl = await cropImageToResolutionInternal(imageDataUrl, bias);
+        }
+        
+        // Update the preview image
+        const variationImage = document.getElementById('manualVariationImage');
+        if (variationImage) {
+            variationImage.src = croppedBlobUrl;
+            variationImage.style.display = 'block';
+            setTimeout(updateMaskPreview, 100);
+        }
+
+        window.uploadedImageData.croppedBlobUrl = croppedBlobUrl;
+    } catch (error) {
+        console.error('Failed to crop image to resolution:', error);
+        showError('Failed to crop image to resolution');
+    }
+}
+
+// New function to crop image with dynamic bias adjustments
+function cropImageWithDynamicBias(dataUrl, bias) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = function() {
+            const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
+            const resolutionDims = getDimensionsFromResolution(currentResolution);
+            
+            if (!resolutionDims) {
+                resolve(dataUrl);
+                return;
+            }
+            
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            canvas.width = resolutionDims.width;
+            canvas.height = resolutionDims.height;
+            
+            // Calculate how to fill the canvas while maintaining aspect ratio
+            const imageAR = img.width / img.height;
+            const targetAR = resolutionDims.width / resolutionDims.height;
+            
+            let drawWidth, drawHeight, drawX, drawY;
+            
+            if (imageAR > targetAR) {
+                // Image is wider than target, scale to match target height
+                drawHeight = resolutionDims.height;
+                drawWidth = resolutionDims.height * imageAR;
+                // Position at top-left corner, not centered
+                drawX = 0;
+                drawY = 0;
+            } else {
+                // Image is taller than target, scale to match target width
+                drawWidth = resolutionDims.width;
+                drawHeight = resolutionDims.width / imageAR;
+                // Position at top-left corner, not centered
+                drawX = 0;
+                drawY = 0;
+            }
+            
+            // Apply bias transformations - all referenced to top-left
+            ctx.save();
+            
+            // Apply position offset (absolute pixels, not affected by scale)
+            // This function is for actual cropping, not preview - no padding needed
+            ctx.translate(bias.x, bias.y);
+            
+            // Apply rotation around top-left corner (0,0)
+            ctx.rotate((bias.rotate * Math.PI) / 180);
+            
+            // Apply scale from top-left corner
+            ctx.scale(bias.scale, bias.scale);
+            
+            // Draw the image to fill the canvas (like object-fit: cover)
+            ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+            
+            ctx.restore();
+            
+            // Convert to blob
+            canvas.toBlob((blob) => {
+                const blobUrl = URL.createObjectURL(blob);
+                
+                if (!window.croppedImageBlobUrls) {
+                    window.croppedImageBlobUrls = [];
+                }
+                window.croppedImageBlobUrls.push(blobUrl);
+                
+                resolve(blobUrl);
+            }, 'image/png');
+        };
+        img.src = dataUrl;
+    });
+}
+
+// Setup image bias adjustment event listeners
+function setupImageBiasAdjustmentListeners() {
+    // Modal controls
+    const closeBtn = document.getElementById('closeImageBiasAdjustmentBtn');
+    const cancelBtn = document.getElementById('cancelBiasAdjustmentBtn');
+    const saveBtn = document.getElementById('saveBiasAdjustmentBtn');
+    const resetBtn = document.getElementById('biasResetBtn');
+    const testBtn = document.getElementById('biasTestBtn');
+    
+    if (closeBtn) closeBtn.addEventListener('click', hideImageBiasAdjustmentModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', hideImageBiasAdjustmentModal);
+    if (saveBtn) saveBtn.addEventListener('click', saveBiasAdjustment);
+    if (resetBtn) resetBtn.addEventListener('click', resetBiasControls);
+    if (testBtn) testBtn.addEventListener('click', testBiasAdjustment);
+    
+    // Mask adjustment modal controls
+    const closeMaskAdjustmentBtn = document.getElementById('closeMaskAdjustmentBtn');
+    const editMaskBtn = document.getElementById('editMaskBtn');
+    const autoFillMaskBtn = document.getElementById('autoFillMaskBtn');
+    const skipMaskAdjustmentBtn = document.getElementById('skipMaskAdjustmentBtn');
+    
+    if (closeMaskAdjustmentBtn) closeMaskAdjustmentBtn.addEventListener('click', hideMaskAdjustmentModal);
+    if (editMaskBtn) editMaskBtn.addEventListener('click', () => {
+        hideMaskAdjustmentModal();
+        openMaskEditor();
+    });
+    if (autoFillMaskBtn) autoFillMaskBtn.addEventListener('click', () => {
+        hideMaskAdjustmentModal();
+        autoFillMaskFromTransparentPixels();
+    });
+    if (skipMaskAdjustmentBtn) skipMaskAdjustmentBtn.addEventListener('click', hideMaskAdjustmentModal);
+    
+    // Bias control inputs
+    const biasInputs = ['biasX', 'biasY', 'biasScale', 'biasRotate'];
+    biasInputs.forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.addEventListener('input', handleBiasControlChange);
+            input.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? -1 : 1;
+                const step = parseFloat(input.step) || 1;
+                input.value = parseFloat(input.value || 0) + (delta * step);
+                handleBiasControlChange();
+            });
+        }
+    });
+    
+    // Image dragging
+    const imageContainer = document.getElementById('imagePreviewContainer');
+    if (imageContainer) {
+        imageContainer.addEventListener('mousedown', handleBiasImageMouseDown);
+        document.addEventListener('mousemove', handleBiasImageMouseMove);
+        document.addEventListener('mouseup', handleBiasImageMouseUp);
+    }
+    
+    // Preview toggle button
+    const previewToggleBtn = document.getElementById('previewToggleBtn');
+    
+    if (previewToggleBtn) {
+        previewToggleBtn.addEventListener('click', togglePreviewMode);
+    }
+    
+    // Image bias preset dropdown
+    const presetBtn = document.getElementById('imageBiasPresetBtn');
+    if (presetBtn) {
+        presetBtn.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const menu = document.getElementById('imageBiasPresetMenu');
+            if (menu.style.display === 'block') {
+                closeImageBiasPresetDropdown();
+            } else {
+                renderImageBiasPresetDropdown(); // Default to center
+                openImageBiasPresetDropdown();
+            }
+        });
+    }
+    
+    // Close image bias preset dropdown when clicking outside
+    document.addEventListener('click', e => {
+        const dropdown = document.getElementById('imageBiasPresetDropdown');
+        if (dropdown && !dropdown.contains(e.target)) {
+            closeImageBiasPresetDropdown();
+        }
+    });
+    
+    // Close modal when clicking outside
+    const modal = document.getElementById('imageBiasAdjustmentModal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                hideImageBiasAdjustmentModal();
+            }
+        });
+    }
+    
+    // Confirmation dialog controls
+    const closeConfirmBtn = document.getElementById('closeBiasConfirmBtn');
+    const cancelConfirmBtn = document.getElementById('cancelBiasConfirmBtn');
+    const acceptConfirmBtn = document.getElementById('acceptBiasConfirmBtn');
+    
+    if (closeConfirmBtn) closeConfirmBtn.addEventListener('click', hideBiasAdjustmentConfirmDialog);
+    if (cancelConfirmBtn) cancelConfirmBtn.addEventListener('click', hideBiasAdjustmentConfirmDialog);
+    if (acceptConfirmBtn) acceptConfirmBtn.addEventListener('click', acceptBiasAdjustment);
+    
+    // Close confirmation dialog when clicking outside
+    const confirmDialog = document.getElementById('biasAdjustmentConfirmDialog');
+    if (confirmDialog) {
+        confirmDialog.addEventListener('click', (e) => {
+            if (e.target === confirmDialog) {
+                hideBiasAdjustmentConfirmDialog();
+            }
+        });
+    }
+}
+
+// Add button to open bias adjustment modal
+function addBiasAdjustmentButton() {
+    const imageBiasGroup = document.getElementById('imageBiasGroup');
+    if (!imageBiasGroup) return;
+    
+    // Check if button already exists
+    if (document.getElementById('imageBiasAdjustBtn')) return;
+    
+    const adjustBtn = document.createElement('button');
+    adjustBtn.id = 'imageBiasAdjustBtn';
+    adjustBtn.type = 'button';
+    adjustBtn.className = 'btn-secondary';
+    adjustBtn.innerHTML = '<i class="nai-settings"></i>';
+    adjustBtn.title = 'Advanced Bias Adjustment';
+    
+    adjustBtn.addEventListener('click', showImageBiasAdjustmentModal);
+    
+    // Insert after the dropdown
+    const dropdown = imageBiasGroup.querySelector('#imageBiasDropdown');
+    if (dropdown) {
+        dropdown.parentNode.insertBefore(adjustBtn, dropdown.nextSibling);
+    }
+}
+
+
+
+// Initialize image bias adjustment functionality
+function initializeImageBiasAdjustment() {
+    setupImageBiasAdjustmentListeners();
+    
+    // Connect existing bias adjustment button
+    const adjustBtn = document.getElementById('imageBiasAdjustBtn');
+    if (adjustBtn) {
+        adjustBtn.addEventListener('click', showImageBiasAdjustmentModal);
+    }
+    
+    // Add bias adjustment button when image bias group is shown (fallback)
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                const imageBiasGroup = document.getElementById('imageBiasGroup');
+                if (imageBiasGroup && imageBiasGroup.style.display !== 'none') {
+                    addBiasAdjustmentButton();
+                }
+            }
+        });
+    });
+    
+    const imageBiasGroup = document.getElementById('imageBiasGroup');
+    if (imageBiasGroup) {
+        observer.observe(imageBiasGroup, { attributes: true });
+    }
+}
+
+

@@ -12,7 +12,7 @@
     "multer": "^2.0.1",
     "nai-js-tokenizer": "^1.1.0",
     "nan": "^2.22.2",
-    "nekoai-js": "^1.0.0",
+    "nekoai-js": "file:../NekoAI-JS",
     "sharp": "^0.32.6",
     "tokenizers": "^0.13.3"
   }

@@ -93,49 +93,150 @@
                         </div>
                     </div>
 
-                    <!-- Character Prompts Section -->
-                    <div class="form-group">
-                        <div class="character-prompts-header">
-                            <span class="character-prompts-title">Transformation</span>
-                            <div class="character-prompts-controls">    
-                                <button type="button" id="rerollTypeBtn" class="btn-secondary toggle-btn" data-state="on">
-                                    <i class="nai-img2img"></i> Previous
-                                </button>
-                                <button type="button" id="variationTypeBtn" class="btn-secondary toggle-btn" data-state="off">
-                                    <i class="nai-img2img"></i> Current
-                                </button>
-
+                    <!-- Transformation Section -->
+                    <div class="form-row" id="transformationSection">
+                        <div id="transformationSectionLeft" class="form-col" style="width: 100%; height: 100%; max-width: 50%;">
+                            <div id="transformationSectionLeftHeader" class="form-row">
+                                <div class="form-group">
+                                    <span class="character-prompts-title">Transformation</span>
+                                </div>
+                            </div>
+                            <div id="transformationSectionLeftContent" class="form-row" style="flex: 1 0 auto;">
+                                <div class="variation-image-container">
+                                    <img id="manualVariationImage" src="" alt="Source Image" style="max-width: 200px; max-height: 200px;">
+                                    <canvas id="maskPreviewCanvas" style="max-width: 200px; max-height: 200px; pointer-events: none;"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="transformationSectionRight" class="form-col">
+                            <div class="form-row" style="align-self: flex-end;">
                                 <button type="button" id="inpaintBtn" class="btn-secondary toggle-btn" data-state="off">
                                     <i class="nai-inpaint"></i> Inpaint
                                 </button>
-                                <button type="button" id="browseCacheBtn" class="btn-secondary">
-                                    <i class="nai-history"></i>
-                                </button>
-                                <button type="button" id="uploadImageBaseBtn" class="btn-secondary">
-                                    <i class="nai-import"></i> Upload
-                                </button>
+                                <!-- Custom Transformation Dropdown -->
+                                <div id="transformationDropdown" class="custom-dropdown dropright">
+                                    <button type="button" id="transformationDropdownBtn" class="btn-secondary toggle-btn" data-state="off">
+                                        <i class="nai-img2img"></i>
+                                        <span id="transformationSelected">Select</span>
+                                    </button>
+                                    <div id="transformationDropdownMenu" class="custom-dropdown-menu" style="display: none;">
+                                        <div class="custom-dropdown-option" data-value="reroll" style="display: none;">
+                                            <i class="nai-img2img"></i> Referance
+                                        </div>
+                                        <div class="custom-dropdown-option" data-value="variation" style="display: none;">
+                                            <i class="nai-img2img"></i> Current Image
+                                        </div>
+                                        <div class="custom-dropdown-option" data-value="browse">
+                                            <i class="nai-history"></i> Browse History
+                                        </div>
+                                        <div class="custom-dropdown-option" data-value="upload">
+                                            <i class="nai-import"></i> Upload Image
+                                        </div>
+                                    </div>
+                                </div>
+                                <input type="hidden" id="transformationType" value="reroll">
                                 <button type="button" id="deleteImageBaseBtn" class="btn-secondary" style="display: none;">
-                                    <i class="nai-thin-cross"></i> Delete
+                                    <i class="nai-thin-cross"></i>
                                 </button>
                             </div>
-                        </div>
-                    </div>
-
-                    <!-- Variation-specific fields -->
-                    <div class="form-row" id="manualVariationRow" style="display: none;">
-                        <div class="form-group">
-                            <div class="variation-image-container">
-                                <img id="manualVariationImage" src="" alt="Source Image" style="max-width: 200px; max-height: 200px; display: none;">
-                                <canvas id="maskPreviewCanvas" style="max-width: 200px; max-height: 200px; pointer-events: none;"></canvas>
+                            <div class="form-row img2img-controls">
+                                <div class="form-group" style="flex: unset;">
+                                    <label for="manualStrength">Strength</label>
+                                    <input type="number" id="manualStrengthValue" class="form-control hover-show colored slider-value-input" min="0.0" max="1.0" step="0.01" value="0.8" style="width: 60px; margin-right: 10px;" tabindex="0">
+                                </div>
+                                <div class="form-group" style="flex: unset;">
+                                    <label for="manualNoise">Noise</label>
+                                    <input type="number" id="manualNoiseValue" class="form-control hover-show colored slider-value-input" min="0.0" max="1.0" step="0.01" value="0.1" style="width: 60px; margin-right: 10px;" tabindex="0">
+                                </div>
                             </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="manualStrength">Strength</label>
-                            <input type="number" id="manualStrengthValue" class="form-control hover-show colored slider-value-input" min="0.0" max="1.0" step="0.01" value="0.8" style="width: 60px; margin-right: 10px;" tabindex="0">
-                        </div>
-                        <div class="form-group">
-                            <label for="manualNoise">Noise</label>
-                            <input type="number" id="manualNoiseValue" class="form-control hover-show colored slider-value-input" min="0.0" max="1.0" step="0.01" value="0.1" style="width: 60px; margin-right: 10px;" tabindex="0">
+                            <div class="form-row img2img-controls">
+                                <div class="form-group" id="manualMaskBiasGroup" style="display: none;">
+                                    <label for="manualMaskBias">Mask Bias</label>
+                                    <!-- Custom Manual Mask Bias Dropdown -->
+                                    <div id="manualMaskBiasDropdown" class="custom-dropdown dropup">
+                                        <button type="button" id="manualMaskBiasDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                            <div class="mask-bias-button-content">
+                                                <div class="mask-bias-grid" data-bias="2" data-orientation="landscape">
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                    <div class="grid-cell"></div>
+                                                </div>
+                                                <span id="manualMaskBiasSelected">Center</span>
+                                            </div>
+                                        </button>
+                                        <div id="manualMaskBiasDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                    </div>
+                                    <input type="hidden" id="manualMaskBias" value="2">
+                                </div>
+                                <div class="form-group" id="imageBiasGroup" style="display: none;">
+                                    <label for="imageBias">Image Bias</label>
+                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                        <!-- Custom Image Bias Dropdown -->
+                                        <div id="imageBiasDropdown" class="custom-dropdown dropup">
+                                            <button type="button" id="imageBiasDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                                <div class="mask-bias-button-content">
+                                                    <div class="mask-bias-grid" data-bias="2" data-orientation="landscape">
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                        <div class="grid-cell"></div>
+                                                    </div>
+                                                    <span id="imageBiasSelected">Center</span>
+                                                </div>
+                                            </button>
+                                            <div id="imageBiasDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                        </div>
+                                        <!-- Advanced Bias Adjustment Button -->
+                                        <button type="button" id="imageBiasAdjustBtn" class="btn-secondary" title="Advanced Bias Adjustment">
+                                            <i class="nai-settings"></i>
+                                        </button>
+                                    </div>
+                                    <input type="hidden" id="imageBias" value="2">
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -151,7 +252,7 @@
                             </div>
                             <input type="hidden" id="manualModel" value="">
                         </div>
-                        <div class="form-group">
+                        <div id="manualResolutionGroup" class="form-group">
                             <label for="manualResolution">Resolution</label>
                             <div class="resolution-group">
                                 <div id="manualResolutionDropdown" class="custom-dropdown dropup">
@@ -165,9 +266,9 @@
                                     <button type="button" id="manualCustomResolutionBtn" class="btn-secondary toggle-btn" data-state="off" title="Custom Resolution">
                                         <i class="fas fa-ruler-combined"></i>
                                     </button>
-                                    <input type="number" id="manualWidth" class="form-control" placeholder="Width" min="512" max="2048" step="8">
+                                    <input type="number" id="manualWidth" class="colored form-control hover-show" placeholder="Width" min="512" max="2048" step="8">
                                     <span style="color: #ccc;">×</span>
-                                    <input type="number" id="manualHeight" class="form-control" placeholder="Height" min="512" max="2048" step="8">
+                                    <input type="number" id="manualHeight" class="colored form-control hover-show" placeholder="Height" min="512" max="2048" step="8">
                                 </div>
                                 <button type="button" id="manualUpscale" class="btn-secondary toggle-btn" data-state="off" title="Enable upscaling">
                                     <i class="nai-upscale"></i>
@@ -232,94 +333,15 @@
                             </div>
                             <input type="hidden" id="manualNoiseScheduler" value="">
                         </div>
-                        <div class="form-group" id="manualMaskBiasGroup" style="display: none;">
-                            <label for="manualMaskBias">Mask Bias</label>
-                            <!-- Custom Manual Mask Bias Dropdown -->
-                            <div id="manualMaskBiasDropdown" class="custom-dropdown dropup">
-                                <button type="button" id="manualMaskBiasDropdownBtn" class="custom-dropdown-btn hover-show colored">
-                                    <div class="mask-bias-button-content">
-                                        <div class="mask-bias-grid" data-bias="2" data-orientation="landscape">
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                        </div>
-                                        <span id="manualMaskBiasSelected">Center</span>
-                                    </div>
-                                </button>
-                                <div id="manualMaskBiasDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
-                            </div>
-                            <input type="hidden" id="manualMaskBias" value="2">
-                        </div>
-                        <div class="form-group" id="imageBiasGroup" style="display: none;">
-                            <label for="imageBias">Image Bias</label>
-                            <!-- Custom Image Bias Dropdown -->
-                            <div id="imageBiasDropdown" class="custom-dropdown dropup">
-                                <button type="button" id="imageBiasDropdownBtn" class="custom-dropdown-btn hover-show colored">
-                                    <div class="mask-bias-button-content">
-                                        <div class="mask-bias-grid" data-bias="2" data-orientation="landscape">
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                            <div class="grid-cell"></div>
-                                        </div>
-                                        <span id="imageBiasSelected">Center</span>
-                                    </div>
-                                </button>
-                                <div id="imageBiasDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
-                            </div>
-                            <input type="hidden" id="imageBias" value="2">
-                        </div>
+
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
                             <label for="manualPresetName">Preset Name</label>
-                            <input type="text" id="manualPresetName" class="form-control" placeholder="Enter preset name to save...">
+                            <input type="text" id="manualPresetName" class="form-control hover-show colored" placeholder="Enter preset name to save...">
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="flex: unset;">
                             <label>&nbsp;</label>
                             <button type="button" id="manualSaveBtn" class="btn-secondary">
                                 <i class="nai-save"></i> Save Preset
@@ -328,9 +350,14 @@
                     </div>
 
                     <div class="form-actions btn-group">
-                        <div id="manualPriceDisplay" class="price-display badge" style="display: none;">
-                            <i class="nai-anla"></i>
-                            <span id="manualPriceList" class="price-list">-</span>
+                        <div class="footer-left">
+                            <div id="manualPriceDisplay" class="price-display badge" style="display: none;">
+                                <i class="nai-anla"></i>
+                                <span id="manualPriceList" class="price-list">-</span>
+                            </div>
+                            <button type="button" id="paidRequestToggle" class="btn-secondary toggle-btn" data-state="off" title="Force Paid Request">
+                                <i class="fas fa-dollar-sign"></i>
+                            </button>
                         </div>
                         <button type="button" id="closeManualBtn" class="btn-secondary">Cancel</button>
                         <button type="submit" id="manualGenerateBtn" class="btn-primary">
@@ -367,9 +394,15 @@
                                 <button id="manualPreviewVariationBtn" class="btn-primary round-button" style="display: none;">
                                     <i class="nai-inpaint"></i>
                                 </button>
-                                <button id="manualPreviewSeedBtn" class="btn-primary round-button" style="display: none;" title="Copy seed to form">
+                                <button id="manualPreviewSeedBtn" class="btn-primary round-button" style="display: none;">
                                     <i class="nai-seed"></i>
                                 </button>
+                            </div>
+                            <div class="manual-preview-controls-right">
+                                <div class="preview-info-badge">
+                                    <i class="nai-seed"></i>
+                                    <span id="manualPreviewSeedNumber">---</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -401,9 +434,16 @@
         </div>
     </div>
 
+    <!-- Preset Autocomplete Overlay -->
+    <div id="presetAutocompleteOverlay" class="preset-autocomplete-overlay hidden size-small">
+        <div class="preset-autocomplete-list">
+            <!-- Preset suggestions will be populated here -->
+        </div>
+    </div>
+
     <!-- Position Dialog Modal -->
     <div id="positionDialog" class="modal">
-        <div class="modal-content position-dialog-content">
+        <div class="modal-content position-dialog-content center">
             <div class="position-dialog-body">
                 <div class="position-grid">
                     <div class="position-row">
@@ -450,39 +490,162 @@
         </div>
     </div>
 
-
-
     <!-- Mask Editor Dialog Modal -->
     <div id="maskEditorDialog" class="modal">
         <div class="modal-content mask-editor-content">
-            <div class="mask-editor-header">
-                <h3>Mask Editor</h3>
-                <button id="closeMaskEditorBtn" class="close-dialog">&times;</button>
-            </div>
             <div class="mask-editor-body">
                 <div class="mask-editor-tools">
+                    <h3>Mask Editor</h3>
                     <button type="button" id="maskBrushBtn" class="btn-secondary toggle-btn" data-state="on" title="Brush Tool">
                         <i class="fas fa-paint-brush"></i> Brush
                     </button>
                     <button type="button" id="maskEraserBtn" class="btn-secondary toggle-btn" data-state="off" title="Eraser Tool">
                         <i class="fas fa-eraser"></i> Eraser
                     </button>
+                    <button type="button" id="brushShapeBtn" class="btn-secondary" title="Toggle Brush Shape">
+                        <i class="fas fa-square"></i>
+                    </button>
                     <div class="brush-size-control">
-                        <label for="brushSize">Brush Size:</label>
-                        <input type="range" id="brushSize" min="1" max="200" value="30" class="form-control">
-                        <span id="brushSizeValue">30</span>
+                        <input type="number" id="brushSize" class="form-control hover-show colored" min="1" max="20" value="3" style="width: 50px;">
                     </div>
                     <button type="button" id="clearMaskBtn" class="btn-secondary" title="Clear Mask">
                         <i class="fas fa-trash"></i> Clear
                     </button>
                 </div>
                 <div class="mask-editor-canvas-container">
-                    <canvas id="maskCanvas" width="512" height="512"></canvas>
+                    <div class="mask-editor-canvas-inner" id="maskEditorCanvasInner">
+                        <canvas id="maskCanvas" width="64" height="64"></canvas>
+                    </div>
                 </div>
                 <div class="mask-editor-actions">
                     <button type="button" id="deleteMaskBtn" class="btn-danger">Delete Mask</button>
                     <button type="button" id="saveMaskBtn" class="btn-primary">Save Mask</button>
                     <button type="button" id="cancelMaskBtn" class="btn-secondary">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Bias Adjustment Modal -->
+    <div id="imageBiasAdjustmentModal" class="modal">
+        <div class="modal-content image-bias-adjustment-content">
+            <div class="image-bias-adjustment-body">
+                <!-- Bias Controls Section -->
+                <div class="bias-controls-section main-controls">
+                    <h3>Image Bias</h3>
+                    <div class="bias-controls-grid">
+                        <div class="bias-control-group">
+                            <label for="biasX">X Position</label>
+                            <input type="number" id="biasX" class="form-control hover-show colored" min="0" max="2048" step="1" value="0">
+                        </div>
+                        <div class="bias-control-group">
+                            <label for="biasY">Y Position</label>
+                            <input type="number" id="biasY" class="form-control hover-show colored" min="0" max="2048" step="1" value="0">
+                        </div>
+                        <div class="bias-control-group">
+                            <label for="biasScale">Scale</label>
+                            <input type="number" id="biasScale" class="form-control hover-show colored" min="0.1" max="3.0" step="0.01" value="1.0">
+                        </div>
+                        <div class="bias-control-group">
+                            <label for="biasRotate">Rotate</label>
+                            <input type="number" id="biasRotate" class="form-control hover-show colored" min="-180" max="180" step="1" value="0">
+                        </div>
+                        <div class="bias-control-group">
+                            <label>&nbsp;</label>
+                            <div style="display: flex; gap: 8px; align-items: center; margin-right: auto;">
+                                <div class="custom-dropdown" id="imageBiasPresetDropdown">
+                                    <button type="button" class="btn-secondary" id="imageBiasPresetBtn">
+                                        <span class="mask-bias-label">Preset</span>
+                                    </button>
+                                    <div class="custom-dropdown-menu" id="imageBiasPresetMenu" style="display: none;"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bias-control-group" style="margin-left: auto;">
+                            <label>&nbsp;</label>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button type="button" id="biasResetBtn" class="btn-secondary">
+                                    <i class="nai-reload"></i> Reset
+                                </button>
+                                <button type="button" id="previewToggleBtn" class="btn-secondary toggle-btn" data-state="off">
+                                    <i class="nai-sparkles"></i> Client Preview
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Image Preview Section -->
+                <div class="image-preview-section">
+                    <div class="image-preview-container" id="imagePreviewContainer">
+                        <div class="target-area-overlay" id="targetAreaOverlay">
+                            <div class="target-area-border"></div>
+                        </div>
+                        <div id="biasAdjustmentImageWrapper" class="bias-adjustment-image-wrapper">
+                            <img id="biasAdjustmentImage" src="" alt="Base Image" class="bias-adjustment-image">
+                        </div>
+                        <img id="clientPreviewImage" src="" alt="Client Preview" class="client-preview-image" style="display: none;">
+                    </div>
+                </div>
+            </div>
+            <div class="image-bias-adjustment-actions">
+                <button type="button" id="cancelBiasAdjustmentBtn" class="btn-secondary">Cancel</button>
+                <button type="button" id="saveBiasAdjustmentBtn" class="btn-primary">Save Adjustment</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Bias Adjustment Confirmation Dialog -->
+    <div id="biasAdjustmentConfirmDialog" class="modal alert-theme">
+        <div class="modal-content bias-confirm-content center">
+            <div class="bias-confirm-header">
+                <h3>Confirm Bias Adjustment</h3>
+                <button id="closeBiasConfirmBtn" class="close-dialog">&times;</button>
+            </div>
+            <div class="bias-confirm-body">
+                <p>Review the previews below to confirm your bias adjustment:</p>
+                <div class="bias-confirm-previews">
+                    <div class="preview-section">
+                        <h4>Client Preview</h4>
+                        <div class="preview-image-container">
+                            <img id="confirmClientPreview" src="" alt="Client Preview">
+                        </div>
+                    </div>
+                    <div class="preview-section">
+                        <h4>Server Preview</h4>
+                        <div class="preview-image-container">
+                            <img id="confirmServerPreview" src="" alt="Server Preview">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bias-confirm-actions">
+                <button type="button" id="cancelBiasConfirmBtn" class="btn-secondary">Cancel</button>
+                <button type="button" id="acceptBiasConfirmBtn" class="btn-primary">Accept & Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mask Adjustment Modal -->
+    <div id="maskAdjustmentModal" class="modal alert-theme">
+        <div class="modal-content mask-adjustment-content center">
+            <div class="mask-adjustment-header">
+                <h3>Mask Adjustment Required</h3>
+                <button id="closeMaskAdjustmentBtn" class="close-dialog">&times;</button>
+            </div>
+            <div class="mask-adjustment-body">
+                <p>The image bias adjustment has changed the image composition. Your existing mask may no longer match the new image layout.</p>
+                <p>Would you like to:</p>
+                <div class="mask-adjustment-options">
+                    <button type="button" id="editMaskBtn" class="btn-primary">
+                        <i class="fas fa-edit"></i> Edit Mask
+                    </button>
+                    <button type="button" id="autoFillMaskBtn" class="btn-secondary">
+                        <i class="fas fa-magic"></i> Auto Correct Mask
+                    </button>
+                    <button type="button" id="skipMaskAdjustmentBtn" class="btn-secondary">
+                        <i class="fas fa-times"></i> Skip
+                    </button>
                 </div>
             </div>
         </div>

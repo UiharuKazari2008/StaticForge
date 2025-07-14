@@ -172,6 +172,15 @@ function getResolutionFromDimensions(width, height) {
 
 // Helper: Get dimensions from resolution name
 function getDimensionsFromResolution(resolution) {
+    // Handle custom resolution format: custom_1024x768
+    if (resolution && resolution.startsWith('custom_')) {
+        const dimensions = resolution.replace('custom_', '');
+        const [width, height] = dimensions.split('x').map(Number);
+        if (width && height) {
+            return { width, height };
+        }
+    }
+    
     // Convert to lowercase for case-insensitive lookup
     const normalizedResolution = resolution.toLowerCase();
     return inverseDimensionsMap[normalizedResolution] || null;
@@ -492,11 +501,11 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
             }
         }
 
-    // Check if this is a variation preset or img2img request
+    // Check if this is an img2img request
     const baseOptions = {
         prompt: processedPrompt,
         negative_prompt: processedNegativePrompt,
-        model: Model[model.toUpperCase() + (body.mask && body.image && !model.toUpperCase().includes('_INP') ? '_INP' : '')],
+        model: Model[model.toUpperCase() + ((body.mask || body.mask_compressed) && body.image && !model.toUpperCase().includes('_INP') ? '_INP' : '')],
         steps: parseInt(body.steps || preset?.steps || '24'),
         scale: parseFloat((body.guidance || preset?.guidance || '5.5').toString()),
         cfg_rescale: parseFloat((body.rescale || preset?.rescale || '0.0').toString()),
@@ -566,9 +575,27 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
             console.log(`📏 Resized base image to ${targetDims.width}x${targetDims.height} with bias ${body.image_bias}`);
         }
 
-        baseOptions.action = (body.mask) ? Action.INPAINT : Action.IMG2IMG;
+        baseOptions.action = (body.mask || body.mask_compressed) ? Action.INPAINT : Action.IMG2IMG;
         baseOptions.color_correct = false;
+        if (body.mask_compressed) {
+            // Process the compressed mask using the same logic as saveMask
+            const targetDims = { width: baseOptions.width, height: baseOptions.height };
+            if (!targetDims.width || !targetDims.height) {
+                const dims = getDimensionsFromResolution(baseOptions.resPreset?.toLowerCase() || "");
+                if (dims) {
+                    targetDims.width = dims.width;
+                    targetDims.height = dims.height;
+                }
+            }
+            
+            // Process the compressed mask to target resolution
+            const maskBuffer = Buffer.from(body.mask_compressed, 'base64');
+            const processedMaskBuffer = await resizeMaskWithCanvas(maskBuffer, targetDims.width, targetDims.height);
+            body.mask = processedMaskBuffer.toString('base64');
+            baseOptions.mask_compressed = body.mask_compressed;
+        }
         if (body.mask) {
+            // Process compressed mask if available, otherwise use regular mask
             baseOptions.mask = body.mask;
             baseOptions.strength = parseFloat((body.inpainting_strength || body.strength || "1").toString());
             baseOptions.noise = 0.0;
@@ -627,6 +654,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null) {
     delete apiOpts.image_bias;
     delete apiOpts.mask_bias;
     delete apiOpts.image_source;
+    delete apiOpts.mask_compressed;
 
     // Process character prompts: only enabled characters go to API, all characters go to forge_data
     if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts)) {
@@ -731,16 +759,18 @@ async function handleGeneration(opts, returnImage = false, presetName = null) {
         }
         
         // Add mask bias if present
-        if (opts.mask_bias !== undefined) {
+        if (opts.mask_bias !== undefined ) {
             forgeData.mask_bias = opts.mask_bias;
         }
-        if (opts.mask !== undefined) {
+        if (opts.mask_compressed !== undefined) {
+            forgeData.mask_compressed = opts.mask_compressed;
+        } else if (opts.mask !== undefined) {
             forgeData.mask = opts.mask;
         }
 
-        // Add variation info if applicable
+        // Add image source info if applicable
         if ((opts.action === Action.IMG2IMG || opts.action === Action.INPAINT) && opts.image) {
-            forgeData.generation_type = 'variation';
+            forgeData.generation_type = 'img2img';
             if (opts.image_source) {
                 forgeData.image_source = opts.image_source;
             }
@@ -851,12 +881,17 @@ const handleImageRequest = async (req, res, opts, presetName = null) => {
     }
     
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename');
+    res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename, X-Seed');
     
     if (result && result.filename) {
         res.setHeader('X-Generated-Filename', result.filename);
     } else {
         console.log('❌ No filename available in result:', result);
+    }
+    
+    // Add seed to response header
+    if (result && result.seed !== undefined) {
+        res.setHeader('X-Seed', result.seed.toString());
     }
     if (req.query.download === 'true') {
         const extension = optimize ? 'jpg' : 'png';
@@ -866,49 +901,98 @@ const handleImageRequest = async (req, res, opts, presetName = null) => {
     res.send(finalBuffer);
 };
 
-// POST /preset/save (save a new preset) - MUST BE BEFORE /preset/:name
-app.post('/preset/save', authMiddleware, async (req, res) => {
+app.put('/preset/:name', authMiddleware, async (req, res) => {
     try {
-        const { name, ...presetData } = req.body;
-        
-        
-        if (!name || !presetData.prompt || !presetData.model) {
+        const presetName = req.params.name;
+        const presetData = req.body;
+
+        if (!presetName || !presetData.prompt || !presetData.model) {
             return res.status(400).json({ error: 'Preset name, prompt, and model are required' });
         }
-        
+
         const currentPromptConfig = loadPromptConfig();
-        
-        // Add the new preset
-        currentPromptConfig.presets[name] = {
+
+        // Only set default if value is missing (null or undefined)
+        function withDefault(val, def) {
+            return (val === undefined || val === null) ? def : val;
+        }
+
+        currentPromptConfig.presets[presetName] = {
             prompt: presetData.prompt,
-            uc: presetData.uc || '',
+            uc: withDefault(presetData.uc, ''),
             model: presetData.model,
-            resolution: presetData.resolution || '',
-            steps: presetData.steps || 25,
-            guidance: presetData.guidance || 5.0,
-            rescale: presetData.rescale || 0.0,
-            seed: presetData.seed || undefined,
-            sampler: presetData.sampler || undefined,
-            noiseScheduler: presetData.noiseScheduler || undefined,
-            upscale: presetData.upscale || undefined,
-            allow_paid: presetData.allow_paid || false,
-            image: presetData.image || null,
-            strength: presetData.strength || 0.8,
-            noise: presetData.noise || 0.1,
-            mask: presetData.mask || null,
-            characterPrompts: presetData.characterPrompts || []
+            resolution: withDefault(presetData.resolution, ''),
+            steps: withDefault(presetData.steps, 25),
+            guidance: withDefault(presetData.guidance, 5.0),
+            rescale: withDefault(presetData.rescale, 0.0),
+            seed: withDefault(presetData.seed, undefined),
+            sampler: withDefault(presetData.sampler, undefined),
+            noiseScheduler: withDefault(presetData.noiseScheduler, undefined),
+            upscale: withDefault(presetData.upscale, undefined),
+            allow_paid: withDefault(presetData.allow_paid, false),
+            variety: withDefault(presetData.variety, false),
+            image: withDefault(presetData.image, undefined),
+            strength: withDefault(presetData.strength, 0.8),
+            noise: withDefault(presetData.noise, 0.1),
+            image_bias: withDefault(presetData.image_bias, undefined),
+            mask: withDefault(presetData.mask, undefined),
+            mask_compressed: withDefault(presetData.mask_compressed, undefined),
+            characterPrompts: withDefault(presetData.allCharacterPrompts, withDefault(presetData.characterPrompts, [])),
+            use_coords: withDefault(presetData.use_coords, false),
+            width: withDefault(presetData.width, undefined),
+            height: withDefault(presetData.height, undefined),
+            image_source: withDefault(presetData.image_source, undefined)
         };
-        
-        // Save to file
+
         fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
-        
-        console.log(`💾 Saved new preset: ${name}`);
-        
-        res.json({ success: true, message: `Preset "${name}" saved successfully` });
-        
+
+        console.log(`💾 Saved new preset: ${presetName}`);
+
+        res.json({ success: true, message: `Preset "${presetName}" saved successfully` });
+
     } catch(e) {
         console.log('❌ Error occurred in preset save:', e.message);
         res.status(500).json({ error: e.message });
+    }
+});
+
+// Preset auto-complete endpoint - search presets
+app.get('/preset-autocomplete', authMiddleware, async (req, res) => {
+    try {
+        const query = req.query.q;
+        if (!query || query.trim().length < 2) {
+            return res.json([]);
+        }
+        
+        const searchTerm = query.trim().toLowerCase();
+        const currentPromptConfig = loadPromptConfig();
+        const results = [];
+        
+        // Search through presets
+        Object.keys(currentPromptConfig.presets).forEach(presetName => {
+            if (presetName.toLowerCase().includes(searchTerm)) {
+                const preset = currentPromptConfig.presets[presetName];
+                results.push({
+                    name: presetName,
+                    model: preset.model || 'v4_5',
+                    resolution: preset.resolution || '',
+                    upscale: preset.upscale || false,
+                    allow_paid: preset.allow_paid || false,
+                    variety: preset.variety || false,
+                    character_prompts: preset.characterPrompts && preset.characterPrompts.length > 0,
+                    base_image: preset.image || preset.image_source
+                });
+            }
+        });
+        
+        // Limit results to 10 items
+        const limitedResults = results.slice(0, 10);
+        
+        res.json(limitedResults);
+        
+    } catch (error) {
+        console.log('❌ Preset auto-complete search error:', error.message);
+        res.status(500).json({ error: error.message });
     }
 });
 
@@ -966,7 +1050,7 @@ app.get('/preset/:name', authMiddleware, async (req, res) => {
         }
     }
     
-    // Check if this is a variation preset
+    // Build options for generation
     const opts = await buildOptions(p.model, {}, p, req.query);
     let result = await handleGeneration(opts, true, req.params.name);
     // Cache the result if generation was successful
@@ -1006,45 +1090,8 @@ app.get('/preset/:name', authMiddleware, async (req, res) => {
     }
 });
 
-// GET /preset/:name/prompt?resolution=... (no body, just preset)
-app.get('/preset/:name/prompt', authMiddleware, async (req, res) => {
-    try {
-    const currentPromptConfig = loadPromptConfig();
-    const p = currentPromptConfig.presets[req.params.name];
-    if (!p) return res.status(404).json({ error: 'Preset not found' });
-    const resolution = req.query.resolution;
-    const body = resolution ? { resolution } : {};
-    const opts = await buildOptions(p.model, body, p, req.query);
-    res.json({ prompt: opts.prompt, uc: opts.negative_prompt });
-    } catch(e) {
-        console.log('❌ Error occurred:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// POST /preset/:name/prompt (body overrides)
-app.post('/preset/:name/prompt', authMiddleware, async (req, res) => {
-    try {
-    const currentPromptConfig = loadPromptConfig();
-    const p = currentPromptConfig.presets[req.params.name];
-    if (!p) return res.status(404).json({ error: 'Preset not found' });
-    const bodyOverrides = { ...req.body };
-    if (bodyOverrides.prompt) {
-        const originalPrompt = p.prompt || '';
-        bodyOverrides.prompt = originalPrompt + ', ' + bodyOverrides.prompt;
-        delete bodyOverrides.uc;
-    }
-    // Check if this is a variation preset
-    const opts = await buildOptions(p.model, bodyOverrides, req.query);
-    res.json({ prompt: opts.prompt, uc: opts.negative_prompt });
-    } catch(e) {
-        console.log('❌ Error occurred:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// GET /preset/:name/raw (returns raw preset data without text replacement processing)
-app.get('/preset/:name/raw', authMiddleware, async (req, res) => {
+// GET /preset/:name (returns raw preset data without text replacement processing)
+app.options('/preset/:name', authMiddleware, async (req, res) => {
     try {
         const currentPromptConfig = loadPromptConfig();
         const p = currentPromptConfig.presets[req.params.name];
@@ -1054,23 +1101,32 @@ app.get('/preset/:name/raw', authMiddleware, async (req, res) => {
         
         // Return the raw preset data without processing text replacements
         res.json({
-            prompt: p.prompt || '',
-            uc: p.uc || '',
-            model: p.model || '',
-            resolution: p.resolution || '',
-            steps: p.steps || 25,
-            guidance: p.guidance || 5.0,
-            rescale: p.rescale || 0.0,
-            seed: p.seed || null,
-            sampler: p.sampler || null,
-            noiseScheduler: p.noiseScheduler || null,
-            upscale: p.upscale || false,
-            allow_paid: p.allow_paid || false,
-            image: p.image || null,
-            strength: p.strength || 0.8,
-            noise: p.noise || 0.1,
-            mask: p.mask || null,
-            characterPrompts: p.characterPrompts || []
+            prompt: (p.prompt !== undefined ? p.prompt : ''),
+            uc: (p.uc !== undefined ? p.uc : ''),
+            model: (p.model !== undefined ? p.model : 'v4_5'),
+            resolution: (p.resolution !== undefined ? p.resolution : 'normal_portrait'),
+            steps: (p.steps !== undefined ? p.steps : 25),
+            guidance: (p.guidance !== undefined ? p.guidance : 5.0),
+            rescale: (p.rescale !== undefined ? p.rescale : 0.0),
+            seed: p.seed || undefined,
+            sampler: p.sampler || undefined,
+            noiseScheduler: p.noiseScheduler || undefined,
+            upscale: (p.upscale !== undefined ? p.upscale : false),
+            allow_paid: (p.allow_paid !== undefined ? p.allow_paid : false),
+            variety: (p.variety !== undefined ? p.variety : false),
+            image: p.image || undefined,
+            strength: (p.strength !== undefined ? p.strength : undefined),
+            noise: (p.noise !== undefined ? p.noise : undefined),
+            image_bias: (p.image_bias !== undefined ? p.image_bias : undefined),
+            mask: p.mask || undefined,
+            mask_compressed: p.mask_compressed || undefined,
+            mask_bias: (p.mask_bias !== undefined ? p.mask_bias : undefined),
+            characterPrompts: (p.characterPrompts !== undefined ? p.characterPrompts : []),
+            allCharacterPrompts: (p.allCharacterPrompts !== undefined ? p.allCharacterPrompts : []),
+            use_coords: p.use_coords || false,
+            width: (p.width !== undefined ? p.width : undefined),
+            height: (p.height !== undefined ? p.height : undefined),
+            image_source: (p.image_source !== undefined ? p.image_source : undefined)
         });
     } catch(e) {
         console.log('❌ Error occurred:', e.message);
@@ -1159,7 +1215,7 @@ app.get('/preset/:name/:resolution', authMiddleware, async (req, res) => {
     }
     
     const bodyOverrides = { resolution };
-    // Check if this is a variation preset
+    // Build options for generation
     const opts = await buildOptions(p.model, bodyOverrides, p, req.query);
     let result = await handleGeneration(opts, true, req.params.name);
     // Cache the result if generation was successful
@@ -1265,7 +1321,7 @@ app.post('/preset/:name/:resolution', authMiddleware, async (req, res) => {
         }
     }
     
-    // Check if this is a variation preset
+    // Build options for generation
     const opts = await buildOptions(p.model, bodyOverrides, p, req.query);
     let result = await handleGeneration(opts, true, req.params.name);
     // Cache the result if generation was successful and no body overrides (except resolution)
@@ -2145,7 +2201,7 @@ async function extractRelevantFields(meta, filename) {
     // Extract metadata from forge_data only
     const forgeData = meta.forge_data || {};
     const upscaled = forgeData.upscale_ratio !== null && forgeData.upscale_ratio !== undefined;
-    const hasBaseImage = forgeData.variation_source !== undefined || forgeData.image_source !== undefined;
+    const hasBaseImage = forgeData.image_source !== undefined;
     
     // Extract character prompts from forge_data (includes disabled characters and character names)
     let characterPrompts = [];
@@ -2262,11 +2318,7 @@ async function extractRelevantFields(meta, filename) {
         strength: meta.strength,
         noise: meta.noise
     };
-    
-    // Add frontend upload data if present
-    if (forgeData.variation_source) {
-        result.image_source = forgeData.variation_source;
-    }
+
     // If image_source is present, get width and height from the file and add to result
     if (result.image_source) {
         try {
@@ -2296,7 +2348,9 @@ async function extractRelevantFields(meta, filename) {
     if (forgeData.mask_bias !== undefined) {
         result.mask_bias = forgeData.mask_bias;
     }
-    if (forgeData.mask !== undefined) {
+    if (forgeData.mask_compressed !== undefined) {
+        result.mask_compressed = forgeData.mask_compressed;
+    } else if (forgeData.mask !== undefined) {
         result.mask = forgeData.mask;
     }
     
@@ -3026,9 +3080,11 @@ async function executePipeline(pipelineName, queryParams = {}, customPipeline = 
             // Default: Generate base image using layer1 preset (prompt type)
             const preset1 = getPresetData(pipeline.layer1);
             
-            // Check if layer1 has variation settings            
+            // Build options for layer1
             const layer1Opts = await buildOptions(preset1.model, {}, preset1, queryParams);
-            layer1Opts.resPreset = Resolution[resolution.toUpperCase()];
+            if (!layer1Opts.width && !layer1Opts.height) {
+                layer1Opts.resPreset = Resolution[resolution.toUpperCase()];
+            }
             layer1Opts.upscale = false; 
             layer1Opts.no_save = true; // Don't save the intermediate base image
             
@@ -3039,7 +3095,7 @@ async function executePipeline(pipelineName, queryParams = {}, customPipeline = 
             }
             
             if (preset1.image) {
-                console.log(`📸 Generating layer1 variation with ${typeof pipeline.layer1 === 'string' ? pipeline.layer1 : 'inline preset'} (strength: ${preset1.strength}, noise: ${preset1.noise})...`);
+                console.log(`📸 Generating layer1 img2img with ${typeof pipeline.layer1 === 'string' ? pipeline.layer1 : 'inline preset'} (strength: ${preset1.strength}, noise: ${preset1.noise})...`);
             } else {
                 console.log(`📸 Generating base image with ${typeof pipeline.layer1 === 'string' ? pipeline.layer1 : 'inline preset'}...`);
             }
@@ -3056,8 +3112,17 @@ async function executePipeline(pipelineName, queryParams = {}, customPipeline = 
             throw new Error(`Invalid resolution: ${resolution}`);
         }
         
-        const maskResult = await generateAndPadMask(pipeline.mask, targetDims, maskBias);
-        const mask = typeof maskResult === 'string' ? maskResult : maskResult.toString('base64');
+        let mask;
+        if (pipeline.mask_compressed) {
+            // Process compressed mask using the same logic as buildOptions
+            const maskBuffer = Buffer.from(pipeline.mask_compressed, 'base64');
+            const processedMaskBuffer = await resizeMaskWithCanvas(maskBuffer, targetDims.width, targetDims.height);
+            mask = processedMaskBuffer.toString('base64');
+        } else {
+            // Use regular mask processing
+            const maskResult = await generateAndPadMask(pipeline.mask, targetDims, maskBias);
+            mask = typeof maskResult === 'string' ? maskResult : maskResult.toString('base64');
+        }
         
         // Step 3: Generate inpainting image using layer2 preset
         const layer2Opts = await buildOptions(preset2.model, {}, preset2, queryParams);
@@ -3067,7 +3132,12 @@ async function executePipeline(pipelineName, queryParams = {}, customPipeline = 
         layer2Opts.model = Model[inpaintingModelName];
         layer2Opts.image = baseImage;
         layer2Opts.mask = mask;
-        layer2Opts.resPreset = Resolution[resolution.toUpperCase()];
+        if (pipeline.mask_compressed) {
+            layer2Opts.mask_compressed = pipeline.mask_compressed;
+        }
+        if (!layer2Opts.height && !layer2Opts.width) {
+            layer2Opts.resPreset = Resolution[resolution.toUpperCase()];
+        }
         layer2Opts.strength = 1; // Default inpainting strength
         layer2Opts.noise = 0.1;
         
@@ -3094,7 +3164,7 @@ async function executePipeline(pipelineName, queryParams = {}, customPipeline = 
 app.post('/pipeline/generate', authMiddleware, async (req, res) => {
     try {
         
-        const { layer1: layer1Input, layer1_type: layer1TypeInput, layer2: layer2Input, mask: maskInput, resolution: resolutionInput, preset, layer1_seed, layer2_seed, inpainting_strength, mask_bias, layer1_variation } = req.body;
+        const { layer1: layer1Input, layer1_type: layer1TypeInput, layer2: layer2Input, mask: maskInput, mask_compressed: maskCompressedInput, resolution: resolutionInput, preset, layer1_seed, layer2_seed, inpainting_strength, mask_bias } = req.body;
         
         // Convert seeds to integers if they are strings
         const layer1SeedInt = layer1_seed !== undefined ? parseInt(layer1_seed) : undefined;
@@ -3137,6 +3207,9 @@ app.post('/pipeline/generate', authMiddleware, async (req, res) => {
             }
             if (maskInput !== undefined) {
                 customPipeline.mask = maskInput;
+            }
+            if (maskCompressedInput !== undefined) {
+                customPipeline.mask_compressed = maskCompressedInput;
             }
             if (resolutionInput !== undefined) {
                 customPipeline.resolution = resolutionInput;
@@ -3213,7 +3286,8 @@ app.post('/pipeline/generate', authMiddleware, async (req, res) => {
                 layer1: layer1Input,
                 layer1_type: layer1TypeInput || 'prompt',
                 layer2: layer2Input,
-                mask: maskInput || [100, 100, 300, 300], // Default mask coordinates
+                mask: maskInput, // Default mask coordinates
+                mask_compressed: maskCompressedInput,
                 resolution: resolutionInput,
                 inpainting_strength: inpainting_strength || 0.7
             };
@@ -3437,6 +3511,28 @@ app.options('/pipeline/:name', authMiddleware, async (req, res) => {
             return res.status(404).json({ error: 'Pipeline not found' });
         }
         
+        // Check if mask rendering is requested
+        if (req.query.render_mask === 'true') {
+            // Generate the mask at pipeline resolution
+            const pipelineDims = getDimensionsFromResolution(pipeline.resolution);
+            if (!pipelineDims) {
+                return res.status(400).json({ error: `Invalid pipeline resolution: ${pipeline.resolution}` });
+            }
+            
+            const maskBias = req.query.mask_bias !== undefined ? parseInt(req.query.mask_bias) : 2;
+            const maskResult = await generateAndPadMask(pipeline.mask, pipelineDims, maskBias);
+            const maskBuffer = typeof maskResult === 'string' ? Buffer.from(maskResult, 'base64') : maskResult;
+            
+            // Return the mask as base64 in the response
+            const maskBase64 = maskBuffer.toString('base64');
+            return res.json({
+                type: 'pipeline_mask',
+                name: req.params.name,
+                mask: maskBase64,
+                resolution: pipeline.resolution
+            });
+        }
+        
         // Helper function to resolve layer info
         const resolveLayerInfo = (layer) => {
             if (typeof layer === 'string') {
@@ -3594,7 +3690,7 @@ app.post('/:model/generate', authMiddleware, async (req, res) => {
 
         let body = req.body;
         let baseFilename = null;
-        
+
         const opts = await buildOptions(key, body, null, req.query);
         // Add original filename for metadata tracking if this is img2img and not a frontend upload
         if (body.image && !body.is_frontend_upload) {
@@ -3679,95 +3775,14 @@ app.get('/auto-complete/:index', authMiddleware, async (req, res) => {
     }
 });
 
+
+
 // Load character data on startup
 loadCharacterData();
 
 app.listen(config.port, () => console.log(`Server running on port ${config.port}`));
 
-// GET variation endpoint - same as POST but with query parameters
-app.get('/variation/:filename', authMiddleware, async (req, res) => {
-    try {
-        const filename = req.params.filename;
-        const strength = req.query.strength || 0.8;
-        const noise = req.query.noise || 0.1;
-        const prompt = req.query.prompt;
-        const uc = req.query.uc;
-        
-        // Find the non-upscaled version of the image
-        let baseFilename = filename;
-        if (filename.includes('_upscaled')) {
-            baseFilename = filename.replace('_upscaled.png', '.png');
-        }
-        
-        const filePath = path.join(imagesDir, baseFilename);
-        
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'Image not found' });
-        }
-        
-        // Read the image and convert to base64
-        const imageBuffer = fs.readFileSync(filePath);
-        const base64Image = imageBuffer.toString('base64');
-        
-        // Get metadata from the original image
-        const meta = extractNovelAIMetadata(filePath);
-        if (!meta) {
-            return res.status(404).json({ error: 'No NovelAI metadata found' });
-        }
-        // Extract relevant fields including proper resolution
-        const relevantMeta = await extractRelevantFields(meta, baseFilename);
-        if (!relevantMeta) {
-            return res.status(404).json({ error: 'Failed to extract metadata fields' });
-        }
-        
-        // Build options for img2img
-        const model = determineModelFromMetadata(meta);
-        const modelName = model.toLowerCase();
-        
-        // Create request body with original settings
-        const requestBody = {
-            image: base64Image,
-            strength: parseFloat(strength),
-            noise: parseFloat(noise),
-            prompt: prompt || relevantMeta.prompt || '',
-            uc: uc || relevantMeta.uc || '',
-            resolution: relevantMeta.resolution || '',
-            steps: relevantMeta.steps || 25,
-            guidance: relevantMeta.scale || 5.0,
-            rescale: relevantMeta.cfg_rescale || 0.0,
-            allow_paid: true
-        };
-        
-        // Add optional fields if they have values
-        if (relevantMeta.sampler) {
-            const samplerObj = getSamplerByMeta(relevantMeta.sampler);
-            requestBody.sampler = samplerObj ? samplerObj.request : relevantMeta.sampler;
-        }
-        
-        if (relevantMeta.noise_schedule) {
-            const noiseObj = getNoiseByMeta(relevantMeta.noise_schedule);
-            requestBody.noiseScheduler = noiseObj ? noiseObj.request : relevantMeta.noise_schedule;
-        }
-        
-        if (relevantMeta.skip_cfg_above_sigma) {
-            requestBody.variety = true;
-        }
-        
-        // Add character prompts if available
-        if (relevantMeta.characterPrompts && Array.isArray(relevantMeta.characterPrompts) && relevantMeta.characterPrompts.length > 0) {
-            requestBody.allCharacterPrompts = relevantMeta.characterPrompts;
-        }
-        
-        // Build options and generate
-        const opts = await buildOptions(modelName, requestBody, null, req.query);
-        // Add original filename for metadata tracking
-        opts.original_filename = baseFilename;
-        await handleImageRequest(req, res, opts);
-    } catch (error) {
-        console.error('Variation error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
+
 
 // Utility: Strip all tEXt chunks from a PNG buffer
 function stripPngTextChunks(buffer) {
@@ -3796,6 +3811,12 @@ async function processImageToResolutionWithBias(imageBuffer, targetDims, bias = 
         throw new Error('Target dimensions are required');
     }
 
+    // Check if bias is a dynamic bias object
+    if (typeof bias === 'object' && bias.x !== undefined) {
+        return processImageToResolutionWithDynamicBias(imageBuffer, targetDims, bias);
+    }
+
+    // Legacy bias handling (0-4 integer)
     const metadata = await sharp(imageBuffer).metadata();
     const origDims = { width: metadata.width, height: metadata.height };
     const origAR = origDims.width / origDims.height;
@@ -3842,18 +3863,33 @@ async function resizeMaskWithCanvas(maskBuffer, targetWidth, targetHeight) {
     ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, targetWidth, targetHeight);
     
+    // Disable image smoothing for nearest neighbor scaling (same as client-side)
+    ctx.imageSmoothingEnabled = false;
+    
     // Draw the mask image, stretched to fit
     ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
     
-    // Binarize to ensure only black/white
+    // Binarize to ensure only black/white (same logic as client-side)
     const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
     const data = imageData.data;
     for (let i = 0; i < data.length; i += 4) {
-        const isWhite = data[i] > 127 && data[i+1] > 127 && data[i+2] > 127;
-        if (isWhite) {
-            data[i] = 255; data[i+1] = 255; data[i+2] = 255; data[i+3] = 255;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3];
+        
+        // If pixel is not black (has been drawn on), make it pure white
+        if (r > 0 || g > 0 || b > 0) {
+            data[i] = 255;     // Red
+            data[i + 1] = 255; // Green
+            data[i + 2] = 255; // Blue
+            data[i + 3] = 255; // Alpha
         } else {
-            data[i] = 0; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
+            // Black pixels (background) stay pure black
+            data[i] = 0;       // Red
+            data[i + 1] = 0;   // Green
+            data[i + 2] = 0;   // Blue
+            data[i + 3] = 255; // Alpha
         }
     }
     ctx.putImageData(imageData, 0, 0);
@@ -3922,6 +3958,9 @@ async function generateAndPadMask(maskInput, targetDims, maskBias = 2) {
         ctx.fillStyle = 'black';
         ctx.fillRect(0, 0, targetDims.width, targetDims.height);
         
+        // Disable image smoothing for nearest neighbor scaling (same as client-side)
+        ctx.imageSmoothingEnabled = false;
+        
         if (Math.abs(origAR - targetAR) < 0.01) {
             // Aspect ratios match, just resize
             ctx.drawImage(img, 0, 0, targetDims.width, targetDims.height);
@@ -3949,15 +3988,27 @@ async function generateAndPadMask(maskInput, targetDims, maskBias = 2) {
             ctx.drawImage(img, padLeft, padTop, origDims.width, origDims.height);
         }
         
-        // Binarize to ensure only black/white
+        // Binarize to ensure only black/white (same logic as client-side)
         const imageData = ctx.getImageData(0, 0, targetDims.width, targetDims.height);
         const data = imageData.data;
         for (let i = 0; i < data.length; i += 4) {
-            const isWhite = data[i] > 127 && data[i+1] > 127 && data[i+2] > 127;
-            if (isWhite) {
-                data[i] = 255; data[i+1] = 255; data[i+2] = 255; data[i+3] = 255;
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const a = data[i + 3];
+            
+            // If pixel is not black (has been drawn on), make it pure white
+            if (r > 0 || g > 0 || b > 0) {
+                data[i] = 255;     // Red
+                data[i + 1] = 255; // Green
+                data[i + 2] = 255; // Blue
+                data[i + 3] = 255; // Alpha
             } else {
-                data[i] = 0; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
+                // Black pixels (background) stay pure black
+                data[i] = 0;       // Red
+                data[i + 1] = 0;   // Green
+                data[i + 2] = 0;   // Blue
+                data[i + 3] = 255; // Alpha
             }
         }
         ctx.putImageData(imageData, 0, 0);
@@ -3969,3 +4020,105 @@ async function generateAndPadMask(maskInput, targetDims, maskBias = 2) {
     
     return maskBuffer;
 }
+
+// Enhanced processImageToResolutionWithBias to handle dynamic bias adjustments
+async function processImageToResolutionWithDynamicBias(imageBuffer, targetDims, bias) {
+    if (!targetDims || !targetDims.width || !targetDims.height) {
+        throw new Error('Target dimensions are required');
+    }
+
+    // Use Canvas for consistent processing (same as client-side)
+    const origDims = await getImageDimensionsWithCanvas(imageBuffer);
+    
+    // Create canvas for processing
+    const canvas = createCanvas(targetDims.width, targetDims.height);
+    const ctx = canvas.getContext('2d');
+    
+    // Load the original image
+    const img = await loadImage(imageBuffer);
+    
+    // Calculate how to fill the canvas while maintaining aspect ratio
+    const imageAR = origDims.width / origDims.height;
+    const targetAR = targetDims.width / targetDims.height;
+    
+    let drawWidth, drawHeight, drawX, drawY;
+    
+    if (imageAR > targetAR) {
+        // Image is wider than target, scale to match target height
+        drawHeight = targetDims.height;
+        drawWidth = targetDims.height * imageAR;
+        // Position at top-left corner, not centered
+        drawX = 0;
+        drawY = 0;
+    } else {
+        // Image is taller than target, scale to match target width
+        drawWidth = targetDims.width;
+        drawHeight = targetDims.width / imageAR;
+        // Position at top-left corner, not centered
+        drawX = 0;
+        drawY = 0;
+    }
+    
+    // Apply bias transformations - all referenced to top-left
+    ctx.save();
+    
+    // Apply position offset (absolute pixels, not affected by scale)
+    ctx.translate(bias.x, bias.y);
+    
+    // Apply rotation around top-left corner (0,0)
+    ctx.rotate((bias.rotate * Math.PI) / 180);
+    
+    // Apply scale from top-left corner
+    ctx.scale(bias.scale, bias.scale);
+    
+    // Draw the image to fill the canvas (like object-fit: cover)
+    ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
+    
+    ctx.restore();
+    
+    return canvas.toBuffer('image/png');
+}
+
+// Test bias adjustment endpoint
+app.post('/test-bias-adjustment', async (req, res) => {
+    try {
+        const { image_source, target_width, target_height, bias } = req.body;
+        
+        if (!image_source || !target_width || !target_height || !bias) {
+            return res.status(400).json({ error: 'Missing required parameters' });
+        }
+        
+        // Load image from disk based on source
+        let imagePath;
+        if (image_source.startsWith('file:')) {
+            imagePath = path.join(imagesDir, image_source.replace('file:', ''));
+        } else if (image_source.startsWith('cache:')) {
+            imagePath = path.join(uploadCacheDir, image_source.replace('cache:', ''));
+        } else {
+            return res.status(400).json({ error: 'Invalid image source format' });
+        }
+        
+        // Check if file exists
+        if (!fs.existsSync(imagePath)) {
+            return res.status(404).json({ error: 'Image file not found' });
+        }
+        
+        // Read image file
+        const imageBuffer = fs.readFileSync(imagePath);
+        
+        // Process image with dynamic bias
+        const processedBuffer = await processImageToResolutionWithDynamicBias(
+            imageBuffer, 
+            { width: target_width, height: target_height }, 
+            bias
+        );
+        
+        // Return the processed image
+        res.set('Content-Type', 'image/png');
+        res.send(processedBuffer);
+        
+    } catch (error) {
+        console.error('Bias adjustment test error:', error);
+        res.status(500).json({ error: 'Failed to process bias adjustment' });
+    }
+});

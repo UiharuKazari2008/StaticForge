@@ -9,7 +9,7 @@ class CustomQueue {
         this.minDelay = 5000; // 5 seconds minimum between requests
         this.maxDelay = 15000; // 15 seconds maximum delay
         this.windowResetTime = 2 * 60 * 1000; // 2 minutes
-        this.excludedEndpoints = ['/options', '/'];
+        this.excludedEndpoints = ['/'];
     }
 
     // Check if endpoint should be excluded from rate limiting
