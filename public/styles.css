@@ -112,6 +112,7 @@
 body {
     font-family: 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: black;
+    background: black;
     color: var(--text-primary);
     line-height: 1.6;
     overflow-x: hidden;
@@ -326,6 +327,79 @@ body::after {
     border-color: var(--glass-border-4);
 }
 
+/* UC Boxes for UC Preset Button */
+.uc-boxes {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+    justify-content: center;
+}
+
+.uc-box {
+    width: 8px;
+    height: 8px;
+    border: 1px solid var(--glass-border-3);
+    background: transparent;
+    border-radius: 2px;
+    transition: background-color 0.2s ease;
+}
+
+/* UC Box States - Based on UC Preset Level */
+.uc-boxes[data-uc-level="0"] .uc-box {
+    background: transparent;
+}
+
+.uc-boxes[data-uc-level="1"] .uc-box[data-level="1"],
+.uc-boxes[data-uc-level="2"] .uc-box[data-level="1"],
+.uc-boxes[data-uc-level="2"] .uc-box[data-level="2"],
+.uc-boxes[data-uc-level="3"] .uc-box[data-level="1"],
+.uc-boxes[data-uc-level="3"] .uc-box[data-level="2"],
+.uc-boxes[data-uc-level="3"] .uc-box[data-level="3"] {
+    background: #ffffff;
+    box-shadow: 0 0 5px 0px rgb(255 170 54);
+}
+
+/* UC Boxes in hover state */
+.toggle-btn:hover .uc-box {
+    border-color: var(--glass-border-4);
+}
+
+/* Dataset Bias Controls */
+.dataset-bias-container {
+    padding: var(--spacing-sm);
+}
+
+.dataset-bias-group {
+    margin-bottom: var(--spacing-sm);
+}
+
+.dataset-bias-group .form-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.dataset-bias-group input[type="number"] {
+    width: 80px;
+    flex-shrink: 0;
+}
+
+.dataset-bias-group .toggle-btn {
+    min-width: 60px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.85rem;
+}
+
+button#datasetDropdownBtn {
+    gap: 5px;
+}
+span#datasetSelected {
+    background: white;
+    border-radius: 0.3em;
+    color: #a6653b;
+    padding: 0.0em 0.45em;
+    margin: 0;
+}
 /* Special case for variety button */
 button#varietyBtn {
     padding: 0.5em;
@@ -633,9 +707,18 @@ button#varietyBtn {
 
 /* Gallery Action Buttons - Medium Layer */
 button.round-button {
-    background: var(--glass-layer-3);
+    padding: 9px;
+    font-size: 18px;
+    width: 45px;
+    height: 45px;
+    border-radius: 45px;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    box-shadow: 0 2px 8px var(--shadow-secondary);
+    align-items: center;
+    background: #0000005c;
     border-color: var(--glass-border-3);
-    box-shadow: var(--glass-shadow-3);
     color: #ffffff;
     z-index: var(--z-layer-3);
 }
@@ -647,9 +730,8 @@ button.round-button:hover {
     z-index: var(--z-layer-4);
 }
 .preview-info-badge {
-    padding: 9px;
+    padding: 9px 20px;
     font-size: 18px;
-    width: 150px;
     height: 45px;
     border-radius: 45px;
     cursor: pointer;
@@ -659,11 +741,15 @@ button.round-button:hover {
     backdrop-filter: blur(var(--glass-blur-2));
     flex-direction: row;
     flex-wrap: nowrap;
-    gap: 0.5em;
+    gap: 0.4em;
     align-items: center;
+    border: 1px solid var(--glass-border-3);
+    background: #0000005c;
+    color: #ffffff;
 }
 span#manualPreviewSeedNumber {
     font-family: 'Oxanium';
+    line-height: 1;
 }
 
 
@@ -889,19 +975,6 @@ textarea:active {
 
 .gallery-item:hover .gallery-actions {
     opacity: 1;
-}
-
-button.round-button {
-    padding: 9px;
-    font-size: 18px;
-    width: 45px;
-    height: 45px;
-    border-radius: 45px;
-    cursor: pointer;
-    display: flex;
-    justify-content: center;
-    box-shadow: 0 2px 8px var(--shadow-secondary);
-    align-items: center;
 }
 
 /* Gallery info - moved to bottom left */
@@ -1156,12 +1229,22 @@ button.round-button {
 .form-section {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-xl);
+    gap: var(--spacing-lg);
     padding: var(--spacing-lg);
 }
 .form-section-scroll {
     overflow: auto;
     height: 100%;
+}
+
+.form-section.model-control {
+    padding-top: var(--spacing-sm);
+    gap: var(--spacing-sm);
+}
+
+.form-section.model-control .form-row:nth-child(1) {
+    border-top: 1px solid var(--glass-border-1);
+    padding-top: var(--spacing-md);
 }
 
 .form-section::-webkit-scrollbar {
@@ -1184,7 +1267,7 @@ button.round-button {
 .form-group {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-sm);
+    gap: var(--spacing-xs);
 }
 
 .form-group label {
@@ -1486,6 +1569,7 @@ div#transformationSection {
     display: flex;
     justify-content: flex-end;
     gap: var(--spacing-md);
+    padding-top: var(--spacing-lg);
 }
 
 /* Responsive adjustments for manual modal */
@@ -2870,7 +2954,7 @@ textarea:focus {
     backdrop-filter: blur(var(--glass-blur-2));
     border-radius: var(--border-radius-lg);
     z-index: var(--z-dialog);
-    max-height: min(600px, 70vh);
+    max-height: min(500px, 50vh);
     overflow-y: auto;
     min-width: 300px;
     max-width: 500px;
@@ -2887,7 +2971,7 @@ textarea:focus {
 }
 
 .character-autocomplete-item {
-    padding: var(--spacing-sm) var(--spacing-lg);
+    padding: 0.2em 0.5em;
     cursor: pointer;
     border-bottom: 1px solid var(--border-secondary);
     transition: background-color var(--transition-fast);
@@ -2911,23 +2995,74 @@ textarea:focus {
 
 .character-autocomplete-item .character-name {
     font-weight: 600;
+    font-size: 11px;
     color: var(--primary-color);
 }
 
+.character-autocomplete-item[data-type="character"] .character-name,
+.character-autocomplete-item[data-type="tag"] .character-name {
+    text-transform: uppercase;
+}
+
 .character-autocomplete-item .character-copyright {
-    font-size: 0.85rem;
+    font-size: 0.7rem;
     color: var(--text-muted);
     font-style: italic;
 }
 
-.character-autocomplete-item.selected .character-name,
-.character-autocomplete-item.selected .character-copyright {
-    color: var(--text-primary);
+
+/* Character items (default styling) */
+.character-autocomplete-item .character-name {
+    color: #ff4500; /* Orange for characters */
 }
 
-/* Different colors for different item types */
+.character-autocomplete-item .character-copyright {
+    color: #ff9b7a; /* Gray for character copyright */
+}
+
+/* Different colors for different item types */ 
+.character-autocomplete-item[data-type="tag"] .character-name {
+    color: #ffc1c1; /* Light blue for text replacements */
+}
+.character-autocomplete-item[data-type="tag"] .badge {
+    background: #ff1313;
+}
+
+.character-autocomplete-item[data-type="tag"] .character-copyright {
+    color: #ff8282; /* Lighter blue for text replacement labels */
+}
+
+.character-autocomplete-item[data-type="tag"]:hover {
+    background: #4a1a1a; /* Darker blue background on hover */
+}
+
+.character-autocomplete-item[data-type="tag"].selected {
+    background: #cd0000; /* Orange background when selected */
+}
+
+/* Different colors for different item types */ 
+.character-autocomplete-item[data-type="tag"][data-model-type="furry"] .character-name {
+    color: #fb82ff; /* Light blue for text replacements */
+}
+.character-autocomplete-item[data-type="tag"][data-model-type="furry"] .badge {
+    background: #a913ff;
+}
+
+.character-autocomplete-item[data-type="tag"][data-model-type="furry"] .character-copyright {
+    color: #d382ff; /* Lighter blue for text replacement labels */
+}
+
+.character-autocomplete-item[data-type="tag"][data-model-type="furry"]:hover {
+    background: #3a1a4a; /* Darker blue background on hover */
+}
+
+.character-autocomplete-item[data-type="tag"][data-model-type="furry"].selected {
+    background: #ae00cd; /* Orange background when selected */
+}
+
+
 .character-autocomplete-item[data-type="textReplacement"] .character-name {
-    color: #00bfff; /* Light blue for text replacements */
+    color: #beeaff; /* Lighter blue for text replacement labels */
 }
 
 .character-autocomplete-item[data-type="textReplacement"] .character-copyright {
@@ -2939,29 +3074,18 @@ textarea:focus {
 }
 
 .character-autocomplete-item[data-type="textReplacement"].selected {
-    background: #00bfff; /* Blue background when selected */
+    background: #0085cd; /* Orange background when selected */
 }
 
-.character-autocomplete-item[data-type="textReplacement"].selected .character-name,
-.character-autocomplete-item[data-type="textReplacement"].selected .character-copyright {
-    color: var(--text-primary)!important;
-}
-
-/* Character items (default styling) */
-.character-autocomplete-item:not([data-type="textReplacement"]) .character-name {
-    color: #ff4500; /* Orange for characters */
-}
-
-.character-autocomplete-item:not([data-type="textReplacement"]) .character-copyright {
-    color: #888; /* Gray for character copyright */
-}
-
-.character-autocomplete-item:not([data-type="textReplacement"]):hover {
-    background: #3a3a3a; /* Default hover background */
-}
-
-.character-autocomplete-item:not([data-type="textReplacement"]).selected {
-    background: #ff4500; /* Orange background when selected */
+.character-autocomplete-item[data-type="tag"][data-model-type="furry"].selected .character-name,
+.character-autocomplete-item[data-type="tag"][data-model-type="furry"].selected .character-copyright,
+.character-autocomplete-item[data-type="tag"][data-model-type="furry"].selected .badge,
+.character-autocomplete-item.selected .character-name,
+.character-autocomplete-item.selected .character-copyright,
+.character-autocomplete-item.selected .badge {
+    color: var(--text-primary);
+    opacity: 1;
+    background: none;
 }
 
 /* Preset Autocomplete Styles */
@@ -3103,7 +3227,6 @@ textarea:focus {
 
 .character-name {
     font-weight: 600;
-    font-size: 1rem;
 }
 
 .character-copyright {
@@ -3144,7 +3267,16 @@ textarea:focus {
     max-height: calc(400px - 60px); /* Account for header height */
     overflow-y: auto;
 }
-
+.character-autocomplete-item span.badge {
+    background: #fb4400;
+    color: white;
+    border-radius: 0.4em;
+    padding: 0 0.6em 0.2em 0.25em;
+    opacity: 0.45;
+    font-size: 0.75em;
+    margin-left: 0.5em;
+    text-transform: none;
+}
 .character-prompt {
     margin-bottom: 20px;
     padding-bottom: 15px;
@@ -3306,7 +3438,7 @@ textarea:focus {
     justify-content: center;
     align-items: center;
     margin: 0;
-    min-height: 100px;
+    max-height: 140px;
     border: 1px solid #8d8d8d;
     border-radius: 4px;
     background: #929292ab;
@@ -3729,6 +3861,14 @@ textarea:focus {
     color: var(--primary-color);
     font-size: 0.9rem;
     text-transform: uppercase;
+}
+.character-prompts-title-group {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--spacing-xs);
 }
 
 .character-prompt-controls {
@@ -4675,6 +4815,10 @@ textarea:focus {
 .nai-sakura { 
     -webkit-mask: url('/nai-svg/sakura.685bbe60.svg') no-repeat center;
     mask: url('/nai-svg/sakura.685bbe60.svg') no-repeat center;
+}
+.nai-paw {
+    -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 224c-79.41 0-192 122.76-192 200.25 0 34.9 26.81 55.75 71.74 55.75 48.84 0 81.09-25.08 120.26-25.08 39.51 0 71.85 25.08 120.26 25.08 44.93 0 71.74-20.85 71.74-55.75C448 346.76 335.41 224 256 224zm-147.28-12.61c-10.4-34.65-42.44-57.09-71.56-50.13-29.12 6.96-44.29 40.69-33.89 75.34 10.4 34.65 42.44 57.09 71.56 50.13 29.12-6.96 44.29-40.69 33.89-75.34zm84.72-20.78c30.94-8.14 46.42-49.94 34.58-93.36s-46.52-72.01-77.46-63.87-46.42 49.94-34.58 93.36c11.84 43.42 46.53 72.02 77.46 63.87zm281.39-29.34c-29.12-6.96-61.15 15.48-71.56 50.13-10.4 34.65 4.77 68.38 33.89 75.34 29.12 6.96 61.15-15.48 71.56-50.13 10.4-34.65-4.77-68.38-33.89-75.34zm-156.27 29.34c30.94 8.14 65.62-20.45 77.46-63.87 11.84-43.42-3.64-85.21-34.58-93.36s-65.62 20.45-77.46 63.87c-11.84 43.42 3.64 85.22 34.58 93.36z"/></svg>');
+    mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><path d="M256 224c-79.41 0-192 122.76-192 200.25 0 34.9 26.81 55.75 71.74 55.75 48.84 0 81.09-25.08 120.26-25.08 39.51 0 71.85 25.08 120.26 25.08 44.93 0 71.74-20.85 71.74-55.75C448 346.76 335.41 224 256 224zm-147.28-12.61c-10.4-34.65-42.44-57.09-71.56-50.13-29.12 6.96-44.29 40.69-33.89 75.34 10.4 34.65 42.44 57.09 71.56 50.13 29.12-6.96 44.29-40.69 33.89-75.34zm84.72-20.78c30.94-8.14 46.42-49.94 34.58-93.36s-46.52-72.01-77.46-63.87-46.42 49.94-34.58 93.36c11.84 43.42 46.53 72.02 77.46 63.87zm281.39-29.34c-29.12-6.96-61.15 15.48-71.56 50.13-10.4 34.65 4.77 68.38 33.89 75.34 29.12 6.96 61.15-15.48 71.56-50.13 10.4-34.65-4.77-68.38-33.89-75.34zm-156.27 29.34c30.94 8.14 65.62-20.45 77.46-63.87 11.84-43.42-3.64-85.21-34.58-93.36s-65.62 20.45-77.46 63.87c-11.84 43.42 3.64 85.22 34.58 93.36z"/></svg>');
 }
 .nai-save { 
     -webkit-mask: url('/nai-svg/save.36b86afc.svg') no-repeat center;
