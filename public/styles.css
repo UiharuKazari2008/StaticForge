@@ -367,6 +367,12 @@ body::after {
 /* Dataset Bias Controls */
 .dataset-bias-container {
     padding: var(--spacing-sm);
+    border: 1px solid var(--glass-border-5);
+    background: var(--glass-layer-3);
+    border-radius: var(--border-radius-lg);
+}
+.prompt-tabs:not(.show-both) .dataset-bias-container {
+    min-height: 250px;
 }
 
 .dataset-bias-group {
@@ -606,18 +612,6 @@ button#varietyBtn {
     font-weight: 700;
 }
 
-.round-button.btn-primary:hover:not(:disabled) {
-    background: #ff8c626b;
-    border-color: #ff87724f;
-    color: #fff2df;
-}
-
-.round-button.btn-danger:hover:not(:disabled) {
-    background: #ff353580;
-    border-color: #ff48284f;
-    color: #ffdfdf;
-}
-
 .btn-primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -729,6 +723,27 @@ button.round-button:hover {
     color: #ffffff;
     z-index: var(--z-layer-4);
 }
+
+.round-button.btn-primary:hover:not(:disabled) {
+    background: #000000bd;
+    border-color: #ffffff57;
+    color: #ffffff;
+    transform: scale(1.05) translateY(-2px);
+}
+
+.round-button.btn-danger {
+    color: #ffdadacf;
+    border-color: #ff000030;
+    background: #4700005c;
+}
+
+.round-button.btn-danger:hover:not(:disabled) {
+    background: #ff353580;
+    border-color: #ff48284f;
+    color: #ffdfdf;
+    transform: scale(1.05) translateY(-2px);
+}
+
 .preview-info-badge {
     padding: 9px 20px;
     font-size: 18px;
@@ -1131,6 +1146,7 @@ textarea:active {
         overflow: hidden;
         position: relative;
         padding: var(--spacing-xxl);
+        border-radius: var(--border-radius-xl);
         height: 100%;
     }
     
@@ -1196,6 +1212,19 @@ textarea:active {
         width: 250px;
         align-items: center;
         padding-right: var(--spacing-xxl);
+    }
+    .manual-preview-controls-left {
+        display: flex;
+        gap: var(--spacing-sm);
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        padding-bottom: var(--spacing-xxl);
+        width: 250px;
+        align-items: center;
+        padding-left: var(--spacing-xxl);
     }
 }
 
@@ -3077,6 +3106,165 @@ textarea:focus {
     background: #0085cd; /* Orange background when selected */
 }
 
+/* Show more indicator */
+.character-autocomplete-item.more-indicator {
+    background: var(--glass-layer-dark-3);
+    border-top: 2px solid var(--primary-color);
+    font-style: italic;
+    opacity: 0.8;
+}
+
+.character-autocomplete-item.more-indicator:hover {
+    background: var(--glass-layer-dark-4);
+}
+
+.character-autocomplete-item.more-indicator .character-name {
+    color: var(--text-muted);
+    font-weight: normal;
+}
+
+/* Emphasis tooltip in autocomplete */
+.character-autocomplete-tooltip {
+    background: var(--glass-layer-dark-3);
+    border-top: 1px solid var(--glass-border-2);
+    padding: 6px 10px;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-style: italic;
+    opacity: 0.8;
+}
+
+.character-autocomplete-tooltip span {
+    color: var(--primary-color);
+    font-weight: 500;
+}
+
+/* Emphasis popup styles */
+.emphasis-popup {
+    position: absolute;
+    background: var(--glass-layer-dark-5);
+    border: 1px solid var(--glass-border-3);
+    box-shadow: 0 8px 25px var(--shadow-secondary);
+    backdrop-filter: blur(var(--glass-blur-2));
+    border-radius: var(--border-radius-lg);
+    z-index: var(--z-dialog);
+    padding: 12px;
+    min-width: 200px;
+    display: none;
+}
+
+.emphasis-popup-content {
+    text-align: center;
+}
+
+.emphasis-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.emphasis-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: var(--primary-color);
+    margin-bottom: 8px;
+}
+
+.emphasis-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.emphasis-btn {
+    background: var(--glass-layer-dark-3);
+    border: 1px solid var(--glass-border-2);
+    color: var(--text-primary);
+    border-radius: var(--border-radius-sm);
+    padding: 4px 8px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all var(--transition-fast);
+}
+
+.emphasis-btn:hover {
+    background: var(--glass-layer-dark-4);
+    border-color: var(--glass-border-3);
+}
+
+.emphasis-controls input[type="range"] {
+    flex: 1;
+    background: var(--glass-layer-dark-3);
+    border-radius: var(--border-radius-sm);
+    height: 6px;
+    outline: none;
+    cursor: pointer;
+}
+
+.emphasis-controls input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.emphasis-controls input[type="range"]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+}
+
+.emphasis-help {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    opacity: 0.8;
+}
+
+.emphasis-mode-indicator {
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+    padding: 2px 6px;
+    border-radius: var(--border-radius-sm);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.emphasis-mode-indicator.mode-normal {
+    background: var(--glass-layer-dark-3);
+    color: var(--text-primary);
+    border: 1px solid var(--glass-border-2);
+}
+
+.emphasis-mode-indicator.mode-brace {
+    background: #ff6b35;
+    color: white;
+    border: 1px solid #ff6b35;
+}
+
+.emphasis-mode-indicator.mode-group {
+    background: #4ecdc4;
+    color: white;
+    border: 1px solid #4ecdc4;
+}
+
+.emphasis-mode-help {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    opacity: 0.7;
+    margin-top: 4px;
+    font-style: italic;
+}
+
 .character-autocomplete-item[data-type="tag"][data-model-type="furry"].selected .character-name,
 .character-autocomplete-item[data-type="tag"][data-model-type="furry"].selected .character-copyright,
 .character-autocomplete-item[data-type="tag"][data-model-type="furry"].selected .badge,
@@ -4421,7 +4609,7 @@ textarea:focus {
 
 .tab-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
     padding: 0;
     margin-bottom: 10px;
@@ -4437,6 +4625,7 @@ textarea:focus {
     display: flex;
     flex: 0 1 auto;
     gap: 4px;
+    margin-left: auto;
 }
 
 .tab-btn {

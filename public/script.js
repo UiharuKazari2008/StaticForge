@@ -2377,15 +2377,72 @@ function setupEventListeners() {
     
     if (manualPreviewUpscaleBtn) {
         manualPreviewUpscaleBtn.addEventListener('click', () => {
-            // TODO: Implement upscale functionality for preview
-            showToast('Upscale functionality coming soon!', 'info');
+            if (currentManualPreviewImage) {
+                upscaleImage(currentManualPreviewImage);
+            } else {
+                showToast('No image available to upscale', 'error');
+            }
+        });
+    }
+    
+    if (manualPreviewLoadBtn) {
+        manualPreviewLoadBtn.addEventListener('click', () => {
+            if (currentManualPreviewImage) {
+                rerollImageWithEdit(currentManualPreviewImage);
+            } else {
+                showToast('No image available to load', 'error');
+            }
         });
     }
     
     if (manualPreviewVariationBtn) {
         manualPreviewVariationBtn.addEventListener('click', () => {
-            // TODO: Implement variation functionality for preview
-            showToast('Variation functionality coming soon!', 'info');
+            if (currentManualPreviewImage) {
+                // For preview, only set the base image without replacing dialog contents
+                const filename = currentManualPreviewImage.original || currentManualPreviewImage.pipeline || currentManualPreviewImage.pipeline_upscaled;
+                if (filename) {
+                    const source = `file:${filename}`;
+                    const previewUrl = `/images/${filename}`;
+
+                    window.uploadedImageData = {
+                        image_source: source,
+                        bias: 2, // Default center bias
+                        isBiasMode: true,
+                        isClientSide: false
+                    };
+
+                    // Set the variation image
+                    const variationImage = document.getElementById('manualVariationImage');
+                    if (variationImage) {
+                        variationImage.src = previewUrl;
+                        variationImage.style.display = 'block';
+                    }
+
+                    // Set strength to 0.8 and noise to 0.1 for variation
+                    const strengthValue = document.getElementById('manualStrengthValue');
+                    const noiseValue = document.getElementById('manualNoiseValue');
+                    if (strengthValue) strengthValue.value = '0.8';
+                    if (noiseValue) noiseValue.value = '0.1';
+
+                    // Set transformation type to variation
+                    updateTransformationDropdownState('variation', 'Variation');
+
+                    // Show transformation section content
+                    const transformationSection = document.getElementById('transformationSection');
+                    if (transformationSection) {
+                        transformationSection.classList.add('display-image');
+                    }
+                    
+                    // Update inpaint button state
+                    updateInpaintButtonState();
+                    renderImageBiasDropdown((typeof metadata.image_bias === 'number' ? metadata.image_bias : 2).toString());
+
+                } else {
+                    showToast('No image available for variation', 'error');
+                }
+            } else {
+                showToast('No image available for variation', 'error');
+            }
         });
     }
     
@@ -2692,6 +2749,17 @@ function setupEventListeners() {
             resetManualPreview();
         }
     });
+    
+    // Manual preview navigation buttons
+    const manualPreviewPrevBtn = document.getElementById('manualPreviewPrevBtn');
+    const manualPreviewNextBtn = document.getElementById('manualPreviewNextBtn');
+    
+    if (manualPreviewPrevBtn) {
+        manualPreviewPrevBtn.addEventListener('click', navigateManualPreview);
+    }
+    if (manualPreviewNextBtn) {
+        manualPreviewNextBtn.addEventListener('click', navigateManualPreview);
+    }
 
     // Variety+ toggle
     if (varietyToggle) {
@@ -2806,14 +2874,17 @@ function setupEventListeners() {
     if (showBothBtn) {
         showBothBtn.addEventListener('click', function() {
             const isShowingBoth = promptTabs.classList.contains('show-both');
+            const tabButtonsContainer = document.querySelector('.tab-buttons');
             
             if (isShowingBoth) {
                 // Return to single tab mode
                 promptTabs.classList.remove('show-both');
                 this.classList.remove('active');
                 
-                // Show tab buttons
-                tabButtons.forEach(btn => btn.style.display = 'flex');
+                // Show tab buttons container
+                if (tabButtonsContainer) {
+                    tabButtonsContainer.style.display = '';
+                }
                 
                 // Set Base Prompt as default when returning from show both mode
                 tabButtons.forEach(btn => btn.classList.remove('active'));
@@ -2832,11 +2903,10 @@ function setupEventListeners() {
                 promptTabs.classList.add('show-both');
                 this.classList.add('active');
                 
-                // Hide tab buttons when showing both
-                tabButtons.forEach(btn => {
-                    btn.classList.remove('active');
-                    btn.style.display = 'none';
-                });
+                // Hide tab buttons container when showing both
+                if (tabButtonsContainer) {
+                    tabButtonsContainer.style.display = 'none';
+                }
             }
         });
     }
@@ -3005,14 +3075,22 @@ function updateBalanceDisplay(balance) {
     }
 }
 
-// Load gallery images
+// Load gallery images with optimized rendering to prevent flickering
 async function loadGallery() {
     try {
         const response = await fetchWithAuth('/images');
         if (response.ok) {
-            allImages = await response.json();
+            const newImages = await response.json();
             
-            displayCurrentPage();
+            // Check if images have actually changed to avoid unnecessary updates
+            if (JSON.stringify(allImages) === JSON.stringify(newImages)) {
+                return; // No changes, skip update
+            }
+            
+            allImages = newImages;
+            
+            // Use optimized display that only updates changed items
+            displayCurrentPageOptimized();
             updatePagination();
             updateControlsVisibility();
         } else {
@@ -3022,7 +3100,7 @@ async function loadGallery() {
         console.error('Error loading gallery:', error);
         // Don't throw error for gallery loading failure
         allImages = [];
-        displayCurrentPage();
+        displayCurrentPageOptimized();
     }
 }
 
@@ -3045,6 +3123,47 @@ function displayCurrentPage() {
     });
 
     updatePagination();
+}
+
+// Optimized display function that minimizes DOM changes
+function displayCurrentPageOptimized() {
+    const startIndex = (currentPage - 1) * imagesPerPage;
+    const endIndex = startIndex + imagesPerPage;
+    const pageImages = allImages.slice(startIndex, endIndex);
+
+    const gallery = document.getElementById('gallery');
+    if (!gallery) return;
+
+    // If no images, show empty state
+    if (pageImages.length === 0) {
+        if (gallery.innerHTML !== '<div class="no-images">No images found</div>') {
+            gallery.innerHTML = '<div class="no-images">No images found</div>';
+        }
+        return;
+    }
+
+    // Get current gallery items
+    const currentItems = Array.from(gallery.children);
+    const currentFilenames = currentItems.map(item => {
+        const checkbox = item.querySelector('.gallery-item-checkbox');
+        return checkbox ? checkbox.dataset.filename : null;
+    }).filter(Boolean);
+
+    // Get new filenames
+    const newFilenames = pageImages.map(image => image.original || image.pipeline || image.pipeline_upscaled);
+
+    // Check if we need to rebuild (different number of items or different filenames)
+    const needsRebuild = currentFilenames.length !== newFilenames.length || 
+                        !currentFilenames.every((filename, index) => filename === newFilenames[index]);
+
+    if (needsRebuild) {
+        // Clear and rebuild only if necessary
+        gallery.innerHTML = '';
+        pageImages.forEach(image => {
+            const galleryItem = createGalleryItem(image);
+            gallery.appendChild(galleryItem);
+        });
+    }
 }
 
 // Create gallery item element
@@ -3194,10 +3313,21 @@ function createGalleryItem(image) {
         upscaleBtn.style.display = 'none';
     }
     
+    // Delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn-danger round-button';
+    deleteBtn.innerHTML = '<i class="nai-trash"></i>';
+    deleteBtn.title = 'Delete image';
+    deleteBtn.onclick = (e) => {
+        e.stopPropagation();
+        deleteImage(image);
+    };
+    
     actionsDiv.appendChild(downloadBtn);
     actionsDiv.appendChild(upscaleBtn);
     actionsDiv.appendChild(rerollBtn);
     actionsDiv.appendChild(rerollEditBtn);
+    actionsDiv.appendChild(deleteBtn);
     
     overlay.appendChild(actionsDiv);
     
@@ -3360,6 +3490,10 @@ async function rerollImage(image) {
             if (useLayer1Seed) {
                 pipelineRequestBody.layer1_seed = metadata.layer1Seed;
             }
+
+            addSharedFieldsToRequestBody(pipelineRequestBody, metadata);
+
+            delete pipelineRequestBody.seed;
             
             const pipelineUrl = `/pipeline/generate`;
             const generateResponse = await fetch(pipelineUrl, {
@@ -3509,6 +3643,11 @@ async function rerollImage(image) {
                     requestBody.use_coords = !!metadata.use_coords;
                 }
 
+
+                addSharedFieldsToRequestBody(requestBody, metadata);
+
+                delete requestBody.seed;
+
                 // Generate variation with same settings using original base image
                 const model = metadata.model ? metadata.model.toLowerCase() : 'v4_5';
                 const url = `/${model}/generate`;
@@ -3576,6 +3715,12 @@ async function rerollImage(image) {
                         requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
                     }
                 }
+
+
+
+                addSharedFieldsToRequestBody(requestBody, metadata);
+
+                delete requestBody.seed;
 
                 // Generate image with same settings
                 const model = metadata.model ? metadata.model.toLowerCase() : 'v4_5';
@@ -3783,7 +3928,10 @@ async function rerollImageWithEdit(image) {
             if (manualMaskBiasGroup) manualMaskBiasGroup.style.display = 'none';
         }
 
-        await cropImageToResolution();
+        // Only call cropImageToResolution if uploadedImageData is available
+        if (window.uploadedImageData) {
+            await cropImageToResolution();
+        }
         manualModal.style.display = 'block';
         manualPrompt.focus();
 
@@ -3947,6 +4095,18 @@ async function showManualModal() {
     
     // Update button visibility
     updateRequestTypeButtonVisibility();
+    
+    // Check if "show both" mode is active and hide tab buttons container if needed
+    const promptTabs = document.querySelector('.prompt-tabs');
+    const showBothBtn = document.getElementById('showBothBtn');
+    const tabButtonsContainer = document.querySelector('.tab-buttons');
+    
+    if (promptTabs && promptTabs.classList.contains('show-both') && showBothBtn && showBothBtn.classList.contains('active')) {
+        // "Show both" mode is active, hide the tab buttons container
+        if (tabButtonsContainer) {
+            tabButtonsContainer.style.display = 'none';
+        }
+    }
 }
 
 // Hide manual modal
@@ -4349,7 +4509,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
         if (isWideViewport && isManualModalOpen) {
             // Update manual modal preview instead of opening lightbox
             // Don't clear context when modal is open in wide viewport mode
-            await updateManualPreview(imageUrl, blob);
+            await updateManualPreview(imageUrl, blob, response);
             
             // Update placeholder image for pipeline edits
             if (window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit) {
@@ -4421,7 +4581,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
 }
 
 // Function to update manual modal preview
-async function updateManualPreview(imageUrl, blob) {
+async function updateManualPreview(imageUrl, blob, response = null, metadata = null) {
     const previewImage = document.getElementById('manualPreviewImage');
     const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
     const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
@@ -4443,13 +4603,41 @@ async function updateManualPreview(imageUrl, blob) {
         // Wait for gallery to be loaded to find the current image
         await loadGallery();
         
-        // Find the current image in allImages array
-        const generatedFilename = imageUrl.split('/').pop();
+        // Get the actual filename from response headers if available, otherwise extract from URL
+        let generatedFilename = null;
+        if (response && response.headers) {
+            generatedFilename = response.headers.get('X-Generated-Filename');
+        }
+        
+        if (!generatedFilename) {
+            // Fallback: try to extract from imageUrl (for existing images)
+            if (imageUrl.startsWith('/images/')) {
+                generatedFilename = imageUrl.split('/').pop();
+            }
+        }
+        
         const found = allImages.find(img => img.original === generatedFilename || img.upscaled === generatedFilename || img.pipeline === generatedFilename || img.pipeline_upscaled === generatedFilename);
         
         if (found) {
             currentManualPreviewImage = found;
-        } else {
+            
+            // Use passed metadata if available, otherwise load if not already loaded
+            if (metadata) {
+                found.metadata = metadata;
+            } else if (!found.metadata && generatedFilename) {
+                try {
+                    const metadataResponse = await fetchWithAuth(`/images/${generatedFilename}`, {
+                        method: 'OPTIONS'
+                    });
+                    if (metadataResponse.ok) {
+                        const metadata = await metadataResponse.json();
+                        found.metadata = metadata;
+                    }
+                } catch (error) {
+                    console.warn('Failed to load metadata for image:', error);
+                }
+            }
+        } else if (generatedFilename) {
             // If not found in gallery, create a temporary image object for newly generated images
             const tempImage = {
                 original: generatedFilename,
@@ -4459,6 +4647,9 @@ async function updateManualPreview(imageUrl, blob) {
                 pipeline_upscaled: null
             };
             currentManualPreviewImage = tempImage;
+        } else {
+            // No filename available, can't set up delete functionality
+            currentManualPreviewImage = null;
         }
         
         // Show control buttons
@@ -4466,6 +4657,8 @@ async function updateManualPreview(imageUrl, blob) {
         if (upscaleBtn) upscaleBtn.style.display = 'flex';
         if (rerollBtn) rerollBtn.style.display = 'flex';
         if (variationBtn) variationBtn.style.display = 'flex';
+        const loadBtn = document.getElementById('manualPreviewLoadBtn');
+        if (loadBtn) loadBtn.style.display = 'flex';
         if (seedBtn) seedBtn.style.display = 'flex';
         if (deleteBtn) deleteBtn.style.display = 'flex';
         
@@ -4473,6 +4666,18 @@ async function updateManualPreview(imageUrl, blob) {
         setTimeout(() => {
             initializeManualPreviewZoom();
         }, 100);
+        
+        // Update seed display
+        if (currentManualPreviewImage && currentManualPreviewImage.metadata && currentManualPreviewImage.metadata.seed !== undefined) {
+            manualPreviewSeedNumber.textContent = currentManualPreviewImage.metadata.seed;
+            window.lastGeneratedSeed = currentManualPreviewImage.metadata.seed;
+        } else {
+            manualPreviewSeedNumber.textContent = '---';
+            window.lastGeneratedSeed = null;
+        }
+        
+        // Update navigation buttons
+        updateManualPreviewNavigation();
     }
 }
 
@@ -4499,6 +4704,8 @@ function resetManualPreview() {
         if (upscaleBtn) upscaleBtn.style.display = 'none';
         if (rerollBtn) rerollBtn.style.display = 'none';
         if (variationBtn) variationBtn.style.display = 'none';
+        const loadBtn = document.getElementById('manualPreviewLoadBtn');
+        if (loadBtn) loadBtn.style.display = 'none';
         if (seedBtn) seedBtn.style.display = 'none';
         if (deleteBtn) deleteBtn.style.display = 'none';
         
@@ -4509,7 +4716,89 @@ function resetManualPreview() {
         window.lastGeneratedSeed = null;
         manualPreviewSeedNumber.textContent = '---';
         currentManualPreviewImage = null;
+        
+        // Disable navigation buttons
+        updateManualPreviewNavigation();
     }
+}
+
+// Function to update manual preview navigation buttons
+function updateManualPreviewNavigation() {
+    const prevBtn = document.getElementById('manualPreviewPrevBtn');
+    const nextBtn = document.getElementById('manualPreviewNextBtn');
+    
+    if (!prevBtn || !nextBtn) return;
+    
+    // Disable both buttons if no current image or no gallery
+    if (!currentManualPreviewImage || !allImages || allImages.length === 0) {
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        return;
+    }
+    
+    // Find current image index in gallery using filename comparison
+    const currentFilename = currentManualPreviewImage.original || currentManualPreviewImage.filename;
+    const currentIndex = allImages.findIndex(img => 
+        img.original === currentFilename || 
+        img.upscaled === currentFilename || 
+        img.pipeline === currentFilename || 
+        img.pipeline_upscaled === currentFilename
+    );
+    
+    if (currentIndex === -1) {
+        // Current image not found in gallery, disable both buttons
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        return;
+    }
+    
+    // Enable/disable buttons based on position
+    prevBtn.disabled = currentIndex === 0; // Disable if first image
+    nextBtn.disabled = currentIndex === allImages.length - 1; // Disable if last image
+}
+
+// Function to navigate manual preview
+async function navigateManualPreview(event) {
+    const direction = event.currentTarget.id === 'manualPreviewPrevBtn' ? -1 : 1;
+    
+    if (!currentManualPreviewImage || !allImages || allImages.length === 0) return;
+    
+    // Find current image index in gallery using filename comparison
+    const currentFilename = currentManualPreviewImage.original || currentManualPreviewImage.filename;
+    const currentIndex = allImages.findIndex(img => 
+        img.original === currentFilename || 
+        img.upscaled === currentFilename || 
+        img.pipeline === currentFilename || 
+        img.pipeline_upscaled === currentFilename
+    );
+    
+    if (currentIndex === -1) return;
+    
+    // Calculate new index
+    const newIndex = currentIndex + direction;
+    
+    // Check bounds
+    if (newIndex < 0 || newIndex >= allImages.length) return;
+    
+    // Get the new image
+    const newImage = allImages[newIndex];
+    
+    // Load the new image and its metadata
+    try {
+        const metadataResponse = await fetchWithAuth(`/images/${newImage.original}`, {
+            method: 'OPTIONS'
+        });
+        if (metadataResponse.ok) {
+            const metadata = await metadataResponse.json();
+            newImage.metadata = metadata;
+        }
+    } catch (error) {
+        console.warn('Failed to load metadata for navigation image:', error);
+    }
+    
+    // Update the preview with the new image and metadata
+    const imageUrl = `/images/${newImage.original}`;
+    updateManualPreview(imageUrl, null, null, newImage.metadata);
 }
 
 async function handleManualGeneration(e) {
@@ -4874,6 +5163,18 @@ async function handleManualSave() {
 
 // Character autocomplete functions
 function handleCharacterAutocompleteInput(e) {
+    // Don't trigger autocomplete if we're in navigation mode
+    if (autocompleteNavigationMode) {
+        autocompleteNavigationMode = false;
+        return;
+    }
+    
+    // Don't trigger autocomplete on backspace
+    if (e.inputType === 'deleteContentBackward') {
+        hideCharacterAutocomplete();
+        return;
+    }
+    
     const target = e.target;
     const value = target.value;
     const cursorPosition = target.selectionStart;
@@ -4910,38 +5211,120 @@ function handleCharacterAutocompleteInput(e) {
     }, 500);
 }
 
+// Global variables for emphasis popup
+let emphasisPopupActive = false;
+let emphasisPopupValue = 1.0;
+let emphasisPopupTarget = null;
+let emphasisPopupSelection = null;
+
+// Global variables for emphasis editing
+let emphasisEditingActive = false;
+let emphasisEditingValue = 1.0;
+let emphasisEditingTarget = null;
+let emphasisEditingSelection = null;
+let emphasisEditingMode = 'normal'; // 'normal', 'brace', 'group'
+
+// Track if we're in autocomplete navigation mode
+let autocompleteNavigationMode = false;
+
 function handleCharacterAutocompleteKeydown(e) {
+    // Handle emphasis editing popup
+    if (emphasisEditingActive) {
+        switch (e.key) {
+            case 'ArrowUp':
+                e.preventDefault();
+                emphasisEditingValue = Math.min(emphasisEditingValue + 0.1, 2.5);
+                updateEmphasisEditingPopup();
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                emphasisEditingValue = Math.max(emphasisEditingValue - 0.1, -1.0);
+                updateEmphasisEditingPopup();
+                break;
+            case 'ArrowLeft':
+                e.preventDefault();
+                switchEmphasisMode('left');
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                switchEmphasisMode('right');
+                break;
+            case 'Enter':
+                e.preventDefault();
+                applyEmphasisEditing();
+                return;
+            case 'Escape':
+                e.preventDefault();
+                cancelEmphasisEditing();
+                return;
+            default:
+                // Any other key applies the emphasis
+                applyEmphasisEditing();
+                return;
+        }
+        return;
+    }
+
+    // Handle autocomplete navigation - only when autocomplete is visible AND we're in navigation mode
     if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
         const items = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
         
         switch (e.key) {
             case 'ArrowDown':
                 e.preventDefault();
+                autocompleteNavigationMode = true;
+                // Expand to show all items when navigating down
+                if (selectedCharacterAutocompleteIndex === -1) {
+                    expandAutocompleteToShowAll();
+                }
                 selectedCharacterAutocompleteIndex = Math.min(selectedCharacterAutocompleteIndex + 1, items.length - 1);
                 updateCharacterAutocompleteSelection();
+                updateEmphasisTooltipVisibility();
                 break;
             case 'ArrowUp':
                 e.preventDefault();
+                autocompleteNavigationMode = true;
+                // If at the first item and pressing up, exit autocomplete
+                if (selectedCharacterAutocompleteIndex <= 0) {
+                    hideCharacterAutocomplete();
+                    autocompleteNavigationMode = false;
+                    return;
+                }
                 selectedCharacterAutocompleteIndex = Math.max(selectedCharacterAutocompleteIndex - 1, -1);
                 updateCharacterAutocompleteSelection();
+                updateEmphasisTooltipVisibility();
                 break;
+            case 'ArrowLeft':
             case 'ArrowRight':
-                e.preventDefault();
-                if (selectedCharacterAutocompleteIndex >= 0 && items[selectedCharacterAutocompleteIndex]) {
-                    const selectedItem = items[selectedCharacterAutocompleteIndex];
-                    if (selectedItem.dataset.type === 'textReplacement') {
-                        selectTextReplacementFullText(selectedItem.dataset.placeholder);
-                    } else if (selectedItem.dataset.type === 'tag') {
-                        selectTag(selectedItem.dataset.tagName);
-                    } else {
-                        // For characters, insert without enhancers
-                        const character = JSON.parse(selectedItem.dataset.characterData);
-                        selectCharacterWithoutEnhancers(character);
+                // Only handle left/right arrows when actively selecting items in the menu
+                if (selectedCharacterAutocompleteIndex >= 0) {
+                    e.preventDefault();
+                    if (e.key === 'ArrowRight') {
+                        // Insert the selected item
+                        if (items[selectedCharacterAutocompleteIndex]) {
+                            const selectedItem = items[selectedCharacterAutocompleteIndex];
+                            if (selectedItem.dataset.type === 'textReplacement') {
+                                // For text replacements, insert the actual text, not the placeholder
+                                const placeholder = selectedItem.dataset.placeholder;
+                                const actualText = textReplacements[placeholder] || placeholder;
+                                insertTextReplacement(actualText);
+                            } else if (selectedItem.dataset.type === 'tag') {
+                                selectTag(selectedItem.dataset.tagName);
+                            } else {
+                                const character = JSON.parse(selectedItem.dataset.characterData);
+                                selectCharacterItem(character);
+                            }
+                        }
                     }
+                } else {
+                    // When not actively selecting, allow normal text navigation
+                    hideCharacterAutocomplete();
+                    autocompleteNavigationMode = false;
                 }
                 break;
             case 'Enter':
                 e.preventDefault();
+                autocompleteNavigationMode = true;
                 if (selectedCharacterAutocompleteIndex >= 0 && items[selectedCharacterAutocompleteIndex]) {
                     const selectedItem = items[selectedCharacterAutocompleteIndex];
                     if (selectedItem.dataset.type === 'textReplacement') {
@@ -4955,10 +5338,23 @@ function handleCharacterAutocompleteKeydown(e) {
                 }
                 break;
             case 'Escape':
+                e.preventDefault();
                 hideCharacterAutocomplete();
+                autocompleteNavigationMode = false;
+                break;
+            case 'e':
+            case 'E':
+                // Only handle 'E' key when we're in navigation mode (autocomplete is active)
+                if (autocompleteNavigationMode) {
+                    e.preventDefault();
+                    // Start emphasis editing for current tag
+                    startEmphasisEditing();
+                }
                 break;
         }
     }
+    // Note: We don't handle any keys when autocomplete is not visible or not in navigation mode
+    // This allows all keys to work normally in text input
 }
 
 async function searchCharacters(query, target) {
@@ -5005,9 +5401,32 @@ function showCharacterAutocompleteSuggestions(results, target) {
     currentCharacterAutocompleteTarget = target;
     selectedCharacterAutocompleteIndex = -1;
     
+    // Store all results for potential expansion
+    window.allAutocompleteResults = results;
+    
+    // Check if we can add emphasis option
+    const canAddEmphasis = checkCanAddEmphasis(target);
+    
+    // Show only first 5 items initially
+    const initialResults = results.slice(0, 5);
+    
     // Populate character autocomplete list
     characterAutocompleteList.innerHTML = '';
-    results.forEach((result, index) => {
+    
+    // Add emphasis tooltip at the bottom if applicable
+    // Note: This will be shown/hidden based on navigation mode
+    if (canAddEmphasis) {
+        const emphasisTooltip = document.createElement('div');
+        emphasisTooltip.className = 'character-autocomplete-tooltip';
+        emphasisTooltip.id = 'emphasisTooltip';
+        emphasisTooltip.style.display = 'none'; // Hidden by default
+        emphasisTooltip.innerHTML = `
+            <span>Press E to add emphasis</span>
+        `;
+        characterAutocompleteList.appendChild(emphasisTooltip);
+    }
+    
+    initialResults.forEach((result, index) => {
         const item = document.createElement('div');
         item.className = 'character-autocomplete-item';
         
@@ -5064,6 +5483,18 @@ function showCharacterAutocompleteSuggestions(results, target) {
         characterAutocompleteList.appendChild(item);
     });
     
+    // Add "show more" indicator if there are more results
+    if (results.length > 5) {
+        const moreItem = document.createElement('div');
+        moreItem.className = 'character-autocomplete-item more-indicator';
+        moreItem.innerHTML = `
+            <div class="character-info-row">
+                <span class="character-name">Press ↓ to show all ${results.length} results</span>
+            </div>
+        `;
+        characterAutocompleteList.appendChild(moreItem);
+    }
+    
     // Position overlay
     const rect = target.getBoundingClientRect();
     characterAutocompleteOverlay.style.left = rect.left + 'px';
@@ -5071,6 +5502,773 @@ function showCharacterAutocompleteSuggestions(results, target) {
     characterAutocompleteOverlay.style.width = rect.width + 'px';
     
     characterAutocompleteOverlay.classList.remove('hidden');
+}
+
+function checkCanAddEmphasis(target) {
+    const value = target.value;
+    const cursorPosition = target.selectionStart;
+    const textBeforeCursor = value.substring(0, cursorPosition);
+    
+    // First check if cursor is inside a {} or [] block
+    const bracePattern = /\{([^}]*)\}|\[([^\]]*)\]/g;
+    let braceMatch;
+    while ((braceMatch = bracePattern.exec(value)) !== null) {
+        const braceStart = braceMatch.index;
+        const braceEnd = braceMatch.index + braceMatch[0].length;
+        
+        if (cursorPosition >= braceStart && cursorPosition <= braceEnd) {
+            // Cursor is inside a {} or [] block, can add emphasis
+            return true;
+        }
+    }
+    
+    // Check if cursor is at end of a tag pattern (same logic as autocomplete)
+    const lastDelimiterIndex = Math.max(
+        textBeforeCursor.lastIndexOf('{'),
+        textBeforeCursor.lastIndexOf('}'),
+        textBeforeCursor.lastIndexOf('['),
+        textBeforeCursor.lastIndexOf(']'),
+        textBeforeCursor.lastIndexOf(':'),
+        textBeforeCursor.lastIndexOf('|'),
+        textBeforeCursor.lastIndexOf(',')
+    );
+    const searchText = lastDelimiterIndex >= 0 ? 
+        textBeforeCursor.substring(lastDelimiterIndex + 1).trim() : 
+        textBeforeCursor.trim();
+    
+    // Check if we have a valid tag to emphasize
+    return searchText.length >= 2 && /^[a-zA-Z0-9_]+$/.test(searchText);
+}
+
+function expandAutocompleteToShowAll() {
+    if (!window.allAutocompleteResults || !characterAutocompleteList) return;
+    
+    // Clear current list
+    characterAutocompleteList.innerHTML = '';
+    
+    // Add all results
+    window.allAutocompleteResults.forEach((result, index) => {
+        const item = document.createElement('div');
+        item.className = 'character-autocomplete-item';
+        
+        if (result.type === 'textReplacement') {
+            item.dataset.type = 'textReplacement';
+            item.dataset.placeholder = result.placeholder;
+            
+            item.innerHTML = `
+                <div class="character-info-row">
+                    <span class="character-name">${result.placeholder}</span>
+                    <span class="character-copyright">Text Replacement</span>
+                </div>
+                <div class="character-info-row">
+                    <div class="placeholder-desc"><span class="placeholder-desc-text">${result.description}</span></div>
+                </div>
+            `;
+            
+            item.addEventListener('click', () => selectTextReplacement(result.placeholder));
+        } else if (result.type === 'tag') {
+            item.dataset.type = 'tag';
+            item.dataset.tagName = result.name;
+            item.dataset.modelType = result.model.toLowerCase().includes('furry') ? 'furry' : 'anime';
+            
+            item.innerHTML = `
+                <div class="character-info-row">
+                    <span class="character-name">${result.name}</span>
+                    <span class="character-copyright">${modelKeys[result.model.toLowerCase()]?.type || 'NovelAI'}${modelKeys[result.model.toLowerCase()]?.version ? ' <span class="badge">' + modelKeys[result.model.toLowerCase()]?.version + '</span>' : ''}</span>
+                </div>
+            `;
+            
+            item.addEventListener('click', () => selectTag(result.name));
+        } else {
+            item.dataset.type = 'character';
+            item.dataset.characterData = JSON.stringify(result.character);
+            
+            const character = result.character;
+            const name = character.name || result.name;
+            const copyright = character.copyright || '';
+            
+            item.innerHTML = `
+                <div class="character-info-row">
+                    <span class="character-name">${name}</span>
+                    <span class="character-copyright">${copyright}</span>
+                </div>
+            `;
+            
+            item.addEventListener('click', () => selectCharacterItem(result.character));
+        }
+        
+        characterAutocompleteList.appendChild(item);
+    });
+}
+
+// Emphasis popup functions
+function showEmphasisPopup() {
+    // Create popup if it doesn't exist
+    let popup = document.getElementById('emphasisPopup');
+    if (!popup) {
+        popup = document.createElement('div');
+        popup.id = 'emphasisPopup';
+        popup.className = 'emphasis-popup';
+        popup.innerHTML = `
+            <div class="emphasis-popup-content">
+                <div class="emphasis-label">Emphasis Weight</div>
+                <div class="emphasis-value">${emphasisPopupValue.toFixed(1)}</div>
+                <div class="emphasis-controls">
+                    <button class="emphasis-btn" onclick="adjustEmphasis(-0.1)">-</button>
+                    <input type="range" min="0.1" max="2.0" step="0.1" value="${emphasisPopupValue}" 
+                           oninput="updateEmphasisFromSlider(this.value)" 
+                           onwheel="adjustEmphasisFromWheel(event)">
+                    <button class="emphasis-btn" onclick="adjustEmphasis(0.1)">+</button>
+                </div>
+                <div class="emphasis-help">Use ↑↓ arrows or scroll to adjust</div>
+            </div>
+        `;
+        document.body.appendChild(popup);
+    }
+    
+    // Position popup near cursor
+    const rect = emphasisPopupTarget.getBoundingClientRect();
+    const cursorPosition = emphasisPopupTarget.selectionStart;
+    const textBeforeCursor = emphasisPopupTarget.value.substring(0, cursorPosition);
+    
+    // Calculate approximate cursor position
+    const tempSpan = document.createElement('span');
+    tempSpan.style.font = window.getComputedStyle(emphasisPopupTarget).font;
+    tempSpan.style.visibility = 'hidden';
+    tempSpan.style.position = 'absolute';
+    tempSpan.style.whiteSpace = 'pre';
+    tempSpan.textContent = textBeforeCursor;
+    document.body.appendChild(tempSpan);
+    
+    const textWidth = tempSpan.offsetWidth;
+    document.body.removeChild(tempSpan);
+    
+    popup.style.left = (rect.left + textWidth) + 'px';
+    popup.style.top = (rect.top - popup.offsetHeight - 10) + 'px';
+    popup.style.display = 'block';
+    
+    updateEmphasisPopup();
+}
+
+function updateEmphasisPopup() {
+    const popup = document.getElementById('emphasisPopup');
+    if (!popup) return;
+    
+    const valueElement = popup.querySelector('.emphasis-value');
+    const slider = popup.querySelector('input[type="range"]');
+    
+    if (valueElement) valueElement.textContent = emphasisPopupValue.toFixed(1);
+    if (slider) slider.value = emphasisPopupValue;
+}
+
+function adjustEmphasis(delta) {
+    emphasisPopupValue = Math.max(0.1, Math.min(2.0, emphasisPopupValue + delta));
+    updateEmphasisPopup();
+}
+
+function updateEmphasisFromSlider(value) {
+    emphasisPopupValue = parseFloat(value);
+    updateEmphasisPopup();
+}
+
+function adjustEmphasisFromWheel(event) {
+    event.preventDefault();
+    const delta = event.deltaY > 0 ? -0.1 : 0.1;
+    adjustEmphasis(delta);
+}
+
+function startEmphasisEditing() {
+    if (!currentCharacterAutocompleteTarget) return;
+    
+    const target = currentCharacterAutocompleteTarget;
+    const value = target.value;
+    const cursorPosition = target.selectionStart;
+    const textBeforeCursor = value.substring(0, cursorPosition);
+    
+    // First, check if cursor is inside an existing emphasis block
+    const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
+    let emphasisMatch;
+    let insideEmphasis = false;
+    let emphasisMode = 'normal'; // 'normal', 'brace', 'group'
+    
+    while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
+        const emphasisStart = emphasisMatch.index;
+        const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
+        
+        if (cursorPosition >= emphasisStart && cursorPosition <= emphasisEnd) {
+            // Cursor is inside an existing emphasis block
+            insideEmphasis = true;
+            emphasisEditingValue = parseFloat(emphasisMatch[1]);
+            emphasisEditingSelection = {
+                start: emphasisStart,
+                end: emphasisEnd
+            };
+            
+            // Check if there's a {} block inside this emphasis block
+            const emphasisText = emphasisMatch[2];
+            const bracePattern = /\{([^}]*)\}/g;
+            let braceMatch;
+            while ((braceMatch = bracePattern.exec(emphasisText)) !== null) {
+                const braceStartInEmphasis = emphasisStart + emphasisMatch[0].indexOf(braceMatch[0]);
+                const braceEndInEmphasis = braceStartInEmphasis + braceMatch[0].length;
+                
+                if (cursorPosition >= braceStartInEmphasis && cursorPosition <= braceEndInEmphasis) {
+                    // Cursor is inside a {} block within the emphasis block
+                    emphasisMode = 'brace';
+                    emphasisEditingSelection = {
+                        start: braceStartInEmphasis,
+                        end: braceEndInEmphasis
+                    };
+                    break;
+                }
+            }
+            
+            if (emphasisMode !== 'brace') {
+                emphasisMode = 'group';
+            }
+            break;
+        }
+    }
+    
+    if (!insideEmphasis) {
+        // Check if cursor is inside a {} or [] block
+        const bracePattern = /\{([^}]*)\}|\[([^\]]*)\]/g;
+        let braceMatch;
+        let insideBrace = false;
+        
+        while ((braceMatch = bracePattern.exec(value)) !== null) {
+            const braceStart = braceMatch.index;
+            const braceEnd = braceMatch.index + braceMatch[0].length;
+            
+            if (cursorPosition >= braceStart && cursorPosition <= braceEnd) {
+                // Cursor is inside a {} or [] block
+                insideBrace = true;
+                emphasisMode = 'brace';
+                // Calculate weight based on number of {} or [] around it
+                const braceText = braceMatch[0];
+                const isBracket = braceText.startsWith('[');
+                
+                if (isBracket) {
+                    // [] block - negative emphasis
+                    const openBrackets = (braceText.match(/\[/g) || []).length;
+                    const closeBrackets = (braceText.match(/\]/g) || []).length;
+                    const bracketLevel = openBrackets - closeBrackets;
+                    emphasisEditingValue = 1.0 - (bracketLevel * 0.1);
+                } else {
+                    // {} block - positive emphasis
+                    const openBraces = (braceText.match(/\{/g) || []).length;
+                    const closeBraces = (braceText.match(/\}/g) || []).length;
+                    const braceLevel = openBraces - closeBraces;
+                    emphasisEditingValue = 1.0 + (braceLevel * 0.1);
+                }
+                
+                emphasisEditingSelection = {
+                    start: braceStart,
+                    end: braceEnd
+                };
+                break;
+            }
+        }
+        
+        if (!insideBrace) {
+            // Find the tag to emphasize (same logic as autocomplete)
+            const lastDelimiterIndex = Math.max(
+                textBeforeCursor.lastIndexOf('{'),
+                textBeforeCursor.lastIndexOf('}'),
+                textBeforeCursor.lastIndexOf('['),
+                textBeforeCursor.lastIndexOf(']'),
+                textBeforeCursor.lastIndexOf(':'),
+                textBeforeCursor.lastIndexOf('|'),
+                textBeforeCursor.lastIndexOf(',')
+            );
+            const searchText = lastDelimiterIndex >= 0 ? 
+                textBeforeCursor.substring(lastDelimiterIndex + 1).trim() : 
+                textBeforeCursor.trim();
+            
+            if (searchText.length < 2) return;
+            
+            // Check if the current tag is already emphasized
+            const currentTagEmphasisPattern = new RegExp(`(\\d+\\.\\d+)::${searchText}::`);
+            const currentTagMatch = textBeforeCursor.match(currentTagEmphasisPattern);
+            
+            if (currentTagMatch) {
+                // Current tag is already emphasized, adjust its weight
+                emphasisEditingValue = parseFloat(currentTagMatch[1]);
+                emphasisEditingSelection = {
+                    start: currentTagMatch.index,
+                    end: currentTagMatch.index + currentTagMatch[0].length
+                };
+                emphasisMode = 'group';
+            } else {
+                // Create new emphasis block
+                emphasisEditingValue = 1.0;
+                emphasisEditingSelection = {
+                    start: lastDelimiterIndex + 1,
+                    end: cursorPosition
+                };
+                emphasisMode = 'normal';
+            }
+        }
+    }
+    
+    emphasisEditingTarget = target;
+    emphasisEditingActive = true;
+    emphasisEditingMode = emphasisMode; // Store the mode for later use
+    
+    // Hide autocomplete
+    hideCharacterAutocomplete();
+    
+    // Show emphasis editing popup
+    showEmphasisEditingPopup();
+}
+
+function showEmphasisEditingPopup() {
+    // Create popup if it doesn't exist
+    let popup = document.getElementById('emphasisEditingPopup');
+    if (!popup) {
+        popup = document.createElement('div');
+        popup.id = 'emphasisEditingPopup';
+        popup.className = 'emphasis-popup';
+        popup.innerHTML = `
+            <div class="emphasis-popup-content">
+                <div class="emphasis-label">Emphasis Weight</div>
+                <div class="emphasis-mode-indicator" id="emphasisModeIndicator"></div>
+                <div class="emphasis-value">${emphasisEditingValue.toFixed(1)}</div>
+                <div class="emphasis-controls">
+                    <button class="emphasis-btn" onclick="adjustEmphasisEditing(-0.1)">-</button>
+                    <input type="range" min="-1.0" max="2.5" step="0.1" value="${emphasisEditingValue}" 
+                           oninput="updateEmphasisEditingFromSlider(this.value)" 
+                           onwheel="adjustEmphasisEditingFromWheel(event)">
+                    <button class="emphasis-btn" onclick="adjustEmphasisEditing(0.1)">+</button>
+                </div>
+                <div class="emphasis-help">Use ↑↓ arrows or scroll to adjust</div>
+                <div class="emphasis-mode-help" id="emphasisModeHelp"></div>
+            </div>
+        `;
+        document.body.appendChild(popup);
+    }
+    
+    // Position popup near text cursor
+    const rect = emphasisEditingTarget.getBoundingClientRect();
+    const cursorPosition = emphasisEditingTarget.selectionStart;
+    const textBeforeCursor = emphasisEditingTarget.value.substring(0, cursorPosition);
+    
+    // Position popup relative to the input field
+    const inputPadding = parseInt(window.getComputedStyle(emphasisEditingTarget).paddingLeft) || 0;
+    
+    // Position popup near the center-right of the input field
+    const cursorX = rect.left + (rect.width * 0.7); // 70% from the left
+    const cursorY = rect.top;
+    
+    // Position popup above the cursor
+    popup.style.left = cursorX + 'px';
+    popup.style.top = (cursorY - popup.offsetHeight - 10) + 'px';
+    popup.style.display = 'block';
+    popup.style.zIndex = '9999'; // Ensure it's on top
+    
+    updateEmphasisEditingPopup();
+}
+
+function updateEmphasisEditingPopup() {
+    const popup = document.getElementById('emphasisEditingPopup');
+    if (!popup) return;
+    
+    const valueElement = popup.querySelector('.emphasis-value');
+    const slider = popup.querySelector('input[type="range"]');
+    const modeIndicator = popup.querySelector('#emphasisModeIndicator');
+    const modeHelp = popup.querySelector('#emphasisModeHelp');
+    
+    if (valueElement) valueElement.textContent = emphasisEditingValue.toFixed(1);
+    if (slider) slider.value = emphasisEditingValue;
+    
+    // Update mode indicator
+    if (modeIndicator) {
+        let modeText = '';
+        let modeClass = '';
+        switch (emphasisEditingMode) {
+            case 'normal':
+                modeText = 'New Group';
+                modeClass = 'mode-normal';
+                break;
+            case 'brace':
+                modeText = 'Brace Block';
+                modeClass = 'mode-brace';
+                break;
+            case 'group':
+                modeText = 'Modify Group';
+                modeClass = 'mode-group';
+                break;
+        }
+        modeIndicator.textContent = modeText;
+        modeIndicator.className = `emphasis-mode-indicator ${modeClass}`;
+    }
+    
+    // Update mode help text
+    if (modeHelp) {
+        let helpText = '';
+        switch (emphasisEditingMode) {
+            case 'normal':
+                helpText = 'Press → to add emphasis around current tag';
+                break;
+            case 'brace':
+                helpText = 'Press ← to switch back to group';
+                break;
+            case 'group':
+                helpText = 'Press → to focus on current tag';
+                break;
+        }
+        modeHelp.textContent = helpText;
+    }
+}
+
+function adjustEmphasisEditing(delta) {
+    emphasisEditingValue = Math.max(-1.0, Math.min(2.5, emphasisEditingValue + delta));
+    updateEmphasisEditingPopup();
+}
+
+function updateEmphasisEditingFromSlider(value) {
+    emphasisEditingValue = parseFloat(value);
+    updateEmphasisEditingPopup();
+}
+
+function adjustEmphasisEditingFromWheel(event) {
+    event.preventDefault();
+    const delta = event.deltaY > 0 ? -0.1 : 0.1;
+    adjustEmphasisEditing(delta);
+}
+
+function applyEmphasisEditing() {
+    if (!emphasisEditingTarget || !emphasisEditingSelection) return;
+    
+    const target = emphasisEditingTarget;
+    const value = target.value;
+    const weight = emphasisEditingValue.toFixed(1);
+    
+    // Get the text to emphasize (trim any leading/trailing spaces)
+    const textToEmphasize = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end).trim();
+    
+    // Check if we're inside an existing emphasis block
+    const emphasisPattern = /(\d+\.\d+)::([^:]+)::/;
+    const isInsideEmphasis = emphasisPattern.test(textToEmphasize);
+    
+    // Check if we're inside a {} block
+    const isInsideBrace = textToEmphasize.startsWith('{') && textToEmphasize.endsWith('}');
+    
+    let emphasizedText;
+    if (emphasisEditingMode === 'brace') {
+        // Brace mode: create or update {} or [] blocks
+        if (isInsideBrace) {
+            // Update existing brace block - extract the actual text content
+            let innerText;
+            if (textToEmphasize.startsWith('{') && textToEmphasize.endsWith('}')) {
+                // Remove all { and } from the beginning and end
+                innerText = textToEmphasize.replace(/^\{+/, '').replace(/\}+$/, '');
+            } else if (textToEmphasize.startsWith('[') && textToEmphasize.endsWith(']')) {
+                // Remove all [ and ] from the beginning and end
+                innerText = textToEmphasize.replace(/^\[+/, '').replace(/\]+$/, '');
+            } else {
+                innerText = textToEmphasize;
+            }
+            
+            const braceLevel = Math.round((emphasisEditingValue - 1.0) * 10);
+            
+            if (braceLevel > 0) {
+                // Positive emphasis: use {}
+                const braces = '{'.repeat(braceLevel + 1);
+                emphasizedText = `${braces}${innerText}${'}'.repeat(braceLevel + 1)}`;
+            } else if (braceLevel < 0) {
+                // Negative emphasis: use [] (inverted calculation)
+                const bracketLevel = Math.abs(Math.round((1.0 - emphasisEditingValue) * 10));
+                const brackets = '['.repeat(bracketLevel);
+                emphasizedText = `${brackets}${innerText}${']'.repeat(bracketLevel)}`;
+            } else {
+                // No emphasis: just the text
+                emphasizedText = innerText;
+            }
+        } else {
+            // Create new brace block
+            const braceLevel = Math.round((emphasisEditingValue - 1.0) * 10);
+            
+            if (braceLevel > 0) {
+                // Positive emphasis: use {}
+                const braces = '{'.repeat(braceLevel + 1);
+                emphasizedText = `${braces}${textToEmphasize}${'}'.repeat(braceLevel + 1)}`;
+            } else if (braceLevel < 0) {
+                // Negative emphasis: use [] (inverted calculation)
+                const bracketLevel = Math.abs(Math.round((1.0 - emphasisEditingValue) * 10));
+                const brackets = '['.repeat(bracketLevel);
+                emphasizedText = `${brackets}${textToEmphasize}${']'.repeat(bracketLevel)}`;
+            } else {
+                // No emphasis: just the text
+                emphasizedText = textToEmphasize;
+            }
+        }
+    } else if (isInsideEmphasis) {
+        // We're inside an existing emphasis block, just update the weight
+        const match = textToEmphasize.match(emphasisPattern);
+        if (match) {
+            emphasizedText = textToEmphasize.replace(match[1], weight);
+        } else {
+            emphasizedText = `${weight}::${textToEmphasize}::`;
+        }
+    } else {
+        // Create new emphasis block - no extra spaces inside
+        emphasizedText = `${weight}::${textToEmphasize}::`;
+    }
+    
+    // Replace the text, preserving the original spacing around the selection
+    const beforeText = value.substring(0, emphasisEditingSelection.start);
+    let afterText = value.substring(emphasisEditingSelection.end);
+    
+    // For brace mode, handle closing braces/brackets around the entire tag
+    if (emphasisEditingMode === 'brace') {
+        // Find the start and end of the tag by searching for delimiters
+        let tagStart = emphasisEditingSelection.start;
+        let tagEnd = emphasisEditingSelection.end;
+    
+        // Expand tagStart backwards to skip spaces, commas, and braces/brackets
+        while (tagStart > 0) {
+            const char = value[tagStart - 1];
+            if (char === ' ' || char === '{' || char === '[' || char === '}' || char === ']') {
+                tagStart--;
+            } else if (char === ',') {
+                // If comma, ensure a space follows it
+                if (value[tagStart] !== ' ') {
+                    // Insert a space after the comma if missing
+                    beforeTag = value.substring(0, tagStart) + ', ';
+                    tagStart = beforeTag.length;
+                }
+                break;
+            } else if (char === ':' || char === '|') {
+                break;
+            } else {
+                break;
+            }
+        }
+        // Expand tagEnd forwards to skip spaces, commas, and braces/brackets
+        while (tagEnd < value.length) {
+            const char = value[tagEnd];
+            if (char === ' ' || char === '{' || char === '[' || char === '}' || char === ']') {
+                tagEnd++;
+            } else if (char === ',') {
+                // If comma, ensure a space follows it
+                if (value[tagEnd + 1] !== ' ') {
+                    // Insert a space after the comma if missing
+                    tagEnd++;
+                }
+                break;
+            } else if (char === ':' || char === '|') {
+                break;
+            } else {
+                break;
+            }
+        }
+    
+        // Get the text around the tag
+        const beforeTag = value.substring(0, tagStart);
+        let afterTag = value.substring(tagEnd);
+        if (/^,/.test(afterTag) && !/^,\\s/.test(afterTag)) {
+            afterTag = ', ' + afterTag.slice(1);
+        }
+    
+        let newValue = beforeTag + emphasizedText + afterTag;
+        // Add space after comma if needed
+        newValue = newValue.replace(/,([^\s])/g, ', $1');
+        target.value = newValue;
+        // Set cursor position after the emphasized text
+        const newCursorPosition = newValue.indexOf(emphasizedText) + emphasizedText.length;
+        target.setSelectionRange(newCursorPosition, newCursorPosition);
+    } else {
+        // For other modes, handle spacing as before
+        // Ensure there's a space before the emphasis block if needed (only for new blocks)
+        let prefix = '';
+        if (!isInsideEmphasis && !isInsideBrace && emphasisEditingSelection.start > 0) {
+            const charBefore = value[emphasisEditingSelection.start - 1];
+            if (charBefore && charBefore !== ' ' && charBefore !== '\n') {
+                prefix = ' ';
+            }
+        }
+        
+        // Remove any trailing space from beforeText and leading space from afterText
+        // to avoid double spaces
+        const trimmedBefore = beforeText.replace(/\s+$/, '');
+        const trimmedAfter = afterText.replace(/^\s+/, '');
+        
+        let newValue = trimmedBefore + prefix + emphasizedText + (trimmedAfter ? ' ' + trimmedAfter : '');
+        
+        // Add space after comma if needed
+        newValue = newValue.replace(/,([^\s])/g, ', $1');
+        
+        target.value = newValue;
+        
+        // Set cursor position after the emphasized text
+        const newCursorPosition = trimmedBefore.length + prefix.length + emphasizedText.length;
+        target.setSelectionRange(newCursorPosition, newCursorPosition);
+    }
+    
+    // Hide popup
+    const popup = document.getElementById('emphasisEditingPopup');
+    if (popup) {
+        popup.style.display = 'none';
+    }
+    
+    // Reset state
+    emphasisEditingActive = false;
+    emphasisEditingTarget = null;
+    emphasisEditingSelection = null;
+    emphasisEditingMode = 'normal';
+    
+    // Trigger input event to update any dependent UI
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function switchEmphasisMode(direction) {
+    if (!emphasisEditingTarget || !emphasisEditingSelection) return;
+    
+    const value = emphasisEditingTarget.value;
+    const cursorPosition = emphasisEditingTarget.selectionStart;
+    
+    if (direction === 'right') {
+        // Right arrow: switch to more specific mode
+        switch (emphasisEditingMode) {
+            case 'normal':
+                // Switch to brace mode - add {} around current selection
+                emphasisEditingMode = 'brace';
+                emphasisEditingValue = 1.0; // Start with no extra braces
+                break;
+            case 'group':
+                // Switch to brace mode - focus on {} or [] block inside the group
+                const emphasisText = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
+                const bracePattern = /\{([^}]*)\}|\[([^\]]*)\]/g;
+                let braceMatch;
+                let foundBrace = false;
+                while ((braceMatch = bracePattern.exec(emphasisText)) !== null) {
+                    const braceStartInEmphasis = emphasisEditingSelection.start + emphasisText.indexOf(braceMatch[0]);
+                    const braceEndInEmphasis = braceStartInEmphasis + braceMatch[0].length;
+                    
+                    if (cursorPosition >= braceStartInEmphasis && cursorPosition <= braceEndInEmphasis) {
+                        emphasisEditingMode = 'brace';
+                        emphasisEditingSelection = {
+                            start: braceStartInEmphasis,
+                            end: braceEndInEmphasis
+                        };
+                        // Calculate brace level from the text
+                        const braceText = braceMatch[0];
+                        const isBracket = braceText.startsWith('[');
+                        
+                        if (isBracket) {
+                            const openBrackets = (braceText.match(/\[/g) || []).length;
+                            const closeBrackets = (braceText.match(/\]/g) || []).length;
+                            const bracketLevel = openBrackets - closeBrackets;
+                            emphasisEditingValue = 1.0 - (bracketLevel * 0.1);
+                        } else {
+                            const openBraces = (braceText.match(/\{/g) || []).length;
+                            const closeBraces = (braceText.match(/\}/g) || []).length;
+                            const braceLevel = openBraces - closeBraces;
+                            emphasisEditingValue = 1.0 + (braceLevel * 0.1);
+                        }
+                        foundBrace = true;
+                        break;
+                    }
+                }
+                
+                // If no specific brace found, find the current tag/item within the group
+                if (!foundBrace) {
+                    // Find the current tag/item within the group
+                    const groupText = emphasisText;
+                    const tagPattern = /([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)/g;
+                    let tagMatch;
+                    let foundTag = false;
+                    
+                    while ((tagMatch = tagPattern.exec(groupText)) !== null) {
+                        const tagStartInGroup = emphasisEditingSelection.start + tagMatch.index;
+                        const tagEndInGroup = tagStartInGroup + tagMatch[0].length;
+                        
+                        if (cursorPosition >= tagStartInGroup && cursorPosition <= tagEndInGroup) {
+                            emphasisEditingMode = 'brace';
+                            emphasisEditingSelection = {
+                                start: tagStartInGroup,
+                                end: tagEndInGroup
+                            };
+                            emphasisEditingValue = 1.0;
+                            foundTag = true;
+                            break;
+                        }
+                    }
+                    
+                    // If still no tag found, use the cursor position to find the word
+                    if (!foundTag) {
+                        const textBeforeCursor = value.substring(0, cursorPosition);
+                        const textAfterCursor = value.substring(cursorPosition);
+                        
+                        // Find the word boundaries
+                        const wordBefore = textBeforeCursor.match(/\b[a-zA-Z0-9_]+$/);
+                        const wordAfter = textAfterCursor.match(/^[a-zA-Z0-9_]+/);
+                        
+                        if (wordBefore || wordAfter) {
+                            const start = wordBefore ? cursorPosition - wordBefore[0].length : cursorPosition;
+                            const end = wordAfter ? cursorPosition + wordAfter[0].length : cursorPosition;
+                            
+                            emphasisEditingMode = 'brace';
+                            emphasisEditingSelection = {
+                                start: start,
+                                end: end
+                            };
+                            emphasisEditingValue = 1.0;
+                        }
+                    }
+                }
+                break;
+        }
+    } else if (direction === 'left') {
+        // Left arrow: switch to less specific mode
+        switch (emphasisEditingMode) {
+            case 'brace':
+                // Try to switch back to group mode first
+                const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
+                let emphasisMatch;
+                let foundGroup = false;
+                while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
+                    const emphasisStart = emphasisMatch.index;
+                    const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
+                    
+                    if (emphasisEditingSelection.start >= emphasisStart && emphasisEditingSelection.end <= emphasisEnd) {
+                        emphasisEditingMode = 'group';
+                        emphasisEditingSelection = {
+                            start: emphasisStart,
+                            end: emphasisEnd
+                        };
+                        emphasisEditingValue = parseFloat(emphasisMatch[1]);
+                        foundGroup = true;
+                        break;
+                    }
+                }
+                
+                // If no group found, switch back to normal mode
+                if (!foundGroup) {
+                    emphasisEditingMode = 'normal';
+                    // Keep the current selection but reset to normal emphasis
+                    emphasisEditingValue = 1.0;
+                }
+                break;
+        }
+    }
+    
+    updateEmphasisEditingPopup();
+}
+
+function cancelEmphasisEditing() {
+    // Hide popup
+    const popup = document.getElementById('emphasisEditingPopup');
+    if (popup) {
+        popup.style.display = 'none';
+    }
+    
+    // Reset state
+    emphasisEditingActive = false;
+    emphasisEditingTarget = null;
+    emphasisEditingSelection = null;
+    emphasisEditingMode = 'normal';
 }
 
 function updateCharacterAutocompleteSelection() {
@@ -5150,6 +6348,67 @@ function selectTextReplacement(placeholder) {
     target.value = newPrompt;
     
     // Set cursor position after the inserted placeholder
+    const newCursorPosition = newPrompt.length - textAfter.length;
+    target.setSelectionRange(newCursorPosition, newCursorPosition);
+    
+    // Hide character autocomplete
+    hideCharacterAutocomplete();
+    
+    // Focus back on the target field
+    if (target) {
+        target.focus();
+    }
+}
+
+function insertTextReplacement(actualText) {
+    if (!currentCharacterAutocompleteTarget) return;
+    
+    const target = currentCharacterAutocompleteTarget;
+    const currentValue = target.value;
+    const cursorPosition = target.selectionStart;
+    
+    // Get the text before the cursor
+    const textBeforeCursor = currentValue.substring(0, cursorPosition);
+    
+    // Find the last delimiter (:, |, ,) before the cursor, or start from the beginning
+    const lastDelimiterIndex = Math.max(
+        textBeforeCursor.lastIndexOf('{'),
+        textBeforeCursor.lastIndexOf('}'),
+        textBeforeCursor.lastIndexOf('['),
+        textBeforeCursor.lastIndexOf(']'),
+        textBeforeCursor.lastIndexOf(':'),
+        textBeforeCursor.lastIndexOf('|'),
+        textBeforeCursor.lastIndexOf(',')
+    );
+    const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
+    
+    // Get the text after the cursor
+    const textAfterCursor = currentValue.substring(cursorPosition);
+    
+    // Build the new prompt
+    let newPrompt = '';
+    
+    // Keep the text before the current term (trim any trailing delimiters and spaces)
+    const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
+    newPrompt = textBefore;
+    
+    // Add the actual text (not wrapped in angle brackets)
+    if (newPrompt) {
+        newPrompt += ', ' + actualText;
+    } else {
+        newPrompt = actualText;
+    }
+    
+    // Add the text after the cursor (trim any leading delimiters and spaces)
+    const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
+    if (textAfter) {
+        newPrompt += ', ' + textAfter;
+    }
+    
+    // Update the target field
+    target.value = newPrompt;
+    
+    // Set cursor position after the inserted text
     const newCursorPosition = newPrompt.length - textAfter.length;
     target.setSelectionRange(newCursorPosition, newCursorPosition);
     
@@ -5637,6 +6896,15 @@ function hideCharacterAutocomplete() {
     currentCharacterAutocompleteTarget = null;
     selectedCharacterAutocompleteIndex = -1;
     characterSearchResults = [];
+    autocompleteNavigationMode = false;
+    updateEmphasisTooltipVisibility();
+}
+
+function updateEmphasisTooltipVisibility() {
+    const tooltip = document.getElementById('emphasisTooltip');
+    if (tooltip) {
+        tooltip.style.display = autocompleteNavigationMode ? 'block' : 'none';
+    }
 }
 
 function hideCharacterDetail() {
@@ -7080,25 +8348,23 @@ async function deleteManualPreviewImage() {
         const result = await response.json();
         
         if (result.success) {
-            // Find the next (older) image in the gallery
-            const currentIndex = allImages.findIndex(img => img === currentManualPreviewImage);
+            // Refresh gallery first to get updated list
+            await loadGallery();
+            
+            // Find the next (older) image in the updated gallery
             let nextImage = null;
             
-            if (currentIndex < allImages.length - 1) {
-                // Get the next (older) image
-                nextImage = allImages[currentIndex + 1];
-            } else if (allImages.length > 1) {
-                // If this is the last image, get the first one
+            if (allImages.length > 0) {
+                // Get the first image from the updated gallery
                 nextImage = allImages[0];
             }
-            
-            // Refresh gallery to get updated list
-            await loadGallery();
             
             if (nextImage) {
                 // Load the next (older) image and its metadata
                 try {
-                    const metadataResponse = await fetchWithAuth(`/images/${nextImage.original}/metadata`);
+                    const metadataResponse = await fetchWithAuth(`/images/${nextImage.original}`, {
+                        method: 'OPTIONS',
+                    });
                     if (metadataResponse.ok) {
                         const metadata = await metadataResponse.json();
                         nextImage.metadata = metadata;
@@ -7388,6 +8654,116 @@ function updateLightboxControls(image) {
     // Set up toggle base image functionality
     if (toggleBaseBtn.style.display !== 'none') {
         toggleBaseBtn.onclick = () => toggleBaseImage(imageObj);
+    }
+}
+
+// Create variation from image
+async function variationImage(imageObj) {
+    if (!isAuthenticated) {
+        showError('Please login first');
+        return;
+    }
+
+    try {
+        // Determine filename for metadata
+        let filenameForMetadata = imageObj.filename || imageObj.pipeline_upscaled || imageObj.pipeline || imageObj.upscaled || imageObj.original;
+        if (!filenameForMetadata) {
+            throw new Error('No filename available for metadata lookup');
+        }
+
+        // Get metadata
+        const response = await fetchWithAuth(`/images/${filenameForMetadata}`, {
+            method: 'OPTIONS'
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to load image metadata: ${response.status} ${response.statusText}`);
+        }
+        const metadata = await response.json();
+        if (!metadata) {
+            throw new Error('No metadata found for this image');
+        }
+
+        // Close lightbox
+        if (lightboxModal.style.display === 'block') {
+            hideLightbox();
+        }
+
+        // Store metadata and image
+        window.currentEditMetadata = metadata;
+        window.currentEditImage = imageObj;
+
+        // Load form values from metadata
+        await loadIntoManualForm(metadata, imageObj);
+
+        // Show request type row
+        const requestTypeRow = document.getElementById('requestTypeRow');
+        if (requestTypeRow) requestTypeRow.style.display = 'flex';
+
+        // Set transformation type to variation
+        updateTransformationDropdownState('variation', 'Current');
+
+        // Set up the image as base image for variation
+        const filename = imageObj.filename || imageObj.original || imageObj.pipeline || imageObj.pipeline_upscaled;
+        if (!filename) {
+            throw new Error('No filename available for variation');
+        }
+
+        const source = `file:${filename}`;
+        const previewUrl = `/images/${filename}`;
+
+        window.uploadedImageData = {
+            image_source: source,
+            width: metadata.width || 512,
+            height: metadata.height || 512,
+            bias: 2, // Default center bias
+            isBiasMode: true,
+            isClientSide: false
+        };
+
+        // Set the variation image
+        const variationImage = document.getElementById('manualVariationImage');
+        if (variationImage) {
+            variationImage.src = previewUrl;
+            variationImage.style.display = 'block';
+        }
+
+        // Set strength to 0.8 and noise to 0.1 for variation
+        const strengthValue = document.getElementById('manualStrengthValue');
+        const noiseValue = document.getElementById('manualNoiseValue');
+        if (strengthValue) strengthValue.value = '0.8';
+        if (noiseValue) noiseValue.value = '0.1';
+
+        // Show transformation section content
+        const transformationSection = document.getElementById('transformationSection');
+        if (transformationSection) {
+            transformationSection.classList.add('display-image');
+        }
+
+        // Update button visibility
+        updateRequestTypeButtonVisibility();
+        updateUploadDeleteButtonVisibility();
+
+        // Set form state for variation
+        const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
+        const saveButton = document.getElementById('manualSaveBtn');
+        const layer1SeedToggle = document.getElementById('layer1SeedToggle');
+        const manualMaskBiasGroup = document.getElementById('manualMaskBiasGroup');
+
+        if (presetNameGroup) presetNameGroup.style.display = 'block';
+        if (saveButton) saveButton.style.display = 'inline-block';
+        if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
+        if (manualMaskBiasGroup) manualMaskBiasGroup.style.display = 'none';
+
+        // Update inpaint button state
+        updateInpaintButtonState();
+
+        await cropImageToResolution();
+        manualModal.style.display = 'block';
+        manualPrompt.focus();
+
+    } catch (error) {
+        console.error('Variation setup error:', error);
+        showError('Failed to set up variation: ' + error.message);
     }
 }
 
@@ -12121,7 +13497,7 @@ function hideImageBiasAdjustmentModal() {
 
 // Enhanced cropImageToResolution function to handle dynamic bias adjustments
 async function cropImageToResolution() {
-    if (!window.uploadedImageData) {
+    if (!(window.uploadedImageData.image_source || window.uploadedImageData.originalDataUrl)) {
         console.warn('No uploaded image data available for cropping');
         return;
     }

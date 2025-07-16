@@ -34,7 +34,7 @@
                             <div class="form-group">
                                 <div class="prompt-tabs">
                                     <div class="tab-header">
-                                        <div class="tab-buttons">
+                                        <div id="tab-buttons" class="tab-buttons">
                                             <button type="button" class="tab-btn active" data-tab="prompt">
                                                 <i class="nai-penwriting"></i> Prompt
                                             </button>
@@ -414,6 +414,7 @@
                             </div>
                         </div>
                         <div class="manual-preview-content">
+                            <!-- Navigation buttons -->
                             <div class="manual-preview-image-container">
                                 <img id="manualPreviewImage" src="" alt="Generated Image" style="display: none;">
                                 <div id="manualPreviewPlaceholder" class="manual-preview-placeholder">
@@ -431,15 +432,23 @@
                                 <button id="manualPreviewVariationBtn" class="btn-primary round-button" style="display: none;">
                                     <i class="nai-inpaint"></i>
                                 </button>
-                                <button id="manualPreviewSeedBtn" class="btn-primary round-button" style="display: none;">
-                                    <i class="nai-seed"></i>
+                                <button id="manualPreviewLoadBtn" class="btn-primary round-button" style="display: none;">
+                                    <i class="nai-settings"></i>
                                 </button>
                                 <button id="manualPreviewDeleteBtn" class="btn-danger round-button" style="display: none;">
                                     <i class="nai-trash"></i>
                                 </button>
                             </div>
+                            <div class="manual-preview-controls-left">
+                                <button id="manualPreviewPrevBtn" class="btn-primary round-button" disabled>
+                                    <i class="nai-directional-arrow-left"></i>
+                                </button>
+                                <button id="manualPreviewNextBtn" class="btn-primary round-button" disabled>
+                                    <i class="nai-directional-arrow-right"></i>
+                                </button>
+                            </div>
                             <div class="manual-preview-controls-right">
-                                <div class="preview-info-badge">
+                                <div id="manualPreviewSeedBtn" class="preview-info-badge">
                                     <i class="nai-seed"></i>
                                     <span id="manualPreviewSeedNumber">---</span>
                                 </div>
