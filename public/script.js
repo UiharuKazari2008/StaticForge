@@ -6,12 +6,150 @@ let allImages = [];
 let currentPage = 1;
 let imagesPerPage = 12;
 let currentImage = null;
+let currentManualPreviewImage = null;
 
 let selectedCharacterAutocompleteIndex = -1;
 
 // Selection state
 let selectedImages = new Set();
 let isSelectionMode = false;
+
+// Helper function to check if a model is V3
+function isV3Model(modelValue) {
+    if (!modelValue) return false;
+    const model = modelValue.toLowerCase();
+    return model === 'v3' || model === 'v3_furry';
+}
+
+// Helper function to get currently selected model
+function getCurrentSelectedModel() {
+    return manualSelectedModel || manualModelHidden?.value || '';
+}
+
+// Helper function to update UI visibility based on V3 model selection
+function updateV3ModelVisibility() {
+    const isV3Selected = isV3Model(getCurrentSelectedModel());
+    
+    // Hide/show dataset controls for V3 models
+    const datasetDropdown = document.getElementById('datasetDropdown');
+    const datasetBiasControls = document.querySelector('#manualModal form .tab-buttons button[data-tab="settings"]')
+    
+    if (datasetDropdown) {
+        datasetDropdown.style.display = isV3Selected ? 'none' : '';
+    }
+    if (datasetBiasControls) {
+        datasetBiasControls.style.display = isV3Selected ? 'none' : '';
+    }
+    
+    // Hide/show character prompts for V3 models
+    const addCharacterBtn = document.getElementById('addCharacterBtn');
+    const characterPromptsContainer = document.getElementById('characterPromptsContainer');
+    
+    if (addCharacterBtn) {
+        addCharacterBtn.style.display = isV3Selected ? 'none' : '';
+    }
+    if (characterPromptsContainer) {
+        characterPromptsContainer.style.display = isV3Selected ? 'none' : '';
+    }
+    
+    // Store the V3 state for later use
+    window.isV3ModelSelected = isV3Selected;
+}
+
+// Helper function to update save button state based on preset name
+function updateSaveButtonState() {
+    const saveBtn = document.getElementById('manualSaveBtn');
+    const presetNameInput = document.getElementById('manualPresetName');
+    
+    if (saveBtn && presetNameInput) {
+        const hasPresetName = presetNameInput.value.trim().length > 0;
+        saveBtn.disabled = !hasPresetName;
+        
+        if (hasPresetName) {
+            saveBtn.classList.remove('disabled');
+        } else {
+            saveBtn.classList.add('disabled');
+        }
+    }
+}
+
+// Helper function to update load button state based on preset name validation
+function updateLoadButtonState() {
+    const loadBtn = document.getElementById('manualLoadBtn');
+    const presetNameInput = document.getElementById('manualPresetName');
+    
+    if (!loadBtn || !presetNameInput) return;
+    
+    const presetName = presetNameInput.value.trim();
+    if (!presetName) {
+        loadBtn.disabled = true;
+        loadBtn.classList.add('disabled');
+        return;
+    }
+    
+    // Check if preset exists in available presets
+    const isValidPreset = window.availablePresets && window.availablePresets.includes(presetName);
+    
+    loadBtn.disabled = !isValidPreset;
+    
+    if (isValidPreset) {
+        loadBtn.classList.remove('disabled');
+    } else {
+        loadBtn.classList.add('disabled');
+    }
+}
+
+// Debounced preset validation
+let presetValidationTimeout = null;
+function validatePresetWithTimeout() {
+    clearTimeout(presetValidationTimeout);
+    presetValidationTimeout = setTimeout(() => {
+        updateLoadButtonState();
+        updateSaveButtonState();
+    }, 300); // 300ms delay
+}
+
+// Load available presets for validation
+async function loadAvailablePresets() {
+    try {
+        const response = await fetchWithAuth('/', {
+            method: 'OPTIONS'
+        });
+        if (response.ok) {
+            const options = await response.json();
+            if (options.presets) {
+                window.availablePresets = options.presets.map(preset => preset.name);
+            }
+        }
+    } catch (error) {
+        console.warn('Failed to load available presets:', error);
+        window.availablePresets = [];
+    }
+}
+
+// Load preset into manual form
+async function loadPresetIntoForm(presetName) {
+    try {
+        const response = await fetch(`/preset/${presetName}`, {
+            method: 'OPTIONS',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to load preset: ${response.statusText}`);
+        }
+        
+        const presetData = await response.json();
+        await loadIntoManualForm(presetData);
+        
+        showSuccess(`Preset "${presetName}" loaded successfully!`);
+    } catch (error) {
+        console.error('Load preset error:', error);
+        showError(`Failed to load preset "${presetName}": ${error.message}`);
+    }
+}
 
 // Three-way mapping for samplers
 const SAMPLER_MAP = [
@@ -27,7 +165,6 @@ const NOISE_MAP = [
   { meta: 'exponential', display: 'Exponential', request: 'EXPONENTIAL' },
   { meta: 'polyexponential', display: 'Polyexponental', request: 'POLYEXPONENTIAL' }
 ];
-// Global resolution definitions
 const RESOLUTIONS = [
     { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768 },
     { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512 },
@@ -110,26 +247,23 @@ const modelGroups = [
     }
 ];
 
+const modelKeys = {
+    "nai-diffusion-3": { type: "Anime", version: "v3" },
+    "nai-diffusion-4-full": { type: "Anime", version: "v4" },
+    "nai-diffusion-4-curated-preview": { type: "Anime", version: "v4C" },
+    "nai-diffusion-4-5-full": { type: "Anime", version: "v4.5" },
+    "nai-diffusion-4-5-curated": { type: "Anime", version: "v4.5C" },
+    "nai-diffusion-furry-3": { type: "Furry", version: "v3" }
+  }
+
 // Helper functions for sampler mapping
-function getSamplerByMeta(meta) {
-  return SAMPLER_MAP.find(s => s.meta === meta);
-}
-function getSamplerByRequest(request) {
-  return SAMPLER_MAP.find(s => s.request === request);
-}
-function getSamplerByDisplay(display) {
-  return SAMPLER_MAP.find(s => s.display === display);
+function getSamplerMeta(meta) {
+  return SAMPLER_MAP.find(s => s.meta.toLowerCase() === meta.toLowerCase());
 }
 
 // Helper functions for noise mapping
-function getNoiseByMeta(meta) {
-  return NOISE_MAP.find(n => n.meta === meta);
-}
-function getNoiseByRequest(request) {
-  return NOISE_MAP.find(n => n.request === request);
-}
-function getNoiseByDisplay(display) {
-  return NOISE_MAP.find(n => n.display === display);
+function getNoiseMeta(meta) {
+  return NOISE_MAP.find(n => n.meta.toLowerCase() === meta.toLowerCase());
 }
 
 // DOM elements
@@ -268,6 +402,7 @@ const manualPreviewDownloadBtn = document.getElementById('manualPreviewDownloadB
 const manualPreviewUpscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
 const manualPreviewVariationBtn = document.getElementById('manualPreviewVariationBtn');
 const manualPreviewSeedBtn = document.getElementById('manualPreviewSeedBtn');
+const manualPreviewDeleteBtn = document.getElementById('manualPreviewDeleteBtn');
 const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
 const manualStrengthValue = document.getElementById('manualStrengthValue');
 const manualNoiseValue = document.getElementById('manualNoiseValue');
@@ -279,6 +414,32 @@ let currentCharacterAutocompleteTarget = null;
 // Global variables for character autocomplete
 let characterSearchResults = [];
 let characterData = null;
+
+// Dataset Dropdown Elements
+const datasetDropdown = document.getElementById('datasetDropdown');
+const datasetDropdownBtn = document.getElementById('datasetDropdownBtn');
+const datasetDropdownMenu = document.getElementById('datasetDropdownMenu');
+const datasetSelected = document.getElementById('datasetSelected');
+const datasetIcon = document.getElementById('datasetIcon');
+let selectedDatasets = []; // Default to anime enabled
+
+// Dataset Bias Variables
+let datasetBias = {
+    anime: 1.0,
+    furry: 1.0,
+    backgrounds: 1.0
+};
+
+// Quality Toggle Element
+const qualityToggleBtn = document.getElementById('qualityToggleBtn');
+let appendQuality = true;
+
+// UC Presets Dropdown Elements  
+const ucPresetsDropdown = document.getElementById('ucPresetsDropdown');
+const ucPresetsDropdownBtn = document.getElementById('ucPresetsDropdownBtn');
+const ucPresetsDropdownMenu = document.getElementById('ucPresetsDropdownMenu');
+// const ucPresetsSelected = document.getElementById('ucPresetsSelected'); // Removed - using UC boxes now
+let selectedUcPreset = 3; // Default to "Heavy"
 
 // Global variables for preset autocomplete
 let presetAutocompleteTimeout = null;
@@ -663,6 +824,9 @@ async function loadIntoManualForm(source, image = null) {
         let type = 'metadata';
         let name = '';
 
+        // Save the current preset name before clearing the form
+        const currentPresetName = manualPresetName ? manualPresetName.value.trim() : '';
+
         // Clear form first for all cases
         clearManualForm();
 
@@ -676,15 +840,17 @@ async function loadIntoManualForm(source, image = null) {
             let endpoint = '';
             if (presetType === 'preset') {
                 type = 'preset';
-                endpoint = `/preset/${presetName}/raw`;
+                endpoint = `/preset/${presetName}`;
             } else if (presetType === 'pipeline') {
                 type = 'pipeline';
-                endpoint = `/pipeline/${presetName}/raw`;
+                endpoint = `/pipeline/${presetName}`;
             } else {
                 throw new Error('Invalid type');
             }
 
-            const response = await fetchWithAuth(endpoint);
+            const response = await fetchWithAuth(endpoint, {
+                method: 'OPTIONS',
+            });
             if (!response.ok) {
                 throw new Error(`Failed to load ${presetType} data`);
             }
@@ -697,11 +863,11 @@ async function loadIntoManualForm(source, image = null) {
 
             // Preprocess sampler and noiseScheduler
             if (data.sampler) {
-                const samplerObj = getSamplerByRequest(data.sampler) || getSamplerByMeta(data.sampler);
+                const samplerObj = getSamplerMeta(data.sampler) || getSamplerMeta(data.sampler);
                 data.sampler = samplerObj ? samplerObj.meta : 'k_euler_ancestral';
             }
             if (data.noiseScheduler || data.noise_schedule) {
-                const noiseObj = getNoiseByRequest(data.noiseScheduler || data.noise_schedule) || getNoiseByMeta(data.noiseScheduler || data.noise_schedule);
+                const noiseObj = getNoiseMeta(data.noiseScheduler || data.noise_schedule) || getNoiseMeta(data.noiseScheduler || data.noise_schedule);
                 data.noiseScheduler = noiseObj ? noiseObj.meta : 'karras';
             }
 
@@ -719,11 +885,15 @@ async function loadIntoManualForm(source, image = null) {
             }
 
             // Handle sampler and noise
-            const samplerObj = getSamplerByMeta(data.sampler);
-            data.sampler = samplerObj ? samplerObj.meta : 'k_euler_ancestral';
+            if (data.sampler) {
+                const samplerObj = getSamplerMeta(data.sampler);
+                data.sampler = samplerObj ? samplerObj.meta : 'k_euler_ancestral';
+            }
 
-            const noiseObj = getNoiseByMeta(data.noise_schedule);
-            data.noiseScheduler = noiseObj ? noiseObj.meta : 'karras';
+            if (data.noise_schedule) {
+                const noiseObj = getNoiseMeta(data.noise_schedule);
+                data.noiseScheduler = noiseObj ? noiseObj.meta : 'karras';
+            }
             
             name = data.preset_name;
         } else {
@@ -746,7 +916,6 @@ async function loadIntoManualForm(source, image = null) {
             if (manualWidth) manualWidth.value = data.width;
             if (manualHeight) manualHeight.value = data.height;
         }
-        
         selectManualResolution(resolutionToSet, resolutionGroup);
         
         // Handle custom dimensions after resolution is set
@@ -793,6 +962,81 @@ async function loadIntoManualForm(source, image = null) {
             clearCharacterPrompts();
         }
         
+
+        // Load new parameters from metadata if available
+        if (data.dataset_config && data.dataset_config.include) {
+            selectedDatasets = [...data.dataset_config.include];
+            
+            // Load bias values
+            if (data.dataset_config.bias) {
+                Object.keys(data.dataset_config.bias).forEach(dataset => {
+                    if (datasetBias[dataset] !== undefined) {
+                        datasetBias[dataset] = data.dataset_config.bias[dataset];
+                    }
+                });
+            }
+            
+            // Load dataset settings
+            if (data.dataset_config.settings) {
+                Object.keys(data.dataset_config.settings).forEach(dataset => {
+                    const datasetSettings = data.dataset_config.settings[dataset];
+                    Object.keys(datasetSettings).forEach(settingId => {
+                        const setting = datasetSettings[settingId];
+                        if (setting.enabled !== undefined) {
+                            // Store setting state for UI updates
+                            if (!window.datasetSettings) window.datasetSettings = {};
+                            if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
+                            window.datasetSettings[dataset][settingId] = {
+                                enabled: setting.enabled,
+                                bias: setting.bias || 1.0,
+                                value: setting.value
+                            };
+                        }
+                    });
+                });
+            }
+        } else {
+            selectedDatasets = []; // Default
+            // Reset bias values to defaults
+            datasetBias = {
+                anime: 1.0,
+                furry: 1.0,
+                backgrounds: 1.0
+            };
+        }
+        updateDatasetDisplay();
+        renderDatasetDropdown();
+        renderDatasetBiasControls();
+        
+        if (data.append_quality !== undefined) {
+            appendQuality = data.append_quality;
+            if (qualityToggleBtn) {
+                qualityToggleBtn.setAttribute('data-state', appendQuality ? 'on' : 'off');
+            }
+        } else {
+            appendQuality = true;
+            if (qualityToggleBtn) {
+                qualityToggleBtn.setAttribute('data-state', 'on');
+            }
+        }
+        
+        if (data.append_uc !== undefined) {
+            selectedUcPreset = data.append_uc;
+        } else {
+            selectedUcPreset = 3;
+        }
+        selectUcPreset(selectedUcPreset);
+        renderUcPresetsDropdown();
+
+        // Load character prompts - check for allCharacters first (saved input), then characterPrompts (extracted)
+        if (data.allCharacters && Array.isArray(data.allCharacters)) {
+            loadCharacterPrompts(data.allCharacters, data.use_coords);
+        } else if (data.characterPrompts && Array.isArray(data.characterPrompts)) {
+            loadCharacterPrompts(data.characterPrompts, data.use_coords);
+        } else {
+            clearCharacterPrompts();
+        }
+
         // Handle new parameters
         // Handle allow_paid setting
         if (data.allow_paid !== undefined) {
@@ -805,7 +1049,6 @@ async function loadIntoManualForm(source, image = null) {
         const hasBaseImage = data.image_source;
         const isPipeline = data.request_type === 'pipeline';
 
-        const variationRow = document.getElementById('transformationSection');
         const variationImage = document.getElementById('manualVariationImage');
         const strengthValue = document.getElementById('manualStrengthValue');
         const noiseValue = document.getElementById('manualNoiseValue');
@@ -820,9 +1063,11 @@ async function loadIntoManualForm(source, image = null) {
                 const targetWidth = data.width || 1024;
                 const targetHeight = data.height || 1024;
                 
-                window.pipelineMaskData = window.currentMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
+                window.pipelineMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
+                window.currentMaskData = window.pipelineMaskData;
             } else if (data.mask) {
-                window.pipelineMaskData = window.currentMaskData = "data:image/png;base64," + data.mask;
+                window.pipelineMaskData = "data:image/png;base64," + data.mask;
+                window.currentMaskData = window.pipelineMaskData;
             } else {
                 // Get pipeline name from metadata (pipeline_name then preset_name)
                 let pipelineName = data.pipeline_name || data.preset_name || 'generated';
@@ -1012,12 +1257,8 @@ async function loadIntoManualForm(source, image = null) {
             if (saveButton) saveButton.style.display = 'flex';
             window.currentPipelineEdit = null;
         } else if (type === 'metadata') {
-            // Metadata-specific: strength, noise, upscale off
-            if (manualStrengthValue) {
-                manualStrengthValue.value = data.strength || 0.8;
-                window.strengthValueLoaded = true;
-            }
-            if (manualNoiseValue) manualNoiseValue.value = data.noise || 0.1;
+            manualStrengthValue.value = (data.strength !== undefined && data.strength !== null) ? data.strength : 0.8;
+            manualNoiseValue.value = (data.noise !== undefined && data.noise !== null) ? data.noise : 0.1;
             if (manualUpscale) manualUpscale.checked = false;
             // Load image into preview panel when loading from metadata
             if (image) {
@@ -1041,6 +1282,13 @@ async function loadIntoManualForm(source, image = null) {
         updateManualPriceDisplay();
         updateRequestTypeButtonVisibility();
         updateUploadDeleteButtonVisibility();
+        updateSaveButtonState();
+        updateLoadButtonState();
+
+        // Restore the preset name that was entered by the user
+        if (manualPresetName && currentPresetName) {
+            manualPresetName.value = currentPresetName;
+        }
     } catch (error) {
         console.error('Error loading into form:', error);
         showError('Failed to load data');
@@ -1210,7 +1458,7 @@ function renderManualSamplerDropdown(selectedVal) {
 
 function selectManualSampler(value) {
   manualSelectedSampler = value;
-  const s = SAMPLER_MAP.find(s => s.meta === value);
+  const s = SAMPLER_MAP.find(s => s.meta.toLowerCase() === value.toLowerCase());
   if (s) {
     manualSamplerSelected.textContent = s.display;
   } else {
@@ -1240,7 +1488,7 @@ function renderManualNoiseSchedulerDropdown(selectedVal) {
 
 function selectManualNoiseScheduler(value) {
   manualSelectedNoiseScheduler = value;
-  const n = NOISE_MAP.find(n => n.meta === value);
+  const n = NOISE_MAP.find(n => n.meta.toLowerCase() === value.toLowerCase());
   if (n) {
     manualNoiseSchedulerSelected.textContent = n.display;
   } else {
@@ -1448,6 +1696,9 @@ function selectManualModel(value, group) {
   // Sync with hidden input for compatibility
   if (manualModelHidden) manualModelHidden.value = value.toLowerCase();
   
+  // Update UI visibility based on model selection
+  updateV3ModelVisibility();
+  
   // Trigger any listeners (e.g., updateGenerateButton or manual form update)
   if (typeof updateGenerateButton === 'function') updateGenerateButton();
   // Update price display
@@ -1530,7 +1781,7 @@ function selectTransformation(value) {
             // Update button display for immediate actions
             const options = {
                 'reroll': 'Referance',
-                'variation': 'Current Image'
+                'variation': 'Current'
             };
             const displayText = options[value] || 'Select';
             updateTransformationDropdownState(value, displayText);
@@ -1684,30 +1935,9 @@ function updateTransformationDropdownState(type, text) {
 setupDropdown(transformationDropdown, transformationDropdownBtn, transformationDropdownMenu, renderTransformationDropdown, () => document.getElementById('transformationType').value);
 setupTransformationDropdownListeners();
 
-renderManualSamplerDropdown(manualSelectedSampler);
-selectManualSampler('k_euler_ancestral');
-renderManualResolutionDropdown(manualSelectedResolution);
-selectManualResolution('normal_square', 'Normal');
-renderCustomResolutionDropdown(selectedResolution);
-selectCustomResolution('', 'Default');
-renderManualNoiseSchedulerDropdown(manualSelectedNoiseScheduler);
-selectManualNoiseScheduler('karras');
-renderManualMaskBiasDropdown(manualSelectedMaskBias);
-selectManualMaskBias('2');
-// Don't render image bias dropdown here - it will be rendered when needed
-renderManualModelDropdown(manualSelectedModel);
-selectManualModel('v4_5', '');
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     updateControlsVisibility();
-    initializeApp();
-    
-    // Initialize background gradient
-    setupEventListeners();
-});
-
-// Initialize the application
-async function initializeApp() {
     try {
         // Calculate initial images per page based on current window size
         imagesPerPage = calculateImagesPerPage();
@@ -1715,7 +1945,28 @@ async function initializeApp() {
         if (isAuthenticated) {
             await loadOptions();
             await loadBalance();
+            await loadAvailablePresets();
+            renderManualSamplerDropdown(manualSelectedSampler);
+            selectManualSampler('k_euler_ancestral');
+            renderManualResolutionDropdown(manualSelectedResolution);
+            selectManualResolution('normal_square', 'Normal');
+            renderCustomResolutionDropdown(selectedResolution);
+            selectCustomResolution('', 'Default');
+            renderManualNoiseSchedulerDropdown(manualSelectedNoiseScheduler);
+            selectManualNoiseScheduler('karras');
+            renderManualMaskBiasDropdown(manualSelectedMaskBias);
+            selectManualMaskBias('2');
+            renderManualModelDropdown(manualSelectedModel);
+            selectManualModel('v4_5', '');
+            
+            // Initialize new dropdowns
+            renderDatasetDropdown();
+            updateDatasetDisplay();
+            renderDatasetBiasControls();
+            renderUcPresetsDropdown();
+            selectUcPreset(0);
         }
+
         await loadGallery();
         updateGenerateButton();
         
@@ -1725,6 +1976,345 @@ async function initializeApp() {
         console.error('Failed to initialize app:', error);
         showError('Failed to load application data');
     }
+
+    // Initialize background gradient
+    setupEventListeners();
+});
+
+// Global options data
+let optionsData = null;
+
+// Dataset Dropdown Functions
+function renderDatasetDropdown() {
+    datasetDropdownMenu.innerHTML = '';
+    
+    // Use loaded options data or fallback to default
+    const datasets = optionsData?.datasets || [
+        { value: 'anime', display: 'Anime', sub_toggles: [] },
+        { value: 'furry', display: 'Furry', sub_toggles: [] },
+        { value: 'backgrounds', display: 'Backgrounds', sub_toggles: [] }
+    ];
+    
+    datasets.forEach(dataset => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option';
+        option.dataset.value = dataset.value;
+        
+        const isSelected = selectedDatasets.includes(dataset.value);
+        if (isSelected) {
+            option.classList.add('selected');
+        }
+        
+        option.innerHTML = `
+            <span>${dataset.display}</span>
+            ${isSelected ? '<i class="fas fa-check" style="margin-left: auto;"></i>' : ''}
+        `;
+        
+        option.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleDataset(dataset.value);
+        });
+        
+        datasetDropdownMenu.appendChild(option);
+    });
+}
+
+function toggleDataset(value) {
+    const index = selectedDatasets.indexOf(value);
+    if (index > -1) {
+        selectedDatasets.splice(index, 1);
+    } else {
+        selectedDatasets.push(value);
+    }
+    
+    // Update display
+    updateDatasetDisplay();
+    renderDatasetDropdown();
+    renderDatasetBiasControls();
+}
+
+function updateDatasetDisplay() {
+    if (selectedDatasets.length > 1) {
+        datasetSelected.classList.remove('hidden');
+        datasetSelected.textContent = `${selectedDatasets.length}`;
+    } else {
+        datasetSelected.classList.add('hidden');
+        datasetSelected.textContent = '0';
+    }
+
+    if (datasetIcon) {
+        // Priority: furry > backgrounds > anime (default)
+        let iconClass = 'nai-sakura'; // default (anime)
+        if (selectedDatasets.includes('furry')) {
+            iconClass = 'nai-paw';
+        } else if (selectedDatasets.includes('backgrounds')) {
+            iconClass = 'fas fa-tree';
+        } else {
+            iconClass = 'nai-sakura';
+        }
+        datasetIcon.className = iconClass;
+    }
+    
+    // Update toggle state - on when more than just anime is selected
+    // off when none or only anime is selected
+    const datasetBtn = document.getElementById('datasetDropdownBtn');
+    if (datasetBtn) {
+        datasetBtn.setAttribute('data-state', selectedDatasets.length > 0 ? 'on' : 'off');
+    }
+}
+
+function openDatasetDropdown() {
+    openDropdown(datasetDropdownMenu, datasetDropdownBtn);
+}
+
+function closeDatasetDropdown() {
+    closeDropdown(datasetDropdownMenu, datasetDropdownBtn);
+}
+
+// Dataset Bias Functions
+function renderDatasetBiasControls() {
+    const container = document.getElementById('datasetBiasControls');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    console.log('Rendering dataset bias controls');
+    console.log('Selected datasets:', selectedDatasets);
+    console.log('Window dataset options:', window.datasetOptions);
+    
+    // Render datasets in specific order: anime, furry, backgrounds
+    const orderedDatasets = ['anime', 'furry', 'backgrounds'];
+    const datasetsToRender = orderedDatasets.filter(dataset => selectedDatasets.includes(dataset));
+    
+    console.log('Datasets to render:', datasetsToRender);
+    
+    datasetsToRender.forEach(dataset => {
+        const biasGroup = document.createElement('div');
+        biasGroup.className = 'form-group dataset-bias-group';
+        
+        const label = document.createElement('label');
+        label.textContent = dataset.charAt(0).toUpperCase() + dataset.slice(1) + ' Bias';
+        
+        const inputGroup = document.createElement('div');
+        inputGroup.className = 'form-row';
+        
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'form-control hover-show';
+        input.min = '-3';
+        input.max = '5';
+        input.step = '0.1';
+        input.value = datasetBias[dataset];
+        input.addEventListener('input', (e) => {
+            datasetBias[dataset] = parseFloat(e.target.value);
+        });
+        
+        // Add wheel scroll functionality
+        input.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            const currentValue = parseFloat(this.value) || 1.0;
+            const newValue = Math.max(-3, Math.min(5, currentValue + delta));
+            this.value = newValue.toFixed(1);
+            datasetBias[dataset] = newValue;
+        });
+        
+        inputGroup.appendChild(input);
+        
+        // Add sub-toggles for datasets that have them
+        if (window.datasetOptions && window.datasetOptions[dataset] && window.datasetOptions[dataset].sub_toggles) {
+            console.log(`Found sub-toggles for ${dataset}:`, window.datasetOptions[dataset].sub_toggles);
+            window.datasetOptions[dataset].sub_toggles.forEach(subToggle => {
+                const toggleBtn = document.createElement('button');
+                toggleBtn.type = 'button';
+                toggleBtn.className = 'btn-secondary toggle-btn';
+                toggleBtn.setAttribute('data-state', 'off');
+                toggleBtn.textContent = subToggle.name;
+                toggleBtn.title = subToggle.description || `Toggle ${subToggle.name}`;
+                
+                // Initialize state from window.datasetSettings if available
+                if (window.datasetSettings && window.datasetSettings[dataset] && window.datasetSettings[dataset][subToggle.id]) {
+                    const setting = window.datasetSettings[dataset][subToggle.id];
+                    toggleBtn.setAttribute('data-state', setting.enabled ? 'on' : 'off');
+                }
+                
+                toggleBtn.addEventListener('click', () => {
+                    const currentState = toggleBtn.getAttribute('data-state') === 'on';
+                    const newState = !currentState;
+                    toggleBtn.setAttribute('data-state', newState ? 'on' : 'off');
+                    
+                    // Initialize window.datasetSettings if needed
+                    if (!window.datasetSettings) window.datasetSettings = {};
+                    if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
+                    if (!window.datasetSettings[dataset][subToggle.id]) {
+                        window.datasetSettings[dataset][subToggle.id] = {
+                            enabled: subToggle.default_enabled || false,
+                            bias: subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0,
+                            value: subToggle.value
+                        };
+                    }
+                    
+                    window.datasetSettings[dataset][subToggle.id].enabled = newState;
+                    updateSubToggleBiasInput(subToggle.id, dataset);
+                });
+                
+                inputGroup.appendChild(toggleBtn);
+                
+                // Add bias input for sub-toggle
+                const biasInput = document.createElement('input');
+                biasInput.type = 'number';
+                biasInput.className = 'form-control hover-show';
+                biasInput.id = `${dataset}_${subToggle.id}_bias`;
+                biasInput.min = '-3';
+                biasInput.max = '5';
+                biasInput.step = '0.1';
+                biasInput.value = (window.datasetSettings && window.datasetSettings[dataset] && window.datasetSettings[dataset][subToggle.id]) ? 
+                    window.datasetSettings[dataset][subToggle.id].bias : (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
+                biasInput.style.display = 'none';
+                biasInput.addEventListener('input', (e) => {
+                    if (!window.datasetSettings) window.datasetSettings = {};
+                    if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
+                    if (!window.datasetSettings[dataset][subToggle.id]) {
+                        window.datasetSettings[dataset][subToggle.id] = {
+                            enabled: false,
+                            bias: 1.0,
+                            value: subToggle.value
+                        };
+                    }
+                    window.datasetSettings[dataset][subToggle.id].bias = parseFloat(e.target.value);
+                });
+                
+                // Add wheel scroll functionality to bias input
+                biasInput.addEventListener('wheel', function(e) {
+                    e.preventDefault();
+                    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                    const currentValue = parseFloat(this.value) || 1.0;
+                    const newValue = Math.max(-3, Math.min(5, currentValue + delta));
+                    this.value = newValue.toFixed(1);
+                    if (!window.datasetSettings) window.datasetSettings = {};
+                    if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
+                    if (!window.datasetSettings[dataset][subToggle.id]) {
+                        window.datasetSettings[dataset][subToggle.id] = {
+                            enabled: false,
+                            bias: 1.0,
+                            value: subToggle.value
+                        };
+                    }
+                    window.datasetSettings[dataset][subToggle.id].bias = newValue;
+                });
+                
+                inputGroup.appendChild(biasInput);
+            });
+        }
+        
+        biasGroup.appendChild(label);
+        biasGroup.appendChild(inputGroup);
+        container.appendChild(biasGroup);
+    });
+    // Toggle the settings button based on whether there are any items in the container
+    const settingsBtn = document.querySelector('.tab-buttons button[data-tab="settings"]');
+    const promptBtn = document.querySelector('.tab-buttons button[data-tab="prompt"]');
+    if (settingsBtn) {
+        // If container has no children, disable settings button and switch to prompt tab if active
+        if (!container.hasChildNodes() || container.children.length === 0) {
+            settingsBtn.style.display = 'none';
+            if (document.getElementById('settings-tab').classList.contains('active')) {
+                document.getElementById('prompt-tab').classList.add('active');
+                document.getElementById('settings-tab').classList.remove('active');
+            }
+            if (settingsBtn.classList.contains('active') && promptBtn) {
+                settingsBtn.classList.remove('active');
+                promptBtn.classList.add('active');
+                // Optionally trigger tab switch logic if needed
+                const promptTab = document.getElementById('manualPromptTab');
+                const settingsTab = document.getElementById('manualSettingsTab');
+                if (promptTab && settingsTab) {
+                    promptTab.style.display = '';
+                    settingsTab.style.display = 'none';
+                }
+            }
+        } else {
+            settingsBtn.style.display = '';
+        }
+    }
+}
+
+function updateSubToggleBiasInput(subToggleId, dataset) {
+    const biasInput = document.getElementById(`${dataset}_${subToggleId}_bias`);
+    if (biasInput) {
+        const isEnabled = window.datasetSettings && window.datasetSettings[dataset] && 
+                         window.datasetSettings[dataset][subToggleId] && 
+                         window.datasetSettings[dataset][subToggleId].enabled;
+        biasInput.style.display = isEnabled ? 'block' : 'none';
+    }
+}
+
+// Quality Toggle Functions
+function toggleQuality() {
+    const currentState = qualityToggleBtn.getAttribute('data-state');
+    const newState = currentState === 'on' ? 'off' : 'on';
+    
+    qualityToggleBtn.setAttribute('data-state', newState);
+    appendQuality = newState === 'on';
+    
+    console.log('Quality toggle:', appendQuality);
+}
+
+// UC Presets Dropdown Functions
+function renderUcPresetsDropdown() {
+    ucPresetsDropdownMenu.innerHTML = '';
+    
+    const presets = [
+        { value: 0, display: 'None' },
+        { value: 1, display: 'Human Focus' },
+        { value: 2, display: 'Light' },
+        { value: 3, display: 'Heavy' }
+    ];
+    
+    presets.forEach(preset => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option';
+        option.dataset.value = preset.value;
+        
+        if (preset.value === selectedUcPreset) {
+            option.classList.add('selected');
+        }
+        
+        option.innerHTML = `<span>${preset.display}</span>`;
+        
+        option.addEventListener('click', () => {
+            selectUcPreset(preset.value);
+            closeUcPresetsDropdown();
+        });
+        
+        ucPresetsDropdownMenu.appendChild(option);
+    });
+}
+
+function selectUcPreset(value) {
+    selectedUcPreset = value;
+    
+    // Update UC boxes visual state
+    const ucBoxes = document.querySelector('.uc-boxes');
+    if (ucBoxes) {
+        ucBoxes.setAttribute('data-uc-level', value.toString());
+    }
+    
+    // Update toggle state - on when UC preset > 0
+    const ucPresetsBtn = document.getElementById('ucPresetsDropdownBtn');
+    if (ucPresetsBtn) {
+        ucPresetsBtn.setAttribute('data-state', value > 0 ? 'on' : 'off');
+    }
+    
+    console.log('UC Preset selected:', value);
+}
+
+function openUcPresetsDropdown() {
+    openDropdown(ucPresetsDropdownMenu, ucPresetsDropdownBtn);
+}
+
+function closeUcPresetsDropdown() {
+    closeDropdown(ucPresetsDropdownMenu, ucPresetsDropdownBtn);
 }
 
 // Setup event listeners
@@ -1735,6 +2325,37 @@ function setupEventListeners() {
     // Manual modal events
     manualBtn.addEventListener('click', showManualModal);
     closeManualBtn.addEventListener('click', hideManualModal);
+    
+    // Update save button state when preset name changes
+    const presetNameInput = document.getElementById('manualPresetName');
+    if (presetNameInput) {
+        presetNameInput.addEventListener('input', () => {
+            updateSaveButtonState();
+            validatePresetWithTimeout();
+        });
+        presetNameInput.addEventListener('keyup', () => {
+            updateSaveButtonState();
+            validatePresetWithTimeout();
+        });
+        presetNameInput.addEventListener('change', () => {
+            updateSaveButtonState();
+            validatePresetWithTimeout();
+        });
+    }
+    
+    // Add load button click handler
+    const loadBtn = document.getElementById('manualLoadBtn');
+    if (loadBtn) {
+        loadBtn.addEventListener('click', () => {
+            const presetNameInput = document.getElementById('manualPresetName');
+            if (presetNameInput) {
+                const presetName = presetNameInput.value.trim();
+                if (presetName) {
+                    loadPresetIntoForm(presetName);
+                }
+            }
+        });
+    }
     manualForm.addEventListener('submit', handleManualGeneration);
     manualSaveBtn.addEventListener('click', handleManualSave);
     
@@ -1779,6 +2400,10 @@ function setupEventListeners() {
         });
     }
     
+    if (manualPreviewDeleteBtn) {
+        manualPreviewDeleteBtn.addEventListener('click', deleteManualPreviewImage);
+    }
+    
     // Clear seed button
     clearSeedBtn.addEventListener('click', clearSeed);
     
@@ -1792,6 +2417,21 @@ function setupEventListeners() {
             forcePaidRequest = !forcePaidRequest;
             paidRequestToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
         });
+    }
+    
+    // Dataset dropdown
+    if (datasetDropdownBtn) {
+        setupDropdown(datasetDropdown, datasetDropdownBtn, datasetDropdownMenu, renderDatasetDropdown, () => selectedDatasets);
+    }
+    
+    // Quality toggle
+    if (qualityToggleBtn) {
+        qualityToggleBtn.addEventListener('click', toggleQuality);
+    }
+    
+    // UC Presets dropdown
+    if (ucPresetsDropdownBtn) {
+        setupDropdown(ucPresetsDropdown, ucPresetsDropdownBtn, ucPresetsDropdownMenu, renderUcPresetsDropdown, () => selectedUcPreset);
     }
     
     function syncSliderWithInput(slider, input, min, max, step) {
@@ -2205,6 +2845,7 @@ function setupEventListeners() {
 
     document.getElementById('randomPromptToggleBtn').addEventListener('click', toggleRandomPrompt);
     document.getElementById('randomPromptRefreshBtn').addEventListener('click', executeRandomPrompt);
+    document.getElementById('randomPromptTransferBtn').addEventListener('click', transferRandomPrompt);
     document.getElementById('randomPromptNsfwBtn').addEventListener('click', (e) => {
         const btn = e.currentTarget;
         const state = btn.dataset.state === 'on' ? 'off' : 'on';
@@ -2259,6 +2900,28 @@ async function loadOptions() {
 
         // Store text replacements for autocomplete
         textReplacements = options.textReplacements || {};
+
+        // Load additional options (datasets, quality presets, UC presets)
+        try {
+            const optionsResponse = await fetchWithAuth('/', {
+                method: 'OPTIONS'
+            });
+            if (optionsResponse.ok) {
+                optionsData = await optionsResponse.json();
+                // Store dataset options globally for sub-toggle rendering
+                // Convert array to object keyed by dataset value
+                const datasetsArray = optionsData.datasets || [];
+                window.datasetOptions = {};
+                datasetsArray.forEach(dataset => {
+                    window.datasetOptions[dataset.value] = dataset;
+                });
+                console.log('✅ Loaded enhanced options data');
+                console.log('Dataset options:', window.datasetOptions);
+            }
+        } catch (error) {
+            console.log('⚠️ Failed to load enhanced options, using defaults:', error.message);
+            window.datasetOptions = {};
+        }
 
         // Populate sampler dropdown with display names, value=meta name
         manualSampler.innerHTML = '<option value="">Default</option>';
@@ -2602,7 +3265,9 @@ async function rerollImage(image) {
         
         
         // Get metadata from the image
-        const response = await fetchWithAuth(`/metadata/${filenameForMetadata}`);
+        const response = await fetchWithAuth(`/images/${filenameForMetadata}`, {
+            method: 'OPTIONS'
+        });
         
         if (!response.ok) {
             throw new Error(`Failed to load image metadata: ${response.status} ${response.statusText}`);
@@ -2657,11 +3322,6 @@ async function rerollImage(image) {
                 layer2Config.upscale = true;
             }
             
-            // Add seed if available
-            if (metadata.layer2Seed) {
-                layer2Config.seed = parseInt(metadata.layer2Seed);
-            }
-            
             // Add character prompts if available
             if (metadata.characterPrompts && Array.isArray(metadata.characterPrompts) && metadata.characterPrompts.length > 0) {
                 layer2Config.allCharacterPrompts = metadata.characterPrompts;
@@ -2674,12 +3334,12 @@ async function rerollImage(image) {
             }
             
             if (metadata.sampler) {
-                const samplerObj = getSamplerByMeta(metadata.sampler);
+                const samplerObj = getSamplerMeta(metadata.sampler);
                 layer2Config.sampler = samplerObj ? samplerObj.request : metadata.sampler;
             }
             
             if (metadata.noise_schedule) {
-                const noiseObj = getNoiseByMeta(metadata.noise_schedule);
+                const noiseObj = getNoiseMeta(metadata.noise_schedule);
                 layer2Config.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
             }
             
@@ -2728,7 +3388,9 @@ async function rerollImage(image) {
             const generatedFilename = generateResponse.headers.get('X-Generated-Filename');
             if (generatedFilename) {
                 try {
-                    const metadataResponse = await fetchWithAuth(`/metadata/${generatedFilename}`);
+                    const metadataResponse = await fetchWithAuth(`/images/${generatedFilename}`, {
+                        method: 'OPTIONS'
+                    });
                     if (metadataResponse.ok) {
                         const metadata = await metadataResponse.json();
                         window.lastGeneration = metadata;
@@ -2798,12 +3460,12 @@ async function rerollImage(image) {
                 };
 
                 // Add mask data if it exists
-                if (window.currentMaskData) {
+                if (window.currentMaskCompressed) {
+                    requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
+                } else if (window.currentMaskData) {
                     const compressedMask = saveMaskCompressed();
                     if (compressedMask) {
-                        requestBody.mask_compressed = compressedMask;
-                    } else {
-                        requestBody.mask = window.currentMaskData.replace('data:image/png;base64,', '');
+                        requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
                     }
                 }
                 
@@ -2812,18 +3474,13 @@ async function rerollImage(image) {
                     requestBody.uc = metadata.uc;
                 }
                 
-                // Add seed if available
-                if (metadata.seed) {
-                    requestBody.seed = parseInt(metadata.seed);
-                }
-                
                 if (metadata.sampler) {
-                    const samplerObj = getSamplerByMeta(metadata.sampler);
+                    const samplerObj = getSamplerMeta(metadata.sampler);
                     requestBody.sampler = samplerObj ? samplerObj.request : metadata.sampler;
                 }
                 
                 if (metadata.noise_schedule) {
-                    const noiseObj = getNoiseByMeta(metadata.noise_schedule);
+                    const noiseObj = getNoiseMeta(metadata.noise_schedule);
                     requestBody.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
                 }
                 
@@ -2879,18 +3536,13 @@ async function rerollImage(image) {
                     requestBody.uc = metadata.uc;
                 }
                 
-                // Add seed if available
-                if (metadata.seed) {
-                    requestBody.seed = parseInt(metadata.seed);
-                }
-                
                 if (metadata.sampler) {
-                    const samplerObj = getSamplerByMeta(metadata.sampler);
+                    const samplerObj = getSamplerMeta(metadata.sampler);
                     requestBody.sampler = samplerObj ? samplerObj.request : metadata.sampler;
                 }
                 
                 if (metadata.noise_schedule) {
-                    const noiseObj = getNoiseByMeta(metadata.noise_schedule);
+                    const noiseObj = getNoiseMeta(metadata.noise_schedule);
                     requestBody.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
                 }
                 
@@ -2915,8 +3567,14 @@ async function rerollImage(image) {
                 }
 
                 // Add mask data if it exists
-                if (requestBody.mask_compressed) {
-                    requestBody.mask = requestBody.mask_compressed;
+                if (window.currentMaskCompressed) {
+                    requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
+                } else if (window.currentMaskData) {
+                    // Add compressed mask for server processing
+                    let compressedMask = saveMaskCompressed();
+                    if (compressedMask) {
+                        requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
+                    }
                 }
 
                 // Generate image with same settings
@@ -2949,7 +3607,9 @@ async function rerollImage(image) {
             const generatedFilename = generateResponse.headers.get('X-Generated-Filename');
             if (generatedFilename) {
                 try {
-                    const metadataResponse = await fetchWithAuth(`/metadata/${generatedFilename}`);
+                    const metadataResponse = await fetchWithAuth(`/images/${generatedFilename}`, {
+                        method: 'OPTIONS'
+                    });
                     if (metadataResponse.ok) {
                         const metadata = await metadataResponse.json();
                         window.lastGeneration = metadata;
@@ -3018,7 +3678,9 @@ async function rerollImageWithEdit(image) {
         }
 
         // Get metadata
-        const response = await fetchWithAuth(`/metadata/${filenameForMetadata}`);
+        const response = await fetchWithAuth(`/images/${filenameForMetadata}`, {
+            method: 'OPTIONS'
+        });
         if (!response.ok) {
             throw new Error(`Failed to load image metadata: ${response.status} ${response.statusText}`);
         }
@@ -3059,7 +3721,7 @@ async function rerollImageWithEdit(image) {
         if (isPipeline) {
             window.currentRequestType = 'pipeline_reroll';
             // Set transformation type to reroll
-            updateTransformationDropdownState('reroll', 'Referance Image');
+            updateTransformationDropdownState('reroll', 'Referance');
 
             if (presetNameGroup) {
                 presetNameGroup.style.display = 'block';
@@ -3082,7 +3744,7 @@ async function rerollImageWithEdit(image) {
         } else if (isVariation) {
             window.currentRequestType = 'reroll';
             // Set transformation type to reroll
-            updateTransformationDropdownState('reroll', 'Referance Image');
+            updateTransformationDropdownState('reroll', 'Referance');
 
             const [type, id] = metadata.image_source.split(':');
             const previewUrl = type === 'file' ? `/images/${id}` : `/cache/preview/${id}.webp`;
@@ -3121,10 +3783,9 @@ async function rerollImageWithEdit(image) {
             if (manualMaskBiasGroup) manualMaskBiasGroup.style.display = 'none';
         }
 
-        // Show modal
-        manualModal.style.display = 'block';
         await cropImageToResolution();
-        if (manualPrompt) manualPrompt.focus();
+        manualModal.style.display = 'block';
+        manualPrompt.focus();
 
     } catch (error) {
         console.error('Reroll with edit error:', error);
@@ -3143,7 +3804,7 @@ async function upscaleImage(image) {
     showManualLoading(true, 'Upscaling image...');
 
     try {
-        const upscaleResponse = await fetchWithAuth(`/upscale/${image.original}`, {
+        const upscaleResponse = await fetchWithAuth(`/images/${image.original}/upscale`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -3275,6 +3936,12 @@ async function showManualModal() {
     manualPrompt.focus();
     await cropImageToResolution();
     
+    // Update save button state
+    updateSaveButtonState();
+    
+    // Update load button state
+    updateLoadButtonState();
+    
     // Calculate initial price display
     updateManualPriceDisplay();
     
@@ -3324,6 +3991,7 @@ function hideManualModal(e, preventModalReset = false) {
         // Reset random prompt buttons and icons
         const toggleBtn = document.getElementById('randomPromptToggleBtn');
         const refreshBtn = document.getElementById('randomPromptRefreshBtn');
+        const transferBtn = document.getElementById('randomPromptTransferBtn');
         const nsfwBtn = document.getElementById('randomPromptNsfwBtn');
         
         if (toggleBtn) {
@@ -3332,6 +4000,9 @@ function hideManualModal(e, preventModalReset = false) {
         }
         if (refreshBtn) {
             refreshBtn.style.display = 'none';
+        }
+        if (transferBtn) {
+            transferBtn.style.display = 'none';
         }
         if (nsfwBtn) {
             nsfwBtn.dataset.state = 'off';
@@ -3373,6 +4044,26 @@ function clearManualForm() {
     if (paidRequestToggle) {
         paidRequestToggle.setAttribute('data-state', 'off');
     }
+    
+    // Reset new parameters
+    selectedDatasets = []; // Default to anime enabled
+    datasetBias = {
+        anime: 1.0,
+        furry: 1.0,
+        backgrounds: 1.0
+    };
+    updateDatasetDisplay();
+    renderDatasetDropdown();
+    renderDatasetBiasControls();
+    
+    appendQuality = true;
+    if (qualityToggleBtn) {
+        qualityToggleBtn.setAttribute('data-state', 'on');
+    }
+    
+    selectedUcPreset = 3; // Default to "Heavy"
+    selectUcPreset(3);
+    renderUcPresetsDropdown();
     
     // Reset preset name field
     manualPresetName.disabled = false;
@@ -3468,6 +4159,8 @@ function clearManualForm() {
     window.lastGeneratedSeed = null;
     manualPreviewSeedNumber.textContent = '---'
 
+    updateAutoPositionToggle();
+
     updateInpaintButtonState();
     updateMaskPreview();
     
@@ -3488,6 +4181,12 @@ function clearManualForm() {
     // Hide autocomplete overlays
     hideCharacterAutocomplete();
     hidePresetAutocomplete();
+    
+    // Update save button state after clearing form
+    updateSaveButtonState();
+    
+    // Update load button state after clearing form
+    updateLoadButtonState();
 }
 
 
@@ -3532,6 +4231,27 @@ function collectManualFormValues() {
     if (maskBiasHidden && maskBiasHidden.value) {
         values.mask_bias = parseInt(maskBiasHidden.value);
     }
+    
+    // Add new parameters
+    values.dataset_config = {
+        include: selectedDatasets,
+        bias: {},
+        settings: {}
+    };
+    
+    // Add dataset settings from window.datasetSettings if available
+    if (window.datasetSettings) {
+        values.dataset_config.settings = window.datasetSettings;
+    }
+    
+    // Add bias values for datasets with bias > 1.0
+    selectedDatasets.forEach(dataset => {
+        if (datasetBias[dataset] > 1.0) {
+            values.dataset_config.bias[dataset] = datasetBias[dataset];
+        }
+    });
+    values.append_quality = appendQuality;
+    values.append_uc = selectedUcPreset;
 
     return values;
 }
@@ -3542,11 +4262,11 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     if (values.seed) requestBody.seed = parseInt(values.seed);
     
     if (values.sampler) {
-        const samplerObj = getSamplerByMeta(values.sampler);
+        const samplerObj = getSamplerMeta(values.sampler);
         requestBody.sampler = samplerObj ? samplerObj.request : values.sampler;
     }
     if (values.noiseScheduler) {
-        const noiseObj = getNoiseByMeta(values.noiseScheduler);
+        const noiseObj = getNoiseMeta(values.noiseScheduler);
         requestBody.noiseScheduler = noiseObj ? noiseObj.request : values.noiseScheduler;
     }
 
@@ -3566,6 +4286,17 @@ function addSharedFieldsToRequestBody(requestBody, values) {
                 requestBody.use_coords = true;
             }
         }
+    }
+    
+    // Add new parameters
+    if (values.dataset_config) {
+        requestBody.dataset_config = values.dataset_config;
+    }
+    if (values.append_quality !== undefined) {
+        requestBody.append_quality = values.append_quality;
+    }
+    if (values.append_uc !== undefined) {
+        requestBody.append_uc = values.append_uc;
     }
 }
 
@@ -3591,7 +4322,9 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
         const filename = response.headers.get('X-Generated-Filename');
         if (filename) {
             try {
-                const metadataResponse = await fetchWithAuth(`/metadata/${filename}`);
+                const metadataResponse = await fetchWithAuth(`/images/${filename}`, {
+                    method: 'OPTIONS'
+                });
                 if (metadataResponse.ok) {
                     const metadata = await metadataResponse.json();
                     window.lastGeneration = metadata;
@@ -3604,7 +4337,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
     
     const imageUrl = URL.createObjectURL(blob);
     const img = new Image();
-    img.onload = function() {
+    img.onload = async function() {
         createConfetti();
         //showSuccess(successMsg);
         
@@ -3616,7 +4349,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
         if (isWideViewport && isManualModalOpen) {
             // Update manual modal preview instead of opening lightbox
             // Don't clear context when modal is open in wide viewport mode
-            updateManualPreview(imageUrl, blob);
+            await updateManualPreview(imageUrl, blob);
             
             // Update placeholder image for pipeline edits
             if (window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit) {
@@ -3688,7 +4421,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
 }
 
 // Function to update manual modal preview
-function updateManualPreview(imageUrl, blob) {
+async function updateManualPreview(imageUrl, blob) {
     const previewImage = document.getElementById('manualPreviewImage');
     const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
     const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
@@ -3696,6 +4429,7 @@ function updateManualPreview(imageUrl, blob) {
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const seedBtn = document.getElementById('manualPreviewSeedBtn');
+    const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
     
     if (previewImage && previewPlaceholder) {
         // Show the image and hide placeholder
@@ -3706,12 +4440,34 @@ function updateManualPreview(imageUrl, blob) {
         // Store the blob URL for download functionality
         previewImage.dataset.blobUrl = imageUrl;
         
+        // Wait for gallery to be loaded to find the current image
+        await loadGallery();
+        
+        // Find the current image in allImages array
+        const generatedFilename = imageUrl.split('/').pop();
+        const found = allImages.find(img => img.original === generatedFilename || img.upscaled === generatedFilename || img.pipeline === generatedFilename || img.pipeline_upscaled === generatedFilename);
+        
+        if (found) {
+            currentManualPreviewImage = found;
+        } else {
+            // If not found in gallery, create a temporary image object for newly generated images
+            const tempImage = {
+                original: generatedFilename,
+                base: generatedFilename,
+                upscaled: null,
+                pipeline: null,
+                pipeline_upscaled: null
+            };
+            currentManualPreviewImage = tempImage;
+        }
+        
         // Show control buttons
         if (downloadBtn) downloadBtn.style.display = 'flex';
         if (upscaleBtn) upscaleBtn.style.display = 'flex';
         if (rerollBtn) rerollBtn.style.display = 'flex';
         if (variationBtn) variationBtn.style.display = 'flex';
         if (seedBtn) seedBtn.style.display = 'flex';
+        if (deleteBtn) deleteBtn.style.display = 'flex';
         
         // Initialize zoom functionality
         setTimeout(() => {
@@ -3729,6 +4485,7 @@ function resetManualPreview() {
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const seedBtn = document.getElementById('manualPreviewSeedBtn');
+    const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
     
     if (previewImage && previewPlaceholder) {
         // Hide the image and show placeholder
@@ -3743,13 +4500,15 @@ function resetManualPreview() {
         if (rerollBtn) rerollBtn.style.display = 'none';
         if (variationBtn) variationBtn.style.display = 'none';
         if (seedBtn) seedBtn.style.display = 'none';
+        if (deleteBtn) deleteBtn.style.display = 'none';
         
         // Reset zoom functionality
         resetManualPreviewZoom();
         
-        // Clear stored seed
+        // Clear stored seed and current image
         window.lastGeneratedSeed = null;
         manualPreviewSeedNumber.textContent = '---';
+        currentManualPreviewImage = null;
     }
 }
 
@@ -3815,12 +4574,12 @@ async function handleManualGeneration(e) {
             if (useLayer1Seed && pipelineContext.layer1Seed) {
                 pipelineRequestBody.layer1_seed = pipelineContext.layer1Seed;
             }
-            if (window.currentMaskData) {
+            if (window.currentMaskCompressed) {
+                pipelineRequestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
+            } else if (window.currentMaskData) {
                 const compressedMask = saveMaskCompressed();
                 if (compressedMask) {
-                    pipelineRequestBody.mask_compressed = compressedMask;
-                } else {
-                    pipelineRequestBody.mask = window.currentMaskData.replace('data:image/png;base64,', '');
+                    pipelineRequestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
                 }
             } else if (typeof manualMaskBiasDropdown !== "undefined" && manualMaskBiasDropdown && 
                 manualMaskBiasDropdown.style.display !== 'none' && manualMaskBiasHidden) {
@@ -3878,13 +4637,13 @@ async function handleManualGeneration(e) {
         }
         
         // Add mask data if it exists
-        if (window.currentMaskData) {
+        if (window.currentMaskCompressed) {
+            requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
+        } else if (window.currentMaskData) {
             // Add compressed mask for server processing
             const compressedMask = saveMaskCompressed();
             if (compressedMask) {
-                requestBody.mask_compressed = compressedMask;
-            } else {
-                requestBody.mask = window.currentMaskData.replace('data:image/png;base64,', '');
+                requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
             }
         }
 
@@ -4039,12 +4798,12 @@ async function handleManualSave() {
     }
     
     if (manualSampler.value) {
-        const samplerObj = getSamplerByMeta(manualSampler.value);
+        const samplerObj = getSamplerMeta(manualSampler.value);
         presetData.sampler = samplerObj ? samplerObj.request : manualSampler.value;
     }
     
     if (manualNoiseScheduler.value) {
-        const noiseObj = getNoiseByMeta(manualNoiseScheduler.value);
+        const noiseObj = getNoiseMeta(manualNoiseScheduler.value);
         presetData.noiseScheduler = noiseObj ? noiseObj.request : manualNoiseScheduler.value;
     }
     
@@ -4059,15 +4818,9 @@ async function handleManualSave() {
     }
     
     // Check if this is an img2img with base image
-    const variationImage = document.getElementById('manualVariationImage');
-    if (variationImage && variationImage.style.display !== 'none' && window.uploadedImageData && window.uploadedImageData.image_source) {
+    if (window.uploadedImageData && window.uploadedImageData.image_source) {
         // Add image source in the correct format type:value
         presetData.image_source = window.uploadedImageData.image_source;
-        
-        // Include mask data if it exists
-        if (window.currentMaskData) {
-            presetData.mask_compressed = window.currentMaskData;
-        }
         
         presetData.strength = parseFloat(document.getElementById('manualStrengthValue').value) || 0.8;
         presetData.noise = parseFloat(document.getElementById('manualNoiseValue').value) || 0.1;
@@ -4080,11 +4833,13 @@ async function handleManualSave() {
             presetData.image_bias = parseInt(imageBiasHidden.value);
         }
     }
-    
-    // Add compressed mask if available
-    const compressedMask = saveMaskCompressed();
-    if (compressedMask) {
-        presetData.mask_compressed = compressedMask;
+        
+    // Include mask data if it exists
+    if (window.currentMaskCompressed) {
+        presetData.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
+    } else if (window.currentMaskData) {
+        const maskCompressed = saveMaskCompressed();
+        presetData.mask_compressed = maskCompressed.replace('data:image/png;base64,', '');
     }
     
     // Add mask bias if available
@@ -4092,6 +4847,27 @@ async function handleManualSave() {
     if (maskBiasHidden && maskBiasHidden.value) {
         presetData.mask_bias = parseInt(maskBiasHidden.value);
     }
+    
+    // Add new parameters to preset data
+    presetData.dataset_config = {
+        include: selectedDatasets,
+        bias: {},
+        settings: {}
+    };
+    
+    // Add dataset settings from window.datasetSettings if available
+    if (window.datasetSettings) {
+        presetData.dataset_config.settings = window.datasetSettings;
+    }
+    
+    // Add bias values for datasets with bias > 1.0
+    selectedDatasets.forEach(dataset => {
+        if (datasetBias[dataset] > 1.0) {
+            presetData.dataset_config.bias[dataset] = datasetBias[dataset];
+        }
+    });
+    presetData.append_quality = appendQuality;
+    presetData.append_uc = selectedUcPreset;
     
     await saveManualPreset(presetName, presetData);
 }
@@ -4155,9 +4931,12 @@ function handleCharacterAutocompleteKeydown(e) {
                     const selectedItem = items[selectedCharacterAutocompleteIndex];
                     if (selectedItem.dataset.type === 'textReplacement') {
                         selectTextReplacementFullText(selectedItem.dataset.placeholder);
+                    } else if (selectedItem.dataset.type === 'tag') {
+                        selectTag(selectedItem.dataset.tagName);
                     } else {
                         // For characters, insert without enhancers
-                        selectCharacterWithoutEnhancers(selectedItem.dataset.index);
+                        const character = JSON.parse(selectedItem.dataset.characterData);
+                        selectCharacterWithoutEnhancers(character);
                     }
                 }
                 break;
@@ -4167,8 +4946,11 @@ function handleCharacterAutocompleteKeydown(e) {
                     const selectedItem = items[selectedCharacterAutocompleteIndex];
                     if (selectedItem.dataset.type === 'textReplacement') {
                         selectTextReplacement(selectedItem.dataset.placeholder);
+                    } else if (selectedItem.dataset.type === 'tag') {
+                        selectTag(selectedItem.dataset.tagName);
                     } else {
-                        selectCharacterItem(selectedItem.dataset.index);
+                        const character = JSON.parse(selectedItem.dataset.characterData);
+                        selectCharacterItem(character);
                     }
                 }
                 break;
@@ -4181,13 +4963,13 @@ function handleCharacterAutocompleteKeydown(e) {
 
 async function searchCharacters(query, target) {
     try {
-        const response = await fetchWithAuth(`/auto-complete?q=${encodeURIComponent(query)}`);
+        const response = await fetchWithAuth(`/search/prompt?m=${manualModel.value}&q=${encodeURIComponent(query)}`);
         
         if (!response.ok) {
-            throw new Error('Failed to search characters');
+            throw new Error('Failed to search characters and tags');
         }
         
-        const characterResults = await response.json();
+        const searchResults = await response.json();
         
         // Also search through text replacements
         const textReplacementResults = Object.keys(textReplacements)
@@ -4199,8 +4981,8 @@ async function searchCharacters(query, target) {
                 placeholder: key // The placeholder name like <NAME>
             }));
         
-        // Combine character results and text replacement results
-        const allResults = [...characterResults, ...textReplacementResults];
+        // Combine search results with text replacement results
+        const allResults = [...searchResults, ...textReplacementResults];
         characterSearchResults = allResults;
         
         if (allResults.length > 0) {
@@ -4209,7 +4991,7 @@ async function searchCharacters(query, target) {
             hideCharacterAutocomplete();
         }
     } catch (error) {
-        console.error('Character search error:', error);
+        console.error('Character and tag search error:', error);
         hideCharacterAutocomplete();
     }
 }
@@ -4245,21 +5027,38 @@ function showCharacterAutocompleteSuggestions(results, target) {
             `;
             
             item.addEventListener('click', () => selectTextReplacement(result.placeholder));
-        } else {
-            // Handle character results
-            item.dataset.index = result.index;
-            
-            // Parse name and copyright from the index string
-            const match = result.name.match(/^(.+?)\s*\((.+?)\)$/);
-            const name = match ? match[1].trim() : result.name;
-            const copyright = match ? match[2].trim() : '';
+        } else if (result.type === 'tag') {
+            // Handle tag results
+            item.dataset.type = 'tag';
+            item.dataset.tagName = result.name;
+            item.dataset.modelType = result.model.toLowerCase().includes('furry') ? 'furry' : 'anime';
             
             item.innerHTML = `
-                <span class="character-name">${name}</span>
-                <span class="character-copyright">${copyright}</span>
+                <div class="character-info-row">
+                    <span class="character-name">${result.name}</span>
+                    <span class="character-copyright">${modelKeys[result.model.toLowerCase()]?.type || 'NovelAI'}${modelKeys[result.model.toLowerCase()]?.version ? ' <span class="badge">' + modelKeys[result.model.toLowerCase()]?.version + '</span>' : ''}</span>
+                </div>
             `;
             
-            item.addEventListener('click', () => selectCharacterItem(result.index));
+            item.addEventListener('click', () => selectTag(result.name));
+        } else {
+            // Handle character results
+            item.dataset.type = 'character';
+            item.dataset.characterData = JSON.stringify(result.character);
+            
+            // Parse name and copyright from character data
+            const character = result.character;
+            const name = character.name || result.name;
+            const copyright = character.copyright || '';
+            
+            item.innerHTML = `
+                <div class="character-info-row">
+                    <span class="character-name">${name}</span>
+                    <span class="character-copyright">${copyright}</span>
+                </div>
+            `;
+            
+            item.addEventListener('click', () => selectCharacterItem(result.character));
         }
         
         characterAutocompleteList.appendChild(item);
@@ -4292,19 +5091,12 @@ function updateCharacterAutocompleteSelection() {
     }
 }
 
-async function selectCharacterItem(index) {
+function selectCharacterItem(character) {
     try {
-        const response = await fetchWithAuth(`/auto-complete/${index}`);
-        
-        if (!response.ok) {
-            throw new Error('Failed to load character data');
-        }
-        
-        const character = await response.json();
         showCharacterDetail(character);
     } catch (error) {
-        console.error('Error loading character data:', error);
-        showError('Failed to load character data');
+        console.error('Error displaying character data:', error);
+        showError('Failed to display character data');
     }
 }
 
@@ -4358,6 +5150,67 @@ function selectTextReplacement(placeholder) {
     target.value = newPrompt;
     
     // Set cursor position after the inserted placeholder
+    const newCursorPosition = newPrompt.length - textAfter.length;
+    target.setSelectionRange(newCursorPosition, newCursorPosition);
+    
+    // Hide character autocomplete
+    hideCharacterAutocomplete();
+    
+    // Focus back on the target field
+    if (target) {
+        target.focus();
+    }
+}
+
+function selectTag(tagName) {
+    if (!currentCharacterAutocompleteTarget) return;
+    
+    const target = currentCharacterAutocompleteTarget;
+    const currentValue = target.value;
+    const cursorPosition = target.selectionStart;
+    
+    // Get the text before the cursor
+    const textBeforeCursor = currentValue.substring(0, cursorPosition);
+    
+    // Find the last delimiter (:, |, ,) before the cursor, or start from the beginning
+    const lastDelimiterIndex = Math.max(
+        textBeforeCursor.lastIndexOf('{'),
+        textBeforeCursor.lastIndexOf('}'),
+        textBeforeCursor.lastIndexOf('['),
+        textBeforeCursor.lastIndexOf(']'),
+        textBeforeCursor.lastIndexOf(':'),
+        textBeforeCursor.lastIndexOf('|'),
+        textBeforeCursor.lastIndexOf(',')
+    );
+    const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
+    
+    // Get the text after the cursor
+    const textAfterCursor = currentValue.substring(cursorPosition);
+    
+    // Build the new prompt
+    let newPrompt = '';
+    
+    // Keep the text before the current term (trim any trailing delimiters and spaces)
+    const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
+    newPrompt = textBefore;
+    
+    // Add the tag name
+    if (newPrompt) {
+        newPrompt += ', ' + tagName;
+    } else {
+        newPrompt = tagName;
+    }
+    
+    // Add the text after the cursor (trim any leading delimiters and spaces)
+    const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
+    if (textAfter) {
+        newPrompt += ', ' + textAfter;
+    }
+    
+    // Update the target field
+    target.value = newPrompt;
+    
+    // Set cursor position after the inserted tag
     const newCursorPosition = newPrompt.length - textAfter.length;
     target.setSelectionRange(newCursorPosition, newCursorPosition);
     
@@ -4432,16 +5285,8 @@ function selectTextReplacementFullText(placeholder) {
     }
 }
 
-async function selectCharacterWithoutEnhancers(index) {
+function selectCharacterWithoutEnhancers(character) {
     try {
-        const response = await fetchWithAuth(`/auto-complete/${index}`);
-        
-        if (!response.ok) {
-            throw new Error('Failed to load character data');
-        }
-        
-        const character = await response.json();
-        
         if (!currentCharacterAutocompleteTarget) return;
         
         const target = currentCharacterAutocompleteTarget;
@@ -4858,7 +5703,7 @@ function handlePresetAutocompleteKeydown(e) {
 
 async function searchPresets(query, target) {
     try {
-        const response = await fetchWithAuth(`/preset-autocomplete?q=${encodeURIComponent(query)}`);
+        const response = await fetchWithAuth(`/preset/search?q=${encodeURIComponent(query)}`);
         
         if (!response.ok) {
             throw new Error('Failed to search presets');
@@ -5090,7 +5935,9 @@ async function generateImage() {
         
         // Fetch metadata for the generated image
         try {
-            const metadataResponse = await fetchWithAuth(`/metadata/${generatedFilename}`);
+            const metadataResponse = await fetchWithAuth(`/images/${generatedFilename}`, {
+                method: 'OPTIONS'
+            });
             if (metadataResponse.ok) {
                 const metadata = await metadataResponse.json();
                 window.lastGeneration = metadata;
@@ -5202,7 +6049,9 @@ function formatResolution(resolution) {
 // Load and display metadata
 async function loadAndDisplayMetadata(filename) {
     try {
-        const response = await fetchWithAuth(`/metadata/${filename}`);
+        const response = await fetchWithAuth(`/images/${filename}`, {
+            method: 'OPTIONS'
+        });
         
         if (response.ok) {
             const metadata = await response.json();
@@ -5337,14 +6186,14 @@ function populateMetadataTable(metadata) {
     // Sampler
     const samplerElement = document.getElementById('metadataSampler');
     if (samplerElement) {
-        const samplerObj = getSamplerByMeta(metadata.sampler);
+        const samplerObj = getSamplerMeta(metadata.sampler);
         samplerElement.textContent = samplerObj ? samplerObj.display : (metadata.sampler || '-');
     }
     
     // Noise Schedule
     const noiseScheduleElement = document.getElementById('metadataNoiseSchedule');
     if (noiseScheduleElement) {
-        const noiseObj = getNoiseByMeta(metadata.noise_schedule);
+        const noiseObj = getNoiseMeta(metadata.noise_schedule);
         noiseScheduleElement.textContent = noiseObj ? noiseObj.display : (metadata.noise_schedule || '-');
     }
 }
@@ -6187,6 +7036,97 @@ async function deleteImage(image) {
     }
 }
 
+async function deleteManualPreviewImage() {
+    if (!isAuthenticated) {
+        showError('Please login first');
+        return;
+    }
+    
+    if (!currentManualPreviewImage) {
+        showError('No image to delete');
+        return;
+    }
+    
+    try {
+        // Determine which filename to use for deletion
+        let filenameToDelete = null;
+        
+        // For pipeline images, prioritize pipeline_upscaled, then pipeline
+        if (currentManualPreviewImage.pipeline_upscaled) {
+            filenameToDelete = currentManualPreviewImage.pipeline_upscaled;
+        } else if (currentManualPreviewImage.pipeline) {
+            filenameToDelete = currentManualPreviewImage.pipeline;
+        }
+        // For regular images, prioritize original, then upscaled
+        else if (currentManualPreviewImage.original) {
+            filenameToDelete = currentManualPreviewImage.original;
+        } else if (currentManualPreviewImage.upscaled) {
+            filenameToDelete = currentManualPreviewImage.upscaled;
+        }
+        
+        if (!filenameToDelete) {
+            throw new Error('No filename available for deletion');
+        }
+        
+        // Send delete request
+        const response = await fetchWithAuth(`/images/${filenameToDelete}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Delete failed: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Find the next (older) image in the gallery
+            const currentIndex = allImages.findIndex(img => img === currentManualPreviewImage);
+            let nextImage = null;
+            
+            if (currentIndex < allImages.length - 1) {
+                // Get the next (older) image
+                nextImage = allImages[currentIndex + 1];
+            } else if (allImages.length > 1) {
+                // If this is the last image, get the first one
+                nextImage = allImages[0];
+            }
+            
+            // Refresh gallery to get updated list
+            await loadGallery();
+            
+            if (nextImage) {
+                // Load the next (older) image and its metadata
+                try {
+                    const metadataResponse = await fetchWithAuth(`/images/${nextImage.original}/metadata`);
+                    if (metadataResponse.ok) {
+                        const metadata = await metadataResponse.json();
+                        nextImage.metadata = metadata;
+                    }
+                } catch (error) {
+                    console.warn('Failed to load metadata for next image:', error);
+                }
+                
+                // Update the preview with the next (older) image
+                const imageUrl = `/images/${nextImage.original}`;
+                updateManualPreview(imageUrl);
+                
+                showSuccess('Image deleted and older image loaded!');
+            } else {
+                // No next image, reset the preview
+                resetManualPreview();
+                showSuccess('Image deleted!');
+            }
+        } else {
+            throw new Error(result.error || 'Delete failed');
+        }
+        
+    } catch (error) {
+        console.error('Delete error:', error);
+        showError('Failed to delete image: ' + error.message);
+    }
+}
+
 // Create confetti effect
 function createConfetti() {
     const colors = ['#ff4500', '#ff6347', '#ff8c00', '#ffa500', '#ff6b35', '#ff7f50', '#ff4500', '#ff6347'];
@@ -6780,14 +7720,14 @@ function populateDialogMetadataTable(metadata) {
     // Sampler
     const samplerElement = document.getElementById('dialogMetadataSampler');
     if (samplerElement) {
-        const samplerObj = getSamplerByMeta(metadata.sampler);
+        const samplerObj = getSamplerMeta(metadata.sampler);
         samplerElement.textContent = samplerObj ? samplerObj.display : (metadata.sampler || '-');
     }
     
     // Noise Schedule
     const noiseScheduleElement = document.getElementById('dialogMetadataNoiseSchedule');
     if (noiseScheduleElement) {
-        const noiseObj = getNoiseByMeta(metadata.noise_schedule);
+        const noiseObj = getNoiseMeta(metadata.noise_schedule);
         noiseScheduleElement.textContent = noiseObj ? noiseObj.display : (metadata.noise_schedule || '-');
     }
     
@@ -7036,12 +7976,6 @@ async function fetchWithAuth(url, options = {}) {
     return response;
 }
 
-// Replace all fetch(...) calls with fetchWithAuth(...) for browser UI
-// For example:
-// const response = await fetch('/options');
-// becomes:
-// const response = await fetchWithAuth('/options');
-
 // Handle image upload from file input
 async function handleImageUpload(event) {
     const file = event.target.files[0];
@@ -7088,8 +8022,8 @@ async function uploadImage(file) {
         const formData = new FormData();
         formData.append('image', file);
         
-        const response = await fetchWithAuth('/upload', {
-            method: 'POST',
+        const response = await fetchWithAuth('/upload/image', {
+            method: 'PUT',
             body: formData
         });
         
@@ -7131,8 +8065,8 @@ async function handleManualImageUpload(file) {
         const formData = new FormData();
         formData.append('image', file);
 
-        const response = await fetchWithAuth('/upload-base', {
-            method: 'POST',
+        const response = await fetchWithAuth('/upload/base', {
+            method: 'PUT',
             body: formData
         });
 
@@ -7463,7 +8397,6 @@ async function handleImageBiasChange() {
 
 // Replace repositionBiasImage with cropImageToResolution
 async function cropImageToResolution() {
-    if (manualModal && manualModal.style.display !== 'block') return;
     if (!window.uploadedImageData) {
         console.warn('No uploaded image data available for cropping');
         return;
@@ -7531,8 +8464,20 @@ async function cropImageToResolution() {
 function cropImageToResolutionInternal(dataUrl, bias) {
     const biasFractions = [0, 0.25, 0.5, 0.75, 1];
     return new Promise((resolve) => {
+        if (!dataUrl) {
+            console.warn('No dataUrl provided to cropImageToResolutionInternal');
+            resolve(dataUrl);
+            return;
+        }
+        
         const img = new Image();
         img.onload = function() {
+            // Validate image dimensions
+            if (img.width === 0 || img.height === 0) {
+                console.warn('Image has invalid dimensions:', img.width, 'x', img.height);
+                resolve(dataUrl);
+                return;
+            }
             const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
             const resolutionDims = getDimensionsFromResolution(currentResolution);
             
@@ -7727,8 +8672,8 @@ async function handleBulkDelete() {
     try {
         showLoading(true, 'Deleting selected images...');
         
-        const response = await fetchWithAuth('/images/bulk-delete', {
-            method: 'POST',
+        const response = await fetchWithAuth('/images/bulk', {
+            method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -7871,11 +8816,48 @@ async function executeRandomPrompt() {
 }
 
 /**
+ * Transfers the current random prompt to the main prompt and exits random mode.
+ */
+function transferRandomPrompt() {
+    const toggleBtn = document.getElementById('randomPromptToggleBtn');
+    const refreshBtn = document.getElementById('randomPromptRefreshBtn');
+    const transferBtn = document.getElementById('randomPromptTransferBtn');
+    const nsfwBtn = document.getElementById('randomPromptNsfwBtn');
+    
+    // Check if random mode is active
+    if (toggleBtn.dataset.state !== 'on') {
+        return; // Not in random mode, do nothing
+    }
+    
+    // Copy current random prompt state to main prompt
+    if (savedRandomPromptState) {
+        document.getElementById('manualPrompt').value = savedRandomPromptState.basePrompt;
+        document.getElementById('manualUc').value = savedRandomPromptState.baseUc;
+        loadCharacterPrompts(savedRandomPromptState.characters, false);
+    }
+    
+    // Exit random mode
+    toggleBtn.dataset.state = 'off';
+    toggleBtn.classList.remove('active');
+    refreshBtn.style.display = 'none';
+    transferBtn.style.display = 'none';
+    nsfwBtn.style.display = 'none';
+    
+    // Clear saved states
+    savedRandomPromptState = null;
+    lastPromptState = null;
+    
+    // Show success message
+    showToast('Random prompt transferred to main prompt', 'success');
+}
+
+/**
  * Toggles the random prompt generation feature on and off.
  */
 async function toggleRandomPrompt() {
     const toggleBtn = document.getElementById('randomPromptToggleBtn');
     const refreshBtn = document.getElementById('randomPromptRefreshBtn');
+    const transferBtn = document.getElementById('randomPromptTransferBtn');
     const nsfwBtn = document.getElementById('randomPromptNsfwBtn');
     const isEnabled = toggleBtn.dataset.state === 'on';
 
@@ -7890,6 +8872,7 @@ async function toggleRandomPrompt() {
         toggleBtn.dataset.state = 'off';
         toggleBtn.classList.remove('active');
         refreshBtn.style.display = 'none';
+        transferBtn.style.display = 'none';
         nsfwBtn.style.display = 'none';
 
         if (lastPromptState) {
@@ -7911,6 +8894,7 @@ async function toggleRandomPrompt() {
         toggleBtn.dataset.state = 'on';
         toggleBtn.classList.add('active');
         refreshBtn.style.display = '';
+        transferBtn.style.display = '';
         nsfwBtn.style.display = '';
         
         // Check if we have a saved random prompt state
@@ -7939,10 +8923,10 @@ function addCharacterPrompt() {
                 <div class="tab-header">
                     <div class="tab-buttons">
                         <button type="button" class="tab-btn active" data-tab="prompt">
-                            <i class="nai-pen-tip-light"></i> Prompt
+                            <i class="nai-penwriting"></i> Prompt
                         </button>
                         <button type="button" class="tab-btn" data-tab="uc">
-                            <i class="fas fa-ban"></i> UC
+                            <i class="nai-minus"></i> UC
                         </button>
                         <div class="character-name-editable" onclick="editCharacterName('${characterId}')">
                             <span class="character-name-text">Character ${characterPromptCounter}</span>
@@ -8297,10 +9281,10 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                 <div class="tab-header">
                     <div class="tab-buttons">
                         <button type="button" class="tab-btn active" data-tab="prompt">
-                            <i class="nai-pen-tip-light"></i> Prompt
+                            <i class="nai-penwriting"></i> Prompt
                         </button>
                         <button type="button" class="tab-btn" data-tab="uc">
-                            <i class="fas fa-ban"></i> UC
+                            <i class="nai-minus"></i> UC
                         </button>
                         <div class="character-name-editable" onclick="editCharacterName('${characterId}')">
                             <span class="character-name-text">${character.chara_name || `Character ${index + 1}`}</span>
@@ -8661,7 +9645,7 @@ function updateManualPriceDisplay() {
         const isImg2Img = document.getElementById('manualMaskBiasRow')?.style?.display !== 'none' || !document.getElementById('transformationSection')?.classList.contains('hidden');
         
         // Get sampler object
-        const samplerObj = getSamplerByMeta(sampler) || { meta: 'k_euler_ancestral' };
+        const samplerObj = getSamplerMeta(sampler) || { meta: 'k_euler_ancestral' };
         
         // Calculate price
         const price = calculatePriceUnified({
@@ -9243,6 +10227,12 @@ function saveMask() {
 function saveMaskCompressed() {
     if (!maskEditorCanvas) return null;
     
+    // Check if canvas has valid dimensions
+    if (maskEditorCanvas.width === 0 || maskEditorCanvas.height === 0) {
+        console.warn('Mask editor canvas has invalid dimensions');
+        return null;
+    }
+    
     try {
         // Create a temporary canvas with the original (unupscaled) dimensions
         const tempCanvas = document.createElement('canvas');
@@ -9295,6 +10285,31 @@ function saveMaskCompressed() {
         return null;
     }
 }
+// Helper: Set mask editor canvas from a data URL
+function setMaskEditorFromDataUrl(dataUrl) {
+    if (!dataUrl && window.maskEditorCanvas.width !== undefined) return;
+    
+    // Initialize mask editor if not already done
+    if (!window.maskEditorCanvas || !window.maskEditorCtx) {
+        if (typeof initializeMaskEditor === 'function') initializeMaskEditor();
+    }
+    
+    const img = new Image();
+    img.onload = function() {
+        // Set canvas dimensions to match the image
+        window.maskEditorCanvas.width = img.width;
+        window.maskEditorCanvas.height = img.height;
+        
+        // Clear and draw the mask
+        window.maskEditorCtx.clearRect(0, 0, img.width, img.height);
+        window.maskEditorCtx.drawImage(img, 0, 0);
+    };
+    img.onerror = function() {
+        console.error('Failed to load mask image for editor');
+    };
+    img.src = dataUrl;
+}
+
 // Helper function to process compressed mask to display resolution
 function processCompressedMask(compressedMaskBase64, targetWidth, targetHeight, callback) {
     return new Promise((resolve, reject) => {
@@ -9391,8 +10406,10 @@ async function deleteMask() {
     if (isPipeline && window.pipelineMaskData) {
         window.currentMaskData = window.pipelineMaskData + "";
     }
+    window.currentMaskCompressed = null;
     
     closeMaskEditor();
+    resetManualPreview();
 }
 
 // Close mask editor
@@ -9897,7 +10914,9 @@ function hideCacheBrowser() {
 
 async function loadCacheImages() {
     try {
-        const response = await fetchWithAuth('/cache/list');
+        const response = await fetchWithAuth('/cache', {
+            method: 'OPTIONS'
+        });
         if (response.ok) {
             cacheImages = await response.json();
         } else {
@@ -11413,5 +12432,3 @@ function initializeImageBiasAdjustment() {
         observer.observe(imageBiasGroup, { attributes: true });
     }
 }
-
-

@@ -67,6 +67,7 @@ if (!fs.existsSync(uploadCacheDir)) fs.mkdirSync(uploadCacheDir);
 if (!fs.existsSync(previewCacheDir)) fs.mkdirSync(previewCacheDir);
 if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir);
 if (!fs.existsSync(previewsDir)) fs.mkdirSync(previewsDir);
+const cacheFile = path.join(cacheDir, 'tag_cache.json');
 
 // Public routes (no authentication required)
 app.get('/', (req, res) => {
@@ -3199,7 +3200,6 @@ let saveTimer = null;
 
 // Initialize cache at startup
 function initializeCache() {
-    const cacheFile = './tag_suggestions_cache.json';
     try {
         if (fs.existsSync(cacheFile)) {
             const loadedCache = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
@@ -3238,7 +3238,6 @@ function scheduleCacheSave() {
 function saveCacheAtomic() {
     if (!cacheDirty) return;
     
-    const cacheFile = './tag_suggestions_cache.json';
     const tempFile = `${cacheFile}.tmp`;
     
     try {
