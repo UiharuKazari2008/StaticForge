@@ -2676,7 +2676,6 @@ function renderWorkspaceDropdown(selectedVal) {
                 <span class="workspace-name">${workspace.name}</span>
                 <span class="workspace-counts">${workspace.fileCount} files</span>
             </div>
-            ${workspace.isActive ? '<i class="fas fa-check"></i>' : ''}
         `;
         
         const action = () => {
@@ -2781,7 +2780,7 @@ function showAddWorkspaceModal() {
     document.getElementById('workspaceBackgroundImageInput').value = '';
     document.getElementById('workspaceBackgroundImageInput').placeholder = 'No background image selected';
     document.getElementById('workspaceBackgroundOpacityInput').value = '0.3';
-    document.getElementById('opacityValue').textContent = '30%';
+    document.getElementById('workspaceBackgroundOpacityInput').textContent = '30';
     const modal = document.getElementById('workspaceEditModal');
     if (modal) modal.style.display = 'block';
 }
@@ -2820,9 +2819,9 @@ async function editWorkspaceSettings(id) {
         document.getElementById('workspaceBackgroundOpacityInput').value = workspace.backgroundOpacity || 0.3;
         
         // Update opacity display
-        const opacityValue = document.getElementById('opacityValue');
+        const opacityValue = document.getElementById('workspaceBackgroundOpacityInput');
         if (opacityValue) {
-            opacityValue.textContent = Math.round((workspace.backgroundOpacity || 0.3) * 100) + '%';
+            opacityValue.textContent = Math.round((workspace.backgroundOpacity || 0.3) * 100);
         }
         
         // Background images will be loaded when the modal is opened
@@ -2855,7 +2854,7 @@ function hideWorkspaceEditModal() {
     document.getElementById('workspaceBackgroundImageInput').value = '';
     document.getElementById('workspaceBackgroundImageInput').placeholder = 'No background image selected';
     document.getElementById('workspaceBackgroundOpacityInput').value = '0.3';
-    document.getElementById('opacityValue').textContent = '30%';
+    document.getElementById('workspaceBackgroundOpacityInput').textContent = '30%';
     
     currentWorkspaceOperation = null;
 }
@@ -3015,21 +3014,28 @@ function initializeWorkspaceSystem() {
         hideWorkspaceDumpModal();
         hideWorkspaceManagementModal();
     });
+    
+    // Add wheel event for workspace background opacity input
+    const opacityInput = document.getElementById('workspaceBackgroundOpacityInput');
+    if (opacityInput) {
+        opacityInput.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const step = parseFloat(opacityInput.step) || 0.01;
+            let value = parseFloat(opacityInput.value) || 0.3;
+            if (e.deltaY < 0) {
+                value += step;
+            } else {
+                value -= step;
+            }
+            value = Math.max(0, Math.min(1, Math.round(value * 100) / 100));
+            opacityInput.value = value;
+            opacityInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }, { passive: false });
+    }
 }
 
 // Initialize workspace settings form event listeners
 function initializeWorkspaceSettingsForm() {
-    // Opacity slider event listener
-    const opacitySlider = document.getElementById('workspaceBackgroundOpacityInput');
-    const opacityValue = document.getElementById('opacityValue');
-    
-    if (opacitySlider && opacityValue) {
-        opacitySlider.addEventListener('input', (e) => {
-            const value = parseFloat(e.target.value);
-            opacityValue.textContent = Math.round(value * 100) + '%';
-        });
-    }
-    
     // Background image selection button
     const selectBackgroundImageBtn = document.getElementById('selectBackgroundImageBtn');
     if (selectBackgroundImageBtn) {
@@ -3250,11 +3256,11 @@ function toggleGalleryView() {
     const toggleBtn = document.getElementById('galleryToggleBtn');
     
     if (isViewingScraps) {
-        toggleBtn.innerHTML = '<i class="nai-image-tool-sketch"></i> Scraps';
+        toggleBtn.innerHTML = '<i class="nai-image-tool-sketch"></i>';
         toggleBtn.setAttribute('data-state', 'scraps');
         loadScraps();
     } else {
-        toggleBtn.innerHTML = '<i class="nai-sparkles"></i> Images';
+        toggleBtn.innerHTML = '<i class="nai-image-count"></i>';
         toggleBtn.setAttribute('data-state', 'images');
         loadGallery();
     }

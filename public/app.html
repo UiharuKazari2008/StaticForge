@@ -1003,7 +1003,7 @@
                 </button>
             </div>
             <button id="galleryToggleBtn" class="btn-secondary toggle-btn" data-state="off" data-state="images" title="Toggle between Images and Scraps">
-                <i class="nai-sparkles"></i> Images
+                <i class="nai-image-count"></i>
             </button>
             <input type="number" id="galleryColumnsInput" class="form-control hover-show colored" min="3" max="10" value="5" style="width: 42px;">
         </div>
@@ -1100,7 +1100,6 @@
         <div class="modal-content cache-browser-content">
             <div class="cache-browser-header">
                 <h3>Browse Cache Images</h3>
-                <button id="closeCacheBrowserBtn" class="close-dialog">&times;</button>
             </div>
             <div class="cache-browser-body">
                 <div id="cacheGallery" class="cache-gallery">
@@ -1118,12 +1117,11 @@
     <div id="workspaceManageModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Workspace Management</h3>
-                <button id="closeWorkspaceManageBtn" class="close-dialog">&times;</button>
+                <h3>Workspaces</h3>
+                <button id="closeWorkspaceManageBtn" class="close-dialog" aria-label="Close">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="workspace-management-section">
-                    <h4>Active Workspaces</h4>
                     <div id="workspaceManageList" class="workspace-manage-list">
                         <!-- Workspace management items will be populated here -->
                     </div>
@@ -1137,42 +1135,41 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3 id="workspaceEditTitle">Add Workspace</h3>
-                <button id="closeWorkspaceEditBtn" class="close-dialog">&times;</button>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label for="workspaceNameInput">Workspace Name</label>
-                    <input type="text" id="workspaceNameInput" class="form-control" placeholder="Enter workspace name..." maxlength="50">
-                </div>
-                <div class="form-group">
-                    <label for="workspaceColorInput">Workspace Color</label>
-                    <input type="color" id="workspaceColorInput" class="form-control" value="#124">
-                    <small class="form-text">Main color for the workspace theme</small>
-                </div>
-                <div class="form-group">
-                    <label for="workspaceBackgroundColorInput">Background Color</label>
-                    <input type="color" id="workspaceBackgroundColorInput" class="form-control" value="#0a1a2a">
-                    <small class="form-text">Optional: Custom background color overlay</small>
-                </div>
-                <div class="form-group">
-                    <label for="workspaceBackgroundImageInput">Background Image</label>
-                    <div class="background-image-selector">
-                        <input type="text" id="workspaceBackgroundImageInput" class="form-control" readonly placeholder="No background image selected">
-                        <button type="button" id="selectBackgroundImageBtn" class="btn-secondary">
-                            <i class="fas fa-images"></i> Select Image
-                        </button>
+                <div class="form-section">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="workspaceNameInput">Workspace Name</label>
+                            <input type="text" id="workspaceNameInput" class="form-control hover-show colored" placeholder="Enter workspace name..." maxlength="50">
+                        </div>
                     </div>
-                    <small class="form-text">Optional: Image from this workspace to use as background</small>
-                </div>
-                <div class="form-group">
-                    <label for="workspaceBackgroundOpacityInput">Background Opacity</label>
-                    <input type="range" id="workspaceBackgroundOpacityInput" class="form-control" min="0" max="1" step="0.1" value="0.3">
-                    <div class="opacity-display">
-                        <span id="opacityValue">30%</span>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="workspaceColorInput">Color</label>
+                            <input type="color" id="workspaceColorInput" class="form-control" value="#124">
+                        </div>
+                        <div class="form-group">
+                            <label for="workspaceBackgroundColorInput">Background</label>
+                            <input type="color" id="workspaceBackgroundColorInput" class="form-control" value="#0a1a2a">
+                        </div>
+                        <div class="form-group">
+                            <label for="workspaceBackgroundOpacityInput">Opacity</label>
+                            <input type="number" id="workspaceBackgroundOpacityInput" class="form-control hover-show colored" min="0" max="1" step="0.01" value="0.3" style="width: 80px;" title="Scroll or type to adjust opacity">
+                        </div>
                     </div>
-                    <small class="form-text">Opacity of the background color overlay and circles</small>
+                    <div class="form-group">
+                        <label for="workspaceBackgroundImageInput">Background Image</label>
+                        <div class="background-image-selector">
+                            <input type="text" id="workspaceBackgroundImageInput" class="form-control hover-show colored" readonly placeholder="No background image selected">
+                            <button type="button" id="selectBackgroundImageBtn" class="btn-secondary">
+                                <i class="fas fa-images"></i> Select Image
+                            </button>
+                        </div>
+                        <small class="form-text">Optional: Image from this workspace to use as background</small>
+                    </div>
                 </div>
-                <div class="modal-actions">
+                <div class="modal-actions btn-group">
                     <button type="button" id="workspaceSaveBtn" class="btn-primary">
                         <i class="fas fa-save"></i> Save
                     </button>
@@ -1189,17 +1186,16 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3>Dump Workspace</h3>
-                <button id="closeWorkspaceDumpBtn" class="close-dialog">&times;</button>
             </div>
             <div class="modal-body">
                 <p>Select the target workspace to merge all items from <strong id="dumpSourceWorkspaceName"></strong>:</p>
                 <div class="form-group">
                     <label for="dumpTargetSelect">Target Workspace</label>
-                    <select id="dumpTargetSelect" class="form-control">
+                    <select id="dumpTargetSelect" class="form-control hover-show">
                         <!-- Options will be populated here -->
                     </select>
                 </div>
-                <div class="modal-actions">
+                <div class="modal-actions btn-group">
                     <button type="button" id="workspaceDumpConfirmBtn" class="btn-primary">
                         <i class="fas fa-arrow-right"></i> Dump
                     </button>
