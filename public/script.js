@@ -14,6 +14,15 @@ let selectedCharacterAutocompleteIndex = -1;
 let selectedImages = new Set();
 let isSelectionMode = false;
 
+// Workspace state
+let workspaces = [];
+let activeWorkspace = 'default';
+let currentWorkspaceOperation = null;
+let activeWorkspaceColor = '#124'; // Default color
+let activeWorkspaceBackgroundColor = null; // Can be null for auto-generation
+let activeWorkspaceBackgroundImage = null; // Can be null for no background image
+let activeWorkspaceBackgroundOpacity = 0.3; // Default opacity
+
 // Helper function to check if a model is V3
 function isV3Model(modelValue) {
     if (!modelValue) return false;
@@ -272,6 +281,7 @@ const logoutButton = document.getElementById('logoutButton');
 const manualModal = document.getElementById('manualModal');
 const manualForm = document.getElementById('manualForm');
 const closeManualBtn = document.getElementById('closeManualBtn');
+const manualPreviewCloseBtn = document.getElementById('manualPreviewCloseBtn');
 const manualBtn = document.getElementById('manualBtn');
 
 const lightboxModal = document.getElementById('lightboxModal');
@@ -280,10 +290,10 @@ const closeLightboxBtn = document.getElementById('closeLightboxBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const generateBtn = document.getElementById('generateBtn');
 const presetSelect = document.getElementById('presetSelect');
-const resolutionSelect = document.getElementById('resolutionSelect');
-const upscaleToggle = document.getElementById('upscaleToggle');
-const maskPreviewBtn = document.getElementById('maskPreviewBtn');
 const gallery = document.getElementById('gallery');
+const galleryColumnsInput = document.getElementById('galleryColumnsInput');
+const bulkSelectAllBtn = document.getElementById('bulkSelectAllBtn');
+const cacheGallery = document.getElementById('cacheGallery');
 const prevPage = document.getElementById('prevPage');
 const nextPage = document.getElementById('nextPage');
 const pageInfo = document.getElementById('pageInfo');
@@ -356,12 +366,6 @@ const customPresetDropdownBtn = document.getElementById('customPresetDropdownBtn
 const customPresetDropdownMenu = document.getElementById('customPresetDropdownMenu');
 const customPresetSelected = document.getElementById('customPresetSelected');
 let selectedPreset = '';
-const customResolutionDropdown = document.getElementById('customResolutionDropdown');
-const customResolutionDropdownBtn = document.getElementById('customResolutionDropdownBtn');
-const customResolutionDropdownMenu = document.getElementById('customResolutionDropdownMenu');
-const customResolutionSelected = document.getElementById('customResolutionSelected');
-let selectedResolution = '';
-let selectedGroup = '';
 const manualSamplerDropdown = document.getElementById('manualSamplerDropdown');
 const manualSamplerDropdownBtn = document.getElementById('manualSamplerDropdownBtn');
 const manualSamplerDropdownMenu = document.getElementById('manualSamplerDropdownMenu');
@@ -406,6 +410,11 @@ const manualPreviewDeleteBtn = document.getElementById('manualPreviewDeleteBtn')
 const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
 const manualStrengthValue = document.getElementById('manualStrengthValue');
 const manualNoiseValue = document.getElementById('manualNoiseValue');
+
+const manualPresetToggleBtn = document.getElementById('manualPresetToggleBtn');
+const manualPresetToggleText = document.getElementById('manualPresetToggleText');
+const manualPresetToggleIcon = document.getElementById('manualPresetToggleIcon');
+const manualPresetGroup = document.getElementById('manualPresetGroup');
 
 // Global variables for character autocomplete
 let characterAutocompleteTimeout = null;
@@ -485,45 +494,6 @@ function renderGroupedDropdown(menu, groups, selectHandler, closeHandler, select
 const resolutionOptionRenderer = (opt, group) => `<span>${opt.name}${opt.dims ? ' <span style="opacity:0.7;font-size:0.95em;">(' + opt.dims + ')</span>' : ''}</span>`;
 
 
-function closeCustomResolutionDropdown() {
-    closeDropdown(customResolutionDropdownMenu, customResolutionDropdownBtn);
-}
-
-function renderCustomResolutionDropdown(selectedVal) {
-    renderGroupedDropdown(customResolutionDropdownMenu, resolutionGroups, selectCustomResolution, closeCustomResolutionDropdown, selectedVal, resolutionOptionRenderer);
-}
-
-function selectCustomResolution(value, group) {
-    selectedResolution = value;
-    
-    // If group is not provided, find it automatically
-    if (!group) {
-        for (const g of resolutionGroups) {
-            const found = g.options.find(o => o.value === value);
-            if (found) {
-                group = g.group;
-                break;
-            }
-        }
-    }
-    
-    selectedGroup = group;
-    
-    // Update button display
-    const groupObj = resolutionGroups.find(g => g.group === group);
-    const optObj = groupObj ? groupObj.options.find(o => o.value === value) : null;
-    if (optObj) {
-        customResolutionSelected.innerHTML = `${optObj.name}${groupObj.badge ? '<span class="custom-dropdown-badge' + (groupObj.free ? ' free-badge' : '') + '">' + groupObj.badge + '</span>' : ''}`;
-    } else {
-        customResolutionSelected.textContent = 'Select resolution...';
-    }
-    // Sync with hidden select for compatibility
-    const hiddenSelect = document.getElementById('resolutionSelect');
-    if (hiddenSelect) hiddenSelect.value = value;
-    // Trigger any listeners (e.g., updateGenerateButton)
-    if (typeof updateGenerateButton === 'function') updateGenerateButton();
-}
-
 function openDropdown(menu, button) {
     menu.style.display = 'block';
     if (button) button.classList.add('active');
@@ -553,7 +523,6 @@ function setupDropdown(container, button, menu, render, getSelectedValue) {
     });
 }
 
-setupDropdown(customResolutionDropdown, customResolutionDropdownBtn, customResolutionDropdownMenu, renderCustomResolutionDropdown, () => selectedResolution);
 
 // Custom Preset Dropdown Functions
 async function renderCustomPresetDropdown(selectedVal) {
@@ -682,7 +651,7 @@ function selectCustomPreset(value) {
         const pipelineName = value.replace('pipeline:', '');
         customPresetSelected.innerHTML = `<i class="nai-inpaint"></i> ${pipelineName}`;
     } else {
-        customPresetSelected.innerHTML = '<i class="nai-heart-enabled"></i> Select preset or pipeline...';
+        customPresetSelected.innerHTML = '<i class="nai-pen-tip-light"></i> Select Preset or Pipeline';
     }
     
     // Sync with hidden select for compatibility
@@ -1284,6 +1253,7 @@ async function loadIntoManualForm(source, image = null) {
         updateUploadDeleteButtonVisibility();
         updateSaveButtonState();
         updateLoadButtonState();
+        updateManualPresetToggleBtn();
 
         // Restore the preset name that was entered by the user
         if (manualPresetName && currentPresetName) {
@@ -1362,6 +1332,32 @@ function updateCustomResolutionValue() {
                 renderImageBiasDropdown(resetBias.toString());
             }
         }
+    }
+}
+
+function isValidPresetName(name) {
+    if (!name) return false;
+    return window.availablePresets && window.availablePresets.includes(name);
+}
+
+function updateManualPresetToggleBtn() {
+    const presetName = manualPresetName.value.trim();
+    const valid = isValidPresetName(presetName);
+    if (valid) {
+        // Hide the group, show the toggle button with value
+        manualPresetGroup.style.display = 'none';
+        manualPresetToggleBtn.style.display = '';
+        manualPresetToggleBtn.classList.remove('toggle-btn');
+        manualPresetToggleBtn.classList.add('hover-show');
+        manualPresetToggleText.textContent = presetName;
+        manualPresetToggleText.style.display = '';
+    } else {
+        // Show the group, hide the toggle button
+        manualPresetGroup.style.display = '';
+        manualPresetToggleBtn.style.display = 'none';
+        manualPresetToggleBtn.classList.add('toggle-btn');
+        manualPresetToggleBtn.classList.remove('hover-show');
+        manualPresetToggleText.style.display = 'none';
     }
 }
 
@@ -1935,23 +1931,1409 @@ function updateTransformationDropdownState(type, text) {
 setupDropdown(transformationDropdown, transformationDropdownBtn, transformationDropdownMenu, renderTransformationDropdown, () => document.getElementById('transformationType').value);
 setupTransformationDropdownListeners();
 
+// ==================== WORKSPACE MANAGEMENT ====================
+
+// Cache workspace move functions
+async function moveCacheToDefaultWorkspace(cacheImage) {
+    try {
+        const response = await fetchWithAuth('/workspaces/default/move-cache-files', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hashes: [cacheImage.hash] })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to move cache file');
+        }
+        
+        showSuccess('Cache file moved to default workspace');
+        await loadCacheImages();
+        displayCacheImages();
+        displayCacheImagesContainer();
+    } catch (error) {
+        console.error('Error moving cache file to default:', error);
+        showError('Failed to move cache file: ' + error.message);
+    }
+}
+
+function showCacheMoveToWorkspaceModal(cacheImage) {
+    // Create modal if it doesn't exist
+    let modal = document.getElementById('cacheMoveToWorkspaceModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'cacheMoveToWorkspaceModal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Move to Workspace</h3>
+                    <button id="closeCacheMoveToWorkspaceBtn" class="close-dialog">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>Select workspace to move cache file:</p>
+                    <div class="workspace-move-list" id="cacheMoveWorkspaceList">
+                        <!-- Workspace list will be populated here -->
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        // Close modal handlers
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+        
+        document.getElementById('closeCacheMoveToWorkspaceBtn').addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+    }
+    
+    // Populate workspace list
+    const workspaceList = document.getElementById('cacheMoveWorkspaceList');
+    workspaceList.innerHTML = '';
+    
+    workspaces.forEach(workspace => {
+        const item = document.createElement('div');
+        item.className = 'workspace-move-item';
+        item.innerHTML = `
+            <div class="workspace-move-info">
+                <span class="workspace-name">${workspace.name}</span>
+                ${workspace.isActive ? '<span class="badge-active">Active</span>' : ''}
+            </div>
+        `;
+        
+        item.addEventListener('click', async () => {
+            modal.style.display = 'none';
+            await moveCacheToWorkspace(cacheImage, workspace.id);
+        });
+        
+        workspaceList.appendChild(item);
+    });
+    
+    modal.style.display = 'block';
+}
+
+async function moveCacheToWorkspace(cacheImage, workspaceId) {
+    try {
+        const response = await fetchWithAuth(`/workspaces/${workspaceId}/move-cache-files`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hashes: [cacheImage.hash] })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to move cache file');
+        }
+        
+        const workspace = workspaces.find(w => w.id === workspaceId);
+        showSuccess(`Cache file moved to ${workspace ? workspace.name : 'workspace'}`);
+        await loadCacheImages();
+        displayCacheImages();
+        displayCacheImagesContainer();
+    } catch (error) {
+        console.error('Error moving cache file to workspace:', error);
+        showError('Failed to move cache file: ' + error.message);
+    }
+}
+
+// Workspace API functions
+async function loadWorkspaces() {
+    try {
+        const response = await fetchWithAuth('/workspaces');
+        if (!response.ok) throw new Error('Failed to load workspaces');
+        
+        const data = await response.json();
+        workspaces = data.workspaces;
+        activeWorkspace = data.activeWorkspace;
+        
+        // Update active workspace color
+        const activeWorkspaceData = workspaces.find(w => w.id === activeWorkspace);
+        if (activeWorkspaceData) {
+            activeWorkspaceColor = activeWorkspaceData.color || '#124';
+            updateBokehBackground();
+        }
+        
+        renderWorkspaceDropdown();
+        updateActiveWorkspaceDisplay();
+        
+        console.log('✅ Loaded workspaces:', workspaces.length);
+    } catch (error) {
+        console.error('Error loading workspaces:', error);
+        showError('Failed to load workspaces: ' + error.message);
+    }
+}
+
+// Initialize background layers with default color
+function initializeBokehBackgrounds() {
+    const currentBg = document.querySelector('.current-bg');
+    const nextBg = document.querySelector('.next-bg');
+    const bokeh = document.querySelector('.bokeh');
+    
+    if (currentBg) {
+        currentBg.style.backgroundColor = 'transparent';
+    }
+    if (nextBg) {
+        nextBg.style.opacity = '0';
+        nextBg.style.backgroundColor = 'transparent';
+    }
+    if (bokeh) {
+        bokeh.style.backgroundColor = addTransparency('#124', 0.5);
+    }
+}
+
+// Load active workspace color for bokeh background
+async function loadActiveWorkspaceColor() {
+    try {
+        const response = await fetchWithAuth('/workspaces/active/color');
+        if (!response.ok) throw new Error('Failed to load workspace color');
+        
+        const data = await response.json();
+        activeWorkspaceColor = data.color;
+        activeWorkspaceBackgroundColor = data.backgroundColor;
+        activeWorkspaceBackgroundImage = data.backgroundImage;
+        activeWorkspaceBackgroundOpacity = data.backgroundOpacity || 0.3;
+        updateBokehBackground();
+        
+        console.log('🎨 Loaded workspace settings:', {
+            color: activeWorkspaceColor,
+            backgroundColor: activeWorkspaceBackgroundColor,
+            backgroundImage: activeWorkspaceBackgroundImage,
+            backgroundOpacity: activeWorkspaceBackgroundOpacity
+        });
+    } catch (error) {
+        console.error('Error loading workspace color:', error);
+        // Use default values on error
+        activeWorkspaceColor = '#124';
+        activeWorkspaceBackgroundColor = null;
+        activeWorkspaceBackgroundImage = null;
+        activeWorkspaceBackgroundOpacity = 0.3;
+        updateBokehBackground();
+    }
+}
+
+// Animate workspace transition with bokeh circle movement
+async function animateWorkspaceTransition() {
+    const bokeh = document.querySelector('.bokeh');
+    const currentBg = document.querySelector('.current-bg');
+    const nextBg = document.querySelector('.next-bg');
+    
+    if (!bokeh || !currentBg || !nextBg) return;
+    
+    
+    // Step 1: Move all circles off-screen (0.3s)
+    console.log('🎬 Starting workspace transition animation');
+    
+    // Preload background image if it exists to prevent flickering
+    if (activeWorkspaceBackgroundImage) {
+        const img = new Image();
+        img.src = `/images/${activeWorkspaceBackgroundImage}`;
+        new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            // Timeout after 2 seconds to prevent hanging
+            setTimeout(resolve, 2000);
+        }).catch(() => {
+            console.warn('Failed to preload background image:', activeWorkspaceBackgroundImage);
+        });
+    }
+    
+    // Step 2: Update background with fade transition
+    updateBokehBackgroundWithFade();
+}
+
+// Update bokeh background with fade transition between layers
+async function updateBokehBackgroundWithFade() {
+    const currentBg = document.querySelector('.current-bg');
+    const nextBg = document.querySelector('.next-bg');
+    const bokeh = document.querySelector('.bokeh');
+    
+    if (!currentBg || !nextBg || !bokeh) return;
+    
+    // Generate color variations based on the workspace color
+    const baseColor = activeWorkspaceColor;
+    const colorVariations = generateColorVariations(baseColor);
+    
+    // Update the bokeh circles with new colors and opacity
+    const circles = bokeh.querySelectorAll('circle');
+    circles.forEach((circle, index) => {
+        const colorIndex = index % colorVariations.length;
+        const color = colorVariations[colorIndex];
+        // Make circles more opaque than background
+        const circleOpacity = Math.min(1, activeWorkspaceBackgroundOpacity + 0.3);
+        circle.style.fill = color;
+        circle.style.opacity = circleOpacity;
+    });
+    
+    // Set up the bokeh background color with transparency
+    const backgroundColor = activeWorkspaceBackgroundColor || generateBackgroundColor(baseColor);
+    const transparentColor = addTransparency(backgroundColor, 0.25); // 25% transparency
+    bokeh.style.backgroundColor = transparentColor;
+    
+    // Set up the next background layer for images only
+    if (activeWorkspaceBackgroundImage) {
+        // Set background image on the div
+        nextBg.style.backgroundImage = `url('/images/${activeWorkspaceBackgroundImage}')`;
+        nextBg.style.backgroundSize = 'cover';
+        nextBg.style.backgroundPosition = 'top center';
+        nextBg.style.backgroundRepeat = 'no-repeat';
+        nextBg.style.backgroundColor = 'transparent';
+    } else {
+        // No background image
+        nextBg.style.backgroundImage = 'none';
+        nextBg.style.backgroundColor = 'transparent';
+    }
+    
+    // Fade from current to next background
+    nextBg.style.opacity = '1';
+    
+    // Wait for the fade transition to complete
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // Swap the layers - copy all properties to ensure no flickering
+    currentBg.style.backgroundImage = nextBg.style.backgroundImage;
+    currentBg.style.backgroundSize = nextBg.style.backgroundSize;
+    currentBg.style.backgroundPosition = nextBg.style.backgroundPosition;
+    currentBg.style.backgroundRepeat = nextBg.style.backgroundRepeat;
+    currentBg.style.backgroundColor = nextBg.style.backgroundColor;
+    currentBg.style.backgroundBlendMode = nextBg.style.backgroundBlendMode || 'normal';
+    
+    // Reset next background - ensure it's completely transparent
+    nextBg.style.opacity = '0';
+    nextBg.style.backgroundImage = 'none';
+    nextBg.style.backgroundColor = 'transparent';
+    nextBg.style.backgroundBlendMode = 'normal';
+    
+    console.log('🎨 Updated bokeh background with fade:', {
+        color: baseColor,
+        backgroundColor: transparentColor,
+        backgroundImage: activeWorkspaceBackgroundImage,
+        opacity: activeWorkspaceBackgroundOpacity
+    });
+}
+
+// Update bokeh background with workspace color (for initial load and non-animated updates)
+function updateBokehBackground() {
+    const currentBg = document.querySelector('.current-bg');
+    const bokeh = document.querySelector('.bokeh');
+    if (!currentBg || !bokeh) return;
+    
+    // Generate color variations based on the workspace color
+    const baseColor = activeWorkspaceColor;
+    const colorVariations = generateColorVariations(baseColor);
+    
+    // Update the bokeh circles with new colors and opacity
+    const circles = bokeh.querySelectorAll('circle');
+    circles.forEach((circle, index) => {
+        const colorIndex = index % colorVariations.length;
+        const color = colorVariations[colorIndex];
+        // Make circles more opaque than background
+        const circleOpacity = Math.min(1, activeWorkspaceBackgroundOpacity + 0.3);
+        circle.style.fill = color;
+        circle.style.opacity = circleOpacity;
+    });
+    
+    // Update the bokeh background color with transparency
+    const backgroundColor = activeWorkspaceBackgroundColor || generateBackgroundColor(baseColor);
+    const transparentColor = addTransparency(backgroundColor, 0.25); // 25% transparency
+    bokeh.style.backgroundColor = transparentColor;
+    
+    // Update the current background layer for images only
+    if (activeWorkspaceBackgroundImage) {
+        // Set background image on the div
+        currentBg.style.backgroundImage = `url('/images/${activeWorkspaceBackgroundImage}')`;
+        currentBg.style.backgroundSize = 'cover';
+        currentBg.style.backgroundPosition = 'top center';
+        currentBg.style.backgroundRepeat = 'no-repeat';
+        currentBg.style.backgroundColor = 'transparent';
+    } else {
+        // No background image
+        currentBg.style.backgroundImage = 'none';
+        currentBg.style.backgroundColor = 'transparent';
+    }
+    
+    console.log('🎨 Updated bokeh background:', {
+        color: baseColor,
+        backgroundColor: transparentColor,
+        backgroundImage: activeWorkspaceBackgroundImage,
+        opacity: activeWorkspaceBackgroundOpacity
+    });
+}
+
+// Generate color variations for bokeh circles with more variety
+function generateColorVariations(baseColor) {
+    // Convert hex to HSL for better color manipulation
+    const hsl = hexToHsl(baseColor);
+    
+    // Generate variations with different hue shifts, saturation, and lightness
+    const variations = [
+        baseColor, // Original color
+        hslToHex(hsl.h, hsl.s, Math.min(100, hsl.l + 15)), // Lighter
+        hslToHex(hsl.h, hsl.s, Math.max(0, hsl.l - 20)), // Darker
+        hslToHex((hsl.h + 15) % 360, Math.min(100, hsl.s + 10), hsl.l), // Slightly different hue
+        hslToHex((hsl.h - 10 + 360) % 360, Math.max(0, hsl.s - 15), hsl.l), // Complementary direction
+        hslToHex(hsl.h, Math.max(0, hsl.s - 20), Math.min(100, hsl.l + 10)), // Less saturated, lighter
+        hslToHex((hsl.h + 25) % 360, Math.min(100, hsl.s + 5), Math.max(0, hsl.l - 15)), // Different hue, darker
+        hslToHex(hsl.h, Math.max(0, hsl.s - 10), Math.min(100, hsl.l + 20)), // Less saturated, much lighter
+        hslToHex((hsl.h - 20 + 360) % 360, hsl.s, Math.max(0, hsl.l - 25)), // Different hue, much darker
+        hslToHex(hsl.h, Math.min(100, hsl.s + 15), Math.max(0, hsl.l - 10)) // More saturated, darker
+    ];
+    
+    return variations;
+}
+
+// Generate background color (darker, more muted version of workspace color)
+function generateBackgroundColor(baseColor) {
+    const hsl = hexToHsl(baseColor);
+    // Create a darker, more muted background color
+    return hslToHex(hsl.h, Math.max(0, hsl.s - 30), Math.max(0, hsl.l - 40));
+}
+
+// Helper function to convert hex to HSL
+function hexToHsl(hex) {
+    // Remove # if present
+    hex = hex.replace('#', '');
+    
+    // Parse hex values
+    const r = parseInt(hex.substr(0, 2), 16) / 255;
+    const g = parseInt(hex.substr(2, 2), 16) / 255;
+    const b = parseInt(hex.substr(4, 2), 16) / 255;
+    
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+    
+    if (max === min) {
+        h = s = 0; // achromatic
+    } else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+    
+    return {
+        h: Math.round(h * 360),
+        s: Math.round(s * 100),
+        l: Math.round(l * 100)
+    };
+}
+
+// Helper function to convert HSL to hex
+function hslToHex(h, s, l) {
+    h /= 360;
+    s /= 100;
+    l /= 100;
+    
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs((h * 6) % 2 - 1));
+    const m = l - c / 2;
+    let r = 0, g = 0, b = 0;
+    
+    if (0 <= h && h < 1/6) {
+        r = c; g = x; b = 0;
+    } else if (1/6 <= h && h < 1/3) {
+        r = x; g = c; b = 0;
+    } else if (1/3 <= h && h < 1/2) {
+        r = 0; g = c; b = x;
+    } else if (1/2 <= h && h < 2/3) {
+        r = 0; g = x; b = c;
+    } else if (2/3 <= h && h < 5/6) {
+        r = x; g = 0; b = c;
+    } else if (5/6 <= h && h <= 1) {
+        r = c; g = 0; b = x;
+    }
+    
+    const rHex = Math.round((r + m) * 255).toString(16).padStart(2, '0');
+    const gHex = Math.round((g + m) * 255).toString(16).padStart(2, '0');
+    const bHex = Math.round((b + m) * 255).toString(16).padStart(2, '0');
+    
+    return `#${rHex}${gHex}${bHex}`;
+}
+
+// Helper function to add transparency to a hex color
+function addTransparency(hexColor, alpha) {
+    // Remove # if present
+    hexColor = hexColor.replace('#', '');
+    
+    // Convert alpha to hex (0-255)
+    const alphaHex = Math.round(alpha * 255).toString(16).padStart(2, '0');
+    
+    // Return hex color with alpha
+    return `#${hexColor}${alphaHex}`;
+}
+
+async function createWorkspace(name) {
+    try {
+        const response = await fetchWithAuth('/workspaces', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to create workspace');
+        }
+        
+        await loadWorkspaces();
+        await loadGallery(); // Refresh gallery to show new workspace filtering
+        await loadCacheImages(); // Refresh cache browser to show new workspace filtering
+        showSuccess(`Workspace "${name}" created successfully`);
+    } catch (error) {
+        console.error('Error creating workspace:', error);
+        showError('Failed to create workspace: ' + error.message);
+    }
+}
+
+async function renameWorkspace(id, newName) {
+    try {
+        const response = await fetchWithAuth(`/workspaces/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to rename workspace');
+        }
+    } catch (error) {
+        console.error('Error renaming workspace:', error);
+        showError('Failed to rename workspace: ' + error.message);
+    }
+}
+
+async function deleteWorkspace(id) {
+    try {
+        const response = await fetchWithAuth(`/workspaces/${id}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to delete workspace');
+        }
+        
+        await loadWorkspaces();
+        await loadGallery(); // Refresh gallery to show updated filtering
+        await loadCacheImages(); // Refresh cache browser to show updated filtering
+        showSuccess('Workspace deleted and items moved to default');
+    } catch (error) {
+        console.error('Error deleting workspace:', error);
+        showError('Failed to delete workspace: ' + error.message);
+    }
+}
+
+async function dumpWorkspace(sourceId, targetId) {
+    try {
+        const response = await fetchWithAuth(`/workspaces/${sourceId}/dump`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetId })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to dump workspace');
+        }
+        
+        await loadWorkspaces();
+        await loadGallery(); // Refresh gallery
+        await loadCacheImages(); // Refresh cache browser
+        showSuccess('Workspace dumped successfully');
+    } catch (error) {
+        console.error('Error dumping workspace:', error);
+        showError('Failed to dump workspace: ' + error.message);
+    }
+}
+
+async function setActiveWorkspace(id) {
+    try {
+        const response = await fetchWithAuth(`/workspaces/${id}/set-active`, {
+            method: 'POST'
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to set active workspace');
+        }
+        
+        activeWorkspace = id;
+        
+        // Update workspace settings immediately
+        const workspace = workspaces.find(w => w.id === id);
+        if (workspace) {
+            activeWorkspaceColor = workspace.color || '#124';
+            activeWorkspaceBackgroundColor = workspace.backgroundColor;
+            activeWorkspaceBackgroundImage = workspace.backgroundImage;
+            activeWorkspaceBackgroundOpacity = workspace.backgroundOpacity || 0.3;
+            
+            // Trigger workspace transition animation
+            await animateWorkspaceTransition();
+        }
+        
+        loadWorkspaces();
+        updateActiveWorkspaceDisplay();
+        await loadGallery(); // Refresh gallery with new workspace filter
+        await loadCacheImages(); // Refresh cache browser with new workspace filter
+        showSuccess('Active workspace changed');
+    } catch (error) {
+        console.error('Error setting active workspace:', error);
+        showError('Failed to set active workspace: ' + error.message);
+    }
+}
+
+async function moveFilesToWorkspace(filenames, targetWorkspaceId) {
+    try {
+        const response = await fetchWithAuth(`/workspaces/${targetWorkspaceId}/move-files`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filenames })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to move files');
+        }
+        
+        const result = await response.json();
+        await loadGallery(); // Refresh gallery
+        showSuccess(`Moved ${result.movedCount} files to workspace`);
+    } catch (error) {
+        console.error('Error moving files to workspace:', error);
+        showError('Failed to move files: ' + error.message);
+    }
+}
+
+// Update workspace color
+async function updateWorkspaceColor(id, color) {
+    try {
+        const response = await fetchWithAuth(`/workspaces/${id}/color`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ color })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to update workspace color');
+        }
+    } catch (error) {
+        console.error('Error updating workspace color:', error);
+        showError('Failed to update workspace color: ' + error.message);
+    }
+}
+
+// Update workspace background color
+async function updateWorkspaceBackgroundColor(id, backgroundColor) {
+    try {
+        const response = await fetchWithAuth(`/workspaces/${id}/background-color`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ backgroundColor })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to update workspace background color');
+        }
+    } catch (error) {
+        console.error('Error updating workspace background color:', error);
+        showError('Failed to update workspace background color: ' + error.message);
+    }
+}
+
+// Update workspace background image
+async function updateWorkspaceBackgroundImage(id, backgroundImage) {
+    try {
+        const response = await fetchWithAuth(`/workspaces/${id}/background-image`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ backgroundImage })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to update workspace background image');
+        }
+    } catch (error) {
+        console.error('Error updating workspace background image:', error);
+        showError('Failed to update workspace background image: ' + error.message);
+    }
+}
+
+// Update workspace background opacity
+async function updateWorkspaceBackgroundOpacity(id, backgroundOpacity) {
+    try {
+        const response = await fetchWithAuth(`/workspaces/${id}/background-opacity`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ backgroundOpacity })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to update workspace background opacity');
+        }
+    } catch (error) {
+        console.error('Error updating workspace background opacity:', error);
+        showError('Failed to update workspace background opacity: ' + error.message);
+    }
+}
+
+// Workspace UI functions
+function renderWorkspaceDropdown(selectedVal) {
+    const workspaceMenu = document.getElementById('workspaceDropdownMenu');
+    if (!workspaceMenu) return;
+    
+    workspaceMenu.innerHTML = '';
+    
+    workspaces.forEach(workspace => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option' + (workspace.isActive ? ' selected' : '');
+        option.tabIndex = 0;
+        option.dataset.value = workspace.id;
+        
+        option.innerHTML = `
+            <div class="workspace-option-content">
+                <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#124'}"></div>
+                <span class="workspace-name">${workspace.name}</span>
+                <span class="workspace-counts">${workspace.fileCount} files</span>
+            </div>
+            ${workspace.isActive ? '<i class="fas fa-check"></i>' : ''}
+        `;
+        
+        const action = () => {
+            if (!workspace.isActive) {
+                setActiveWorkspace(workspace.id);
+            }
+            closeWorkspaceDropdown();
+        };
+        
+        option.addEventListener('click', action);
+        option.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                action();
+            }
+        });
+        
+        workspaceMenu.appendChild(option);
+    });
+}
+
+function updateActiveWorkspaceDisplay() {
+    const workspaceSelected = document.getElementById('workspaceSelected');
+    if (!workspaceSelected) return;
+    
+    const activeWorkspaceData = workspaces.find(w => w.id === activeWorkspace);
+    if (activeWorkspaceData) {
+        workspaceSelected.textContent = activeWorkspaceData.name;
+    }
+}
+
+function openWorkspaceDropdown() {
+    openDropdown(document.getElementById('workspaceDropdownMenu'), document.getElementById('workspaceDropdownBtn'));
+}
+
+function closeWorkspaceDropdown() {
+    closeDropdown(document.getElementById('workspaceDropdownMenu'), document.getElementById('workspaceDropdownBtn'));
+}
+
+function renderWorkspaceManagementList() {
+    const list = document.getElementById('workspaceManageList');
+    if (!list) return;
+    
+    list.innerHTML = '';
+    
+    workspaces.forEach(workspace => {
+        const item = document.createElement('div');
+        item.className = 'workspace-manage-item';
+        
+        item.innerHTML = `
+            <div class="workspace-manage-info">
+                <div class="workspace-header">
+                    <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#124'}"></div>
+                    <h5>${workspace.name} ${workspace.isActive ? '<span class="badge-active">Active</span>' : ''}</h5>
+                </div>
+                <p>${workspace.fileCount} files, ${workspace.cacheFileCount} cache files</p>
+            </div>
+            <div class="workspace-manage-actions">
+                <button type="button" class="btn-link" onclick="editWorkspaceSettings('${workspace.id}')" title="Workspace Settings">
+                    <i class="fas fa-cog"></i>
+                </button>
+                ${!workspace.isDefault ? `
+                    <button type="button" class="btn-link" onclick="editWorkspace('${workspace.id}', '${workspace.name}')" title="Rename">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button type="button" class="btn-link" onclick="showDumpWorkspaceModal('${workspace.id}', '${workspace.name}')" title="Dump">
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                    <button type="button" class="btn-link text-danger" onclick="confirmDeleteWorkspace('${workspace.id}', '${workspace.name}')" title="Delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                ` : ''}
+            </div>
+        `;
+        
+        list.appendChild(item);
+    });
+}
+
+// Workspace modal functions
+function showWorkspaceManagementModal() {
+    renderWorkspaceManagementList();
+    const modal = document.getElementById('workspaceManageModal');
+    if (modal) modal.style.display = 'block';
+}
+
+function hideWorkspaceManagementModal() {
+    const modal = document.getElementById('workspaceManageModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function showAddWorkspaceModal() {
+    currentWorkspaceOperation = { type: 'add' };
+    document.getElementById('workspaceEditTitle').textContent = 'Add Workspace';
+    document.getElementById('workspaceNameInput').style.display = 'block';
+    document.getElementById('workspaceColorInput').style.display = 'block';
+    document.getElementById('workspaceBackgroundColorInput').style.display = 'block';
+    document.getElementById('workspaceBackgroundImageInput').style.display = 'block';
+    document.getElementById('workspaceBackgroundOpacityInput').style.display = 'block';
+    document.getElementById('workspaceNameInput').value = '';
+    document.getElementById('workspaceColorInput').value = '#124';
+    document.getElementById('workspaceBackgroundColorInput').value = '#0a1a2a';
+    document.getElementById('workspaceBackgroundImageInput').value = '';
+    document.getElementById('workspaceBackgroundImageInput').placeholder = 'No background image selected';
+    document.getElementById('workspaceBackgroundOpacityInput').value = '0.3';
+    document.getElementById('opacityValue').textContent = '30%';
+    const modal = document.getElementById('workspaceEditModal');
+    if (modal) modal.style.display = 'block';
+}
+
+function editWorkspace(id, currentName) {
+    currentWorkspaceOperation = { type: 'rename', id };
+    document.getElementById('workspaceEditTitle').textContent = 'Rename Workspace';
+    document.getElementById('workspaceNameInput').style.display = 'block';
+    document.getElementById('workspaceColorInput').style.display = 'none';
+    document.getElementById('workspaceBackgroundColorInput').style.display = 'none';
+    document.getElementById('workspaceBackgroundImageInput').style.display = 'none';
+    document.getElementById('workspaceBackgroundOpacityInput').style.display = 'none';
+    document.getElementById('workspaceNameInput').value = currentName;
+    const modal = document.getElementById('workspaceEditModal');
+    if (modal) modal.style.display = 'block';
+}
+
+async function editWorkspaceSettings(id) {
+    currentWorkspaceOperation = { type: 'settings', id };
+    document.getElementById('workspaceEditTitle').textContent = 'Workspace Settings';
+    
+    // Show all form elements
+    document.getElementById('workspaceNameInput').style.display = 'block';
+    document.getElementById('workspaceColorInput').style.display = 'block';
+    document.getElementById('workspaceBackgroundColorInput').style.display = 'block';
+    document.getElementById('workspaceBackgroundImageInput').style.display = 'block';
+    document.getElementById('workspaceBackgroundOpacityInput').style.display = 'block';
+    
+    // Get workspace data
+    const workspace = workspaces.find(w => w.id === id);
+    if (workspace) {
+        // Set current values
+        document.getElementById('workspaceNameInput').value = workspace.name;
+        document.getElementById('workspaceColorInput').value = workspace.color || '#124';
+        document.getElementById('workspaceBackgroundColorInput').value = workspace.backgroundColor || '#0a1a2a';
+        document.getElementById('workspaceBackgroundOpacityInput').value = workspace.backgroundOpacity || 0.3;
+        
+        // Update opacity display
+        const opacityValue = document.getElementById('opacityValue');
+        if (opacityValue) {
+            opacityValue.textContent = Math.round((workspace.backgroundOpacity || 0.3) * 100) + '%';
+        }
+        
+        // Background images will be loaded when the modal is opened
+        
+        // Set background image if exists
+        const backgroundImageInput = document.getElementById('workspaceBackgroundImageInput');
+        if (backgroundImageInput) {
+            backgroundImageInput.value = workspace.backgroundImage || '';
+            backgroundImageInput.placeholder = workspace.backgroundImage ? workspace.backgroundImage : 'No background image selected';
+        }
+    }
+    
+    const modal = document.getElementById('workspaceEditModal');
+    if (modal) modal.style.display = 'block';
+}
+
+
+
+function hideWorkspaceEditModal() {
+    const modal = document.getElementById('workspaceEditModal');
+    if (modal) modal.style.display = 'none';
+    
+    // Reset form
+    document.getElementById('workspaceNameInput').style.display = 'block';
+    document.getElementById('workspaceColorInput').style.display = 'block';
+    document.getElementById('workspaceBackgroundColorInput').style.display = 'block';
+    document.getElementById('workspaceBackgroundImageInput').style.display = 'block';
+    document.getElementById('workspaceBackgroundOpacityInput').style.display = 'block';
+    document.getElementById('workspaceNameInput').value = '';
+    document.getElementById('workspaceColorInput').value = '#124';
+    document.getElementById('workspaceBackgroundColorInput').value = '#0a1a2a';
+    document.getElementById('workspaceBackgroundImageInput').value = '';
+    document.getElementById('workspaceBackgroundImageInput').placeholder = 'No background image selected';
+    document.getElementById('workspaceBackgroundOpacityInput').value = '0.3';
+    document.getElementById('opacityValue').textContent = '30%';
+    
+    currentWorkspaceOperation = null;
+}
+
+function showDumpWorkspaceModal(sourceId, sourceName) {
+    document.getElementById('dumpSourceWorkspaceName').textContent = sourceName;
+    
+    const select = document.getElementById('dumpTargetSelect');
+    select.innerHTML = '';
+    
+    workspaces.forEach(workspace => {
+        if (workspace.id !== sourceId) {
+            const option = document.createElement('option');
+            option.value = workspace.id;
+            option.textContent = workspace.name;
+            select.appendChild(option);
+        }
+    });
+    
+    currentWorkspaceOperation = { type: 'dump', sourceId };
+    const modal = document.getElementById('workspaceDumpModal');
+    if (modal) modal.style.display = 'block';
+}
+
+function hideWorkspaceDumpModal() {
+    const modal = document.getElementById('workspaceDumpModal');
+    if (modal) modal.style.display = 'none';
+    currentWorkspaceOperation = null;
+}
+
+function confirmDeleteWorkspace(id, name) {
+    if (confirm(`Are you sure you want to delete the workspace "${name}"?\n\nAll items will be moved to the default workspace.`)) {
+        deleteWorkspace(id);
+    }
+}
+
+// Initialize workspace system
+function initializeWorkspaceSystem() {
+    // Setup workspace dropdown using standard custom dropdown system
+    const workspaceDropdown = document.getElementById('workspaceDropdown');
+    const workspaceDropdownBtn = document.getElementById('workspaceDropdownBtn');
+    const workspaceDropdownMenu = document.getElementById('workspaceDropdownMenu');
+    
+    setupDropdown(workspaceDropdown, workspaceDropdownBtn, workspaceDropdownMenu, renderWorkspaceDropdown, () => activeWorkspace);
+    
+    // Workspace action button events
+    const workspaceManageBtn = document.getElementById('workspaceManageBtn');
+    const workspaceAddBtn = document.getElementById('workspaceAddBtn');
+    
+    if (workspaceManageBtn) {
+        workspaceManageBtn.addEventListener('click', () => {
+            showWorkspaceManagementModal();
+        });
+    }
+    
+    if (workspaceAddBtn) {
+        workspaceAddBtn.addEventListener('click', () => {
+            showAddWorkspaceModal();
+        });
+    }
+    
+    // Modal close events
+    document.getElementById('closeWorkspaceManageBtn')?.addEventListener('click', hideWorkspaceManagementModal);
+    document.getElementById('closeWorkspaceEditBtn')?.addEventListener('click', hideWorkspaceEditModal);
+    document.getElementById('closeWorkspaceDumpBtn')?.addEventListener('click', hideWorkspaceDumpModal);
+    document.getElementById('workspaceCancelBtn')?.addEventListener('click', hideWorkspaceEditModal);
+    document.getElementById('workspaceDumpCancelBtn')?.addEventListener('click', hideWorkspaceDumpModal);
+    
+    // Background image modal close events
+    document.getElementById('closeBackgroundImageModalBtn')?.addEventListener('click', hideBackgroundImageModal);
+    document.getElementById('backgroundImageCancelBtn')?.addEventListener('click', hideBackgroundImageModal);
+    
+    // Save workspace
+    document.getElementById('workspaceSaveBtn')?.addEventListener('click', async () => {
+        if (currentWorkspaceOperation) {
+            if (currentWorkspaceOperation.type === 'add') {
+                const name = document.getElementById('workspaceNameInput').value.trim();
+                const color = document.getElementById('workspaceColorInput').value.trim();
+                const backgroundColor = document.getElementById('workspaceBackgroundColorInput').value.trim();
+                const backgroundImage = document.getElementById('workspaceBackgroundImageInput').value.trim();
+                const backgroundOpacity = parseFloat(document.getElementById('workspaceBackgroundOpacityInput').value);
+                
+                if (!name) {
+                    showError('Please enter a workspace name');
+                    return;
+                }
+                // Create workspace with just the name
+                await createWorkspace(name);
+                // Get the newly created workspace ID and update its settings
+                await loadWorkspaces();
+                const newWorkspace = workspaces.find(w => w.name === name);
+                if (newWorkspace) {
+                    await Promise.all([
+                        updateWorkspaceColor(newWorkspace.id, color),
+                        updateWorkspaceBackgroundColor(newWorkspace.id, backgroundColor || null),
+                        updateWorkspaceBackgroundImage(newWorkspace.id, backgroundImage || null),
+                        updateWorkspaceBackgroundOpacity(newWorkspace.id, backgroundOpacity)
+                    ]);
+                    await loadWorkspaces();
+                }
+            } else if (currentWorkspaceOperation.type === 'rename') {
+                const name = document.getElementById('workspaceNameInput').value.trim();
+                if (!name) {
+                    showError('Please enter a workspace name');
+                    return;
+                }
+                await renameWorkspace(currentWorkspaceOperation.id, name);
+            } else if (currentWorkspaceOperation.type === 'settings') {
+                const name = document.getElementById('workspaceNameInput').value.trim();
+                const color = document.getElementById('workspaceColorInput').value.trim();
+                const backgroundColor = document.getElementById('workspaceBackgroundColorInput').value.trim();
+                const backgroundImage = document.getElementById('workspaceBackgroundImageInput').value.trim();
+                const backgroundOpacity = parseFloat(document.getElementById('workspaceBackgroundOpacityInput').value);
+                
+                if (!name) {
+                    showError('Please enter a workspace name');
+                    return;
+                }
+                
+                // Update all settings
+                await Promise.all([
+                    renameWorkspace(currentWorkspaceOperation.id, name),
+                    updateWorkspaceColor(currentWorkspaceOperation.id, color),
+                    updateWorkspaceBackgroundColor(currentWorkspaceOperation.id, backgroundColor || null),
+                    updateWorkspaceBackgroundImage(currentWorkspaceOperation.id, backgroundImage || null),
+                    updateWorkspaceBackgroundOpacity(currentWorkspaceOperation.id, backgroundOpacity)
+                ]);
+                await loadWorkspaces();
+        
+                // Update bokeh background if this is the active workspace
+                if (currentWorkspaceOperation.id === activeWorkspace) {
+                    activeWorkspaceBackgroundOpacity = backgroundOpacity;
+                    activeWorkspaceBackgroundImage = backgroundImage;
+                    activeWorkspaceBackgroundColor = backgroundColor;
+                    activeWorkspaceColor = color;
+                    animateWorkspaceTransition();
+                }
+            }
+        }
+        
+        hideWorkspaceEditModal();
+        hideWorkspaceManagementModal();
+    });
+    
+    // Dump workspace
+    document.getElementById('workspaceDumpConfirmBtn')?.addEventListener('click', async () => {
+        const targetId = document.getElementById('dumpTargetSelect').value;
+        if (!targetId) {
+            showError('Please select a target workspace');
+            return;
+        }
+        
+        if (currentWorkspaceOperation && currentWorkspaceOperation.type === 'dump') {
+            await dumpWorkspace(currentWorkspaceOperation.sourceId, targetId);
+        }
+        
+        hideWorkspaceDumpModal();
+        hideWorkspaceManagementModal();
+    });
+}
+
+// Initialize workspace settings form event listeners
+function initializeWorkspaceSettingsForm() {
+    // Opacity slider event listener
+    const opacitySlider = document.getElementById('workspaceBackgroundOpacityInput');
+    const opacityValue = document.getElementById('opacityValue');
+    
+    if (opacitySlider && opacityValue) {
+        opacitySlider.addEventListener('input', (e) => {
+            const value = parseFloat(e.target.value);
+            opacityValue.textContent = Math.round(value * 100) + '%';
+        });
+    }
+    
+    // Background image selection button
+    const selectBackgroundImageBtn = document.getElementById('selectBackgroundImageBtn');
+    if (selectBackgroundImageBtn) {
+        selectBackgroundImageBtn.addEventListener('click', () => {
+            showBackgroundImageModal();
+        });
+    }
+}
+
+// Background Image Selection Modal Functions
+let selectedBackgroundImage = null;
+
+async function showBackgroundImageModal() {
+    const modal = document.getElementById('backgroundImageModal');
+    const grid = document.getElementById('backgroundImageGrid');
+    const loading = document.getElementById('backgroundImageLoading');
+    const searchInput = document.getElementById('backgroundImageSearchInput');
+    
+    if (!modal || !grid || !loading) return;
+    
+    // Show modal
+    modal.style.display = 'block';
+    
+    // Show loading
+    loading.style.display = 'flex';
+    grid.innerHTML = '';
+    
+    try {
+        // Get current workspace images
+        const workspaceImages = await getWorkspaceImages();
+        
+        // Hide loading
+        loading.style.display = 'none';
+        
+        // Populate grid
+        populateBackgroundImageGrid(workspaceImages);
+        
+        // Set up search functionality
+        setupBackgroundImageSearch(searchInput, workspaceImages);
+        
+        // Set up selection handlers
+        setupBackgroundImageSelection();
+        
+    } catch (error) {
+        console.error('Error loading background images:', error);
+        loading.style.display = 'none';
+        grid.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">Error loading images</p>';
+    }
+}
+
+async function getWorkspaceImages() {
+    try {
+        // Get current workspace ID
+        const workspaceId = currentWorkspaceOperation?.id || activeWorkspace;
+        
+        console.log('Debug getWorkspaceImages:', {
+            currentWorkspaceOperation: currentWorkspaceOperation,
+            activeWorkspace: activeWorkspace,
+            selectedWorkspaceId: workspaceId
+        });
+        
+        // Get workspace files from backend
+        const workspaceResponse = await fetchWithAuth(`/workspaces/${workspaceId}/files`);
+        if (!workspaceResponse.ok) throw new Error('Failed to load workspace files');
+        
+        const workspaceData = await workspaceResponse.json();
+        const workspaceFiles = new Set(workspaceData.files || []);
+        
+        console.log('Debug workspace files:', {
+            workspaceId: workspaceData.workspaceId,
+            workspaceName: workspaceData.workspaceName,
+            fileCount: workspaceFiles.size
+        });
+        
+        // Get all images from the filesystem (not filtered by active workspace)
+        const allImagesResponse = await fetchWithAuth('/images/all');
+        if (!allImagesResponse.ok) throw new Error('Failed to load all images');
+        
+        const allImagesItems = await allImagesResponse.json();
+        
+        // Filter images to only include workspace files
+        const filteredImages = allImagesItems.filter(img => {
+            const file = img.pipeline_upscaled || img.pipeline || img.upscaled || img.original;
+            return workspaceFiles.has(file);
+        });
+        
+        return filteredImages;
+    } catch (error) {
+        console.error('Error getting workspace images:', error);
+        return [];
+    }
+}
+
+function populateBackgroundImageGrid(images) {
+    const grid = document.getElementById('backgroundImageGrid');
+    if (!grid) return;
+    
+    grid.innerHTML = '';
+    
+    images.forEach(img => {
+        const file = img.pipeline_upscaled || img.pipeline || img.upscaled || img.original;
+        const preview = img.preview;
+        
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'background-image-option';
+        option.dataset.filename = file;
+        
+        option.innerHTML = `
+            <div class="background-image-thumbnail" style="background-image: url('/previews/${preview}')"></div>
+        `;
+        
+        grid.appendChild(option);
+    });
+}
+
+function setupBackgroundImageSearch(searchInput, allImages) {
+    if (!searchInput) return;
+    
+    searchInput.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        const grid = document.getElementById('backgroundImageGrid');
+        const options = grid.querySelectorAll('.background-image-option');
+        
+        options.forEach(option => {
+            const filename = option.dataset.filename.toLowerCase();
+            if (filename.includes(searchTerm)) {
+                option.style.display = 'flex';
+            } else {
+                option.style.display = 'none';
+            }
+        });
+    });
+}
+
+function setupBackgroundImageSelection() {
+    const grid = document.getElementById('backgroundImageGrid');
+    const noImageBtn = document.getElementById('noBackgroundImageBtn');
+    
+    // Clear previous selections
+    const allOptions = document.querySelectorAll('.background-image-option');
+    allOptions.forEach(option => option.classList.remove('selected'));
+    if (noImageBtn) noImageBtn.classList.remove('selected');
+    
+    // Set current selection
+    const currentInput = document.getElementById('workspaceBackgroundImageInput');
+    const currentValue = currentInput ? currentInput.value : '';
+    
+    if (!currentValue) {
+        if (noImageBtn) noImageBtn.classList.add('selected');
+    } else {
+        const selectedOption = grid.querySelector(`[data-filename="${currentValue}"]`);
+        if (selectedOption) selectedOption.classList.add('selected');
+    }
+    
+    // Add click handlers
+    if (noImageBtn) {
+        noImageBtn.addEventListener('click', () => {
+            selectBackgroundImage(null);
+        });
+    }
+    
+    const options = grid.querySelectorAll('.background-image-option');
+    options.forEach(option => {
+        option.addEventListener('click', () => {
+            const filename = option.dataset.filename;
+            selectBackgroundImage(filename);
+        });
+    });
+}
+
+function selectBackgroundImage(filename) {
+    selectedBackgroundImage = filename;
+    
+    // Update visual selection
+    const allOptions = document.querySelectorAll('.background-image-option');
+    const noImageBtn = document.getElementById('noBackgroundImageBtn');
+    
+    allOptions.forEach(option => option.classList.remove('selected'));
+    if (noImageBtn) noImageBtn.classList.remove('selected');
+    
+    if (!filename) {
+        if (noImageBtn) noImageBtn.classList.add('selected');
+    } else {
+        const selectedOption = document.querySelector(`[data-filename="${filename}"]`);
+        if (selectedOption) selectedOption.classList.add('selected');
+    }
+    
+    // Update input field
+    const input = document.getElementById('workspaceBackgroundImageInput');
+    if (input) {
+        input.value = filename || '';
+        input.placeholder = filename ? filename : 'No background image selected';
+    }
+    
+    // Close modal
+    hideBackgroundImageModal();
+}
+
+function hideBackgroundImageModal() {
+    const modal = document.getElementById('backgroundImageModal');
+    if (modal) modal.style.display = 'none';
+    
+    // Clear search
+    const searchInput = document.getElementById('backgroundImageSearchInput');
+    if (searchInput) searchInput.value = '';
+    
+    selectedBackgroundImage = null;
+}
+
+// Scraps functionality
+let isViewingScraps = false;
+let scrapsImages = [];
+
+// Toggle between images and scraps
+function toggleGalleryView() {
+    isViewingScraps = !isViewingScraps;
+    const toggleBtn = document.getElementById('galleryToggleBtn');
+    
+    if (isViewingScraps) {
+        toggleBtn.innerHTML = '<i class="nai-image-tool-sketch"></i> Scraps';
+        toggleBtn.setAttribute('data-state', 'scraps');
+        loadScraps();
+    } else {
+        toggleBtn.innerHTML = '<i class="nai-sparkles"></i> Images';
+        toggleBtn.setAttribute('data-state', 'images');
+        loadGallery();
+    }
+
+    toggleBtn.setAttribute('data-state', isViewingScraps ? 'on' : 'off');
+}
+
+// Load scraps for current workspace
+async function loadScraps() {
+    try {
+        console.log('Loading scraps for workspace:', activeWorkspace);
+        
+        // Use the new /images endpoint with scraps query parameter
+        const response = await fetchWithAuth('/images?scraps=true');
+        if (response.ok) {
+            const scrapsImageData = await response.json();
+            console.log('Scraps loaded:', scrapsImageData.length, 'items');
+            
+            // Update display
+            allImages = scrapsImageData;
+            displayCurrentPageOptimized();
+            updatePagination();
+        } else {
+            console.error('Failed to load scraps:', response.statusText);
+            allImages = [];
+            displayCurrentPageOptimized();
+            updatePagination();
+        }
+        updateGalleryPlaceholders();
+    } catch (error) {
+        console.error('Error loading scraps:', error);
+        allImages = [];
+        displayCurrentPageOptimized();
+        updatePagination();
+    }
+}
+
+// Move image to scraps
+async function moveToScraps(image) {
+    if (!isAuthenticated) {
+        showError('Please login first');
+        return;
+    }
+
+    try {
+        const filename = image.filename || image.original || image.upscaled || image.pipeline || image.pipeline_upscaled;
+        if (!filename) {
+            showError('No filename available for this image');
+            return;
+        }
+
+        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/add-to-scraps`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ filename })
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            console.log('Move to scraps result:', result);
+            showSuccess('Image moved to scraps');
+            
+            // If currently viewing scraps, reload them
+            if (isViewingScraps) {
+                await loadScraps();
+            } else {
+                // If viewing images, reload the gallery to remove the moved image
+                await loadGallery();
+            }
+        } else {
+            const error = await response.json();
+            console.error('Move to scraps failed:', error);
+            showError(`Failed to move to scraps: ${error.error}`);
+        }
+    } catch (error) {
+        console.error('Error moving to scraps:', error);
+        showError('Failed to move image to scraps');
+    }
+}
+
+// Remove image from scraps
+async function removeFromScraps(image) {
+    if (!isAuthenticated) {
+        showError('Please login first');
+        return;
+    }
+
+    try {
+        const filename = image.filename || image.original || image.upscaled || image.pipeline || image.pipeline_upscaled;
+        if (!filename) {
+            showError('No filename available for this image');
+            return;
+        }
+
+        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/remove-from-scraps`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ filename })
+        });
+
+        if (response.ok) {
+            showSuccess('Image removed from scraps and moved back to images');
+            
+            // If currently viewing scraps, reload them
+            if (isViewingScraps) {
+                await loadScraps();
+            } else {
+                // If viewing images, reload the gallery to show the restored image
+                await loadGallery();
+            }
+        } else {
+            const error = await response.json();
+            showError(`Failed to remove from scraps: ${error.error}`);
+        }
+    } catch (error) {
+        console.error('Error removing from scraps:', error);
+        showError('Failed to remove image from scraps');
+    }
+}
 
 document.addEventListener('DOMContentLoaded', async function() {
-    updateControlsVisibility();
+    // Initialize background layers
+    initializeBokehBackgrounds();
+    
     try {
         // Calculate initial images per page based on current window size
-        imagesPerPage = calculateImagesPerPage();
+        galleryRows = calculateGalleryRows();
+        imagesPerPage = galleryColumnsInput.value * galleryRows;  
         
         if (isAuthenticated) {
             await loadOptions();
+            await loadWorkspaces(); // Load workspace data
+            await loadActiveWorkspaceColor(); // Load workspace color for bokeh
             await loadBalance();
             await loadAvailablePresets();
             renderManualSamplerDropdown(manualSelectedSampler);
             selectManualSampler('k_euler_ancestral');
             renderManualResolutionDropdown(manualSelectedResolution);
             selectManualResolution('normal_square', 'Normal');
-            renderCustomResolutionDropdown(selectedResolution);
-            selectCustomResolution('', 'Default');
             renderManualNoiseSchedulerDropdown(manualSelectedNoiseScheduler);
             selectManualNoiseScheduler('karras');
             renderManualMaskBiasDropdown(manualSelectedMaskBias);
@@ -1979,6 +3361,12 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // Initialize background gradient
     setupEventListeners();
+    
+    // Initialize workspace system
+    initializeWorkspaceSystem();
+    
+    // Initialize workspace settings form event listeners
+    initializeWorkspaceSettingsForm();
 });
 
 // Global options data
@@ -2325,6 +3713,7 @@ function setupEventListeners() {
     // Manual modal events
     manualBtn.addEventListener('click', showManualModal);
     closeManualBtn.addEventListener('click', hideManualModal);
+    manualPreviewCloseBtn.addEventListener('click', hideManualModal);
     
     // Update save button state when preset name changes
     const presetNameInput = document.getElementById('manualPresetName');
@@ -2332,14 +3721,17 @@ function setupEventListeners() {
         presetNameInput.addEventListener('input', () => {
             updateSaveButtonState();
             validatePresetWithTimeout();
+            manualPresetToggleText.textContent = presetNameInput.value.trim();
         });
         presetNameInput.addEventListener('keyup', () => {
             updateSaveButtonState();
             validatePresetWithTimeout();
+            manualPresetToggleText.textContent = presetNameInput.value.trim();
         });
         presetNameInput.addEventListener('change', () => {
             updateSaveButtonState();
             validatePresetWithTimeout();
+            manualPresetToggleText.textContent = presetNameInput.value.trim();
         });
     }
     
@@ -2517,11 +3909,6 @@ function setupEventListeners() {
     }
     syncSliderWithInput(manualStrengthValue, manualStrengthValue, 0.0, 1.0, 0.01);
     syncSliderWithInput(manualNoiseValue, manualNoiseValue, 0.0, 1.0, 0.01);
-    
-    // Autocomplete events
-
-
-
 
     // Character autocomplete events (for both prompt and UC fields)
     manualPrompt.addEventListener('input', handleCharacterAutocompleteInput);
@@ -2621,9 +4008,7 @@ function setupEventListeners() {
 
     // Generation controls
     presetSelect.addEventListener('change', updateGenerateButton);
-    resolutionSelect.addEventListener('change', updateGenerateButton);
     generateBtn.addEventListener('click', generateImage);
-    maskPreviewBtn.addEventListener('click', showMaskPreview);
     
     // Upload functionality
     const uploadBtn = document.getElementById('uploadBtn');
@@ -2643,7 +4028,6 @@ function setupEventListeners() {
     document.addEventListener('paste', handleClipboardPaste);
     
     // Toggle button functionality
-    upscaleToggle.addEventListener('click', toggleUpscale);
     manualUpscale.addEventListener('click', toggleManualUpscale);
     
     // Custom resolution event listeners
@@ -2761,18 +4145,15 @@ function setupEventListeners() {
         manualPreviewNextBtn.addEventListener('click', navigateManualPreview);
     }
 
-    // Variety+ toggle
-    if (varietyToggle) {
-        varietyToggle.addEventListener('click', function() {
-            const state = varietyToggle.getAttribute('data-state') === 'on' ? 'off' : 'on';
-            varietyToggle.setAttribute('data-state', state);
-        });
-    }
-
     // Bulk action event listeners
+    const bulkMoveToWorkspaceBtn = document.getElementById('bulkMoveToWorkspaceBtn');
     const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
     const bulkSequenziaBtn = document.getElementById('bulkSequenziaBtn');
     const clearSelectionBtn = document.getElementById('clearSelectionBtn');
+    
+    if (bulkMoveToWorkspaceBtn) {
+        bulkMoveToWorkspaceBtn.addEventListener('click', handleBulkMoveToWorkspace);
+    }
     
     if (bulkDeleteBtn) {
         bulkDeleteBtn.addEventListener('click', handleBulkDelete);
@@ -2923,6 +4304,49 @@ function setupEventListeners() {
         btn.classList.toggle('active', state === 'on');
         executeRandomPrompt();
     });
+
+    // Update the click event for manualPresetToggleBtn to toggle the group and button state
+    manualPresetToggleBtn.addEventListener('click', function() {
+        if (manualPresetGroup.style.display === 'none') {
+            manualPresetGroup.style.display = '';
+            manualPresetToggleBtn.classList.add('toggle-btn');
+            manualPresetToggleBtn.classList.remove('hover-show');
+            manualPresetToggleIcon.style.display = '';
+            manualPresetToggleText.style.display = 'none';
+        } else {
+            manualPresetGroup.style.display = 'none';
+            manualPresetToggleBtn.classList.remove('toggle-btn');
+            manualPresetToggleBtn.classList.add('hover-show');
+            manualPresetToggleIcon.style.display = 'none';
+            manualPresetToggleText.style.display = '';
+        }
+    });
+
+    galleryColumnsInput?.addEventListener('input', e => setGalleryColumns(e.target.value));
+    galleryColumnsInput?.addEventListener('wheel', function(e) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -1 : 1;
+        const currentValue = parseInt(this.value) || 3;
+        const newValue = Math.max(3, Math.min(10, currentValue + delta));
+        this.value = newValue;
+        setGalleryColumns(newValue);
+    });
+
+    // Gallery toggle button
+    const galleryToggleBtn = document.getElementById('galleryToggleBtn');
+    if (galleryToggleBtn) {
+        galleryToggleBtn.addEventListener('click', toggleGalleryView);
+    }
+
+    // === Select All functionality ===
+    if (bulkSelectAllBtn) {
+        bulkSelectAllBtn.addEventListener('click', () => {
+            const checkboxes = document.querySelectorAll('.gallery-item-checkbox');
+            checkboxes.forEach(cb => {
+                if (!cb.checked) cb.click();
+            });
+        });
+    }
 }
 
 let presets, pipelines, resolutions, models, modelsNames, modelsShort, textReplacements, samplers, noiseSchedulers;
@@ -2940,14 +4364,8 @@ async function loadOptions() {
 
         // Populate resolutions using global RESOLUTIONS array
         resolutions = RESOLUTIONS.map(r => r.value);
-        resolutionSelect.innerHTML = '<option value="">Unchanged</option>';
         manualResolution.innerHTML = '<option value="">Unchanged</option>';
         RESOLUTIONS.forEach(resolution => {
-            const option = document.createElement('option');
-            option.value = resolution.value;
-            option.textContent = resolution.display;
-            resolutionSelect.appendChild(option);
-            
             const manualOption = document.createElement('option');
             manualOption.value = resolution.value;
             manualOption.textContent = resolution.display;
@@ -3092,7 +4510,6 @@ async function loadGallery() {
             // Use optimized display that only updates changed items
             displayCurrentPageOptimized();
             updatePagination();
-            updateControlsVisibility();
         } else {
             console.error('Failed to load gallery:', response.statusText);
         }
@@ -3104,6 +4521,130 @@ async function loadGallery() {
     }
 }
 
+let galleryColumns = parseInt(galleryColumnsInput?.value) || 5;
+let galleryRows = 5;
+let debounceGalleryTimeout = null;
+
+// Calculate optimal number of rows based on viewport height
+function calculateGalleryRows() {
+    if (!gallery) return 5; // Fallback to 5 if gallery not found
+    
+    // Get gallery container dimensions
+    const galleryRect = gallery.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    
+    // Estimate gallery item height (including gap and margins)
+    // Gallery items are square (aspect-ratio: 1) with gap and padding
+    const itemSize = galleryRect.width / galleryColumns; // Width of each item
+    const gap = 24; // var(--spacing-xl) from CSS
+    const itemHeight = itemSize + gap; // Item height plus gap
+    
+    // Calculate available height for gallery
+    // Account for header, controls, pagination, and margins
+    const headerHeight = 80; // Approximate header height
+    const controlsHeight = 60; // Approximate controls height
+    const paginationHeight = 80; // Approximate pagination height
+    const margins = 40; // Top and bottom margins
+    
+    const availableHeight = viewportHeight - headerHeight - controlsHeight - paginationHeight - margins;
+    
+    // Calculate how many rows can fit
+    const calculatedRows = Math.floor(availableHeight / itemHeight);
+    
+    // Ensure minimum of 3 rows and maximum of 8 rows for usability
+    return Math.max(3, Math.min(8, calculatedRows));
+}
+
+function setGalleryColumns(cols) {
+    galleryColumns = Math.max(3, Math.min(10, parseInt(cols) || 5));
+    gallery.style.gridTemplateColumns = `repeat(${galleryColumns}, 1fr)`;
+    galleryColumnsInput.value = galleryColumns;
+    
+    // Recalculate rows based on new column count
+    galleryRows = calculateGalleryRows();
+    
+    // Find the filename of the first visible gallery item
+    let firstFilename = null;
+    const firstItem = gallery.querySelector('.gallery-item .gallery-item-checkbox');
+    if (firstItem) {
+        firstFilename = firstItem.dataset.filename;
+    }
+    imagesPerPage = galleryColumns * galleryRows;
+    // Find the index of that filename in allImages
+    let newPage = 1;
+    if (firstFilename) {
+        const idx = allImages.findIndex(img => (img.original || img.pipeline || img.pipeline_upscaled) === firstFilename);
+        if (idx !== -1) {
+            newPage = Math.floor(idx / imagesPerPage) + 1;
+        }
+    }
+    currentPage = newPage;
+    if (debounceGalleryTimeout) clearTimeout(debounceGalleryTimeout);
+    debounceGalleryTimeout = setTimeout(() => {
+        imagesPerPage = galleryColumns * galleryRows; // Ensure up-to-date
+        displayCurrentPageOptimized();
+    }, 500);
+    updateGalleryPlaceholders();
+}
+
+function updateGalleryPlaceholders() {
+    if (!gallery) return;
+    // Remove old placeholders
+    Array.from(gallery.querySelectorAll('.gallery-placeholder')).forEach(el => el.remove());
+    // Count current items
+    const items = gallery.querySelectorAll('.gallery-item');
+    const count = items.length;
+    // Recalculate rows in case viewport changed
+    galleryRows = calculateGalleryRows();
+    const total = galleryColumns * galleryRows;
+    for (let i = count; i < total; i++) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'gallery-placeholder';
+        placeholder.style.background = 'rgba(255, 255, 255, 0.25)';
+        placeholder.style.border = '1px dashed rgb(191 191 191)';
+        placeholder.style.borderRadius = '18px';
+        placeholder.style.minHeight = '0';
+        placeholder.style.minWidth = '0';
+        placeholder.style.aspectRatio = '1';
+        placeholder.style.display = 'flex';
+        placeholder.style.alignItems = 'center';
+        placeholder.style.justifyContent = 'center';
+        placeholder.style.opacity = '0.3';
+        placeholder.innerHTML = '';
+        gallery.appendChild(placeholder);
+    }
+}
+
+function updateGalleryItemToolbars() {
+    const items = document.querySelectorAll('.gallery-item');
+    items.forEach(item => {
+        const overlay = item.querySelector('.gallery-item-overlay');
+        if (!overlay) return;
+        // Check if item is too small (e.g., width < 120px or height < 120px)
+        const rect = item.getBoundingClientRect();
+        let miniToolbar = overlay.querySelector('.mini-toolbar');
+        if (rect.width < 208 || rect.height < 208) {
+            item.classList.add('mini-toolbar-active');
+            if (!miniToolbar) {
+                miniToolbar = document.createElement('div');
+                miniToolbar.className = 'mini-toolbar';
+                miniToolbar.innerHTML = `
+                    <button class="btn-small" title="Edit"><i class="nai-settings"></i></button>
+                    <button class="btn-small" title="Download"><i class="nai-save"></i></button>
+                    <button class="btn-small" title="Delete"><i class="nai-trash"></i></button>
+                `;
+                overlay.appendChild(miniToolbar);
+            }
+            miniToolbar.style.display = 'flex';
+        } else {
+            item.classList.remove('mini-toolbar-active');
+            if (miniToolbar) {
+                miniToolbar.style.display = 'none';
+            }
+        } 
+    });
+}
+
 // Display current page of images
 function displayCurrentPage() {
     const startIndex = (currentPage - 1) * imagesPerPage;
@@ -3113,7 +4654,7 @@ function displayCurrentPage() {
     gallery.innerHTML = '';
 
     if (pageImages.length === 0) {
-        gallery.innerHTML = '<div class="no-images">No images found</div>';
+        gallery.innerHTML = '';
         return;
     }
 
@@ -3123,6 +4664,7 @@ function displayCurrentPage() {
     });
 
     updatePagination();
+    updateGalleryItemToolbars(); // <-- ensure mini toolbars are updated
 }
 
 // Optimized display function that minimizes DOM changes
@@ -3130,14 +4672,12 @@ function displayCurrentPageOptimized() {
     const startIndex = (currentPage - 1) * imagesPerPage;
     const endIndex = startIndex + imagesPerPage;
     const pageImages = allImages.slice(startIndex, endIndex);
-
-    const gallery = document.getElementById('gallery');
     if (!gallery) return;
 
     // If no images, show empty state
     if (pageImages.length === 0) {
-        if (gallery.innerHTML !== '<div class="no-images">No images found</div>') {
-            gallery.innerHTML = '<div class="no-images">No images found</div>';
+        if (gallery.innerHTML !== '') {
+            gallery.innerHTML = '';
         }
         return;
     }
@@ -3164,6 +4704,8 @@ function displayCurrentPageOptimized() {
             gallery.appendChild(galleryItem);
         });
     }
+    updateGalleryItemToolbars(); // <-- ensure mini toolbars are updated
+    updateGalleryPlaceholders();
 }
 
 // Create gallery item element
@@ -3175,7 +4717,7 @@ function createGalleryItem(image) {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.className = 'gallery-item-checkbox';
-    checkbox.dataset.filename = image.original || image.pipeline || image.pipeline_upscaled;
+    checkbox.dataset.filename = image.filename || image.original || image.upscaled || image.pipeline || image.pipeline_upscaled;
     checkbox.addEventListener('change', (e) => {
         e.stopPropagation();
         handleImageSelection(image, e.target.checked, e);
@@ -3313,6 +4855,25 @@ function createGalleryItem(image) {
         upscaleBtn.style.display = 'none';
     }
     
+    // Scrap button
+    const scrapBtn = document.createElement('button');
+    scrapBtn.className = 'btn-secondary round-button';
+    if (isViewingScraps) {
+        scrapBtn.innerHTML = '<i class="nai-undo"></i>';
+        scrapBtn.title = 'Remove from scraps';
+        scrapBtn.onclick = (e) => {
+            e.stopPropagation();
+            removeFromScraps(image);
+        };
+    } else {
+        scrapBtn.innerHTML = '<i class="nai-image-tool-sketch"></i>';
+        scrapBtn.title = 'Move to scraps';
+        scrapBtn.onclick = (e) => {
+            e.stopPropagation();
+            moveToScraps(image);
+        };
+    }
+    
     // Delete button
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn-danger round-button';
@@ -3327,6 +4888,7 @@ function createGalleryItem(image) {
     actionsDiv.appendChild(upscaleBtn);
     actionsDiv.appendChild(rerollBtn);
     actionsDiv.appendChild(rerollEditBtn);
+    actionsDiv.appendChild(scrapBtn);
     actionsDiv.appendChild(deleteBtn);
     
     overlay.appendChild(actionsDiv);
@@ -3477,7 +5039,8 @@ async function rerollImage(image) {
             const pipelineRequestBody = {
                 preset: pipelineName,
                 layer2: layer2Config,
-                resolution: metadata.resolution || undefined
+                resolution: metadata.resolution || undefined,
+                workspace: activeWorkspace
             };
             
             // Add mask_bias if available in metadata
@@ -3590,7 +5153,8 @@ async function rerollImage(image) {
                     steps: metadata.steps || 25,
                     guidance: metadata.scale || 5.0,
                     rescale: metadata.cfg_rescale || 0.0,
-                    allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : false
+                    allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : false,
+                    workspace: activeWorkspace
                 };
 
                 // Add mask data if it exists
@@ -3667,7 +5231,8 @@ async function rerollImage(image) {
                     steps: metadata.steps || 25,
                     guidance: metadata.scale || 5.0,
                     rescale: metadata.cfg_rescale || 0.0,
-                    allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : false
+                    allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : false,
+                    workspace: activeWorkspace
                 };
                 
                 // Add optional fields if they have values
@@ -4015,12 +5580,14 @@ async function upscaleImage(image) {
 
 // Update pagination controls
 function updatePagination() {
-    const totalPages = Math.ceil(allImages.length / imagesPerPage);
-    
-    prevPage.disabled = currentPage <= 1;
-    nextPage.disabled = currentPage >= totalPages;
-    
-    pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+    const pageInfo = document.getElementById('pageInfo');
+    const prevPage = document.getElementById('prevPage');
+    const nextPage = document.getElementById('nextPage');
+    const totalPages = Math.max(1, Math.ceil(allImages.length / imagesPerPage));
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (pageInfo) pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+    if (prevPage) prevPage.disabled = currentPage <= 1;
+    if (nextPage) nextPage.disabled = currentPage >= totalPages;
 }
 
 // Change page
@@ -4051,12 +5618,6 @@ async function handleLogout() {
     } catch (error) {
         // Already redirected on 401
     }
-}
-
-// Show/hide controls based on login
-function updateControlsVisibility() {
-    // Controls are always visible in the app page since authentication is handled by the server
-    controlsWrapper.style.display = 'block';
 }
 
 // Show manual modal
@@ -4858,7 +6419,8 @@ async function handleManualGeneration(e) {
             const pipelineRequestBody = {
                 preset: pipelineContext.pipelineName,
                 layer2: layer2Config,
-                resolution: resolution
+                resolution: resolution,
+                workspace: activeWorkspace
             };
             if (useLayer1Seed && pipelineContext.layer1Seed) {
                 pipelineRequestBody.layer1_seed = pipelineContext.layer1Seed;
@@ -4909,7 +6471,8 @@ async function handleManualGeneration(e) {
             steps: values.steps,
             guidance: values.guidance,
             rescale: values.rescale,
-            allow_paid: forcePaidRequest
+            allow_paid: forcePaidRequest,
+            workspace: activeWorkspace
         };
 
         // Handle uploaded image data
@@ -4973,7 +6536,8 @@ async function handleManualGeneration(e) {
             steps: values.steps,
             guidance: values.guidance,
             rescale: values.rescale,
-            allow_paid: forcePaidRequest
+            allow_paid: forcePaidRequest,
+            workspace: activeWorkspace
         };
         if (values.presetName) requestBody.preset = values.presetName;
 
@@ -5068,7 +6632,6 @@ async function handleManualSave() {
         rescale: parseFloat(manualRescale.value) || 0.0,
         upscale: manualUpscale.getAttribute('data-state') === 'on',
         allow_paid: forcePaidRequest, // Default to true for presets
-        variety: false, // Will be set below if enabled
         characterPrompts: getCharacterPrompts()
     };
     
@@ -5233,12 +6796,12 @@ function handleCharacterAutocompleteKeydown(e) {
         switch (e.key) {
             case 'ArrowUp':
                 e.preventDefault();
-                emphasisEditingValue = Math.min(emphasisEditingValue + 0.1, 2.5);
+                emphasisEditingValue = Math.min(emphasisEditingValue + 0.1, 5.0);
                 updateEmphasisEditingPopup();
                 break;
             case 'ArrowDown':
                 e.preventDefault();
-                emphasisEditingValue = Math.max(emphasisEditingValue - 0.1, -1.0);
+                emphasisEditingValue = Math.max(emphasisEditingValue - 0.1, -3.0);
                 updateEmphasisEditingPopup();
                 break;
             case 'ArrowLeft':
@@ -5709,7 +7272,7 @@ function startEmphasisEditing() {
             const bracePattern = /\{([^}]*)\}/g;
             let braceMatch;
             while ((braceMatch = bracePattern.exec(emphasisText)) !== null) {
-                const braceStartInEmphasis = emphasisStart + emphasisMatch[0].indexOf(braceMatch[0]);
+                const braceStartInEmphasis = emphasisStart + emphasisMatch.index;
                 const braceEndInEmphasis = braceStartInEmphasis + braceMatch[0].length;
                 
                 if (cursorPosition >= braceStartInEmphasis && cursorPosition <= braceEndInEmphasis) {
@@ -7097,11 +8660,9 @@ function hidePresetAutocomplete() {
 // Update generate button state
 function updateGenerateButton() {
     const selectedValue = presetSelect.value;
-    const resolution = resolutionSelect.value;
     
     if (!selectedValue) {
         generateBtn.disabled = true;
-        maskPreviewBtn.style.display = 'none';
         return;
     }
     
@@ -7110,21 +8671,17 @@ function updateGenerateButton() {
     
     if (!type || !name) {
         generateBtn.disabled = true;
-        maskPreviewBtn.style.display = 'none';
         return;
     }
     
     if (type === 'preset') {
         // For presets, resolution is required and no mask preview
         generateBtn.disabled = false;
-        maskPreviewBtn.style.display = 'none';
     } else if (type === 'pipeline') {
         // For pipelines, resolution is optional and show mask preview
         generateBtn.disabled = false;
-        maskPreviewBtn.style.display = 'inline-block';
     } else {
         generateBtn.disabled = true;
-        maskPreviewBtn.style.display = 'none';
     }
 }
 
@@ -7136,10 +8693,6 @@ async function generateImage() {
     }
 
     const selectedValue = presetSelect.value;
-    const resolution = resolutionSelect.value;
-    const upscale = upscaleToggle.getAttribute('data-state') === 'on';
-    const variety = varietyToggle && varietyToggle.getAttribute('data-state') === 'on';
-
     if (!selectedValue) {
         showError('Please select a preset or pipeline');
         return;
@@ -7157,22 +8710,18 @@ async function generateImage() {
 
     try {
         let url;
-        let extraParams = '';
         if (type === 'preset') {
             // For presets, resolution is optional
-            if (resolution) {
-                url = `/preset/${name}/${resolution}?forceGenerate=true${upscale ? '&upscale=true' : ''}${variety ? '&variety=true' : ''}`;
-            } else {
-                url = `/preset/${name}?forceGenerate=true${upscale ? '&upscale=true' : ''}${variety ? '&variety=true' : ''}`;
-            }
+            const params = new URLSearchParams({ forceGenerate: 'true' });
+            if (activeWorkspace) params.append('workspace', activeWorkspace);
+            
+            url = `/preset/${name}?${params.toString()}`;
         } else if (type === 'pipeline') {
             // For pipelines, resolution is optional (uses pipeline's resolution if not specified)
             const params = new URLSearchParams({
                 forceGenerate: 'true'
             });
-            if (upscale) params.append('upscale', 'true');
-            if (resolution) params.append('resolution', resolution);
-            if (variety) params.append('variety', 'true');
+            if (activeWorkspace) params.append('workspace', activeWorkspace);
             url = `/pipeline/${name}?${params.toString()}`;
         } else {
             throw new Error('Invalid selection type');
@@ -7693,9 +9242,6 @@ async function copyToClipboard(text, title) {
         showToast('Failed to copy to clipboard', 'error');
     }
 }
-
-// Function to update background gradient
-
 
 // Function to show toast notifications
 function showToast(message, type = 'info') {
@@ -8573,6 +10119,7 @@ function updateLightboxControls(image) {
     const rerollEditBtn = document.getElementById('lightboxRerollEditBtn');
     const variationBtn = document.getElementById('lightboxVariationBtn');
     const upscaleBtn = document.getElementById('lightboxUpscaleBtn');
+    const scrapBtn = document.getElementById('lightboxScrapBtn');
     const deleteBtn = document.getElementById('lightboxDeleteBtn');
     const toggleBaseBtn = document.getElementById('toggleBaseImageBtn');
     
@@ -8609,6 +10156,21 @@ function updateLightboxControls(image) {
         upscaleBtn.style.display = 'none';
     } else {
         upscaleBtn.style.display = 'inline-block';
+    }
+    
+    // Show scrap button only for logged-in users
+    if (isAuthenticated) {
+        scrapBtn.style.display = 'inline-block';
+        // Update scrap button based on current view
+        if (isViewingScraps) {
+            scrapBtn.innerHTML = '<i class="nai-undo"></i>';
+            scrapBtn.title = 'Remove from scraps';
+        } else {
+            scrapBtn.innerHTML = '<i class="nai-image-tool-sketch"></i>';
+            scrapBtn.title = 'Move to scraps';
+        }
+    } else {
+        scrapBtn.style.display = 'none';
     }
     
     // Show delete button only for logged-in users
@@ -8649,6 +10211,13 @@ function updateLightboxControls(image) {
     rerollEditBtn.onclick = () => rerollImageWithEdit(imageObj); // Combined edit (reroll/variation)
     variationBtn.onclick = () => variationImage(imageObj); // Direct variation
     upscaleBtn.onclick = () => upscaleImage(imageObj);
+    scrapBtn.onclick = () => {
+        if (isViewingScraps) {
+            removeFromScraps(imageObj);
+        } else {
+            moveToScraps(imageObj);
+        }
+    };
     deleteBtn.onclick = () => deleteImage(imageObj); // Delete image
     
     // Set up toggle base image functionality
@@ -8793,32 +10362,6 @@ async function toggleBaseImage(imageObj) {
     }
 }
 
-// Calculate optimal images per page based on window size
-function calculateImagesPerPage() {
-    const gallery = document.querySelector('.gallery');
-    if (!gallery) return 12; // Default fallback
-    
-    // Get gallery container dimensions
-    const galleryRect = gallery.getBoundingClientRect();
-    const galleryWidth = galleryRect.width;
-    
-    // If gallery width is 0, use window width as fallback
-    const effectiveWidth = galleryWidth > 0 ? galleryWidth : window.innerWidth - 40; // 40px for margins
-    
-    // Calculate items per row based on CSS grid (250px min + 20px gap)
-    const itemWidth = 250 + 20; // minmax(250px, 1fr) + gap
-    const itemsPerRow = Math.floor(effectiveWidth / itemWidth);
-    
-    // Ensure at least 1 item per row and at most 8 items per row
-    const safeItemsPerRow = Math.max(1, Math.min(8, itemsPerRow));
-    
-    // Calculate for 4 rows
-    const newImagesPerPage = safeItemsPerRow * 4;
-    
-    
-    return newImagesPerPage;
-}
-
 let resizeTimeout = null;
 // Debounced resize handler
 function handleResize() {
@@ -8827,10 +10370,13 @@ function handleResize() {
     }
     
     resizeTimeout = setTimeout(() => {
-        const newImagesPerPage = calculateImagesPerPage();
+        // Recalculate rows based on new viewport dimensions
+        const newRows = calculateGalleryRows();
+        const newImagesPerPage = galleryColumnsInput.value * newRows;
         
         // Only update if the number of images per page has changed
-        if (newImagesPerPage !== imagesPerPage) {
+        if (newImagesPerPage !== imagesPerPage || newRows !== galleryRows) {
+            galleryRows = newRows;
             imagesPerPage = newImagesPerPage;
             
             // Recalculate current page to maintain position
@@ -8862,6 +10408,8 @@ function handleResize() {
                 }
             }
         }
+        updateGalleryItemToolbars();
+        updateGalleryPlaceholders(); // Update placeholders after resize
     }, 250); // 250ms delay
 }
 
@@ -8918,14 +10466,6 @@ async function showMaskPreview() {
         console.error('Mask preview error:', error);
         showError('Failed to load mask preview. Please try again.');
     }
-}
-
-// Toggle upscale button functionality
-function toggleUpscale() {
-    const currentState = upscaleToggle.getAttribute('data-state');
-    const newState = currentState === 'on' ? 'off' : 'on';
-    
-    upscaleToggle.setAttribute('data-state', newState);
 }
 
 // Toggle manual upscale button functionality
@@ -9235,43 +10775,6 @@ function getResolutionFromDisplay(displayText) {
     const res = RESOLUTIONS.find(r => normalizedText.includes(r.display.toLowerCase()));
     return res ? res.value : null;
 }
-
-// Show/hide mask bias dropdown based on pipeline/resolution
-function updateMaskBiasDropdown() {
-    if (!presetSelect || !resolutionSelect || !manualMaskBiasGroup) return;
-    if (window.currentMaskData) {
-        manualMaskBiasGroup.style.display = 'none';
-        return;
-    }
-    const selectedValue = presetSelect.value;
-    const [type, name] = selectedValue.split(':');
-    if (type !== 'pipeline' || !name) {
-        manualMaskBiasGroup.style.display = 'none';
-        return;
-    }
-    const pipelinePresetRes = getPipelinePresetResolution(name);
-    const selectedRes = resolutionSelect.value;
-    if (!pipelinePresetRes || !selectedRes) {
-        manualMaskBiasGroup.style.display = 'none';
-        return;
-    }
-    const presetDims = getDimensionsFromResolution(pipelinePresetRes);
-    const selectedDims = getDimensionsFromResolution(selectedRes);
-    if (!presetDims || !selectedDims) {
-        manualMaskBiasGroup.style.display = 'none';
-        return;
-    }
-    // Show dropdown only if aspect ratio or size does not match
-    if (presetDims.width !== selectedDims.width || presetDims.height !== selectedDims.height) {
-        manualMaskBiasGroup.style.display = '';
-    } else {
-        manualMaskBiasGroup.style.display = 'none';
-    }
-}
-
-// Hook into preset and resolution changes
-presetSelect.addEventListener('change', updateMaskBiasDropdown);
-resolutionSelect.addEventListener('change', updateMaskBiasDropdown);
 
 // Add event listener for sproutSeedBtn to toggle seed value filling
 let lastLoadedSeed = null;
@@ -9771,71 +11274,6 @@ async function handleImageBiasChange() {
     await cropImageToResolution();
 }
 
-// Replace repositionBiasImage with cropImageToResolution
-async function cropImageToResolution() {
-    if (!window.uploadedImageData) {
-        console.warn('No uploaded image data available for cropping');
-        return;
-    }
-
-    try {
-        // Clean up any existing blob URLs before creating new ones
-        cleanupBlobUrls();
-        
-        // Get the image data URL - handle file:, cache:, and data: types
-        let imageDataUrl = window.uploadedImageData.originalDataUrl;
-        
-        if (!imageDataUrl) {
-            // Fetch the image based on the image source
-            const imageSource = window.uploadedImageData.image_source;
-            if (imageSource) {
-                if (imageSource.startsWith('data:')) {
-                    // Handle data: URLs (like placeholder images)
-                    imageDataUrl = imageSource;
-                } else {
-                    let imageUrl = null;
-                    if (imageSource.startsWith('file:')) {
-                        // Handle file: type - fetch from /images/
-                        imageUrl = `/images/${imageSource.replace('file:', '')}`;
-                    } else if (imageSource.startsWith('cache:')) {
-                        // Handle cache: type - fetch from /cache/preview/
-                        imageUrl = `/cache/preview/${imageSource.replace('cache:', '')}.webp`;
-                    }
-                    if (imageUrl) {
-                        const response = await fetch(imageUrl);
-                        const blob = await response.blob();
-                        imageDataUrl = URL.createObjectURL(blob);
-                    }
-                }
-                
-                // Store the data URL for future use
-                window.uploadedImageData.originalDataUrl = imageDataUrl;
-            }
-        }
-        
-        if (!imageDataUrl) {
-            console.warn('Could not get image data URL for cropping');
-            return;
-        }
-
-        const bias = (window.uploadedImageData.bias !== undefined && window.uploadedImageData.bias !== null) ? window.uploadedImageData.bias : 2;
-        const croppedBlobUrl = await cropImageToResolutionInternal(imageDataUrl, bias);
-        
-        // Update the preview image
-        const variationImage = document.getElementById('manualVariationImage');
-        if (variationImage) {
-            variationImage.src = croppedBlobUrl;
-            variationImage.style.display = 'block';
-            setTimeout(updateMaskPreview, 100);
-        }
-
-        window.uploadedImageData.croppedBlobUrl = croppedBlobUrl;
-    } catch (error) {
-        console.error('Error cropping image:', error);
-        showError('Failed to crop image to resolution');
-    }
-}
-
 // Internal function to crop image to resolution (existing function, keeping for compatibility)
 function cropImageToResolutionInternal(dataUrl, bias) {
     const biasFractions = [0, 0.25, 0.5, 0.75, 1];
@@ -9978,7 +11416,14 @@ function updateUploadDeleteButtonVisibility() {
 
 // Selection handling functions
 function handleImageSelection(image, isSelected, event) {
-    const filename = image.original || image.pipeline || image.pipeline_upscaled;
+    const filename = image.filename || image.original || image.upscaled || image.pipeline || image.pipeline_upscaled;
+    
+    // Skip if no valid filename found
+    if (!filename) {
+        console.warn('No valid filename found for image:', image);
+        return;
+    }
+    
     const item = event.target.closest('.gallery-item');
     
     if (isSelected) {
@@ -9995,7 +11440,6 @@ function handleImageSelection(image, isSelected, event) {
 function updateBulkActionsBar() {
     const bulkActionsBar = document.getElementById('bulkActionsBar');
     const selectedCount = document.getElementById('selectedCount');
-    const gallery = document.getElementById('gallery');
     
     if (selectedImages.size > 0) {
         bulkActionsBar.style.display = 'flex';
@@ -10027,6 +11471,133 @@ function clearSelection() {
     updateBulkActionsBar();
 }
 
+async function handleBulkMoveToWorkspace() {
+    if (!isAuthenticated) {
+        showError('Please login first');
+        return;
+    }
+    
+    if (selectedImages.size === 0) {
+        showError('No images selected');
+        return;
+    }
+    
+    // Create workspace selection modal
+    let modal = document.getElementById('bulkMoveToWorkspaceModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'bulkMoveToWorkspaceModal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Move to Workspace</h3>
+                    <button id="closeBulkMoveToWorkspaceBtn" class="close-dialog">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p>Select workspace to move <span id="bulkMoveSelectedCount">${selectedImages.size}</span> selected image(s):</p>
+                    <div class="workspace-move-list" id="bulkMoveWorkspaceList">
+                        <!-- Workspace list will be populated here -->
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        // Close modal handlers
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+        
+        document.getElementById('closeBulkMoveToWorkspaceBtn').addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
+    }
+    
+    // Update selected count
+    document.getElementById('bulkMoveSelectedCount').textContent = selectedImages.size;
+    
+    // Populate workspace list
+    const workspaceList = document.getElementById('bulkMoveWorkspaceList');
+    workspaceList.innerHTML = '';
+    
+    workspaces.forEach(workspace => {
+        const item = document.createElement('div');
+        item.className = 'workspace-move-item';
+        item.innerHTML = `
+            <div class="workspace-move-info">
+                <span class="workspace-name">${workspace.name}</span>
+                ${workspace.isActive ? '<span class="badge-active">Active</span>' : ''}
+                <span class="workspace-counts">${workspace.fileCount} files</span>
+            </div>
+        `;
+        
+        item.addEventListener('click', async () => {
+            modal.style.display = 'none';
+            await moveBulkImagesToWorkspace(workspace.id);
+        });
+        
+        workspaceList.appendChild(item);
+    });
+    
+    modal.style.display = 'block';
+}
+
+async function moveBulkImagesToWorkspace(workspaceId) {
+    try {
+        const isScrapsView = isViewingScraps;
+        const loadingText = isScrapsView ? 'Moving scraps to workspace...' : 'Moving images to workspace...';
+        showLoading(true, loadingText);
+        
+        // Filter out any null/undefined values from selectedImages
+        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+        
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to move');
+        }
+        
+        // Use appropriate endpoint based on current view
+        const endpoint = isScrapsView ? `/workspaces/${workspaceId}/move-scraps` : `/workspaces/${workspaceId}/move-files`;
+        
+        const response = await fetchWithAuth(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                filenames: validFilenames
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to move items');
+        }
+        
+        const result = await response.json();
+        const workspace = workspaces.find(w => w.id === workspaceId);
+        const itemType = isScrapsView ? 'scraps' : 'images';
+        
+        showSuccess(`Moved ${result.movedCount} ${itemType} to ${workspace ? workspace.name : 'workspace'}`);
+        
+        // Clear selection and reload gallery
+        clearSelection();
+        if (isScrapsView) {
+            await loadScraps();
+        } else {
+            await loadGallery();
+        }
+        
+    } catch (error) {
+        console.error('Error moving items to workspace:', error);
+        showError('Failed to move items: ' + error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
 async function handleBulkDelete() {
     if (!isAuthenticated) {
         showError('Please login first');
@@ -10048,13 +11619,20 @@ async function handleBulkDelete() {
     try {
         showLoading(true, 'Deleting selected images...');
         
+        // Filter out any null/undefined values from selectedImages
+        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+        
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to delete');
+        }
+        
         const response = await fetchWithAuth('/images/bulk', {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                filenames: Array.from(selectedImages)
+                filenames: validFilenames
             })
         });
         
@@ -10106,13 +11684,20 @@ async function handleBulkSequenzia() {
     try {
         showLoading(true, 'Sending images to Sequenzia...');
         
+        // Filter out any null/undefined values from selectedImages
+        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+        
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to send to Sequenzia');
+        }
+        
         const response = await fetchWithAuth('/images/send-to-sequenzia', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                filenames: Array.from(selectedImages)
+                filenames: validFilenames
             })
         });
         
@@ -11585,6 +13170,12 @@ function saveMask() {
         // Store the mask data in a global variable
         window.currentMaskData = base64Data;
         
+        // Also store the compressed version for server processing
+        const compressedMask = saveMaskCompressed();
+        if (compressedMask) {
+            window.currentMaskCompressed = compressedMask;
+        }
+        
         // Set inpaint button to on
         if (inpaintBtn) {
             inpaintBtn.setAttribute('data-state', 'on');
@@ -11785,7 +13376,6 @@ async function deleteMask() {
     window.currentMaskCompressed = null;
     
     closeMaskEditor();
-    resetManualPreview();
 }
 
 // Close mask editor
@@ -11806,9 +13396,6 @@ function closeMaskEditor() {
     // Update inpaint button state and mask preview
     updateInpaintButtonState();
     updateMaskPreview();
-        
-    // Hide mask bias dropdown when mask is created/edited
-    updateMaskBiasDropdown();
 }
 
 // Open mask editor
@@ -12248,7 +13835,6 @@ async function showCacheBrowser() {
         // Show as modal (mobile/tablet)
         const cacheBrowserModal = document.getElementById('cacheBrowserModal');
         const cacheBrowserLoading = document.getElementById('cacheBrowserLoading');
-        const cacheGallery = document.getElementById('cacheGallery');
         
         if (!cacheBrowserModal || !cacheBrowserLoading || !cacheGallery) return;
         
@@ -12305,7 +13891,6 @@ async function loadCacheImages() {
 }
 
 function displayCacheImages() {
-    const cacheGallery = document.getElementById('cacheGallery');
     if (!cacheGallery) return;
     
     cacheGallery.innerHTML = '';
@@ -12383,6 +13968,29 @@ function createCacheGalleryItem(cacheImage) {
         <div>${fileSize}</div>
     `;
     
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.className = 'cache-gallery-item-buttons';
+    
+    // Create workspace move buttons
+    const moveToWorkspaceBtn = document.createElement('button');
+    moveToWorkspaceBtn.className = 'cache-workspace-btn';
+    moveToWorkspaceBtn.innerHTML = '<i class="fas fa-folder"></i>';
+    moveToWorkspaceBtn.title = 'Move to workspace';
+    moveToWorkspaceBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showCacheMoveToWorkspaceModal(cacheImage);
+    });
+    
+    const moveToDefaultBtn = document.createElement('button');
+    moveToDefaultBtn.className = 'cache-workspace-btn';
+    moveToDefaultBtn.innerHTML = '<i class="fas fa-home"></i>';
+    moveToDefaultBtn.title = 'Move to default workspace';
+    moveToDefaultBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        moveCacheToDefaultWorkspace(cacheImage);
+    });
+    
     // Create delete button
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'cache-delete-btn';
@@ -12393,8 +14001,12 @@ function createCacheGalleryItem(cacheImage) {
         deleteCacheImage(cacheImage);
     });
     
+    buttonsContainer.appendChild(moveToWorkspaceBtn);
+    buttonsContainer.appendChild(moveToDefaultBtn);
+    buttonsContainer.appendChild(deleteBtn);
+    
     overlay.appendChild(info);
-    overlay.appendChild(deleteBtn);
+    overlay.appendChild(buttonsContainer);
     
     item.appendChild(img);
     item.appendChild(overlay);
@@ -13497,7 +15109,7 @@ function hideImageBiasAdjustmentModal() {
 
 // Enhanced cropImageToResolution function to handle dynamic bias adjustments
 async function cropImageToResolution() {
-    if (!(window.uploadedImageData.image_source || window.uploadedImageData.originalDataUrl)) {
+    if (!(window.uploadedImageData && (window.uploadedImageData.image_source || window.uploadedImageData.originalDataUrl))) {
         console.warn('No uploaded image data available for cropping');
         return;
     }
