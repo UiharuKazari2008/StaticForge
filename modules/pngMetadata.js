@@ -620,6 +620,16 @@ function getModelDisplayName(model) {
     return model === "V4_5" ? "V4.5" : model === "V4_5_CUR" ? "V4.5 (Curated)" : model === "V4" ? "V4" : model === "V4_CUR" ? "V4 (Curated)" : model === "V3" ? "V3" : "Unknown";
 }
 
+
+// Helper: get base name for pairing
+function getBaseName(filename) {
+    return filename
+        .replace(/_upscaled(?=\.)/, '')  // Remove _upscaled suffix
+        .replace(/_pipeline(?=\.)/, '')  // Remove _pipeline suffix
+        .replace(/_pipeline_upscaled(?=\.)/, '')  // Remove _pipeline_upscaled suffix
+        .replace(/\.(png|jpg|jpeg)$/i, '');  // Remove file extension
+}
+
 module.exports = {
     readMetadata,
     updateMetadata,
@@ -627,5 +637,6 @@ module.exports = {
     extractNovelAIMetadata,
     extractRelevantFields,
     getModelDisplayName,
-    determineModelFromMetadata
+    determineModelFromMetadata,
+    getBaseName
 }; 

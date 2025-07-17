@@ -1042,11 +1042,22 @@ async function loadIntoManualForm(source, image = null) {
                 const targetWidth = data.width || 1024;
                 const targetHeight = data.height || 1024;
                 
-                window.pipelineMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
-                window.currentMaskData = window.pipelineMaskData;
+                try {
+                    window.pipelineMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
+                    window.currentMaskData = window.pipelineMaskData;
+                    console.log('✅ Successfully processed compressed mask for pipeline');
+                } catch (error) {
+                    console.error('❌ Failed to process compressed mask for pipeline:', error);
+                    // Fallback to regular mask if available
+                    if (data.mask) {
+                        window.pipelineMaskData = "data:image/png;base64," + data.mask;
+                        window.currentMaskData = window.pipelineMaskData;
+                    }
+                }
             } else if (data.mask) {
                 window.pipelineMaskData = "data:image/png;base64," + data.mask;
                 window.currentMaskData = window.pipelineMaskData;
+                console.log('✅ Loaded regular mask for pipeline');
             } else {
                 // Get pipeline name from metadata (pipeline_name then preset_name)
                 let pipelineName = data.pipeline_name || data.preset_name || 'generated';
@@ -1165,9 +1176,30 @@ async function loadIntoManualForm(source, image = null) {
                 const targetWidth = data.width || 1024;
                 const targetHeight = data.height || 1024;
                 
-                window.currentMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
+                try {
+                    window.currentMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
+                    console.log('✅ Successfully processed compressed mask for regular image');
+                } catch (error) {
+                    console.error('❌ Failed to process compressed mask for regular image:', error);
+                    // Fallback to regular mask if available
+                    if (data.mask !== undefined && data.mask !== null) {
+                        window.currentMaskData = "data:image/png;base64," + data.mask;
+                    }
+                }
             } else if (data.mask !== undefined && data.mask !== null) {
                 window.currentMaskData = "data:image/png;base64," + data.mask;
+                console.log('✅ Loaded regular mask for regular image');
+                
+                // Auto-convert standard mask to compressed format for consistency
+                try {
+                    const compressedMask = await convertStandardMaskToCompressed(data.mask, data.width || 1024, data.height || 1024);
+                    if (compressedMask) {
+                        window.currentMaskCompressed = compressedMask;
+                        console.log('🔄 Auto-converted standard mask to compressed format');
+                    }
+                } catch (error) {
+                    console.warn('⚠️ Failed to auto-convert standard mask to compressed:', error);
+                }
             }
             
             if(data.image_bias !== undefined && data.image_bias !== null) {
@@ -1946,8 +1978,8 @@ setupTransformationDropdownListeners();
 // Cache workspace move functions
 async function moveCacheToDefaultWorkspace(cacheImage) {
     try {
-        const response = await fetchWithAuth('/workspaces/default/move-cache-files', {
-            method: 'POST',
+        const response = await fetchWithAuth('/workspaces/default/references', {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ hashes: [cacheImage.hash] })
         });
@@ -2029,8 +2061,8 @@ function showCacheMoveToWorkspaceModal(cacheImage) {
 
 async function moveCacheToWorkspace(cacheImage, workspaceId) {
     try {
-        const response = await fetchWithAuth(`/workspaces/${workspaceId}/move-cache-files`, {
-            method: 'POST',
+        const response = await fetchWithAuth(`/workspaces/${workspaceId}/references`, {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ hashes: [cacheImage.hash] })
         });
@@ -2054,7 +2086,9 @@ async function moveCacheToWorkspace(cacheImage, workspaceId) {
 // Workspace API functions
 async function loadWorkspaces() {
     try {
-        const response = await fetchWithAuth('/workspaces');
+        const response = await fetchWithAuth('/workspaces', {
+            method: 'OPTIONS'
+        });
         if (!response.ok) throw new Error('Failed to load workspaces');
         
         const data = await response.json();
@@ -2407,6 +2441,7 @@ async function createWorkspace(name) {
 
 async function renameWorkspace(id, newName) {
     try {
+        if (id === 'default') return;
         const response = await fetchWithAuth(`/workspaces/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -2469,8 +2504,8 @@ async function dumpWorkspace(sourceId, targetId) {
 
 async function setActiveWorkspace(id) {
     try {
-        const response = await fetchWithAuth(`/workspaces/${id}/set-active`, {
-            method: 'POST'
+        const response = await fetchWithAuth(`/workspaces/${id}/activate`, {
+            method: 'PUT'
         });
         
         if (!response.ok) {
@@ -2526,8 +2561,8 @@ async function setActiveWorkspace(id) {
 
 async function moveFilesToWorkspace(filenames, targetWorkspaceId) {
     try {
-        const response = await fetchWithAuth(`/workspaces/${targetWorkspaceId}/move-files`, {
-            method: 'POST',
+        const response = await fetchWithAuth(`/workspaces/${targetWorkspaceId}/files`, {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filenames })
         });
@@ -2696,7 +2731,7 @@ function renderWorkspaceManagementList() {
                     <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#124'}"></div>
                     <h5>${workspace.name} ${workspace.isActive ? '<span class="badge-active">Active</span>' : ''}</h5>
                 </div>
-                <p>${workspace.fileCount} files, ${workspace.cacheFileCount} cache files</p>
+                <span class="workspace-manage-counts">${workspace.fileCount} files, ${workspace.cacheFileCount} references</span>
             </div>
             <div class="workspace-manage-actions">
                 <button type="button" class="btn-link" onclick="editWorkspaceSettings('${workspace.id}')" title="Workspace Settings">
@@ -2803,8 +2838,6 @@ async function editWorkspaceSettings(id) {
     const modal = document.getElementById('workspaceEditModal');
     if (modal) modal.style.display = 'block';
 }
-
-
 
 function hideWorkspaceEditModal() {
     const modal = document.getElementById('workspaceEditModal');
@@ -3272,8 +3305,8 @@ async function moveToScraps(image) {
             return;
         }
 
-        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/add-to-scraps`, {
-            method: 'POST',
+        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
+            method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -3317,7 +3350,7 @@ async function removeFromScraps(image) {
             return;
         }
 
-        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/remove-from-scraps`, {
+        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json'
@@ -3951,6 +3984,10 @@ function setupEventListeners() {
     manualPresetName.addEventListener('keydown', handlePresetAutocompleteKeydown);
     document.addEventListener('click', hideCharacterAutocomplete);
     document.addEventListener('click', hidePresetAutocomplete);
+    
+    // Update autocomplete positions on scroll and resize
+    window.addEventListener('scroll', updateAutocompletePositions);
+    window.addEventListener('resize', updateAutocompletePositions);
     
     // Character detail events - no longer needed since we're using inline onclick handlers
     // The close button is now created dynamically in the character detail content
@@ -4683,6 +4720,7 @@ function displayCurrentPageOptimized() {
 }
 
 function resetInfiniteScroll() {
+    window.scrollTo({ top: 0, behavior: 'instant' });
     displayedStartIndex = 0;
     displayedEndIndex = 0;
     isLoadingMore = false;
@@ -4694,18 +4732,56 @@ function resetInfiniteScroll() {
 }
 
 // Create gallery item element
-function createGalleryItem(image) {
+function createGalleryItem(image, index) {
     const item = document.createElement('div');
     item.className = 'gallery-item';
-    
+    const filename = image.filename || image.original || image.upscaled || image.pipeline || image.pipeline_upscaled;
+    item.dataset.filename = filename;
+    item.dataset.index = index;
+    // Restore selection state from data-selected if present
+    if (item.dataset.selected === 'true' || selectedImages.has(filename)) {
+        item.dataset.selected = 'true';
+        item.classList.add('selected');
+    } else {
+        item.dataset.selected = 'false';
+        item.classList.remove('selected');
+    }
     // Add selection checkbox
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.className = 'gallery-item-checkbox';
-    checkbox.dataset.filename = image.filename || image.original || image.upscaled || image.pipeline || image.pipeline_upscaled;
+    checkbox.dataset.filename = filename;
+    checkbox.checked = item.dataset.selected === 'true';
+    // ALT+click range selection on click event
+    checkbox.addEventListener('click', (e) => {
+        if (e.altKey) {
+            e.preventDefault();
+            // Use all .gallery-item and .gallery-placeholder with data-filename for range selection
+            const items = Array.from(document.querySelectorAll('.gallery-item[data-filename], .gallery-placeholder[data-filename]'));
+            const clickedIndex = items.findIndex(div => div.dataset.filename === filename);
+            if (lastSelectedGalleryIndex !== null && clickedIndex !== -1) {
+                const [start, end] = [lastSelectedGalleryIndex, clickedIndex].sort((a, b) => a - b);
+                for (let i = start; i <= end; i++) {
+                    const div = items[i];
+                    div.dataset.selected = 'true';
+                    div.classList.add('selected');
+                    selectedImages.add(div.dataset.filename);
+                    // If it's a real item, update checkbox
+                    const cb = div.querySelector('.gallery-item-checkbox');
+                    if (cb) cb.checked = true;
+                }
+                updateBulkActionsBar();
+                lastSelectedGalleryIndex = clickedIndex;
+                return;
+            }
+        }
+    });
+    // Normal selection on change event
     checkbox.addEventListener('change', (e) => {
-        e.stopPropagation();
-        handleImageSelection(image, e.target.checked, e);
+        if (!e.altKey) {
+            e.stopPropagation();
+            handleImageSelection(image, e.target.checked, e);
+        }
     });
     
     // Use preview image
@@ -5709,17 +5785,35 @@ function updateVirtualScroll() {
                 placeholder.className = 'gallery-placeholder';
                 placeholder.style.height = el.offsetHeight + 'px';
                 placeholder.style.width = el.offsetWidth + 'px';
+                placeholder.dataset.filename = el.dataset.filename;
+                placeholder.dataset.index = el.dataset.index;
                 placeholder.dataset.imageIndex = el.dataset.imageIndex || i;
+                // Preserve selection state
+                placeholder.dataset.selected = el.dataset.selected;
                 gallery.replaceChild(placeholder, el);
             }
         } else {
             // If it's a placeholder, restore the real item
             if (el.classList.contains('gallery-placeholder')) {
-                const imageIndex = parseInt(el.dataset.imageIndex) || i;
+                const imageIndex = parseInt(el.dataset.index || el.dataset.imageIndex || i);
                 const image = allImages[imageIndex];
                 if (image) {
-                    const realItem = createGalleryItem(image);
+                    const realItem = createGalleryItem(image, imageIndex);
                     realItem.dataset.imageIndex = imageIndex;
+                    // Restore selection state
+                    if (el.dataset.selected === 'true') {
+                        realItem.dataset.selected = 'true';
+                        realItem.classList.add('selected');
+                        selectedImages.add(realItem.dataset.filename);
+                        const cb = realItem.querySelector('.gallery-item-checkbox');
+                        if (cb) cb.checked = true;
+                    } else {
+                        realItem.dataset.selected = 'false';
+                        realItem.classList.remove('selected');
+                        selectedImages.delete(realItem.dataset.filename);
+                        const cb = realItem.querySelector('.gallery-item-checkbox');
+                        if (cb) cb.checked = false;
+                    }
                     gallery.replaceChild(realItem, el);
                 }
             }
@@ -7184,7 +7278,7 @@ function showCharacterAutocompleteSuggestions(results, target) {
         characterAutocompleteList.appendChild(moreItem);
     }
     
-    // Position overlay
+    // Position overlay relative to viewport
     const rect = target.getBoundingClientRect();
     characterAutocompleteOverlay.style.left = rect.left + 'px';
     characterAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
@@ -8716,7 +8810,7 @@ function showPresetAutocompleteSuggestions(results, target) {
         presetAutocompleteOverlay.classList.add('size-large');
     }
     
-    // Position overlay above the input field
+    // Position overlay relative to viewport
     const rect = target.getBoundingClientRect();
     const overlayHeight = Math.min(400, window.innerHeight * 0.5);
     const spaceAbove = rect.top;
@@ -8756,6 +8850,41 @@ function updatePresetAutocompleteSelection() {
             block: 'nearest',
             behavior: 'smooth'
         });
+    }
+}
+
+// Update autocomplete positions when page scrolls
+function updateAutocompletePositions() {
+    // Update character autocomplete position
+    if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden') && currentCharacterAutocompleteTarget) {
+        const rect = currentCharacterAutocompleteTarget.getBoundingClientRect();
+        characterAutocompleteOverlay.style.left = rect.left + 'px';
+        characterAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
+        characterAutocompleteOverlay.style.width = rect.width + 'px';
+    }
+    
+    // Update preset autocomplete position
+    if (presetAutocompleteOverlay && !presetAutocompleteOverlay.classList.contains('hidden') && currentPresetAutocompleteTarget) {
+        const rect = currentPresetAutocompleteTarget.getBoundingClientRect();
+        const overlayHeight = Math.min(400, window.innerHeight * 0.5);
+        const spaceAbove = rect.top;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        
+        presetAutocompleteOverlay.style.left = rect.left + 'px';
+        presetAutocompleteOverlay.style.width = rect.width + 'px';
+        
+        // Check if there's enough space above, otherwise show below
+        if (spaceAbove >= overlayHeight) {
+            // Position above
+            presetAutocompleteOverlay.style.top = (rect.top - 5) + 'px';
+            presetAutocompleteOverlay.style.transform = 'translateY(-100%)';
+            presetAutocompleteOverlay.style.maxHeight = overlayHeight + 'px';
+        } else {
+            // Position below if not enough space above
+            presetAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
+            presetAutocompleteOverlay.style.transform = 'none';
+            presetAutocompleteOverlay.style.maxHeight = Math.min(spaceBelow - 10, overlayHeight) + 'px';
+        }
     }
 }
 
@@ -11070,8 +11199,8 @@ async function handleManualImageUpload(file) {
         const formData = new FormData();
         formData.append('image', file);
 
-        const response = await fetchWithAuth('/upload/base', {
-            method: 'PUT',
+        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/references`, {
+            method: 'POST',
             body: formData
         });
 
@@ -11552,6 +11681,34 @@ function handleImageSelection(image, isSelected, event) {
     
     const item = event.target.closest('.gallery-item');
     
+    // ALT+click range selection
+    if (event && event.altKey) {
+        console.log('ALT+click range selection');
+        // Find all checkboxes in order
+        const checkboxes = Array.from(document.querySelectorAll('.gallery-item-checkbox'));
+        const clickedIndex = checkboxes.findIndex(cb => cb.dataset.filename === filename);
+        if (lastSelectedGalleryIndex !== null && clickedIndex !== -1) {
+            const [start, end] = [lastSelectedGalleryIndex, clickedIndex].sort((a, b) => a - b);
+            for (let i = start; i <= end; i++) {
+                const cb = checkboxes[i];
+                const img = allImages[i];
+                if (cb && img) {
+                    cb.checked = true;
+                    selectedImages.add(cb.dataset.filename);
+                    cb.closest('.gallery-item').classList.add('selected');
+                }
+            }
+            updateBulkActionsBar();
+            return;
+        }
+    }
+    // Update last selected index
+    const checkboxes = Array.from(document.querySelectorAll('.gallery-item-checkbox'));
+    const thisIndex = checkboxes.findIndex(cb => cb.dataset.filename === filename);
+    if (thisIndex !== -1) {
+        lastSelectedGalleryIndex = thisIndex;
+    }
+
     if (isSelected) {
         selectedImages.add(filename);
         item.classList.add('selected');
@@ -11685,10 +11842,10 @@ async function moveBulkImagesToWorkspace(workspaceId) {
         }
         
         // Use appropriate endpoint based on current view
-        const endpoint = isScrapsView ? `/workspaces/${workspaceId}/move-scraps` : `/workspaces/${workspaceId}/move-files`;
+        const endpoint = isScrapsView ? `/workspaces/${workspaceId}/scraps` : `/workspaces/${workspaceId}/files`;
         
         const response = await fetchWithAuth(endpoint, {
-            method: 'POST',
+            method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -12959,7 +13116,7 @@ function toggleBrushShape() {
 // Handle canvas wheel for brush size adjustment
 function handleCanvasWheel(e) {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? -1 : 1;
+    const delta = e.deltaY > 0 ? 1 : -1;
     const currentValue = brushSize;
     const newValue = Math.max(1, Math.min(15, currentValue + delta));
     brushSize = newValue;
@@ -13403,9 +13560,113 @@ function setMaskEditorFromDataUrl(dataUrl) {
     img.src = dataUrl;
 }
 
+// Helper function to convert standard mask to compressed format
+async function convertStandardMaskToCompressed(standardMaskBase64, originalWidth, originalHeight) {
+    return new Promise((resolve, reject) => {
+        // Validate input parameters
+        if (!standardMaskBase64 || !originalWidth || !originalHeight) {
+            reject(new Error('Invalid parameters: standardMaskBase64, originalWidth, and originalHeight are required'));
+            return;
+        }
+        
+        if (originalWidth <= 0 || originalHeight <= 0) {
+            reject(new Error(`Invalid original dimensions: ${originalWidth}x${originalHeight}`));
+            return;
+        }
+        
+        // Calculate compressed dimensions (1/8 scale)
+        const compressedWidth = Math.floor(originalWidth / 8);
+        const compressedHeight = Math.floor(originalHeight / 8);
+        
+        // Create a temporary canvas to process the standard mask
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        tempCanvas.width = compressedWidth;
+        tempCanvas.height = compressedHeight;
+        
+        // Fill with black background
+        tempCtx.fillStyle = '#000000';
+        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+        
+        // Disable image smoothing for nearest neighbor scaling
+        tempCtx.imageSmoothingEnabled = false;
+        
+        // Create image from standard mask
+        const img = new Image();
+        img.onload = function() {
+            try {
+                // Validate loaded image dimensions
+                if (!img.width || !img.height || img.width <= 0 || img.height <= 0) {
+                    reject(new Error(`Invalid loaded mask image dimensions: ${img.width}x${img.height}`));
+                    return;
+                }
+                
+                // Draw the standard mask scaled down to compressed size
+                tempCtx.drawImage(img, 0, 0, img.width, img.height, 0, 0, compressedWidth, compressedHeight);
+                
+                // Binarize the image data to ensure crisp 1-bit mask
+                const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+                const data = imageData.data;
+                
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    const a = data[i + 3];
+                    
+                    // If pixel is not black (has been drawn on), make it pure white
+                    if (r > 0 || g > 0 || b > 0) {
+                        data[i] = 255;     // Red
+                        data[i + 1] = 255; // Green
+                        data[i + 2] = 255; // Blue
+                        data[i + 3] = 255; // Alpha
+                    } else {
+                        // Black pixels (background) stay pure black
+                        data[i] = 0;       // Red
+                        data[i + 1] = 0;   // Green
+                        data[i + 2] = 0;   // Blue
+                        data[i + 3] = 255; // Alpha
+                    }
+                }
+                
+                // Put the binarized image data back
+                tempCtx.putImageData(imageData, 0, 0);
+                
+                // Convert to base64 (without data URL prefix)
+                const compressedMaskBase64 = tempCanvas.toDataURL('image/png').replace('data:image/png;base64,', '');
+                
+                // Resolve the promise
+                resolve(compressedMaskBase64);
+            } catch (error) {
+                console.error('Error converting standard mask to compressed:', error);
+                reject(error);
+            }
+        };
+        
+        img.onerror = function() {
+            console.error('Failed to load standard mask image');
+            reject(new Error('Failed to load standard mask image'));
+        };
+        
+        img.src = "data:image/png;base64," + standardMaskBase64;
+    });
+}
+
 // Helper function to process compressed mask to display resolution
 function processCompressedMask(compressedMaskBase64, targetWidth, targetHeight, callback) {
     return new Promise((resolve, reject) => {
+        // Validate input parameters
+        if (!compressedMaskBase64 || !targetWidth || !targetHeight) {
+            reject(new Error('Invalid parameters: compressedMaskBase64, targetWidth, and targetHeight are required'));
+            return;
+        }
+        
+        if (targetWidth <= 0 || targetHeight <= 0) {
+            reject(new Error(`Invalid target dimensions: ${targetWidth}x${targetHeight}`));
+            return;
+        }
+        
         // Create a temporary canvas to process the compressed mask
         const tempCanvas = document.createElement('canvas');
         const tempCtx = tempCanvas.getContext('2d');
@@ -13424,6 +13685,12 @@ function processCompressedMask(compressedMaskBase64, targetWidth, targetHeight, 
         const img = new Image();
         img.onload = function() {
             try {
+                // Validate loaded image dimensions
+                if (!img.width || !img.height || img.width <= 0 || img.height <= 0) {
+                    reject(new Error(`Invalid loaded mask image dimensions: ${img.width}x${img.height}`));
+                    return;
+                }
+                
                 // Draw the compressed mask scaled up to target resolution
                 tempCtx.drawImage(img, 0, 0, img.width, img.height, 0, 0, targetWidth, targetHeight);
                 
@@ -13466,11 +13733,13 @@ function processCompressedMask(compressedMaskBase64, targetWidth, targetHeight, 
                 // Resolve the promise
                 resolve(base64Data);
             } catch (error) {
+                console.error('Error processing compressed mask:', error);
                 reject(error);
             }
         };
         
         img.onerror = function() {
+            console.error('Failed to load compressed mask image');
             reject(new Error('Failed to load compressed mask image'));
         };
         
@@ -13791,6 +14060,37 @@ async function updateMaskPreview() {
         return;
     }
     
+    // Wait for the image to load and get valid dimensions
+    let retryCount = 0;
+    const maxRetries = 20; // Increased retries for slower loading
+    
+    while (retryCount < maxRetries) {
+        // Check if image is loaded and has valid dimensions
+        if (variationImage.complete && variationImage.naturalWidth > 0 && variationImage.naturalHeight > 0) {
+            // Get the actual displayed dimensions
+            const imageRect = variationImage.getBoundingClientRect();
+            
+            // Check if the displayed dimensions are valid and the image is visible
+            if (imageRect.width > 0 && imageRect.height > 0 && 
+                variationImage.style.display !== 'none' && 
+                variationImage.style.visibility !== 'hidden') {
+                break; // Valid dimensions found, proceed
+            }
+        }
+        
+        // Wait a bit before retrying
+        await new Promise(resolve => setTimeout(resolve, 150)); // Slightly longer wait
+        retryCount++;
+    }
+    
+    if (retryCount >= maxRetries) {
+        console.warn('Failed to get valid image dimensions after retries');
+        if (maskPreviewCanvas) {
+            maskPreviewCanvas.style.display = 'none';
+        }
+        return;
+    }
+    
     // Check if we have a compressed mask first
     let maskData = window.currentMaskData;
     if (window.currentMaskCompressed && !maskData) {
@@ -13803,7 +14103,7 @@ async function updateMaskPreview() {
             dims = getDimensionsFromResolution(resolutionValue);
         }
 
-        if (dims) {
+        if (dims && dims.width > 0 && dims.height > 0) {
             try {
                 // Process the compressed mask to display resolution
                 maskData = await processCompressedMask(window.currentMaskCompressed, dims.width, dims.height);
@@ -13812,6 +14112,8 @@ async function updateMaskPreview() {
                 // Fallback to regular mask if available
                 maskData = window.currentMaskData;
             }
+        } else {
+            console.warn('Invalid dimensions for mask processing:', dims);
         }
     }
     
@@ -13822,9 +14124,27 @@ async function updateMaskPreview() {
         return;
     }
     
+    // Validate mask data format
+    if (typeof maskData !== 'string' || !maskData.startsWith('data:image/')) {
+        console.warn('Invalid mask data format:', typeof maskData, maskData ? maskData.substring(0, 50) + '...' : 'null');
+        if (maskPreviewCanvas) {
+            maskPreviewCanvas.style.display = 'none';
+        }
+        return;
+    }
+    
     // Get the actual displayed dimensions of the variation image
     const imageRect = variationImage.getBoundingClientRect();
     const containerRect = variationImage.closest('.variation-image-container').getBoundingClientRect();
+    
+    // Validate that we have valid dimensions
+    if (imageRect.width <= 0 || imageRect.height <= 0) {
+        console.warn('Invalid image dimensions for mask preview:', imageRect);
+        if (maskPreviewCanvas) {
+            maskPreviewCanvas.style.display = 'none';
+        }
+        return;
+    }
     
     // Set canvas size to match the actual displayed image dimensions
     maskPreviewCanvas.width = imageRect.width;
@@ -13835,13 +14155,22 @@ async function updateMaskPreview() {
     maskPreviewCanvas.style.left = (imageRect.left - containerRect.left) + 'px';
     maskPreviewCanvas.style.top = (imageRect.top - containerRect.top) + 'px';
     maskPreviewCanvas.style.width = imageRect.width + 'px';
-    maskPreviewCanvas.height = imageRect.height + 'px';
+    maskPreviewCanvas.style.height = imageRect.height + 'px';
     
     const ctx = maskPreviewCanvas.getContext('2d');
     
     // Load the mask image
     const maskImg = new Image();
     maskImg.onload = function() {
+        // Validate canvas dimensions before proceeding
+        if (maskPreviewCanvas.width <= 0 || maskPreviewCanvas.height <= 0) {
+            console.warn('Canvas dimensions are invalid for mask preview:', {
+                width: maskPreviewCanvas.width,
+                height: maskPreviewCanvas.height
+            });
+            return;
+        }
+        
         // Clear the canvas first
         ctx.clearRect(0, 0, maskPreviewCanvas.width, maskPreviewCanvas.height);
         
@@ -15290,7 +15619,8 @@ async function cropImageToResolution() {
         if (variationImage) {
             variationImage.src = croppedBlobUrl;
             variationImage.style.display = 'block';
-            setTimeout(updateMaskPreview, 100);
+            // Give the image more time to load before updating mask preview
+            setTimeout(updateMaskPreview, 500);
         }
 
         window.uploadedImageData.croppedBlobUrl = croppedBlobUrl;

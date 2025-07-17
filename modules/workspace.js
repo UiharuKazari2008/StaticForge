@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { getBaseName } = require('./pngMetadata');
 
 // Workspace configuration
 const WORKSPACE_FILE = path.resolve(__dirname, '../.cache/workspace.json');
@@ -392,18 +393,6 @@ function dumpWorkspace(sourceId, targetId) {
     console.log(`✅ Dumped workspace: ${sourceName} -> ${targetName}`);
 }
 
-// Helper: get base name for pairing (copied from web_server.js)
-function getBaseName(filename) {
-    if (!filename || typeof filename !== 'string') {
-        return null;
-    }
-    return filename
-        .replace(/_upscaled(?=\.)/, '')  // Remove _upscaled suffix
-        .replace(/_pipeline(?=\.)/, '')  // Remove _pipeline suffix
-        .replace(/_pipeline_upscaled(?=\.)/, '')  // Remove _pipeline_upscaled suffix
-        .replace(/\.(png|jpg|jpeg)$/i, '');  // Remove file extension
-}
-
 // Helper: extract timestamp from filename (first part when splitting by _)
 function getTimestampFromFilename(filename) {
     if (!filename || typeof filename !== 'string') {
@@ -484,55 +473,7 @@ function findRelatedFiles(filename, allFiles) {
 
 // Move files between workspaces
 function moveFilesToWorkspace(filenames, targetWorkspaceId) {
-    if (!workspaces) {
-        loadWorkspaces();
-    }
-
-    if (!workspaces[targetWorkspaceId]) {
-        throw new Error(`Target workspace ${targetWorkspaceId} not found`);
-    }
-
-    // Filter out null/invalid filenames
-    const validFilenames = filenames.filter(filename => filename && typeof filename === 'string');
-    
-    if (validFilenames.length === 0) {
-        console.log('⚠️ No valid filenames provided for moving');
-        return 0;
-    }
-
-    // Get all files from all workspaces to find related files
-    const allWorkspaceFiles = new Set();
-    Object.values(workspaces).forEach(workspace => {
-        workspace.files.forEach(file => allWorkspaceFiles.add(file));
-    });
-
-    // Find all related files for each filename
-    const allFilesToMove = new Set();
-    for (const filename of validFilenames) {
-        const relatedFiles = findRelatedFiles(filename, Array.from(allWorkspaceFiles));
-        relatedFiles.forEach(file => allFilesToMove.add(file));
-    }
-
-    const filesToMoveArray = Array.from(allFilesToMove);
-    let movedCount = 0;
-
-    // Remove files from all workspaces first
-    Object.values(workspaces).forEach(workspace => {
-        const originalLength = workspace.files.length;
-        workspace.files = workspace.files.filter(file => !filesToMoveArray.includes(file));
-        if (workspace.files.length < originalLength) {
-            movedCount += originalLength - workspace.files.length;
-        }
-    });
-
-    // Add files to target workspace (avoiding duplicates)
-    const existingFiles = new Set(workspaces[targetWorkspaceId].files);
-    const newFiles = filesToMoveArray.filter(file => !existingFiles.has(file));
-    workspaces[targetWorkspaceId].files.push(...newFiles);
-
-    saveWorkspaces();
-    console.log(`✅ Moved ${movedCount} files (including related files) to workspace: ${workspaces[targetWorkspaceId].name}`);
-    return movedCount;
+    return moveToWorkspaceArray('files', filenames, targetWorkspaceId);
 }
 
 // Get active workspace
@@ -567,44 +508,6 @@ function getActiveWorkspaceFiles() {
     return workspaces.default.files;
 }
 
-// Add file to workspace
-function addFileToWorkspace(filename, workspaceId = null) {
-    if (!workspaces) {
-        loadWorkspaces();
-    }
-
-    const targetId = workspaceId || activeWorkspace;
-    
-    if (!workspaces[targetId]) {
-        throw new Error(`Workspace ${targetId} not found`);
-    }
-
-    if (!workspaces[targetId].files.includes(filename)) {
-        workspaces[targetId].files.push(filename);
-        saveWorkspaces();
-        console.log(`✅ Added file ${filename} to workspace: ${workspaces[targetId].name}`);
-    }
-}
-
-// Add cache file to workspace
-function addCacheFileToWorkspace(hash, workspaceId = null) {
-    if (!workspaces) {
-        loadWorkspaces();
-    }
-
-    const targetId = workspaceId || activeWorkspace;
-    
-    if (!workspaces[targetId]) {
-        throw new Error(`Workspace ${targetId} not found`);
-    }
-
-    if (!workspaces[targetId].cacheFiles.includes(hash)) {
-        workspaces[targetId].cacheFiles.push(hash);
-        saveWorkspaces();
-        console.log(`✅ Added cache file ${hash} to workspace: ${workspaces[targetId].name}`);
-    }
-}
-
 // Get cache files for active workspace (includes default)
 function getActiveWorkspaceCacheFiles() {
     if (!workspaces) {
@@ -624,37 +527,6 @@ function getActiveWorkspaceCacheFiles() {
     }
 
     return Array.from(files);
-}
-
-// Move cache files between workspaces
-function moveCacheFilesToWorkspace(hashes, targetWorkspaceId) {
-    if (!workspaces) {
-        loadWorkspaces();
-    }
-
-    if (!workspaces[targetWorkspaceId]) {
-        throw new Error(`Target workspace ${targetWorkspaceId} not found`);
-    }
-
-    let movedCount = 0;
-
-    // Remove cache files from all workspaces first
-    Object.values(workspaces).forEach(workspace => {
-        const originalLength = workspace.cacheFiles.length;
-        workspace.cacheFiles = workspace.cacheFiles.filter(hash => !hashes.includes(hash));
-        if (workspace.cacheFiles.length < originalLength) {
-            movedCount += originalLength - workspace.cacheFiles.length;
-        }
-    });
-
-    // Add cache files to target workspace (avoiding duplicates)
-    const existingFiles = new Set(workspaces[targetWorkspaceId].cacheFiles);
-    const newFiles = hashes.filter(hash => !existingFiles.has(hash));
-    workspaces[targetWorkspaceId].cacheFiles.push(...newFiles);
-
-    saveWorkspaces();
-    console.log(`✅ Moved ${movedCount} cache files to workspace: ${workspaces[targetWorkspaceId].name}`);
-    return movedCount;
 }
 
 // Sort all workspace files by timestamp
@@ -701,66 +573,6 @@ function initializeWorkspaces() {
     console.log(`✅ Workspace system initialized with ${Object.keys(workspaces).length} workspaces`);
 }
 
-// Add file to scraps
-function addFileToScraps(filename, workspaceId = null) {
-    if (!workspaces) {
-        loadWorkspaces();
-    }
-
-    const targetId = workspaceId || activeWorkspace;
-    
-    if (!workspaces[targetId]) {
-        throw new Error(`Workspace ${targetId} not found`);
-    }
-
-    // Initialize scraps array if it doesn't exist
-    if (!workspaces[targetId].scraps) {
-        workspaces[targetId].scraps = [];
-    }
-
-    if (!workspaces[targetId].scraps.includes(filename)) {
-        // Add to scraps
-        workspaces[targetId].scraps.push(filename);
-        
-        // Remove from main files list
-        workspaces[targetId].files = workspaces[targetId].files.filter(file => file !== filename);
-        
-        saveWorkspaces();
-        console.log(`✅ Added file ${filename} to scraps and removed from images in workspace: ${workspaces[targetId].name}`);
-    }
-}
-
-// Remove file from scraps and move back to images
-function removeFileFromScraps(filename, workspaceId = null) {
-    if (!workspaces) {
-        loadWorkspaces();
-    }
-
-    const targetId = workspaceId || activeWorkspace;
-    
-    if (!workspaces[targetId]) {
-        throw new Error(`Workspace ${targetId} not found`);
-    }
-
-    // Initialize scraps array if it doesn't exist
-    if (!workspaces[targetId].scraps) {
-        workspaces[targetId].scraps = [];
-    }
-
-    const originalLength = workspaces[targetId].scraps.length;
-    workspaces[targetId].scraps = workspaces[targetId].scraps.filter(file => file !== filename);
-    
-    if (workspaces[targetId].scraps.length < originalLength) {
-        // Move the file back to the images list
-        if (!workspaces[targetId].files.includes(filename)) {
-            workspaces[targetId].files.push(filename);
-        }
-        
-        saveWorkspaces();
-        console.log(`✅ Removed file ${filename} from scraps and moved back to images in workspace: ${workspaces[targetId].name}`);
-    }
-}
-
 // Get scraps for active workspace (includes default)
 function getActiveWorkspaceScraps() {
     if (!workspaces) {
@@ -782,127 +594,324 @@ function getActiveWorkspaceScraps() {
     return workspaces.default.scraps;
 }
 
-// Move files to scraps
-function moveFilesToScraps(filenames, targetWorkspaceId) {
-    if (!workspaces) {
-        loadWorkspaces();
-    }
-
-    if (!workspaces[targetWorkspaceId]) {
-        throw new Error(`Target workspace ${targetWorkspaceId} not found`);
-    }
-
-    // Initialize scraps array if it doesn't exist
-    if (!workspaces[targetWorkspaceId].scraps) {
-        workspaces[targetWorkspaceId].scraps = [];
-    }
-
-    let movedCount = 0;
-
-    // Remove files from all workspaces first
-    Object.values(workspaces).forEach(workspace => {
-        const originalLength = workspace.files.length;
-        workspace.files = workspace.files.filter(file => !filenames.includes(file));
-        if (workspace.files.length < originalLength) {
-            movedCount += originalLength - workspace.files.length;
-        }
-    });
-
-    // Add files to target workspace scraps (avoiding duplicates)
-    const existingScraps = new Set(workspaces[targetWorkspaceId].scraps);
-    const newScraps = filenames.filter(file => !existingScraps.has(file));
-    workspaces[targetWorkspaceId].scraps.push(...newScraps);
-
-    saveWorkspaces();
-    console.log(`✅ Moved ${movedCount} files to scraps in workspace: ${workspaces[targetWorkspaceId].name}`);
-    return movedCount;
-}
-
-// Move scraps between workspaces
-function moveScrapsToWorkspace(filenames, targetWorkspaceId) {
-    if (!workspaces) {
-        loadWorkspaces();
-    }
-
-    if (!workspaces[targetWorkspaceId]) {
-        throw new Error(`Target workspace ${targetWorkspaceId} not found`);
-    }
-
-    // Initialize scraps array if it doesn't exist
-    if (!workspaces[targetWorkspaceId].scraps) {
-        workspaces[targetWorkspaceId].scraps = [];
-    }
-
-    // Filter out null/invalid filenames
-    const validFilenames = filenames.filter(filename => filename && typeof filename === 'string');
-    
-    if (validFilenames.length === 0) {
-        console.log('⚠️ No valid filenames provided for moving scraps');
-        return 0;
-    }
-
-    let movedCount = 0;
-
-    // Remove scraps from all workspaces first
-    Object.values(workspaces).forEach(workspace => {
-        // Initialize scraps array if it doesn't exist
-        if (!workspace.scraps) {
-            workspace.scraps = [];
-        }
-        
-        const originalLength = workspace.scraps.length;
-        workspace.scraps = workspace.scraps.filter(file => !validFilenames.includes(file));
-        if (workspace.scraps.length < originalLength) {
-            movedCount += originalLength - workspace.scraps.length;
-        }
-    });
-
-    // Add scraps to target workspace (avoiding duplicates)
-    const existingScraps = new Set(workspaces[targetWorkspaceId].scraps);
-    const newScraps = validFilenames.filter(file => !existingScraps.has(file));
-    workspaces[targetWorkspaceId].scraps.push(...newScraps);
-
-    saveWorkspaces();
-    console.log(`✅ Moved ${movedCount} scraps to workspace: ${workspaces[targetWorkspaceId].name}`);
-    return movedCount;
-}
-
 // Remove files from all workspaces (used when files are deleted)
 function removeFilesFromWorkspaces(filenames) {
-    if (!workspaces) {
-        loadWorkspaces();
-    }
-
     // Filter out null/invalid filenames
-    const validFilenames = filenames.filter(filename => filename && typeof filename === 'string');
-    
+    const validFilenames = filenames.filter(filename => filename && typeof filename === 'string');    
     if (validFilenames.length === 0) {
         console.log('⚠️ No valid filenames provided for removal from workspaces');
         return 0;
     }
 
-    let removedCount = 0;
+    let totalRemoved = 0;
 
-    // Remove files from all workspaces
-    Object.values(workspaces).forEach(workspace => {
-        const originalLength = workspace.files.length;
-        workspace.files = workspace.files.filter(file => !validFilenames.includes(file));
-        removedCount += originalLength - workspace.files.length;
-        
-        // Also remove from scraps if present
-        if (workspace.scraps) {
-            const originalScrapsLength = workspace.scraps.length;
-            workspace.scraps = workspace.scraps.filter(file => !validFilenames.includes(file));
-            removedCount += originalScrapsLength - workspace.scraps.length;
-        }
+    // Remove from all workspaces
+    Object.keys(workspaces).forEach(workspaceId => {
+        totalRemoved += removeFromWorkspaceArray('files', validFilenames, workspaceId);
+        totalRemoved += removeFromWorkspaceArray('scraps', validFilenames, workspaceId);
     });
+
+    if (totalRemoved > 0) {
+        console.log(`🗑️ Removed ${totalRemoved} files from all workspaces`);
+    }
+
+    return totalRemoved;
+}
+
+// Common function to add items to workspace array
+function addToWorkspaceArray(type, items, workspaceId = null) {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+
+    const targetId = workspaceId || activeWorkspace;
+    
+    if (!workspaces[targetId]) {
+        throw new Error(`Workspace ${targetId} not found`);
+    }
+
+    // Ensure items is an array
+    const itemArray = Array.isArray(items) ? items : [items];
+    
+    // Filter out null/invalid items
+    const validItems = itemArray.filter(item => item && typeof item === 'string');
+    
+    if (validItems.length === 0) {
+        console.log(`⚠️ No valid ${type} provided for adding`);
+        return 0;
+    }
+
+    let addedCount = 0;
+    
+    switch (type) {
+        case 'files':
+            validItems.forEach(item => {
+                if (!workspaces[targetId].files.includes(item)) {
+                    workspaces[targetId].files.push(item);
+                    addedCount++;
+                }
+            });
+            break;
+            
+        case 'scraps':
+            // Initialize scraps array if it doesn't exist
+            if (!workspaces[targetId].scraps) {
+                workspaces[targetId].scraps = [];
+            }
+            validItems.forEach(item => {
+                if (!workspaces[targetId].scraps.includes(item)) {
+                    workspaces[targetId].scraps.push(item);
+                    // Remove from main files list when adding to scraps
+                    workspaces[targetId].files = workspaces[targetId].files.filter(file => file !== item);
+                    addedCount++;
+                }
+            });
+            break;
+            
+        case 'presets':
+            validItems.forEach(item => {
+                if (!workspaces[targetId].presets.includes(item)) {
+                    workspaces[targetId].presets.push(item);
+                    addedCount++;
+                }
+            });
+            break;
+            
+        case 'pipelines':
+            validItems.forEach(item => {
+                if (!workspaces[targetId].pipelines.includes(item)) {
+                    workspaces[targetId].pipelines.push(item);
+                    addedCount++;
+                }
+            });
+            break;
+            
+        case 'cacheFiles':
+            validItems.forEach(item => {
+                if (!workspaces[targetId].cacheFiles.includes(item)) {
+                    workspaces[targetId].cacheFiles.push(item);
+                    addedCount++;
+                }
+            });
+            break;
+            
+        case 'vibeImages':
+            validItems.forEach(item => {
+                if (!workspaces[targetId].vibeImages.includes(item)) {
+                    workspaces[targetId].vibeImages.push(item);
+                    addedCount++;
+                }
+            });
+            break;
+            
+        default:
+            throw new Error(`Invalid type: ${type}. Must be one of: files, scraps, presets, pipelines, cacheFiles, vibeImages`);
+    }
+
+    if (addedCount > 0) {
+        saveWorkspaces();
+        console.log(`✅ Added ${addedCount} ${type} to workspace: ${workspaces[targetId].name}`);
+    }
+
+    return addedCount;
+}
+
+// Common function to remove items from workspace array
+function removeFromWorkspaceArray(type, items, workspaceId = null) {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+
+    const targetId = workspaceId || activeWorkspace;
+    
+    if (!workspaces[targetId]) {
+        throw new Error(`Workspace ${targetId} not found`);
+    }
+
+    // Ensure items is an array
+    const itemArray = Array.isArray(items) ? items : [items];
+    
+    // Filter out null/invalid items
+    const validItems = itemArray.filter(item => item && typeof item === 'string');
+    
+    if (validItems.length === 0) {
+        console.log(`⚠️ No valid ${type} provided for removal`);
+        return 0;
+    }
+
+    let removedCount = 0;
+    
+    switch (type) {
+        case 'files':
+            const originalFilesLength = workspaces[targetId].files.length;
+            workspaces[targetId].files = workspaces[targetId].files.filter(item => !validItems.includes(item));
+            removedCount = originalFilesLength - workspaces[targetId].files.length;
+            break;
+            
+        case 'scraps':
+            // Initialize scraps array if it doesn't exist
+            if (!workspaces[targetId].scraps) {
+                workspaces[targetId].scraps = [];
+            }
+            const originalScrapsLength = workspaces[targetId].scraps.length;
+            workspaces[targetId].scraps = workspaces[targetId].scraps.filter(item => !validItems.includes(item));
+            removedCount = originalScrapsLength - workspaces[targetId].scraps.length;
+            
+            // For scraps, move removed items back to files
+            validItems.forEach(item => {
+                if (!workspaces[targetId].files.includes(item)) {
+                    workspaces[targetId].files.push(item);
+                }
+            });
+            break;
+            
+        case 'presets':
+            const originalPresetsLength = workspaces[targetId].presets.length;
+            workspaces[targetId].presets = workspaces[targetId].presets.filter(item => !validItems.includes(item));
+            removedCount = originalPresetsLength - workspaces[targetId].presets.length;
+            break;
+            
+        case 'pipelines':
+            const originalPipelinesLength = workspaces[targetId].pipelines.length;
+            workspaces[targetId].pipelines = workspaces[targetId].pipelines.filter(item => !validItems.includes(item));
+            removedCount = originalPipelinesLength - workspaces[targetId].pipelines.length;
+            break;
+            
+        case 'cacheFiles':
+            const originalCacheFilesLength = workspaces[targetId].cacheFiles.length;
+            workspaces[targetId].cacheFiles = workspaces[targetId].cacheFiles.filter(item => !validItems.includes(item));
+            removedCount = originalCacheFilesLength - workspaces[targetId].cacheFiles.length;
+            break;
+            
+        case 'vibeImages':
+            const originalVibeImagesLength = workspaces[targetId].vibeImages.length;
+            workspaces[targetId].vibeImages = workspaces[targetId].vibeImages.filter(item => !validItems.includes(item));
+            removedCount = originalVibeImagesLength - workspaces[targetId].vibeImages.length;
+            break;
+            
+        default:
+            throw new Error(`Invalid type: ${type}. Must be one of: files, scraps, presets, pipelines, cacheFiles, vibeImages`);
+    }
 
     if (removedCount > 0) {
         saveWorkspaces();
-        console.log(`🗑️ Removed ${removedCount} files from all workspaces`);
+        console.log(`✅ Removed ${removedCount} ${type} from workspace: ${workspaces[targetId].name}`);
     }
 
     return removedCount;
+}
+
+// Common function to move items between workspaces
+function moveToWorkspaceArray(type, items, targetWorkspaceId, sourceWorkspaceId = null) {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+
+    if (!workspaces[targetWorkspaceId]) {
+        throw new Error(`Target workspace ${targetWorkspaceId} not found`);
+    }
+
+    // Ensure items is an array
+    const itemArray = Array.isArray(items) ? items : [items];
+    
+    // Filter out null/invalid items
+    let validItems = itemArray.filter(item => item && typeof item === 'string');
+    
+    if (validItems.length === 0) {
+        console.log(`⚠️ No valid ${type} provided for moving`);
+        return 0;
+    }
+    let movedCount = 0;
+
+    // Remove items from all workspaces first (if sourceWorkspaceId not specified)
+    if (sourceWorkspaceId) {
+        // Remove from specific source workspace
+        if (!workspaces[sourceWorkspaceId]) {
+            throw new Error(`Source workspace ${sourceWorkspaceId} not found`);
+        }
+        movedCount = removeFromWorkspaceArray(type, validItems, sourceWorkspaceId);
+    } else {
+        // Remove from all workspaces
+        Object.values(workspaces).forEach(workspace => {
+            switch (type) {
+                case 'files':
+                    // Get all files from all workspaces to find related files
+                    const allWorkspaceFiles = new Set();
+                    Object.values(workspaces).forEach(workspace => {
+                        workspace.files.forEach(file => allWorkspaceFiles.add(file));
+                    });
+
+                    // Find all related files for each filename, including explicit upscaled variants
+                    const allFilesToMove = new Set();
+                    for (const filename of validItems) {
+                        const baseName = getBaseName(filename);
+                        const extMatch = filename.match(/\.(png|jpg|jpeg)$/i);
+                        const ext = extMatch ? extMatch[0] : '';
+                        // Always add the original file
+                        allFilesToMove.add(filename);
+                        // Add upscaled and pipeline_upscaled variants if present in any workspace
+                        const upscaled = `${baseName}_upscaled${ext}`;
+                        const pipelineUpscaled = `${baseName}_pipeline_upscaled${ext}`;
+                        if (allWorkspaceFiles.has(upscaled)) allFilesToMove.add(upscaled);
+                        if (allWorkspaceFiles.has(pipelineUpscaled)) allFilesToMove.add(pipelineUpscaled);
+                        // Add all other related files (legacy logic)
+                        const relatedFiles = findRelatedFiles(filename, Array.from(allWorkspaceFiles));
+                        relatedFiles.forEach(file => allFilesToMove.add(file));
+                    }
+                    validItems = Array.from(allFilesToMove);
+
+                    const originalFilesLength = workspace.files.length;
+                    workspace.files = workspace.files.filter(item => !validItems.includes(item));
+                    movedCount += originalFilesLength - workspace.files.length;
+                    break;
+                    
+                case 'scraps':
+                    if (workspace.scraps) {
+                        const originalScrapsLength = workspace.scraps.length;
+                        workspace.scraps = workspace.scraps.filter(item => !validItems.includes(item));
+                        movedCount += originalScrapsLength - workspace.scraps.length;
+                    }
+                    break;
+                    
+                case 'presets':
+                    const originalPresetsLength = workspace.presets.length;
+                    workspace.presets = workspace.presets.filter(item => !validItems.includes(item));
+                    movedCount += originalPresetsLength - workspace.presets.length;
+                    break;
+                    
+                case 'pipelines':
+                    const originalPipelinesLength = workspace.pipelines.length;
+                    workspace.pipelines = workspace.pipelines.filter(item => !validItems.includes(item));
+                    movedCount += originalPipelinesLength - workspace.pipelines.length;
+                    break;
+                    
+                case 'cacheFiles':
+                    const originalCacheFilesLength = workspace.cacheFiles.length;
+                    workspace.cacheFiles = workspace.cacheFiles.filter(item => !validItems.includes(item));
+                    movedCount += originalCacheFilesLength - workspace.cacheFiles.length;
+                    break;
+                    
+                case 'vibeImages':
+                    const originalVibeImagesLength = workspace.vibeImages.length;
+                    workspace.vibeImages = workspace.vibeImages.filter(item => !validItems.includes(item));
+                    movedCount += originalVibeImagesLength - workspace.vibeImages.length;
+                    break;
+            }
+        });
+    }
+
+    // Add items to target workspace (avoiding duplicates)
+    addToWorkspaceArray(type, validItems, targetWorkspaceId);
+
+    if (movedCount > 0) {
+        saveWorkspaces();
+        const message = type === 'files' ? 
+            `✅ Moved ${movedCount} ${type} (including related and upscaled files) to workspace: ${workspaces[targetWorkspaceId].name}` :
+            `✅ Moved ${movedCount} ${type} to workspace: ${workspaces[targetWorkspaceId].name}`;
+        console.log(message);
+    }
+
+    return movedCount;
 }
 
 module.exports = {
@@ -917,22 +926,21 @@ module.exports = {
     renameWorkspace,
     updateWorkspaceColor,
     updateWorkspaceBackgroundColor,
-    updateWorkspaceBackgroundImage, // Added updateWorkspaceBackgroundImage to exports
-    updateWorkspaceBackgroundOpacity, // Added updateWorkspaceBackgroundOpacity to exports
+    updateWorkspaceBackgroundImage,
+    updateWorkspaceBackgroundOpacity,
     deleteWorkspace,
     dumpWorkspace,
+    addToWorkspaceArray,
+    removeFromWorkspaceArray,
+    moveToWorkspaceArray,
     moveFilesToWorkspace,
     getActiveWorkspace,
     setActiveWorkspace,
     getActiveWorkspaceFiles,
-    addFileToWorkspace,
-    addCacheFileToWorkspace,
     getActiveWorkspaceCacheFiles,
-    moveCacheFilesToWorkspace,
-    addFileToScraps,
-    removeFileFromScraps,
     getActiveWorkspaceScraps,
-    moveFilesToScraps,
-    moveScrapsToWorkspace,
-    removeFilesFromWorkspaces
+    removeFilesFromWorkspaces,
+    addToWorkspaceArray,
+    removeFromWorkspaceArray,
+    moveToWorkspaceArray
 };

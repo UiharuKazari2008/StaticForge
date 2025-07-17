@@ -20,7 +20,8 @@ const {
     updateMetadata, 
     stripPngTextChunks, 
     extractRelevantFields, 
-    getModelDisplayName
+    getModelDisplayName,
+    getBaseName
 } = require('./modules/pngMetadata');
 const { 
     getImageDimensions, 
@@ -46,15 +47,10 @@ const {
     getActiveWorkspace,
     setActiveWorkspace,
     getActiveWorkspaceFiles,
-    addFileToWorkspace,
-    addCacheFileToWorkspace,
+    addToWorkspaceArray,
+    removeFromWorkspaceArray,
+    moveToWorkspaceArray,
     getActiveWorkspaceCacheFiles,
-    moveCacheFilesToWorkspace,
-    addFileToScraps,
-    removeFileFromScraps,
-    getActiveWorkspaceScraps,
-    moveFilesToScraps,
-    moveScrapsToWorkspace,
     removeFilesFromWorkspaces
 } = require('./modules/workspace');
 
@@ -177,15 +173,6 @@ const upload = multer({
 
 // Multer for base image uploads (to memory)
 const cacheUpload = multer({ storage: multer.memoryStorage() });
-
-// Helper: get base name for pairing
-function getBaseName(filename) {
-    return filename
-        .replace(/_upscaled(?=\.)/, '')  // Remove _upscaled suffix
-        .replace(/_pipeline(?=\.)/, '')  // Remove _pipeline suffix
-        .replace(/_pipeline_upscaled(?=\.)/, '')  // Remove _pipeline_upscaled suffix
-        .replace(/\.(png|jpg|jpeg)$/i, '');  // Remove file extension
-}
 
 // Helper: get preview filename
 function getPreviewFilename(baseName) {
@@ -366,81 +353,81 @@ app.get('/images/all', async (req, res) => {
 app.delete('/images/bulk', authMiddleware, async (req, res) => {
     try {
         const { filenames } = req.body;
-        
+
         if (!filenames || !Array.isArray(filenames) || filenames.length === 0) {
             return res.status(400).json({ error: 'Filenames array is required' });
         }
-        
+
         const results = [];
         const errors = [];
-        
+
         for (const filename of filenames) {
             try {
                 const filePath = path.join(imagesDir, filename);
-                
+
                 if (!fs.existsSync(filePath)) {
                     errors.push({ filename, error: 'File not found' });
                     continue;
                 }
-                
+
                 // Get the base name to find related files
                 const baseName = getBaseName(filename);
                 const previewFile = getPreviewFilename(baseName);
                 const previewPath = path.join(previewsDir, previewFile);
-                
-                // Determine which files to delete
+
+                // Always delete both the base and upscaled version
                 const filesToDelete = [];
                 const filenamesToRemoveFromWorkspaces = [];
-                
-                // Add the requested file
-                filesToDelete.push({ path: filePath, type: 'image' });
-                filenamesToRemoveFromWorkspaces.push(filename);
-                
-                // Find and add related files based on filename patterns
-                if (filename.includes('_pipeline_upscaled')) {
-                    // If this is a pipeline_upscaled file, find and add the pipeline version
-                    const pipelineFilename = filename.replace('_upscaled.png', '.png');
-                    const pipelinePath = path.join(imagesDir, pipelineFilename);
-                    if (fs.existsSync(pipelinePath)) {
-                        filesToDelete.push({ path: pipelinePath, type: 'pipeline' });
-                        filenamesToRemoveFromWorkspaces.push(pipelineFilename);
-                    }
-                } else if (filename.includes('_pipeline')) {
-                    // If this is a pipeline file, find and add the pipeline_upscaled version
-                    const pipelineUpscaledFilename = filename.replace('.png', '_upscaled.png');
-                    const pipelineUpscaledPath = path.join(imagesDir, pipelineUpscaledFilename);
-                    if (fs.existsSync(pipelineUpscaledPath)) {
-                        filesToDelete.push({ path: pipelineUpscaledPath, type: 'pipeline_upscaled' });
-                        filenamesToRemoveFromWorkspaces.push(pipelineUpscaledFilename);
-                    }
-                } else if (filename.includes('_upscaled')) {
-                    // If this is an upscaled file, find and add the original version
-                    const originalFilename = filename.replace('_upscaled.png', '.png');
-                    const originalPath = path.join(imagesDir, originalFilename);
-                    if (fs.existsSync(originalPath)) {
-                        filesToDelete.push({ path: originalPath, type: 'original' });
-                        filenamesToRemoveFromWorkspaces.push(originalFilename);
-                    }
+
+                // Determine base/original and upscaled filenames
+                let originalFilename, upscaledFilename;
+                if (filename.includes('_upscaled')) {
+                    upscaledFilename = filename;
+                    originalFilename = filename.replace('_upscaled.png', '.png');
                 } else {
-                    // If this is an original file, find and add the upscaled version
-                    const upscaledFilename = filename.replace('.png', '_upscaled.png');
-                    const upscaledPath = path.join(imagesDir, upscaledFilename);
-                    if (fs.existsSync(upscaledPath)) {
-                        filesToDelete.push({ path: upscaledPath, type: 'upscaled' });
-                        filenamesToRemoveFromWorkspaces.push(upscaledFilename);
-                    }
+                    originalFilename = filename;
+                    upscaledFilename = filename.replace('.png', '_upscaled.png');
                 }
-                
+
+                // Add original file if exists
+                const originalPath = path.join(imagesDir, originalFilename);
+                if (fs.existsSync(originalPath)) {
+                    filesToDelete.push({ path: originalPath, type: 'original' });
+                    filenamesToRemoveFromWorkspaces.push(originalFilename);
+                }
+
+                // Add upscaled file if exists
+                const upscaledPath = path.join(imagesDir, upscaledFilename);
+                if (fs.existsSync(upscaledPath)) {
+                    filesToDelete.push({ path: upscaledPath, type: 'upscaled' });
+                    filenamesToRemoveFromWorkspaces.push(upscaledFilename);
+                }
+
+                // Also handle pipeline and pipeline_upscaled variants
+                const pipelineFilename = baseName + '_pipeline.png';
+                const pipelineUpscaledFilename = baseName + '_pipeline_upscaled.png';
+                const pipelinePath = path.join(imagesDir, pipelineFilename);
+                const pipelineUpscaledPath = path.join(imagesDir, pipelineUpscaledFilename);
+
+                if (fs.existsSync(pipelinePath)) {
+                    filesToDelete.push({ path: pipelinePath, type: 'pipeline' });
+                    filenamesToRemoveFromWorkspaces.push(pipelineFilename);
+                }
+                if (fs.existsSync(pipelineUpscaledPath)) {
+                    filesToDelete.push({ path: pipelineUpscaledPath, type: 'pipeline_upscaled' });
+                    filenamesToRemoveFromWorkspaces.push(pipelineUpscaledFilename);
+                }
+
                 // Add the preview file
                 if (fs.existsSync(previewPath)) {
                     filesToDelete.push({ path: previewPath, type: 'preview' });
                 }
-                
+
                 // Remove files from workspaces first
                 if (filenamesToRemoveFromWorkspaces.length > 0) {
                     removeFilesFromWorkspaces(filenamesToRemoveFromWorkspaces);
                 }
-                
+
                 // Delete all related files
                 const deletedFiles = [];
                 for (const file of filesToDelete) {
@@ -451,18 +438,18 @@ app.delete('/images/bulk', authMiddleware, async (req, res) => {
                         console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
                     }
                 }
-                
+
                 results.push({ filename, deletedFiles });
                 console.log(`🗑️ Bulk deleted: ${filename} (${deletedFiles.join(', ')})`);
-                
+
             } catch (error) {
                 errors.push({ filename, error: error.message });
             }
         }
-        
+
         console.log(`✅ Bulk delete completed: ${results.length} successful, ${errors.length} failed`);
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             message: `Bulk delete completed`,
             results: results,
             errors: errors,
@@ -470,7 +457,7 @@ app.delete('/images/bulk', authMiddleware, async (req, res) => {
             successful: results.length,
             failed: errors.length
         });
-        
+
     } catch (error) {
         console.error('Bulk delete error:', error);
         res.status(500).json({ error: error.message });
@@ -736,74 +723,74 @@ app.options('/images/:filename', authMiddleware, async (req, res) => {
     }
 });
 
-// DELETE /images/:filename (delete image and related files)
+// DELETE /images/:filename (delete image and upscaled/base versions)
 app.delete('/images/:filename', authMiddleware, async (req, res) => {
     try {
         const filename = req.params.filename;
         const filePath = path.join(imagesDir, filename);
-        
+
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: 'Image not found' });
         }
-        
+
         // Get the base name to find related files
         const baseName = getBaseName(filename);
         const previewFile = getPreviewFilename(baseName);
         const previewPath = path.join(previewsDir, previewFile);
-        
-        // Determine which files to delete
+
+        // Always delete both the base and upscaled version
         const filesToDelete = [];
         const filenamesToRemoveFromWorkspaces = [];
-        
-        // Add the requested file
-        filesToDelete.push({ path: filePath, type: 'image' });
-        filenamesToRemoveFromWorkspaces.push(filename);
-        
-        // Find and add related files based on filename patterns
-        if (filename.includes('_pipeline_upscaled')) {
-            // If this is a pipeline_upscaled file, find and add the pipeline version
-            const pipelineFilename = filename.replace('_upscaled.png', '.png');
-            const pipelinePath = path.join(imagesDir, pipelineFilename);
-            if (fs.existsSync(pipelinePath)) {
-                filesToDelete.push({ path: pipelinePath, type: 'pipeline' });
-                filenamesToRemoveFromWorkspaces.push(pipelineFilename);
-            }
-        } else if (filename.includes('_pipeline')) {
-            // If this is a pipeline file, find and add the pipeline_upscaled version
-            const pipelineUpscaledFilename = filename.replace('.png', '_upscaled.png');
-            const pipelineUpscaledPath = path.join(imagesDir, pipelineUpscaledFilename);
-            if (fs.existsSync(pipelineUpscaledPath)) {
-                filesToDelete.push({ path: pipelineUpscaledPath, type: 'pipeline_upscaled' });
-                filenamesToRemoveFromWorkspaces.push(pipelineUpscaledFilename);
-            }
-        } else if (filename.includes('_upscaled')) {
-            // If this is an upscaled file, find and add the original version
-            const originalFilename = filename.replace('_upscaled.png', '.png');
-            const originalPath = path.join(imagesDir, originalFilename);
-            if (fs.existsSync(originalPath)) {
-                filesToDelete.push({ path: originalPath, type: 'original' });
-                filenamesToRemoveFromWorkspaces.push(originalFilename);
-            }
+
+        // Determine base/original and upscaled filenames
+        let originalFilename, upscaledFilename;
+        if (filename.includes('_upscaled')) {
+            upscaledFilename = filename;
+            originalFilename = filename.replace('_upscaled.png', '.png');
         } else {
-            // If this is an original file, find and add the upscaled version
-            const upscaledFilename = filename.replace('.png', '_upscaled.png');
-            const upscaledPath = path.join(imagesDir, upscaledFilename);
-            if (fs.existsSync(upscaledPath)) {
-                filesToDelete.push({ path: upscaledPath, type: 'upscaled' });
-                filenamesToRemoveFromWorkspaces.push(upscaledFilename);
-            }
+            originalFilename = filename;
+            upscaledFilename = filename.replace('.png', '_upscaled.png');
         }
-        
+
+        // Add original file if exists
+        const originalPath = path.join(imagesDir, originalFilename);
+        if (fs.existsSync(originalPath)) {
+            filesToDelete.push({ path: originalPath, type: 'original' });
+            filenamesToRemoveFromWorkspaces.push(originalFilename);
+        }
+
+        // Add upscaled file if exists
+        const upscaledPath = path.join(imagesDir, upscaledFilename);
+        if (fs.existsSync(upscaledPath)) {
+            filesToDelete.push({ path: upscaledPath, type: 'upscaled' });
+            filenamesToRemoveFromWorkspaces.push(upscaledFilename);
+        }
+
+        // Also handle pipeline and pipeline_upscaled variants
+        const pipelineFilename = baseName + '_pipeline.png';
+        const pipelineUpscaledFilename = baseName + '_pipeline_upscaled.png';
+        const pipelinePath = path.join(imagesDir, pipelineFilename);
+        const pipelineUpscaledPath = path.join(imagesDir, pipelineUpscaledFilename);
+
+        if (fs.existsSync(pipelinePath)) {
+            filesToDelete.push({ path: pipelinePath, type: 'pipeline' });
+            filenamesToRemoveFromWorkspaces.push(pipelineFilename);
+        }
+        if (fs.existsSync(pipelineUpscaledPath)) {
+            filesToDelete.push({ path: pipelineUpscaledPath, type: 'pipeline_upscaled' });
+            filenamesToRemoveFromWorkspaces.push(pipelineUpscaledFilename);
+        }
+
         // Add the preview file
         if (fs.existsSync(previewPath)) {
             filesToDelete.push({ path: previewPath, type: 'preview' });
         }
-        
+
         // Remove files from workspaces first
         if (filenamesToRemoveFromWorkspaces.length > 0) {
             removeFilesFromWorkspaces(filenamesToRemoveFromWorkspaces);
         }
-        
+
         // Delete all related files
         const deletedFiles = [];
         for (const file of filesToDelete) {
@@ -815,14 +802,14 @@ app.delete('/images/:filename', authMiddleware, async (req, res) => {
                 console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
             }
         }
-        
+
         console.log(`✅ Deleted image and related files: ${deletedFiles.join(', ')}`);
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             message: `Image deleted successfully`,
             deletedFiles: deletedFiles
         });
-        
+
     } catch (error) {
         console.error('Delete error:', error);
         res.status(500).json({ error: error.message });
@@ -1156,12 +1143,84 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
         baseOptions.action = (body.mask || body.mask_compressed) ? Action.INPAINT : Action.IMG2IMG;
         baseOptions.color_correct = false;
         if (body.mask_compressed && targetDims.width && targetDims.height) {
-            // Process the compressed mask to target resolution
-            const maskBuffer = Buffer.from(body.mask_compressed, 'base64');
-            const processedMaskBuffer = await resizeMaskWithCanvas(maskBuffer, targetDims.width, targetDims.height);
-            body.mask = processedMaskBuffer.toString('base64');
-            baseOptions.mask_compressed = body.mask_compressed;
+            try {
+                // Process the compressed mask to target resolution
+                const maskBuffer = Buffer.from(body.mask_compressed, 'base64');
+                const processedMaskBuffer = await resizeMaskWithCanvas(maskBuffer, targetDims.width, targetDims.height);
+                body.mask = processedMaskBuffer.toString('base64');
+                baseOptions.mask_compressed = body.mask_compressed;
+                console.log(`🎭 Processed compressed mask to ${targetDims.width}x${targetDims.height}`);
+            } catch (error) {
+                console.error('❌ Failed to process compressed mask:', error.message);
+                // Continue without mask if processing fails
+                body.mask_compressed = null;
+            }
         }
+        
+        // Auto-convert standard mask to compressed mask if no compressed mask exists
+        if (body.mask && !body.mask_compressed && targetDims.width && targetDims.height) {
+            try {
+                // Convert standard mask to compressed format (1/8 scale)
+                const compressedWidth = Math.floor(targetDims.width / 8);
+                const compressedHeight = Math.floor(targetDims.height / 8);
+                
+                // Create a temporary canvas to resize the mask
+                const { createCanvas, loadImage } = require('canvas');
+                const maskBuffer = Buffer.from(body.mask, 'base64');
+                const maskImage = await loadImage(maskBuffer);
+                
+                const tempCanvas = createCanvas(compressedWidth, compressedHeight);
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                // Fill with black background
+                tempCtx.fillStyle = 'black';
+                tempCtx.fillRect(0, 0, compressedWidth, compressedHeight);
+                
+                // Disable image smoothing for nearest neighbor scaling
+                tempCtx.imageSmoothingEnabled = false;
+                
+                // Draw the mask scaled down to compressed size
+                tempCtx.drawImage(maskImage, 0, 0, compressedWidth, compressedHeight);
+                
+                // Binarize the image data to ensure crisp 1-bit mask
+                const imageData = tempCtx.getImageData(0, 0, compressedWidth, compressedHeight);
+                const data = imageData.data;
+                
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    
+                    // If pixel is not black (has been drawn on), make it pure white
+                    if (r > 0 || g > 0 || b > 0) {
+                        data[i] = 255;     // Red
+                        data[i + 1] = 255; // Green
+                        data[i + 2] = 255; // Blue
+                        data[i + 3] = 255; // Alpha
+                    } else {
+                        // Black pixels (background) stay pure black
+                        data[i] = 0;       // Red
+                        data[i + 1] = 0;   // Green
+                        data[i + 2] = 0;   // Blue
+                        data[i + 3] = 255; // Alpha
+                    }
+                }
+                
+                // Put the binarized image data back
+                tempCtx.putImageData(imageData, 0, 0);
+                
+                // Convert to base64 and store as compressed mask
+                const compressedMaskBase64 = tempCanvas.toBuffer('image/png').toString('base64');
+                body.mask_compressed = compressedMaskBase64;
+                baseOptions.mask_compressed = compressedMaskBase64;
+                
+                console.log(`🔄 Auto-converted standard mask to compressed format (${compressedWidth}x${compressedHeight})`);
+            } catch (error) {
+                console.error('❌ Failed to auto-convert standard mask to compressed:', error.message);
+                // Continue with original mask if conversion fails
+            }
+        }
+        
         if (body.mask) {
             // Process compressed mask if available, otherwise use regular mask
             baseOptions.mask = body.mask;
@@ -1390,7 +1449,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             
             // Add file to workspace
             const targetWorkspaceId = workspaceId || getActiveWorkspace();
-            addFileToWorkspace(name, targetWorkspaceId);
+            addToWorkspaceArray('files', name, targetWorkspaceId);
             
             // Generate preview
             const baseName = getBaseName(name);
@@ -1422,7 +1481,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                 
                 // Add upscaled file to workspace
                 const targetWorkspaceId = workspaceId || getActiveWorkspace();
-                addFileToWorkspace(upscaledName, targetWorkspaceId);
+                addToWorkspaceArray('files', upscaledName, targetWorkspaceId);
                 
                 // Update preview with upscaled version
                 const baseName = getBaseName(name);
@@ -2510,46 +2569,6 @@ app.put('/upload/image', authMiddleware, upload.single('image'), async (req, res
     }
 });
 
-app.put('/upload/base', authMiddleware, cacheUpload.single('image'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No image file provided' });
-        }
-
-        const imageBuffer = req.file.buffer;
-        const hash = crypto.createHash('md5').update(imageBuffer).digest('hex');
-        const uploadPath = path.join(uploadCacheDir, hash);
-        const previewPath = path.join(previewCacheDir, `${hash}.webp`);
-
-        // Check if file already exists
-        if (fs.existsSync(uploadPath) && fs.existsSync(previewPath)) {
-            console.log(`✅ Cache hit for uploaded image: ${hash}`);
-            return res.json({ success: true, hash: hash });
-        }
-
-        // Save original image to upload cache
-        fs.writeFileSync(uploadPath, imageBuffer);
-        console.log(`💾 Saved to upload cache: ${hash}`);
-
-        // Add cache file to workspace
-        const workspaceId = req.body.workspace || req.query.workspace || null;
-        addCacheFileToWorkspace(hash, workspaceId);
-
-        // Generate and save preview
-        await sharp(imageBuffer)
-            .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
-            .webp({ quality: 80 })
-            .toFile(previewPath);
-        console.log(`📸 Generated cached preview: ${hash}.webp`);
-        
-        res.json({ success: true, hash: hash });
-
-    } catch (e) {
-        console.log('❌ Base image upload error:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
 // GET /balance (get balance information)
 app.get('/balance', authMiddleware, async (req, res) => {
     try {
@@ -2758,15 +2777,90 @@ async function executePipeline(pipelineName, queryParams = {}, customPipeline = 
         }
         
         let mask;
+        let pipelineMaskCompressed = null;
+        
         if (pipeline.mask_compressed) {
-            // Process compressed mask using the same logic as buildOptions
-            const maskBuffer = Buffer.from(pipeline.mask_compressed, 'base64');
-            const processedMaskBuffer = await resizeMaskWithCanvas(maskBuffer, targetDims.width, targetDims.height);
-            mask = processedMaskBuffer.toString('base64');
-        } else {
+            try {
+                // Process compressed mask using the same logic as buildOptions
+                const maskBuffer = Buffer.from(pipeline.mask_compressed, 'base64');
+                const processedMaskBuffer = await resizeMaskWithCanvas(maskBuffer, targetDims.width, targetDims.height);
+                mask = processedMaskBuffer.toString('base64');
+                pipelineMaskCompressed = pipeline.mask_compressed;
+                console.log(`🎭 Processed pipeline compressed mask to ${targetDims.width}x${targetDims.height}`);
+            } catch (error) {
+                console.error('❌ Failed to process pipeline compressed mask:', error.message);
+                // Fallback to regular mask processing
+                const maskResult = await generateAndPadMask(pipeline.mask, targetDims, maskBias);
+                mask = typeof maskResult === 'string' ? maskResult : maskResult.toString('base64');
+            }
+        } else if (pipeline.mask) {
+            // Auto-convert standard mask to compressed mask if no compressed mask exists
+            try {
+                // Convert standard mask to compressed format (1/8 scale)
+                const compressedWidth = Math.floor(targetDims.width / 8);
+                const compressedHeight = Math.floor(targetDims.height / 8);
+                
+                // Create a temporary canvas to resize the mask
+                const { createCanvas, loadImage } = require('canvas');
+                const maskBuffer = Buffer.from(pipeline.mask, 'base64');
+                const maskImage = await loadImage(maskBuffer);
+                
+                const tempCanvas = createCanvas(compressedWidth, compressedHeight);
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                // Fill with black background
+                tempCtx.fillStyle = 'black';
+                tempCtx.fillRect(0, 0, compressedWidth, compressedHeight);
+                
+                // Disable image smoothing for nearest neighbor scaling
+                tempCtx.imageSmoothingEnabled = false;
+                
+                // Draw the mask scaled down to compressed size
+                tempCtx.drawImage(maskImage, 0, 0, compressedWidth, compressedHeight);
+                
+                // Binarize the image data to ensure crisp 1-bit mask
+                const imageData = tempCtx.getImageData(0, 0, compressedWidth, compressedHeight);
+                const data = imageData.data;
+                
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
+                    
+                    // If pixel is not black (has been drawn on), make it pure white
+                    if (r > 0 || g > 0 || b > 0) {
+                        data[i] = 255;     // Red
+                        data[i + 1] = 255; // Green
+                        data[i + 2] = 255; // Blue
+                        data[i + 3] = 255; // Alpha
+                    } else {
+                        // Black pixels (background) stay pure black
+                        data[i] = 0;       // Red
+                        data[i + 1] = 0;   // Green
+                        data[i + 2] = 0;   // Blue
+                        data[i + 3] = 255; // Alpha
+                    }
+                }
+                
+                // Put the binarized image data back
+                tempCtx.putImageData(imageData, 0, 0);
+                
+                // Convert to base64 and store as compressed mask
+                const compressedMaskBase64 = tempCanvas.toBuffer('image/png').toString('base64');
+                pipelineMaskCompressed = compressedMaskBase64;
+                
+                console.log(`🔄 Auto-converted pipeline standard mask to compressed format (${compressedWidth}x${compressedHeight})`);
+            } catch (error) {
+                console.error('❌ Failed to auto-convert pipeline standard mask to compressed:', error.message);
+                // Continue with original mask if conversion fails
+            }
+            
             // Use regular mask processing
             const maskResult = await generateAndPadMask(pipeline.mask, targetDims, maskBias);
             mask = typeof maskResult === 'string' ? maskResult : maskResult.toString('base64');
+        } else {
+            // No mask provided
+            mask = null;
         }
         
         // Step 3: Generate inpainting image using layer2 preset
@@ -2777,8 +2871,8 @@ async function executePipeline(pipelineName, queryParams = {}, customPipeline = 
         layer2Opts.model = Model[inpaintingModelName];
         layer2Opts.image = baseImage;
         layer2Opts.mask = mask;
-        if (pipeline.mask_compressed) {
-            layer2Opts.mask_compressed = pipeline.mask_compressed;
+        if (pipelineMaskCompressed) {
+            layer2Opts.mask_compressed = pipelineMaskCompressed;
         }
         if (!layer2Opts.height && !layer2Opts.width) {
             layer2Opts.resPreset = Resolution[resolution.toUpperCase()];
@@ -3490,8 +3584,36 @@ app.post('/test-bias-adjustment', async (req, res) => {
 
 // ==================== WORKSPACE API ENDPOINTS ====================
 
-// GET /workspaces (list all workspaces)
+
+// GET /workspaces (get active workspace info)
 app.get('/workspaces', authMiddleware, (req, res) => {
+    try {
+        const activeId = getActiveWorkspace();
+        const workspace = getWorkspace(activeId);
+        
+        if (!workspace) {
+            return res.status(404).json({ error: 'Active workspace not found' });
+        }
+        
+        res.json({
+            id: activeId,
+            name: workspace.name,
+            color: workspace.color || '#124', // Default color if missing
+            backgroundColor: workspace.backgroundColor, // Can be null for auto-generation
+            backgroundImage: workspace.backgroundImage, // Can be null for no background image
+            backgroundOpacity: workspace.backgroundOpacity || 0.3, // Default opacity
+            fileCount: workspace.files.length,
+            presetCount: workspace.presets.length,
+            pipelineCount: workspace.pipelines.length,
+            cacheFileCount: workspace.cacheFiles.length
+        });
+    } catch (error) {
+        console.log('❌ Error getting active workspace:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// OPTIONS /workspaces (list all workspaces)
+app.options('/workspaces', authMiddleware, (req, res) => {
     try {
         const workspaces = getWorkspaces();
         const activeWorkspaceId = getActiveWorkspace();
@@ -3521,7 +3643,6 @@ app.get('/workspaces', authMiddleware, (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
 // POST /workspaces (create new workspace)
 app.post('/workspaces', authMiddleware, (req, res) => {
     try {
@@ -3545,7 +3666,6 @@ app.post('/workspaces', authMiddleware, (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
 // PUT /workspaces/:id (rename workspace)
 app.put('/workspaces/:id', authMiddleware, (req, res) => {
     try {
@@ -3563,102 +3683,6 @@ app.put('/workspaces/:id', authMiddleware, (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
-// PUT /workspaces/:id/color (update workspace color)
-app.put('/workspaces/:id/color', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { color } = req.body;
-        
-        if (!color || !color.trim()) {
-            return res.status(400).json({ error: 'Color is required' });
-        }
-        
-        // Validate color format (simple hex validation)
-        const colorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
-        if (!colorRegex.test(color.trim())) {
-            return res.status(400).json({ error: 'Invalid color format. Use hex format (e.g., #ff4500)' });
-        }
-        
-        updateWorkspaceColor(id, color.trim());
-        res.json({ success: true, message: `Workspace color updated to "${color.trim()}"` });
-    } catch (error) {
-        console.log('❌ Error updating workspace color:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// PUT /workspaces/:id/background-color (update workspace background color)
-app.put('/workspaces/:id/background-color', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { backgroundColor } = req.body;
-        
-        // Background color can be null for auto-generation
-        if (backgroundColor !== null && backgroundColor !== undefined) {
-            if (!backgroundColor.trim()) {
-                return res.status(400).json({ error: 'Background color cannot be empty' });
-            }
-            
-            // Validate color format (simple hex validation)
-            const colorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
-            if (!colorRegex.test(backgroundColor.trim())) {
-                return res.status(400).json({ error: 'Invalid color format. Use hex format (e.g., #ff4500)' });
-            }
-        }
-        
-        updateWorkspaceBackgroundColor(id, backgroundColor ? backgroundColor.trim() : null);
-        res.json({ success: true, message: `Workspace background color updated` });
-    } catch (error) {
-        console.log('❌ Error updating workspace background color:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// PUT /workspaces/:id/background-image (update workspace background image)
-app.put('/workspaces/:id/background-image', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { backgroundImage } = req.body;
-        
-        // Background image can be null for no background image
-        if (backgroundImage !== null && backgroundImage !== undefined) {
-            if (!backgroundImage.trim()) {
-                return res.status(400).json({ error: 'Background image cannot be empty' });
-            }
-        }
-        
-        updateWorkspaceBackgroundImage(id, backgroundImage ? backgroundImage.trim() : null);
-        res.json({ success: true, message: `Workspace background image updated` });
-    } catch (error) {
-        console.log('❌ Error updating workspace background image:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// PUT /workspaces/:id/background-opacity (update workspace background opacity)
-app.put('/workspaces/:id/background-opacity', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { backgroundOpacity } = req.body;
-        
-        if (backgroundOpacity === null || backgroundOpacity === undefined) {
-            return res.status(400).json({ error: 'Background opacity is required' });
-        }
-        
-        const opacity = parseFloat(backgroundOpacity);
-        if (isNaN(opacity) || opacity < 0 || opacity > 1) {
-            return res.status(400).json({ error: 'Background opacity must be a number between 0 and 1' });
-        }
-        
-        updateWorkspaceBackgroundOpacity(id, opacity);
-        res.json({ success: true, message: `Workspace background opacity updated` });
-    } catch (error) {
-        console.log('❌ Error updating workspace background opacity:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
 // DELETE /workspaces/:id (delete workspace)
 app.delete('/workspaces/:id', authMiddleware, (req, res) => {
     try {
@@ -3670,7 +3694,17 @@ app.delete('/workspaces/:id', authMiddleware, (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
+// PUT /workspaces/:id/activate (set active workspace)
+app.put('/workspaces/:id/activate', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        setActiveWorkspace(id);
+        res.json({ success: true, activeWorkspace: id });
+    } catch (error) {
+        console.log('❌ Error setting active workspace:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 // POST /workspaces/:sourceId/dump (dump workspace into another)
 app.post('/workspaces/:sourceId/dump', authMiddleware, (req, res) => {
     try {
@@ -3685,124 +3719,6 @@ app.post('/workspaces/:sourceId/dump', authMiddleware, (req, res) => {
         res.json({ success: true, message: 'Workspace dumped successfully' });
     } catch (error) {
         console.log('❌ Error dumping workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /workspaces/:id/set-active (set active workspace)
-app.post('/workspaces/:id/set-active', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        setActiveWorkspace(id);
-        res.json({ success: true, activeWorkspace: id });
-    } catch (error) {
-        console.log('❌ Error setting active workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /workspaces/:id/move-files (move files to workspace)
-app.post('/workspaces/:id/move-files', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { filenames } = req.body;
-        
-        if (!Array.isArray(filenames) || filenames.length === 0) {
-            return res.status(400).json({ error: 'Filenames array is required' });
-        }
-        
-        const movedCount = moveFilesToWorkspace(filenames, id);
-        res.json({ success: true, message: `Moved ${movedCount} files to workspace`, movedCount });
-    } catch (error) {
-        console.log('❌ Error moving files to workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /workspaces/:id/move-scraps (move scraps to workspace)
-app.post('/workspaces/:id/move-scraps', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { filenames } = req.body;
-        
-        if (!Array.isArray(filenames) || filenames.length === 0) {
-            return res.status(400).json({ error: 'Filenames array is required' });
-        }
-        
-        const movedCount = moveScrapsToWorkspace(filenames, id);
-        res.json({ success: true, message: `Moved ${movedCount} scraps to workspace`, movedCount });
-    } catch (error) {
-        console.log('❌ Error moving scraps to workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// GET /workspaces/active (get active workspace info)
-app.get('/workspaces/active', authMiddleware, (req, res) => {
-    try {
-        const activeId = getActiveWorkspace();
-        const workspace = getWorkspace(activeId);
-        
-        if (!workspace) {
-            return res.status(404).json({ error: 'Active workspace not found' });
-        }
-        
-        res.json({
-            id: activeId,
-            name: workspace.name,
-            color: workspace.color || '#124', // Default color if missing
-            backgroundColor: workspace.backgroundColor, // Can be null for auto-generation
-            backgroundImage: workspace.backgroundImage, // Can be null for no background image
-            backgroundOpacity: workspace.backgroundOpacity || 0.3, // Default opacity
-            fileCount: workspace.files.length,
-            presetCount: workspace.presets.length,
-            pipelineCount: workspace.pipelines.length,
-            cacheFileCount: workspace.cacheFiles.length
-        });
-    } catch (error) {
-        console.log('❌ Error getting active workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /workspaces/:id/move-cache-files (move cache files to workspace)
-app.post('/workspaces/:id/move-cache-files', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { hashes } = req.body;
-        
-        if (!Array.isArray(hashes) || hashes.length === 0) {
-            return res.status(400).json({ error: 'Hashes array is required' });
-        }
-        
-        const movedCount = moveCacheFilesToWorkspace(hashes, id);
-        res.json({ success: true, message: `Moved ${movedCount} cache files to workspace`, movedCount });
-    } catch (error) {
-        console.log('❌ Error moving cache files to workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// GET /workspaces/active/color (get active workspace color for bokeh)
-app.get('/workspaces/active/color', authMiddleware, (req, res) => {
-    try {
-        const activeId = getActiveWorkspace();
-        const workspace = getWorkspace(activeId);
-        
-        if (!workspace) {
-            return res.status(404).json({ error: 'Active workspace not found' });
-        }
-        
-        res.json({ 
-            color: workspace.color || '#124', // Default color if missing
-            backgroundColor: workspace.backgroundColor, // Can be null for auto-generation
-            backgroundImage: workspace.backgroundImage, // Can be null for no background image
-            backgroundOpacity: workspace.backgroundOpacity || 0.3, // Default opacity
-            workspaceId: activeId,
-            workspaceName: workspace.name
-        });
-    } catch (error) {
-        console.log('❌ Error getting active workspace color:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -3841,9 +3757,8 @@ app.get('/workspaces/:id/files', authMiddleware, (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
-// POST /workspaces/:id/move-to-scraps (move files to scraps)
-app.post('/workspaces/:id/move-to-scraps', authMiddleware, (req, res) => {
+// PUT /workspaces/:id/files (move files to workspace)
+app.put('/workspaces/:id/files', authMiddleware, (req, res) => {
     try {
         const { id } = req.params;
         const { filenames } = req.body;
@@ -3852,46 +3767,10 @@ app.post('/workspaces/:id/move-to-scraps', authMiddleware, (req, res) => {
             return res.status(400).json({ error: 'Filenames array is required' });
         }
         
-        const movedCount = moveFilesToScraps(filenames, id);
-        res.json({ success: true, message: `Moved ${movedCount} files to scraps`, movedCount });
+        const movedCount = moveFilesToWorkspace(filenames, id);
+        res.json({ success: true, message: `Moved ${movedCount} files to workspace`, movedCount });
     } catch (error) {
-        console.log('❌ Error moving files to scraps:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /workspaces/:id/add-to-scraps (add file to scraps)
-app.post('/workspaces/:id/add-to-scraps', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { filename } = req.body;
-        
-        if (!filename) {
-            return res.status(400).json({ error: 'Filename is required' });
-        }
-        
-        addFileToScraps(filename, id);
-        res.json({ success: true, message: 'File added to scraps' });
-    } catch (error) {
-        console.log('❌ Error adding file to scraps:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// DELETE /workspaces/:id/remove-from-scraps (remove file from scraps)
-app.delete('/workspaces/:id/remove-from-scraps', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { filename } = req.body;
-        
-        if (!filename) {
-            return res.status(400).json({ error: 'Filename is required' });
-        }
-        
-        removeFileFromScraps(filename, id);
-        res.json({ success: true, message: 'File removed from scraps' });
-    } catch (error) {
-        console.log('❌ Error removing file from scraps:', error);
+        console.log('❌ Error moving files to workspace:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -3927,6 +3806,213 @@ app.get('/workspaces/:id/scraps', authMiddleware, (req, res) => {
         });
     } catch (error) {
         console.log('❌ Error getting workspace scraps:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// PUT /workspaces/:id/scraps (add file to scraps)
+app.put('/workspaces/:id/scraps', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { filename } = req.body;
+        
+        if (!filename) {
+            return res.status(400).json({ error: 'Filename is required' });
+        }
+        
+        addToWorkspaceArray('scraps', filename, id);
+        res.json({ success: true, message: 'File added to scraps' });
+    } catch (error) {
+        console.log('❌ Error adding file to scraps:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// DELETE /workspaces/:id/scraps (remove file from scraps)
+app.delete('/workspaces/:id/scraps', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { filename } = req.body;
+        
+        if (!filename) {
+            return res.status(400).json({ error: 'Filename is required' });
+        }
+        
+        removeFromWorkspaceArray('scraps', filename, id);
+        res.json({ success: true, message: 'File removed from scraps' });
+    } catch (error) {
+        console.log('❌ Error removing file from scraps:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// PUT /workspaces/:id/references (move cache files to workspace)
+app.put('/workspaces/:id/references', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { hashes } = req.body;
+        
+        if (!Array.isArray(hashes) || hashes.length === 0) {
+            return res.status(400).json({ error: 'Hashes array is required' });
+        }
+        
+        const movedCount = moveToWorkspaceArray('cacheFiles', hashes, id);
+        res.json({ success: true, message: `Moved ${movedCount} cache files to workspace`, movedCount });
+    } catch (error) {
+        console.log('❌ Error moving cache files to workspace:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// PUT /upload/:id/references (upload base image to cache)
+app.post('/workspaces/:id/references', authMiddleware, cacheUpload.single('image'), async (req, res) => {
+    const { id } = req.params;
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No image file provided' });
+        }
+
+        const imageBuffer = req.file.buffer;
+        const hash = crypto.createHash('md5').update(imageBuffer).digest('hex');
+        const uploadPath = path.join(uploadCacheDir, hash);
+        const previewPath = path.join(previewCacheDir, `${hash}.webp`);
+
+        // Check if file already exists
+        if (fs.existsSync(uploadPath) && fs.existsSync(previewPath)) {
+            console.log(`✅ Cache hit for uploaded image: ${hash}`);
+            return res.json({ success: true, hash: hash });
+        }
+
+        // Save original image to upload cache
+        fs.writeFileSync(uploadPath, imageBuffer);
+        console.log(`💾 Saved to upload cache: ${hash}`);
+
+        // Add cache file to workspace
+        addToWorkspaceArray('cacheFiles', hash, id);
+
+        // Generate and save preview
+        await sharp(imageBuffer)
+            .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+            .webp({ quality: 80 })
+            .toFile(previewPath);
+        console.log(`📸 Generated cached preview: ${hash}.webp`);
+        
+        res.json({ success: true, hash: hash });
+
+    } catch (e) {
+        console.log('❌ Base image upload error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET /workspaces/active/color (get active workspace color for bokeh)
+app.get('/workspaces/active/color', authMiddleware, (req, res) => {
+    try {
+        const activeId = getActiveWorkspace();
+        const workspace = getWorkspace(activeId);
+        
+        if (!workspace) {
+            return res.status(404).json({ error: 'Active workspace not found' });
+        }
+        
+        res.json({ 
+            color: workspace.color || '#124', // Default color if missing
+            backgroundColor: workspace.backgroundColor, // Can be null for auto-generation
+            backgroundImage: workspace.backgroundImage, // Can be null for no background image
+            backgroundOpacity: workspace.backgroundOpacity || 0.3, // Default opacity
+            workspaceId: activeId,
+            workspaceName: workspace.name
+        });
+    } catch (error) {
+        console.log('❌ Error getting active workspace color:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// PUT /workspaces/:id/color (update workspace color)
+app.put('/workspaces/:id/color', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { color } = req.body;
+        
+        if (!color || !color.trim()) {
+            return res.status(400).json({ error: 'Color is required' });
+        }
+        
+        // Validate color format (simple hex validation)
+        const colorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
+        if (!colorRegex.test(color.trim())) {
+            return res.status(400).json({ error: 'Invalid color format. Use hex format (e.g., #ff4500)' });
+        }
+        
+        updateWorkspaceColor(id, color.trim());
+        res.json({ success: true, message: `Workspace color updated to "${color.trim()}"` });
+    } catch (error) {
+        console.log('❌ Error updating workspace color:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// PUT /workspaces/:id/background-color (update workspace background color)
+app.put('/workspaces/:id/background-color', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { backgroundColor } = req.body;
+        
+        // Background color can be null for auto-generation
+        if (backgroundColor !== null && backgroundColor !== undefined) {
+            if (!backgroundColor.trim()) {
+                return res.status(400).json({ error: 'Background color cannot be empty' });
+            }
+            
+            // Validate color format (simple hex validation)
+            const colorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
+            if (!colorRegex.test(backgroundColor.trim())) {
+                return res.status(400).json({ error: 'Invalid color format. Use hex format (e.g., #ff4500)' });
+            }
+        }
+        
+        updateWorkspaceBackgroundColor(id, backgroundColor ? backgroundColor.trim() : null);
+        res.json({ success: true, message: `Workspace background color updated` });
+    } catch (error) {
+        console.log('❌ Error updating workspace background color:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// PUT /workspaces/:id/background-image (update workspace background image)
+app.put('/workspaces/:id/background-image', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { backgroundImage } = req.body;
+        
+        // Background image can be null for no background image
+        if (backgroundImage !== null && backgroundImage !== undefined) {
+            if (!backgroundImage.trim()) {
+                return res.status(400).json({ error: 'Background image cannot be empty' });
+            }
+        }
+        
+        updateWorkspaceBackgroundImage(id, backgroundImage ? backgroundImage.trim() : null);
+        res.json({ success: true, message: `Workspace background image updated` });
+    } catch (error) {
+        console.log('❌ Error updating workspace background image:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// PUT /workspaces/:id/background-opacity (update workspace background opacity)
+app.put('/workspaces/:id/background-opacity', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { backgroundOpacity } = req.body;
+        
+        if (backgroundOpacity === null || backgroundOpacity === undefined) {
+            return res.status(400).json({ error: 'Background opacity is required' });
+        }
+        
+        const opacity = parseFloat(backgroundOpacity);
+        if (isNaN(opacity) || opacity < 0 || opacity > 1) {
+            return res.status(400).json({ error: 'Background opacity must be a number between 0 and 1' });
+        }
+        
+        updateWorkspaceBackgroundOpacity(id, opacity);
+        res.json({ success: true, message: `Workspace background opacity updated` });
+    } catch (error) {
+        console.log('❌ Error updating workspace background opacity:', error);
         res.status(500).json({ error: error.message });
     }
 });
