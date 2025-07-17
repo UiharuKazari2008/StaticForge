@@ -7490,3 +7490,36 @@ div#workspaceDropdownMenu {
 .background-image-loading .spinner {
     margin-bottom: 16px;
 }
+
+/* Infinite Scroll Loading */
+.infinite-scroll-loading {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-top: var(--spacing-xxl);
+    padding: var(--spacing-xl);
+    background: var(--glass-layer-2);
+    backdrop-filter: blur(var(--glass-blur-2));
+    border: 1px solid var(--glass-border-2);
+    border-radius: var(--border-radius-xl);
+    box-shadow: var(--glass-shadow-2);
+    position: relative;
+    z-index: var(--z-layer-2);
+}
+
+.infinite-scroll-loading p {
+    color: var(--text-primary);
+    font-weight: 500;
+    margin: 0;
+}
+
+.infinite-scroll-loading .spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--glass-border-2);
+    border-top: 2px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}

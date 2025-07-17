@@ -1079,15 +1079,10 @@
                 <!-- Images will be loaded here -->
             </div>
             
-            <!-- Pagination -->
-            <div class="pagination btn-group">
-                <button id="prevPage" class="btn-secondary" disabled>
-                    <i class="fas fa-chevron-left"></i> Previous
-                </button>
-                <span id="pageInfo">Page 1</span>
-                <button id="nextPage" class="btn-secondary">
-                    Next <i class="fas fa-chevron-right"></i>
-                </button>
+            <!-- Loading indicator for infinite scroll -->
+            <div id="infiniteScrollLoading" class="infinite-scroll-loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Loading more images...</p>
             </div>
         </div>
 

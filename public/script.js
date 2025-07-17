@@ -3,10 +3,22 @@ let isAuthenticated = true;
 let subscriptionData = null;
 let forcePaidRequest = false;
 let allImages = [];
+// Infinite scroll variables
 let currentPage = 1;
-let imagesPerPage = 12;
+let imagesPerPage =12
+let isLoadingMore = false;
+let hasMoreImages = true;
+let hasMoreImagesBefore = false; // Track if there are images before current page
+let infiniteScrollLoading = document.getElementById('infiniteScrollLoading');
+let visibleItems = new Set(); // Track visible items
+let virtualScrollEnabled = true; // Enable virtual scrolling
+let workspaceTransitioning = false; // Track workspace transitions
 let currentImage = null;
 let currentManualPreviewImage = null;
+
+// Bidirectional infinite scroll tracking
+let displayedStartIndex = 0; // First displayed image index in allImages array
+let displayedEndIndex = 0;   // Last displayed image index in allImages array
 
 let selectedCharacterAutocompleteIndex = -1;
 
@@ -294,9 +306,7 @@ const gallery = document.getElementById('gallery');
 const galleryColumnsInput = document.getElementById('galleryColumnsInput');
 const bulkSelectAllBtn = document.getElementById('bulkSelectAllBtn');
 const cacheGallery = document.getElementById('cacheGallery');
-const prevPage = document.getElementById('prevPage');
-const nextPage = document.getElementById('nextPage');
-const pageInfo = document.getElementById('pageInfo');
+// Pagination elements removed for infinite scroll
 const loadingOverlay = document.getElementById('loadingOverlay');
 const confettiContainer = document.getElementById('confettiContainer');
 const controlsWrapper = document.getElementById('controlsWrapper');
@@ -2468,6 +2478,15 @@ async function setActiveWorkspace(id) {
             throw new Error(error.error || 'Failed to set active workspace');
         }
         
+        // Fade out gallery
+        if (gallery) {
+            gallery.style.transition = 'opacity 0.3s ease-out';
+            gallery.style.opacity = '0';
+        }
+        
+        // Wait for fade out
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
         activeWorkspace = id;
         
         // Update workspace settings immediately
@@ -2486,10 +2505,22 @@ async function setActiveWorkspace(id) {
         updateActiveWorkspaceDisplay();
         await loadGallery(); // Refresh gallery with new workspace filter
         await loadCacheImages(); // Refresh cache browser with new workspace filter
+        
+        // Fade in gallery
+        if (gallery) {
+            gallery.style.transition = 'opacity 0.3s ease-in';
+            gallery.style.opacity = '1';
+        }
+        
         showSuccess('Active workspace changed');
     } catch (error) {
         console.error('Error setting active workspace:', error);
         showError('Failed to set active workspace: ' + error.message);
+        
+        // Ensure gallery is visible even on error
+        if (gallery) {
+            gallery.style.opacity = 1;
+        }
     }
 }
 
@@ -3212,19 +3243,18 @@ async function loadScraps() {
             // Update display
             allImages = scrapsImageData;
             displayCurrentPageOptimized();
-            updatePagination();
         } else {
             console.error('Failed to load scraps:', response.statusText);
             allImages = [];
+            resetInfiniteScroll();
             displayCurrentPageOptimized();
-            updatePagination();
         }
         updateGalleryPlaceholders();
     } catch (error) {
         console.error('Error loading scraps:', error);
         allImages = [];
+        resetInfiniteScroll();
         displayCurrentPageOptimized();
-        updatePagination();
     }
 }
 
@@ -4096,14 +4126,6 @@ function setupEventListeners() {
         manualNoiseValue.addEventListener('input', updateManualPriceDisplay);
     }
 
-    // Pagination
-    prevPage.addEventListener('click', () => changePage(-1));
-    nextPage.addEventListener('click', () => changePage(1));
-
-
-    
-
-    
     // Add event listener for mask bias changes
     if (manualMaskBiasHidden) {
         manualMaskBiasHidden.addEventListener('change', handleMaskBiasChange);
@@ -4347,6 +4369,9 @@ function setupEventListeners() {
             });
         });
     }
+
+    // Infinite scroll
+    window.addEventListener('scroll', handleInfiniteScroll);
 }
 
 let presets, pipelines, resolutions, models, modelsNames, modelsShort, textReplacements, samplers, noiseSchedulers;
@@ -4507,9 +4532,9 @@ async function loadGallery() {
             
             allImages = newImages;
             
-            // Use optimized display that only updates changed items
+            // Reset infinite scroll state and display initial batch
+            resetInfiniteScroll();
             displayCurrentPageOptimized();
-            updatePagination();
         } else {
             console.error('Failed to load gallery:', response.statusText);
         }
@@ -4540,13 +4565,12 @@ function calculateGalleryRows() {
     const itemHeight = itemSize + gap; // Item height plus gap
     
     // Calculate available height for gallery
-    // Account for header, controls, pagination, and margins
+    // Account for header, controls, and margins (no pagination)
     const headerHeight = 80; // Approximate header height
     const controlsHeight = 60; // Approximate controls height
-    const paginationHeight = 80; // Approximate pagination height
     const margins = 40; // Top and bottom margins
     
-    const availableHeight = viewportHeight - headerHeight - controlsHeight - paginationHeight - margins;
+    const availableHeight = viewportHeight - headerHeight - controlsHeight - margins;
     
     // Calculate how many rows can fit
     const calculatedRows = Math.floor(availableHeight / itemHeight);
@@ -4582,6 +4606,7 @@ function setGalleryColumns(cols) {
     if (debounceGalleryTimeout) clearTimeout(debounceGalleryTimeout);
     debounceGalleryTimeout = setTimeout(() => {
         imagesPerPage = galleryColumns * galleryRows; // Ensure up-to-date
+        resetInfiniteScroll();
         displayCurrentPageOptimized();
     }, 500);
     updateGalleryPlaceholders();
@@ -4591,28 +4616,9 @@ function updateGalleryPlaceholders() {
     if (!gallery) return;
     // Remove old placeholders
     Array.from(gallery.querySelectorAll('.gallery-placeholder')).forEach(el => el.remove());
-    // Count current items
-    const items = gallery.querySelectorAll('.gallery-item');
-    const count = items.length;
-    // Recalculate rows in case viewport changed
-    galleryRows = calculateGalleryRows();
-    const total = galleryColumns * galleryRows;
-    for (let i = count; i < total; i++) {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'gallery-placeholder';
-        placeholder.style.background = 'rgba(255, 255, 255, 0.25)';
-        placeholder.style.border = '1px dashed rgb(191 191 191)';
-        placeholder.style.borderRadius = '18px';
-        placeholder.style.minHeight = '0';
-        placeholder.style.minWidth = '0';
-        placeholder.style.aspectRatio = '1';
-        placeholder.style.display = 'flex';
-        placeholder.style.alignItems = 'center';
-        placeholder.style.justifyContent = 'center';
-        placeholder.style.opacity = '0.3';
-        placeholder.innerHTML = '';
-        gallery.appendChild(placeholder);
-    }
+    
+    // For infinite scroll, we don't need to add placeholders for the current page
+    // Placeholders will be added when loading more images
 }
 
 function updateGalleryItemToolbars() {
@@ -4645,67 +4651,46 @@ function updateGalleryItemToolbars() {
     });
 }
 
-// Display current page of images
-function displayCurrentPage() {
-    const startIndex = (currentPage - 1) * imagesPerPage;
-    const endIndex = startIndex + imagesPerPage;
-    const pageImages = allImages.slice(startIndex, endIndex);
-
-    gallery.innerHTML = '';
-
-    if (pageImages.length === 0) {
-        gallery.innerHTML = '';
-        return;
-    }
-
-    pageImages.forEach(image => {
-        const galleryItem = createGalleryItem(image);
-        gallery.appendChild(galleryItem);
-    });
-
-    updatePagination();
-    updateGalleryItemToolbars(); // <-- ensure mini toolbars are updated
-}
-
-// Optimized display function that minimizes DOM changes
+// Optimized display function for infinite scroll
 function displayCurrentPageOptimized() {
-    const startIndex = (currentPage - 1) * imagesPerPage;
-    const endIndex = startIndex + imagesPerPage;
-    const pageImages = allImages.slice(startIndex, endIndex);
     if (!gallery) return;
 
+    // Clear gallery
+    gallery.innerHTML = '';
+
     // If no images, show empty state
-    if (pageImages.length === 0) {
-        if (gallery.innerHTML !== '') {
-            gallery.innerHTML = '';
-        }
+    if (allImages.length === 0) {
         return;
     }
 
-    // Get current gallery items
-    const currentItems = Array.from(gallery.children);
-    const currentFilenames = currentItems.map(item => {
-        const checkbox = item.querySelector('.gallery-item-checkbox');
-        return checkbox ? checkbox.dataset.filename : null;
-    }).filter(Boolean);
-
-    // Get new filenames
-    const newFilenames = pageImages.map(image => image.original || image.pipeline || image.pipeline_upscaled);
-
-    // Check if we need to rebuild (different number of items or different filenames)
-    const needsRebuild = currentFilenames.length !== newFilenames.length || 
-                        !currentFilenames.every((filename, index) => filename === newFilenames[index]);
-
-    if (needsRebuild) {
-        // Clear and rebuild only if necessary
-        gallery.innerHTML = '';
-        pageImages.forEach(image => {
-            const galleryItem = createGalleryItem(image);
-            gallery.appendChild(galleryItem);
-        });
+    // Start with a window in the middle/top
+    displayedStartIndex = 0;
+    displayedEndIndex = Math.min(imagesPerPage * 3, allImages.length);
+    for (let i = displayedStartIndex; i < displayedEndIndex; i++) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'gallery-placeholder';
+        placeholder.style.height = '256px';
+        placeholder.style.width = '100%';
+        placeholder.dataset.imageIndex = i;
+        gallery.appendChild(placeholder);
     }
-    updateGalleryItemToolbars(); // <-- ensure mini toolbars are updated
+    hasMoreImages = displayedEndIndex < allImages.length;
+    hasMoreImagesBefore = displayedStartIndex > 0;
+    updateVirtualScroll();
+
+    updateGalleryItemToolbars();
     updateGalleryPlaceholders();
+}
+
+function resetInfiniteScroll() {
+    displayedStartIndex = 0;
+    displayedEndIndex = 0;
+    isLoadingMore = false;
+    hasMoreImages = true;
+    hasMoreImagesBefore = false;
+    if (infiniteScrollLoading) {
+        infiniteScrollLoading.style.display = 'none';
+    }
 }
 
 // Create gallery item element
@@ -5578,26 +5563,167 @@ async function upscaleImage(image) {
     }
 }
 
-// Update pagination controls
-function updatePagination() {
-    const pageInfo = document.getElementById('pageInfo');
-    const prevPage = document.getElementById('prevPage');
-    const nextPage = document.getElementById('nextPage');
-    const totalPages = Math.max(1, Math.ceil(allImages.length / imagesPerPage));
-    if (currentPage > totalPages) currentPage = totalPages;
-    if (pageInfo) pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
-    if (prevPage) prevPage.disabled = currentPage <= 1;
-    if (nextPage) nextPage.disabled = currentPage >= totalPages;
+// Infinite scroll handler
+function handleInfiniteScroll() {
+    if (isLoadingMore) return;
+    
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const windowHeight = window.innerHeight;
+    const documentHeight = document.documentElement.scrollHeight;
+    
+    // Load more when user is near the bottom (within 200px)
+    if (scrollTop + windowHeight >= documentHeight - 200 && hasMoreImages) {
+        loadMoreImages();
+    }
+    // Load more when user is near the top (within 200px)
+    if (scrollTop <= 200 && hasMoreImagesBefore) {
+        loadMoreImagesBefore();
+    }
+    // Virtual scrolling: remove items that are too far from viewport
+    if (virtualScrollEnabled) {
+        updateVirtualScroll();
+    }
 }
 
-// Change page
-function changePage(delta) {
-    const newPage = currentPage + delta;
-    const totalPages = Math.ceil(allImages.length / imagesPerPage);
+// Load more images for infinite scroll (scroll down)
+async function loadMoreImages() {
+    if (isLoadingMore || !hasMoreImages) return;
+    isLoadingMore = true;
+    if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'flex';
+    try {
+        // Calculate next batch of images
+        const startIndex = displayedEndIndex;
+        const endIndex = Math.min(startIndex + imagesPerPage, allImages.length);
+        const nextBatch = allImages.slice(startIndex, endIndex);
+        if (nextBatch.length === 0) {
+            hasMoreImages = false;
+            return;
+        }
+        // Add placeholders for new items
+        for (let i = startIndex; i < endIndex; i++) {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'gallery-placeholder';
+            placeholder.style.height = '256px'; // or your item height
+            placeholder.style.width = '100%';
+            placeholder.dataset.imageIndex = i;
+            gallery.appendChild(placeholder);
+        }
+        // Fill visible placeholders with real items
+        updateVirtualScroll();
+        // Update displayed range
+        displayedEndIndex = endIndex;
+        hasMoreImages = endIndex < allImages.length;
+    } catch (error) {
+        console.error('Error loading more images:', error);
+    } finally {
+        isLoadingMore = false;
+        if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'none';
+    }
+}
+
+// Load more images before for infinite scroll (scroll up)
+async function loadMoreImagesBefore() {
+    if (isLoadingMore || !hasMoreImagesBefore) return;
+    isLoadingMore = true;
+    if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'flex';
+    try {
+        // Calculate previous batch of images
+        const endIndex = displayedStartIndex;
+        const startIndex = Math.max(0, endIndex - imagesPerPage);
+        const prevBatch = allImages.slice(startIndex, endIndex);
+        if (prevBatch.length === 0) {
+            hasMoreImagesBefore = false;
+            return;
+        }
+        // Add placeholders for new items at the top
+        for (let i = endIndex - 1; i >= startIndex; i--) {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'gallery-placeholder';
+            placeholder.style.height = '256px'; // or your item height
+            placeholder.style.width = '100%';
+            placeholder.dataset.imageIndex = i;
+            gallery.insertBefore(placeholder, gallery.firstChild);
+        }
+        // Fill visible placeholders with real items
+        updateVirtualScroll();
+        // Update displayed range
+        displayedStartIndex = startIndex;
+        hasMoreImagesBefore = startIndex > 0;
+    } catch (error) {
+        console.error('Error loading more images before:', error);
+    } finally {
+        isLoadingMore = false;
+        if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'none';
+    }
+}
+
+// Update visible items tracking for virtual scrolling
+function updateVisibleItems() {
+    if (!gallery) return;
     
-    if (newPage >= 1 && newPage <= totalPages) {
-        currentPage = newPage;
-        displayCurrentPage();
+    visibleItems.clear();
+    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+    const viewportTop = window.pageYOffset;
+    const viewportBottom = viewportTop + window.innerHeight;
+    
+    items.forEach((item, index) => {
+        const rect = item.getBoundingClientRect();
+        const itemTop = rect.top + window.pageYOffset;
+        const itemBottom = rect.bottom + window.pageYOffset;
+        
+        // Check if item is visible in viewport
+        if (itemBottom > viewportTop && itemTop < viewportBottom) {
+            visibleItems.add(index);
+        }
+    });
+}
+
+// Virtual scroll: replace far-away items with placeholders
+function updateVirtualScroll() {
+    if (!gallery) return;
+    
+    // First, update visible items tracking
+    updateVisibleItems();
+    
+    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+    const total = items.length;
+    const bufferRows = 4; // Number of rows to keep above and below viewport
+    const itemsPerRow = galleryColumns;
+    const visibleIndices = Array.from(visibleItems);
+    
+    if (visibleIndices.length === 0) return;
+    
+    const minVisible = Math.min(...visibleIndices);
+    const maxVisible = Math.max(...visibleIndices);
+    const minKeep = Math.max(0, minVisible - bufferRows * itemsPerRow);
+    const maxKeep = Math.min(total - 1, maxVisible + bufferRows * itemsPerRow);
+    
+    // Process items in reverse order to avoid index shifting issues
+    for (let i = 0; i < total; i++) {
+        const el = items[i];
+        
+        if (i < minKeep || i > maxKeep) {
+            // Replace with placeholder if not already
+            if (!el.classList.contains('gallery-placeholder')) {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'gallery-placeholder';
+                placeholder.style.height = el.offsetHeight + 'px';
+                placeholder.style.width = el.offsetWidth + 'px';
+                placeholder.dataset.imageIndex = el.dataset.imageIndex || i;
+                gallery.replaceChild(placeholder, el);
+            }
+        } else {
+            // If it's a placeholder, restore the real item
+            if (el.classList.contains('gallery-placeholder')) {
+                const imageIndex = parseInt(el.dataset.imageIndex) || i;
+                const image = allImages[imageIndex];
+                if (image) {
+                    const realItem = createGalleryItem(image);
+                    realItem.dataset.imageIndex = imageIndex;
+                    gallery.replaceChild(realItem, el);
+                }
+            }
+        }
     }
 }
 
@@ -13709,7 +13835,7 @@ async function updateMaskPreview() {
     maskPreviewCanvas.style.left = (imageRect.left - containerRect.left) + 'px';
     maskPreviewCanvas.style.top = (imageRect.top - containerRect.top) + 'px';
     maskPreviewCanvas.style.width = imageRect.width + 'px';
-    maskPreviewCanvas.style.height = imageRect.height + 'px';
+    maskPreviewCanvas.height = imageRect.height + 'px';
     
     const ctx = maskPreviewCanvas.getContext('2d');
     
