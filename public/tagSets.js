@@ -14546,8 +14546,21 @@ aH = [
     ["two tone", 2],
     ["pattern", 3]
 ],
-aY = new Set(["taur", "serpentine", "naga", "centaur", "feral", "merfolk", "lamia"]);
-
+aY = new Set(["taur", "serpentine", "naga", "centaur", "feral", "merfolk", "lamia"]),
+u1 = [ ...Array.from(new Set(Object.values(ty).flatMap(e => {
+    if (Array.isArray(e)) {
+        return e.flatMap(sub => {
+        const first = sub[0];
+        return typeof first === 'string' ? first.split(',').map(s => s.trim()) : [first];
+        });
+    } else if (typeof e === 'object') {
+        return [Object.assign({}, e)];
+    } else if (typeof e === 'string') {
+        return e.split(',').map(s => s.trim());
+    } else {
+        return [e];
+    }
+}))), 'pregnancy', 'fetus', 'labor pains', 'gravid belly', 'womb'];
 
 function randInt(e) {
     let t = arguments.length > 1 && void 0 !== arguments[1] ? arguments[1] : 0;

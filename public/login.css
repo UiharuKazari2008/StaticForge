@@ -13,59 +13,72 @@ body {
     height: 100vh;
 }
 
-/* Static Background Effect */
-.static-background {
+/* Bokeh background (reuse from styles.css) */
+.bokeh-background {
+    height: 100vh;
+    width: 100vw;
     position: fixed;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    transition: opacity 3s ease-in-out, background-color 3s ease-in-out;
     z-index: -2;
-    background: #000;
+    will-change: opacity, background-color, background-image;
 }
-
-.static-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-image: 
-        radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
-        radial-gradient(circle at 40% 80%, rgba(120, 219, 255, 0.3) 0%, transparent 50%);
-    animation: staticPulse 8s ease-in-out infinite;
+.bokeh {
+    height: 130vh;
+    width: 130vw;
+    position: fixed;
+    top: -15vh;
+    left: -15vw;
+    transform: translateZ(0);
+    backface-visibility: hidden;
     z-index: -1;
+    transition: background-color 3s ease-in-out;
 }
-
-.last-image-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    opacity: 0;
-    transition: opacity 4s ease-in-out;
-    z-index: -1;
+.bokeh circle {
+  animation: rotate 120s linear infinite;
+  fill: #124;
+  opacity: 0.43;
+  transform-origin: 50%;
+  filter: blur(0.04px);
+  transition: fill 3s ease-in-out, opacity 3s ease-in-out, transform 0.6s ease-in-out;
 }
-
-.last-image-overlay.active {
-    opacity: 0.3;
+.bokeh circle:nth-child(2n) { fill: #614; transform-origin: 20% 110%; animation-delay: -60s; animation-duration: 82.632s; opacity: 0.2; }
+.bokeh circle:nth-child(3n) { opacity: 0.65; fill: #469; transform-origin: 70% 30%; animation-delay: -30s; animation-duration: 159.996s; }
+.bokeh circle:nth-child(4n) { fill: #c63; transform-origin: 110% 70%; animation-delay: -40s; animation-duration: 95.5992s; }
+.bokeh circle:nth-child(5n) { fill: #266; transform-origin: 30% 40%; }
+.bokeh circle:nth-child(6n) { fill: #124; transform-origin: -10% 80%; animation-delay: -156s; }
+.bokeh circle:nth-child(7n) { fill: #614; transform-origin: 70% -10%; }
+.bokeh circle:nth-child(8n) { fill: #c63; transform-origin: -30% 50%; animation-delay: -48s; }
+.bokeh circle:nth-child(9n) { fill: #469; transform-origin: 40% 90%; animation-delay: -72s; }
+.bokeh circle:nth-child(10n) { fill: #614; transform-origin: 90% 20%; animation-delay: -36s; }
+.bokeh circle:nth-child(11n) { fill: #124; transform-origin: 20% 10%; animation-delay: -84s; }
+.bokeh circle:nth-child(12n) { fill: #c63; transform-origin: 85% 80%; animation-delay: -54s; }
+.bokeh circle:nth-child(13n) { fill: #266; transform-origin: 10% 60%; animation-delay: -66s; }
+@keyframes rotate { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+/* Product name top left */
+.login-product-name {
+    position: fixed;
+    top: 24px;
+    left: 32px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    font-size: 2rem;
+    font-weight: 700;
+    color: #fff;
+    gap: 12px;
+    pointer-events: none;
+    opacity: 0.25;
 }
-
-@keyframes staticPulse {
-    0%, 100% {
-        opacity: 0.3;
-        transform: scale(1);
-    }
-    50% {
-        opacity: 0.6;
-        transform: scale(1.05);
-    }
+.login-product-name i {
+    color: #667eea;
+    font-size: 2rem;
 }
+/* Hide PIN UI */
+.pin-input-group, .pin-label, .pin-display, .pin-input, .login-btn { display: none !important; }
 
 /* Login Container */
 .login-container {
@@ -77,11 +90,7 @@ body {
 }
 
 .login-dialog {
-    background: rgba(20, 20, 30, 0.95);
-    backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 20px;
-    padding: 40px;
+    background: rgb(20 20 30 / 0%);
     width: 100%;
     max-width: 400px;
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);

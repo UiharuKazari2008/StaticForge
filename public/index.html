@@ -8,49 +8,38 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
-    <!-- Static Effect Background -->
-    <div id="staticBackground" class="static-background">
-        <div class="static-overlay"></div>
-        <div class="last-image-overlay" id="lastImageOverlay"></div>
+    <!-- Animated Bokeh Background -->
+    <div class="bokeh-background current-bg"></div>
+    <div class="bokeh-background next-bg" style="opacity: 0;"></div>
+    <svg class="bokeh" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="10%" cy="85%" r="60%"  />
+      <circle cx="45%" cy="50%" r="12%"  />
+      <circle cx="85%" cy="35%" r="25%"  />
+      <circle cx="60%" cy="85%" r="16%"  />
+      <circle cx="45%" cy="50%" r="24%"  />
+      <circle cx="35%" cy="25%" r="16%"  />
+      <circle cx="90%" cy="-25%" r="28%" />
+      <circle cx="-15%" cy="30%" r="24%" />
+      <circle cx="65%" cy="85%" r="44%"  />
+      <circle cx="45%" cy="50%" r="16%"  />
+      <circle cx="25%" cy="75%" r="20%"  />
+      <circle cx="75%" cy="15%" r="18%"  />
+      <circle cx="15%" cy="15%" r="22%"  />
+      <circle cx="80%" cy="70%" r="14%"  />
+      <circle cx="5%" cy="45%" r="26%"  />
+    </svg>
+    <!-- Product Name Top Left -->
+    <div class="login-product-name">
+      <i class="nai-wand-sparkles"></i>
+      <span>StaticForge</span>
     </div>
-
-    <!-- Login Dialog -->
     <div class="login-container">
         <div class="login-dialog">
-            <div class="app-header">
-                <h1 class="app-title">
-                    <i class="nai-wand-sparkles"></i>
-                    StaticForge
-                </h1>
-                <p class="app-subtitle">AI Image Generator</p>
-                </div>
-
-            <form id="loginForm" class="login-form">
-                <div class="pin-input-group">
-                    <label for="pinInput" class="pin-label">Enter PIN Code</label>
-                    <div class="pin-display">
-                        <div class="pin-digit" data-index="0"></div>
-                        <div class="pin-digit" data-index="1"></div>
-                        <div class="pin-digit" data-index="2"></div>
-                        <div class="pin-digit" data-index="3"></div>
-                        <div class="pin-digit" data-index="4"></div>
-                        <div class="pin-digit" data-index="5"></div>
-                    </div>
-                    <input type="password" id="pinInput" class="pin-input" maxlength="6" autocomplete="off" placeholder="Enter 6-digit PIN">
-                </div>
-
-                <div class="login-actions">
-                    <button type="submit" id="loginBtn" class="login-btn" disabled>
-                        <i class="fas fa-sign-in-alt"></i>
-                        Login
-                    </button>
-                </div>
-                
-                <div id="errorMessage" class="error-message hidden"></div>
-            </form>
+            <!-- Hidden login form, no visible PIN UI -->
+            <form id="loginForm" class="login-form" autocomplete="off" style="display:none;"></form>
+            <div id="errorMessage" class="error-message hidden"></div>
         </div>
     </div>
-
     <script src="login.js"></script>
 </body>
 </html> 

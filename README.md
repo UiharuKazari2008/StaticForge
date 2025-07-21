@@ -2,6 +2,25 @@
 
 A Node.js Express server for generating AI images using NovelAI's API with advanced features including AI upscaling, text replacements, rate limiting, authentication, and dynamic configuration.
 
+## Preface
+> **⚠️ Important Notice:**  
+>  
+> You are **not permitted** to host this server in an unauthenticated manner or share access with anyone other than yourself.  
+>  
+> **Per NovelAI Terms of Service, Section 9 (Misconduct):**  
+> - You may **not** enable or allow others to use the Services or Software using your account information.  
+> - You may **not** host, sublicense, or resell the Services.  
+> - Unauthorized sharing or public hosting of this server is a violation of NovelAI's ToS and may result in account termination.  
+>  
+> **This project is for personal, private use only.**  
+>  
+> **You must only use this application from your home IP address.**  
+> If you access the interface remotely, you must protect it with a PIN number (login key) and never expose it to the public internet without authentication.  
+>  
+> See [NovelAI ToS Section 9](https://novelai.net/terms-of-service) for details.
+
+
+
 ## Features
 
 - 🎨 **AI Image Generation** using NovelAI API

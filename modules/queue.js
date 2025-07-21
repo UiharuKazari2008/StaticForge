@@ -1,120 +1,68 @@
-// Custom rate limiting queue system
-class CustomQueue {
-    constructor() {
-        this.queue = [];
-        this.processing = false;
-        this.lastRequestTime = 0;
-        this.requestCount = 0;
-        this.windowStartTime = Date.now();
-        this.minDelay = 5000; // 5 seconds minimum between requests
-        this.maxDelay = 15000; // 15 seconds maximum delay
-        this.windowResetTime = 2 * 60 * 1000; // 2 minutes
-        this.excludedEndpoints = ['/'];
+const WINDOW_5_MIN = 5 * 60 * 1000;
+const WINDOW_15_MIN = 15 * 60 * 1000;
+const MIN_INTERVAL = 10 * 1000;
+const MAX_5MIN = 20;
+const MAX_15MIN = 50;
+
+// Store timestamps of requests
+let requestTimestamps = [];
+let lastRequestEnd = 0;
+let isProcessing = false;
+
+function pruneOld(now = Date.now()) {
+    requestTimestamps = requestTimestamps.filter(ts => now - ts < WINDOW_15_MIN);
+}
+
+function getStatus() {
+    const now = Date.now();
+    pruneOld(now);
+    const lastTs = requestTimestamps.length ? requestTimestamps[requestTimestamps.length - 1] : 0;
+    const sinceLast = now - lastTs;
+    const in5min = requestTimestamps.filter(ts => now - ts < WINDOW_5_MIN).length;
+    const in15min = requestTimestamps.length;
+    const canRequest = !isProcessing && (now - lastRequestEnd > MIN_INTERVAL) && in5min < MAX_5MIN && in15min < MAX_15MIN;
+    // Value: 0 = safe, 1 = warning, 2 = limit
+    let value = 0;
+    if (!canRequest) value = 2;
+    else if (in5min >= MAX_5MIN - 2 || in15min >= MAX_15MIN - 5 || (now - lastRequestEnd < MIN_INTERVAL + 5000)) value = 1;
+    return {
+        canRequest,
+        value,
+        in5min,
+        in15min,
+        sinceLast,
+        nextAllowed: Math.max(0, MIN_INTERVAL - (now - lastRequestEnd)),
+    };
+}
+
+async function queueMiddleware(req, res, next) {
+    const now = Date.now();
+    pruneOld(now);
+    if (isProcessing) {
+        return res.status(429).json({ error: 'Another request is in progress. Please wait.' });
     }
-
-    // Check if endpoint should be excluded from rate limiting
-    isExcluded(path) {
-        return this.excludedEndpoints.some(endpoint => path === endpoint || path.startsWith(endpoint)) ||
-               path.startsWith('/images/') || 
-               path.startsWith('/styles.css') || 
-               path.startsWith('/script.js');
+    if (now - lastRequestEnd < MIN_INTERVAL) {
+        return res.status(429).json({ error: `You must wait ${Math.ceil((MIN_INTERVAL - (now - lastRequestEnd))/1000)}s between requests.` });
     }
-
-    // Calculate current delay based on request count
-    getCurrentDelay() {
-        if (this.requestCount <= 3) {
-            return this.minDelay;
-        }
-        
-        // Increase delay for each request after the first 3
-        const additionalDelay = Math.min((this.requestCount - 3) * 2000, this.maxDelay - this.minDelay);
-        return this.minDelay + additionalDelay;
+    const in5min = requestTimestamps.filter(ts => now - ts < WINDOW_5_MIN).length;
+    const in15min = requestTimestamps.length;
+    if (in5min >= MAX_5MIN) {
+        return res.status(429).json({ error: 'Too many requests in 5 minutes.' });
     }
-
-    // Reset window if 2 minutes have passed
-    resetWindowIfNeeded() {
-        const now = Date.now();
-        if (now - this.windowStartTime >= this.windowResetTime) {
-            this.requestCount = 0;
-            this.windowStartTime = now;
-        }
+    if (in15min >= MAX_15MIN) {
+        return res.status(429).json({ error: 'Too many requests in 15 minutes.' });
     }
-
-    // Add request to queue and process
-    async enqueue(req, res, next) {
-        // Skip rate limiting for excluded endpoints
-        if (this.isExcluded(req.path)) {
-            return next();
-        }
-
-        this.resetWindowIfNeeded();
-        
-        return new Promise((resolve, reject) => {
-            const queueItem = {
-                req,
-                res,
-                next,
-                resolve,
-                reject,
-                enqueueTime: Date.now()
-            };
-
-            this.queue.push(queueItem);
-            this.processQueue();
-        });
-    }
-
-    // Process the queue
-    async processQueue() {
-        if (this.processing || this.queue.length === 0) {
-            return;
-        }
-
-        this.processing = true;
-
-        while (this.queue.length > 0) {
-            const item = this.queue.shift();
-            const now = Date.now();
-            
-            // Calculate delay needed
-            const timeSinceLastRequest = now - this.lastRequestTime;
-            const requiredDelay = this.getCurrentDelay();
-            const actualDelay = Math.max(0, requiredDelay - timeSinceLastRequest);
-
-            if (actualDelay > 0) {
-                const queueTime = now - item.enqueueTime;
-                if (queueTime > 0) {
-                }
-                await new Promise(resolve => setTimeout(resolve, actualDelay));
-            }
-
-            // Update tracking
-            this.lastRequestTime = Date.now();
-            this.requestCount++;
-
-            // Execute the request
-            try {
-                await item.next(item.req, item.res);
-                item.resolve();
-            } catch (error) {
-                item.reject(error);
-            }
-        }
-
-        this.processing = false;
+    isProcessing = true;
+    try {
+        await next();
+        requestTimestamps.push(Date.now());
+        lastRequestEnd = Date.now();
+    } finally {
+        isProcessing = false;
     }
 }
 
-// Create global queue instance
-const requestQueue = new CustomQueue();
-
-// Queue middleware (runs before logging)
-const queueMiddleware = (req, res, next) => {
-    requestQueue.enqueue(req, res, next);
-};
-
 module.exports = {
-    CustomQueue,
-    requestQueue,
-    queueMiddleware
+    queueMiddleware,
+    getStatus,
 }; 

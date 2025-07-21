@@ -8,8 +8,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Oxanium:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="/tagSets.js"></script>
+    <link rel="stylesheet" href="/fontawesome/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/fontawesome/css/all.min.css">
+
 </head>
 <body>
 <!-- Background layers for smooth transitions -->
@@ -88,10 +90,16 @@
                                     </div>
                                     <div class="tab-content">
                                         <div class="tab-pane active" id="prompt-tab" data-label="Base Prompt">
-                                            <textarea id="manualPrompt" class="form-control prompt-textarea textarea-inset" placeholder="Enter your prompt..." required></textarea>
+                                            <div class="prompt-textarea-container">
+                                                <div class="prompt-textarea-background"></div>
+                                                <textarea id="manualPrompt" class="form-control prompt-textarea textarea-inset" placeholder="Enter your prompt..." required></textarea>
+                                            </div>
                                         </div>
                                         <div class="tab-pane" id="uc-tab" data-label="Undesired Content">
-                                            <textarea id="manualUc" class="form-control textarea-inset" rows="3" placeholder="Enter undesired content..."></textarea>
+                                            <div class="prompt-textarea-container">
+                                                <div class="prompt-textarea-background"></div>
+                                                <textarea id="manualUc" class="form-control prompt-textarea textarea-inset" rows="3" placeholder="Enter undesired content..."></textarea>
+                                            </div>
                                         </div>
                                         <div class="tab-pane" id="settings-tab" data-label="Dataset Settings">
                                             <div class="dataset-bias-container">
@@ -151,7 +159,11 @@
                                     </div>
                                 </div>
                                 <div id="transformationSectionRight" class="form-col">
-                                    <div class="form-row" style="align-self: flex-end;">
+                                    <div class="form-row" style="align-self: flex-end;">    
+                                        <button type="button" id="vibeNormalizeToggle" class="btn-secondary toggle-btn" data-state="on" title="Normalize vibe strengths">
+                                            <i class="fas fa-scale-balanced"></i>
+                                            <span>V-Norm</span>
+                                        </button>
                                         <button type="button" id="inpaintBtn" class="btn-secondary toggle-btn" data-state="off">
                                             <i class="nai-inpaint"></i> Inpaint
                                         </button>
@@ -163,13 +175,13 @@
                                             </button>
                                             <div id="transformationDropdownMenu" class="custom-dropdown-menu" style="display: none;">
                                                 <div class="custom-dropdown-option" data-value="reroll" style="display: none;">
-                                                    <i class="nai-img2img"></i> Referance
+                                                    <i class="nai-img2img"></i> Previous
                                                 </div>
                                                 <div class="custom-dropdown-option" data-value="variation" style="display: none;">
-                                                    <i class="nai-img2img"></i> Current Image
+                                                    <i class="nai-img2img"></i> Current
                                                 </div>
                                                 <div class="custom-dropdown-option" data-value="browse">
-                                                    <i class="nai-history"></i> Browse History
+                                                    <i class="fas fa-folder-image"></i> Referances
                                                 </div>
                                                 <div class="custom-dropdown-option" data-value="upload">
                                                     <i class="nai-import"></i> Upload Image
@@ -260,7 +272,6 @@
                                                                 <div class="grid-cell"></div>
                                                                 <div class="grid-cell"></div>
                                                                 <div class="grid-cell"></div>
-                                                                <div class="grid-cell"></div>
                                                             </div>
                                                             <span id="imageBiasSelected">Center</span>
                                                         </div>
@@ -278,6 +289,16 @@
                                 </div>
                             </div>
                         </div>
+                        
+                        <!-- Vibe References Section -->
+                        <div class="form-section" id="vibeReferencesSection" style="display: none;">
+                            <div class="form-row">
+                                <div id="vibeReferencesContainer" class="vibe-references-container">
+                                    <!-- Vibe reference items will be added here -->
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div class="form-section model-control">
                             <div class="form-row">
                                 <div class="form-group" id="manualModelGroup">
@@ -398,6 +419,7 @@
                                     <div id="manualPriceDisplay" class="price-display badge" style="display: none;">
                                         <i class="nai-anla"></i>
                                         <span id="manualPriceList" class="price-list">-</span>
+                                        <span id="queueStatus" class="queue-status"></span>
                                     </div>
                                     <button type="button" id="paidRequestToggle" class="btn-secondary toggle-btn" data-state="off" title="Force Paid Request">
                                         <i class="fas fa-dollar-sign"></i>
@@ -445,11 +467,16 @@
                                     <i class="nai-inpaint"></i>
                                 </button>
                                 <button id="manualPreviewLoadBtn" class="btn-primary round-button" style="display: none;">
-                                    <i class="nai-settings"></i>
+                                    <i class="nai-penwriting"></i>
                                 </button>
-                                <button id="manualPreviewDeleteBtn" class="btn-danger round-button" style="display: none;">
-                                    <i class="nai-trash"></i>
-                                </button>
+                                <div class="round-button-group">
+                                    <button id="manualPreviewScrapBtn" class="btn-secondary round-button" style="display: none;">
+                                        <i class="nai-image-tool-sketch"></i>
+                                    </button>
+                                    <button id="manualPreviewDeleteBtn" class="btn-danger round-button" style="display: none;">
+                                        <i class="nai-trash"></i>
+                                    </button>
+                                </div>
                             </div>
                             <div class="manual-preview-controls-top-right">
                                 <button id="manualPreviewCloseBtn" class="btn-primary round-button">
@@ -472,19 +499,44 @@
                             </div>
                         </div>
                     </div>
-                    <!-- Cache Browser Container (Desktop Only) -->
+                    <!-- Reference Browser Container (Desktop Only) -->
                     <div id="cacheBrowserContainer" class="cache-browser-container">
                         <div class="cache-browser-header">
-                            <h3>Browse Cache Images</h3>
+                            <!-- Tab Navigation -->
+                            <div class="cache-browser-tabs">
+                                <div class="tab-buttons">
+                                    <button type="button" class="tab-btn active" data-tab="references">
+                                        <i class="fas fa-images"></i> Base Images
+                                    </button>
+                                    <button type="button" class="tab-btn" data-tab="vibe-references">
+                                        <i class="nai-vibe-transfer"></i> Vibe References
+                                    </button>
+                                </div>
+                            </div>
                             <button id="closeCacheBrowserContainerBtn" class="close-dialog">&times;</button>
                         </div>
                         <div class="cache-browser-body">
-                            <div id="cacheGalleryContainer" class="cache-gallery">
-                                <!-- Cache images will be loaded here -->
+                            
+                            <!-- References Tab -->
+                            <div class="tab-pane active" id="references-tab-container">
+                                <div id="cacheGalleryContainer" class="cache-gallery">
+                                    <!-- Reference images will be loaded here -->
+                                </div>
+                                <div class="cache-browser-loading" id="cacheBrowserLoadingContainer" style="display: none;">
+                                    <div class="spinner"></div>
+                                    <p>Loading reference images...</p>
+                                </div>
                             </div>
-                            <div class="cache-browser-loading" id="cacheBrowserLoadingContainer" style="display: none;">
-                                <div class="spinner"></div>
-                                <p>Loading cache images...</p>
+                            
+                            <!-- Vibe References Tab -->
+                            <div class="tab-pane" id="vibe-references-tab-container">
+                                <div id="vibeReferencesGalleryContainer" class="cache-gallery">
+                                    <!-- Vibe reference images will be loaded here -->
+                                </div>
+                                <div class="cache-browser-loading" id="vibeReferencesLoadingContainer" style="display: none;">
+                                    <div class="spinner"></div>
+                                    <p>Loading vibe references...</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -633,8 +685,8 @@
                                 <button type="button" id="biasResetBtn" class="btn-secondary">
                                     <i class="nai-reload"></i> Reset
                                 </button>
-                                <button type="button" id="previewToggleBtn" class="btn-secondary toggle-btn" data-state="off">
-                                    <i class="nai-sparkles"></i> Client Preview
+                                <button type="button" id="previewToggleBtn" class="btn-secondary toggle-btn" data-state="on">
+                                    <i class="fas fa-mouse-pointer"></i> Interactive
                                 </button>
                             </div>
                         </div>
@@ -692,30 +744,7 @@
         </div>
     </div>
 
-    <!-- Mask Adjustment Modal -->
-    <div id="maskAdjustmentModal" class="modal alert-theme">
-        <div class="modal-content mask-adjustment-content center">
-            <div class="mask-adjustment-header">
-                <h3>Mask Adjustment Required</h3>
-                <button id="closeMaskAdjustmentBtn" class="close-dialog">&times;</button>
-            </div>
-            <div class="mask-adjustment-body">
-                <p>The image bias adjustment has changed the image composition. Your existing mask may no longer match the new image layout.</p>
-                <p>Would you like to:</p>
-                <div class="mask-adjustment-options">
-                    <button type="button" id="editMaskBtn" class="btn-primary">
-                        <i class="fas fa-edit"></i> Edit Mask
-                    </button>
-                    <button type="button" id="autoFillMaskBtn" class="btn-secondary">
-                        <i class="fas fa-magic"></i> Auto Correct Mask
-                    </button>
-                    <button type="button" id="skipMaskAdjustmentBtn" class="btn-secondary">
-                        <i class="fas fa-times"></i> Skip
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
+
 
     <!-- Character Data Confirmation Modal -->
     <div id="characterDataConfirmModal" class="modal alert-theme">
@@ -736,6 +765,51 @@
                     </button>
                     <button type="button" id="cancelGenerationBtn" class="btn-danger">
                         <i class="fas fa-times"></i> Cancel Generation
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Base Image Change Alert Modal -->
+    <div id="baseImageChangeAlertModal" class="modal alert-theme">
+        <div class="modal-content center">
+            <div class="modal-header">
+                <h3>Replace Base Image?</h3>
+                <button id="closeBaseImageChangeAlertBtn" class="close-dialog">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to replace the base image? The inpainting mask will be removed.</p>
+                <div class="modal-actions">
+                    <button type="button" id="confirmBaseImageChangeBtn" class="btn-primary">
+                        <i class="fas fa-check"></i> Yes, Replace Image
+                    </button>
+                    <button type="button" id="cancelBaseImageChangeBtn" class="btn-secondary">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Bias Mask Alert Modal -->
+    <div id="imageBiasMaskAlertModal" class="modal alert-theme">
+        <div class="modal-content center">
+            <div class="modal-header">
+                <h3>Mask Detected</h3>
+                <button id="closeImageBiasMaskAlertBtn" class="close-dialog">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>You have an existing mask. Changing the image bias may affect the mask alignment.</p>
+                <div class="modal-actions">
+                    <button type="button" id="cancelImageBiasBtn" class="btn-secondary">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="button" id="removeMaskBtn" class="btn-secondary">
+                        <i class="fas fa-trash"></i> Remove Mask
+                    </button>
+                    <button type="button" id="createMaskBtn" class="btn-primary">
+                        <i class="fas fa-magic"></i> Create Mask
                     </button>
                 </div>
             </div>
@@ -852,7 +926,7 @@
                                 <span class="metadata-label">Guidance</span>
                                 <span id="metadataGuidance" class="metadata-value">-</span>
                             </div>
-                            <div class="metadata-cell metadata-very-small"> 
+                            <div class="metadata-cell">
                                 <span class="metadata-label">Rescale</span>
                                 <span id="metadataRescale" class="metadata-value">-</span>
                             </div>
@@ -1001,6 +1075,9 @@
                 <button type="button" id="workspaceManageBtn" class="btn-secondary" title="Manage Workspaces">
                     <i class="fas fa-cog"></i>
                 </button>
+                <button type="button" id="cacheManagerBtn" class="btn-secondary" title="Reference Manager">
+                    <i class="fas fa-folder-image"></i>
+                </button>
             </div>
             <button id="galleryToggleBtn" class="btn-secondary toggle-btn" data-state="off" data-state="images" title="Toggle between Images and Scraps">
                 <i class="nai-image-count"></i>
@@ -1025,7 +1102,7 @@
                 <option value="3">Right-Mid/Bottom-Mid</option>
                 <option value="4">Right/Bottom</option>
             </select>
-            <button id="uploadBtn" class="btn-secondary" title="Upload Image (or paste from clipboard)">
+            <button id="uploadBtn" class="btn-secondary" title="Upload Images (or paste from clipboard)">
                 <i class="nai-import"></i> Import
             </button>
             <button id="manualBtn" class="btn-secondary">
@@ -1038,6 +1115,7 @@
             <div id="balanceDisplay" class="balance-display" title="Loading balance...">
                 <i class="nai-anla"></i>
                 <span id="balanceAmount">-</span>
+                <span id="imageGenCounter" class="image-gen-counter">0</span>
             </div>
             <button id="logoutButton" class="btn-primary">
                 <i class="nai-logout"></i> Logout
@@ -1057,14 +1135,20 @@
                     <span id="selectedCount">0</span> images selected
                 </div>
                 <div class="bulk-actions-buttons">
-                    <button id="bulkDeleteBtn" class="btn-danger">
-                        <i class="nai-trash"></i> Delete
-                    </button>
                     <button id="bulkSequenziaBtn" class="btn-primary">
                         <i class="fas fa-share"></i> Bounce
                     </button>
                     <button id="bulkMoveToWorkspaceBtn" class="btn-primary">
                         <i class="fas fa-folder"></i> Transfer
+                    </button>
+                    <button id="bulkMoveToScrapsBtn" class="btn-secondary">
+                        <i class="nai-image-tool-sketch"></i> Scrap
+                    </button>
+                    <button id="bulkChangePresetBtn" class="btn-secondary">
+                        <i class="nai-pen-tip-light"></i> Change Preset
+                    </button>
+                    <button id="bulkDeleteBtn" class="btn-danger">
+                        <i class="nai-trash"></i> Delete
                     </button>
                     <button id="bulkSelectAllBtn" class="btn-secondary">
                         <i class="fas fa-check-double"></i>
@@ -1095,19 +1179,44 @@
         </div>
     </div>
 
-    <!-- Cache Browser Modal -->
+    <!-- Reference Browser Modal -->
     <div id="cacheBrowserModal" class="modal">
         <div class="modal-content cache-browser-content">
             <div class="cache-browser-header">
-                <h3>Browse Cache Images</h3>
+                <!-- Tab Navigation -->
+                <div class="cache-browser-tabs">
+                    <div class="tab-buttons">
+                        <button type="button" class="tab-btn active" data-tab="references">
+                            <i class="fas fa-images"></i> Base Images
+                        </button>
+                        <button type="button" class="tab-btn" data-tab="vibe-references">
+                            <i class="nai-vibe-transfer"></i> Vibe References
+                        </button>
+                    </div>
+                </div>
             </div>
             <div class="cache-browser-body">
-                <div id="cacheGallery" class="cache-gallery">
-                    <!-- Cache images will be loaded here -->
+                
+                <!-- References Tab -->
+                <div class="tab-pane active" id="references-tab">
+                    <div id="cacheGallery" class="cache-gallery">
+                        <!-- Reference images will be loaded here -->
+                    </div>
+                    <div class="cache-browser-loading" id="cacheBrowserLoading" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Loading cache images...</p>
+                    </div>
                 </div>
-                <div class="cache-browser-loading" id="cacheBrowserLoading" style="display: none;">
-                    <div class="spinner"></div>
-                    <p>Loading cache images...</p>
+                
+                <!-- Vibe References Tab -->
+                <div class="tab-pane" id="vibe-references-tab">
+                    <div id="vibeReferencesGallery" class="cache-gallery">
+                        <!-- Vibe reference images will be loaded here -->
+                    </div>
+                    <div class="cache-browser-loading" id="vibeReferencesLoading" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>Loading vibe references...</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1207,6 +1316,352 @@
         </div>
     </div>
 
+    <!-- Reference Manager Modal -->
+    <div id="cacheManagerModal" class="modal">
+        <div class="modal-content cache-manager-content">
+            <div class="modal-header">
+                <h3>Reference Manager</h3>
+                <button id="closeCacheManagerBtn" class="close-dialog" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="cache-manager-controls">
+                    <div class="cache-manager-header">
+                        <div class="cache-manager-workspace-selector">
+                            <label for="cacheManagerWorkspaceDropdown">Workspace:</label>
+                            <div id="cacheManagerWorkspaceDropdown" class="custom-dropdown">
+                                <button type="button" id="cacheManagerWorkspaceDropdownBtn" class="btn-secondary">
+                                    <i class="fas fa-folder-open"></i>
+                                    <span id="cacheManagerWorkspaceSelected">Default</span>
+                                </button>
+                                <div id="cacheManagerWorkspaceDropdownMenu" class="custom-dropdown-menu" style="display: none;">
+                                    <!-- Workspace options will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+                        <div class="cache-manager-actions">
+                            <div id="cacheManagerUploadDropdown" class="custom-dropdown">
+                                <button type="button" id="cacheManagerUploadDropdownBtn" class="btn-primary">
+                                    <i class="nai-import"></i> Upload
+                                </button>
+                                <div id="cacheManagerUploadDropdownMenu" class="custom-dropdown-menu" style="display: none;">
+                                    <div class="custom-dropdown-option" data-upload-type="reference">
+                                        <i class="fas fa-images"></i> Reference
+                                    </div>
+                                    <div class="custom-dropdown-option" data-upload-type="vibe">
+                                        <i class="nai-vibe-transfer"></i> Vibe
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" id="cacheManagerMoveBtn" class="btn-secondary" style="display: none;">
+                                <i class="fas fa-arrow-right"></i> Move
+                            </button>
+                            <button type="button" id="vibeManagerMoveBtn" class="btn-secondary" style="display: none;">
+                                <i class="fas fa-arrow-right"></i> Move Vibes
+                            </button>
+                            <button type="button" id="cacheManagerRefreshBtn" class="btn-secondary">
+                                <i class="nai-reload"></i> Refresh
+                            </button>
+
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tab Navigation -->
+                <div class="cache-manager-tabs">
+                    <div class="tab-buttons">
+                        <button type="button" class="tab-btn active" data-tab="references">
+                            <i class="fas fa-images"></i> Base Images
+                        </button>
+                        <button type="button" class="tab-btn" data-tab="vibe">
+                            <i class="nai-vibe-transfer"></i> Vibe Encodings
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="cache-manager-body">
+                    <!-- References Tab -->
+                    <div class="tab-pane active" id="references-tab">
+                        <div class="cache-manager-gallery-container">
+                            <div id="cacheManagerGallery" class="cache-manager-gallery">
+                                <!-- Reference images will be loaded here -->
+                            </div>
+                            <div class="cache-manager-loading" id="cacheManagerLoading" style="display: none;">
+                                <div class="spinner"></div>
+                                <p>Loading cache images...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Vibe Images Tab -->
+                    <div class="tab-pane" id="vibe-tab">
+                        <div class="vibe-manager-gallery-container">
+                            <div id="vibeManagerGallery" class="vibe-manager-gallery">
+                                <!-- Vibe images will be loaded here -->
+                            </div>
+                            <div class="vibe-manager-loading" id="vibeManagerLoading" style="display: none;">
+                                <div class="spinner"></div>
+                                <p>Loading vibe images...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reference Manager Upload Modal -->
+    <div id="cacheManagerUploadModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Upload Images to Reference</h3>
+                <button id="closeCacheManagerUploadBtn" class="close-dialog" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-section">
+                    <div class="form-group">
+                        <label for="cacheManagerFileInput">Select Images</label>
+                        <input type="file" id="cacheManagerFileInput" class="form-control" accept="image/*" multiple>
+                        <small class="form-text">Select one or more images to upload to the cache</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="cacheManagerUploadProgress">Upload Progress</label>
+                        <div id="cacheManagerUploadProgress" class="upload-progress" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="cacheManagerProgressFill"></div>
+                            </div>
+                            <span id="cacheManagerProgressText">0%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-actions btn-group">
+                    <button type="button" id="cacheManagerUploadConfirmBtn" class="btn-primary" disabled>
+                        <i class="nai-import"></i> Upload
+                    </button>
+                    <button type="button" id="cacheManagerUploadCancelBtn" class="btn-secondary">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reference Manager Move Modal -->
+    <div id="cacheManagerMoveModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Move Reference Images</h3>
+                <button id="closeCacheManagerMoveBtn" class="close-dialog" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Select the target workspace to move <strong id="cacheManagerMoveCount">0</strong> selected images:</p>
+                <div class="form-group">
+                    <label for="cacheManagerMoveTargetSelect">Target Workspace</label>
+                    <select id="cacheManagerMoveTargetSelect" class="form-control hover-show">
+                        <!-- Options will be populated here -->
+                    </select>
+                </div>
+                <div class="modal-actions btn-group">
+                    <button type="button" id="cacheManagerMoveConfirmBtn" class="btn-primary">
+                        <i class="fas fa-arrow-right"></i> Move
+                    </button>
+                    <button type="button" id="cacheManagerMoveCancelBtn" class="btn-secondary">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vibe Manager Upload Modal -->
+    <div id="vibeManagerUploadModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Upload & Encode Vibe Image</h3>
+                <button id="closeVibeManagerUploadBtn" class="close-dialog" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-section">
+                    <div class="form-group">
+                        <label for="vibeManagerFileInput">Select Image</label>
+                        <input type="file" id="vibeManagerFileInput" class="form-control" accept="image/*">
+                        <small class="form-text">Select an image to encode for vibe transfer</small>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="vibeManagerModelSelect">Model</label>
+                            <div id="vibeManagerModelDropdown" class="custom-dropdown">
+                                <button type="button" id="vibeManagerModelDropdownBtn" class="btn-secondary">
+                                    <i class="fas fa-cog"></i>
+                                    <span id="vibeManagerModelSelected">V4.5</span>
+                                </button>
+                                <div id="vibeManagerModelDropdownMenu" class="custom-dropdown-menu" style="display: none;">
+                                    <!-- V4+ models will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="vibeManagerIeInput">Information Extraction</label>
+                            <input type="number" id="vibeManagerIeInput" class="form-control hover-show" min="0" max="1" step="0.01" value="0.5">
+                        </div>
+                    </div>
+                    <small class="form-text">Information Extraction: Controls how much information is extracted from the image (0 = minimal, 1 = maximum).</small>
+                </div>
+                <div class="modal-actions btn-group">
+                    <button type="button" id="vibeManagerUploadConfirmBtn" class="btn-primary" disabled>
+                        <i class="nai-import"></i> Upload & Encode
+                    </button>
+                    <button type="button" id="vibeManagerUploadCancelBtn" class="btn-secondary">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vibe Manager IE Request Modal -->
+    <div id="vibeManagerIeModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Request New Information Extraction</h3>
+                <button id="closeVibeManagerIeBtn" class="close-dialog" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-section">
+                    <div class="form-row">
+                    <div class="form-group">
+                        <label for="vibeManagerIeModelSelect">Model</label>
+                        <div id="vibeManagerIeModelDropdown" class="custom-dropdown">
+                            <button type="button" id="vibeManagerIeModelDropdownBtn" class="btn-secondary">
+                                <i class="fas fa-cog"></i>
+                                <span id="vibeManagerIeModelSelected">V4.5</span>
+                            </button>
+                            <div id="vibeManagerIeModelDropdownMenu" class="custom-dropdown-menu" style="display: none;">
+                                <!-- V4+ models will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="vibeManagerIeInput2">Information Extraction</label>
+                        <input type="number" id="vibeManagerIeInput2" class="form-control hover-show" min="0" max="1" step="0.01" value="0.5">
+                    </div>
+                    </div>
+                    <small class="form-text">Information Extraction: Controls how much information is extracted from the image (0 = minimal, 1 = maximum). Use scroll wheel to adjust.</small>
+
+                </div>
+                <div class="modal-actions btn-group">
+                    <button type="button" id="vibeManagerIeConfirmBtn" class="btn-primary">
+                        <i class="nai-vibe-transfer"></i> Request Encoding
+                    </button>
+                    <button type="button" id="vibeManagerIeCancelBtn" class="btn-secondary">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vibe Manager From Reference Modal -->
+    <div id="vibeManagerFromReferenceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Create Vibe Encoding from Reference</h3>
+                <button id="closeVibeManagerFromReferenceBtn" class="close-dialog" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-section">
+                    <div class="form-group">
+                        <label>Reference Image</label>
+                        <div id="vibeManagerFromReferencePreview" class="vibe-manager-reference-preview">
+                            <!-- Reference image preview will be shown here -->
+                        </div>
+                    </div>
+                    <div class="form-row">
+                    <div class="form-group">
+                        <label for="vibeManagerFromReferenceModelSelect">Model</label>
+                        <div id="vibeManagerFromReferenceModelDropdown" class="custom-dropdown">
+                            <button type="button" id="vibeManagerFromReferenceModelDropdownBtn" class="btn-secondary">
+                                <i class="fas fa-cog"></i>
+                                <span id="vibeManagerFromReferenceModelSelected">V4.5</span>
+                            </button>
+                            <div id="vibeManagerFromReferenceModelDropdownMenu" class="custom-dropdown-menu" style="display: none;">
+                                <!-- V4+ models will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="vibeManagerFromReferenceIeInput">Information Extraction</label>
+                        <input type="number" id="vibeManagerFromReferenceIeInput" class="form-control hover-show" min="0" max="1" step="0.01" value="0.5">
+                    </div>
+                    </div>
+                    <small class="form-text">Information Extraction: Controls how much information is extracted from the image (0 = minimal, 1 = maximum). Use scroll wheel to adjust.</small>
+
+                </div>
+                <div class="modal-actions btn-group">
+                    <button type="button" id="vibeManagerFromReferenceConfirmBtn" class="btn-primary">
+                        <i class="nai-vibe-transfer"></i> Create Vibe Encoding
+                    </button>
+                    <button type="button" id="vibeManagerFromReferenceCancelBtn" class="btn-secondary">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vibe Manager Delete Modal -->
+    <div id="vibeManagerDeleteModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Delete Vibe Items</h3>
+                <button id="closeVibeManagerDeleteBtn" class="close-dialog" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Select items to delete:</p>
+                <div class="form-section">
+                    <div id="vibeManagerDeleteItemsList" class="vibe-delete-items-list">
+                        <!-- Items will be listed here -->
+                    </div>
+                </div>
+                <div class="modal-actions btn-group">
+                    <button type="button" id="vibeManagerDeleteConfirmBtn" class="btn-danger">
+                        <i class="nai-trash"></i> Delete Selected
+                    </button>
+                    <button type="button" id="vibeManagerDeleteCancelBtn" class="btn-secondary">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vibe Manager Move Modal -->
+    <div id="vibeManagerMoveModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Move Vibe Encodings</h3>
+                <button id="closeVibeManagerMoveBtn" class="close-dialog" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Select the target workspace to move <strong id="vibeManagerMoveCount">0</strong> selected vibe encodings:</p>
+                <div class="form-group">
+                    <label for="vibeManagerMoveTargetSelect">Target Workspace</label>
+                    <select id="vibeManagerMoveTargetSelect" class="form-control hover-show">
+                        <!-- Options will be populated here -->
+                    </select>
+                </div>
+                <div class="modal-actions btn-group">
+                    <button type="button" id="vibeManagerMoveConfirmBtn" class="btn-primary">
+                        <i class="fas fa-arrow-right"></i> Move
+                    </button>
+                    <button type="button" id="vibeManagerMoveCancelBtn" class="btn-secondary">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Background Image Selection Modal -->
     <div id="backgroundImageModal" class="modal">
         <div class="modal-content background-image-modal-content">
@@ -1242,14 +1697,65 @@
         </div>
     </div>
 
-    <!-- Hidden file input for image upload -->
-    <input type="file" id="imageUploadInput" accept="image/*" style="display: none;">
+    <!-- Bulk Change Preset Modal -->
+    <div id="bulkChangePresetModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Change Preset Name</h3>
+                <button id="closeBulkChangePresetBtn" class="close-dialog">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Change preset name for <span id="bulkChangePresetSelectedCount">0</span> selected image(s):</p>
+                <div class="form-group">
+                    <label for="bulkChangePresetNameInput">New Preset Name</label>
+                    <input type="text" id="bulkChangePresetNameInput" class="form-control" placeholder="Enter new preset name..." maxlength="100">
+                    <small class="form-text">Leave empty to remove preset name</small>
+                </div>
+                <div class="modal-actions btn-group">
+                    <button type="button" id="bulkChangePresetConfirmBtn" class="btn-primary">
+                        <i class="fas fa-save"></i> Update Preset Names
+                    </button>
+                    <button type="button" id="bulkChangePresetCancelBtn" class="btn-secondary">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
+    <!-- PIN Re-authentication Modal -->
+    <div id="pinModal" class="alert-theme modal" style="display: none;">
+        <div class="modal-content center" style="width: auto;">
+            <div class="modal-header">
+                <h2>Authentication</h2>
+                <button id="closePinModalBtn" class="close-dialog" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Enter your PIN to continue.</p>
+                <form id="pinModalForm" autocomplete="off">
+                    <input id="pinModalInput" type="password" maxlength="6" pattern="[0-9]*" inputmode="numeric" class="form-control" placeholder="Enter 6-digit PIN" required style="text-align:center; font-size:1.5em; letter-spacing:0.5em; width: 12em; margin-bottom: 1em;" />
+                    <div id="pinModalError" class="form-text" style="color: var(--danger-color); display: none;"></div>
+                    <div class="modal-actions btn-group" style="margin-top:1em;">
+                        <button type="submit" id="pinModalSubmitBtn" class="btn-primary">Login</button>
+                        <button type="button" id="pinModalCancelBtn" class="btn-secondary">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <!-- End PIN Modal -->
+    <!-- Hidden file input for image upload -->
+    <input type="file" id="imageUploadInput" accept="image/*" multiple style="display: none;">
     <!-- Confetti Container -->
     <div id="confettiContainer"></div>
 
     <!-- Toast Container -->
     <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Desktop Workspace Tabs -->
+    <div id="workspaceTabs" class="workspace-tabs">
+        <!-- Workspace tabs will be populated here -->
+    </div>
 
     <script src="script.js"></script>
 </body>

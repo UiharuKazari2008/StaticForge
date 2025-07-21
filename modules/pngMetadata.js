@@ -547,6 +547,13 @@ async function extractRelevantFields(meta, filename) {
             }
         }
     }
+
+    if (forgeData.vibe_transfer !== undefined) {
+        result.vibe_transfer = forgeData.vibe_transfer;
+    }
+    if (forgeData.normalize_vibes !== undefined) {
+        result.normalize_vibes = forgeData.normalize_vibes;
+    }
     
     // Add new metadata fields
     result.append_quality = detectedAppendQuality;

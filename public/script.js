@@ -3,6 +3,11 @@ let isAuthenticated = true;
 let subscriptionData = null;
 let forcePaidRequest = false;
 let allImages = [];
+
+// Make u1 array available globally for tag highlighting
+if (typeof u1 !== 'undefined') {
+    window.u1 = u1;
+}
 // Infinite scroll variables
 let currentPage = 1;
 let imagesPerPage =12
@@ -53,7 +58,7 @@ function updateV3ModelVisibility() {
     
     // Hide/show dataset controls for V3 models
     const datasetDropdown = document.getElementById('datasetDropdown');
-    const datasetBiasControls = document.querySelector('#manualModal form .tab-buttons button[data-tab="settings"]')
+    const datasetBiasControls = document.querySelector('#manualModal .prompt-tabs .tab-buttons button[data-tab="settings"]')
     
     if (datasetDropdown) {
         datasetDropdown.style.display = isV3Selected ? 'none' : '';
@@ -426,6 +431,10 @@ const manualPresetToggleText = document.getElementById('manualPresetToggleText')
 const manualPresetToggleIcon = document.getElementById('manualPresetToggleIcon');
 const manualPresetGroup = document.getElementById('manualPresetGroup');
 
+
+const manualPreviewLoadBtn = document.getElementById('manualPreviewLoadBtn');
+const manualPreviewScrapBtn = document.getElementById('manualPreviewScrapBtn');
+
 // Global variables for character autocomplete
 let characterAutocompleteTimeout = null;
 let currentCharacterAutocompleteTarget = null;
@@ -512,6 +521,14 @@ function openDropdown(menu, button) {
 function closeDropdown(menu, button) {
     menu.style.display = 'none';
     if (button) button.classList.remove('active');
+}
+
+function toggleDropdown(menu, button) {
+    if (menu.style.display === 'block') {
+        closeDropdown(menu, button);
+    } else {
+        openDropdown(menu, button);
+    }
 }
 
 function setupDropdown(container, button, menu, render, getSelectedValue) {
@@ -880,8 +897,14 @@ async function loadIntoManualForm(source, image = null) {
         }
 
         // Common form population
-        if (manualPrompt) manualPrompt.value = data.prompt || '';
-        if (manualUc) manualUc.value = data.uc || '';
+        if (manualPrompt) {
+            manualPrompt.value = data.prompt || '';
+        }
+        if (manualUc) {
+            manualUc.value = data.uc || '';
+            autoResizeTextarea(manualUc);
+            updateEmphasisHighlighting(manualUc);
+        }
         selectManualModel(data.model || 'v4_5', '');
         
         // Handle resolution loading with proper custom dimension support
@@ -1023,6 +1046,67 @@ async function loadIntoManualForm(source, image = null) {
             // For now, we'll just store it in a global variable
             window.currentAllowPaid = data.allow_paid;
         }
+        
+        // Handle vibe transfer data from forge data (disabled when inpainting is enabled)
+        if (data.vibe_transfer && Array.isArray(data.vibe_transfer) && data.vibe_transfer.length > 0) {
+            // Check if inpainting is enabled (mask is present)
+            if (data.mask_compressed || data.mask) {
+                console.log(`⚠️ Skipping vibe transfers due to inpainting mask presence`);
+                // Clear vibe references if inpainting is enabled
+                const container = document.getElementById('vibeReferencesContainer');
+                if (container) {
+                    container.innerHTML = '';
+                }
+            } else {
+                // Load vibe references if not already loaded
+                if (vibeReferences.length === 0) {
+                    try {
+                        await loadVibeReferences();
+                    } catch (error) {
+                        console.error('Failed to load vibe references for forge data:', error);
+                    }
+                }
+                
+                // Clear existing vibe references
+                const container = document.getElementById('vibeReferencesContainer');
+                if (container) {
+                    container.innerHTML = '';
+                }
+                
+                // Add each vibe transfer back to the container
+                for (const vibeTransfer of data.vibe_transfer) {
+                    await addVibeReferenceToContainer(vibeTransfer.id, vibeTransfer.ie, vibeTransfer.strength);
+                }
+                
+                // Show the vibe references section
+                const section = document.getElementById('vibeReferencesSection');
+                if (section) {
+                    section.style.display = '';
+                }
+                
+                console.log(`🎨 Restored ${data.vibe_transfer.length} vibe transfers from forge data`);
+            }
+        } else {
+            // Clear vibe references if no data
+            const container = document.getElementById('vibeReferencesContainer');
+            if (container) {
+                container.innerHTML = '';
+            }
+        }
+        
+        // Handle vibe normalize setting
+        if (data.normalize_vibes !== undefined) {
+            const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
+            if (vibeNormalizeToggle) {
+                vibeNormalizeToggle.setAttribute('data-state', data.normalize_vibes ? 'on' : 'off');
+            }
+        } else {
+            // Default to on if not specified
+            const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
+            if (vibeNormalizeToggle) {
+                vibeNormalizeToggle.setAttribute('data-state', 'on');
+            }
+        }
 
         // Handle image source data
         const hasBaseImage = data.image_source;
@@ -1046,12 +1130,16 @@ async function loadIntoManualForm(source, image = null) {
                     window.pipelineMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
                     window.currentMaskData = window.pipelineMaskData;
                     console.log('✅ Successfully processed compressed mask for pipeline');
+                    // Update vibe transfer UI state after mask is loaded
+                    updateInpaintButtonState();
                 } catch (error) {
                     console.error('❌ Failed to process compressed mask for pipeline:', error);
                     // Fallback to regular mask if available
                     if (data.mask) {
                         window.pipelineMaskData = "data:image/png;base64," + data.mask;
                         window.currentMaskData = window.pipelineMaskData;
+                        // Update vibe transfer UI state after mask is loaded
+                        updateInpaintButtonState();
                     }
                 }
             } else if (data.mask) {
@@ -1073,6 +1161,8 @@ async function loadIntoManualForm(source, image = null) {
                             window.currentMaskData = "data:image/png;base64," + maskData.mask;
                             window.pipelineMaskData = "data:image/png;base64," + maskData.mask;
                             console.log(`🎭 Loaded pipeline mask for: ${pipelineName}`);
+                            // Update vibe transfer UI state after mask is loaded
+                            updateInpaintButtonState();
                         }
                     }
                 } catch (error) {
@@ -1148,7 +1238,6 @@ async function loadIntoManualForm(source, image = null) {
                 previewUrl = `/images/${identifier}`;
             }
             if (previewUrl) {
-                console.log(previewUrl);
                 await new Promise((resolve) => {
                     const tempImg = new Image();
                     tempImg.onload = () => {
@@ -1179,6 +1268,8 @@ async function loadIntoManualForm(source, image = null) {
                 try {
                     window.currentMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
                     console.log('✅ Successfully processed compressed mask for regular image');
+                    // Update vibe transfer UI state after mask is loaded
+                    updateInpaintButtonState();
                 } catch (error) {
                     console.error('❌ Failed to process compressed mask for regular image:', error);
                     // Fallback to regular mask if available
@@ -1741,6 +1832,9 @@ function selectManualModel(value, group) {
   if (typeof updateGenerateButton === 'function') updateGenerateButton();
   // Update price display
   updateManualPriceDisplay();
+  
+  // Refresh vibe references to update model-specific filtering
+  refreshVibeReferences();
 }
 
 function closeManualModelDropdown() {
@@ -1975,7 +2069,7 @@ setupTransformationDropdownListeners();
 
 // ==================== WORKSPACE MANAGEMENT ====================
 
-// Cache workspace move functions
+// Reference workspace move functions
 async function moveCacheToDefaultWorkspace(cacheImage) {
     try {
         const response = await fetchWithAuth('/workspaces/default/references', {
@@ -1989,7 +2083,7 @@ async function moveCacheToDefaultWorkspace(cacheImage) {
             throw new Error(error.error || 'Failed to move cache file');
         }
         
-        showSuccess('Cache file moved to default workspace');
+        showSuccess('Reference file moved to default workspace');
         await loadCacheImages();
         displayCacheImages();
         displayCacheImagesContainer();
@@ -2073,7 +2167,7 @@ async function moveCacheToWorkspace(cacheImage, workspaceId) {
         }
         
         const workspace = workspaces.find(w => w.id === workspaceId);
-        showSuccess(`Cache file moved to ${workspace ? workspace.name : 'workspace'}`);
+        showSuccess(`Reference file moved to ${workspace ? workspace.name : 'workspace'}`);
         await loadCacheImages();
         displayCacheImages();
         displayCacheImagesContainer();
@@ -2694,6 +2788,9 @@ function renderWorkspaceDropdown(selectedVal) {
         
         workspaceMenu.appendChild(option);
     });
+    
+    // Update desktop workspace tabs
+    renderWorkspaceTabs();
 }
 
 function updateActiveWorkspaceDisplay() {
@@ -2704,6 +2801,9 @@ function updateActiveWorkspaceDisplay() {
     if (activeWorkspaceData) {
         workspaceSelected.textContent = activeWorkspaceData.name;
     }
+    
+    // Update desktop workspace tabs
+    renderWorkspaceTabs();
 }
 
 function openWorkspaceDropdown() {
@@ -2712,6 +2812,41 @@ function openWorkspaceDropdown() {
 
 function closeWorkspaceDropdown() {
     closeDropdown(document.getElementById('workspaceDropdownMenu'), document.getElementById('workspaceDropdownBtn'));
+}
+
+// Desktop workspace tabs functionality
+function renderWorkspaceTabs() {
+    const workspaceTabs = document.getElementById('workspaceTabs');
+    if (!workspaceTabs) return;
+    
+    workspaceTabs.innerHTML = '';
+    
+    workspaces.forEach(workspace => {
+        const tab = document.createElement('div');
+        tab.className = 'workspace-tab' + (workspace.isActive ? ' active' : '');
+        tab.dataset.workspaceId = workspace.id;
+        
+        // Use workspace color as background for active tab
+        if (workspace.isActive) {
+            const workspaceColor = workspace.color || '#124';
+            tab.style.background = `${workspaceColor}89`;
+            tab.style.color = '#ffffff';
+            tab.style.borderColor = `${workspaceColor}88`;
+        }
+        
+        tab.innerHTML = `
+            <span class="workspace-name">${workspace.name}</span>
+        `;
+        
+        const action = () => {
+            if (!workspace.isActive) {
+                setActiveWorkspace(workspace.id);
+            }
+        };
+        
+        tab.addEventListener('click', action);
+        workspaceTabs.appendChild(tab);
+    });
 }
 
 function renderWorkspaceManagementList() {
@@ -2927,6 +3062,15 @@ function initializeWorkspaceSystem() {
     document.getElementById('closeBackgroundImageModalBtn')?.addEventListener('click', hideBackgroundImageModal);
     document.getElementById('backgroundImageCancelBtn')?.addEventListener('click', hideBackgroundImageModal);
     
+    // Bulk change preset modal events
+    document.getElementById('closeBulkChangePresetBtn')?.addEventListener('click', () => {
+        document.getElementById('bulkChangePresetModal').style.display = 'none';
+    });
+    document.getElementById('bulkChangePresetCancelBtn')?.addEventListener('click', () => {
+        document.getElementById('bulkChangePresetModal').style.display = 'none';
+    });
+    document.getElementById('bulkChangePresetConfirmBtn')?.addEventListener('click', handleBulkChangePresetConfirm);
+    
     // Save workspace
     document.getElementById('workspaceSaveBtn')?.addEventListener('click', async () => {
         if (currentWorkspaceOperation) {
@@ -3090,25 +3234,12 @@ async function getWorkspaceImages() {
     try {
         // Get current workspace ID
         const workspaceId = currentWorkspaceOperation?.id || activeWorkspace;
-        
-        console.log('Debug getWorkspaceImages:', {
-            currentWorkspaceOperation: currentWorkspaceOperation,
-            activeWorkspace: activeWorkspace,
-            selectedWorkspaceId: workspaceId
-        });
-        
         // Get workspace files from backend
         const workspaceResponse = await fetchWithAuth(`/workspaces/${workspaceId}/files`);
         if (!workspaceResponse.ok) throw new Error('Failed to load workspace files');
         
         const workspaceData = await workspaceResponse.json();
         const workspaceFiles = new Set(workspaceData.files || []);
-        
-        console.log('Debug workspace files:', {
-            workspaceId: workspaceData.workspaceId,
-            workspaceName: workspaceData.workspaceName,
-            fileCount: workspaceFiles.size
-        });
         
         // Get all images from the filesystem (not filtered by active workspace)
         const allImagesResponse = await fetchWithAuth('/images/all');
@@ -3270,15 +3401,11 @@ function toggleGalleryView() {
 
 // Load scraps for current workspace
 async function loadScraps() {
-    try {
-        console.log('Loading scraps for workspace:', activeWorkspace);
-        
+    try {        
         // Use the new /images endpoint with scraps query parameter
         const response = await fetchWithAuth('/images?scraps=true');
         if (response.ok) {
-            const scrapsImageData = await response.json();
-            console.log('Scraps loaded:', scrapsImageData.length, 'items');
-            
+            const scrapsImageData = await response.json();            
             // Update display
             allImages = scrapsImageData;
             displayCurrentPageOptimized();
@@ -3321,7 +3448,6 @@ async function moveToScraps(image) {
 
         if (response.ok) {
             const result = await response.json();
-            console.log('Move to scraps result:', result);
             showSuccess('Image moved to scraps');
             
             // If currently viewing scraps, reload them
@@ -3340,6 +3466,93 @@ async function moveToScraps(image) {
         console.error('Error moving to scraps:', error);
         showError('Failed to move image to scraps');
     }
+}
+
+// Move manual preview image to scraps and advance to next image
+async function moveManualPreviewToScraps() {
+    if (!isAuthenticated) {
+        showError('Please login first');
+        return;
+    }
+
+    if (!currentManualPreviewImage) {
+        showError('No image to move to scraps');
+        return;
+    }
+
+    try {
+        const filename = currentManualPreviewImage.filename || currentManualPreviewImage.original || currentManualPreviewImage.upscaled || currentManualPreviewImage.pipeline || currentManualPreviewImage.pipeline_upscaled;
+        if (!filename) {
+            showError('No filename available for this image');
+            return;
+        }
+
+        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ filename })
+        });
+
+        if (response.ok) {
+            // Find the current image index in the manual preview image list
+            const currentIndex = allImages.findIndex(img => 
+                img.original === currentManualPreviewImage.original ||
+                img.upscaled === currentManualPreviewImage.upscaled ||
+                img.pipeline === currentManualPreviewImage.pipeline ||
+                img.pipeline_upscaled === currentManualPreviewImage.pipeline_upscaled
+            );
+            
+            // Remove the current image from the manual preview list
+            if (currentIndex !== -1) {
+                allImages.splice(currentIndex, 1);
+            }
+            
+            // Find the next (previous) image in the manual preview list
+            let nextImage = null;
+            const nextIndex = currentIndex >= allImages.length ? allImages.length - 1 : currentIndex;
+            
+            if (nextIndex >= 0 && nextIndex < allImages.length) {
+                nextImage = allImages[nextIndex];
+            }
+            
+            if (nextImage) {
+                // Load the next image and its metadata
+                try {
+                    const metadataResponse = await fetchWithAuth(`/images/${nextImage.original}`, {
+                        method: 'OPTIONS',
+                    });
+                    if (metadataResponse.ok) {
+                        const metadata = await metadataResponse.json();
+                        nextImage.metadata = metadata;
+                    }
+                } catch (error) {
+                    console.warn('Failed to load metadata for next image:', error);
+                }
+                
+                // Update the preview with the next image
+                const imageUrl = `/images/${nextImage.original}`;
+                updateManualPreview(imageUrl);
+                
+                showGlassToast('success', 'Scrap Image', 'Image moved to scraps!');
+            } else {
+                // No next image, reset the preview
+                resetManualPreview();
+                showGlassToast('success', 'Scrap Image', 'Image moved to scraps!');
+            }
+        } else {
+            const error = await response.json();
+            console.error('Move to scraps failed:', error);
+            showError(`Failed to move to scraps: ${error.error}`);
+        }
+    } catch (error) {
+        console.error('Error moving to scraps:', error);
+        showError('Failed to move image to scraps');
+    }
+    
+    // Refresh gallery after processing is complete
+    loadGallery(true);
 }
 
 // Remove image from scraps
@@ -3365,7 +3578,7 @@ async function removeFromScraps(image) {
         });
 
         if (response.ok) {
-            showSuccess('Image removed from scraps and moved back to images');
+            showGlassToast('success', 'Scrap Image', 'Image removed from scraps');
             
             // If currently viewing scraps, reload them
             if (isViewingScraps) {
@@ -3398,7 +3611,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             await loadWorkspaces(); // Load workspace data
             await loadActiveWorkspaceColor(); // Load workspace color for bokeh
             await loadBalance();
+            await updateImageGenCounter();
             await loadAvailablePresets();
+            await loadVibeReferences(); // Load vibe references for immediate use
             renderManualSamplerDropdown(manualSelectedSampler);
             selectManualSampler('k_euler_ancestral');
             renderManualResolutionDropdown(manualSelectedResolution);
@@ -3436,6 +3651,17 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // Initialize workspace settings form event listeners
     initializeWorkspaceSettingsForm();
+    
+    // Initialize cache manager
+    initializeCacheManager();
+    
+    // Initialize emphasis highlighting for manual fields
+    if (manualPrompt) {
+        initializeEmphasisOverlay(manualPrompt);
+    }
+    if (manualUc) {
+        initializeEmphasisOverlay(manualUc);
+    }
 });
 
 // Global options data
@@ -3535,15 +3761,9 @@ function renderDatasetBiasControls() {
     
     container.innerHTML = '';
     
-    console.log('Rendering dataset bias controls');
-    console.log('Selected datasets:', selectedDatasets);
-    console.log('Window dataset options:', window.datasetOptions);
-    
     // Render datasets in specific order: anime, furry, backgrounds
     const orderedDatasets = ['anime', 'furry', 'backgrounds'];
     const datasetsToRender = orderedDatasets.filter(dataset => selectedDatasets.includes(dataset));
-    
-    console.log('Datasets to render:', datasetsToRender);
     
     datasetsToRender.forEach(dataset => {
         const biasGroup = document.createElement('div');
@@ -3580,7 +3800,6 @@ function renderDatasetBiasControls() {
         
         // Add sub-toggles for datasets that have them
         if (window.datasetOptions && window.datasetOptions[dataset] && window.datasetOptions[dataset].sub_toggles) {
-            console.log(`Found sub-toggles for ${dataset}:`, window.datasetOptions[dataset].sub_toggles);
             window.datasetOptions[dataset].sub_toggles.forEach(subToggle => {
                 const toggleBtn = document.createElement('button');
                 toggleBtn.type = 'button';
@@ -3669,8 +3888,8 @@ function renderDatasetBiasControls() {
         container.appendChild(biasGroup);
     });
     // Toggle the settings button based on whether there are any items in the container
-    const settingsBtn = document.querySelector('.tab-buttons button[data-tab="settings"]');
-    const promptBtn = document.querySelector('.tab-buttons button[data-tab="prompt"]');
+    const settingsBtn = document.querySelector('#manualModal .prompt-tabs .tab-buttons button[data-tab="settings"]');
+    const promptBtn = document.querySelector('#manualModal .prompt-tabs .tab-buttons button[data-tab="prompt"]');
     if (settingsBtn) {
         // If container has no children, disable settings button and switch to prompt tab if active
         if (!container.hasChildNodes() || container.children.length === 0) {
@@ -3713,8 +3932,6 @@ function toggleQuality() {
     
     qualityToggleBtn.setAttribute('data-state', newState);
     appendQuality = newState === 'on';
-    
-    console.log('Quality toggle:', appendQuality);
 }
 
 // UC Presets Dropdown Functions
@@ -3762,8 +3979,6 @@ function selectUcPreset(value) {
     if (ucPresetsBtn) {
         ucPresetsBtn.setAttribute('data-state', value > 0 ? 'on' : 'off');
     }
-    
-    console.log('UC Preset selected:', value);
 }
 
 function openUcPresetsDropdown() {
@@ -3841,7 +4056,7 @@ function setupEventListeners() {
             if (currentManualPreviewImage) {
                 upscaleImage(currentManualPreviewImage);
             } else {
-                showToast('No image available to upscale', 'error');
+                showGlassToast('error', 'Upscale Failed', 'No image available');
             }
         });
     }
@@ -3851,7 +4066,7 @@ function setupEventListeners() {
             if (currentManualPreviewImage) {
                 rerollImageWithEdit(currentManualPreviewImage);
             } else {
-                showToast('No image available to load', 'error');
+                showGlassToast('error', 'Load Failed', 'No image available');
             }
         });
     }
@@ -3899,10 +4114,10 @@ function setupEventListeners() {
                     renderImageBiasDropdown((typeof metadata.image_bias === 'number' ? metadata.image_bias : 2).toString());
 
                 } else {
-                    showToast('No image available for variation', 'error');
+                    showGlassToast('error', 'Variation Failed', 'No image found');
                 }
             } else {
-                showToast('No image available for variation', 'error');
+                showGlassToast('error', 'Variation Failed', 'No image available');
             }
         });
     }
@@ -3911,15 +4126,28 @@ function setupEventListeners() {
         manualPreviewSeedBtn.addEventListener('click', () => {
             if (window.lastGeneratedSeed) {
                 manualSeed.value = window.lastGeneratedSeed;
-                showToast('Seed copied to form!', 'success');
             } else {
-                showToast('No seed available for this image', 'error');
+                showGlassToast('error', 'Load Failed', 'No seed available');
             }
         });
     }
     
     if (manualPreviewDeleteBtn) {
         manualPreviewDeleteBtn.addEventListener('click', deleteManualPreviewImage);
+    }
+    
+    if (manualPreviewScrapBtn) {
+        manualPreviewScrapBtn.addEventListener('click', () => {
+            if (currentManualPreviewImage) {
+                if (isViewingScraps) {
+                    removeFromScraps(currentManualPreviewImage);
+                } else {
+                    moveManualPreviewToScraps();
+                }
+            } else {
+                showGlassToast('error', 'Load Failed', 'No image available');
+            }
+        });
     }
     
     // Clear seed button
@@ -3945,6 +4173,16 @@ function setupEventListeners() {
     // Quality toggle
     if (qualityToggleBtn) {
         qualityToggleBtn.addEventListener('click', toggleQuality);
+    }
+    
+    // Vibe normalize toggle
+    const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
+    if (vibeNormalizeToggle) {
+        vibeNormalizeToggle.addEventListener('click', () => {
+            const currentState = vibeNormalizeToggle.getAttribute('data-state') === 'on';
+            const newState = !currentState;
+            vibeNormalizeToggle.setAttribute('data-state', newState ? 'on' : 'off');
+        });
     }
     
     // UC Presets dropdown
@@ -3982,9 +4220,23 @@ function setupEventListeners() {
     // Character autocomplete events (for both prompt and UC fields)
     manualPrompt.addEventListener('input', handleCharacterAutocompleteInput);
     manualPrompt.addEventListener('keydown', handleCharacterAutocompleteKeydown);
+    manualPrompt.addEventListener('focus', () => startEmphasisHighlighting(manualPrompt));
+    manualPrompt.addEventListener('blur', () => {
+        applyFormattedText(manualPrompt, true);
+        updateEmphasisHighlighting(manualPrompt);
+        stopEmphasisHighlighting();
+    });
     manualUc.addEventListener('input', handleCharacterAutocompleteInput);
     manualUc.addEventListener('keydown', handleCharacterAutocompleteKeydown);
-    
+    manualUc.addEventListener('focus', () => startEmphasisHighlighting(manualUc));
+    manualUc.addEventListener('blur', () => {
+        applyFormattedText(manualUc, true);
+        updateEmphasisHighlighting(manualUc);
+        stopEmphasisHighlighting();
+    });
+    // Add auto-resize functionality for manual UC field
+    manualUc.addEventListener('input', () => autoResizeTextarea(manualUc));
+
     // Preset autocomplete events
     manualPresetName.addEventListener('input', handlePresetAutocompleteInput);
     manualPresetName.addEventListener('keydown', handlePresetAutocompleteKeydown);
@@ -4075,6 +4327,16 @@ function setupEventListeners() {
                     handleCharacterDetailEnter();
                 }
             }
+        } else if (e.key === 'e' && e.altKey) {
+            // Alt+E: Show emphasis adjustment popup
+            console.log('Alt+E detected!', e.key, e.altKey, e.ctrlKey, e.shiftKey);
+            e.preventDefault();
+            const activeElement = document.activeElement;
+            console.log('Active element:', activeElement);
+            if (activeElement && (activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'INPUT')) {
+                console.log('Starting emphasis editing...');
+                startEmphasisEditing(activeElement);
+            }
         }
     });
 
@@ -4153,6 +4415,15 @@ function setupEventListeners() {
         closeCacheBrowserContainerBtn.addEventListener('click', hideCacheBrowser);
     }
     
+    // Cache browser tab event listeners
+    const cacheBrowserTabButtons = document.querySelectorAll('.cache-browser-tabs .tab-btn');
+    cacheBrowserTabButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const targetTab = this.getAttribute('data-tab');
+            switchCacheBrowserTab(targetTab);
+        });
+    });
+    
     // Ensure correct initial state for upload/delete buttons
     updateUploadDeleteButtonVisibility();
     
@@ -4214,6 +4485,8 @@ function setupEventListeners() {
     const bulkMoveToWorkspaceBtn = document.getElementById('bulkMoveToWorkspaceBtn');
     const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
     const bulkSequenziaBtn = document.getElementById('bulkSequenziaBtn');
+    const bulkMoveToScrapsBtn = document.getElementById('bulkMoveToScrapsBtn');
+    const bulkChangePresetBtn = document.getElementById('bulkChangePresetBtn');
     const clearSelectionBtn = document.getElementById('clearSelectionBtn');
     
     if (bulkMoveToWorkspaceBtn) {
@@ -4226,6 +4499,14 @@ function setupEventListeners() {
     
     if (bulkSequenziaBtn) {
         bulkSequenziaBtn.addEventListener('click', handleBulkSequenzia);
+    }
+    
+    if (bulkMoveToScrapsBtn) {
+        bulkMoveToScrapsBtn.addEventListener('click', handleBulkMoveToScraps);
+    }
+    
+    if (bulkChangePresetBtn) {
+        bulkChangePresetBtn.addEventListener('click', handleBulkChangePreset);
     }
     
     if (clearSelectionBtn) {
@@ -4292,68 +4573,22 @@ function setupEventListeners() {
         });
     }
     
-    // Tab switching functionality for prompt/UC tabs
-    const tabButtons = document.querySelectorAll('.tab-btn');
-    const tabPanes = document.querySelectorAll('.tab-pane');
+    // Tab switching functionality for prompt/UC tabs (Manual Generation Model)
+    const manualTabButtons = document.querySelectorAll('#manualModal .prompt-tabs .tab-buttons .tab-btn');
     const showBothBtn = document.getElementById('showBothBtn');
-    const promptTabs = document.querySelector('.prompt-tabs');
+    const promptTabs = document.querySelector('#manualModal .prompt-tabs');
     
-    tabButtons.forEach(button => {
+    manualTabButtons.forEach(button => {
         button.addEventListener('click', function() {
             const targetTab = this.getAttribute('data-tab');
-            
-            // Remove show-both state
-            promptTabs.classList.remove('show-both');
-            showBothBtn.classList.remove('active');
-            
-            // Remove active class from all buttons and panes
-            tabButtons.forEach(btn => btn.classList.remove('active'));
-            tabPanes.forEach(pane => pane.classList.remove('active'));
-            
-            // Add active class to clicked button and corresponding pane
-            this.classList.add('active');
-            document.getElementById(targetTab + '-tab').classList.add('active');
+            switchManualTab(targetTab);
         });
     });
     
     // Show both panes functionality
     if (showBothBtn) {
         showBothBtn.addEventListener('click', function() {
-            const isShowingBoth = promptTabs.classList.contains('show-both');
-            const tabButtonsContainer = document.querySelector('.tab-buttons');
-            
-            if (isShowingBoth) {
-                // Return to single tab mode
-                promptTabs.classList.remove('show-both');
-                this.classList.remove('active');
-                
-                // Show tab buttons container
-                if (tabButtonsContainer) {
-                    tabButtonsContainer.style.display = '';
-                }
-                
-                // Set Base Prompt as default when returning from show both mode
-                tabButtons.forEach(btn => btn.classList.remove('active'));
-                tabPanes.forEach(pane => pane.classList.remove('active'));
-                
-                // Activate the Base Prompt tab
-                const promptTabBtn = document.querySelector('.tab-btn[data-tab="prompt"]');
-                const promptTabPane = document.getElementById('prompt-tab');
-                
-                if (promptTabBtn && promptTabPane) {
-                    promptTabBtn.classList.add('active');
-                    promptTabPane.classList.add('active');
-                }
-            } else {
-                // Show both panes
-                promptTabs.classList.add('show-both');
-                this.classList.add('active');
-                
-                // Hide tab buttons container when showing both
-                if (tabButtonsContainer) {
-                    tabButtonsContainer.style.display = 'none';
-                }
-            }
+            toggleManualShowBoth();
         });
     }
     
@@ -4417,6 +4652,97 @@ function setupEventListeners() {
     window.addEventListener('scroll', handleInfiniteScroll);
 }
 
+// Tab switching functionality for prompt/UC tabs (Manual Generation Model)
+function switchManualTab(targetTab) {
+    // Target ONLY the tab buttons within the manual modal's prompt-tabs section
+    const tabButtons = document.querySelectorAll('#manualModal .prompt-tabs .tab-buttons .tab-btn');
+    // Target ONLY the tab panes within the manual modal's prompt-tabs section
+    const tabPanes = document.querySelectorAll('#manualModal .prompt-tabs .tab-content .tab-pane');
+    const showBothBtn = document.getElementById('showBothBtn');
+    const promptTabs = document.querySelector('#manualModal .prompt-tabs');
+    
+    // Remove show-both state
+    promptTabs.classList.remove('show-both');
+    showBothBtn.classList.remove('active');
+    
+    // Remove active class from all buttons and panes
+    tabButtons.forEach(btn => btn.classList.remove('active'));
+    tabPanes.forEach(pane => pane.classList.remove('active'));
+    
+    // Add active class to clicked button and corresponding pane
+    const targetButton = document.querySelector(`#manualModal .prompt-tabs .tab-buttons .tab-btn[data-tab="${targetTab}"]`);
+    const targetPane = document.getElementById(`${targetTab}-tab`);
+    
+    if (targetButton) targetButton.classList.add('active');
+    if (targetPane) targetPane.classList.add('active');
+}
+
+// Show both panes functionality for manual generation model
+function toggleManualShowBoth() {
+    const showBothBtn = document.getElementById('showBothBtn');
+    const promptTabs = document.querySelector('#manualModal .prompt-tabs');
+    // Target ONLY the tab buttons within the manual modal's prompt-tabs section
+    const tabButtons = document.querySelectorAll('#manualModal .prompt-tabs .tab-buttons .tab-btn');
+    // Target ONLY the tab panes within the manual modal's prompt-tabs section
+    const tabPanes = document.querySelectorAll('#manualModal .prompt-tabs .tab-content .tab-pane');
+    const tabButtonsContainer = document.querySelector('#manualModal .prompt-tabs .tab-buttons');
+    
+    const isShowingBoth = promptTabs.classList.contains('show-both');
+    
+    if (isShowingBoth) {
+        // Return to single tab mode
+        promptTabs.classList.remove('show-both');
+        showBothBtn.classList.remove('active');
+        
+        // Show tab buttons container
+        if (tabButtonsContainer) {
+            tabButtonsContainer.style.display = '';
+        }
+        
+        // Set Base Prompt as default when returning from show both mode
+        tabButtons.forEach(btn => btn.classList.remove('active'));
+        tabPanes.forEach(pane => pane.classList.remove('active'));
+        
+        // Activate the Base Prompt tab
+        const promptTabBtn = document.querySelector('#manualModal .prompt-tabs .tab-buttons .tab-btn[data-tab="prompt"]');
+        const promptTabPane = document.getElementById('prompt-tab');
+        
+        if (promptTabBtn && promptTabPane) {
+            promptTabBtn.classList.add('active');
+            promptTabPane.classList.add('active');
+        }
+    } else {
+        // Show both panes
+        promptTabs.classList.add('show-both');
+        showBothBtn.classList.add('active');
+        
+        // Hide tab buttons container when showing both
+        if (tabButtonsContainer) {
+            tabButtonsContainer.style.display = 'none';
+        }
+    }
+}
+
+// Tab switching functionality for character prompt tabs
+function switchCharacterTab(characterId, targetTab) {
+    const characterItem = document.getElementById(characterId);
+    if (!characterItem) return;
+    
+    const characterTabButtons = characterItem.querySelectorAll('.tab-btn');
+    const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
+    
+    // Remove active class from all buttons and panes
+    characterTabButtons.forEach(btn => btn.classList.remove('active'));
+    characterTabPanes.forEach(pane => pane.classList.remove('active'));
+    
+    // Add active class to clicked button and corresponding pane
+    const targetButton = characterItem.querySelector(`.tab-btn[data-tab="${targetTab}"]`);
+    const targetPane = document.getElementById(`${characterId}_${targetTab}-tab`);
+    
+    if (targetButton) targetButton.classList.add('active');
+    if (targetPane) targetPane.classList.add('active');
+}
+
 let presets, pipelines, resolutions, models, modelsNames, modelsShort, textReplacements, samplers, noiseSchedulers;
 // Load options from server
 async function loadOptions() {
@@ -4472,7 +4798,6 @@ async function loadOptions() {
                     window.datasetOptions[dataset.value] = dataset;
                 });
                 console.log('✅ Loaded enhanced options data');
-                console.log('Dataset options:', window.datasetOptions);
             }
         } catch (error) {
             console.log('⚠️ Failed to load enhanced options, using defaults:', error.message);
@@ -4562,7 +4887,7 @@ function updateBalanceDisplay(balance) {
 }
 
 // Load gallery images with optimized rendering to prevent flickering
-async function loadGallery() {
+async function loadGallery(noReset) {
     try {
         const response = await fetchWithAuth('/images');
         if (response.ok) {
@@ -4576,8 +4901,10 @@ async function loadGallery() {
             allImages = newImages;
             
             // Reset infinite scroll state and display initial batch
-            resetInfiniteScroll();
-            displayCurrentPageOptimized();
+            if (!noReset) {
+                resetInfiniteScroll();
+                displayCurrentPageOptimized();
+            }
         } else {
             console.error('Failed to load gallery:', response.statusText);
         }
@@ -4898,7 +5225,7 @@ function createGalleryItem(image, index) {
     // Reroll with edit button (right side with cog)
     const rerollEditBtn = document.createElement('button');
     rerollEditBtn.className = 'btn-primary round-button';
-    rerollEditBtn.innerHTML = '<i class="nai-settings"></i>';
+    rerollEditBtn.innerHTML = '<i class="nai-penwriting"></i>';
     rerollEditBtn.title = 'Reroll with Edit';
     rerollEditBtn.onclick = (e) => {
         e.stopPropagation();
@@ -5400,7 +5727,7 @@ async function rerollImage(image) {
             const img = new Image();
             img.onload = function() {
                 createConfetti();
-                showSuccess('Image rerolled successfully!');
+                showGlassToast('success', 'Reroll', 'Image rerolled successfully!');
             
                 // Refresh gallery and show the new image in lightbox
                 setTimeout(async () => {
@@ -5566,6 +5893,9 @@ async function rerollImageWithEdit(image) {
         }
         manualModal.style.display = 'block';
         manualPrompt.focus();
+        
+        // Auto-resize textareas after modal is shown
+        autoResizeTextareasAfterModalShow();
 
     } catch (error) {
         console.error('Reroll with edit error:', error);
@@ -5599,7 +5929,7 @@ async function upscaleImage(image) {
         const imageUrl = URL.createObjectURL(blob);
         
         // Show success message
-        showSuccess('Image upscaled successfully!');
+        showGlassToast('success', 'Upscale', 'Image upscaled successfully!');
         
         // Reload gallery to show new upscaled image
         await loadGallery();
@@ -5871,6 +6201,9 @@ async function showManualModal() {
     manualPrompt.focus();
     await cropImageToResolution();
     
+    // Auto-resize textareas after modal is shown
+    autoResizeTextareasAfterModalShow();
+    
     // Update save button state
     updateSaveButtonState();
     
@@ -5884,9 +6217,9 @@ async function showManualModal() {
     updateRequestTypeButtonVisibility();
     
     // Check if "show both" mode is active and hide tab buttons container if needed
-    const promptTabs = document.querySelector('.prompt-tabs');
+    const promptTabs = document.querySelector('#manualModal .prompt-tabs');
     const showBothBtn = document.getElementById('showBothBtn');
-    const tabButtonsContainer = document.querySelector('.tab-buttons');
+    const tabButtonsContainer = document.querySelector('#manualModal .prompt-tabs .tab-buttons');
     
     if (promptTabs && promptTabs.classList.contains('show-both') && showBothBtn && showBothBtn.classList.contains('active')) {
         // "Show both" mode is active, hide the tab buttons container
@@ -5960,6 +6293,32 @@ function hideManualModal(e, preventModalReset = false) {
         // Update button visibility
         updateRequestTypeButtonVisibility();
     }
+}
+
+// Auto-resize textareas after modal is shown
+function autoResizeTextareasAfterModalShow() {
+    // Auto-resize main prompt and UC textareas
+    if (manualPrompt) {
+        autoResizeTextarea(manualPrompt);
+    }
+    if (manualUc) {
+        autoResizeTextarea(manualUc);
+    }
+    
+    // Auto-resize character prompt textareas
+    const characterPromptItems = document.querySelectorAll('.character-prompt-item');
+    characterPromptItems.forEach(item => {
+        const characterId = item.id;
+        const promptField = document.getElementById(`${characterId}_prompt`);
+        const ucField = document.getElementById(`${characterId}_uc`);
+        
+        if (promptField) {
+            autoResizeTextarea(promptField);
+        }
+        if (ucField) {
+            autoResizeTextarea(ucField);
+        }
+    });
 }
 
 // Clear manual form
@@ -6200,7 +6559,41 @@ function collectManualFormValues() {
     values.append_quality = appendQuality;
     values.append_uc = selectedUcPreset;
 
+    // Collect vibe transfer data
+    values.vibe_transfer = collectVibeTransferData();
+    values.normalize_vibes = document.getElementById('vibeNormalizeToggle')?.getAttribute('data-state') === 'on';
+
     return values;
+}
+
+// Utility: Collect vibe transfer data from the container
+function collectVibeTransferData() {
+    const container = document.getElementById('vibeReferencesContainer');
+    if (!container) return [];
+    
+    const vibeTransferItems = container.querySelectorAll('.vibe-reference-item');
+    const vibeTransfers = [];
+    
+    vibeTransferItems.forEach(item => {
+        const vibeId = item.getAttribute('data-vibe-id');
+        const ieDropdownBtn = item.querySelector('.custom-dropdown-btn');
+        const ratioInput = item.querySelector('.vibe-reference-ratio-input');
+        
+        if (vibeId && ieDropdownBtn && ratioInput) {
+            const selectedIe = ieDropdownBtn.dataset.selectedIe;
+            const strength = parseFloat(ratioInput.value) || 0.7;
+            
+            if (selectedIe) {
+                vibeTransfers.push({
+                    id: vibeId,
+                    ie: selectedIe,
+                    strength: strength
+                });
+            }
+        }
+    });
+    
+    return vibeTransfers;
 }
 
 // Utility: Add shared fields to request body
@@ -6220,9 +6613,6 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     if (values.upscale) requestBody.upscale = true;
     if (typeof varietyEnabled !== "undefined" && varietyEnabled) {
         requestBody.variety = true;
-        varietyEnabled = false;
-        const varietyBtn = document.getElementById('varietyBtn');
-        if (varietyBtn) varietyBtn.setAttribute('data-state', 'off');
     }
     // Character prompts
     if (values.characterPrompts && values.characterPrompts.length > 0) {
@@ -6244,6 +6634,12 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     }
     if (values.append_uc !== undefined) {
         requestBody.append_uc = values.append_uc;
+    }
+    
+    // Add vibe transfer data
+    if (values.vibe_transfer && values.vibe_transfer.length > 0) {
+        requestBody.vibe_transfer = values.vibe_transfer;
+        requestBody.normalize_vibes = values.normalize_vibes;
     }
 }
 
@@ -6286,7 +6682,6 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
     const img = new Image();
     img.onload = async function() {
         createConfetti();
-        //showSuccess(successMsg);
         
         // Check if we're in wide viewport mode and manual modal is open
         const isWideViewport = window.innerWidth >= 1400;
@@ -6387,9 +6782,6 @@ async function updateManualPreview(imageUrl, blob, response = null, metadata = n
         // Store the blob URL for download functionality
         previewImage.dataset.blobUrl = imageUrl;
         
-        // Wait for gallery to be loaded to find the current image
-        await loadGallery();
-        
         // Get the actual filename from response headers if available, otherwise extract from URL
         let generatedFilename = null;
         if (response && response.headers) {
@@ -6401,6 +6793,11 @@ async function updateManualPreview(imageUrl, blob, response = null, metadata = n
             if (imageUrl.startsWith('/images/')) {
                 generatedFilename = imageUrl.split('/').pop();
             }
+        }
+        
+        // Only load gallery if we don't have allImages or if this is a newly generated image (has response)
+        if (!allImages || allImages.length === 0 || response) {
+            await loadGallery();
         }
         
         const found = allImages.find(img => img.original === generatedFilename || img.upscaled === generatedFilename || img.pipeline === generatedFilename || img.pipeline_upscaled === generatedFilename);
@@ -6445,7 +6842,19 @@ async function updateManualPreview(imageUrl, blob, response = null, metadata = n
         if (rerollBtn) rerollBtn.style.display = 'flex';
         if (variationBtn) variationBtn.style.display = 'flex';
         const loadBtn = document.getElementById('manualPreviewLoadBtn');
+        const scrapBtn = document.getElementById('manualPreviewScrapBtn');
         if (loadBtn) loadBtn.style.display = 'flex';
+        if (scrapBtn) {
+            scrapBtn.style.display = 'flex';
+            // Update scrap button based on current view
+            if (isViewingScraps) {
+                scrapBtn.innerHTML = '<i class="nai-undo"></i>';
+                scrapBtn.title = 'Remove from scraps';
+            } else {
+                scrapBtn.innerHTML = '<i class="nai-image-tool-sketch"></i>';
+                scrapBtn.title = 'Move to scraps';
+            }
+        }
         if (seedBtn) seedBtn.style.display = 'flex';
         if (deleteBtn) deleteBtn.style.display = 'flex';
         
@@ -6493,6 +6902,8 @@ function resetManualPreview() {
         if (variationBtn) variationBtn.style.display = 'none';
         const loadBtn = document.getElementById('manualPreviewLoadBtn');
         if (loadBtn) loadBtn.style.display = 'none';
+        const scrapBtn = document.getElementById('manualPreviewScrapBtn');
+        if (scrapBtn) scrapBtn.style.display = 'none';
         if (seedBtn) seedBtn.style.display = 'none';
         if (deleteBtn) deleteBtn.style.display = 'none';
         
@@ -6809,7 +7220,7 @@ async function saveManualPreset(presetName, config) {
         
         if (response.ok) {
             const result = await response.json();
-            showSuccess(result.message);
+            showGlassToast('success', 'Save Preset', result.message);
             
             // Refresh the preset list
             await loadOptions();
@@ -6958,10 +7369,29 @@ function handleCharacterAutocompleteInput(e) {
         return;
     }
     
-    // Don't trigger autocomplete on backspace
+    // Handle backspace - if actively navigating, start normal search delay
     if (e.inputType === 'deleteContentBackward') {
-        hideCharacterAutocomplete();
-        return;
+        // If user is actively navigating or has an item selected, start normal search
+        if (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
+            // Clear existing timeout
+            if (characterAutocompleteTimeout) {
+                clearTimeout(characterAutocompleteTimeout);
+            }
+            
+            // Set timeout to search after user stops typing (normal delay)
+            characterAutocompleteTimeout = setTimeout(() => {
+                if (searchText.startsWith('<') || searchText.length >= 2) {
+                    searchCharacters(searchText, target);
+                } else {
+                    hideCharacterAutocomplete();
+                }
+            }, 500);
+            return;
+        } else {
+            // Not actively navigating, hide autocomplete
+            hideCharacterAutocomplete();
+            return;
+        }
     }
     
     const target = e.target;
@@ -6981,9 +7411,23 @@ function handleCharacterAutocompleteInput(e) {
         textBeforeCursor.lastIndexOf('|'),
         textBeforeCursor.lastIndexOf(',')
     );
-    const searchText = lastDelimiterIndex >= 0 ? 
+    let searchText = lastDelimiterIndex >= 0 ? 
         textBeforeCursor.substring(lastDelimiterIndex + 1).trim() : 
         textBeforeCursor.trim();
+    
+    // Special handling for text replacement searches starting with <
+    // If the search text starts with <, we need to preserve it for the search
+    if (searchText.startsWith('<')) {
+        // Keep the < in the search text
+        searchText = searchText;
+    } else {
+        // Check if there's a < character before the cursor that should be included
+        const lastLessThanIndex = textBeforeCursor.lastIndexOf('<');
+        if (lastLessThanIndex > lastDelimiterIndex) {
+            // There's a < after the last delimiter, include it in the search
+            searchText = textBeforeCursor.substring(lastLessThanIndex).trim();
+        }
+    }
     
     // Clear existing timeout
     if (characterAutocompleteTimeout) {
@@ -6992,7 +7436,8 @@ function handleCharacterAutocompleteInput(e) {
     
     // Set timeout to search after user stops typing
     characterAutocompleteTimeout = setTimeout(() => {
-        if (searchText.length >= 2) {
+        // For text replacement searches (starting with <), search immediately even with 1 character
+        if (searchText.startsWith('<') || searchText.length >= 2) {
             searchCharacters(searchText, target);
         } else {
             hideCharacterAutocomplete();
@@ -7013,8 +7458,14 @@ let emphasisEditingTarget = null;
 let emphasisEditingSelection = null;
 let emphasisEditingMode = 'normal'; // 'normal', 'brace', 'group'
 
+// Emphasis highlighting functionality
+let emphasisHighlightingActive = false;
+let emphasisHighlightingTarget = null;
+
 // Track if we're in autocomplete navigation mode
 let autocompleteNavigationMode = false;
+// Track if autocomplete is expanded to show all results
+let autocompleteExpanded = false;
 
 function handleCharacterAutocompleteKeydown(e) {
     // Handle emphasis editing popup
@@ -7137,7 +7588,15 @@ function handleCharacterAutocompleteKeydown(e) {
                 if (autocompleteNavigationMode) {
                     e.preventDefault();
                     // Start emphasis editing for current tag
-                    startEmphasisEditing();
+                    startEmphasisEditing(currentCharacterAutocompleteTarget);
+                }
+                break;
+            case 'Backspace':
+                // When actively navigating in autocomplete, don't close it on backspace
+                if (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
+                    // Allow normal backspace behavior but keep autocomplete open
+                    // The input handler will handle the actual text deletion and search
+                    return;
                 }
                 break;
         }
@@ -7147,34 +7606,62 @@ function handleCharacterAutocompleteKeydown(e) {
 }
 
 async function searchCharacters(query, target) {
-    try {
-        const response = await fetchWithAuth(`/search/prompt?m=${manualModel.value}&q=${encodeURIComponent(query)}`);
+    try {        
+        // Check if query starts with < - only return text replacements in this case
+        const isTextReplacementSearch = query.startsWith('<');
         
-        if (!response.ok) {
-            throw new Error('Failed to search characters and tags');
+        let searchResults = [];
+        
+        if (!isTextReplacementSearch) {
+            // Only search server if not starting with <
+            const response = await fetchWithAuth(`/search/prompt?m=${manualModel.value}&q=${encodeURIComponent(query)}`);
+            
+            if (!response.ok) {
+                throw new Error('Failed to search characters and tags');
+            }
+            
+            searchResults = await response.json();
         }
         
-        const searchResults = await response.json();
+        // Handle PICK_ prefix stripping for search but preserve in inserted text
+        let searchQuery = query;
+        let hasPickPrefix = false;
         
-        // Also search through text replacements
+        if (query.startsWith('PICK_')) {
+            searchQuery = query.substring(5); // Remove PICK_ prefix for searching
+            hasPickPrefix = true;
+        }
+        
+        // For text replacement searches, strip the < character from the search query
+        if (isTextReplacementSearch) {
+            searchQuery = searchQuery.substring(1); // Remove the < character
+        }
+                
+        // Search through text replacements
         const textReplacementResults = Object.keys(textReplacements)
-            .filter(key => key.toLowerCase().includes(query.toLowerCase()))
+            .filter(key => {
+                const keyToSearch = key.startsWith('PICK_') ? key.substring(5) : key;
+                // If searchQuery is empty (just < was typed), return all items
+                if (searchQuery === '') {
+                    return true;
+                }
+                return keyToSearch.toLowerCase().includes(searchQuery.toLowerCase());
+            })
             .map(key => ({
                 type: 'textReplacement',
                 name: key,
                 description: textReplacements[key],
-                placeholder: key // The placeholder name like <NAME>
+                placeholder: key, // The placeholder name like <NAME> or <PICK_NAME>
+                // If we searched with PICK_ prefix, ensure the result preserves it
+                displayName: hasPickPrefix && !key.startsWith('PICK_') ? `PICK_${key}` : key
             }));
-        
+                
         // Combine search results with text replacement results
         const allResults = [...searchResults, ...textReplacementResults];
         characterSearchResults = allResults;
         
-        if (allResults.length > 0) {
-            showCharacterAutocompleteSuggestions(allResults, target);
-        } else {
-            hideCharacterAutocomplete();
-        }
+        // Always show autocomplete, even with no results
+        showCharacterAutocompleteSuggestions(allResults, target);
     } catch (error) {
         console.error('Character and tag search error:', error);
         hideCharacterAutocomplete();
@@ -7196,92 +7683,108 @@ function showCharacterAutocompleteSuggestions(results, target) {
     // Check if we can add emphasis option
     const canAddEmphasis = checkCanAddEmphasis(target);
     
-    // Show only first 5 items initially
-    const initialResults = results.slice(0, 5);
+    // Show all results if expanded, otherwise show only first 5 items
+    const displayResults = autocompleteExpanded ? results : results.slice(0, 5);
     
     // Populate character autocomplete list
     characterAutocompleteList.innerHTML = '';
     
-    // Add emphasis tooltip at the bottom if applicable
-    // Note: This will be shown/hidden based on navigation mode
-    if (canAddEmphasis) {
-        const emphasisTooltip = document.createElement('div');
-        emphasisTooltip.className = 'character-autocomplete-tooltip';
-        emphasisTooltip.id = 'emphasisTooltip';
-        emphasisTooltip.style.display = 'none'; // Hidden by default
-        emphasisTooltip.innerHTML = `
-            <span>Press E to add emphasis</span>
-        `;
-        characterAutocompleteList.appendChild(emphasisTooltip);
-    }
-    
-    initialResults.forEach((result, index) => {
-        const item = document.createElement('div');
-        item.className = 'character-autocomplete-item';
-        
-        if (result.type === 'textReplacement') {
-            // Handle text replacement results
-            item.dataset.type = 'textReplacement';
-            item.dataset.placeholder = result.placeholder;
-            
-            item.innerHTML = `
-                <div class="character-info-row">
-                    <span class="character-name">${result.placeholder}</span>
-                    <span class="character-copyright">Text Replacement</span>
-                </div>
-                <div class="character-info-row">
-                    <div class="placeholder-desc"><span class="placeholder-desc-text">${result.description}</span></div>
-                </div>
-            `;
-            
-            item.addEventListener('click', () => selectTextReplacement(result.placeholder));
-        } else if (result.type === 'tag') {
-            // Handle tag results
-            item.dataset.type = 'tag';
-            item.dataset.tagName = result.name;
-            item.dataset.modelType = result.model.toLowerCase().includes('furry') ? 'furry' : 'anime';
-            
-            item.innerHTML = `
-                <div class="character-info-row">
-                    <span class="character-name">${result.name}</span>
-                    <span class="character-copyright">${modelKeys[result.model.toLowerCase()]?.type || 'NovelAI'}${modelKeys[result.model.toLowerCase()]?.version ? ' <span class="badge">' + modelKeys[result.model.toLowerCase()]?.version + '</span>' : ''}</span>
-                </div>
-            `;
-            
-            item.addEventListener('click', () => selectTag(result.name));
-        } else {
-            // Handle character results
-            item.dataset.type = 'character';
-            item.dataset.characterData = JSON.stringify(result.character);
-            
-            // Parse name and copyright from character data
-            const character = result.character;
-            const name = character.name || result.name;
-            const copyright = character.copyright || '';
-            
-            item.innerHTML = `
-                <div class="character-info-row">
-                    <span class="character-name">${name}</span>
-                    <span class="character-copyright">${copyright}</span>
-                </div>
-            `;
-            
-            item.addEventListener('click', () => selectCharacterItem(result.character));
-        }
-        
-        characterAutocompleteList.appendChild(item);
-    });
-    
-    // Add "show more" indicator if there are more results
-    if (results.length > 5) {
-        const moreItem = document.createElement('div');
-        moreItem.className = 'character-autocomplete-item more-indicator';
-        moreItem.innerHTML = `
+    // If no results, show a "no results" message
+    if (results.length === 0) {
+        const noResultsItem = document.createElement('div');
+        noResultsItem.className = 'character-autocomplete-item no-results';
+        noResultsItem.innerHTML = `
             <div class="character-info-row">
-                <span class="character-name">Press ↓ to show all ${results.length} results</span>
+                <span class="character-name">No results found</span>
+                <span class="character-copyright">Try a different search term</span>
             </div>
         `;
-        characterAutocompleteList.appendChild(moreItem);
+        characterAutocompleteList.appendChild(noResultsItem);
+    } else {
+        // Add emphasis tooltip at the bottom if applicable
+        // Note: This will be shown/hidden based on navigation mode
+        if (canAddEmphasis) {
+            const emphasisTooltip = document.createElement('div');
+            emphasisTooltip.className = 'character-autocomplete-tooltip';
+            emphasisTooltip.id = 'emphasisTooltip';
+            emphasisTooltip.style.display = 'none'; // Hidden by default
+            emphasisTooltip.innerHTML = `
+                <span>Press E to add emphasis</span>
+            `;
+            characterAutocompleteList.appendChild(emphasisTooltip);
+        }
+        
+        displayResults.forEach((result, index) => {
+            const item = document.createElement('div');
+            item.className = 'character-autocomplete-item';
+            
+            if (result.type === 'textReplacement') {
+                // Handle text replacement results
+                item.dataset.type = 'textReplacement';
+                item.dataset.placeholder = result.placeholder;
+                
+                // Use displayName if available, otherwise use placeholder
+                const displayName = result.displayName || result.placeholder;
+                
+                item.innerHTML = `
+                    <div class="character-info-row">
+                        <span class="character-name">${displayName}</span>
+                        <span class="character-copyright">Text Replacement</span>
+                    </div>
+                    <div class="character-info-row">
+                        <div class="placeholder-desc"><span class="placeholder-desc-text">${result.description}</span></div>
+                    </div>
+                `;
+                
+                item.addEventListener('click', () => selectTextReplacement(result.placeholder));
+            } else if (result.type === 'tag') {
+                // Handle tag results
+                item.dataset.type = 'tag';
+                item.dataset.tagName = result.name;
+                item.dataset.modelType = result.model.toLowerCase().includes('furry') ? 'furry' : 'anime';
+                
+                item.innerHTML = `
+                    <div class="character-info-row">
+                        <span class="character-name">${result.name}</span>
+                        <span class="character-copyright">${modelKeys[result.model.toLowerCase()]?.type || 'NovelAI'}${modelKeys[result.model.toLowerCase()]?.version ? ' <span class="badge">' + modelKeys[result.model.toLowerCase()]?.version + '</span>' : ''}</span>
+                    </div>
+                `;
+                
+                item.addEventListener('click', () => selectTag(result.name));
+            } else {
+                // Handle character results
+                item.dataset.type = 'character';
+                item.dataset.characterData = JSON.stringify(result.character);
+                
+                // Parse name and copyright from character data
+                const character = result.character;
+                const name = character.name || result.name;
+                const copyright = character.copyright || '';
+                
+                item.innerHTML = `
+                    <div class="character-info-row">
+                        <span class="character-name">${name}</span>
+                        <span class="character-copyright">${copyright}</span>
+                    </div>
+                `;
+                
+                item.addEventListener('click', () => selectCharacterItem(result.character));
+            }
+            
+            characterAutocompleteList.appendChild(item);
+        });
+        
+        // Add "show more" indicator if there are more results and not expanded
+        if (results.length > 5 && !autocompleteExpanded) {
+            const moreItem = document.createElement('div');
+            moreItem.className = 'character-autocomplete-item more-indicator';
+            moreItem.innerHTML = `
+                <div class="character-info-row">
+                    <span class="character-name">Press ↓ to show all ${results.length} results</span>
+                </div>
+            `;
+            characterAutocompleteList.appendChild(moreItem);
+        }
     }
     
     // Position overlay relative to viewport
@@ -7291,6 +7794,12 @@ function showCharacterAutocompleteSuggestions(results, target) {
     characterAutocompleteOverlay.style.width = rect.width + 'px';
     
     characterAutocompleteOverlay.classList.remove('hidden');
+    
+    // Auto-select first item if there are results and user is in navigation mode
+    if (results.length > 0 && (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0)) {
+        selectedCharacterAutocompleteIndex = 0;
+        updateCharacterAutocompleteSelection();
+    }
 }
 
 function checkCanAddEmphasis(target) {
@@ -7332,6 +7841,8 @@ function checkCanAddEmphasis(target) {
 function expandAutocompleteToShowAll() {
     if (!window.allAutocompleteResults || !characterAutocompleteList) return;
     
+    autocompleteExpanded = true;
+    
     // Clear current list
     characterAutocompleteList.innerHTML = '';
     
@@ -7344,9 +7855,12 @@ function expandAutocompleteToShowAll() {
             item.dataset.type = 'textReplacement';
             item.dataset.placeholder = result.placeholder;
             
+            // Use displayName if available, otherwise use placeholder
+            const displayName = result.displayName || result.placeholder;
+            
             item.innerHTML = `
                 <div class="character-info-row">
-                    <span class="character-name">${result.placeholder}</span>
+                    <span class="character-name">${displayName}</span>
                     <span class="character-copyright">Text Replacement</span>
                 </div>
                 <div class="character-info-row">
@@ -7388,6 +7902,11 @@ function expandAutocompleteToShowAll() {
         
         characterAutocompleteList.appendChild(item);
     });
+    
+    // Maintain selection after expanding
+    if (selectedCharacterAutocompleteIndex >= 0) {
+        updateCharacterAutocompleteSelection();
+    }
 }
 
 // Emphasis popup functions
@@ -7466,10 +7985,10 @@ function adjustEmphasisFromWheel(event) {
     adjustEmphasis(delta);
 }
 
-function startEmphasisEditing() {
-    if (!currentCharacterAutocompleteTarget) return;
+function startEmphasisEditing(target) {
+    if (!target) return;
     
-    const target = currentCharacterAutocompleteTarget;
+    emphasisEditingTarget = target;
     const value = target.value;
     const cursorPosition = target.selectionStart;
     const textBeforeCursor = value.substring(0, cursorPosition);
@@ -7559,43 +8078,120 @@ function startEmphasisEditing() {
             }
         }
         
+        // If not inside a brace, check if we're at the start/end of a brace block within an emphasis group
         if (!insideBrace) {
-            // Find the tag to emphasize (same logic as autocomplete)
-            const lastDelimiterIndex = Math.max(
-                textBeforeCursor.lastIndexOf('{'),
-                textBeforeCursor.lastIndexOf('}'),
-                textBeforeCursor.lastIndexOf('['),
-                textBeforeCursor.lastIndexOf(']'),
-                textBeforeCursor.lastIndexOf(':'),
-                textBeforeCursor.lastIndexOf('|'),
-                textBeforeCursor.lastIndexOf(',')
-            );
-            const searchText = lastDelimiterIndex >= 0 ? 
-                textBeforeCursor.substring(lastDelimiterIndex + 1).trim() : 
-                textBeforeCursor.trim();
+            const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
+            let emphasisMatch;
             
-            if (searchText.length < 2) return;
+            while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
+                const emphasisStart = emphasisMatch.index;
+                const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
+                const emphasisText = emphasisMatch[2];
+                
+                // Check if cursor is at the start or end of a brace block within this emphasis
+                if (cursorPosition >= emphasisStart && cursorPosition <= emphasisEnd) {
+                    const relativePos = cursorPosition - emphasisStart;
+                    const emphasisContent = emphasisText;
+                    
+                    // Check if cursor is at the start of a brace block
+                    const braceStartMatch = emphasisContent.match(/^(\{+|\[+)/);
+                    if (braceStartMatch && relativePos <= braceStartMatch[0].length) {
+                        insideBrace = true;
+                        emphasisMode = 'brace';
+                        const braceLevel = braceStartMatch[0].length;
+                        emphasisEditingValue = braceStartMatch[0].startsWith('[') ? 
+                            1.0 - (braceLevel * 0.1) : 1.0 + (braceLevel * 0.1);
+                        emphasisEditingSelection = {
+                            start: emphasisStart + emphasisMatch.index + 1,
+                            end: emphasisStart + emphasisMatch.index + 1 + braceStartMatch[0].length
+                        };
+                        break;
+                    }
+                    
+                    // Check if cursor is at the end of a brace block
+                    const braceEndMatch = emphasisContent.match(/(\}+|]+)$/);
+                    if (braceEndMatch && relativePos >= emphasisContent.length - braceEndMatch[0].length) {
+                        insideBrace = true;
+                        emphasisMode = 'brace';
+                        const braceLevel = braceEndMatch[0].length;
+                        emphasisEditingValue = braceEndMatch[0].startsWith(']') ? 
+                            1.0 - (braceLevel * 0.1) : 1.0 + (braceLevel * 0.1);
+                        emphasisEditingSelection = {
+                            start: emphasisStart + emphasisMatch.index + 1 + emphasisContent.length - braceEndMatch[0].length,
+                            end: emphasisStart + emphasisMatch.index + 1 + emphasisContent.length
+                        };
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (!insideBrace) {
+            // Check if there's a text selection
+            const selectionStart = target.selectionStart;
+            const selectionEnd = target.selectionEnd;
+            const hasSelection = selectionStart !== selectionEnd;
             
-            // Check if the current tag is already emphasized
-            const currentTagEmphasisPattern = new RegExp(`(\\d+\\.\\d+)::${searchText}::`);
-            const currentTagMatch = textBeforeCursor.match(currentTagEmphasisPattern);
-            
-            if (currentTagMatch) {
-                // Current tag is already emphasized, adjust its weight
-                emphasisEditingValue = parseFloat(currentTagMatch[1]);
+            if (hasSelection) {
+                // Use the selected text for emphasis
                 emphasisEditingSelection = {
-                    start: currentTagMatch.index,
-                    end: currentTagMatch.index + currentTagMatch[0].length
+                    start: selectionStart,
+                    end: selectionEnd
                 };
-                emphasisMode = 'group';
-            } else {
-                // Create new emphasis block
                 emphasisEditingValue = 1.0;
-                emphasisEditingSelection = {
-                    start: lastDelimiterIndex + 1,
-                    end: cursorPosition
-                };
                 emphasisMode = 'normal';
+            } else {
+                // For new blocks, search back to find the block boundary
+                const searchBackIndex = Math.max(
+                    textBeforeCursor.lastIndexOf(','),
+                    textBeforeCursor.lastIndexOf('|'),
+                    textBeforeCursor.lastIndexOf(':'),
+                    textBeforeCursor.lastIndexOf('{'),
+                    textBeforeCursor.lastIndexOf('}'),
+                    textBeforeCursor.lastIndexOf('['),
+                    textBeforeCursor.lastIndexOf(']')
+                );
+                
+                const blockStart = searchBackIndex >= 0 ? searchBackIndex + 1 : 0;
+                
+                // Search forward to find the end of the current tag
+                const textAfterCursor = value.substring(cursorPosition);
+                const searchForwardIndex = Math.min(
+                    textAfterCursor.indexOf(',') >= 0 ? textAfterCursor.indexOf(',') : Infinity,
+                    textAfterCursor.indexOf('|') >= 0 ? textAfterCursor.indexOf('|') : Infinity,
+                    textAfterCursor.indexOf(':') >= 0 ? textAfterCursor.indexOf(':') : Infinity,
+                    textAfterCursor.indexOf('{') >= 0 ? textAfterCursor.indexOf('{') : Infinity,
+                    textAfterCursor.indexOf('}') >= 0 ? textAfterCursor.indexOf('}') : Infinity,
+                    textAfterCursor.indexOf('[') >= 0 ? textAfterCursor.indexOf('[') : Infinity,
+                    textAfterCursor.indexOf(']') >= 0 ? textAfterCursor.indexOf(']') : Infinity
+                );
+                
+                const blockEnd = searchForwardIndex !== Infinity ? cursorPosition + searchForwardIndex : value.length;
+                const blockText = value.substring(blockStart, blockEnd).trim();
+                
+                if (blockText.length < 2) return;
+                
+                // Check if the current tag is already emphasized
+                const currentTagEmphasisPattern = new RegExp(`(\\d+\\.\\d+)::${blockText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}::`);
+                const currentTagMatch = value.match(currentTagEmphasisPattern);
+                
+                if (currentTagMatch) {
+                    // Current tag is already emphasized, adjust its weight
+                    emphasisEditingValue = parseFloat(currentTagMatch[1]);
+                    emphasisEditingSelection = {
+                        start: currentTagMatch.index,
+                        end: currentTagMatch.index + currentTagMatch[0].length
+                    };
+                    emphasisMode = 'group';
+                } else {
+                    // Create new emphasis block
+                    emphasisEditingValue = 1.0;
+                    emphasisEditingSelection = {
+                        start: blockStart,
+                        end: blockEnd
+                    };
+                    emphasisMode = 'normal';
+                }
             }
         }
     }
@@ -7620,18 +8216,24 @@ function showEmphasisEditingPopup() {
         popup.className = 'emphasis-popup';
         popup.innerHTML = `
             <div class="emphasis-popup-content">
-                <div class="emphasis-label">Emphasis Weight</div>
-                <div class="emphasis-mode-indicator" id="emphasisModeIndicator"></div>
-                <div class="emphasis-value">${emphasisEditingValue.toFixed(1)}</div>
-                <div class="emphasis-controls">
-                    <button class="emphasis-btn" onclick="adjustEmphasisEditing(-0.1)">-</button>
-                    <input type="range" min="-1.0" max="2.5" step="0.1" value="${emphasisEditingValue}" 
-                           oninput="updateEmphasisEditingFromSlider(this.value)" 
-                           onwheel="adjustEmphasisEditingFromWheel(event)">
-                    <button class="emphasis-btn" onclick="adjustEmphasisEditing(0.1)">+</button>
+                <div class="emphasis-header">
+                    <div class="emphasis-text" id="emphasisText">Select text...</div>
                 </div>
-                <div class="emphasis-help">Use ↑↓ arrows or scroll to adjust</div>
-                <div class="emphasis-mode-help" id="emphasisModeHelp"></div>
+                <div class="emphasis-toolbar">
+                    <div class="emphasis-value" id="emphasisValue">1.0</div>
+                    <div class="emphasis-type" id="emphasisType">New Group</div>
+                    <div class="emphasis-controls">
+                        <button class="btn-secondary emphasis-btn emphasis-up" onclick="adjustEmphasisEditing(0.1)" title="Increase">
+                        <i class="nai-plus"></i>
+                        </button>
+                        <button class="btn-secondary emphasis-btn emphasis-down" onclick="adjustEmphasisEditing(-0.1)" title="Decrease">
+                        <i class="nai-minus"></i>
+                        </button>
+                        <button class="btn-secondary emphasis-btn emphasis-toggle" id="emphasisToggleBtn" onclick="switchEmphasisMode('toggle')" title="Toggle Mode" style="display: none;">
+                        <i class="nai-arrow-left"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
         `;
         document.body.appendChild(popup);
@@ -7662,51 +8264,89 @@ function updateEmphasisEditingPopup() {
     const popup = document.getElementById('emphasisEditingPopup');
     if (!popup) return;
     
-    const valueElement = popup.querySelector('.emphasis-value');
-    const slider = popup.querySelector('input[type="range"]');
-    const modeIndicator = popup.querySelector('#emphasisModeIndicator');
-    const modeHelp = popup.querySelector('#emphasisModeHelp');
+    const valueElement = popup.querySelector('#emphasisValue');
+    const typeElement = popup.querySelector('#emphasisType');
+    const textElement = popup.querySelector('#emphasisText');
+    const toggleBtn = popup.querySelector('#emphasisToggleBtn');
     
-    if (valueElement) valueElement.textContent = emphasisEditingValue.toFixed(1);
-    if (slider) slider.value = emphasisEditingValue;
+    if (valueElement) {
+        valueElement.textContent = emphasisEditingValue.toFixed(1);
+        
+        // Color code the emphasis value
+        if (emphasisEditingValue > 1.0) {
+            valueElement.style.color = '#ff8c00'; // Orange for > 1
+        } else if (emphasisEditingValue < 1.0) {
+            valueElement.style.color = '#87ceeb'; // Light blue for < 1
+        } else {
+            valueElement.style.color = '#ffffff'; // White for = 1
+        }
+    }
     
-    // Update mode indicator
-    if (modeIndicator) {
-        let modeText = '';
+    // Update type indicator
+    if (typeElement) {
+        let typeText = '';
         let modeClass = '';
         switch (emphasisEditingMode) {
             case 'normal':
-                modeText = 'New Group';
+                typeText = 'New Group';
                 modeClass = 'mode-normal';
                 break;
             case 'brace':
-                modeText = 'Brace Block';
+                typeText = 'Brace Block';
                 modeClass = 'mode-brace';
                 break;
             case 'group':
-                modeText = 'Modify Group';
+                typeText = 'Modify Group';
                 modeClass = 'mode-group';
                 break;
         }
-        modeIndicator.textContent = modeText;
-        modeIndicator.className = `emphasis-mode-indicator ${modeClass}`;
+        typeElement.textContent = typeText;
+        typeElement.className = `emphasis-type ${modeClass}`;
     }
     
-    // Update mode help text
-    if (modeHelp) {
-        let helpText = '';
-        switch (emphasisEditingMode) {
-            case 'normal':
-                helpText = 'Press → to add emphasis around current tag';
-                break;
-            case 'brace':
-                helpText = 'Press ← to switch back to group';
-                break;
-            case 'group':
-                helpText = 'Press → to focus on current tag';
-                break;
+    // Update text content
+    if (textElement && emphasisEditingTarget && emphasisEditingSelection) {
+        const target = emphasisEditingTarget;
+        const text = target.value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
+        
+        // Remove :: wrapper if it's an emphasis block, or {}/[] if it's a brace block
+        let displayText = text;
+        if (emphasisEditingMode === 'group') {
+            const emphasisMatch = text.match(/\d+\.\d+::(.+?)::/);
+            if (emphasisMatch) {
+                displayText = emphasisMatch[1];
+            }
+        } else if (emphasisEditingMode === 'brace') {
+            // Remove all { and } or [ and ] from the beginning and end
+            displayText = text.replace(/^\{+|\[+/, '').replace(/\}+|\]+$/, '');
         }
-        modeHelp.textContent = helpText;
+        
+        textElement.textContent = displayText;
+    }
+    
+    // Update toggle button visibility and direction
+    if (toggleBtn) {
+        let arrowDirection = '';
+        let tooltipText = '';
+        
+        console.log('Current emphasis mode:', emphasisEditingMode);
+        
+        // Always show toggle button, determine direction based on current mode
+        if (emphasisEditingMode === 'group') {
+            arrowDirection = '<i class="fas fa-brackets-curly"></i>';
+            tooltipText = 'Switch to Brace Block';
+        } else if (emphasisEditingMode === 'brace') {
+            arrowDirection = '<i class="fas fa-colon"></i>';
+            tooltipText = 'Switch to Group';
+        } else if (emphasisEditingMode === 'normal') {
+            arrowDirection = '<i class="fas fa-brackets-curly"></i>';
+            tooltipText = 'Switch to Brace Block';
+        }
+        
+        // Always show the button
+        toggleBtn.style.display = '';
+        toggleBtn.innerHTML = arrowDirection;
+        toggleBtn.title = tooltipText;
     }
 }
 
@@ -7740,8 +8380,9 @@ function applyEmphasisEditing() {
     const emphasisPattern = /(\d+\.\d+)::([^:]+)::/;
     const isInsideEmphasis = emphasisPattern.test(textToEmphasize);
     
-    // Check if we're inside a {} block
-    const isInsideBrace = textToEmphasize.startsWith('{') && textToEmphasize.endsWith('}');
+    // Check if we're inside a {} or [] block
+    const isInsideBrace = (textToEmphasize.startsWith('{') && textToEmphasize.endsWith('}')) || 
+                          (textToEmphasize.startsWith('[') && textToEmphasize.endsWith(']'));
     
     let emphasizedText;
     if (emphasisEditingMode === 'brace') {
@@ -7762,16 +8403,16 @@ function applyEmphasisEditing() {
             const braceLevel = Math.round((emphasisEditingValue - 1.0) * 10);
             
             if (braceLevel > 0) {
-                // Positive emphasis: use {}
+                // Positive emphasis: use {} - ensure clean conversion from []
                 const braces = '{'.repeat(braceLevel + 1);
                 emphasizedText = `${braces}${innerText}${'}'.repeat(braceLevel + 1)}`;
             } else if (braceLevel < 0) {
-                // Negative emphasis: use [] (inverted calculation)
+                // Negative emphasis: use [] - ensure clean conversion from {}
                 const bracketLevel = Math.abs(Math.round((1.0 - emphasisEditingValue) * 10));
                 const brackets = '['.repeat(bracketLevel);
                 emphasizedText = `${brackets}${innerText}${']'.repeat(bracketLevel)}`;
             } else {
-                // No emphasis: just the text
+                // No emphasis: just the text - remove all braces/brackets
                 emphasizedText = innerText;
             }
         } else {
@@ -7909,6 +8550,372 @@ function applyEmphasisEditing() {
     
     // Trigger input event to update any dependent UI
     target.dispatchEvent(new Event('input', { bubbles: true }));
+    
+    // Update emphasis highlighting
+    autoResizeTextarea(target);
+    updateEmphasisHighlighting(target);
+}
+
+// Emphasis highlighting functions
+function startEmphasisHighlighting(textarea) {
+    if (emphasisHighlightingActive && emphasisHighlightingTarget === textarea) return;
+    
+    emphasisHighlightingActive = true;
+    emphasisHighlightingTarget = textarea;
+    
+    // Add event listeners for real-time highlighting
+    textarea.addEventListener('input', () => {
+        autoResizeTextarea(textarea);
+        updateEmphasisHighlighting(textarea);
+    });
+    
+    // Initial highlighting
+    autoResizeTextarea(textarea);
+    updateEmphasisHighlighting(textarea);
+}
+
+function autoResizeTextarea(textarea) {
+    if (!textarea) return;
+    
+    // Reset height to auto to get the correct scrollHeight
+    textarea.style.height = 'auto';
+    
+    // Calculate new height based on content, accounting for padding
+    const computedStyle = window.getComputedStyle(textarea);
+    const paddingTop = parseFloat(computedStyle.paddingTop);
+    const paddingBottom = parseFloat(computedStyle.paddingBottom);
+    const borderTop = parseFloat(computedStyle.borderTopWidth);
+    const borderBottom = parseFloat(computedStyle.borderBottomWidth);
+    const totalPadding = paddingTop + paddingBottom + borderTop + borderBottom;
+    
+    const minHeight = 80;
+    
+    // Ensure scrollHeight is calculated correctly
+    let scrollHeight = textarea.scrollHeight;
+    if (scrollHeight === 0 && textarea.value) {
+        // If scrollHeight is 0 but there's content, try again after a brief delay
+        setTimeout(() => {
+            textarea.style.height = 'auto';
+            const newScrollHeight = textarea.scrollHeight;
+            if (newScrollHeight > 0) {
+                const newHeight = Math.max(newScrollHeight + totalPadding, minHeight);
+                textarea.style.height = newHeight + 'px';
+                
+                // Update container height if it exists
+                const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+                if (container) {
+                    container.style.height = newHeight + 'px';
+                    container.style.minHeight = newHeight + 'px';
+                }
+            }
+        }, 5);
+        return;
+    }
+    
+    const newHeight = Math.max(scrollHeight + totalPadding, minHeight);
+    
+    // Set the new height
+    textarea.style.height = newHeight + 'px';
+    
+    // Update container height if it exists
+    const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+    if (container) {
+        container.style.height = newHeight + 'px';
+        container.style.minHeight = newHeight + 'px';
+    }
+}
+
+function stopEmphasisHighlighting() {
+    emphasisHighlightingActive = false;
+    emphasisHighlightingTarget = null;
+}
+
+function updateEmphasisHighlighting(textarea) {
+    if (!textarea) return;
+    
+    const value = textarea.value;
+    const highlightedValue = highlightEmphasisInText(value);
+    
+    // Create or update the highlighting overlay
+    let overlay = textarea.parentElement.querySelector('.emphasis-highlight-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'emphasis-highlight-overlay';
+        textarea.parentElement.appendChild(overlay);
+    }
+    
+    overlay.innerHTML = highlightedValue;
+    
+    // Sync scroll position
+    overlay.scrollTop = textarea.scrollTop;
+    overlay.scrollLeft = textarea.scrollLeft;
+}
+
+function initializeEmphasisOverlay(textarea) {
+    if (!textarea) return;
+    
+    const value = textarea.value;
+    const highlightedValue = highlightEmphasisInText(value);
+    
+    // Create or update the highlighting overlay
+    let overlay = textarea.parentElement.querySelector('.emphasis-highlight-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'emphasis-highlight-overlay';
+        textarea.parentElement.appendChild(overlay);
+    }
+    
+    overlay.innerHTML = highlightedValue;
+    
+    // Sync scroll position
+    overlay.scrollTop = textarea.scrollTop;
+    overlay.scrollLeft = textarea.scrollLeft;
+}
+
+function highlightEmphasisInText(text) {
+    if (!text) return '';
+    
+    let highlightedText = text;
+    
+    // Function to calculate dynamic colors based on weight
+    function getEmphasisColors(weight) {
+        let backgroundR, backgroundG, backgroundB, backgroundA;
+        let borderR, borderG, borderB, borderA;
+        
+        if (weight >= 1.0 && weight <= 3.0) {
+            // Positive emphasis: 1-3.0 with stronger 1-3 range and gradual 3-5 range
+            if (weight <= 2.0) {
+                // Stronger changes in 1-3 range
+                const ratio = (weight - 1.0) / 2.0; // 0 to 1 over 1-3 range
+                backgroundR = 255;
+                backgroundG = Math.round(69 - (46 * ratio));
+                backgroundB = Math.round(0 + (23 * ratio));
+                backgroundA = 0.05 + (0.67 * ratio);
+            } else {
+                // More gradual changes in 3-5 range
+                const gradualRatio = (weight - 3.0) / 2.0; // 0 to 1 over 3-5 range
+                backgroundR = 255;
+                backgroundG = 23; // Already at minimum from 1-3 range
+                backgroundB = 23; // Already at maximum from 1-3 range
+                backgroundA = 0.72 + (0.28 * gradualRatio); // Subtle alpha increase
+            }
+            
+            // Brighter border for contrast
+            borderR = Math.min(255, backgroundR + 30);
+            borderG = Math.min(255, backgroundG + 30);
+            borderB = Math.min(255, backgroundB + 30);
+            borderA = Math.min(1.0, backgroundA + 0.2);
+        } else if (weight >= -2.0 && weight <= 1.0) {
+            // Negative emphasis: -4-1.0 = rgba(23, 134, 255, 0.69) to rgba(0, 91, 163, 0.25)
+            const ratio = Math.max((weight + 2.0) / 3.0, 0.0); // Adjusted for -4 to 1 range
+            backgroundR = Math.round(23 - (23 * ratio));
+            backgroundG = Math.round(134 - (43 * ratio));
+            backgroundB = 255;
+            backgroundA = 0.69 - (0.44 * ratio);
+            
+            // Brighter border for contrast
+            borderR = Math.min(255, backgroundR + 30);
+            borderG = Math.min(255, backgroundG + 30);
+            borderB = Math.min(255, backgroundB + 30);
+            borderA = Math.min(1.0, backgroundA + 0.2);
+        } else {
+            // Default neutral color
+            backgroundR = 76; backgroundG = 175; backgroundB = 80; backgroundA = 0.2;
+            borderR = 106; borderG = 205; borderB = 110; borderA = 0.4;
+        }
+        
+        return {
+            background: `rgba(${backgroundR}, ${backgroundG}, ${backgroundB}, ${backgroundA.toFixed(2)})`,
+            border: `rgba(${borderR}, ${borderG}, ${borderB}, ${borderA.toFixed(2)})`
+        };
+    }
+    
+    // Function to get group colors based on group index
+    function getGroupColors(groupIndex) {
+        const colors = [
+            { border: 'rgba(255, 99, 132, 0.75)', background: 'rgba(255, 99, 132, 0.1)' },   // Red
+            { border: 'rgba(54, 162, 235, 0.75)', background: 'rgba(54, 162, 235, 0.1)' },   // Blue
+            { border: 'rgba(255, 205, 86, 0.75)', background: 'rgba(255, 205, 86, 0.1)' },   // Yellow
+            { border: 'rgba(75, 192, 192, 0.75)', background: 'rgba(75, 192, 192, 0.1)' },   // Teal
+            { border: 'rgba(153, 102, 255, 0.75)', background: 'rgba(153, 102, 255, 0.1)' }, // Purple
+            { border: 'rgba(255, 159, 64, 0.75)', background: 'rgba(255, 159, 64, 0.1)' },   // Orange
+            { border: 'rgba(199, 199, 199, 0.75)', background: 'rgba(199, 199, 199, 0.1)' }, // Gray
+            { border: 'rgba(83, 102, 255, 0.75)', background: 'rgba(83, 102, 255, 0.1)' }    // Indigo
+        ];
+        return colors[groupIndex % colors.length];
+    }
+    
+    // Function to apply NSFW highlighting to content
+    function applyNSFWHighlighting(content) {
+        if (!window.u1) return content;
+        
+        // Create a regex pattern from all u1 tags, sorted by length (longest first to avoid partial matches)
+        const sortedTags = [...window.u1].sort((a, b) => b.length - a.length);
+        const tagPattern = new RegExp(`\\b(${sortedTags.map(tag => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
+        
+        return content.replace(tagPattern, (match, tag) => {
+            return `<span class="emphasis-highlight" style="background: #ff49dd85; border-color: #ff49ddc9;">${tag}</span>`;
+        });
+    }
+    
+    // First, split text into groups by | and apply group highlighting
+    const groups = highlightedText.split('|');
+    if (groups.length > 1) {
+        highlightedText = groups.map((group, index) => {
+            if (group) {
+                const colors = getGroupColors(index);
+                return `<span class="emphasis-group" style="border: 2px dashed ${colors.border}; padding: 0; margin: -4px; border-radius: 4px; display: inline;">${group}</span>`;
+            }
+            return group;
+        }).join('|');
+    }
+    
+    // Highlight weight::text:: format
+    highlightedText = highlightedText.replace(/(-?\d+\.?\d*)::([^:]+)::/g, (match, weight, content) => {
+        const weightNum = parseFloat(weight);
+        const colors = getEmphasisColors(weightNum);
+        
+        // Apply NSFW highlighting to the content inside emphasis
+        const highlightedContent = applyNSFWHighlighting(content);
+        
+        return `<span class="emphasis-highlight" style="background: ${colors.background}; border-color: ${colors.border};">${weight}::${highlightedContent}::</span>`;
+    });
+    
+    // Highlight brace emphasis {text} - convert to weight equivalent
+    highlightedText = highlightedText.replace(/(\{+)([^}]+)(\}+)/g, (match, openBraces, content, closeBraces) => {
+        const braceLevel = Math.min(openBraces.length, closeBraces.length);
+        const weight = 1.0 + (braceLevel * 0.1); // Convert brace level to weight (+0.1 per level)
+        const colors = getEmphasisColors(weight);
+        
+        // Apply NSFW highlighting to the content inside braces
+        const highlightedContent = applyNSFWHighlighting(content);
+        
+        return `<span class="emphasis-highlight" style="background: ${colors.background}; border-color: ${colors.border};">${openBraces}${highlightedContent}${closeBraces}</span>`;
+    });
+    
+    // Highlight bracket emphasis [text] - convert to weight equivalent
+    highlightedText = highlightedText.replace(/(\[+)([^\]]+)(\]+)/g, (match, openBrackets, content, closeBrackets) => {
+        const bracketLevel = Math.min(openBrackets.length, closeBrackets.length);
+        const weight = 1.0 - (bracketLevel * 0.1); // Convert bracket level to weight (-0.1 per level)
+        const colors = getEmphasisColors(weight);
+        
+        // Apply NSFW highlighting to the content inside brackets
+        const highlightedContent = applyNSFWHighlighting(content);
+        
+        return `<span class="emphasis-highlight" style="background: ${colors.background}; border-color: ${colors.border};">${openBrackets}${highlightedContent}${closeBrackets}</span>`;
+    });
+    
+    // Highlight text replacements <text> - no emphasis levels, just visual highlighting
+    // Match patterns that look like valid text replacement keys (letters, numbers, underscores) - case insensitive
+    highlightedText = highlightedText.replace(/(<)([a-zA-Z0-9_]+)(>)/g, (match, openBracket, content, closeBracket) => {
+        // Check if content starts with PICK_ (case insensitive)
+        const isPickReplacement = content.toUpperCase().startsWith('PICK_');
+        const backgroundColor = isPickReplacement ? '#628a33' : '#8bc34a8a';
+        
+        // Escape the < and > characters for HTML display
+        const escapedMatch = match.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        
+        return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+    });
+    
+    // Highlight NSFW tags in remaining text (outside of emphasis blocks)
+    // Only process text that's not already inside emphasis-highlight spans
+    highlightedText = highlightedText.replace(/([^<]*?)(?=<span class="emphasis-highlight"|$)/g, (match, text) => {
+        if (!window.u1 || !text.trim()) return match;
+        
+        // Create a regex pattern from all u1 tags, sorted by length (longest first)
+        const sortedTags = [...window.u1].sort((a, b) => b.length - a.length);
+        const tagPattern = new RegExp(`\\b(${sortedTags.map(tag => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
+        
+        return text.replace(tagPattern, (tagMatch, tag) => {
+            return `<span class="emphasis-highlight" style="background: #ff49dd85; border-color: #ff49ddc9;">${tag}</span>`;
+        });
+    });
+    
+    return highlightedText;
+}
+
+// Helper function to clean up emphasis groups and brace blocks, and copy values
+function cleanupEmphasisGroupsAndCopyValue(target, selection, currentValue) {
+    const value = target.value;
+    let cleanedValue = value;
+    let newSelection = { ...selection };
+    let copiedValue = currentValue;
+    
+    // First, clean up emphasis groups
+    const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
+    let emphasisMatch;
+    
+    while ((emphasisMatch = emphasisPattern.exec(cleanedValue)) !== null) {
+        const emphasisStart = emphasisMatch.index;
+        const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
+        
+        // If the current selection overlaps with an emphasis group, clean it up
+        if (selection.start <= emphasisEnd && selection.end >= emphasisStart) {
+            const beforeEmphasis = cleanedValue.substring(0, emphasisStart);
+            const afterEmphasis = cleanedValue.substring(emphasisEnd);
+            const emphasisContent = emphasisMatch[2]; // The text inside the emphasis
+            const emphasisWeight = parseFloat(emphasisMatch[1]);
+            
+            // Copy the emphasis value
+            copiedValue = emphasisWeight;
+            
+            // Replace the emphasis group with just the content
+            cleanedValue = beforeEmphasis + emphasisContent + afterEmphasis;
+            
+            // Update the selection to point to the cleaned content
+            newSelection = {
+                start: emphasisStart,
+                end: emphasisStart + emphasisContent.length
+            };
+            break;
+        }
+    }
+    
+    // Then, clean up brace blocks ({} and [])
+    const bracePattern = /\{+([^{}]*)\}+|\[+([^\[\]]*)\]+/g;
+    let braceMatch;
+    
+    while ((braceMatch = bracePattern.exec(cleanedValue)) !== null) {
+        const braceStart = braceMatch.index;
+        const braceEnd = braceMatch.index + braceMatch[0].length;
+        
+        // If the current selection overlaps with a brace block, clean it up
+        if (selection.start <= braceEnd && selection.end >= braceStart) {
+            const beforeBrace = cleanedValue.substring(0, braceStart);
+            const afterBrace = cleanedValue.substring(braceEnd);
+            const braceContent = braceMatch[1] || braceMatch[2]; // The text inside the braces
+            const isBracket = braceMatch[0].startsWith('[');
+            
+            // Calculate brace value
+            if (isBracket) {
+                const bracketLevel = (braceMatch[0].match(/\[/g) || []).length;
+                copiedValue = 1.0 - (bracketLevel * 0.1);
+            } else {
+                const braceLevel = (braceMatch[0].match(/\{/g) || []).length;
+                copiedValue = 1.0 + (braceLevel * 0.1);
+            }
+            
+            // Replace the brace block with just the content
+            cleanedValue = beforeBrace + braceContent + afterBrace;
+            
+            // Update the selection to point to the cleaned content
+            newSelection = {
+                start: braceStart,
+                end: braceStart + braceContent.length
+            };
+            break;
+        }
+    }
+    
+    // Update the target value
+    target.value = cleanedValue;
+    
+    return {
+        newSelection,
+        copiedValue,
+        cleanedValue
+    };
 }
 
 function switchEmphasisMode(direction) {
@@ -7917,13 +8924,154 @@ function switchEmphasisMode(direction) {
     const value = emphasisEditingTarget.value;
     const cursorPosition = emphasisEditingTarget.selectionStart;
     
-    if (direction === 'right') {
+    if (direction === 'toggle') {
+        // Toggle between group and brace modes
+        if (emphasisEditingMode === 'group') {
+            // Switch from group to brace mode
+            const emphasisText = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
+            const bracePattern = /\{([^}]*)\}|\[([^\]]*)\]/g;
+            let braceMatch;
+            let foundBrace = false;
+            
+            while ((braceMatch = bracePattern.exec(emphasisText)) !== null) {
+                const braceStartInEmphasis = emphasisEditingSelection.start + emphasisText.indexOf(braceMatch[0]);
+                const braceEndInEmphasis = braceStartInEmphasis + braceMatch[0].length;
+                
+                if (cursorPosition >= braceStartInEmphasis && cursorPosition <= braceEndInEmphasis) {
+                    emphasisEditingMode = 'brace';
+                    emphasisEditingSelection = {
+                        start: braceStartInEmphasis,
+                        end: braceEndInEmphasis
+                    };
+                    // Calculate brace level from the text
+                    const braceText = braceMatch[0];
+                    const isBracket = braceText.startsWith('[');
+                    
+                    if (isBracket) {
+                        const openBrackets = (braceText.match(/\[/g) || []).length;
+                        const closeBrackets = (braceText.match(/\]/g) || []).length;
+                        const bracketLevel = openBrackets - closeBrackets;
+                        emphasisEditingValue = 1.0 - (bracketLevel * 0.1);
+                    } else {
+                        const openBraces = (braceText.match(/\{/g) || []).length;
+                        const closeBraces = (braceText.match(/\}/g) || []).length;
+                        const braceLevel = openBraces - closeBraces;
+                        emphasisEditingValue = 1.0 + (braceLevel * 0.1);
+                    }
+                    foundBrace = true;
+                    break;
+                }
+            }
+            
+            if (!foundBrace) {
+                // Find the current word/tag within the group
+                const groupText = emphasisText;
+                const tagPattern = /([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)/g;
+                let tagMatch;
+                let foundTag = false;
+                
+                while ((tagMatch = tagPattern.exec(groupText)) !== null) {
+                    const tagStartInGroup = emphasisEditingSelection.start + tagMatch.index;
+                    const tagEndInGroup = tagStartInGroup + tagMatch[0].length;
+                    
+                    if (cursorPosition >= tagStartInGroup && cursorPosition <= tagEndInGroup) {
+                        emphasisEditingMode = 'brace';
+                        emphasisEditingSelection = {
+                            start: tagStartInGroup,
+                            end: tagEndInGroup
+                        };
+                        emphasisEditingValue = 1.0;
+                        foundTag = true;
+                        break;
+                    }
+                }
+                
+                if (!foundTag) {
+                    // Use cursor position to find the word
+                    const textBeforeCursor = value.substring(0, cursorPosition);
+                    const textAfterCursor = value.substring(cursorPosition);
+                    
+                    const wordBefore = textBeforeCursor.match(/\b[a-zA-Z0-9_]+$/);
+                    const wordAfter = textAfterCursor.match(/^[a-zA-Z0-9_]+/);
+                    
+                    if (wordBefore || wordAfter) {
+                        const start = wordBefore ? cursorPosition - wordBefore[0].length : cursorPosition;
+                        const end = wordAfter ? cursorPosition + wordAfter[0].length : cursorPosition;
+                        
+                        emphasisEditingMode = 'brace';
+                        emphasisEditingSelection = {
+                            start: start,
+                            end: end
+                        };
+                        emphasisEditingValue = 1.0;
+                    }
+                }
+            }
+        } else if (emphasisEditingMode === 'brace') {
+            // Switch from brace to group mode
+            const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
+            let emphasisMatch;
+            let foundGroup = false;
+            
+            // Store the current brace value before switching
+            const currentBraceValue = emphasisEditingValue;
+            
+            while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
+                const emphasisStart = emphasisMatch.index;
+                const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
+                
+                // Check if we're inside this emphasis group (but not switching between outer/inner)
+                if (emphasisEditingSelection.start >= emphasisStart && emphasisEditingSelection.end <= emphasisEnd) {
+                    // Don't allow switching to a group that contains the current selection
+                    // This prevents switching between outer and inner groups
+                    continue;
+                }
+                
+                // Check if this emphasis group is inside our current selection
+                if (emphasisStart >= emphasisEditingSelection.start && emphasisEnd <= emphasisEditingSelection.end) {
+                    emphasisEditingMode = 'group';
+                    emphasisEditingSelection = {
+                        start: emphasisStart,
+                        end: emphasisEnd
+                    };
+                    // Copy the brace value to the group value
+                    emphasisEditingValue = currentBraceValue;
+                    foundGroup = true;
+                    break;
+                }
+            }
+            
+            if (!foundGroup) {
+                // If no group found, create a new emphasis block from the brace
+                const braceText = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
+                const innerText = braceText.replace(/^\{+|\[+/, '').replace(/\}+|\]+$/, '');
+                
+                // Calculate weight from brace level
+                const braceLevel = (braceText.match(/\{/g) || []).length - (braceText.match(/\}/g) || []).length;
+                const bracketLevel = (braceText.match(/\[/g) || []).length - (braceText.match(/\]/g) || []).length;
+                
+                if (braceLevel > 0) {
+                    emphasisEditingValue = 1.0 + (braceLevel * 0.1);
+                } else if (bracketLevel > 0) {
+                    emphasisEditingValue = 1.0 - (bracketLevel * 0.1);
+                } else {
+                    emphasisEditingValue = 1.0;
+                }
+                
+                // Create new emphasis block and clean up existing groups
+                const result = cleanupEmphasisGroupsAndCopyValue(emphasisEditingTarget, emphasisEditingSelection, emphasisEditingValue);
+                emphasisEditingMode = 'normal';
+                emphasisEditingSelection = result.newSelection;
+                emphasisEditingValue = result.copiedValue;
+            }
+        }
+    } else if (direction === 'right') {
         // Right arrow: switch to more specific mode
         switch (emphasisEditingMode) {
             case 'normal':
                 // Switch to brace mode - add {} around current selection
                 emphasisEditingMode = 'brace';
-                emphasisEditingValue = 1.0; // Start with no extra braces
+                emphasisEditingValue = 1.0;
                 break;
             case 'group':
                 // Switch to brace mode - focus on {} or [] block inside the group
@@ -8010,24 +9158,37 @@ function switchEmphasisMode(direction) {
                 break;
         }
     } else if (direction === 'left') {
-        // Left arrow: switch to less specific mode
+                        // Left arrow: switch to less specific mode
         switch (emphasisEditingMode) {
             case 'brace':
                 // Try to switch back to group mode first
                 const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
                 let emphasisMatch;
                 let foundGroup = false;
+                
+                // Store the current brace value before switching
+                const currentBraceValue = emphasisEditingValue;
+                
                 while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
                     const emphasisStart = emphasisMatch.index;
                     const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
                     
+                    // Check if we're inside this emphasis group (but not switching between outer/inner)
                     if (emphasisEditingSelection.start >= emphasisStart && emphasisEditingSelection.end <= emphasisEnd) {
+                        // Don't allow switching to a group that contains the current selection
+                        // This prevents switching between outer and inner groups
+                        continue;
+                    }
+                    
+                    // Check if this emphasis group is inside our current selection
+                    if (emphasisStart >= emphasisEditingSelection.start && emphasisEnd <= emphasisEditingSelection.end) {
                         emphasisEditingMode = 'group';
                         emphasisEditingSelection = {
                             start: emphasisStart,
                             end: emphasisEnd
                         };
-                        emphasisEditingValue = parseFloat(emphasisMatch[1]);
+                        // Copy the brace value to the group value
+                        emphasisEditingValue = currentBraceValue;
                         foundGroup = true;
                         break;
                     }
@@ -8036,8 +9197,10 @@ function switchEmphasisMode(direction) {
                 // If no group found, switch back to normal mode
                 if (!foundGroup) {
                     emphasisEditingMode = 'normal';
-                    // Keep the current selection but reset to normal emphasis
-                    emphasisEditingValue = 1.0;
+                    // Copy the brace value to normal mode and clean up existing groups
+                    const result = cleanupEmphasisGroupsAndCopyValue(emphasisEditingTarget, emphasisEditingSelection, currentBraceValue);
+                    emphasisEditingSelection = result.newSelection;
+                    emphasisEditingValue = result.copiedValue;
                 }
                 break;
         }
@@ -8122,7 +9285,14 @@ function selectTextReplacement(placeholder) {
     // Add the placeholder wrapped in angle brackets
     const wrappedPlaceholder = `<${placeholder}>`;
     if (newPrompt) {
-        newPrompt += ', ' + wrappedPlaceholder;
+        // Check if the text before ends with : or | - don't add comma in those cases
+        if (textBefore.endsWith(':')) {
+            newPrompt += wrappedPlaceholder;
+        } else if (textBefore.endsWith('|')) {
+            newPrompt += ' ' + wrappedPlaceholder;
+        } else {
+            newPrompt += ', ' + wrappedPlaceholder;
+        }
     } else {
         newPrompt = wrappedPlaceholder;
     }
@@ -8146,6 +9316,8 @@ function selectTextReplacement(placeholder) {
     // Focus back on the target field
     if (target) {
         target.focus();
+        autoResizeTextarea(target);
+        updateEmphasisHighlighting(target);
     }
 }
 
@@ -8183,7 +9355,14 @@ function insertTextReplacement(actualText) {
     
     // Add the actual text (not wrapped in angle brackets)
     if (newPrompt) {
-        newPrompt += ', ' + actualText;
+        // Check if the text before ends with : or | - don't add comma in those cases
+        if (textBefore.endsWith(':')) {
+            newPrompt += actualText;
+        } else if (textBefore.endsWith('|')) {
+            newPrompt += ' ' + actualText;
+        } else {
+            newPrompt += ', ' + actualText;
+        }
     } else {
         newPrompt = actualText;
     }
@@ -8207,6 +9386,8 @@ function insertTextReplacement(actualText) {
     // Focus back on the target field
     if (target) {
         target.focus();
+        autoResizeTextarea(target);
+        updateEmphasisHighlighting(target);
     }
 }
 
@@ -8244,7 +9425,14 @@ function selectTag(tagName) {
     
     // Add the tag name
     if (newPrompt) {
-        newPrompt += ', ' + tagName;
+        // Check if the text before ends with : or | - don't add comma in those cases
+        if (textBefore.endsWith(':')) {
+            newPrompt += tagName;
+        } else if (textBefore.endsWith('|')) {
+            newPrompt += ' ' + tagName;
+        } else {
+            newPrompt += ', ' + tagName;
+        }
     } else {
         newPrompt = tagName;
     }
@@ -8268,6 +9456,8 @@ function selectTag(tagName) {
     // Focus back on the target field
     if (target) {
         target.focus();
+        autoResizeTextarea(target);
+        updateEmphasisHighlighting(target);
     }
 }
 
@@ -8306,7 +9496,14 @@ function selectTextReplacementFullText(placeholder) {
     // Add the full text replacement description
     const fullText = textReplacements[placeholder];
     if (newPrompt) {
-        newPrompt += ', ' + fullText;
+        // Check if the text before ends with : or | - don't add comma in those cases
+        if (textBefore.endsWith(':')) {
+            newPrompt += fullText;
+        } else if (textBefore.endsWith('|')) {
+            newPrompt += ' ' + fullText;
+        } else {
+            newPrompt += ', ' + fullText;
+        }
     } else {
         newPrompt = fullText;
     }
@@ -8330,6 +9527,8 @@ function selectTextReplacementFullText(placeholder) {
     // Focus back on the target field
     if (target) {
         target.focus();
+        autoResizeTextarea(target);
+        updateEmphasisHighlighting(target);
     }
 }
 
@@ -8369,7 +9568,14 @@ function selectCharacterWithoutEnhancers(character) {
         // Add just the character prompt without any enhancers
         if (character.prompt) {
             if (newPrompt) {
-                newPrompt += ', ' + character.prompt;
+                // Check if the text before ends with : or | - don't add comma in those cases
+                if (textBefore.endsWith(':')) {
+                    newPrompt += character.prompt;
+                } else if (textBefore.endsWith('|')) {
+                    newPrompt += ' ' + character.prompt;
+                } else {
+                    newPrompt += ', ' + character.prompt;
+                }
             } else {
                 newPrompt = character.prompt;
             }
@@ -8398,6 +9604,8 @@ function selectCharacterWithoutEnhancers(character) {
         // Focus back on the target field
         if (target) {
             target.focus();
+            autoResizeTextarea(target);
+            updateEmphasisHighlighting(target);
         }
     } catch (error) {
         console.error('Error loading character data:', error);
@@ -8541,6 +9749,7 @@ function selectEnhancerGroup(enhancerGroup, character) {
     // Focus back on the target field
     if (target) {
         target.focus();
+        updateEmphasisHighlighting(target);
     }
 }
 
@@ -8611,14 +9820,88 @@ function selectEnhancerGroupFromDetail(enhancerGroup, character) {
     target.setSelectionRange(newCursorPosition, newCursorPosition);
     
     // Hide character autocomplete (which now contains the detail view)
-    hideCharacterAutocomplete();
+    hideCharacterAutocomplete();an
     
     // Focus back on the target field
     if (target) {
         target.focus();
+        autoResizeTextarea(target);
+        updateEmphasisHighlighting(target);
     }
 }
 
+function applyFormattedText(textarea, lostFocus) {
+    // Store cursor position if textarea is in focus
+    const cursorPosition = !lostFocus ? textarea.selectionStart : -1;
+    
+    let text = textarea.value;
+    
+    // Process text based on focus state
+    if (lostFocus) {
+        // When losing focus, clean up the text
+        text = text
+            .split('\n').map(item => item.trim()).join(' ')
+            .split(',').map(item => item.trim()).join(', ')
+            .split('|').map(item => item.trim()).filter(Boolean).join(' | ');
+        
+        // Remove leading | or , and trim start
+        text = text.replace(/^(\||,)+\s*/, '');
+    } else {
+        // When focused, just clean up basic formatting
+        text = text
+            .split('\n').map(item => item.trim()).join(' ')
+            .split(',').map(item => item.trim()).join(', ')
+            .split('|').map(item => item.trim()).join(' | ');
+    }
+
+    // Fix curly brace groups: ensure each group has equal number of { and }
+    // Only process if there is a "}," to terminate it
+    if (text.includes('},')) {
+        text = text.replace(/(\{+)([^{}]*)(\}*)/g, (match, openBraces, content, closeBraces, offset, str) => {
+            const after = str.slice(offset + match.length, offset + match.length + 1);
+            if (closeBraces.length > 0 && after === ',') {
+                const openCount = openBraces.length;
+                return openBraces + content + '}'.repeat(openCount);
+            }
+            return match;
+        });
+    }
+
+    // Fix square bracket groups: ensure each group has equal number of [ and ]
+    // Only process if there is "]," to terminate it
+    if (text.includes('],')) {
+        text = text.replace(/(\[+)([^\[\]]*)(\]*)/g, (match, openBrackets, content, closeBrackets, offset, str) => {
+            const after = str.slice(offset + match.length, offset + match.length + 1);
+            if (closeBrackets.length > 0 && after === ',') {
+                const openCount = openBrackets.length;
+                return openBrackets + content + ']'.repeat(openCount);
+            }
+            return match;
+        });
+    }
+
+    // If not focused, remove empty tags (consecutive commas with only spaces between)
+    if (lostFocus) {
+        // Remove any sequence of commas (with any amount of spaces between) that does not have text between them
+        // e.g. ",   ,", ", ,", ",,"
+        text = text.replace(/(?:^|,)\s*(?=,|$)/g, ''); // Remove empty segments
+        // Remove any leading or trailing commas left after cleanup
+        text = text.replace(/^,|,$/g, '');
+        // Remove extra spaces after cleanup
+        text = text.replace(/,\s+/g, ', ');
+        text = text.replace(/\s+,/g, ',');
+    }
+
+    textarea.value = text;
+    
+    // Restore cursor position if textarea was in focus
+    if (!lostFocus && cursorPosition >= 0) {
+        // Ensure cursor position doesn't exceed the new text length
+        const newPosition = Math.min(cursorPosition, text.length);
+        textarea.setSelectionRange(newPosition, newPosition);
+        textarea.focus();
+    }
+}
 // Global variable to track selected enhancer group index
 let selectedEnhancerGroupIndex = -1;
 
@@ -8686,6 +9969,7 @@ function hideCharacterAutocomplete() {
     selectedCharacterAutocompleteIndex = -1;
     characterSearchResults = [];
     autocompleteNavigationMode = false;
+    autocompleteExpanded = false;
     updateEmphasisTooltipVisibility();
 }
 
@@ -9306,10 +10590,6 @@ function setupPromptPanel(metadata) {
                     closeLightboxBtn.classList.remove('prompt-panel-open');
                 }
             } else {
-                // Debug: Log metadata structure
-                console.log('Metadata for prompt panel:', metadata);
-                console.log('Character prompts:', metadata.characterPrompts);
-                
                 // Populate panel content
                 if (allPromptsContent) {
                     allPromptsContent.innerHTML = '';
@@ -9477,7 +10757,7 @@ async function copyToClipboard(text, title) {
         // Try modern clipboard API first
         if (navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(text);
-            showToast(`Copied ${title} to clipboard`, 'success');
+            showGlassToast('success', 'Clipboard', `Copied ${title} to clipboard`);
         } else {
             // Fallback for older browsers
             const textArea = document.createElement('textarea');
@@ -9493,46 +10773,17 @@ async function copyToClipboard(text, title) {
             document.body.removeChild(textArea);
             
             if (successful) {
-                showToast(`Copied ${title} to clipboard`, 'success');
+                showGlassToast('success', 'Clipboard', `Copied ${title} to clipboard`);
             } else {
                 throw new Error('execCommand copy failed');
             }
         }
     } catch (err) {
         console.error('Failed to copy text: ', err);
-        showToast('Failed to copy to clipboard', 'error');
+        showGlassToast('error', 'Clipboard', 'Failed to copy to clipboard');
     }
 }
 
-// Function to show toast notifications
-function showToast(message, type = 'info') {
-    const toastContainer = document.getElementById('toastContainer');
-    if (!toastContainer) return;
-    
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    
-    let icon = 'nai-info';
-    if (type === 'success') icon = 'nai-check';
-    if (type === 'error') icon = 'nai-thin-cross';
-    
-    toast.innerHTML = `
-        <i class="${icon}"></i>
-        <span>${message}</span>
-    `;
-    
-    toastContainer.appendChild(toast);
-    
-    // Remove toast after 3 seconds
-    setTimeout(() => {
-        toast.classList.add('removing');
-        setTimeout(() => {
-            if (toast.parentNode) {
-                toast.parentNode.removeChild(toast);
-            }
-        }, 300);
-    }, 3000);
-}
 
 // Helper: Format request type for display
 function formatRequestType(requestType) {
@@ -10094,7 +11345,7 @@ async function deleteImage(image) {
         const result = await response.json();
         
         if (result.success) {
-            showSuccess('Image deleted successfully!');
+            showGlassToast('success', 'Delete Image', 'Image deleted successfully!');
             
             // Close lightbox
             hideLightbox();
@@ -10155,19 +11406,30 @@ async function deleteManualPreviewImage() {
         const result = await response.json();
         
         if (result.success) {
-            // Refresh gallery first to get updated list
-            await loadGallery();
             
-            // Find the next (older) image in the updated gallery
+            // Find the current image index in the manual preview image list
+            const currentIndex = allImages.findIndex(img => 
+                img.original === currentManualPreviewImage.original ||
+                img.upscaled === currentManualPreviewImage.upscaled ||
+                img.pipeline === currentManualPreviewImage.pipeline ||
+                img.pipeline_upscaled === currentManualPreviewImage.pipeline_upscaled
+            );
+            
+            // Remove the current image from the manual preview list
+            if (currentIndex !== -1) {
+                allImages.splice(currentIndex, 1);
+            }
+            
+            // Find the next (previous) image in the manual preview list
             let nextImage = null;
+            const nextIndex = currentIndex >= allImages.length ? allImages.length - 1 : currentIndex;
             
-            if (allImages.length > 0) {
-                // Get the first image from the updated gallery
-                nextImage = allImages[0];
+            if (nextIndex >= 0 && nextIndex < allImages.length) {
+                nextImage = allImages[nextIndex];
             }
             
             if (nextImage) {
-                // Load the next (older) image and its metadata
+                // Load the next image and its metadata
                 try {
                     const metadataResponse = await fetchWithAuth(`/images/${nextImage.original}`, {
                         method: 'OPTIONS',
@@ -10180,24 +11442,26 @@ async function deleteManualPreviewImage() {
                     console.warn('Failed to load metadata for next image:', error);
                 }
                 
-                // Update the preview with the next (older) image
+                // Update the preview with the next image
                 const imageUrl = `/images/${nextImage.original}`;
                 updateManualPreview(imageUrl);
                 
-                showSuccess('Image deleted and older image loaded!');
+                showGlassToast('success', 'Delete Image', 'Image deleted!');
             } else {
                 // No next image, reset the preview
                 resetManualPreview();
-                showSuccess('Image deleted!');
+                showGlassToast('error', 'Delete Image', 'Image deleted!');
             }
         } else {
             throw new Error(result.error || 'Delete failed');
         }
-        
     } catch (error) {
         console.error('Delete error:', error);
         showError('Failed to delete image: ' + error.message);
     }
+    
+    // Refresh gallery after processing is complete
+    loadGallery(true);
 }
 
 // Create confetti effect
@@ -10311,66 +11575,14 @@ function showManualLoading(show, message = 'Generating Image...') {
     }
 }
 
-// Show success message
+// Show success message (simple glass toast)
 function showSuccess(message) {
-    // Simple success notification
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: linear-gradient(45deg, #ff4500, #ff6347);
-        color: white;
-        padding: 15px 20px;
-        border-radius: 5px;
-        z-index: 3000;
-        font-weight: 600;
-        box-shadow: 0 5px 15px rgba(255, 69, 0, 0.3);
-        animation: slideIn 0.3s ease;
-    `;
-    notification.textContent = message;
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-        notification.style.animation = 'slideOut 0.3s ease';
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
-            }
-        }, 300);
-    }, 3000);
+    showGlassToast('success', null, message);
 }
 
-// Show error message
+// Show error message (simple glass toast)
 function showError(message) {
-    // Simple error notification
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: #dc3545;
-        color: white;
-        padding: 15px 20px;
-        border-radius: 5px;
-        z-index: 3000;
-        font-weight: 600;
-        box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3);
-        animation: slideIn 0.3s ease;
-    `;
-    notification.textContent = message;
-    
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-        notification.style.animation = 'slideOut 0.3s ease';
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
-            }
-        }, 300);
-    }, 4000);
+    showGlassToast('error', null, message);
 }
 
 // Update lightbox controls based on image type
@@ -10590,6 +11802,9 @@ async function variationImage(imageObj) {
         await cropImageToResolution();
         manualModal.style.display = 'block';
         manualPrompt.focus();
+        
+        // Auto-resize textareas after modal is shown
+        autoResizeTextareasAfterModalShow();
 
     } catch (error) {
         console.error('Variation setup error:', error);
@@ -11103,32 +12318,34 @@ if (document.getElementById('varietyBtn')) {
 }
 
 // Add event listener for manualSampler to auto-set noise scheduler
-// This is now handled in the custom dropdown logic
-
-// Update all fetch calls to NOT send auth or Bearer for browser UI
-// Add a helper to handle 401 responses globally
 async function fetchWithAuth(url, options = {}) {
-    const response = await fetch(url, options);
-    if (response.status === 401) {
-        window.location.href = '/';
-        return Promise.reject(new Error('Not authenticated'));
+    if (!(await ensureSessionValid())) {
+        return Promise.reject(new Error('Session invalid or cancelled'));
     }
-    return response;
-}
+    return fetch(url, options);
+};
 
 // Handle image upload from file input
 async function handleImageUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+    const files = Array.from(event.target.files);
+    if (files.length === 0) return;
     
-    if (!file.type.startsWith('image/')) {
-        showError('Please select an image file');
+    // Filter for image files
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    const nonImageFiles = files.filter(file => !file.type.startsWith('image/'));
+    
+    if (nonImageFiles.length > 0) {
+        showGlassToast('warning', 'Invalid Files', `${nonImageFiles.length} non-image files were skipped`);
+    }
+    
+    if (imageFiles.length === 0) {
+        showGlassToast('error', 'No Images', 'Please select image files only');
         return;
     }
     
-    await uploadImage(file);
+    await uploadImages(imageFiles);
     
-    // Clear the input so the same file can be selected again
+    // Clear the input so the same files can be selected again
     event.target.value = '';
 }
 
@@ -11142,28 +12359,151 @@ async function handleClipboardPaste(event) {
             event.preventDefault();
             const file = item.getAsFile();
             if (file) {
-                await uploadImage(file);
+                await uploadImages([file]);
             }
             break;
         }
     }
 }
 
-// Upload image to server
-async function uploadImage(file) {
+// Glass Toast Notification System
+let toastCounter = 0;
+const activeToasts = new Map();
+
+function showGlassToast(type, title, message, showProgress = false) {
+    const toastId = `toast-${++toastCounter}`;
+    const toastContainer = document.getElementById('toastContainer') || createToastContainer();
+    
+    const toast = document.createElement('div');
+    const isSimple = !title || !message;
+    toast.className = `glass-toast ${showProgress ? 'upload-progress' : ''} ${isSimple ? 'simple' : ''}`;
+    toast.id = toastId;
+    
+    // If only message is provided (no title), create a simple one-line toast
+    if (title && message) {
+        // Full toast with title and message
+        const icon = getToastIcon(type);
+        const closeBtn = showProgress ? '' : '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
+        
+        toast.innerHTML = `
+            <div class="toast-icon">${icon}</div>
+            <div class="toast-content">
+                <div class="toast-title">${title}</div>
+                <div class="toast-message">${message}</div>
+                ${showProgress ? '<div class="toast-progress"><div class="toast-progress-bar"></div></div>' : ''}
+            </div>
+            ${closeBtn}
+        `;
+    } else {
+        // Simple one-line toast (message only)
+        const messageText = title || message;
+        const closeBtn = showProgress ? '' : '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
+        
+        toast.innerHTML = `
+            <div class="toast-content">
+                <div class="toast-message">${messageText}</div>
+                ${showProgress ? '<div class="toast-progress"><div class="toast-progress-bar"></div></div>' : ''}
+            </div>
+            ${closeBtn}
+        `;
+    }
+    
+    toastContainer.appendChild(toast);
+    
+    // Trigger animation
+    setTimeout(() => {
+        toast.classList.add('show');
+    }, 10);
+    
+    // Auto-remove after 5 seconds (unless it's a progress toast)
+    if (!showProgress) {
+        setTimeout(() => {
+            removeGlassToast(toastId);
+        }, 5000);
+    }
+    
+    activeToasts.set(toastId, { type, title, message, showProgress });
+    return toastId;
+}
+
+function updateGlassToast(toastId, type, title, message) {
+    const toast = document.getElementById(toastId);
+    if (!toast) return;
+    
+    const icon = getToastIcon(type);
+    const toastContent = toast.querySelector('.toast-content');
+    
+    toast.className = `glass-toast show`;
+    toast.querySelector('.toast-icon').innerHTML = icon;
+    toast.querySelector('.toast-title').textContent = title;
+    toast.querySelector('.toast-message').textContent = message;
+    
+    // Update stored data
+    const stored = activeToasts.get(toastId);
+    if (stored) {
+        stored.type = type;
+        stored.title = title;
+        stored.message = message;
+        activeToasts.set(toastId, stored);
+    }
+    
+    // Auto-remove after 3 seconds for updated toasts
+    setTimeout(() => {
+        removeGlassToast(toastId);
+    }, 3000);
+}
+
+function removeGlassToast(toastId) {
+    const toast = document.getElementById(toastId);
+    if (!toast) return;
+    
+    toast.classList.add('removing');
+    activeToasts.delete(toastId);
+    
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.parentNode.removeChild(toast);
+        }
+    }, 300);
+}
+
+function getToastIcon(type) {
+    switch (type) {
+        case 'success': return '<i class="nai-check"></i>';
+        case 'error': return '<i class="nai-cross"></i>';
+        case 'warning': return '<i class="nai-help"></i>';
+        case 'info': return '<i class="nai-book-open"></i>';
+        default: return '<i class="nai-book-open"></i>';
+    }
+}
+
+function createToastContainer() {
+    const container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+    return container;
+}
+
+// Upload multiple images to server
+async function uploadImages(files) {
     if (!isAuthenticated) {
-        showError('Please login first');
+        showGlassToast('error', 'Authentication Required', 'Please login first');
         return;
     }
     
+    if (files.length === 0) return;
+    
+    const toastId = showGlassToast('info', 'Uploading Images', `Starting upload of ${files.length} images...`, true);
+    
     try {
-        showLoading(true, 'Uploading image...');
-        
         const formData = new FormData();
-        formData.append('image', file);
+        files.forEach(file => {
+            formData.append('images', file);
+        });
         
-        const response = await fetchWithAuth('/upload/image', {
-            method: 'PUT',
+        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/images`, {
+            method: 'POST',
             body: formData
         });
         
@@ -11174,9 +12514,18 @@ async function uploadImage(file) {
         const result = await response.json();
         
         if (result.success) {
-            showSuccess('Image uploaded successfully!');
+            const successCount = result.totalUploaded || 0;
+            const errorCount = result.totalErrors || 0;
             
-            // Refresh gallery to show the new image
+            if (errorCount > 0) {
+                updateGlassToast(toastId, 'warning', 'Upload Complete', 
+                    `Successfully uploaded ${successCount} images, ${errorCount} failed`);
+            } else {
+                updateGlassToast(toastId, 'success', 'Upload Complete', 
+                    `Successfully uploaded ${successCount} images`);
+            }
+            
+            // Refresh gallery to show the new images
             setTimeout(async () => {
                 await loadGallery();
             }, 1000);
@@ -11186,10 +12535,13 @@ async function uploadImage(file) {
         
     } catch (error) {
         console.error('Upload error:', error);
-        showError('Image upload failed: ' + error.message);
-    } finally {
-        showLoading(false);
+        updateGlassToast(toastId, 'error', 'Upload Failed', error.message);
     }
+}
+
+// Upload single image to server (for backward compatibility)
+async function uploadImage(file) {
+    await uploadImages([file]);
 }
 
 // Handle manual image upload for variation/reroll
@@ -11199,6 +12551,22 @@ async function handleManualImageUpload(file) {
         return;
     }
     
+    // Check if there's an existing mask
+    const hasExistingMask = window.currentMaskData !== null && window.currentMaskData !== undefined;
+    
+    if (hasExistingMask) {
+        // Store the pending upload and show alert modal
+        window.pendingImageUpload = { file };
+        showBaseImageChangeAlertModal();
+        return;
+    }
+    
+    // No mask exists, proceed with upload
+    await handleManualImageUploadInternal(file);
+}
+
+// Internal function to handle the actual image upload
+async function handleManualImageUploadInternal(file) {
     try {
         showManualLoading(true, 'Uploading base image...');
         
@@ -11425,25 +12793,23 @@ async function renderImageBiasDropdown(selectedVal) {
 
 // Select image bias
 function selectImageBias(value) {
-    // Clear dynamic bias data when selecting a preset
-    if (window.uploadedImageData && window.uploadedImageData.image_bias && typeof window.uploadedImageData.image_bias === 'object') {
-        delete window.uploadedImageData.image_bias;
+    // Check if there's an existing mask
+    const hasExistingMask = window.currentMaskData !== null && window.currentMaskData !== undefined;
+    
+    if (hasExistingMask) {
+        // Store the pending bias change and show alert modal
+        window.pendingImageBiasChange = { 
+            value, 
+            callback: () => {
+                // This will be called after the mask is handled
+            }
+        };
+        showImageBiasMaskAlertModal();
+        return;
     }
     
-    // Fix: Ensure value is properly set, even if it's 0
-    if (imageBiasHidden != null) {
-        imageBiasHidden.value = value.toString();
-    }
-    
-    // Update the uploaded image data with the new bias value
-    if (window.uploadedImageData) {
-        window.uploadedImageData.bias = parseInt(value);
-    }
-    
-    updateImageBiasDisplay(value);
-    
-    // Reload the preview image with the new bias
-    cropImageToResolution();
+    // No mask exists, proceed with bias change
+    applyImageBiasChange(value);
 }
 
 // Update image bias display
@@ -11647,6 +13013,7 @@ function handleDeleteBaseImage() {
         delete window.currentEditMetadata.sourceFilename;
         delete window.currentEditMetadata.isVariationEdit;
     }
+    deleteMask();
     
     // Update button visibility
     updateUploadDeleteButtonVisibility();
@@ -11689,7 +13056,6 @@ function handleImageSelection(image, isSelected, event) {
     
     // ALT+click range selection
     if (event && event.altKey) {
-        console.log('ALT+click range selection');
         // Find all checkboxes in order
         const checkboxes = Array.from(document.querySelectorAll('.gallery-item-checkbox'));
         const clickedIndex = checkboxes.findIndex(cb => cb.dataset.filename === filename);
@@ -11729,12 +13095,24 @@ function handleImageSelection(image, isSelected, event) {
 function updateBulkActionsBar() {
     const bulkActionsBar = document.getElementById('bulkActionsBar');
     const selectedCount = document.getElementById('selectedCount');
+    const bulkMoveToScrapsBtn = document.getElementById('bulkMoveToScrapsBtn');
     
     if (selectedImages.size > 0) {
         bulkActionsBar.style.display = 'flex';
         selectedCount.textContent = selectedImages.size;
         gallery.classList.add('selection-mode');
         isSelectionMode = true;
+        
+        // Show/hide scrap button based on current view
+        if (bulkMoveToScrapsBtn) {
+            if (isViewingScraps) {
+                // Hide scrap button when viewing scraps (can't move scraps to scraps)
+                bulkMoveToScrapsBtn.style.display = 'none';
+            } else {
+                // Show scrap button when viewing regular images
+                bulkMoveToScrapsBtn.style.display = 'inline-block';
+            }
+        }
     } else {
         bulkActionsBar.style.display = 'none';
         gallery.classList.remove('selection-mode');
@@ -12017,6 +13395,178 @@ async function handleBulkSequenzia() {
     }
 }
 
+async function handleBulkMoveToScraps() {
+    if (!isAuthenticated) {
+        showError('Please login first');
+        return;
+    }
+    
+    if (selectedImages.size === 0) {
+        showError('No images selected');
+        return;
+    }
+    
+    // Don't allow moving scraps to scraps
+    if (isViewingScraps) {
+        showError('Cannot move scraps to scraps');
+        return;
+    }
+    
+    // Show confirmation dialog
+    const confirmed = confirm(`Are you sure you want to move ${selectedImages.size} selected image(s) to scraps?`);
+    
+    if (!confirmed) {
+        return;
+    }
+    
+    try {
+        showLoading(true, 'Moving images to scraps...');
+        
+        // Filter out any null/undefined values from selectedImages
+        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+        
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to move to scraps');
+        }
+        
+        // Move each file to scraps
+        let successCount = 0;
+        let errorCount = 0;
+        
+        for (const filename of validFilenames) {
+            try {
+                const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ filename })
+                });
+                
+                if (response.ok) {
+                    successCount++;
+                } else {
+                    errorCount++;
+                }
+            } catch (error) {
+                errorCount++;
+                console.error(`Failed to move ${filename} to scraps:`, error);
+            }
+        }
+        
+        if (successCount > 0) {
+            showSuccess(`Successfully moved ${successCount} image(s) to scraps`);
+        }
+        
+        if (errorCount > 0) {
+            showError(`${errorCount} image(s) failed to move to scraps`);
+        }
+        
+        // Clear selection and refresh gallery
+        clearSelection();
+        await loadGallery();
+        
+    } catch (error) {
+        console.error('Bulk move to scraps error:', error);
+        showError('Failed to move images to scraps: ' + error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function handleBulkChangePreset() {
+    if (!isAuthenticated) {
+        showError('Please login first');
+        return;
+    }
+    
+    if (selectedImages.size === 0) {
+        showError('No images selected');
+        return;
+    }
+    
+    // Show the modal
+    const modal = document.getElementById('bulkChangePresetModal');
+    const selectedCountSpan = document.getElementById('bulkChangePresetSelectedCount');
+    const presetNameInput = document.getElementById('bulkChangePresetNameInput');
+    
+    if (!modal || !selectedCountSpan || !presetNameInput) {
+        showError('Modal elements not found');
+        return;
+    }
+    
+    // Update selected count
+    selectedCountSpan.textContent = selectedImages.size;
+    
+    // Clear input
+    presetNameInput.value = '';
+    
+    // Show modal
+    modal.style.display = 'block';
+    
+    // Focus on input
+    presetNameInput.focus();
+}
+
+async function handleBulkChangePresetConfirm() {
+    const modal = document.getElementById('bulkChangePresetModal');
+    const presetNameInput = document.getElementById('bulkChangePresetNameInput');
+    
+    if (!modal || !presetNameInput) {
+        showError('Modal elements not found');
+        return;
+    }
+    
+    const newPresetName = presetNameInput.value.trim();
+    
+    try {
+        showLoading(true, 'Updating preset names...');
+        
+        // Filter out any null/undefined values from selectedImages
+        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+        
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to update');
+        }
+        
+        const response = await fetchWithAuth('/images/bulk/preset', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                filenames: validFilenames,
+                presetName: newPresetName || null // Send null if empty to remove preset name
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to update preset names');
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            const action = newPresetName ? `set to "${newPresetName}"` : 'removed';
+            showSuccess(`Successfully updated preset name for ${result.updatedCount} image(s) (${action})`);
+            
+            // Clear selection and refresh gallery
+            clearSelection();
+            await loadGallery();
+        } else {
+            throw new Error(result.error || 'Failed to update preset names');
+        }
+        
+    } catch (error) {
+        console.error('Bulk change preset error:', error);
+        showError('Failed to update preset names: ' + error.message);
+    } finally {
+        showLoading(false);
+        modal.style.display = 'none';
+    }
+}
+
 // Character Prompts Functions
 let characterPromptCounter = 0;
 let currentPositionCharacterId = null;
@@ -12052,8 +13602,19 @@ async function executeRandomPrompt() {
     const promptData = await randomPrompt(requestType, nsfw);
 
     if (promptData && Array.isArray(promptData)) {
-        document.getElementById('manualPrompt').value = promptData[0] || '';
-        document.getElementById('manualUc').value = '<NUC_3>';
+        const manualPrompt = document.getElementById('manualPrompt');
+        const manualUc = document.getElementById('manualUc');
+        
+        if (manualPrompt) {
+            manualPrompt.value = promptData[0] || '';
+            autoResizeTextarea(manualPrompt);
+            updateEmphasisHighlighting(manualPrompt);
+        }
+        if (manualUc) {
+            manualUc.value = '';
+            autoResizeTextarea(manualUc);
+            updateEmphasisHighlighting(manualUc);
+        }
 
         const characterPrompts = promptData.slice(1).map(p => ({ prompt: p, uc: '', enabled: true }));
         savedRandomPromptState = {
@@ -12081,8 +13642,18 @@ function transferRandomPrompt() {
     
     // Copy current random prompt state to main prompt
     if (savedRandomPromptState) {
-        document.getElementById('manualPrompt').value = savedRandomPromptState.basePrompt;
-        document.getElementById('manualUc').value = savedRandomPromptState.baseUc;
+        const manualPrompt = document.getElementById('manualPrompt');
+        const manualUc = document.getElementById('manualUc');
+        if (manualPrompt) {
+            manualPrompt.value = savedRandomPromptState.basePrompt;
+            autoResizeTextarea(manualPrompt);
+            updateEmphasisHighlighting(manualPrompt);
+        }
+        if (manualUc) {
+            manualUc.value = savedRandomPromptState.baseUc;
+            autoResizeTextarea(manualUc);
+            updateEmphasisHighlighting(manualUc);
+        }
         loadCharacterPrompts(savedRandomPromptState.characters, false);
     }
     
@@ -12098,7 +13669,7 @@ function transferRandomPrompt() {
     lastPromptState = null;
     
     // Show success message
-    showToast('Random prompt transferred to main prompt', 'success');
+    showGlassToast('success', 'Random Prompt', 'Transferred to editor');
 }
 
 /**
@@ -12126,8 +13697,18 @@ async function toggleRandomPrompt() {
         nsfwBtn.style.display = 'none';
 
         if (lastPromptState) {
-            document.getElementById('manualPrompt').value = lastPromptState.basePrompt;
-            document.getElementById('manualUc').value = lastPromptState.baseUc;
+            const manualPrompt = document.getElementById('manualPrompt');
+            const manualUc = document.getElementById('manualUc');
+            if (manualPrompt) {
+                manualPrompt.value = lastPromptState.basePrompt;
+                autoResizeTextarea(manualPrompt);
+                updateEmphasisHighlighting(manualPrompt);
+            }
+            if (manualUc) {
+                manualUc.value = lastPromptState.baseUc;
+                autoResizeTextarea(manualUc);
+                updateEmphasisHighlighting(manualUc);
+            }
             loadCharacterPrompts(lastPromptState.characters, false);
         }
         lastPromptState = null;
@@ -12150,8 +13731,18 @@ async function toggleRandomPrompt() {
         // Check if we have a saved random prompt state
         if (savedRandomPromptState) {
             // Restore the last random prompt values
-            document.getElementById('manualPrompt').value = savedRandomPromptState.basePrompt;
-            document.getElementById('manualUc').value = savedRandomPromptState.baseUc;
+            const manualPrompt = document.getElementById('manualPrompt');
+            const manualUc = document.getElementById('manualUc');
+            if (manualPrompt) {
+                manualPrompt.value = savedRandomPromptState.basePrompt;
+                autoResizeTextarea(manualPrompt);
+                updateEmphasisHighlighting(manualPrompt);
+            }
+            if (manualUc) {
+                manualUc.value = savedRandomPromptState.baseUc;
+                autoResizeTextarea(manualUc);
+                updateEmphasisHighlighting(manualUc);
+            }
             loadCharacterPrompts(savedRandomPromptState.characters, false);
         } else {
             // No saved state, generate new random prompt
@@ -12210,10 +13801,16 @@ function addCharacterPrompt() {
                 </div>
                 <div class="tab-content">
                     <div class="tab-pane active" id="${characterId}_prompt-tab" data-label="Prompt">
-                        <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt..."></textarea>
+                        <div class="character-prompt-textarea-container">
+                            <div class="character-prompt-textarea-background"></div>
+                            <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt..."></textarea>
+                        </div>
                     </div>
                     <div class="tab-pane" id="${characterId}_uc-tab" data-label="UC">
-                        <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content..."></textarea>
+                        <div class="character-prompt-textarea-container">
+                            <div class="character-prompt-textarea-background"></div>
+                            <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content..."></textarea>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -12233,28 +13830,39 @@ function addCharacterPrompt() {
     if (promptField) {
         promptField.addEventListener('input', handleCharacterAutocompleteInput);
         promptField.addEventListener('keydown', handleCharacterAutocompleteKeydown);
+        promptField.addEventListener('focus', () => startEmphasisHighlighting(promptField));
+        promptField.addEventListener('blur', () => {
+            applyFormattedText(promptField, true);
+            updateEmphasisHighlighting(promptField);
+            stopEmphasisHighlighting();
+        });
+        // Add auto-resize functionality
+        promptField.addEventListener('input', () => autoResizeTextarea(promptField));
+        // Initialize emphasis highlighting overlay
+        initializeEmphasisOverlay(promptField);
     }
     
     if (ucField) {
         ucField.addEventListener('input', handleCharacterAutocompleteInput);
         ucField.addEventListener('keydown', handleCharacterAutocompleteKeydown);
+        ucField.addEventListener('focus', () => startEmphasisHighlighting(ucField));
+        ucField.addEventListener('blur', () => {
+            applyFormattedText(ucField, true);
+            updateEmphasisHighlighting(ucField);
+            stopEmphasisHighlighting();
+        });
+        // Add auto-resize functionality
+        ucField.addEventListener('input', () => autoResizeTextarea(ucField));
+        initializeEmphasisOverlay(ucField);
     }
     
     // Add tab switching functionality for character prompt tabs
     const characterTabButtons = characterItem.querySelectorAll('.tab-btn');
-    const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
     
     characterTabButtons.forEach(button => {
         button.addEventListener('click', function() {
             const targetTab = this.getAttribute('data-tab');
-            
-            // Remove active class from all buttons and panes
-            characterTabButtons.forEach(btn => btn.classList.remove('active'));
-            characterTabPanes.forEach(pane => pane.classList.remove('active'));
-            
-            // Add active class to clicked button and corresponding pane
-            this.classList.add('active');
-            document.getElementById(`${characterId}_${targetTab}-tab`).classList.add('active');
+            switchCharacterTab(characterId, targetTab);
         });
     });
     
@@ -12274,8 +13882,17 @@ function addCharacterPrompt() {
     }
     
     // Set initial collapsed state for new characters
-    characterItem.classList.add('collapsed');
-    updateCharacterPromptCollapseButton(characterId, true);
+    // First character should be open, others collapsed
+    const existingCharacters = container.querySelectorAll('.character-prompt-item');
+    if (existingCharacters.length === 0) {
+        // This is the first character, make it open
+        characterItem.classList.remove('collapsed');
+        updateCharacterPromptCollapseButton(characterId, false);
+    } else {
+        // This is not the first character, make it collapsed
+        characterItem.classList.add('collapsed');
+        updateCharacterPromptCollapseButton(characterId, true);
+    }
     
     // Update auto position toggle visibility
     updateAutoPositionToggle();
@@ -12567,10 +14184,16 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                 </div>
                 <div class="tab-content">
                     <div class="tab-pane active" id="${characterId}_prompt-tab" data-label="Prompt">
-                        <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt...">${character.prompt || ''}</textarea>
+                        <div class="character-prompt-textarea-container">
+                            <div class="character-prompt-textarea-background"></div>
+                            <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt...">${character.prompt || ''}</textarea>
+                        </div>
                     </div>
                     <div class="tab-pane" id="${characterId}_uc-tab" data-label="UC">
-                        <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content...">${character.uc || ''}</textarea>
+                        <div class="character-prompt-textarea-container">
+                            <div class="character-prompt-textarea-background"></div>
+                            <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content...">${character.uc || ''}</textarea>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -12599,28 +14222,46 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
         if (promptField) {
             promptField.addEventListener('input', handleCharacterAutocompleteInput);
             promptField.addEventListener('keydown', handleCharacterAutocompleteKeydown);
+            promptField.addEventListener('focus', () => startEmphasisHighlighting(promptField));
+            promptField.addEventListener('blur', () => {
+                applyFormattedText(promptField, true);
+                updateEmphasisHighlighting(promptField);
+                stopEmphasisHighlighting();
+            });
+            // Add auto-resize functionality
+            promptField.addEventListener('input', () => autoResizeTextarea(promptField));
+            // Initialize emphasis highlighting overlay
+            initializeEmphasisOverlay(promptField);
+            // Apply initial resizing and highlighting after content is set
+            autoResizeTextarea(promptField);
+            updateEmphasisHighlighting(promptField);
         }
         
         if (ucField) {
             ucField.addEventListener('input', handleCharacterAutocompleteInput);
             ucField.addEventListener('keydown', handleCharacterAutocompleteKeydown);
+            ucField.addEventListener('focus', () => startEmphasisHighlighting(ucField));
+            ucField.addEventListener('blur', () => {
+                applyFormattedText(ucField, true);
+                updateEmphasisHighlighting(ucField);
+                stopEmphasisHighlighting();
+            });
+            // Add auto-resize functionality
+            ucField.addEventListener('input', () => autoResizeTextarea(ucField));
+            // Initialize emphasis highlighting overlay
+            initializeEmphasisOverlay(ucField);
+            // Apply initial resizing and highlighting after content is set
+            autoResizeTextarea(ucField);
+            updateEmphasisHighlighting(ucField);
         }
         
         // Add tab switching functionality for character prompt tabs
         const characterTabButtons = characterItem.querySelectorAll('.tab-btn');
-        const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
         
         characterTabButtons.forEach(button => {
             button.addEventListener('click', function() {
                 const targetTab = this.getAttribute('data-tab');
-                
-                // Remove active class from all buttons and panes
-                characterTabButtons.forEach(btn => btn.classList.remove('active'));
-                characterTabPanes.forEach(pane => pane.classList.remove('active'));
-                
-                // Add active class to clicked button and corresponding pane
-                this.classList.add('active');
-                document.getElementById(`${characterId}_${targetTab}-tab`).classList.add('active');
+                switchCharacterTab(characterId, targetTab);
             });
         });
         
@@ -12637,11 +14278,19 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
             promptField.addEventListener('input', () => {
                 updateCharacterPromptPreview(characterId);
             });
+            // Update preview initially after content is set
+            updateCharacterPromptPreview(characterId);
         }
         
         // Set default collapsed state for loaded characters
-        characterItem.classList.add('collapsed');
-        updateCharacterPromptCollapseButton(characterId, true);
+        // First character should be open, others collapsed
+        if (index === 0) {
+            characterItem.classList.remove('collapsed');
+            updateCharacterPromptCollapseButton(characterId, false);
+        } else {
+            characterItem.classList.add('collapsed');
+            updateCharacterPromptCollapseButton(characterId, true);
+        }
     });
     
     // Update auto position toggle after loading
@@ -13471,6 +15120,9 @@ function saveMask() {
             inpaintBtn.classList.add('active');
         }
         
+        // Update vibe transfer UI state
+        updateInpaintButtonState();
+        
         showSuccess('Mask saved successfully!');
         closeMaskEditor();
     } catch (error) {
@@ -13776,6 +15428,9 @@ async function deleteMask() {
     }
     window.currentMaskCompressed = null;
     
+    // Update vibe transfer UI state
+    updateInpaintButtonState();
+    
     closeMaskEditor();
 }
 
@@ -13801,9 +15456,13 @@ function closeMaskEditor() {
 
 // Open mask editor
 function openMaskEditor() {
+    console.log('openMaskEditor called');
     const maskEditorDialog = document.getElementById('maskEditorDialog');
     
-    if (!maskEditorDialog) return;
+    if (!maskEditorDialog) {
+        console.error('maskEditorDialog not found');
+        return;
+    }
     
     // Initialize mask editor first if not already done
     if (!maskEditorCtx) {
@@ -13907,7 +15566,6 @@ function openMaskEditor() {
         if (window.uploadedImageData && window.uploadedImageData.isPlaceholder) {
             // Use the placeholder image as background
             const backgroundImageValue = `url(${window.uploadedImageData.image_source.replace('file:', '/images/')})`;
-            console.log('Using placeholder image as background:', backgroundImageValue);
             canvasInner.style.setProperty('--background-image', backgroundImageValue);
             canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
             canvasInner.style.setProperty('--background-size', 'contain');
@@ -13938,7 +15596,6 @@ function openMaskEditor() {
         } else {
             // Use the variation image as background with aspect ratio scaling
             const backgroundImageValue = `url(${variationImage.src})`;
-            console.log(backgroundImageValue);
             canvasInner.style.setProperty('--background-image', backgroundImageValue);
             canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
             canvasInner.style.setProperty('--background-size', 'contain');
@@ -14024,6 +15681,53 @@ function updateInpaintButtonState() {
         } else {
             noiseValue.disabled = false;
             noiseValue.style.opacity = '1';
+        }
+    }
+
+    // Disable vibe transfer section and tabs when inpainting is enabled
+    const vibeReferencesSection = document.getElementById('vibeReferencesSection');
+    const vibeReferencesTabBtn = document.querySelector('.cache-browser-tabs .tab-btn[data-tab="vibe-references"]');
+    const vibeTabBtn = document.querySelector('.cache-manager-tabs .tab-btn[data-tab="vibe"]');
+    
+    if (window.currentMaskData) {
+        // Disable vibe references section
+        if (vibeReferencesSection) {
+            vibeReferencesSection.style.opacity = '0.5';
+            vibeReferencesSection.style.pointerEvents = 'none';
+        }
+        
+        // Disable vibe references tab in cache browser
+        if (vibeReferencesTabBtn) {
+            vibeReferencesTabBtn.style.opacity = '0.5';
+            vibeReferencesTabBtn.style.pointerEvents = 'none';
+            vibeReferencesTabBtn.title = 'Vibe transfers disabled during inpainting';
+        }
+        
+        // Disable vibe tab in cache manager
+        if (vibeTabBtn) {
+            vibeTabBtn.style.opacity = '0.5';
+            vibeTabBtn.style.pointerEvents = 'none';
+            vibeTabBtn.title = 'Vibe transfers disabled during inpainting';
+        }
+    } else {
+        // Re-enable vibe references section
+        if (vibeReferencesSection) {
+            vibeReferencesSection.style.opacity = '1';
+            vibeReferencesSection.style.pointerEvents = 'auto';
+        }
+        
+        // Re-enable vibe references tab in cache browser
+        if (vibeReferencesTabBtn) {
+            vibeReferencesTabBtn.style.opacity = '1';
+            vibeReferencesTabBtn.style.pointerEvents = 'auto';
+            vibeReferencesTabBtn.title = '';
+        }
+        
+        // Re-enable vibe tab in cache manager
+        if (vibeTabBtn) {
+            vibeTabBtn.style.opacity = '1';
+            vibeTabBtn.style.pointerEvents = 'auto';
+            vibeTabBtn.title = '';
         }
     }
 
@@ -14225,6 +15929,11 @@ function toggleCharacterPromptCollapse(characterId) {
         characterItem.classList.add('collapsed');
     } else {
         characterItem.classList.remove('collapsed');
+        // Resize text areas when expanding to ensure proper height
+        const promptField = document.getElementById(`${characterId}_prompt`);
+        const ucField = document.getElementById(`${characterId}_uc`);
+        if (promptField) autoResizeTextarea(promptField);
+        if (ucField) autoResizeTextarea(ucField);
     }
     
     updateCharacterPromptCollapseButton(characterId, newCollapsedState);
@@ -14259,10 +15968,14 @@ function updateCharacterPromptPreview(characterId) {
     }
 }
 
-// Cache Browser Functions
+// Reference Browser Functions
 let cacheImages = [];
 let cacheCurrentPage = 1;
 let cacheImagesPerPage = 20;
+
+// Vibe References Functions
+let vibeReferences = [];
+let vibeReferencesGallery = null;
 
 async function showCacheBrowser() {
     // Check if we're on desktop (manual modal is split)
@@ -14285,7 +15998,9 @@ async function showCacheBrowser() {
         
         try {
             await loadCacheImages();
+            await loadVibeReferences();
             displayCacheImagesContainer();
+            displayVibeReferencesContainer();
         } catch (error) {
             console.error('Error loading cache images:', error);
             showError('Failed to load cache images');
@@ -14305,7 +16020,9 @@ async function showCacheBrowser() {
         
         try {
             await loadCacheImages();
+            await loadVibeReferences();
             displayCacheImages();
+            displayVibeReferences();
         } catch (error) {
             console.error('Error loading cache images:', error);
             showError('Failed to load cache images');
@@ -14337,11 +16054,15 @@ function hideCacheBrowser() {
 
 async function loadCacheImages() {
     try {
-        const response = await fetchWithAuth('/cache', {
+        const response = await fetchWithAuth('/references', {
             method: 'OPTIONS'
         });
         if (response.ok) {
             cacheImages = await response.json();
+            console.log('Loaded cache images:', cacheImages.length, 'items');
+            if (cacheImages.length > 0) {
+                console.log('Sample cache image:', cacheImages[0]);
+            }
         } else {
             throw new Error(`Failed to load cache: ${response.statusText}`);
         }
@@ -14352,6 +16073,10 @@ async function loadCacheImages() {
 }
 
 function displayCacheImages() {
+    // Get the references tab gallery (modal version)
+    const referencesTab = document.getElementById('references-tab');
+    const cacheGallery = referencesTab ? referencesTab.querySelector('#cacheGallery') : null;
+    
     if (!cacheGallery) return;
     
     cacheGallery.innerHTML = '';
@@ -14361,7 +16086,31 @@ function displayCacheImages() {
         return;
     }
     
+    // Separate default workspace items from current workspace items
+    const currentWorkspaceItems = [];
+    const defaultWorkspaceItems = [];
+    
     cacheImages.forEach(cacheImage => {
+        if (cacheImage.workspaceId === 'default') {
+            defaultWorkspaceItems.push(cacheImage);
+        } else {
+            currentWorkspaceItems.push(cacheImage);
+        }
+    });
+    
+    console.log('Cache images sorting:', {
+        total: cacheImages.length,
+        currentWorkspace: currentWorkspaceItems.length,
+        defaultWorkspace: defaultWorkspaceItems.length
+    });
+    
+    // Display current workspace items first, then default workspace items
+    currentWorkspaceItems.forEach(cacheImage => {
+        const galleryItem = createCacheGalleryItem(cacheImage);
+        cacheGallery.appendChild(galleryItem);
+    });
+    
+    defaultWorkspaceItems.forEach(cacheImage => {
         const galleryItem = createCacheGalleryItem(cacheImage);
         cacheGallery.appendChild(galleryItem);
     });
@@ -14385,7 +16134,25 @@ function displayCacheImagesContainer() {
         return;
     }
     
+    // Separate default workspace items from current workspace items
+    const currentWorkspaceItems = [];
+    const defaultWorkspaceItems = [];
+    
     cacheImages.forEach(cacheImage => {
+        if (cacheImage.workspaceId === 'default') {
+            defaultWorkspaceItems.push(cacheImage);
+        } else {
+            currentWorkspaceItems.push(cacheImage);
+        }
+    });
+    
+    // Display current workspace items first, then default workspace items
+    currentWorkspaceItems.forEach(cacheImage => {
+        const galleryItem = createCacheGalleryItem(cacheImage);
+        cacheGalleryContainer.appendChild(galleryItem);
+    });
+    
+    defaultWorkspaceItems.forEach(cacheImage => {
         const galleryItem = createCacheGalleryItem(cacheImage);
         cacheGalleryContainer.appendChild(galleryItem);
     });
@@ -14395,6 +16162,48 @@ function displayCacheImagesContainer() {
         cacheGalleryContainer.classList.add('few-items');
     } else {
         cacheGalleryContainer.classList.remove('few-items');
+    }
+}
+
+function displayVibeReferencesContainer() {
+    const vibeReferencesGalleryContainer = document.getElementById('vibeReferencesGalleryContainer');
+    if (!vibeReferencesGalleryContainer) return;
+    
+    vibeReferencesGalleryContainer.innerHTML = '';
+    
+    if (vibeReferences.length === 0) {
+        vibeReferencesGalleryContainer.innerHTML = '<div class="no-images">No vibe references found</div>';
+        return;
+    }
+    
+    // Separate default workspace items from current workspace items
+    const currentWorkspaceItems = [];
+    const defaultWorkspaceItems = [];
+    
+    vibeReferences.forEach(vibeRef => {
+        if (vibeRef.workspaceId === 'default') {
+            defaultWorkspaceItems.push(vibeRef);
+        } else {
+            currentWorkspaceItems.push(vibeRef);
+        }
+    });
+    
+    // Display current workspace items first, then default workspace items
+    currentWorkspaceItems.forEach(vibeRef => {
+        const galleryItem = createVibeReferenceGalleryItem(vibeRef);
+        vibeReferencesGalleryContainer.appendChild(galleryItem);
+    });
+    
+    defaultWorkspaceItems.forEach(vibeRef => {
+        const galleryItem = createVibeReferenceGalleryItem(vibeRef);
+        vibeReferencesGalleryContainer.appendChild(galleryItem);
+    });
+    
+    // Add few-items class if there are 3 or fewer items
+    if (vibeReferences.length <= 3) {
+        vibeReferencesGalleryContainer.classList.add('few-items');
+    } else {
+        vibeReferencesGalleryContainer.classList.remove('few-items');
     }
 }
 
@@ -14409,7 +16218,7 @@ function createCacheGalleryItem(cacheImage) {
     } else {
         img.src = `/cache/${cacheImage.hash}`;
     }
-    img.alt = `Cache image ${cacheImage.hash}`;
+    img.alt = `Reference image ${cacheImage.hash}`;
     img.loading = 'lazy';
     
     // Create overlay
@@ -14433,25 +16242,6 @@ function createCacheGalleryItem(cacheImage) {
     const buttonsContainer = document.createElement('div');
     buttonsContainer.className = 'cache-gallery-item-buttons';
     
-    // Create workspace move buttons
-    const moveToWorkspaceBtn = document.createElement('button');
-    moveToWorkspaceBtn.className = 'cache-workspace-btn';
-    moveToWorkspaceBtn.innerHTML = '<i class="fas fa-folder"></i>';
-    moveToWorkspaceBtn.title = 'Move to workspace';
-    moveToWorkspaceBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        showCacheMoveToWorkspaceModal(cacheImage);
-    });
-    
-    const moveToDefaultBtn = document.createElement('button');
-    moveToDefaultBtn.className = 'cache-workspace-btn';
-    moveToDefaultBtn.innerHTML = '<i class="fas fa-home"></i>';
-    moveToDefaultBtn.title = 'Move to default workspace';
-    moveToDefaultBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        moveCacheToDefaultWorkspace(cacheImage);
-    });
-    
     // Create delete button
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'cache-delete-btn';
@@ -14462,8 +16252,6 @@ function createCacheGalleryItem(cacheImage) {
         deleteCacheImage(cacheImage);
     });
     
-    buttonsContainer.appendChild(moveToWorkspaceBtn);
-    buttonsContainer.appendChild(moveToDefaultBtn);
     buttonsContainer.appendChild(deleteBtn);
     
     overlay.appendChild(info);
@@ -14472,12 +16260,471 @@ function createCacheGalleryItem(cacheImage) {
     item.appendChild(img);
     item.appendChild(overlay);
     
+    // Add default workspace badge if this is a default workspace item
+    if (cacheImage.workspaceId === 'default') {
+        const badge = document.createElement('div');
+        badge.className = 'default-workspace-badge';
+        badge.textContent = 'Default';
+        badge.style.background = '#444';
+        badge.style.color = '#fff';
+        badge.style.fontWeight = 'bold';
+        badge.style.padding = '2px 8px';
+        badge.style.borderRadius = '6px';
+        badge.style.marginTop = '8px';
+        badge.style.marginBottom = '4px';
+        badge.style.display = 'inline-block';
+        badge.style.fontSize = '0.8rem';
+        item.appendChild(badge);
+    }
+    
     // Click to select image
     item.addEventListener('click', () => {
         selectCacheImage(cacheImage);
     });
     
     return item;
+}
+
+// Vibe References Functions
+async function loadVibeReferences() {
+    try {
+        const response = await fetchWithAuth('/vibe/images', {
+            method: 'GET'
+        });
+        if (response.ok) {
+            vibeReferences = await response.json();
+        } else {
+            throw new Error(`Failed to load vibe references: ${response.statusText}`);
+        }
+    } catch (error) {
+        console.error('Error loading vibe references:', error);
+        throw error;
+    }
+}
+
+function displayVibeReferences() {
+    // Get the vibe references tab gallery (modal version)
+    const vibeReferencesTab = document.getElementById('vibe-references-tab');
+    const vibeReferencesGallery = vibeReferencesTab ? vibeReferencesTab.querySelector('#vibeReferencesGallery') : null;
+    
+    if (!vibeReferencesGallery) return;
+    
+    vibeReferencesGallery.innerHTML = '';
+    
+    if (vibeReferences.length === 0) {
+        vibeReferencesGallery.innerHTML = '<div class="no-images">No vibe references found</div>';
+        return;
+    }
+    
+    // Separate default workspace items from current workspace items
+    const currentWorkspaceItems = [];
+    const defaultWorkspaceItems = [];
+    
+    vibeReferences.forEach(vibeRef => {
+        if (vibeRef.workspaceId === 'default') {
+            defaultWorkspaceItems.push(vibeRef);
+        } else {
+            currentWorkspaceItems.push(vibeRef);
+        }
+    });
+    
+    // Display current workspace items first, then default workspace items
+    currentWorkspaceItems.forEach(vibeRef => {
+        const galleryItem = createVibeReferenceGalleryItem(vibeRef);
+        vibeReferencesGallery.appendChild(galleryItem);
+    });
+    
+    defaultWorkspaceItems.forEach(vibeRef => {
+        const galleryItem = createVibeReferenceGalleryItem(vibeRef);
+        vibeReferencesGallery.appendChild(galleryItem);
+    });
+    
+    // Add few-items class if there are 3 or fewer items
+    if (vibeReferences.length <= 3) {
+        vibeReferencesGallery.classList.add('few-items');
+    } else {
+        vibeReferencesGallery.classList.remove('few-items');
+    }
+}
+
+function createVibeReferenceGalleryItem(vibeRef) {
+    const item = document.createElement('div');
+    item.className = 'cache-gallery-item';
+    
+    // Get current model
+    const currentModel = manualSelectedModel || manualModelHidden?.value || '';
+    
+    // Check if this vibe has encodings for the current model
+    const hasCurrentModelEncodings = vibeRef.encodings && vibeRef.encodings.some(encoding => 
+        encoding.model.toLowerCase() === currentModel.toLowerCase()
+    );
+    
+    // Add disabled class if no encodings for current model
+    if (!hasCurrentModelEncodings) {
+        item.classList.add('disabled');
+    }
+    
+    // Create image element
+    const img = document.createElement('img');
+    if (vibeRef.preview) {
+        img.src = `/cache/preview/${vibeRef.preview}`;
+    } else if (vibeRef.type === 'base64' && vibeRef.source) {
+        img.src = `data:image/png;base64,${vibeRef.source}`;
+    } else {
+        // Fallback to a placeholder
+        img.src = '/images/placeholder.png';
+    }
+    img.alt = `Vibe reference ${vibeRef.id}`;
+    img.loading = 'lazy';
+    
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'cache-gallery-item-overlay';
+    
+    // Create info
+    const info = document.createElement('div');
+    info.className = 'cache-gallery-item-info';
+    
+    const encodingsCount = vibeRef.encodings ? vibeRef.encodings.length : 0;
+    const currentModelEncodingsCount = vibeRef.encodings ? 
+        vibeRef.encodings.filter(encoding => encoding.model.toLowerCase() === currentModel.toLowerCase()).length : 0;
+    
+    info.innerHTML = `
+        <div>${vibeRef.id}</div>
+        <div>${currentModelEncodingsCount}/${encodingsCount} encoding(s) for ${currentModel}</div>
+    `;
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.className = 'cache-gallery-item-buttons';
+    
+    // Create select button
+    const selectBtn = document.createElement('button');
+    selectBtn.className = 'cache-delete-btn';
+    selectBtn.innerHTML = '<i class="nai-vibe-transfer"></i>';
+    selectBtn.title = hasCurrentModelEncodings ? 'Select vibe reference' : 'No encodings for current model';
+    selectBtn.disabled = !hasCurrentModelEncodings;
+    selectBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (hasCurrentModelEncodings) {
+            await selectVibeReference(vibeRef);
+        }
+    });
+    
+    buttonsContainer.appendChild(selectBtn);
+    
+    overlay.appendChild(info);
+    overlay.appendChild(buttonsContainer);
+    
+    item.appendChild(img);
+    item.appendChild(overlay);
+    
+    // Add default workspace badge if this is a default workspace item
+    if (vibeRef.workspaceId === 'default') {
+        const badge = document.createElement('div');
+        badge.className = 'default-workspace-badge';
+        badge.textContent = 'Default';
+        badge.style.background = '#444';
+        badge.style.color = '#fff';
+        badge.style.fontWeight = 'bold';
+        badge.style.padding = '2px 8px';
+        badge.style.borderRadius = '6px';
+        badge.style.marginTop = '8px';
+        badge.style.marginBottom = '4px';
+        badge.style.display = 'inline-block';
+        badge.style.fontSize = '0.8rem';
+        item.appendChild(badge);
+    }
+    
+    // Click to select vibe reference (only if enabled)
+    item.addEventListener('click', async () => {
+        if (hasCurrentModelEncodings) {
+            await selectVibeReference(vibeRef);
+        }
+    });
+    
+    return item;
+}
+
+async function selectVibeReference(vibeRef) {
+    // Add to vibe references container
+    await addVibeReferenceToContainer(vibeRef.id);
+    
+    // Close cache browser
+    hideCacheBrowser();
+    
+    showSuccess('Vibe reference selected successfully');
+}
+
+function createVibeReferenceItem(vibeRef) {
+    const item = document.createElement('div');
+    item.className = 'vibe-reference-item';
+    item.setAttribute('data-vibe-id', vibeRef.id);
+    
+    // Create preview image
+    const preview = document.createElement('img');
+    preview.className = 'vibe-reference-preview';
+    if (vibeRef.preview) {
+        preview.src = `/cache/preview/${vibeRef.preview}`;
+    } else if (vibeRef.type === 'base64' && vibeRef.source) {
+        preview.src = `data:image/png;base64,${vibeRef.source}`;
+    } else {
+        // Fallback to a placeholder
+        preview.src = '/images/placeholder.png';
+    }
+    preview.alt = `Vibe reference ${vibeRef.id}`;
+    
+    // Create controls
+    const controls = document.createElement('div');
+    controls.className = 'vibe-reference-controls';
+    
+    // Create delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'vibe-reference-delete-btn';
+    deleteBtn.innerHTML = '<i class="nai-trash"></i>';
+    deleteBtn.title = 'Remove vibe reference';
+    deleteBtn.addEventListener('click', () => {
+        removeVibeReference(vibeRef.id);
+    });
+    
+    controls.appendChild(deleteBtn);
+    
+    // Create info section
+    const info = document.createElement('div');
+    info.className = 'vibe-reference-info';
+    
+    // IE Control
+    const ieControl = document.createElement('div');
+    ieControl.className = 'vibe-reference-ie-control';
+    
+    // Create custom dropdown for IE values
+    const ieDropdown = document.createElement('div');
+    ieDropdown.className = 'custom-dropdown dropup';
+    
+    const ieDropdownBtn = document.createElement('button');
+    ieDropdownBtn.type = 'button';
+    ieDropdownBtn.className = 'custom-dropdown-btn hover-show colored';
+
+    const ieIcon = document.createElement('i');
+    ieIcon.className = 'nai-vibe-transfer';
+    ieDropdownBtn.appendChild(ieIcon);
+
+    const ieText = document.createElement('span');
+    
+    // Get current model
+    const currentModel = manualSelectedModel || manualModelHidden?.value || '';
+    
+    // Get available encodings for this vibe (filtered by current model)
+    const availableEncodings = vibeRef.encodings ? 
+        vibeRef.encodings.filter(encoding => encoding.model.toLowerCase() === currentModel.toLowerCase()) : [];
+    
+    if (availableEncodings.length > 0) {
+        // Use the first encoding as default
+        const defaultEncoding = availableEncodings[0];
+        ieText.textContent = `${defaultEncoding.informationExtraction}`;
+        ieDropdownBtn.dataset.selectedModel = defaultEncoding.model;
+        ieDropdownBtn.dataset.selectedIe = defaultEncoding.informationExtraction;
+    } else {
+        ieText.textContent = 'No encodings';
+        ieDropdownBtn.disabled = true;
+    }
+    ieDropdownBtn.appendChild(ieText);
+    
+    const ieDropdownMenu = document.createElement('div');
+    ieDropdownMenu.className = 'custom-dropdown-menu';
+    ieDropdownMenu.style.display = 'none';
+    
+    // Add encoding options (only for current model)
+    availableEncodings.forEach(encoding => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option';
+        option.textContent = `${encoding.informationExtraction}`;
+        option.dataset.model = encoding.model;
+        option.dataset.ie = encoding.informationExtraction;
+        
+        option.addEventListener('click', () => {
+            ieDropdownBtn.textContent = `${encoding.informationExtraction}`;
+            ieDropdownBtn.dataset.selectedModel = encoding.model;
+            ieDropdownBtn.dataset.selectedIe = encoding.informationExtraction;
+            ieDropdownMenu.style.display = 'none';
+        });
+        
+        ieDropdownMenu.appendChild(option);
+    });
+    
+    // Add dropdown toggle functionality
+    ieDropdownBtn.addEventListener('click', () => {
+        if (ieDropdownMenu.style.display === 'none') {
+            ieDropdownMenu.style.display = 'block';
+        } else {
+            ieDropdownMenu.style.display = 'none';
+        }
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!ieDropdown.contains(e.target)) {
+            ieDropdownMenu.style.display = 'none';
+        }
+    });
+    
+    ieDropdown.appendChild(ieDropdownBtn);
+    ieDropdown.appendChild(ieDropdownMenu);
+    ieControl.appendChild(ieDropdown);
+    
+    // Ratio Control
+    const ratioControl = document.createElement('div');
+    ratioControl.className = 'vibe-reference-ratio-control';
+    
+    const ratioInput = document.createElement('input');
+    ratioInput.type = 'number';
+    ratioInput.className = 'vibe-reference-ratio-input hover-show right colored';
+    ratioInput.min = '0.0';
+    ratioInput.max = '1.0';
+    ratioInput.step = '0.01';
+    ratioInput.value = '0.7';
+    
+    // Add wheel event for scrolling
+    ratioInput.addEventListener('wheel', function(e) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.01 : 0.01;
+        const newValue = Math.max(0, Math.min(1, parseFloat(this.value) + delta));
+        this.value = newValue.toFixed(2);
+    });
+    
+    ratioControl.appendChild(ratioInput);
+    
+    info.appendChild(ieControl);
+    info.appendChild(ratioControl);
+    
+    item.appendChild(preview);
+    item.appendChild(controls);
+    item.appendChild(info);
+    
+    return item;
+}
+
+async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
+    // Check if inpainting is enabled (mask is present)
+    if (window.currentMaskData) {
+        console.warn('Cannot add vibe references during inpainting');
+        showError('Vibe transfers are disabled during inpainting');
+        return;
+    }
+    
+    // Find the vibe reference in the global vibeReferences array
+    let vibeRef = vibeReferences.find(ref => ref.id === vibeId);
+    if (!vibeRef) {
+        // Try to load vibe references if not found
+        if (vibeReferences.length === 0) {
+            try {
+                await loadVibeReferences();
+                vibeRef = vibeReferences.find(ref => ref.id === vibeId);
+            } catch (error) {
+                console.error('Failed to load vibe references:', error);
+            }
+        }
+        
+        if (!vibeRef) {
+            console.error(`Vibe reference with ID ${vibeId} not found`);
+            return;
+        }
+    }
+    
+    const container = document.getElementById('vibeReferencesContainer');
+    if (!container) return;
+    
+    // Check if already exists
+    const existingItem = container.querySelector(`[data-vibe-id="${vibeId}"]`);
+    if (existingItem) {
+        console.warn(`Vibe reference ${vibeId} already exists in container`);
+        return;
+    }
+    
+    const item = createVibeReferenceItem(vibeRef);
+    
+    // Set the specific IE and strength values
+    const ieDropdownBtn = item.querySelector('.custom-dropdown-btn');
+    const ratioInput = item.querySelector('.vibe-reference-ratio-input');
+    
+    if (ieDropdownBtn && selectedIe) {
+        // Find the encoding with the specified IE
+        const encoding = vibeRef.encodings?.find(enc => enc.informationExtraction === selectedIe);
+        if (encoding) {
+            ieDropdownBtn.textContent = `${encoding.informationExtraction}`;
+            ieDropdownBtn.dataset.selectedModel = encoding.model;
+            ieDropdownBtn.dataset.selectedIe = encoding.informationExtraction;
+        }
+    }
+    
+    if (ratioInput && strength !== undefined) {
+        ratioInput.value = strength.toString();
+    }
+    
+    container.appendChild(item);
+    
+    // Show the section
+    const section = document.getElementById('vibeReferencesSection');
+    if (section) {
+        section.style.display = '';
+    }
+}
+
+function removeVibeReference(vibeId) {
+    const container = document.getElementById('vibeReferencesContainer');
+    if (!container) return;
+    
+    const item = container.querySelector(`[data-vibe-id="${vibeId}"]`);
+    if (item) {
+        item.remove();
+        
+        // Hide section if no more items
+        const remainingItems = container.querySelectorAll('.vibe-reference-item');
+        if (remainingItems.length === 0) {
+            const section = document.getElementById('vibeReferencesSection');
+            if (section) {
+                section.style.display = 'none';
+            }
+        }
+    }
+}
+
+function refreshVibeReferences() {
+    // Refresh vibe references in the gallery (both modal and container versions)
+    if (vibeReferences && vibeReferences.length > 0) {
+        displayVibeReferences();
+        displayVibeReferencesContainer();
+    }
+}
+
+// Cache Browser Tab Functions
+function switchCacheBrowserTab(tabName) {
+    // Update tab buttons (both modal and container versions)
+    const tabButtons = document.querySelectorAll('.cache-browser-tabs .tab-btn');
+    tabButtons.forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('data-tab') === tabName) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Update tab panes (modal version)
+    const modalTabPanes = document.querySelectorAll('#cacheBrowserModal .cache-browser-body .tab-pane');
+    modalTabPanes.forEach(pane => {
+        pane.classList.remove('active');
+        if (pane.id === `${tabName}-tab`) {
+            pane.classList.add('active');
+        }
+    });
+    
+    // Update tab panes (container version)
+    const containerTabPanes = document.querySelectorAll('#cacheBrowserContainer .cache-browser-body .tab-pane');
+    containerTabPanes.forEach(pane => {
+        pane.classList.remove('active');
+        if (pane.id === `${tabName}-tab-container`) {
+            pane.classList.add('active');
+        }
+    });
 }
 
 function formatFileSize(bytes) {
@@ -14490,12 +16737,34 @@ function formatFileSize(bytes) {
 
 async function selectCacheImage(cacheImage) {
     try {
+        // Check if there's an existing mask
+        const hasExistingMask = window.currentMaskData !== null && window.currentMaskData !== undefined;
+        
+        if (hasExistingMask) {
+            // Store the pending cache image selection and show alert modal
+            window.pendingCacheImageSelection = { cacheImage };
+            showBaseImageChangeAlertModal();
+            return;
+        }
+        
+        // No mask exists, proceed with cache image selection
+        await selectCacheImageInternal(cacheImage);
+        
+    } catch (error) {
+        console.error('Error selecting cache image:', error);
+        showError('Failed to select cache image');
+    }
+}
+
+// Internal function to handle the actual cache image selection
+async function selectCacheImageInternal(cacheImage) {
+    try {
         // Set the uploaded image data
         window.uploadedImageData = {
             image_source: `cache:${cacheImage.hash}`,
             width: 512, // Default, will be updated when image loads
             height: 512,
-            bias: 2,
+            bias: 2, // Reset bias to center (2)
             isBiasMode: true,
             isClientSide: 2
         };
@@ -14507,7 +16776,7 @@ async function selectCacheImage(cacheImage) {
             transformationSection.classList.add('display-image');
         }
         
-        // Update image bias
+        // Update image bias - reset to center (2)
         if (imageBiasHidden != null) imageBiasHidden.value = '2';
         renderImageBiasDropdown('2');
         
@@ -14524,7 +16793,7 @@ async function selectCacheImage(cacheImage) {
         // Close cache browser
         hideCacheBrowser();
         
-        showSuccess('Cache image selected successfully');
+        showSuccess('Reference image selected successfully');
         
     } catch (error) {
         console.error('Error selecting cache image:', error);
@@ -14550,7 +16819,7 @@ async function deleteCacheImage(cacheImage) {
             displayCacheImages();
             displayCacheImagesContainer();
             
-            showSuccess('Cache image deleted successfully');
+            showSuccess('Reference image deleted successfully');
         } else {
             throw new Error(`Failed to delete cache image: ${response.statusText}`);
         }
@@ -15019,20 +17288,20 @@ function togglePreviewMode() {
     
     imageBiasAdjustmentData.previewMode = newState === 'on' ? 'client' : 'css';
     
-    if (newState === 'off') {
-        // Show CSS interactive view
-        toggleBtn.setAttribute('data-state', 'off');
-        toggleBtn.innerHTML = '<i class="nai-sparkles"></i> Client Preview';
-        cssWrapper.style.display = 'block';
-        clientImage.style.display = 'none';
-        updateBiasAdjustmentImage();
-    } else {
+    if (newState === 'on') {
         // Show client preview
         toggleBtn.setAttribute('data-state', 'on');
-        toggleBtn.innerHTML = '<i class="nai-easel"></i> Interactive View';
+        toggleBtn.innerHTML = '<i class="fas fa-mouse-pointer"></i> Interactive';
         cssWrapper.style.display = 'none';
         clientImage.style.display = 'block';
         updateClientPreview();
+    } else {
+        // Show CSS interactive view
+        toggleBtn.setAttribute('data-state', 'off');
+        toggleBtn.innerHTML = '<i class="nai-sparkles"></i> Preview';
+        cssWrapper.style.display = 'block';
+        clientImage.style.display = 'none';
+        updateBiasAdjustmentImage();
     }
 }
 
@@ -15453,21 +17722,7 @@ async function autoFillMaskFromTransparentPixels() {
     }
 }
 
-// Show mask adjustment modal after bias adjustment
-function showMaskAdjustmentModal() {
-    const modal = document.getElementById('maskAdjustmentModal');
-    if (modal) {
-        modal.style.display = 'flex';
-    }
-}
 
-// Hide mask adjustment modal
-function hideMaskAdjustmentModal() {
-    const modal = document.getElementById('maskAdjustmentModal');
-    if (modal) {
-        modal.style.display = 'none';
-    }
-}
 
 // Accept bias adjustment and save
 function acceptBiasAdjustment() {
@@ -15476,6 +17731,29 @@ function acceptBiasAdjustment() {
         return;
     }
     
+    // Check if there's an existing mask
+    const hasExistingMask = window.currentMaskData !== null && window.currentMaskData !== undefined;
+    
+    if (hasExistingMask) {
+        // Store the pending bias adjustment and show alert modal
+        window.pendingBiasAdjustment = {
+            bias: imageBiasAdjustmentData.currentBias,
+            callback: () => {
+                // This will be called after the mask is handled
+            }
+        };
+        hideBiasAdjustmentConfirmDialog();
+        hideImageBiasAdjustmentModal();
+        showImageBiasMaskAlertModal();
+        return;
+    }
+    
+    // No mask exists, proceed with bias adjustment
+    applyBiasAdjustment();
+}
+
+// Apply bias adjustment (helper function)
+function applyBiasAdjustment() {
     // Store the bias adjustment data
     if (!window.uploadedImageData) {
         window.uploadedImageData = {};
@@ -15501,53 +17779,193 @@ function acceptBiasAdjustment() {
 
     renderImageBiasDropdown();
     
-    // Check if we need to show mask adjustment modal
-    checkAndShowMaskAdjustmentModal();
-    
     showSuccess('Bias adjustment saved');
 }
 
-// Check if mask adjustment modal should be shown
-async function checkAndShowMaskAdjustmentModal() {
-    // Check if there's an existing mask
-    const hasExistingMask = window.currentMaskData !== null && window.currentMaskData !== undefined;
-    
-    // Check for transparent pixels in the processed image
-    let hasTransparentPixels = false;
-    let transparentPercentage = 0;
-    
-    if (window.uploadedImageData && window.uploadedImageData.originalDataUrl) {
-        try {
-            // Get the processed image with bias applied
-            const dynamicBias = window.uploadedImageData.image_bias;
-            let processedImageUrl;
-            
-            if (dynamicBias && typeof dynamicBias === 'object') {
-                processedImageUrl = await cropImageWithDynamicBias(window.uploadedImageData.originalDataUrl, dynamicBias);
-            } else {
-                const bias = window.uploadedImageData.bias || 2;
-                processedImageUrl = await cropImageToResolutionInternal(window.uploadedImageData.originalDataUrl, bias);
-            }
-            
-            const transparentInfo = await detectTransparentPixels(processedImageUrl);
-            hasTransparentPixels = transparentInfo.hasTransparentPixels;
-            transparentPercentage = transparentInfo.transparentPercentage;
-        } catch (error) {
-            console.error('Error detecting transparent pixels:', error);
-        }
-    }
-    
-    // Show modal if there's a mask or more than 5% transparent pixels
-    if (hasExistingMask || (hasTransparentPixels && transparentPercentage > 5)) {
-        showMaskAdjustmentModal();
-    }
-}
+
 
 // Hide bias adjustment confirmation dialog
 function hideBiasAdjustmentConfirmDialog() {
     const dialog = document.getElementById('biasAdjustmentConfirmDialog');
     if (dialog) {
         dialog.style.display = 'none';
+    }
+}
+
+// Show base image change alert modal
+function showBaseImageChangeAlertModal() {
+    const modal = document.getElementById('baseImageChangeAlertModal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+// Hide base image change alert modal
+function hideBaseImageChangeAlertModal() {
+    const modal = document.getElementById('baseImageChangeAlertModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Show image bias mask alert modal
+function showImageBiasMaskAlertModal() {
+    const modal = document.getElementById('imageBiasMaskAlertModal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+// Hide image bias mask alert modal
+function hideImageBiasMaskAlertModal() {
+    const modal = document.getElementById('imageBiasMaskAlertModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Confirm base image change and delete mask
+async function confirmBaseImageChange() {
+    // Delete the existing mask
+    await deleteMask();
+    
+    // Hide the modal
+    hideBaseImageChangeAlertModal();
+    
+    // Continue with the pending image upload
+    if (window.pendingImageUpload) {
+        const { file } = window.pendingImageUpload;
+        window.pendingImageUpload = null;
+        await handleManualImageUploadInternal(file);
+    }
+    
+    // Continue with the pending cache image selection
+    if (window.pendingCacheImageSelection) {
+        const { cacheImage } = window.pendingCacheImageSelection;
+        window.pendingCacheImageSelection = null;
+        await selectCacheImageInternal(cacheImage);
+    }
+}
+
+// Apply image bias change (helper function)
+async function applyImageBiasChange(value, callback) {
+    // Clear dynamic bias data when selecting a preset
+    if (window.uploadedImageData && window.uploadedImageData.image_bias && typeof window.uploadedImageData.image_bias === 'object') {
+        delete window.uploadedImageData.image_bias;
+    }
+    
+    // Fix: Ensure value is properly set, even if it's 0
+    if (imageBiasHidden != null) {
+        imageBiasHidden.value = value.toString();
+    }
+    
+    // Update the uploaded image data with the new bias value
+    if (window.uploadedImageData) {
+        window.uploadedImageData.bias = parseInt(value);
+    }
+    
+    updateImageBiasDisplay(value);
+    
+    // Reload the preview image with the new bias
+    await cropImageToResolution();
+    
+    // Call the original callback if provided
+    if (callback) {
+        callback();
+    }
+}
+
+// Create mask from transparent pixels
+async function createMaskFromTransparentPixels() {
+    try {
+        if (!window.uploadedImageData || !window.uploadedImageData.originalDataUrl) {
+            showError('No image data available');
+            return;
+        }
+
+        // Get the processed image with current bias applied
+        let processedImageUrl;
+        
+        // Check if we have a pending bias adjustment (custom bias)
+        if (window.pendingBiasAdjustment && imageBiasAdjustmentData.currentBias) {
+            processedImageUrl = await cropImageWithDynamicBias(window.uploadedImageData.originalDataUrl, imageBiasAdjustmentData.currentBias);
+        } else {
+            const dynamicBias = window.uploadedImageData.image_bias;
+            if (dynamicBias && typeof dynamicBias === 'object') {
+                processedImageUrl = await cropImageWithDynamicBias(window.uploadedImageData.originalDataUrl, dynamicBias);
+            } else {
+                const bias = window.uploadedImageData.bias || 2;
+                processedImageUrl = await cropImageToResolutionInternal(window.uploadedImageData.originalDataUrl, bias);
+            }
+        }
+
+        // Create a canvas to process the image
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        
+        await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = processedImageUrl;
+        });
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        // Get image data to analyze transparent pixels
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+
+        // Create mask canvas
+        const maskCanvas = document.createElement('canvas');
+        const maskCtx = maskCanvas.getContext('2d');
+        maskCanvas.width = canvas.width;
+        maskCanvas.height = canvas.height;
+
+        // Fill with black background
+        maskCtx.fillStyle = '#000000';
+        maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+
+        // Process each pixel
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+            const a = data[i + 3];
+
+            // If pixel is transparent or very transparent, make it white in the mask
+            if (a < 128) {
+                const pixelIndex = i / 4;
+                const x = pixelIndex % canvas.width;
+                const y = Math.floor(pixelIndex / canvas.width);
+                
+                maskCtx.fillStyle = '#FFFFFF';
+                maskCtx.fillRect(x, y, 1, 1);
+            }
+        }
+
+        // Convert mask to base64
+        const maskDataUrl = maskCanvas.toDataURL('image/png');
+        
+        // Store the mask data
+        window.currentMaskData = maskDataUrl;
+        
+        // Set inpaint button to on
+        if (inpaintBtn) {
+            inpaintBtn.setAttribute('data-state', 'on');
+            inpaintBtn.classList.add('active');
+        }
+        
+        // Update vibe transfer UI state
+        updateInpaintButtonState();
+        
+        showSuccess('Mask created from transparent pixels!');
+        
+    } catch (error) {
+        console.error('Error creating mask from transparent pixels:', error);
+        showError('Failed to create mask from transparent pixels');
     }
 }
 
@@ -15726,22 +18144,7 @@ function setupImageBiasAdjustmentListeners() {
     if (resetBtn) resetBtn.addEventListener('click', resetBiasControls);
     if (testBtn) testBtn.addEventListener('click', testBiasAdjustment);
     
-    // Mask adjustment modal controls
-    const closeMaskAdjustmentBtn = document.getElementById('closeMaskAdjustmentBtn');
-    const editMaskBtn = document.getElementById('editMaskBtn');
-    const autoFillMaskBtn = document.getElementById('autoFillMaskBtn');
-    const skipMaskAdjustmentBtn = document.getElementById('skipMaskAdjustmentBtn');
-    
-    if (closeMaskAdjustmentBtn) closeMaskAdjustmentBtn.addEventListener('click', hideMaskAdjustmentModal);
-    if (editMaskBtn) editMaskBtn.addEventListener('click', () => {
-        hideMaskAdjustmentModal();
-        openMaskEditor();
-    });
-    if (autoFillMaskBtn) autoFillMaskBtn.addEventListener('click', () => {
-        hideMaskAdjustmentModal();
-        autoFillMaskFromTransparentPixels();
-    });
-    if (skipMaskAdjustmentBtn) skipMaskAdjustmentBtn.addEventListener('click', hideMaskAdjustmentModal);
+
     
     // Bias control inputs
     const biasInputs = ['biasX', 'biasY', 'biasScale', 'biasRotate'];
@@ -15809,9 +18212,126 @@ function setupImageBiasAdjustmentListeners() {
         });
     }
     
+    // Close base image change alert modal when clicking outside
+    const baseImageChangeModal = document.getElementById('baseImageChangeAlertModal');
+    if (baseImageChangeModal) {
+        baseImageChangeModal.addEventListener('click', (e) => {
+            if (e.target === baseImageChangeModal) {
+                hideBaseImageChangeAlertModal();
+                // Clear any pending changes
+                window.pendingImageUpload = null;
+                window.pendingCacheImageSelection = null;
+            }
+        });
+    }
+    
+    // Close image bias mask alert modal when clicking outside
+    const imageBiasMaskModal = document.getElementById('imageBiasMaskAlertModal');
+    if (imageBiasMaskModal) {
+        imageBiasMaskModal.addEventListener('click', (e) => {
+            if (e.target === imageBiasMaskModal) {
+                hideImageBiasMaskAlertModal();
+                // Clear any pending changes
+                window.pendingImageBiasChange = null;
+                window.pendingBiasAdjustment = null;
+            }
+        });
+    }
+    
     // Confirmation dialog controls
     const closeConfirmBtn = document.getElementById('closeBiasConfirmBtn');
     const cancelConfirmBtn = document.getElementById('cancelBiasConfirmBtn');
+    
+    // Base image change alert modal controls
+    const closeBaseImageChangeAlertBtn = document.getElementById('closeBaseImageChangeAlertBtn');
+    const confirmBaseImageChangeBtn = document.getElementById('confirmBaseImageChangeBtn');
+    const cancelBaseImageChangeBtn = document.getElementById('cancelBaseImageChangeBtn');
+    
+    if (closeBaseImageChangeAlertBtn) closeBaseImageChangeAlertBtn.addEventListener('click', () => {
+        hideBaseImageChangeAlertModal();
+        // Clear any pending changes
+        window.pendingImageUpload = null;
+        window.pendingCacheImageSelection = null;
+    });
+    if (confirmBaseImageChangeBtn) confirmBaseImageChangeBtn.addEventListener('click', confirmBaseImageChange);
+    if (cancelBaseImageChangeBtn) cancelBaseImageChangeBtn.addEventListener('click', () => {
+        hideBaseImageChangeAlertModal();
+        // Clear any pending changes
+        window.pendingImageUpload = null;
+        window.pendingCacheImageSelection = null;
+    });
+    
+    // Image bias mask alert modal controls
+    const closeImageBiasMaskAlertBtn = document.getElementById('closeImageBiasMaskAlertBtn');
+    const cancelImageBiasBtn = document.getElementById('cancelImageBiasBtn');
+    const removeMaskBtn = document.getElementById('removeMaskBtn');
+    const createMaskBtn = document.getElementById('createMaskBtn');
+    
+    if (closeImageBiasMaskAlertBtn) closeImageBiasMaskAlertBtn.addEventListener('click', () => {
+        hideImageBiasMaskAlertModal();
+        // Clear any pending changes
+        window.pendingImageBiasChange = null;
+        window.pendingBiasAdjustment = null;
+    });
+    if (cancelImageBiasBtn) cancelImageBiasBtn.addEventListener('click', () => {
+        hideImageBiasMaskAlertModal();
+        // Clear any pending changes
+        window.pendingImageBiasChange = null;
+        window.pendingBiasAdjustment = null;
+    });
+    if (removeMaskBtn) removeMaskBtn.addEventListener('click', () => {
+        deleteMask();
+        hideImageBiasMaskAlertModal();
+        // Continue with the pending image bias change
+        if (window.pendingImageBiasChange) {
+            const { value, callback } = window.pendingImageBiasChange;
+            window.pendingImageBiasChange = null;
+            applyImageBiasChange(value, callback);
+        }
+        // Continue with the pending bias adjustment
+        if (window.pendingBiasAdjustment) {
+            const { bias, callback } = window.pendingBiasAdjustment;
+            window.pendingBiasAdjustment = null;
+            imageBiasAdjustmentData.currentBias = bias;
+            applyBiasAdjustment();
+        }
+    });
+    if (createMaskBtn) {
+        console.log('Create mask button found and event listener added');
+                createMaskBtn.addEventListener('click', async () => {
+            console.log('Create mask button clicked');
+            hideImageBiasMaskAlertModal();
+        
+        let hadPendingChanges = false;
+        
+        // Continue with the pending image bias change first
+        if (window.pendingImageBiasChange) {
+            const { value, callback } = window.pendingImageBiasChange;
+            window.pendingImageBiasChange = null;
+            await applyImageBiasChange(value, callback);
+            hadPendingChanges = true;
+        }
+        
+        // Continue with the pending bias adjustment first
+        if (window.pendingBiasAdjustment) {
+            const { bias, callback } = window.pendingBiasAdjustment;
+            window.pendingBiasAdjustment = null;
+            imageBiasAdjustmentData.currentBias = bias;
+            await applyBiasAdjustment();
+            hadPendingChanges = true;
+        }
+        
+        if (hadPendingChanges) {
+            console.log('Creating mask from transparent pixels');
+            // Then create mask from transparent pixels
+            await createMaskFromTransparentPixels();
+        } else {
+            console.log('Opening mask editor directly');
+            // No pending changes, just open the mask editor
+            openMaskEditor();
+        }
+    });
+    }
     const acceptConfirmBtn = document.getElementById('acceptBiasConfirmBtn');
     
     if (closeConfirmBtn) closeConfirmBtn.addEventListener('click', hideBiasAdjustmentConfirmDialog);
@@ -15880,5 +18400,1763 @@ function initializeImageBiasAdjustment() {
     const imageBiasGroup = document.getElementById('imageBiasGroup');
     if (imageBiasGroup) {
         observer.observe(imageBiasGroup, { attributes: true });
+    }
+}
+
+// Reference Manager Variables
+let cacheManagerImages = [];
+let cacheManagerSelectedImages = new Set();
+let cacheManagerCurrentWorkspace = 'default';
+let cacheManagerIsSelectionMode = false;
+
+// Vibe Manager Variables
+let vibeManagerImages = [];
+let vibeManagerSelectedModel = 'v4_5';
+let vibeManagerIeSelectedModel = 'v4_5';
+let vibeManagerFromReferenceSelectedModel = 'v4_5';
+let vibeManagerFromReferenceImage = null;
+let vibeManagerSelectedImages = new Set();
+let vibeManagerIsSelectionMode = false;
+
+// Helper function to get workspace display name
+function getWorkspaceDisplayName(workspaceId) {
+    const workspace = workspaces.find(w => w.id === workspaceId);
+    return workspace ? workspace.name : 'Default';
+}
+
+// Modal management functions
+function disablePageScroll() {
+    document.body.classList.add('modal-open');
+}
+
+function enablePageScroll() {
+    document.body.classList.remove('modal-open');
+}
+
+// Reference Manager Functions
+function showCacheManagerModal() {
+    cacheManagerCurrentWorkspace = activeWorkspace;
+    cacheManagerSelectedImages.clear();
+    cacheManagerIsSelectionMode = false;
+    
+    // Setup workspace dropdown
+    setupCacheManagerWorkspaceDropdown();
+    
+    // Setup cache manager tab event listeners
+    setupCacheManagerTabs();
+    
+    // Load cache images for current workspace
+    loadCacheManagerImages();
+    
+    const modal = document.getElementById('cacheManagerModal');
+    if (modal) {
+        modal.style.display = 'block';
+        disablePageScroll();
+    }
+}
+
+function hideCacheManagerModal() {
+    const modal = document.getElementById('cacheManagerModal');
+    if (modal) {
+        modal.style.display = 'none';
+        enablePageScroll();
+    }
+    
+    // Reset state
+    cacheManagerSelectedImages.clear();
+    cacheManagerIsSelectionMode = false;
+}
+
+function setupCacheManagerTabs() {
+    const tabButtons = document.querySelectorAll('.cache-manager-tabs .tab-btn');
+    
+    tabButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const targetTab = this.getAttribute('data-tab');
+            switchCacheManagerTab(targetTab);
+        });
+    });
+}
+
+function setupCacheManagerWorkspaceDropdown() {
+    const dropdown = document.getElementById('cacheManagerWorkspaceDropdown');
+    const dropdownBtn = document.getElementById('cacheManagerWorkspaceDropdownBtn');
+    const dropdownMenu = document.getElementById('cacheManagerWorkspaceDropdownMenu');
+    const selectedSpan = document.getElementById('cacheManagerWorkspaceSelected');
+    
+    if (!dropdown || !dropdownBtn || !dropdownMenu || !selectedSpan) return;
+    
+    // Update selected workspace
+    selectedSpan.textContent = getWorkspaceDisplayName(cacheManagerCurrentWorkspace);
+    
+    // Check if dropdown is already set up
+    if (dropdown.dataset.setup === 'true') {
+        return; // Already set up, don't add duplicate event listeners
+    }
+    
+    // Setup dropdown functionality
+    setupDropdown(dropdown, dropdownBtn, dropdownMenu, renderCacheManagerWorkspaceDropdown, () => cacheManagerCurrentWorkspace);
+    
+    // Mark as set up
+    dropdown.dataset.setup = 'true';
+}
+
+function renderCacheManagerWorkspaceDropdown() {
+    const dropdownMenu = document.getElementById('cacheManagerWorkspaceDropdownMenu');
+    if (!dropdownMenu) return '';
+    
+    dropdownMenu.innerHTML = '';
+    
+    workspaces.forEach(workspace => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option' + (workspace.id === cacheManagerCurrentWorkspace ? ' selected' : '');
+        option.tabIndex = 0;
+        option.dataset.value = workspace.id;
+        
+        const workspaceColor = workspace.color || '#124';
+        
+        option.innerHTML = `
+            <div class="workspace-option-content">
+                <div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
+                <div class="workspace-name">${workspace.name}</div>
+            </div>
+        `;
+        
+        const action = () => {
+            if (workspace.id !== cacheManagerCurrentWorkspace) {
+                cacheManagerCurrentWorkspace = workspace.id;
+                cacheManagerSelectedImages.clear();
+                loadCacheManagerImages();
+                
+                // Update selected workspace display
+                const selectedSpan = document.getElementById('cacheManagerWorkspaceSelected');
+                if (selectedSpan) {
+                    selectedSpan.textContent = workspace.name;
+                }
+            }
+            closeDropdown(dropdownMenu, document.getElementById('cacheManagerWorkspaceDropdownBtn'));
+        };
+        
+        option.addEventListener('click', action);
+        option.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                action();
+            }
+        });
+        
+        dropdownMenu.appendChild(option);
+    });
+}
+
+async function loadCacheManagerImages() {
+    const loading = document.getElementById('cacheManagerLoading');
+    const gallery = document.getElementById('cacheManagerGallery');
+    
+    if (loading) loading.style.display = 'flex';
+    if (gallery) gallery.innerHTML = '';
+    
+    try {
+        // Load cache images for the current workspace
+        const response = await fetchWithAuth(`/workspaces/${cacheManagerCurrentWorkspace}/references`, {
+            method: 'OPTIONS'
+        });
+        
+        if (response.ok) {
+            cacheManagerImages = await response.json();
+        } else {
+            throw new Error(`Failed to load cache: ${response.statusText}`);
+        }
+        
+        displayCacheManagerImages();
+    } catch (error) {
+        console.error('Error loading cache manager images:', error);
+        showError('Failed to load cache images');
+    } finally {
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+function displayCacheManagerImages() {
+    const gallery = document.getElementById('cacheManagerGallery');
+    if (!gallery) return;
+    
+    gallery.innerHTML = '';
+    
+    if (cacheManagerImages.length === 0) {
+        gallery.innerHTML = '<div class="no-images">No cache images found in this workspace</div>';
+        return;
+    }
+    
+    cacheManagerImages.forEach(cacheImage => {
+        const galleryItem = createCacheManagerGalleryItem(cacheImage);
+        gallery.appendChild(galleryItem);
+    });
+    
+    updateCacheManagerSelectionMode();
+}
+
+function createCacheManagerGalleryItem(cacheImage) {
+    const item = document.createElement('div');
+    item.className = 'cache-manager-gallery-item';
+    item.dataset.hash = cacheImage.hash;
+    
+    // Create image element
+    const img = document.createElement('img');
+    if (cacheImage.hasPreview) {
+        img.src = `/cache/preview/${cacheImage.hash}.webp`;
+    } else {
+        img.src = `/cache/${cacheImage.hash}`;
+    }
+    img.alt = `Reference image ${cacheImage.hash}`;
+    img.loading = 'lazy';
+    
+    // Create checkbox for selection mode
+    const checkbox = document.createElement('div');
+    checkbox.className = 'cache-manager-gallery-item-checkbox';
+    checkbox.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleCacheManagerImageSelection(cacheImage.hash);
+    });
+    
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'cache-manager-gallery-item-overlay';
+    
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.className = 'cache-manager-gallery-item-buttons';
+    
+    // Create vibe encode button
+    const vibeBtn = document.createElement('button');
+    vibeBtn.className = 'btn-secondary btn-small';
+    vibeBtn.innerHTML = '<i class="nai-vibe-transfer"></i>';
+    vibeBtn.title = 'Create Vibe Encoding';
+    vibeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showVibeManagerFromReferenceModal(cacheImage);
+    });
+    
+    // Create delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn-danger btn-small';
+    deleteBtn.innerHTML = '<i class="nai-trash"></i>';
+    deleteBtn.title = 'Delete image';
+    deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteCacheManagerImage(cacheImage, cacheManagerCurrentWorkspace);
+    });
+    
+    buttonsContainer.appendChild(vibeBtn);
+    buttonsContainer.appendChild(deleteBtn);
+    
+    overlay.appendChild(buttonsContainer);
+    
+    item.appendChild(img);
+    item.appendChild(checkbox);
+    item.appendChild(overlay);
+    
+    // Click to select image
+    item.addEventListener('click', () => {
+        if (cacheManagerIsSelectionMode) {
+            toggleCacheManagerImageSelection(cacheImage.hash);
+        }
+    });
+    
+    return item;
+}
+
+function toggleCacheManagerImageSelection(hash) {
+    if (cacheManagerSelectedImages.has(hash)) {
+        cacheManagerSelectedImages.delete(hash);
+    } else {
+        cacheManagerSelectedImages.add(hash);
+    }
+    
+    updateCacheManagerSelectionMode();
+    updateCacheManagerGallerySelection();
+}
+
+function updateCacheManagerSelectionMode() {
+    const gallery = document.getElementById('cacheManagerGallery');
+    const moveBtn = document.getElementById('cacheManagerMoveBtn');
+    
+    if (!gallery) return;
+    
+    if (cacheManagerSelectedImages.size > 0) {
+        cacheManagerIsSelectionMode = true;
+        gallery.classList.add('selection-mode');
+        if (moveBtn) moveBtn.style.display = 'inline-block';
+    } else {
+        cacheManagerIsSelectionMode = false;
+        gallery.classList.remove('selection-mode');
+        if (moveBtn) moveBtn.style.display = 'none';
+    }
+}
+
+function updateCacheManagerGallerySelection() {
+    const gallery = document.getElementById('cacheManagerGallery');
+    if (!gallery) return;
+    
+    const items = gallery.querySelectorAll('.cache-manager-gallery-item');
+    items.forEach(item => {
+        const hash = item.dataset.hash;
+        const checkbox = item.querySelector('.cache-manager-gallery-item-checkbox');
+        
+        if (cacheManagerSelectedImages.has(hash)) {
+            item.classList.add('selected');
+            checkbox.checked = true;
+        } else {
+            item.classList.remove('selected');
+            checkbox.checked = false;
+        }
+    });
+}
+
+async function deleteCacheManagerImage(cacheImage, workspace) {
+    if (!confirm(`Are you sure you want to delete this cache image?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetchWithAuth(`/workspaces/${workspace || cacheManagerCurrentWorkspace}/references/${cacheImage.hash}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            // Remove from local array
+            cacheManagerImages = cacheManagerImages.filter(img => img.hash !== cacheImage.hash);
+            cacheManagerSelectedImages.delete(cacheImage.hash);
+            
+            // Refresh display
+            displayCacheManagerImages();
+            
+            showSuccess('Reference image deleted successfully');
+        } else {
+            throw new Error(`Failed to delete cache image: ${response.statusText}`);
+        }
+    } catch (error) {
+        console.error('Error deleting cache manager image:', error);
+        showError('Failed to delete cache image');
+    }
+}
+
+function showCacheManagerUploadModal() {
+    const modal = document.getElementById('cacheManagerUploadModal');
+    if (modal) {
+        modal.style.display = 'block';
+        disablePageScroll();
+    }
+    
+    // Reset form
+    const fileInput = document.getElementById('cacheManagerFileInput');
+    const uploadBtn = document.getElementById('cacheManagerUploadConfirmBtn');
+    const progress = document.getElementById('cacheManagerUploadProgress');
+    
+    if (fileInput) fileInput.value = '';
+    if (uploadBtn) uploadBtn.disabled = true;
+    if (progress) progress.style.display = 'none';
+}
+
+function hideCacheManagerUploadModal() {
+    const modal = document.getElementById('cacheManagerUploadModal');
+    if (modal) {
+        modal.style.display = 'none';
+        enablePageScroll();
+    }
+}
+
+async function uploadCacheManagerImages() {
+    const fileInput = document.getElementById('cacheManagerFileInput');
+    const uploadBtn = document.getElementById('cacheManagerUploadConfirmBtn');
+    const progress = document.getElementById('cacheManagerUploadProgress');
+    const progressFill = document.getElementById('cacheManagerProgressFill');
+    const progressText = document.getElementById('cacheManagerProgressText');
+    
+    if (!fileInput || !fileInput.files.length) return;
+    
+    const files = Array.from(fileInput.files);
+    uploadBtn.disabled = true;
+    progress.style.display = 'flex';
+    
+    let uploadedCount = 0;
+    
+    try {
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            
+            // Create form data
+            const formData = new FormData();
+            formData.append('image', file);
+            
+            // Upload file
+            const response = await fetchWithAuth(`/workspaces/${cacheManagerCurrentWorkspace}/references`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                uploadedCount++;
+            } else {
+                console.error(`Failed to upload ${file.name}: ${response.statusText}`);
+            }
+            
+            // Update progress
+            const percent = Math.round(((i + 1) / files.length) * 100);
+            progressFill.style.width = `${percent}%`;
+            progressText.textContent = `${percent}% (${i + 1}/${files.length})`;
+        }
+        
+        if (uploadedCount > 0) {
+            showSuccess(`${uploadedCount} image(s) uploaded successfully`);
+            hideCacheManagerUploadModal();
+            loadCacheManagerImages(); // Refresh the gallery
+        } else {
+            showError('No images were uploaded successfully');
+        }
+    } catch (error) {
+        console.error('Error uploading cache images:', error);
+        showError('Failed to upload images');
+    } finally {
+        uploadBtn.disabled = false;
+        progress.style.display = 'none';
+    }
+}
+
+function showCacheManagerMoveModal() {
+    if (cacheManagerSelectedImages.size === 0) {
+        showError('Please select images to move');
+        return;
+    }
+    
+    const modal = document.getElementById('cacheManagerMoveModal');
+    const countSpan = document.getElementById('cacheManagerMoveCount');
+    const targetSelect = document.getElementById('cacheManagerMoveTargetSelect');
+    
+    if (!modal || !countSpan || !targetSelect) return;
+    
+    countSpan.textContent = cacheManagerSelectedImages.size;
+    
+    // Populate target workspace options
+    targetSelect.innerHTML = '';
+    workspaces.forEach(workspace => {
+        if (workspace.id !== cacheManagerCurrentWorkspace) {
+            const option = document.createElement('option');
+            option.value = workspace.id;
+            option.textContent = workspace.name;
+            targetSelect.appendChild(option);
+        }
+    });
+    
+    modal.style.display = 'block';
+    disablePageScroll();
+}
+
+function hideCacheManagerMoveModal() {
+    const modal = document.getElementById('cacheManagerMoveModal');
+    if (modal) {
+        modal.style.display = 'none';
+        enablePageScroll();
+    }
+}
+
+async function moveCacheManagerImages() {
+    const targetSelect = document.getElementById('cacheManagerMoveTargetSelect');
+    if (!targetSelect || !targetSelect.value) {
+        showError('Please select a target workspace');
+        return;
+    }
+    
+    const targetWorkspace = targetSelect.value;
+    const selectedHashes = Array.from(cacheManagerSelectedImages);
+    
+    try {
+        const response = await fetchWithAuth(`/workspaces/${targetWorkspace}/references`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                hashes: selectedHashes
+            })
+        });
+        
+        if (response.ok) {
+            showSuccess(`${selectedHashes.length} image(s) moved successfully`);
+            
+            // Clear selection and exit selection mode
+            cacheManagerSelectedImages.clear();
+            cacheManagerIsSelectionMode = false;
+            
+            // Update UI to reflect selection state
+            updateCacheManagerSelectionMode();
+            
+            hideCacheManagerMoveModal();
+            loadCacheManagerImages(); // Refresh the gallery
+        } else {
+            throw new Error(`Failed to move images: ${response.statusText}`);
+        }
+    } catch (error) {
+        console.error('Error moving cache images:', error);
+        showError('Failed to move images');
+    }
+}
+
+// Vibe Manager Functions
+function showVibeManagerUploadModal() {
+    const modal = document.getElementById('vibeManagerUploadModal');
+    if (modal) {
+        modal.style.display = 'block';
+        disablePageScroll();
+    }
+    
+    // Reset form
+    const fileInput = document.getElementById('vibeManagerFileInput');
+    const uploadBtn = document.getElementById('vibeManagerUploadConfirmBtn');
+    const ieInput = document.getElementById('vibeManagerIeInput');
+    
+    if (fileInput) fileInput.value = '';
+    if (uploadBtn) uploadBtn.disabled = true;
+    if (ieInput) ieInput.value = '0.5';
+    
+    // Populate model dropdown
+    populateVibeManagerModelDropdown();
+}
+
+function hideVibeManagerUploadModal() {
+    const modal = document.getElementById('vibeManagerUploadModal');
+    if (modal) {
+        modal.style.display = 'none';
+        enablePageScroll();
+    }
+}
+
+function showVibeManagerIeModal(vibeImage) {
+    const modal = document.getElementById('vibeManagerIeModal');
+    if (modal) modal.style.display = 'block';
+    
+    // Store the vibe image for later use
+    modal.dataset.vibeImageId = vibeImage.id;
+    
+    // Reset form
+    const ieInput = document.getElementById('vibeManagerIeInput2');
+    
+    if (ieInput) ieInput.value = '0.5';
+    
+    // Populate model dropdown
+    populateVibeManagerIeModelDropdown();
+}
+
+function populateVibeManagerModelDropdown() {
+    const dropdownMenu = document.getElementById('vibeManagerModelDropdownMenu');
+    const selectedSpan = document.getElementById('vibeManagerModelSelected');
+    
+    if (!dropdownMenu || !selectedSpan) return;
+    
+    dropdownMenu.innerHTML = '';
+    
+    // Get V4+ models from optionsData
+    if (optionsData && optionsData.models) {
+        const v4Models = Object.entries(optionsData.models)
+            .filter(([key, value]) => {
+                // Filter for V4+ models (kayra, v4, v4_5, etc.)
+                const modelKey = key.toLowerCase();
+                return modelKey.includes('v4') || modelKey.includes('kayra') || modelKey.includes('opus');
+            })
+            .sort((a, b) => {
+                // Sort by model version (V4.5 first, then V4, then others)
+                const aKey = a[0].toLowerCase();
+                const bKey = b[0].toLowerCase();
+                if (aKey.includes('v4_5')) return -1;
+                if (bKey.includes('v4_5')) return 1;
+                if (aKey.includes('v4')) return -1;
+                if (bKey.includes('v4')) return 1;
+                return a[1].localeCompare(b[1]);
+            });
+        
+        v4Models.forEach(([key, displayName]) => {
+            const option = document.createElement('div');
+            option.className = 'custom-dropdown-option' + (vibeManagerSelectedModel === key ? ' selected' : '');
+            option.dataset.value = key;
+            option.textContent = displayName;
+            
+            option.addEventListener('click', () => {
+                vibeManagerSelectedModel = key;
+                selectedSpan.textContent = displayName;
+                closeDropdown(dropdownMenu, document.getElementById('vibeManagerModelDropdownBtn'));
+            });
+            
+            dropdownMenu.appendChild(option);
+        });
+    }
+    
+    // Update selected display
+    if (optionsData && optionsData.models && optionsData.models[vibeManagerSelectedModel]) {
+        selectedSpan.textContent = optionsData.models[vibeManagerSelectedModel];
+    }
+}
+
+function populateVibeManagerIeModelDropdown() {
+    const dropdownMenu = document.getElementById('vibeManagerIeModelDropdownMenu');
+    const selectedSpan = document.getElementById('vibeManagerIeModelSelected');
+    
+    if (!dropdownMenu || !selectedSpan) return;
+    
+    dropdownMenu.innerHTML = '';
+    
+    // Get V4+ models from optionsData
+    if (optionsData && optionsData.models) {
+        const v4Models = Object.entries(optionsData.models)
+            .filter(([key, value]) => {
+                // Filter for V4+ models (kayra, v4, v4_5, etc.)
+                const modelKey = key.toLowerCase();
+                return modelKey.includes('v4') || modelKey.includes('kayra') || modelKey.includes('opus');
+            })
+            .sort((a, b) => {
+                // Sort by model version (V4.5 first, then V4, then others)
+                const aKey = a[0].toLowerCase();
+                const bKey = b[0].toLowerCase();
+                if (aKey.includes('v4_5')) return -1;
+                if (bKey.includes('v4_5')) return 1;
+                if (aKey.includes('v4')) return -1;
+                if (bKey.includes('v4')) return 1;
+                return a[1].localeCompare(b[1]);
+            });
+        
+        v4Models.forEach(([key, displayName]) => {
+            const option = document.createElement('div');
+            option.className = 'custom-dropdown-option' + (vibeManagerIeSelectedModel === key ? ' selected' : '');
+            option.dataset.value = key;
+            option.textContent = displayName;
+            
+            option.addEventListener('click', () => {
+                vibeManagerIeSelectedModel = key;
+                selectedSpan.textContent = displayName;
+                closeDropdown(dropdownMenu, document.getElementById('vibeManagerIeModelDropdownBtn'));
+            });
+            
+            dropdownMenu.appendChild(option);
+        });
+    }
+    
+    // Update selected display
+    if (optionsData && optionsData.models && optionsData.models[vibeManagerIeSelectedModel]) {
+        selectedSpan.textContent = optionsData.models[vibeManagerIeSelectedModel];
+    }
+}
+
+function showVibeManagerFromReferenceModal(cacheImage) {
+    const modal = document.getElementById('vibeManagerFromReferenceModal');
+    if (modal) modal.style.display = 'block';
+    
+    // Store the reference image
+    vibeManagerFromReferenceImage = cacheImage;
+    
+    // Show preview
+    const preview = document.getElementById('vibeManagerFromReferencePreview');
+    if (preview) {
+        const img = document.createElement('img');
+        if (cacheImage.hasPreview) {
+            img.src = `/cache/preview/${cacheImage.hash}.webp`;
+        } else {
+            img.src = `/cache/${cacheImage.hash}`;
+        }
+        img.alt = `Reference image ${cacheImage.hash}`;
+        preview.innerHTML = '';
+        preview.appendChild(img);
+    }
+    
+    // Reset form
+    const ieInput = document.getElementById('vibeManagerFromReferenceIeInput');
+    
+    if (ieInput) ieInput.value = '0.5';
+    
+    // Populate model dropdown
+    populateVibeManagerFromReferenceModelDropdown();
+}
+
+function hideVibeManagerFromReferenceModal() {
+    const modal = document.getElementById('vibeManagerFromReferenceModal');
+    if (modal) modal.style.display = 'none';
+    vibeManagerFromReferenceImage = null;
+}
+
+function populateVibeManagerFromReferenceModelDropdown() {
+    const dropdownMenu = document.getElementById('vibeManagerFromReferenceModelDropdownMenu');
+    const selectedSpan = document.getElementById('vibeManagerFromReferenceModelSelected');
+    
+    if (!dropdownMenu || !selectedSpan) return;
+    
+    dropdownMenu.innerHTML = '';
+    
+    // Get V4+ models from optionsData
+    if (optionsData && optionsData.models) {
+        const v4Models = Object.entries(optionsData.models)
+            .filter(([key, value]) => {
+                // Filter for V4+ models (kayra, v4, v4_5, etc.)
+                const modelKey = key.toLowerCase();
+                return modelKey.includes('v4') || modelKey.includes('kayra') || modelKey.includes('opus');
+            })
+            .sort((a, b) => {
+                // Sort by model version (V4.5 first, then V4, then others)
+                const aKey = a[0].toLowerCase();
+                const bKey = b[0].toLowerCase();
+                if (aKey.includes('v4_5')) return -1;
+                if (bKey.includes('v4_5')) return 1;
+                if (aKey.includes('v4')) return -1;
+                if (bKey.includes('v4')) return 1;
+                return a[1].localeCompare(b[1]);
+            });
+        
+        v4Models.forEach(([key, displayName]) => {
+            const option = document.createElement('div');
+            option.className = 'custom-dropdown-option' + (vibeManagerFromReferenceSelectedModel === key ? ' selected' : '');
+            option.dataset.value = key;
+            option.textContent = displayName;
+            
+            option.addEventListener('click', () => {
+                vibeManagerFromReferenceSelectedModel = key;
+                selectedSpan.textContent = displayName;
+                closeDropdown(dropdownMenu, document.getElementById('vibeManagerFromReferenceModelDropdownBtn'));
+            });
+            
+            dropdownMenu.appendChild(option);
+        });
+    }
+    
+    // Update selected display
+    if (optionsData && optionsData.models && optionsData.models[vibeManagerFromReferenceSelectedModel]) {
+        selectedSpan.textContent = optionsData.models[vibeManagerFromReferenceSelectedModel];
+    }
+}
+
+async function createVibeManagerFromReference() {
+    if (!vibeManagerFromReferenceImage) {
+        showError('No reference image selected');
+        return;
+    }
+    
+    const ieInput = document.getElementById('vibeManagerFromReferenceIeInput');
+    const informationExtraction = ieInput ? parseFloat(ieInput.value) : 0.5;
+    
+    // Show glass toast
+    const toastId = showGlassToast('info', 'Creating Vibe Encoding', 'Processing reference image...', true);
+    
+    try {
+        // Send to encode endpoint with cache image reference
+        const response = await fetchWithAuth('/vibe/encode', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                cacheFile: vibeManagerFromReferenceImage.hash,
+                informationExtraction: informationExtraction,
+                model: vibeManagerFromReferenceSelectedModel,
+                workspace: cacheManagerCurrentWorkspace
+            })
+        });
+        
+        if (response.ok) {
+            updateGlassToast(toastId, 'success', 'Encoding Complete', 'Vibe encoding created successfully from reference image');
+            
+            showSuccess('Vibe encoding created successfully from reference image');
+            hideVibeManagerFromReferenceModal();
+            loadVibeManagerImages(); // Refresh the vibe gallery
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to create vibe encoding');
+        }
+    } catch (error) {
+        console.error('Error creating vibe encoding from reference:', error);
+        updateGlassToast(toastId, 'error', 'Encoding Failed', 'Failed to create vibe encoding: ' + error.message);
+    } finally {
+        // Toast will auto-remove after 3 seconds
+    }
+}
+
+
+
+function hideVibeManagerIeModal() {
+    const modal = document.getElementById('vibeManagerIeModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function loadVibeManagerImages() {
+    const loading = document.getElementById('vibeManagerLoading');
+    const gallery = document.getElementById('vibeManagerGallery');
+    
+    if (loading) loading.style.display = 'flex';
+    if (gallery) gallery.innerHTML = '';
+    
+    try {
+        // Load vibe images for the current workspace
+        const response = await fetchWithAuth(`/vibe/images?workspace=${cacheManagerCurrentWorkspace}`);
+        
+        if (response.ok) {
+            vibeManagerImages = await response.json();
+        } else {
+            throw new Error(`Failed to load vibe images: ${response.statusText}`);
+        }
+        
+        displayVibeManagerImages();
+    } catch (error) {
+        console.error('Error loading vibe manager images:', error);
+        showError('Failed to load vibe images');
+    } finally {
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+function displayVibeManagerImages() {
+    const gallery = document.getElementById('vibeManagerGallery');
+    if (!gallery) return;
+    
+    gallery.innerHTML = '';
+    
+    if (vibeManagerImages.length === 0) {
+        gallery.innerHTML = '<div class="no-images">No vibe images found in this workspace</div>';
+        return;
+    }
+    
+    vibeManagerImages.forEach(vibeImage => {
+        const galleryItem = createVibeManagerGalleryItem(vibeImage);
+        gallery.appendChild(galleryItem);
+    });
+}
+
+function createVibeManagerGalleryItem(vibeImage) {
+    const item = document.createElement('div');
+    item.className = 'vibe-manager-gallery-item';
+    item.dataset.id = vibeImage.id;
+    
+    // Create image element
+    const img = document.createElement('img');
+    if (vibeImage.preview) {
+        img.src = `/cache/preview/${vibeImage.preview}`;
+    } else {
+        img.src = '/images/placeholder.png'; // Fallback image
+    }
+    img.alt = `Vibe image ${vibeImage.id}`;
+    img.loading = 'lazy';
+    
+    // Create checkbox for selection mode
+    const checkbox = document.createElement('div');
+    checkbox.className = 'vibe-manager-gallery-item-checkbox';
+    checkbox.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleVibeManagerImageSelection(vibeImage.id);
+    });
+    
+    // Create encodings badges container
+    const encodingsContainer = document.createElement('div');
+    encodingsContainer.className = 'vibe-manager-gallery-item-encodings';
+    
+    if (vibeImage.encodings && vibeImage.encodings.length > 0) {
+        // Create enhanced badges container
+        const badgesContainer = document.createElement('div');
+        badgesContainer.className = 'vibe-image-badges';
+        
+        vibeImage.encodings.forEach(encoding => {
+            // Get model display name
+            const modelKey = encoding.model || 'kayra';
+            const modelDisplayName = optionsData && optionsData.models && optionsData.models[modelKey] ? optionsData.models[modelKey] : modelKey;
+            
+            // Combined model and IE badge with split colors
+            const combinedBadge = document.createElement('div');
+            combinedBadge.className = 'vibe-badge split';
+            combinedBadge.innerHTML = `
+                <span class="badge-text">${modelDisplayName}</span>
+                <span class="badge-text">${encoding.informationExtraction || '0.5'}</span>
+            `;
+            combinedBadge.title = `Model: ${modelDisplayName}, IE: ${encoding.informationExtraction || '0.5'}`;
+            badgesContainer.appendChild(combinedBadge);
+        });
+        
+        encodingsContainer.appendChild(badgesContainer);
+    } else {
+        const noEncodingsBadge = document.createElement('div');
+        noEncodingsBadge.className = 'vibe-manager-encoding-badge no-encodings';
+        noEncodingsBadge.textContent = 'No IE';
+        encodingsContainer.appendChild(noEncodingsBadge);
+    }
+    
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'vibe-manager-gallery-item-overlay';
+    
+    // Create info section
+    const infoSection = document.createElement('div');
+    infoSection.className = 'vibe-manager-gallery-item-info';
+    
+    const date = new Date(vibeImage.mtime).toLocaleDateString();
+    infoSection.innerHTML = `
+        <div>${date}</div>
+        <div>${vibeImage.type}</div>
+    `;
+    
+    // Create buttons container
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.className = 'vibe-manager-gallery-item-buttons';
+    
+    // Create IE request button
+    const ieBtn = document.createElement('button');
+    ieBtn.className = 'btn-secondary btn-small';
+    ieBtn.innerHTML = '<i class="nai-plus"></i>';
+    ieBtn.title = 'Request new Information Extraction';
+    ieBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showVibeManagerIeModal(vibeImage);
+    });
+    
+    // Create delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn-danger btn-small';
+    deleteBtn.innerHTML = '<i class="nai-trash"></i>';
+    deleteBtn.title = 'Delete vibe image';
+    deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteVibeManagerImage(vibeImage);
+    });
+    
+    buttonsContainer.appendChild(ieBtn);
+    buttonsContainer.appendChild(deleteBtn);
+    
+    overlay.appendChild(infoSection);
+    overlay.appendChild(buttonsContainer);
+    
+    item.appendChild(img);
+    item.appendChild(checkbox);
+    item.appendChild(encodingsContainer);
+    item.appendChild(overlay);
+    
+    // Click to select image
+    item.addEventListener('click', () => {
+        if (vibeManagerIsSelectionMode) {
+            toggleVibeManagerImageSelection(vibeImage.id);
+        }
+    });
+    
+    return item;
+}
+
+// Vibe Manager Multi-Select Functions
+function toggleVibeManagerImageSelection(vibeImageId) {
+    if (vibeManagerSelectedImages.has(vibeImageId)) {
+        vibeManagerSelectedImages.delete(vibeImageId);
+    } else {
+        vibeManagerSelectedImages.add(vibeImageId);
+    }
+    
+    updateVibeManagerSelectionMode();
+    updateVibeManagerGallerySelection();
+}
+
+function updateVibeManagerSelectionMode() {
+    const gallery = document.getElementById('vibeManagerGallery');
+    const moveBtn = document.getElementById('vibeManagerMoveBtn');
+    
+    if (!gallery) return;
+    
+    if (vibeManagerSelectedImages.size > 0) {
+        vibeManagerIsSelectionMode = true;
+        gallery.classList.add('selection-mode');
+        if (moveBtn) moveBtn.style.display = 'inline-block';
+    } else {
+        vibeManagerIsSelectionMode = false;
+        gallery.classList.remove('selection-mode');
+        if (moveBtn) moveBtn.style.display = 'none';
+    }
+}
+
+function updateVibeManagerGallerySelection() {
+    const gallery = document.getElementById('vibeManagerGallery');
+    if (!gallery) return;
+    
+    const items = gallery.querySelectorAll('.vibe-manager-gallery-item');
+    items.forEach(item => {
+        const vibeImageId = item.dataset.id;
+        const checkbox = item.querySelector('.vibe-manager-gallery-item-checkbox');
+        
+        if (vibeManagerSelectedImages.has(vibeImageId)) {
+            item.classList.add('selected');
+            checkbox.checked = true;
+        } else {
+            item.classList.remove('selected');
+            checkbox.checked = false;
+        }
+    });
+}
+
+
+
+function updateVibeManagerBulkActions() {
+    const moveBtn = document.getElementById('vibeManagerMoveBtn');
+    
+    if (vibeManagerSelectedImages.size > 0) {
+        moveBtn.innerHTML = `<i class="fas fa-arrow-right"></i> Move Selected (${vibeManagerSelectedImages.size})`;
+    } else {
+        moveBtn.innerHTML = '<i class="fas fa-arrow-right"></i> Move Selected';
+    }
+}
+
+function showVibeManagerDeleteModal() {
+    if (vibeManagerSelectedImages.size === 0) {
+        showError('No vibe images selected');
+        return;
+    }
+    
+    const modal = document.getElementById('vibeManagerDeleteModal');
+    if (modal) {
+        modal.style.display = 'flex';
+        disablePageScroll();
+    }
+}
+
+function hideVibeManagerDeleteModal() {
+    const modal = document.getElementById('vibeManagerDeleteModal');
+    if (modal) {
+        modal.style.display = 'none';
+        enablePageScroll();
+    }
+}
+
+async function deleteSelectedVibeImages() {
+    const checkboxes = document.querySelectorAll('#vibeManagerDeleteItemsList .vibe-delete-items input[type="checkbox"]:checked');
+    
+    if (checkboxes.length === 0) {
+        showError('No items selected for deletion');
+        return;
+    }
+    
+    const confirmMessage = `Are you sure you want to delete ${checkboxes.length} selected item(s)?`;
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    try {
+        const toastId = showGlassToast('info', 'Deleting Items', 'Processing deletion...', true);
+        
+        // Process selected items
+        const vibesToDelete = [];
+        const encodingsToDelete = [];
+        
+        checkboxes.forEach(checkbox => {
+            const itemId = checkbox.id.replace('delete-', '');
+            const itemElement = checkbox.closest('.vibe-delete-item');
+            
+            // Check if this is a vibe or encoding based on the badge type
+            const badge = itemElement.querySelector('.vibe-badge');
+            if (badge.classList.contains('vibe-only')) {
+                // This is an entire vibe
+                vibesToDelete.push(itemId);
+            } else {
+                // This is an encoding - extract vibeId, model, and ie from the badge
+                const badgeTexts = badge.querySelectorAll('.badge-text');
+                if (badgeTexts.length >= 2) {
+                    const model = badgeTexts[0].textContent;
+                    const ie = parseFloat(badgeTexts[1].textContent);
+                    
+                    // Find the vibe that contains this encoding
+                    const vibe = vibeManagerImages.find(v => v.encodings && v.encodings.some(e => 
+                        e.model === model && e.informationExtraction === ie
+                    ));
+                    
+                    if (vibe) {
+                        encodingsToDelete.push({
+                            vibeId: vibe.id,
+                            model: model,
+                            informationExtraction: ie
+                        });
+                    }
+                }
+            }
+        });
+        
+        // Send deletion request
+        const response = await fetchWithAuth('/vibe/images/bulk-delete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                vibesToDelete: vibesToDelete,
+                encodingsToDelete: encodingsToDelete,
+                workspace: cacheManagerCurrentWorkspace
+            })
+        });
+        
+        if (response.ok) {
+            updateGlassToast(toastId, 'success', 'Delete Complete', 'Items deleted successfully');
+            
+            // Remove deleted vibes from local array
+            vibeManagerImages = vibeManagerImages.filter(img => !vibesToDelete.includes(img.id));
+            
+            // Update encodings for remaining vibes
+            encodingsToDelete.forEach(encodingData => {
+                vibeManagerImages.forEach(vibe => {
+                    if (vibe.encodings && vibe.id === encodingData.vibeId) {
+                        vibe.encodings = vibe.encodings.filter(encoding => 
+                            !(encoding.model === encodingData.model && encoding.informationExtraction === encodingData.informationExtraction)
+                        );
+                    }
+                });
+            });
+            
+            // Clear selection and exit selection mode
+            vibeManagerSelectedImages.clear();
+            vibeManagerIsSelectionMode = false;
+            
+            // Refresh display
+            displayVibeManagerImages();
+            updateVibeManagerSelectionMode();
+            
+            showSuccess(`${checkboxes.length} item(s) deleted successfully`);
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to delete items');
+        }
+    } catch (error) {
+        console.error('Error deleting items:', error);
+        showError('Failed to delete items: ' + error.message);
+    } finally {
+        hideVibeManagerDeleteModal();
+    }
+}
+
+function showVibeManagerMoveModal() {
+    if (vibeManagerSelectedImages.size === 0) {
+        showError('No vibe images selected');
+        return;
+    }
+    
+    const modal = document.getElementById('vibeManagerMoveModal');
+    const moveCount = document.getElementById('vibeManagerMoveCount');
+    const targetSelect = document.getElementById('vibeManagerMoveTargetSelect');
+    
+    moveCount.textContent = vibeManagerSelectedImages.size;
+    
+    // Populate workspace options
+    targetSelect.innerHTML = '';
+    workspaces.forEach(workspace => {
+        if (workspace.id !== cacheManagerCurrentWorkspace) {
+            const option = document.createElement('option');
+            option.value = workspace.id;
+            option.textContent = workspace.name;
+            targetSelect.appendChild(option);
+        }
+    });
+    
+    modal.style.display = 'flex';
+    disablePageScroll();
+}
+
+function hideVibeManagerMoveModal() {
+    const modal = document.getElementById('vibeManagerMoveModal');
+    if (modal) {
+        modal.style.display = 'none';
+        enablePageScroll();
+    }
+}
+
+async function moveSelectedVibeImages() {
+    const targetWorkspace = document.getElementById('vibeManagerMoveTargetSelect').value;
+    
+    if (!targetWorkspace) {
+        showError('Please select a target workspace');
+        return;
+    }
+    
+    try {
+        const toastId = showGlassToast('info', 'Moving Vibe Images', 'Moving to target workspace...', true);
+        
+        const response = await fetchWithAuth('/vibe/images/bulk-move', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                imageIds: Array.from(vibeManagerSelectedImages),
+                targetWorkspace: targetWorkspace,
+                sourceWorkspace: cacheManagerCurrentWorkspace
+            })
+        });
+        
+        if (response.ok) {
+            updateGlassToast(toastId, 'success', 'Move Complete', 'Vibe images moved successfully');
+            
+            // Remove moved images from local array
+            vibeManagerImages = vibeManagerImages.filter(img => !vibeManagerSelectedImages.has(img.id));
+            
+            // Clear selection and exit selection mode
+            vibeManagerSelectedImages.clear();
+            vibeManagerIsSelectionMode = false;
+            
+            // Refresh display
+            displayVibeManagerImages();
+            updateVibeManagerSelectionMode();
+            
+            showSuccess('Vibe images moved successfully');
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to move vibe images');
+        }
+    } catch (error) {
+        console.error('Error moving vibe images:', error);
+        showError('Failed to move vibe images: ' + error.message);
+    } finally {
+        hideVibeManagerMoveModal();
+    }
+}
+
+async function deleteVibeManagerImage(vibeImage) {
+    // Set up the vibe image for individual deletion
+    vibeManagerSelectedImages.clear();
+    vibeManagerSelectedImages.add(vibeImage.id);
+    
+    // Show the existing delete modal with this single image
+    showVibeManagerDeleteModal();
+}
+
+
+
+async function uploadVibeManagerImage() {
+    const fileInput = document.getElementById('vibeManagerFileInput');
+    const uploadBtn = document.getElementById('vibeManagerUploadConfirmBtn');
+    const ieInput = document.getElementById('vibeManagerIeInput');
+    
+    if (!fileInput || !fileInput.files.length) return;
+    
+    const file = fileInput.files[0];
+    const model = vibeManagerSelectedModel;
+    const informationExtraction = ieInput ? parseFloat(ieInput.value) : 0.5;
+    
+    uploadBtn.disabled = true;
+    
+    // Show glass toast
+    const toastId = showGlassToast('info', 'Uploading Vibe Image', 'Converting image to base64...', true);
+    
+    try {
+        // Convert file to base64
+        const base64 = await fileToBase64(file);
+        
+        // Update progress
+        updateGlassToast(toastId, 'info', 'Encoding Vibe Image', 'Processing image with AI model...');
+        
+        // Send to encode endpoint
+        const response = await fetchWithAuth('/vibe/encode', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                image: base64,
+                informationExtraction: informationExtraction,
+                model: model,
+                workspace: cacheManagerCurrentWorkspace
+            })
+        });
+        
+        if (response.ok) {
+            updateGlassToast(toastId, 'success', 'Upload Complete', 'Vibe image uploaded and encoded successfully');
+            hideVibeManagerUploadModal();
+            loadVibeManagerImages(); // Refresh the gallery
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to encode vibe image');
+        }
+    } catch (error) {
+        console.error('Error uploading vibe image:', error);
+        updateGlassToast(toastId, 'error', 'Upload Failed', 'Failed to upload vibe image: ' + error.message);
+    } finally {
+        uploadBtn.disabled = false;
+    }
+}
+
+async function requestVibeManagerIe() {
+    const modal = document.getElementById('vibeManagerIeModal');
+    const vibeImageId = modal.dataset.vibeImageId;
+    const ieInput = document.getElementById('vibeManagerIeInput2');
+    
+    if (!vibeImageId) {
+        showError('No vibe image selected');
+        return;
+    }
+    
+    const model = vibeManagerIeSelectedModel;
+    const informationExtraction = ieInput ? parseFloat(ieInput.value) : 0.5;
+    
+    // Show glass toast
+    const toastId = showGlassToast('info', 'Requesting IE', 'Processing new Information Extraction...', true);
+    
+    try {
+        // Send to encode endpoint with existing vibe image ID
+        const response = await fetchWithAuth('/vibe/encode', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                id: vibeImageId,
+                informationExtraction: informationExtraction,
+                model: model,
+                workspace: cacheManagerCurrentWorkspace
+            })
+        });
+        
+        if (response.ok) {
+            updateGlassToast(toastId, 'success', 'IE Complete', 'New Information Extraction requested successfully');
+            
+            showSuccess('New Information Extraction requested successfully');
+            hideVibeManagerIeModal();
+            loadVibeManagerImages(); // Refresh the gallery
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to request Information Extraction');
+        }
+    } catch (error) {
+        console.error('Error requesting Information Extraction:', error);
+        updateGlassToast(toastId, 'error', 'IE Failed', 'Failed to request Information Extraction: ' + error.message);
+    } finally {
+        // Toast will auto-remove after 3 seconds
+    }
+}
+
+// Helper function to convert file to base64
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+            const base64 = reader.result.split(',')[1]; // Remove data URL prefix
+            resolve(base64);
+        };
+        reader.onerror = error => reject(error);
+    });
+}
+
+// Initialize cache manager functionality
+function initializeCacheManager() {
+    // Reference manager button
+    const cacheManagerBtn = document.getElementById('cacheManagerBtn');
+    if (cacheManagerBtn) {
+        cacheManagerBtn.addEventListener('click', showCacheManagerModal);
+    }
+    
+    // Reference manager modal close button
+    const closeCacheManagerBtn = document.getElementById('closeCacheManagerBtn');
+    if (closeCacheManagerBtn) {
+        closeCacheManagerBtn.addEventListener('click', hideCacheManagerModal);
+    }
+    
+    // Reference manager refresh button
+    const refreshBtn = document.getElementById('cacheManagerRefreshBtn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            const activeTab = document.querySelector('.cache-manager-tabs .tab-btn.active');
+            if (activeTab && activeTab.dataset.tab === 'vibe') {
+                loadVibeManagerImages();
+            } else {
+                loadCacheManagerImages();
+            }
+        });
+    }
+    
+    // Reference manager upload dropdown
+    const uploadDropdownBtn = document.getElementById('cacheManagerUploadDropdownBtn');
+    const uploadDropdownMenu = document.getElementById('cacheManagerUploadDropdownMenu');
+    if (uploadDropdownBtn && uploadDropdownMenu) {
+        uploadDropdownBtn.addEventListener('click', () => {
+            toggleDropdown(uploadDropdownMenu, uploadDropdownBtn);
+        });
+        
+        // Handle upload type selection
+        const uploadOptions = uploadDropdownMenu.querySelectorAll('.custom-dropdown-option');
+        uploadOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                const uploadType = option.dataset.uploadType;
+                if (uploadType === 'reference') {
+                    showCacheManagerUploadModal();
+                } else if (uploadType === 'vibe') {
+                    showVibeManagerUploadModal();
+                }
+                closeDropdown(uploadDropdownMenu, uploadDropdownBtn);
+            });
+        });
+    }
+    
+    // Reference manager move button
+    const moveBtn = document.getElementById('cacheManagerMoveBtn');
+    if (moveBtn) {
+        moveBtn.addEventListener('click', showCacheManagerMoveModal);
+    }
+    
+    // Tab switching functionality
+    const tabButtons = document.querySelectorAll('.cache-manager-tabs .tab-btn');
+    tabButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabName = btn.dataset.tab;
+            switchCacheManagerTab(tabName);
+        });
+    });
+    
+    // Upload modal controls
+    const closeUploadBtn = document.getElementById('closeCacheManagerUploadBtn');
+    const uploadCancelBtn = document.getElementById('cacheManagerUploadCancelBtn');
+    const uploadConfirmBtn = document.getElementById('cacheManagerUploadConfirmBtn');
+    const fileInput = document.getElementById('cacheManagerFileInput');
+    
+    if (closeUploadBtn) closeUploadBtn.addEventListener('click', hideCacheManagerUploadModal);
+    if (uploadCancelBtn) uploadCancelBtn.addEventListener('click', hideCacheManagerUploadModal);
+    if (uploadConfirmBtn) uploadConfirmBtn.addEventListener('click', uploadCacheManagerImages);
+    
+    if (fileInput) {
+        fileInput.addEventListener('change', () => {
+            const uploadBtn = document.getElementById('cacheManagerUploadConfirmBtn');
+            if (uploadBtn) {
+                uploadBtn.disabled = !fileInput.files.length;
+            }
+        });
+    }
+    
+    // Vibe upload modal controls
+    const closeVibeUploadBtn = document.getElementById('closeVibeManagerUploadBtn');
+    const vibeUploadCancelBtn = document.getElementById('vibeManagerUploadCancelBtn');
+    const vibeUploadConfirmBtn = document.getElementById('vibeManagerUploadConfirmBtn');
+    const vibeFileInput = document.getElementById('vibeManagerFileInput');
+    const vibeIeSlider = document.getElementById('vibeManagerIeSlider');
+    const vibeIeValue = document.getElementById('vibeManagerIeValue');
+    
+    if (closeVibeUploadBtn) closeVibeUploadBtn.addEventListener('click', hideVibeManagerUploadModal);
+    if (vibeUploadCancelBtn) vibeUploadCancelBtn.addEventListener('click', hideVibeManagerUploadModal);
+    if (vibeUploadConfirmBtn) vibeUploadConfirmBtn.addEventListener('click', uploadVibeManagerImage);
+    
+    if (vibeFileInput) {
+        vibeFileInput.addEventListener('change', () => {
+            const uploadBtn = document.getElementById('vibeManagerUploadConfirmBtn');
+            if (uploadBtn) {
+                uploadBtn.disabled = !vibeFileInput.files.length;
+            }
+        });
+    }
+    
+    // Add scroll wheel functionality for IE inputs
+    const vibeIeInput = document.getElementById('vibeManagerIeInput');
+    if (vibeIeInput) {
+        vibeIeInput.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            const currentValue = parseFloat(this.value) || 0.5;
+            const newValue = Math.max(0, Math.min(1, currentValue + delta));
+            this.value = newValue.toFixed(2);
+        });
+    }
+    
+    // Vibe model dropdowns
+    const vibeModelDropdownBtn = document.getElementById('vibeManagerModelDropdownBtn');
+    const vibeModelDropdownMenu = document.getElementById('vibeManagerModelDropdownMenu');
+    const vibeIeModelDropdownBtn = document.getElementById('vibeManagerIeModelDropdownBtn');
+    const vibeIeModelDropdownMenu = document.getElementById('vibeManagerIeModelDropdownMenu');
+    
+    if (vibeModelDropdownBtn && vibeModelDropdownMenu) {
+        vibeModelDropdownBtn.addEventListener('click', () => {
+            toggleDropdown(vibeModelDropdownMenu, vibeModelDropdownBtn);
+        });
+    }
+    
+    if (vibeIeModelDropdownBtn && vibeIeModelDropdownMenu) {
+        vibeIeModelDropdownBtn.addEventListener('click', () => {
+            toggleDropdown(vibeIeModelDropdownMenu, vibeIeModelDropdownBtn);
+        });
+    }
+    
+    // Vibe from reference model dropdown
+    const vibeFromReferenceModelDropdownBtn = document.getElementById('vibeManagerFromReferenceModelDropdownBtn');
+    const vibeFromReferenceModelDropdownMenu = document.getElementById('vibeManagerFromReferenceModelDropdownMenu');
+    
+    if (vibeFromReferenceModelDropdownBtn && vibeFromReferenceModelDropdownMenu) {
+        vibeFromReferenceModelDropdownBtn.addEventListener('click', () => {
+            toggleDropdown(vibeFromReferenceModelDropdownMenu, vibeFromReferenceModelDropdownBtn);
+        });
+    }
+    
+    // Vibe IE modal controls
+    const closeVibeIeBtn = document.getElementById('closeVibeManagerIeBtn');
+    const vibeIeCancelBtn = document.getElementById('vibeManagerIeCancelBtn');
+    const vibeIeConfirmBtn = document.getElementById('vibeManagerIeConfirmBtn');
+    const vibeIeSlider2 = document.getElementById('vibeManagerIeSlider2');
+    const vibeIeValue2 = document.getElementById('vibeManagerIeValue2');
+    
+    if (closeVibeIeBtn) closeVibeIeBtn.addEventListener('click', hideVibeManagerIeModal);
+    if (vibeIeCancelBtn) vibeIeCancelBtn.addEventListener('click', hideVibeManagerIeModal);
+    if (vibeIeConfirmBtn) vibeIeConfirmBtn.addEventListener('click', requestVibeManagerIe);
+    
+    // Add scroll wheel functionality for IE inputs
+    const vibeIeInput2 = document.getElementById('vibeManagerIeInput2');
+    if (vibeIeInput2) {
+        vibeIeInput2.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            const currentValue = parseFloat(this.value) || 0.5;
+            const newValue = Math.max(0, Math.min(1, currentValue + delta));
+            this.value = newValue.toFixed(2);
+        });
+    }
+    
+    // Vibe from reference modal controls
+    const closeVibeFromReferenceBtn = document.getElementById('closeVibeManagerFromReferenceBtn');
+    const vibeFromReferenceCancelBtn = document.getElementById('vibeManagerFromReferenceCancelBtn');
+    const vibeFromReferenceConfirmBtn = document.getElementById('vibeManagerFromReferenceConfirmBtn');
+    const vibeFromReferenceIeInput = document.getElementById('vibeManagerFromReferenceIeInput');
+    
+    if (closeVibeFromReferenceBtn) closeVibeFromReferenceBtn.addEventListener('click', hideVibeManagerFromReferenceModal);
+    if (vibeFromReferenceCancelBtn) vibeFromReferenceCancelBtn.addEventListener('click', hideVibeManagerFromReferenceModal);
+    if (vibeFromReferenceConfirmBtn) vibeFromReferenceConfirmBtn.addEventListener('click', createVibeManagerFromReference);
+    
+    // Add scroll wheel functionality for IE inputs
+    if (vibeFromReferenceIeInput) {
+        vibeFromReferenceIeInput.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            const currentValue = parseFloat(this.value) || 0.5;
+            const newValue = Math.max(0, Math.min(1, currentValue + delta));
+            this.value = newValue.toFixed(2);
+        });
+    }
+    
+    // Move modal controls
+    const closeMoveBtn = document.getElementById('closeCacheManagerMoveBtn');
+    const moveCancelBtn = document.getElementById('cacheManagerMoveCancelBtn');
+    const moveConfirmBtn = document.getElementById('cacheManagerMoveConfirmBtn');
+    
+    if (closeMoveBtn) closeMoveBtn.addEventListener('click', hideCacheManagerMoveModal);
+    if (moveCancelBtn) moveCancelBtn.addEventListener('click', hideCacheManagerMoveModal);
+    if (moveConfirmBtn) moveConfirmBtn.addEventListener('click', moveCacheManagerImages);
+    
+    // Vibe Manager bulk action controls
+    const vibeManagerMoveBtn = document.getElementById('vibeManagerMoveBtn');
+    
+    if (vibeManagerMoveBtn) vibeManagerMoveBtn.addEventListener('click', showVibeManagerMoveModal);
+    
+    // Vibe Manager delete modal controls
+    const closeVibeDeleteBtn = document.getElementById('closeVibeManagerDeleteBtn');
+    const vibeDeleteCancelBtn = document.getElementById('vibeManagerDeleteCancelBtn');
+    const vibeDeleteConfirmBtn = document.getElementById('vibeManagerDeleteConfirmBtn');
+    
+    if (closeVibeDeleteBtn) closeVibeDeleteBtn.addEventListener('click', hideVibeManagerDeleteModal);
+    if (vibeDeleteCancelBtn) vibeDeleteCancelBtn.addEventListener('click', hideVibeManagerDeleteModal);
+    if (vibeDeleteConfirmBtn) vibeDeleteConfirmBtn.addEventListener('click', deleteSelectedVibeImages);
+    
+    // Vibe Manager move modal controls
+    const closeVibeMoveBtn = document.getElementById('closeVibeManagerMoveBtn');
+    const vibeMoveCancelBtn = document.getElementById('vibeManagerMoveCancelBtn');
+    const vibeMoveConfirmBtn = document.getElementById('vibeManagerMoveConfirmBtn');
+    
+    if (closeVibeMoveBtn) closeVibeMoveBtn.addEventListener('click', hideVibeManagerMoveModal);
+    if (vibeMoveCancelBtn) vibeMoveCancelBtn.addEventListener('click', hideVibeManagerMoveModal);
+    if (vibeMoveConfirmBtn) vibeMoveConfirmBtn.addEventListener('click', moveSelectedVibeImages);
+    
+    // Close modals when clicking outside
+    const modals = ['cacheManagerModal', 'cacheManagerUploadModal', 'cacheManagerMoveModal', 'vibeManagerUploadModal', 'vibeManagerIeModal', 'vibeManagerFromReferenceModal', 'vibeManagerDeleteModal', 'vibeManagerMoveModal'];
+    modals.forEach(modalId => {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    if (modalId === 'cacheManagerModal') {
+                        hideCacheManagerModal();
+                    } else if (modalId === 'cacheManagerUploadModal') {
+                        hideCacheManagerUploadModal();
+                    } else if (modalId === 'cacheManagerMoveModal') {
+                        hideCacheManagerMoveModal();
+                    } else if (modalId === 'vibeManagerUploadModal') {
+                        hideVibeManagerUploadModal();
+                    } else if (modalId === 'vibeManagerIeModal') {
+                        hideVibeManagerIeModal();
+                    } else if (modalId === 'vibeManagerFromReferenceModal') {
+                        hideVibeManagerFromReferenceModal();
+                    } else if (modalId === 'vibeManagerDeleteModal') {
+                        hideVibeManagerDeleteModal();
+                    } else if (modalId === 'vibeManagerMoveModal') {
+                        hideVibeManagerMoveModal();
+                    }
+                }
+            });
+        }
+    });
+    
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+        const vibeModelDropdown = document.getElementById('vibeManagerModelDropdown');
+        const vibeIeModelDropdown = document.getElementById('vibeManagerIeModelDropdown');
+        const vibeFromReferenceModelDropdown = document.getElementById('vibeManagerFromReferenceModelDropdown');
+        
+        if (vibeModelDropdown && !vibeModelDropdown.contains(e.target)) {
+            closeDropdown(vibeModelDropdownMenu, vibeModelDropdownBtn);
+        }
+        
+        if (vibeIeModelDropdown && !vibeIeModelDropdown.contains(e.target)) {
+            closeDropdown(vibeIeModelDropdownMenu, vibeIeModelDropdownBtn);
+        }
+        
+        if (vibeFromReferenceModelDropdown && !vibeFromReferenceModelDropdown.contains(e.target)) {
+            closeDropdown(vibeFromReferenceModelDropdownMenu, vibeFromReferenceModelDropdownBtn);
+        }
+    });
+}
+
+// Tab switching function for cache manager (Reference Model)
+function switchCacheManagerTab(tabName) {
+    // Update tab buttons
+    const tabButtons = document.querySelectorAll('.cache-manager-tabs .tab-btn');
+    tabButtons.forEach(btn => {
+        if (btn.dataset.tab === tabName) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+    
+    // Update tab panes
+    const tabPanes = document.querySelectorAll('.cache-manager-body .tab-pane');
+    tabPanes.forEach(pane => {
+        if (pane.id === `${tabName}-tab`) {
+            pane.classList.add('active');
+        } else {
+            pane.classList.remove('active');
+        }
+    });
+    
+    // Load appropriate data
+    if (tabName === 'references') {
+        loadCacheManagerImages();
+    } else if (tabName === 'vibe') {
+        loadVibeManagerImages();
+    }
+}
+
+async function updateImageGenCounter() {
+    try {
+        const response = await fetchWithAuth('/image-counter');
+        if (!response.ok) throw new Error('Failed to fetch image counter');
+        const data = await response.json();
+        const counter = data.count || 0;
+        const counterElem = document.getElementById('imageGenCounter');
+        if (counterElem) {
+            counterElem.textContent = counter;
+            counterElem.classList.remove('light-orange', 'orange', 'red');
+            if (counter > 300) counterElem.classList.add('red');
+            else if (counter > 150) counterElem.classList.add('orange');
+            else if (counter > 50) counterElem.classList.add('light-orange');
+        }
+    } catch (e) {
+        const counterElem = document.getElementById('imageGenCounter');
+        if (counterElem) counterElem.textContent = '0';
+    }
+    try {
+        const response = await fetchWithAuth('/queue-status');
+        if (!response.ok) throw new Error('Failed to fetch queue status');
+        const data = await response.json();
+        const statusElem = document.getElementById('queueStatus');
+        if (statusElem) {
+            let msg = '';
+            if (data.value === 2) msg = 'LIMITED';
+            else if (data.value === 1) msg = 'Warning';
+            else msg = 'OK';
+            statusElem.textContent = msg;
+            statusElem.classList.remove('warn', 'limit');
+            if (data.value === 2) statusElem.classList.add('limit');
+            else if (data.value === 1) statusElem.classList.add('warn');
+        }
+    } catch (e) {
+        const statusElem = document.getElementById('queueStatus');
+        if (statusElem) statusElem.textContent = '';
+    }
+}
+setInterval(updateImageGenCounter, 25000);
+
+let pinModalPromise = null;
+function showPinModal() {
+    if (pinModalPromise) return pinModalPromise;
+    const modal = document.getElementById('pinModal');
+    const input = document.getElementById('pinModalInput');
+    const form = document.getElementById('pinModalForm');
+    const error = document.getElementById('pinModalError');
+    const submitBtn = document.getElementById('pinModalSubmitBtn');
+    const cancelBtn = document.getElementById('pinModalCancelBtn');
+    const closeBtn = document.getElementById('closePinModalBtn');
+    error.style.display = 'none';
+    input.value = '';
+    modal.style.display = 'flex';
+    input.focus();
+    let resolveFn, rejectFn;
+    pinModalPromise = new Promise((resolve, reject) => {
+        resolveFn = resolve;
+        rejectFn = reject;
+        function cleanup() {
+            modal.style.display = 'none';
+            form.removeEventListener('submit', onSubmit);
+            cancelBtn.removeEventListener('click', onCancel);
+            closeBtn.removeEventListener('click', onCancel);
+            pinModalPromise = null;
+        }
+        function onSubmit(e) {
+            e.preventDefault();
+            const pin = input.value.trim();
+            if (pin.length !== 6 || !/^[0-9]{6}$/.test(pin)) {
+                error.textContent = 'Enter a valid 6-digit PIN.';
+                error.style.display = 'block';
+                return;
+            }
+            submitBtn.disabled = true;
+            error.style.display = 'none';
+            fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pin })
+            }).then(async resp => {
+                const data = await resp.json().catch(() => ({}));
+                if (resp.ok) {
+                    cleanup();
+                    resolve();
+                } else {
+                    error.textContent = data.error || 'Invalid PIN code.';
+                    error.style.display = 'block';
+                    input.value = '';
+                    input.focus();
+                }
+            }).catch(() => {
+                error.textContent = 'Network error. Try again.';
+                error.style.display = 'block';
+            }).finally(() => {
+                submitBtn.disabled = false;
+            });
+        }
+        function onCancel() {
+            cleanup();
+            reject();
+        }
+        form.addEventListener('submit', onSubmit);
+        cancelBtn.addEventListener('click', onCancel);
+        closeBtn.addEventListener('click', onCancel);
+    });
+    return pinModalPromise;
+}
+async function ensureSessionValid() {
+    // Try a lightweight authenticated endpoint
+    try {
+        const resp = await fetch('/');
+        if (resp.status !== 401) return true;
+    } catch {}
+    try {
+        await showPinModal();
+        // Try again after re-auth
+        const resp2 = await fetch('/balance');
+        return resp2.status !== 401;
+    } catch {
+        // User cancelled
+        window.location.href = '/';
+        return false;
     }
 }

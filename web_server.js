@@ -14,9 +14,10 @@ const crypto = require('crypto');
 const { authMiddleware } = require('./modules/auth');
 const { loadPromptConfig, applyTextReplacements, getUsedReplacements } = require('./modules/textReplacements');
 const { getPresetCacheKey, getCachedPreset, setCachedPreset, getCacheStatus } = require('./modules/cache');
-const { queueMiddleware } = require('./modules/queue');
+const { queueMiddleware, getStatus: getQueueStatus } = require('./modules/queue');
 const { 
     extractNovelAIMetadata, 
+    readMetadata,
     updateMetadata, 
     stripPngTextChunks, 
     extractRelevantFields, 
@@ -51,8 +52,13 @@ const {
     removeFromWorkspaceArray,
     moveToWorkspaceArray,
     getActiveWorkspaceCacheFiles,
-    removeFilesFromWorkspaces
+    removeFilesFromWorkspaces,
+    getActiveWorkspaceScraps,
+    syncWorkspaceFiles,
+    getWorkspacesData,
+    getActiveWorkspaceData
 } = require('./modules/workspace');
+const imageCounter = require('./modules/imageCounter');
 
 console.log(config);
 
@@ -83,13 +89,18 @@ app.use(session({
 const cacheDir = path.resolve(__dirname, '.cache');
 const uploadCacheDir = path.join(cacheDir, 'upload');
 const previewCacheDir = path.join(cacheDir, 'preview');
+const vibeCacheDir = path.join(cacheDir, 'vibe');
+const vibeOrigCacheDir = path.join(cacheDir, 'vibe_orig');
 const imagesDir = path.resolve(__dirname, 'images');
 const previewsDir = path.resolve(__dirname, '.previews');
-if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
-if (!fs.existsSync(uploadCacheDir)) fs.mkdirSync(uploadCacheDir);
-if (!fs.existsSync(previewCacheDir)) fs.mkdirSync(previewCacheDir);
-if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir);
-if (!fs.existsSync(previewsDir)) fs.mkdirSync(previewsDir);
+
+// Ensure cache directories exist
+[uploadCacheDir, previewCacheDir, vibeCacheDir, vibeOrigCacheDir, imagesDir, previewsDir].forEach(dir => {
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+});
+
 const cacheFile = path.join(cacheDir, 'tag_cache.json');
 
 // Initialize workspace system
@@ -232,6 +243,65 @@ async function syncPreviews() {
 // Call on startup
 syncPreviews();
 
+// Direct NovelAI vibe encoding function
+async function encodeVibeDirect(imageBase64, informationExtracted, model) {
+    const correlationId = crypto.randomBytes(3).toString('hex').toUpperCase();
+    const body = {
+        image: imageBase64,
+        model: model || "nai-diffusion-4-5-curated",
+        information_extracted: informationExtracted || 1
+    };
+    
+    return new Promise((resolve, reject) => {
+        const postData = JSON.stringify(body);
+        
+        const options = {
+            hostname: 'image.novelai.net',
+            port: 443,
+            path: '/ai/encode-vibe',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${config.apiKey}`,
+                'x-correlation-id': correlationId,
+                'x-initiated-at': new Date().toISOString(),
+                'Content-Length': Buffer.byteLength(postData)
+            }
+        };
+        
+        const req = https.request(options, (res) => {
+            let data = [];
+            
+            res.on('data', chunk => data.push(chunk));
+            
+            res.on('end', () => {
+                const buffer = Buffer.concat(data);
+                
+                if (res.statusCode === 200) {
+                    // Return the buffer as base64 string
+                    resolve(buffer.toString('base64'));
+                } else {
+                    try {
+                        const errorResponse = JSON.parse(buffer.toString());
+                        reject(new Error(`Error encoding vibe: ${errorResponse.statusCode || res.statusCode} ${errorResponse.message || 'Unknown error'}`));
+                    } catch (e) {
+                        reject(new Error(`Error encoding vibe: HTTP ${res.statusCode}`));
+                    }
+                }
+            });
+        });
+        
+        req.on('error', (error) => {
+            error.correlationId = correlationId;
+            console.error('Vibe encoding error:', error);
+            reject(error);
+        });
+        
+        req.write(postData);
+        req.end();
+    });
+}
+
 // Updated /images endpoint with workspace filtering
 app.get('/images', async (req, res) => {
     try {
@@ -241,24 +311,7 @@ app.get('/images', async (req, res) => {
         let files;
         if (isScraps) {
             // Get scraps for active workspace (includes default + active workspace)
-            const activeWorkspace = getActiveWorkspace();
-            const workspace = getWorkspace(activeWorkspace);
-            
-            // Get workspace scraps (including default workspace scraps)
-            const workspaceScraps = new Set();
-            
-            // Always include default workspace scraps
-            const defaultWorkspace = getWorkspace('default');
-            if (defaultWorkspace && defaultWorkspace.scraps) {
-                defaultWorkspace.scraps.forEach(file => workspaceScraps.add(file));
-            }
-            
-            // Include current workspace scraps if not default
-            if (activeWorkspace !== 'default' && workspace.scraps) {
-                workspace.scraps.forEach(file => workspaceScraps.add(file));
-            }
-            
-            files = Array.from(workspaceScraps);
+            files = getActiveWorkspaceScraps();
         } else {
             // Get files for active workspace (includes default + active workspace)
             const workspaceFiles = getActiveWorkspaceFiles();
@@ -281,18 +334,25 @@ app.get('/images', async (req, res) => {
             const file = pipeline_upscaled || pipeline || upscaled || original;
             if (!file) continue;
             const filePath = path.join(imagesDir, file);
-            const stats = fs.statSync(filePath);
-            const preview = getPreviewFilename(base);
-            gallery.push({
-                base,
-                original,
-                upscaled,
-                pipeline,
-                pipeline_upscaled,
-                preview,
-                mtime: stats.mtime,
-                size: stats.size
-            });
+            // Check if file exists before trying to get stats
+            try {
+                const stats = fs.statSync(filePath);
+                const preview = getPreviewFilename(base);
+                gallery.push({
+                    base,
+                    original,
+                    upscaled,
+                    pipeline,
+                    pipeline_upscaled,
+                    preview,
+                    mtime: stats.mtime,
+                    size: stats.size
+                });
+            } catch (error) {
+                // File doesn't exist, skip it (it will be cleaned up by syncWorkspaceFiles)
+                console.warn(`Skipping non-existent file: ${file}`);
+                continue;
+            }
         }
         // Sort by newest first
         gallery.sort((a, b) => b.mtime - a.mtime);
@@ -447,6 +507,9 @@ app.delete('/images/bulk', authMiddleware, async (req, res) => {
             }
         }
 
+        // Sync workspace files to remove any remaining references to deleted files
+        syncWorkspaceFiles();
+
         console.log(`✅ Bulk delete completed: ${results.length} successful, ${errors.length} failed`);
         res.json({
             success: true,
@@ -460,6 +523,81 @@ app.delete('/images/bulk', authMiddleware, async (req, res) => {
 
     } catch (error) {
         console.error('Bulk delete error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// PUT /images/bulk/preset (bulk update preset names for multiple images)
+app.put('/images/bulk/preset', authMiddleware, async (req, res) => {
+    try {
+        const { filenames, presetName } = req.body;
+
+        if (!filenames || !Array.isArray(filenames) || filenames.length === 0) {
+            return res.status(400).json({ error: 'Filenames array is required' });
+        }
+
+        const results = [];
+        const errors = [];
+
+        for (const filename of filenames) {
+            try {
+                const filePath = path.join(imagesDir, filename);
+
+                if (!fs.existsSync(filePath)) {
+                    errors.push({ filename, error: 'File not found' });
+                    continue;
+                }
+
+                // Read the current image and extract metadata
+                const imageBuffer = fs.readFileSync(filePath);
+                const metadata = readMetadata(imageBuffer);
+
+                if (!metadata) {
+                    errors.push({ filename, error: 'Failed to read metadata' });
+                    continue;
+                }
+
+                // Update the preset name in the metadata
+                if (!metadata.forge_data) {
+                    metadata.forge_data = {};
+                }
+
+                if (presetName === null || presetName === '') {
+                    // Remove preset name
+                    delete metadata.forge_data.preset_name;
+                } else {
+                    // Set new preset name
+                    metadata.forge_data.preset_name = presetName;
+                }
+
+                // Update the image with new metadata
+                const updatedImageBuffer = updateMetadata(imageBuffer, metadata.forge_data);
+
+                // Write the updated image back to disk
+                fs.writeFileSync(filePath, updatedImageBuffer);
+
+                results.push({ filename, presetName: presetName || 'removed' });
+                console.log(`✏️ Updated preset name for ${filename}: ${presetName || 'removed'}`);
+
+            } catch (error) {
+                errors.push({ filename, error: error.message });
+                console.error(`Failed to update preset name for ${filename}:`, error);
+            }
+        }
+
+        console.log(`✅ Bulk preset update completed: ${results.length} successful, ${errors.length} failed`);
+        res.json({
+            success: true,
+            message: `Bulk preset update completed`,
+            results: results,
+            errors: errors,
+            totalProcessed: filenames.length,
+            updatedCount: results.length,
+            failed: errors.length
+        });
+
+    } catch (error) {
+        console.error('Bulk preset update error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -582,6 +720,9 @@ app.post('/images/send-to-sequenzia', authMiddleware, async (req, res) => {
             }
         }
         
+        // Sync workspace files to remove any remaining references to deleted files
+        syncWorkspaceFiles();
+        
         console.log(`✅ Send to sequenzia completed: ${results.length} successful, ${errors.length} failed`);
         res.json({ 
             success: true, 
@@ -689,6 +830,760 @@ app.get('/images/:filename', (req, res) => {
     
     // Send the file
     res.sendFile(filePath);
+});
+
+// POST /vibe/encode (encode image for vibe transfer)
+app.post('/vibe/encode', authMiddleware, async (req, res) => {
+    try {
+        const { image, cacheFile, id, informationExtraction, model, workspace } = req.body;
+        
+        // Validate required parameters
+        if (!informationExtraction || typeof informationExtraction !== 'number' || informationExtraction < 0 || informationExtraction > 1) {
+            return res.status(400).json({ error: 'informationExtraction must be a number between 0 and 1' });
+        }
+        
+        if (!model) {
+            return res.status(400).json({ error: 'model is required' });
+        }
+        
+        if (!image && !cacheFile && !id) {
+            return res.status(400).json({ error: 'Either image (base64), cacheFile, or id must be provided' });
+        }
+        
+        let imageBuffer;
+        let imageHash = null;
+        let originalSource = null;
+        let originalBase64 = null;
+        let existingVibeData = null;
+        
+        // Handle image input
+        if (id) {
+            // ID provided - load existing vibe data
+            const jsonPath = path.join(vibeCacheDir, `${id}.json`);
+            if (!fs.existsSync(jsonPath)) {
+                return res.status(404).json({ error: 'Vibe file not found with provided id' });
+            }
+            
+            existingVibeData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+            
+            // Get the original image data based on the vibe file type
+            if (existingVibeData.type === 'base64' && existingVibeData.image) {
+                // Reconstruct from base64
+                imageBuffer = Buffer.from(existingVibeData.image, 'base64');
+                imageHash = existingVibeData.preview;
+                originalSource = 'base64';
+                originalBase64 = existingVibeData.image;
+            } else if (existingVibeData.type === 'cache' && existingVibeData.image) {
+                // Load from cache file
+                const cachePath = path.join(uploadCacheDir, existingVibeData.image);
+                if (!fs.existsSync(cachePath)) {
+                    return res.status(404).json({ error: 'Original cache file not found' });
+                }
+                imageBuffer = fs.readFileSync(cachePath);
+                imageHash = existingVibeData.preview;
+                originalSource = 'cache';
+            } else {
+                return res.status(400).json({ error: 'Invalid vibe file format' });
+            }
+            
+            console.log(`🔄 Using existing vibe file with id: ${id}`);
+        } else if (image) {
+            // Extract base64 data
+            imageBuffer = Buffer.from(image, 'base64');
+            imageHash = crypto.createHash('md5').update(imageBuffer).digest('hex');
+            originalSource = 'base64';
+            originalBase64 = image;
+
+            // Generate preview for base64 image
+            const previewPath = path.join(previewCacheDir, `${imageHash}.webp`);
+            if (!fs.existsSync(previewPath)) {
+                await sharp(imageBuffer)
+                    .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+                    .webp({ quality: 80 })
+                    .toFile(previewPath);
+                console.log(`📸 Generated preview for vibe image: ${imageHash}.webp`);
+            }
+        } else {
+            // Cache file provided
+            const cachePath = path.join(uploadCacheDir, cacheFile);
+            if (!fs.existsSync(cachePath)) {
+                return res.status(404).json({ error: 'Cache file not found' });
+            }
+            
+            imageBuffer = fs.readFileSync(cachePath);
+            originalSource = 'cache';
+        }
+        
+        // Generate SHA256 hash for the JSON file
+        const sha256Hash = crypto.createHash('sha256').update(imageBuffer).digest('hex');
+        
+        // Check if JSON file already exists or use existing vibe data
+        const jsonFilename = `${sha256Hash}.json`;
+        const jsonPath = path.join(vibeCacheDir, jsonFilename);
+        
+        let vibeData = null;
+        if (existingVibeData) {
+            // Use existing vibe data when ID is provided
+            vibeData = existingVibeData;
+            console.log(`✅ Using existing vibe data from id: ${id}`);
+        } else if (fs.existsSync(jsonPath)) {
+            // Load existing JSON data
+            vibeData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+            console.log(`✅ Using existing vibe data: ${jsonFilename}`);
+        } else {
+            // Create new vibe data structure
+            vibeData = {
+                version: 1,
+                type: originalSource,
+                preview: imageHash || cacheFile || null,
+                image: originalBase64 || cacheFile || null,
+                id: sha256Hash,
+                encodings: {}
+            };
+        }
+        
+        // Check if encoding already exists for this model and extraction value
+        const extractionValueStr = informationExtraction.toString();
+        if (vibeData.encodings[model] && vibeData.encodings[model][extractionValueStr]) {
+            console.log(`✅ Using existing encoding for model ${model} and extraction ${extractionValueStr}`);
+            
+            // Add to workspace if provided
+            if (workspace) {
+                addToWorkspaceArray('vibeImages', jsonFilename, workspace);
+            }
+            
+            res.json({
+                success: true,
+                filename: jsonFilename,
+                model: model,
+                informationExtraction: informationExtraction
+            });
+            return;
+        }
+        
+        // Encode the image using NovelAI API
+        console.log(`🔄 Encoding image for vibe transfer: ${sha256Hash} with extraction ${informationExtraction} for model ${model}`);
+        
+        try {
+            // Resize image to longest edge 1024 and convert to PNG
+            const resizedImageBuffer = await sharp(imageBuffer)
+                .resize(1024, 1024, { 
+                    fit: 'inside', 
+                    withoutEnlargement: true 
+                })
+                .png()
+                .toBuffer();
+            
+            console.log(`📏 Resized image to longest edge 1024px and converted to PNG`);
+            
+            // Encode vibe using direct NovelAI API call
+            const base64Image = resizedImageBuffer.toString('base64');
+            const vibeToken = await encodeVibeDirect(base64Image, informationExtraction, Model[model.toUpperCase()]);
+            
+            // Initialize model encodings if it doesn't exist
+            if (!vibeData.encodings[model]) {
+                vibeData.encodings[model] = {};
+            }
+            
+            // Store the encoding as base64 text
+            vibeData.encodings[model][extractionValueStr] = vibeToken;
+            
+            // Save the JSON file (use existing filename if ID was provided)
+            const saveFilename = existingVibeData ? `${id}.json` : jsonFilename;
+            const savePath = path.join(vibeCacheDir, saveFilename);
+            fs.writeFileSync(savePath, JSON.stringify(vibeData, null, 2));
+            console.log(`💾 Saved vibe encoding: ${saveFilename}`);
+            
+            // Add to workspace if provided
+            if (workspace) {
+                addToWorkspaceArray('vibeImages', saveFilename, workspace);
+            }
+            
+            res.json({
+                success: true,
+                filename: saveFilename,
+                model: model,
+                informationExtraction: informationExtraction
+            });
+            
+        } catch (encodingError) {
+            console.error('Vibe encoding API error:', encodingError);
+            res.status(500).json({ error: `Vibe encoding failed: ${encodingError.message}` });
+        }
+        
+    } catch (error) {
+        console.error('Vibe transfer encoding error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /vibe/images (get vibe images for workspace)
+app.get('/vibe/images', authMiddleware, async (req, res) => {
+    try {
+        const workspaceId = req.query.workspace || getActiveWorkspace();
+        const workspace = getWorkspace(workspaceId);
+        
+        if (!workspace) {
+            return res.status(404).json({ error: 'Workspace not found' });
+        }
+        
+        const vibeImageDetails = [];
+        
+        // Get vibes from current workspace
+        const currentWorkspaceVibes = workspace.vibeImages || [];
+        for (const filename of currentWorkspaceVibes) {
+            const filePath = path.join(vibeCacheDir, filename);
+            if (fs.existsSync(filePath)) {
+                const stats = fs.statSync(filePath);
+                
+                // Parse JSON file to get details
+                try {
+                    const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                    const previewPath = path.join(previewCacheDir, `${vibeData.preview}.webp`);
+                    
+                    // Get all encodings for this file
+                    const encodings = [];
+                    for (const [model, modelEncodings] of Object.entries(vibeData.encodings || {})) {
+                        for (const [extractionValue, encoding] of Object.entries(modelEncodings)) {
+                            encodings.push({
+                                model,
+                                informationExtraction: parseFloat(extractionValue),
+                                encoding: encoding
+                            });
+                        }
+                    }
+                    
+                    vibeImageDetails.push({
+                        filename,
+                        id: vibeData.id,
+                        preview: fs.existsSync(previewPath) ? `${vibeData.preview}.webp` : null,
+                        mtime: stats.mtime,
+                        size: stats.size,
+                        encodings: encodings,
+                        type: vibeData.type === 'base64' ? 'base64' : 'cache',
+                        source: vibeData.image,
+                        workspaceId: workspaceId
+                    });
+                } catch (parseError) {
+                    console.error(`Error parsing vibe file ${filename}:`, parseError);
+                    // Skip this file if it can't be parsed
+                    continue;
+                }
+            }
+        }
+        
+        // Get vibes from default workspace (if current workspace is not default)
+        if (workspaceId !== 'default' && !req.query?.workspace) {
+            const defaultWorkspace = getWorkspace('default');
+            if (defaultWorkspace) {
+                const defaultWorkspaceVibes = defaultWorkspace.vibeImages || [];
+                for (const filename of defaultWorkspaceVibes) {
+                    const filePath = path.join(vibeCacheDir, filename);
+                    if (fs.existsSync(filePath)) {
+                        const stats = fs.statSync(filePath);
+                        
+                        // Parse JSON file to get details
+                        try {
+                            const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                            const previewPath = path.join(previewCacheDir, `${vibeData.preview}.webp`);
+                            
+                            // Get all encodings for this file
+                            const encodings = [];
+                            for (const [model, modelEncodings] of Object.entries(vibeData.encodings || {})) {
+                                for (const [extractionValue, encoding] of Object.entries(modelEncodings)) {
+                                    encodings.push({
+                                        model,
+                                        informationExtraction: parseFloat(extractionValue),
+                                        encoding: encoding
+                                    });
+                                }
+                            }
+                            
+                            vibeImageDetails.push({
+                                filename,
+                                id: vibeData.id,
+                                preview: fs.existsSync(previewPath) ? `${vibeData.preview}.webp` : null,
+                                mtime: stats.mtime,
+                                size: stats.size,
+                                encodings: encodings,
+                                type: vibeData.type === 'base64' ? 'base64' : 'cache',
+                                source: vibeData.image,
+                                workspaceId: 'default'
+                            });
+                        } catch (parseError) {
+                            console.error(`Error parsing vibe file ${filename}:`, parseError);
+                            // Skip this file if it can't be parsed
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Sort by newest first
+        vibeImageDetails.sort((a, b) => b.mtime - a.mtime);
+        
+        res.json(vibeImageDetails);
+        
+    } catch (error) {
+        console.error('Error getting vibe images:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /vibe/images/:filename (serve individual vibe image data)
+app.get('/vibe/images/:filename', authMiddleware, (req, res) => {
+    try {
+        const filename = req.params.filename + '.json';
+        const filePath = path.join(vibeCacheDir, filename);
+        
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'Vibe image not found' });
+        }
+        
+        // Parse and return JSON data
+        const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        
+        // Handle download request
+        if (req.query.download === 'true') {
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        }
+        
+        res.json(vibeData);
+        
+    } catch (error) {
+        console.error('Error serving vibe image:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /vibe/images/:id (delete vibe image by ID)
+app.delete('/vibe/images/:id', authMiddleware, async (req, res) => {
+    try {
+        const vibeId = req.params.id;
+        const workspaceId = req.query.workspace || getActiveWorkspace();
+        
+        // Find the vibe file by ID
+        const workspace = getWorkspace(workspaceId);
+        if (!workspace) {
+            return res.status(404).json({ error: 'Workspace not found' });
+        }
+        
+        const vibeFiles = workspace.vibeImages || [];
+        let foundFilename = null;
+        
+        // Find the filename that contains this vibe ID
+        for (const filename of vibeFiles) {
+            const filePath = path.join(vibeCacheDir, filename);
+            if (fs.existsSync(filePath)) {
+                try {
+                    const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                    if (vibeData.id === vibeId) {
+                        foundFilename = filename;
+                        break;
+                    }
+                } catch (parseError) {
+                    console.error(`Error parsing vibe file ${filename}:`, parseError);
+                    continue;
+                }
+            }
+        }
+        
+        if (!foundFilename) {
+            return res.status(404).json({ error: 'Vibe image not found' });
+        }
+        
+        const filePath = path.join(vibeCacheDir, foundFilename);
+        
+        // Remove from workspace
+        removeFromWorkspaceArray('vibeImages', foundFilename, workspaceId);
+        
+        // Delete the file
+        fs.unlinkSync(filePath);
+        console.log(`🗑️ Deleted vibe image: ${foundFilename} (ID: ${vibeId})`);
+        
+        res.json({ success: true, message: 'Vibe image deleted successfully' });
+        
+    } catch (error) {
+        console.error('Error deleting vibe image:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /vibe/images/:id/encodings (delete specific encodings from vibe image)
+app.delete('/vibe/images/:id/encodings', authMiddleware, async (req, res) => {
+    try {
+        const vibeId = req.params.id;
+        const workspaceId = req.query.workspace || getActiveWorkspace();
+        const { encodings } = req.body;
+        
+        if (!encodings || !Array.isArray(encodings)) {
+            return res.status(400).json({ error: 'encodings array is required' });
+        }
+        
+        // Find the vibe file by ID
+        const workspace = getWorkspace(workspaceId);
+        if (!workspace) {
+            return res.status(404).json({ error: 'Workspace not found' });
+        }
+        
+        const vibeFiles = workspace.vibeImages || [];
+        let foundFilename = null;
+        
+        // Find the filename that contains this vibe ID
+        for (const filename of vibeFiles) {
+            const filePath = path.join(vibeCacheDir, filename);
+            if (fs.existsSync(filePath)) {
+                try {
+                    const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                    if (vibeData.id === vibeId) {
+                        foundFilename = filename;
+                        break;
+                    }
+                } catch (parseError) {
+                    console.error(`Error parsing vibe file ${filename}:`, parseError);
+                    continue;
+                }
+            }
+        }
+        
+        if (!foundFilename) {
+            return res.status(404).json({ error: 'Vibe image not found' });
+        }
+        
+        const filePath = path.join(vibeCacheDir, foundFilename);
+        
+        // Read the vibe data
+        const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        
+        if (!vibeData.encodings || !Array.isArray(vibeData.encodings)) {
+            return res.status(400).json({ error: 'No encodings found in vibe image' });
+        }
+        
+        // Remove specified encodings
+        const originalCount = vibeData.encodings.length;
+        vibeData.encodings = vibeData.encodings.filter(encoding => {
+            return !encodings.some(toDelete => 
+                toDelete.model === encoding.model && 
+                toDelete.informationExtraction === encoding.informationExtraction
+            );
+        });
+        
+        const deletedCount = originalCount - vibeData.encodings.length;
+        
+        if (deletedCount === 0) {
+            return res.status(400).json({ error: 'No matching encodings found to delete' });
+        }
+        
+        // If no encodings left, delete the entire vibe image
+        if (vibeData.encodings.length === 0) {
+            removeFromWorkspaceArray('vibeImages', foundFilename, workspaceId);
+            fs.unlinkSync(filePath);
+            console.log(`🗑️ Deleted entire vibe image (no encodings left): ${foundFilename} (ID: ${vibeId})`);
+            res.json({ success: true, message: 'Vibe image deleted (no encodings remaining)' });
+        } else {
+            // Update the file with remaining encodings
+            fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
+            console.log(`🗑️ Deleted ${deletedCount} encodings from vibe image: ${foundFilename} (ID: ${vibeId})`);
+            res.json({ success: true, message: `${deletedCount} encodings deleted successfully` });
+        }
+        
+    } catch (error) {
+        console.error('Error deleting vibe encodings:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /vibe/images/bulk-delete (bulk delete vibe images and encodings)
+app.post('/vibe/images/bulk-delete', authMiddleware, async (req, res) => {
+    try {
+        const workspaceId = req.body.workspace || getActiveWorkspace();
+        const { vibesToDelete, encodingsToDelete } = req.body;
+        
+        if (!vibesToDelete && !encodingsToDelete) {
+            return res.status(400).json({ error: 'Either vibesToDelete or encodingsToDelete is required' });
+        }
+        
+        const results = {
+            deletedVibes: [],
+            deletedEncodings: [],
+            errors: []
+        };
+        
+        // Get workspace and vibe files
+        const workspace = getWorkspace(workspaceId);
+        if (!workspace) {
+            return res.status(404).json({ error: 'Workspace not found' });
+        }
+        
+        const vibeFiles = workspace.vibeImages || [];
+        
+        // Delete entire vibe images
+        if (vibesToDelete && Array.isArray(vibesToDelete)) {
+            for (const vibeId of vibesToDelete) {
+                try {
+                    // Find the filename that contains this vibe ID
+                    let foundFilename = null;
+                    for (const filename of vibeFiles) {
+                        const filePath = path.join(vibeCacheDir, filename);
+                        if (fs.existsSync(filePath)) {
+                            try {
+                                const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                                if (vibeData.id === vibeId) {
+                                    foundFilename = filename;
+                                    break;
+                                }
+                            } catch (parseError) {
+                                console.error(`Error parsing vibe file ${filename}:`, parseError);
+                                continue;
+                            }
+                        }
+                    }
+                    
+                    if (foundFilename) {
+                        const filePath = path.join(vibeCacheDir, foundFilename);
+                        removeFromWorkspaceArray('vibeImages', foundFilename, workspaceId);
+                        fs.unlinkSync(filePath);
+                        results.deletedVibes.push(vibeId);
+                        console.log(`🗑️ Bulk deleted vibe image: ${foundFilename} (ID: ${vibeId})`);
+                    } else {
+                        results.errors.push(`Vibe image not found: ${vibeId}`);
+                    }
+                } catch (error) {
+                    results.errors.push(`Failed to delete vibe ${vibeId}: ${error.message}`);
+                }
+            }
+        }
+        
+        // Delete specific encodings
+        if (encodingsToDelete && Array.isArray(encodingsToDelete)) {
+            // Group encodings by vibe image
+            const encodingsByVibe = {};
+            encodingsToDelete.forEach(encodingData => {
+                // encodingData should be { vibeId, model, informationExtraction }
+                if (encodingData.vibeId && encodingData.model && encodingData.informationExtraction !== undefined) {
+                    if (!encodingsByVibe[encodingData.vibeId]) {
+                        encodingsByVibe[encodingData.vibeId] = [];
+                    }
+                    encodingsByVibe[encodingData.vibeId].push(encodingData);
+                }
+            });
+            
+            // Process each vibe image
+            for (const [vibeId, encodingsToRemove] of Object.entries(encodingsByVibe)) {
+                try {
+                    // Find the filename that contains this vibe ID
+                    let foundFilename = null;
+                    for (const filename of vibeFiles) {
+                        const filePath = path.join(vibeCacheDir, filename);
+                        if (fs.existsSync(filePath)) {
+                            try {
+                                const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                                if (vibeData.id === vibeId) {
+                                    foundFilename = filename;
+                                    break;
+                                }
+                            } catch (parseError) {
+                                console.error(`Error parsing vibe file ${filename}:`, parseError);
+                                continue;
+                            }
+                        }
+                    }
+                    
+                    if (!foundFilename) {
+                        results.errors.push(`Vibe image not found: ${vibeId}`);
+                        continue;
+                    }
+                    
+                    const filePath = path.join(vibeCacheDir, foundFilename);
+                    
+                    // Read the vibe data
+                    const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                    
+                    if (!vibeData.encodings || !Array.isArray(vibeData.encodings)) {
+                        results.errors.push(`No encodings found in vibe: ${vibeId}`);
+                        continue;
+                    }
+                    
+                    // Remove specified encodings
+                    const originalCount = vibeData.encodings.length;
+                    vibeData.encodings = vibeData.encodings.filter(encoding => {
+                        return !encodingsToRemove.some(toDelete => 
+                            toDelete.model === encoding.model && 
+                            toDelete.informationExtraction === encoding.informationExtraction
+                        );
+                    });
+                    
+                    const deletedCount = originalCount - vibeData.encodings.length;
+                    
+                    if (deletedCount > 0) {
+                        // If no encodings left, delete the entire vibe image
+                        if (vibeData.encodings.length === 0) {
+                            removeFromWorkspaceArray('vibeImages', foundFilename, workspaceId);
+                            fs.unlinkSync(filePath);
+                            results.deletedVibes.push(vibeId);
+                            console.log(`🗑️ Bulk deleted entire vibe image (no encodings left): ${foundFilename} (ID: ${vibeId})`);
+                        } else {
+                            // Update the file with remaining encodings
+                            fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
+                            results.deletedEncodings.push(...encodingsToRemove);
+                            console.log(`🗑️ Bulk deleted ${deletedCount} encodings from vibe: ${foundFilename} (ID: ${vibeId})`);
+                        }
+                    }
+                    
+                } catch (error) {
+                    results.errors.push(`Failed to delete encodings from vibe ${vibeId}: ${error.message}`);
+                }
+            }
+        }
+        
+        const success = results.deletedVibes.length > 0 || results.deletedEncodings.length > 0;
+        const message = success ? 
+            `Deleted ${results.deletedVibes.length} vibe(s) and ${results.deletedEncodings.length} encoding(s)` :
+            'No items were deleted';
+        
+        res.json({
+            success,
+            message,
+            ...results
+        });
+        
+    } catch (error) {
+        console.error('Error bulk deleting vibe items:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// PUT /vibe/images/:id/move (move vibe image to workspace)
+app.put('/vibe/images/:id/move', authMiddleware, async (req, res) => {
+    try {
+        const vibeId = req.params.id;
+        const { targetWorkspace } = req.body;
+        const sourceWorkspace = req.query.workspace || getActiveWorkspace();
+        
+        if (!targetWorkspace) {
+            return res.status(400).json({ error: 'targetWorkspace is required' });
+        }
+        
+        // Find the vibe file by ID
+        const workspace = getWorkspace(sourceWorkspace);
+        if (!workspace) {
+            return res.status(404).json({ error: 'Source workspace not found' });
+        }
+        
+        const vibeFiles = workspace.vibeImages || [];
+        let foundFilename = null;
+        
+        // Find the filename that contains this vibe ID
+        for (const filename of vibeFiles) {
+            const filePath = path.join(vibeCacheDir, filename);
+            if (fs.existsSync(filePath)) {
+                try {
+                    const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                    if (vibeData.id === vibeId) {
+                        foundFilename = filename;
+                        break;
+                    }
+                } catch (parseError) {
+                    console.error(`Error parsing vibe file ${filename}:`, parseError);
+                    continue;
+                }
+            }
+        }
+        
+        if (!foundFilename) {
+            return res.status(404).json({ error: 'Vibe image not found' });
+        }
+        
+        // Move to target workspace
+        moveToWorkspaceArray('vibeImages', foundFilename, targetWorkspace, sourceWorkspace);
+        
+        console.log(`📁 Moved vibe image ${foundFilename} (ID: ${vibeId}) from workspace ${sourceWorkspace} to ${targetWorkspace}`);
+        
+        res.json({ success: true, message: 'Vibe image moved successfully' });
+        
+    } catch (error) {
+        console.error('Error moving vibe image:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /vibe/images/bulk-move (bulk move vibe images to workspace)
+app.post('/vibe/images/bulk-move', authMiddleware, async (req, res) => {
+    try {
+        const { imageIds, targetWorkspace, sourceWorkspace } = req.body;
+        const workspaceId = sourceWorkspace || getActiveWorkspace();
+        
+        if (!targetWorkspace) {
+            return res.status(400).json({ error: 'targetWorkspace is required' });
+        }
+        
+        if (!imageIds || !Array.isArray(imageIds)) {
+            return res.status(400).json({ error: 'imageIds array is required' });
+        }
+        
+        const results = {
+            movedImages: [],
+            errors: []
+        };
+        
+        // Get source workspace and vibe files
+        const workspace = getWorkspace(workspaceId);
+        if (!workspace) {
+            return res.status(404).json({ error: 'Source workspace not found' });
+        }
+        
+        const vibeFiles = workspace.vibeImages || [];
+        
+        for (const imageId of imageIds) {
+            try {
+                // Find the filename that contains this vibe ID
+                let foundFilename = null;
+                for (const filename of vibeFiles) {
+                    const filePath = path.join(vibeCacheDir, filename);
+                    if (fs.existsSync(filePath)) {
+                        try {
+                            const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                            if (vibeData.id === imageId) {
+                                foundFilename = filename;
+                                break;
+                            }
+                        } catch (parseError) {
+                            console.error(`Error parsing vibe file ${filename}:`, parseError);
+                            continue;
+                        }
+                    }
+                }
+                
+                if (foundFilename) {
+                    // Move to target workspace
+                    moveToWorkspaceArray('vibeImages', foundFilename, targetWorkspace, workspaceId);
+                    results.movedImages.push(imageId);
+                    console.log(`📁 Bulk moved vibe image ${foundFilename} (ID: ${imageId}) from workspace ${workspaceId} to ${targetWorkspace}`);
+                } else {
+                    results.errors.push(`Vibe image not found: ${imageId}`);
+                }
+            } catch (error) {
+                results.errors.push(`Failed to move vibe ${imageId}: ${error.message}`);
+            }
+        }
+        
+        const success = results.movedImages.length > 0;
+        const message = success ? 
+            `Moved ${results.movedImages.length} vibe image(s) successfully` :
+            'No images were moved';
+        
+        res.json({
+            success,
+            message,
+            ...results
+        });
+        
+    } catch (error) {
+        console.error('Error bulk moving vibe images:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // OPTIONS /images/:filename (get metadata)
@@ -803,6 +1698,9 @@ app.delete('/images/:filename', authMiddleware, async (req, res) => {
             }
         }
 
+        // Sync workspace files to remove any remaining references to deleted files
+        syncWorkspaceFiles();
+
         console.log(`✅ Deleted image and related files: ${deletedFiles.join(', ')}`);
         res.json({
             success: true,
@@ -815,9 +1713,6 @@ app.delete('/images/:filename', authMiddleware, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
-// Apply queue middleware (runs before logging)
-app.use(queueMiddleware);
 
 // Common request logging middleware
 const requestLogger = (req, res, next) => {
@@ -896,11 +1791,11 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
     
     const currentPromptConfig = loadPromptConfig();
     const presetName = preset ? Object.keys(currentPromptConfig.presets).find(key => currentPromptConfig.presets[key] === preset) : null;
-    const rawPrompt = body.prompt || preset?.prompt;
-    const rawNegativePrompt = body.uc || preset?.uc;
+    const rawPrompt = (body.prompt !== undefined && body.prompt !== null) ? body.prompt : preset?.prompt;
+    const rawNegativePrompt = (body.uc !== undefined && body.uc !== null) ? body.uc : preset?.uc;
     
     // Handle upscale override from query parameters
-    let upscaleValue = body.upscale || preset?.upscale;
+    let upscaleValue = (body.upscale !== undefined && body.upscale !== null) ? body.upscale : preset?.upscale;
     if (queryParams.upscale !== undefined) {
         if (queryParams.upscale === 'true') {
             upscaleValue = true; // Default to 4x
@@ -985,7 +1880,7 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
                     
                     // Add bias if > 1.0
                     if (body.dataset_config.bias && body.dataset_config.bias[dataset] && body.dataset_config.bias[dataset] > 1.0) {
-                        datasetText = `${body.dataset_config.bias[dataset]}::${dataset}::`;
+                        datasetText = `${parseFloat(parseFloat(body.dataset_config.bias[dataset].toString()).toFixed(2)).toString()}::${dataset}::`;
                     }
                     
                     datasetPrepends.push(datasetText);
@@ -1079,6 +1974,8 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
         append_uc: body.append_uc !== undefined ? body.append_uc : preset?.append_uc,
         append_quality_id: selectedQualityId,
         append_uc_id: selectedUcId,
+        vibe_transfer: body.vibe_transfer !== undefined ? body.vibe_transfer : (preset && preset.vibe_transfer ? preset.vibe_transfer : undefined),
+        normalize_vibes: body.normalize_vibes !== undefined ? body.normalize_vibes : (preset && preset.normalize_vibes !== undefined ? preset.normalize_vibes : true),
     };
 
     if (baseOptions.upscale && baseOptions.upscale > 1 && !allowPaid) {
@@ -1236,6 +2133,63 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
         baseOptions.image_bias = body.image_bias;
     }
 
+    // Process vibe transfer data if present (disabled when mask is provided for inpainting)
+    if (baseOptions.vibe_transfer && Array.isArray(baseOptions.vibe_transfer) && baseOptions.vibe_transfer.length > 0) {
+        if (baseOptions.mask) {
+            console.log(`⚠️ Vibe transfers disabled due to inpainting mask presence`);
+        } else {
+            try {
+                // Load vibe references from the vibe cache directory
+                const vibeCacheDir = path.join(cacheDir, 'vibe');
+                const referenceImageMultiple = [];
+                const referenceStrengthMultiple = [];
+                
+                if (fs.existsSync(vibeCacheDir)) {
+                    for (const vibeTransfer of baseOptions.vibe_transfer) {
+                        // Directly access the vibe file using the ID as filename
+                        const vibeFilePath = path.join(vibeCacheDir, `${vibeTransfer.id}.json`);
+                        
+                        if (fs.existsSync(vibeFilePath)) {
+                            try {
+                                const vibeData = JSON.parse(fs.readFileSync(vibeFilePath, 'utf8'));
+                                
+                                // Get the encoding for the specific model and IE
+                                if (vibeData.encodings && 
+                                    vibeData.encodings[model] && 
+                                    vibeData.encodings[model][vibeTransfer.ie.toString()]) {
+                                    
+                                    const encoding = vibeData.encodings[model][vibeTransfer.ie.toString()];
+                                    referenceImageMultiple.push(encoding);
+                                    referenceStrengthMultiple.push(vibeTransfer.strength);
+                                    console.log(`🎨 Found encoding for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} and strength ${vibeTransfer.strength}`);
+                                } else {
+                                    console.warn(`⚠️ No encoding found for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} for model ${model}`);
+                                }
+                            } catch (parseError) {
+                                console.warn(`⚠️ Failed to parse vibe file ${vibeTransfer.id}.json:`, parseError.message);
+                            }
+                        } else {
+                            console.warn(`⚠️ Vibe file not found: ${vibeTransfer.id}.json`);
+                        }
+                    }
+                }
+                
+                // Add to baseOptions if we found encodings
+                if (referenceImageMultiple.length > 0) {
+                    baseOptions.reference_image_multiple = referenceImageMultiple;
+                    baseOptions.reference_strength_multiple = referenceStrengthMultiple;
+                    baseOptions.normalize_reference_strength_multiple = baseOptions.normalize_vibes;
+                    console.log(`🎨 Applied ${referenceImageMultiple.length} vibe transfers with normalize: ${baseOptions.normalize_vibes}`);
+                } else {
+                    console.warn(`⚠️ No valid encodings found for any vibe transfers`);
+                }
+            } catch (error) {
+                console.error('❌ Failed to process vibe transfers:', error.message);
+                // Continue without vibe transfers if processing fails
+            }
+        }
+    }
+
     if (!allowPaid) {
         try {
             const cost_opus = calculateCost(baseOptions, true);
@@ -1288,6 +2242,8 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     delete apiOpts.input_prompt;
     delete apiOpts.input_uc;
     delete apiOpts.input_character_prompts;
+    delete apiOpts.vibe_transfer;
+    delete apiOpts.normalize_vibes;
 
     // Process character prompts: only enabled characters go to API, all characters go to forge_data
     if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts)) {
@@ -1314,6 +2270,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     }
     
     try {
+        imageCounter.logGeneration();
         [img] = await client.generateImage(apiOpts, false, true, true);
         console.log('✅ Image generation completed');
     } catch (error) {
@@ -1423,10 +2380,10 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         }
         
         // Save unprocessed input values
-        if (opts.input_prompt) {
+        if (opts.input_prompt !== undefined) {
             forgeData.input_prompt = opts.input_prompt;
         }
-        if (opts.input_uc) {
+        if (opts.input_uc !== undefined) {
             forgeData.input_uc = opts.input_uc;
         }
         // Add new parameters to forge data
@@ -1438,6 +2395,14 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         }
         if (opts.append_uc !== undefined) {
             forgeData.append_uc = opts.append_uc;
+        }
+        
+        // Add vibe transfer data to forge data
+        if (opts.vibe_transfer !== undefined) {
+            forgeData.vibe_transfer = opts.vibe_transfer;
+        }
+        if (opts.normalize_vibes !== undefined) {
+            forgeData.normalize_vibes = opts.normalize_vibes;
         }
         
         // Update buffer with forge metadata
@@ -1459,7 +2424,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             console.log(`📸 Generated preview: ${previewFile}`);
         }
         
-        if (opts.upscale) {
+        if (opts.upscale !== undefined) {
             const scale = opts.upscale === true ? 4 : opts.upscale;
             await new Promise(resolve => setTimeout(resolve, 2000));
             
@@ -2462,113 +3427,6 @@ app.options('/', authMiddleware, (req, res) => {
     }
 });
 
-// List cache files for browsing with workspace filtering
-app.options('/cache', authMiddleware, (req, res) => {
-    try {
-        // Get cache files for active workspace (includes default + active workspace)
-        const workspaceCacheFiles = getActiveWorkspaceCacheFiles();
-        
-        // Get all files in cache directory
-        const allFiles = fs.readdirSync(uploadCacheDir);
-        
-        // Filter to only include files that belong to the current workspace
-        const files = allFiles.filter(file => workspaceCacheFiles.includes(file));
-        
-        const cacheFiles = [];
-        
-        for (const file of files) {
-            const filePath = path.join(uploadCacheDir, file);
-            const stats = fs.statSync(filePath);
-            const previewPath = path.join(previewCacheDir, `${file}.webp`);
-            
-            cacheFiles.push({
-                hash: file,
-                filename: file,
-                mtime: stats.mtime,
-                size: stats.size,
-                hasPreview: fs.existsSync(previewPath)
-            });
-        }
-        
-        // Sort by newest first
-        cacheFiles.sort((a, b) => b.mtime - a.mtime);
-        res.json(cacheFiles);
-    } catch (error) {
-        console.error('Error reading cache directory:', error);
-        res.status(500).json({ error: 'Failed to load cache files' });
-    }
-});
-
-// Delete cache file
-app.delete('/cache/:hash', authMiddleware, (req, res) => {
-    try {
-        const hash = req.params.hash;
-        const filePath = path.join(uploadCacheDir, hash);
-        const previewPath = path.join(previewCacheDir, `${hash}.webp`);
-        
-        // Check if file exists
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'Cache file not found' });
-        }
-        
-        // Delete main file
-        fs.unlinkSync(filePath);
-        
-        // Delete preview if it exists
-        if (fs.existsSync(previewPath)) {
-            fs.unlinkSync(previewPath);
-        }
-        
-        res.json({ success: true });
-        console.log(`✅ Cache file deleted: ${hash}\n`);
-    } catch(e) {
-        console.log('❌ Error occurred:', e);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// Upload endpoint
-app.put('/upload/image', authMiddleware, upload.single('image'), async (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No image file provided' });
-        }
-        
-        const filename = req.file.filename;
-        const filePath = path.join(imagesDir, filename);
-        
-        // Generate preview
-        const baseName = getBaseName(filename);
-        const previewFile = getPreviewFilename(baseName);
-        const previewPath = path.join(previewsDir, previewFile);
-        
-        await generatePreview(filePath, previewPath);
-        console.log(`📸 Generated preview: ${previewFile}`);
-        
-        // Add basic forge metadata for uploaded image
-        const imageBuffer = fs.readFileSync(filePath);
-        const forgeData = {
-            date_generated: Date.now(),
-            generation_type: 'uploaded',
-            request_type: 'upload'
-        };
-        const updatedBuffer = updateMetadata(imageBuffer, forgeData);
-        fs.writeFileSync(filePath, updatedBuffer);
-        
-        console.log(`💾 Uploaded: ${filename}`);
-        
-        res.json({ 
-            success: true, 
-            message: 'Image uploaded successfully',
-            filename: filename
-        });
-        
-    } catch(e) {
-        console.log('❌ Upload error:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
 // GET /balance (get balance information)
 app.get('/balance', authMiddleware, async (req, res) => {
     try {
@@ -3420,7 +4278,7 @@ app.post('/:model/prompt', authMiddleware, async (req, res) => {
 });
 
 // POST /:model/generate (direct model generation)
-app.post('/:model/generate', authMiddleware, async (req, res) => {
+app.post('/:model/generate', authMiddleware, queueMiddleware, async (req, res) => {
     try {
         const key = req.params.model.toLowerCase();
         const model = Model[key.toUpperCase()];
@@ -3694,6 +4552,77 @@ app.delete('/workspaces/:id', authMiddleware, (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+// Upload endpoint
+app.post('/workspaces/:id/images', authMiddleware, upload.array('images', 10), async (req, res) => {
+    try {
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({ error: 'No image files provided' });
+        }
+        
+        const results = [];
+        const errors = [];
+        
+        for (const file of req.files) {
+            try {
+                const filename = file.filename;
+                const filePath = path.join(imagesDir, filename);
+                
+                // Generate preview
+                const baseName = getBaseName(filename);
+                const previewFile = getPreviewFilename(baseName);
+                const previewPath = path.join(previewsDir, previewFile);
+                
+                await generatePreview(filePath, previewPath);
+                console.log(`📸 Generated preview: ${previewFile}`);
+                
+                // Add basic forge metadata for uploaded image
+                const imageBuffer = fs.readFileSync(filePath);
+                const forgeData = {
+                    date_generated: Date.now(),
+                    generation_type: 'uploaded',
+                    request_type: 'upload'
+                };
+                const updatedBuffer = updateMetadata(imageBuffer, forgeData);
+                fs.writeFileSync(filePath, updatedBuffer);
+                
+                console.log(`💾 Uploaded: ${filename}`);
+
+                // Add to workspace
+                addToWorkspaceArray('files', filename, req.params.id);
+                
+                results.push({
+                    success: true,
+                    filename: filename,
+                    originalName: file.originalname
+                });
+                
+            } catch (error) {
+                console.log(`❌ Upload error for ${file.originalname}:`, error.message);
+                errors.push({
+                    filename: file.originalname,
+                    error: error.message
+                });
+            }
+        }
+        
+        const successCount = results.length;
+        const errorCount = errors.length;
+        
+        res.json({ 
+            success: true, 
+            message: `Uploaded ${successCount} images${errorCount > 0 ? `, ${errorCount} failed` : ''}`,
+            results: results,
+            errors: errors,
+            totalUploaded: successCount,
+            totalErrors: errorCount
+        });
+        
+    } catch(e) {
+        console.log('❌ Upload error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
 // PUT /workspaces/:id/activate (set active workspace)
 app.put('/workspaces/:id/activate', authMiddleware, (req, res) => {
     try {
@@ -3785,24 +4714,13 @@ app.get('/workspaces/:id/scraps', authMiddleware, (req, res) => {
             return res.status(404).json({ error: 'Workspace not found' });
         }
         
-        // Get workspace scraps (including default workspace scraps)
-        const workspaceScraps = new Set();
-        
-        // Always include default workspace scraps
-        const defaultWorkspace = getWorkspace('default');
-        if (defaultWorkspace && defaultWorkspace.scraps) {
-            defaultWorkspace.scraps.forEach(file => workspaceScraps.add(file));
-        }
-        
-        // Include current workspace scraps if not default
-        if (id !== 'default' && workspace.scraps) {
-            workspace.scraps.forEach(file => workspaceScraps.add(file));
-        }
+        // Get scraps for the requested workspace (scraps are shared across workspaces)
+        const scraps = getActiveWorkspaceScraps();
         
         res.json({
             workspaceId: id,
             workspaceName: workspace.name,
-            scraps: Array.from(workspaceScraps)
+            scraps: scraps
         });
     } catch (error) {
         console.log('❌ Error getting workspace scraps:', error);
@@ -3844,6 +4762,117 @@ app.delete('/workspaces/:id/scraps', authMiddleware, (req, res) => {
     }
 });
 
+
+// List cache files for browsing with workspace filtering
+app.options('/references', authMiddleware, (req, res) => {
+    try {
+        // Get cache files for active workspace (includes default + active workspace)
+        const workspaceCacheFiles = getActiveWorkspaceCacheFiles();
+        
+        // Get all files in cache directory
+        const allFiles = fs.readdirSync(uploadCacheDir);
+        
+        // Filter to only include files that belong to the current workspace
+        const files = allFiles.filter(file => workspaceCacheFiles.includes(file));
+        
+        const cacheFiles = [];
+        
+        for (const file of files) {
+            const filePath = path.join(uploadCacheDir, file);
+            const stats = fs.statSync(filePath);
+            const previewPath = path.join(previewCacheDir, `${file}.webp`);
+            
+            // Determine which workspace this file belongs to
+            const workspaces = getWorkspacesData();
+            const activeWorkspace = getActiveWorkspaceData();
+            let workspaceId = 'default';
+            if (activeWorkspace !== 'default' && workspaces[activeWorkspace] && workspaces[activeWorkspace].cacheFiles.includes(file)) {
+                workspaceId = activeWorkspace;
+            }
+            
+            cacheFiles.push({
+                hash: file,
+                filename: file,
+                mtime: stats.mtime,
+                size: stats.size,
+                hasPreview: fs.existsSync(previewPath),
+                workspaceId: workspaceId
+            });
+        }
+        
+        // Sort by newest first
+        cacheFiles.sort((a, b) => b.mtime - a.mtime);
+        res.json(cacheFiles);
+    } catch (error) {
+        console.error('Error reading cache directory:', error);
+        res.status(500).json({ error: 'Failed to load cache files' });
+    }
+});
+// List cache files for browsing with workspace filtering
+app.options('/workspaces/:id/references', authMiddleware, (req, res) => {
+    try {
+        // Get cache files for active workspace (includes default + active workspace)
+        const workspaceCacheFiles = getActiveWorkspaceCacheFiles(req.params.id);
+        
+        // Get all files in cache directory
+        const allFiles = fs.readdirSync(uploadCacheDir);
+        
+        // Filter to only include files that belong to the current workspace
+        const files = allFiles.filter(file => workspaceCacheFiles.includes(file));
+        
+        const cacheFiles = [];
+        
+        for (const file of files) {
+            const filePath = path.join(uploadCacheDir, file);
+            const stats = fs.statSync(filePath);
+            const previewPath = path.join(previewCacheDir, `${file}.webp`);
+            
+            cacheFiles.push({
+                hash: file,
+                filename: file,
+                mtime: stats.mtime,
+                size: stats.size,
+                hasPreview: fs.existsSync(previewPath)
+            });
+        }
+        
+        // Sort by newest first
+        cacheFiles.sort((a, b) => b.mtime - a.mtime);
+        res.json(cacheFiles);
+    } catch (error) {
+        console.error('Error reading cache directory:', error);
+        res.status(500).json({ error: 'Failed to load cache files' });
+    }
+});
+// Delete cache file
+app.delete('/workspaces/:id/references/:hash', authMiddleware, (req, res) => {
+    try {
+        const hash = req.params.hash;
+        const filePath = path.join(uploadCacheDir, hash);
+        const previewPath = path.join(previewCacheDir, `${hash}.webp`);
+        
+        // Check if file exists
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: 'Cache file not found' });
+        }
+        
+        // Delete main file
+        fs.unlinkSync(filePath);
+        
+        // Delete preview if it exists
+        if (fs.existsSync(previewPath)) {
+            fs.unlinkSync(previewPath);
+        }
+
+        removeFromWorkspaceArray('cacheFiles', hash, req.params.id);
+        
+        res.json({ success: true });
+        console.log(`✅ Cache file deleted: ${hash}\n`);
+    } catch(e) {
+        console.log('❌ Error occurred:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
 // PUT /workspaces/:id/references (move cache files to workspace)
 app.put('/workspaces/:id/references', authMiddleware, (req, res) => {
     try {
@@ -3861,7 +4890,7 @@ app.put('/workspaces/:id/references', authMiddleware, (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-// PUT /upload/:id/references (upload base image to cache)
+// POST /upload/:id/references (upload base image to cache)
 app.post('/workspaces/:id/references', authMiddleware, cacheUpload.single('image'), async (req, res) => {
     const { id } = req.params;
     try {
@@ -4035,3 +5064,13 @@ process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
 app.listen(config.port, () => console.log(`Server running on port ${config.port}`));
+
+// --- Add endpoint for frontend to fetch counter ---
+app.get('/image-counter', authMiddleware, (req, res) => {
+    res.json({ count: imageCounter.getCount() });
+});
+
+// Add /queue-status endpoint
+app.get('/queue-status', authMiddleware, (req, res) => {
+    res.json(getQueueStatus());
+});

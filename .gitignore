@@ -10,3 +10,5 @@ node_modules/
 config.json
 prompt.config.json
 .cache/
+logs/
+log.txt

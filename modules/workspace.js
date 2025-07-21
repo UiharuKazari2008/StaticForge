@@ -137,10 +137,15 @@ function syncWorkspaceFiles() {
         .filter(f => f.match(/\.(png|jpg|jpeg)$/i))
         .filter(f => !f.startsWith('.'));
         
-        // Track all files that exist in workspaces
+        // Track all files that exist in workspaces (both files and scraps)
         const workspaceFiles = new Set();
         Object.values(workspaces).forEach(workspace => {
+            // Add files from the files array
             workspace.files.forEach(file => workspaceFiles.add(file));
+            // Add files from the scraps array
+            if (workspace.scraps) {
+                workspace.scraps.forEach(file => workspaceFiles.add(file));
+            }
         });
 
         // Add missing files to default workspace
@@ -152,12 +157,20 @@ function syncWorkspaceFiles() {
             console.log(`📁 Added ${missingFiles.length} new files to default workspace (sorted by timestamp)`);
         }
 
-        // Remove non-existent files from all workspaces
+        // Remove non-existent files from all workspaces (both files and scraps)
         let removedCount = 0;
         Object.values(workspaces).forEach(workspace => {
-            const originalLength = workspace.files.length;
+            // Remove from files array
+            const originalFilesLength = workspace.files.length;
             workspace.files = workspace.files.filter(file => imageFiles.includes(file));
-            removedCount += originalLength - workspace.files.length;
+            removedCount += originalFilesLength - workspace.files.length;
+            
+            // Remove from scraps array
+            if (workspace.scraps) {
+                const originalScrapsLength = workspace.scraps.length;
+                workspace.scraps = workspace.scraps.filter(file => imageFiles.includes(file));
+                removedCount += originalScrapsLength - workspace.scraps.length;
+            }
         });
 
         if (removedCount > 0) {
@@ -509,21 +522,26 @@ function getActiveWorkspaceFiles() {
 }
 
 // Get cache files for active workspace (includes default)
-function getActiveWorkspaceCacheFiles() {
+function getActiveWorkspaceCacheFiles(workspaceId = null) {
     if (!workspaces) {
         loadWorkspaces();
     }
 
     const files = new Set();
-    
-    // Always include default workspace cache files
-    if (workspaces.default) {
-        workspaces.default.cacheFiles.forEach(file => files.add(file));
-    }
 
     // Include active workspace cache files if not default
-    if (activeWorkspace !== 'default' && workspaces[activeWorkspace]) {
-        workspaces[activeWorkspace].cacheFiles.forEach(file => files.add(file));
+    if (workspaceId) {
+        if (workspaces[workspaceId]) {
+            workspaces[workspaceId].cacheFiles.forEach(file => files.add(file));
+        }
+    } else {
+        // Always include default workspace cache files
+        if (workspaces.default) {
+            workspaces.default.cacheFiles.forEach(file => files.add(file));
+        }
+        if (activeWorkspace !== 'default' && workspaces[activeWorkspace]) {
+            workspaces[activeWorkspace].cacheFiles.forEach(file => files.add(file));
+        }
     }
 
     return Array.from(files);
@@ -573,25 +591,21 @@ function initializeWorkspaces() {
     console.log(`✅ Workspace system initialized with ${Object.keys(workspaces).length} workspaces`);
 }
 
-// Get scraps for active workspace (includes default)
+// Get scraps for active workspace (only that workspace)
 function getActiveWorkspaceScraps() {
     if (!workspaces) {
         loadWorkspaces();
     }
 
-    // Initialize scraps arrays if they don't exist
-    if (workspaces.default && !workspaces.default.scraps) {
-        workspaces.default.scraps = [];
-    }
+    // Initialize scraps array if it doesn't exist
     if (workspaces[activeWorkspace] && !workspaces[activeWorkspace].scraps) {
         workspaces[activeWorkspace].scraps = [];
     }
 
-    // Include active workspace scraps if not default
     if (workspaces[activeWorkspace]) {
         return workspaces[activeWorkspace].scraps;
-    } 
-    return workspaces.default.scraps;
+    }
+    return [];
 }
 
 // Remove files from all workspaces (used when files are deleted)
@@ -664,6 +678,12 @@ function addToWorkspaceArray(type, items, workspaceId = null) {
                     // Remove from main files list when adding to scraps
                     workspaces[targetId].files = workspaces[targetId].files.filter(file => file !== item);
                     addedCount++;
+                }
+            });            
+            // Remove from files list of all workspaces (since scraps are shared)
+            Object.keys(workspaces).forEach(workspaceId => {
+                if (workspaces[workspaceId].files) {
+                    workspaces[workspaceId].files = workspaces[workspaceId].files.filter(file => !validItems.includes(file));
                 }
             });
             break;
@@ -757,12 +777,17 @@ function removeFromWorkspaceArray(type, items, workspaceId = null) {
             workspaces[targetId].scraps = workspaces[targetId].scraps.filter(item => !validItems.includes(item));
             removedCount = originalScrapsLength - workspaces[targetId].scraps.length;
             
-            // For scraps, move removed items back to files
+            // For scraps, move removed items back to files of the target workspace
             validItems.forEach(item => {
                 if (!workspaces[targetId].files.includes(item)) {
                     workspaces[targetId].files.push(item);
                 }
             });
+            
+            // Also remove from default workspace scraps if not the default workspace (scraps are shared)
+            if (targetId !== 'default' && workspaces.default && workspaces.default.scraps) {
+                workspaces.default.scraps = workspaces.default.scraps.filter(item => !validItems.includes(item));
+            }
             break;
             
         case 'presets':
@@ -914,6 +939,22 @@ function moveToWorkspaceArray(type, items, targetWorkspaceId, sourceWorkspaceId 
     return movedCount;
 }
 
+// Get workspaces data for server use
+function getWorkspacesData() {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+    return workspaces;
+}
+
+// Get active workspace data for server use
+function getActiveWorkspaceData() {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+    return activeWorkspace;
+}
+
 module.exports = {
     initializeWorkspaces,
     loadWorkspaces,
@@ -940,7 +981,6 @@ module.exports = {
     getActiveWorkspaceCacheFiles,
     getActiveWorkspaceScraps,
     removeFilesFromWorkspaces,
-    addToWorkspaceArray,
-    removeFromWorkspaceArray,
-    moveToWorkspaceArray
+    getWorkspacesData,
+    getActiveWorkspaceData
 };

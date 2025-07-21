@@ -1,192 +1,112 @@
 // Login page functionality
 class LoginPage {
     constructor() {
-        this.pinInput = document.getElementById('pinInput');
-        this.pinDigits = document.querySelectorAll('.pin-digit');
-        this.loginBtn = document.getElementById('loginBtn');
-        this.loginForm = document.getElementById('loginForm');
         this.errorMessage = document.getElementById('errorMessage');
-        this.lastImageOverlay = document.getElementById('lastImageOverlay');
-        
         this.currentPin = '';
         this.isLoading = false;
-        
+        this.rollingBuffer = '';
         this.init();
     }
-    
+
     init() {
-        this.setupEventListeners();
-        this.loadLastGeneratedImage();
-        this.startBackgroundEffect();
-        this.focusPinInput();
+        this.setupKeyboardListener();
+        this.startBokehBackground();
     }
-    
-    setupEventListeners() {
-        // PIN input handling
-        this.pinInput.addEventListener('input', (e) => {
-            this.handlePinInput(e.target.value);
-        });
-        
-        this.pinInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && this.currentPin.length === 6) {
-                this.handleLogin();
+
+    setupKeyboardListener() {
+        document.addEventListener('keydown', (e) => {
+            if (this.isLoading) return;
+            if (e.key >= '0' && e.key <= '9') {
+                this.rollingBuffer += e.key;
+                if (this.rollingBuffer.length > 6) {
+                    this.rollingBuffer = this.rollingBuffer.slice(-6);
+                }
+            } else if (e.key === 'Enter') {
+                if (this.rollingBuffer.length === 6) {
+                    this.handleLogin();
+                }
+            } else if (e.key === 'Backspace') {
+                this.rollingBuffer = this.rollingBuffer.slice(0, -1);
             }
         });
-        
-        // Form submission
-        this.loginForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            if (this.currentPin.length === 6 && !this.isLoading) {
-                this.handleLogin();
-            }
-        });
-        
-        // Click on PIN display to focus input
-        document.querySelector('.pin-display').addEventListener('click', () => {
-            this.pinInput.focus();
-        });
-        
-        // Prevent form submission on Enter if PIN is incomplete
-        this.loginForm.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && this.currentPin.length !== 6) {
-                e.preventDefault();
-            }
-        });
+        // On mobile, show a hidden input to trigger number keyboard
+        this.createMobileInput();
     }
-    
-    handlePinInput(value) {
-        // Only allow digits
-        const digitsOnly = value.replace(/\D/g, '');
-        
-        // Limit to 6 digits
-        this.currentPin = digitsOnly.slice(0, 6);
-        this.pinInput.value = this.currentPin;
-        
-        // Update PIN display
-        this.updatePinDisplay();
-        
-        // Update login button state
-        this.loginBtn.disabled = this.currentPin.length !== 6 || this.isLoading;
-    }
-    
-    updatePinDisplay() {
-        this.pinDigits.forEach((digit, index) => {
-            if (index < this.currentPin.length) {
-                digit.classList.add('filled');
-            } else {
-                digit.classList.remove('filled');
-            }
+
+    createMobileInput() {
+        const input = document.createElement('input');
+        input.type = 'tel';
+        input.inputMode = 'numeric';
+        input.pattern = '[0-9]*';
+        input.style.position = 'absolute';
+        input.style.opacity = 0;
+        input.style.height = 0;
+        input.style.width = 0;
+        input.autocomplete = 'off';
+        input.tabIndex = -1;
+        document.body.appendChild(input);
+        // Focus on touch devices
+        input.addEventListener('focus', () => {
+            window.scrollTo(0, 0);
         });
+        if (/Mobi|Android/i.test(navigator.userAgent)) {
+            setTimeout(() => input.focus(), 500);
+        }
     }
-    
+
     async handleLogin() {
         if (this.isLoading) return;
-        
-        this.setLoading(true);
+        this.isLoading = true;
         this.hideError();
-        
         try {
             const response = await fetch('/login', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ pin: this.currentPin })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pin: this.rollingBuffer })
             });
-            
             const data = await response.json();
-            
             if (response.ok) {
-                // Success - redirect to app
                 window.location.href = '/app';
             } else {
-                // Show error
                 this.showError(data.error || 'Invalid PIN code');
-                this.clearPin();
+                this.flashRedOrb();
+                this.rollingBuffer = '';
             }
         } catch (error) {
-            console.error('Login error:', error);
             this.showError('Network error. Please try again.');
-            this.clearPin();
+            this.flashRedOrb();
+            this.rollingBuffer = '';
         } finally {
-            this.setLoading(false);
+            this.isLoading = false;
         }
     }
-    
-    setLoading(loading) {
-        this.isLoading = loading;
-        this.loginBtn.disabled = loading || this.currentPin.length !== 6;
-        
-        if (loading) {
-            this.loginBtn.classList.add('loading');
-        } else {
-            this.loginBtn.classList.remove('loading');
-        }
-    }
-    
+
     showError(message) {
         this.errorMessage.textContent = message;
         this.errorMessage.classList.remove('hidden');
     }
-    
     hideError() {
         this.errorMessage.classList.add('hidden');
     }
-    
-    clearPin() {
-        this.currentPin = '';
-        this.pinInput.value = '';
-        this.updatePinDisplay();
-        this.pinInput.focus();
+    // Flash a red orb in the background for error
+    flashRedOrb() {
+        const bokeh = document.querySelector('.bokeh');
+        if (!bokeh) return;
+        // Create a red orb
+        const orb = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        orb.setAttribute('cx', '50%');
+        orb.setAttribute('cy', '50%');
+        orb.setAttribute('r', '40%');
+        orb.setAttribute('fill', '#dc3545');
+        orb.setAttribute('opacity', '0.7');
+        orb.style.transition = 'opacity 0.5s';
+        bokeh.appendChild(orb);
+        setTimeout(() => { orb.setAttribute('opacity', '0'); }, 200);
+        setTimeout(() => { bokeh.removeChild(orb); }, 800);
     }
-    
-    focusPinInput() {
-        // Small delay to ensure the page is fully loaded
-        setTimeout(() => {
-            this.pinInput.focus();
-        }, 100);
-    }
-    
-    async loadLastGeneratedImage() {
-        try {
-            const response = await fetch('/images?limit=1');
-            if (response.ok) {
-                const images = await response.json();
-                if (images.length > 0) {
-                    const lastImage = images[0];
-                    // Use the preview image for background
-                    const imageUrl = `/previews/${lastImage.preview}`;
-                    this.setBackgroundImage(imageUrl);
-                }
-            }
-        } catch (error) {
-            console.log('Could not load last generated image:', error);
-        }
-    }
-    
-    setBackgroundImage(imageUrl) {
-        this.lastImageOverlay.style.backgroundImage = `url(${imageUrl})`;
-        
-        // Start the background effect cycle
-        this.startBackgroundEffect();
-    }
-    
-    startBackgroundEffect() {
-        // Cycle between static and image background
-        let isImageVisible = false;
-        
-        setInterval(() => {
-            if (isImageVisible) {
-                this.lastImageOverlay.classList.remove('active');
-            } else {
-                this.lastImageOverlay.classList.add('active');
-            }
-            isImageVisible = !isImageVisible;
-        }, 8000); // Change every 8 seconds
+    // Animate bokeh background (reuse from app, but static color for login)
+    startBokehBackground() {
+        // Optionally, could randomize colors or animate further
     }
 }
-
-// Initialize login page when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    new LoginPage();
-}); 
+document.addEventListener('DOMContentLoaded', () => { new LoginPage(); }); 
