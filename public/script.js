@@ -1,5 +1,4 @@
 // Global variables
-let isAuthenticated = true;
 let subscriptionData = null;
 let forcePaidRequest = false;
 let allImages = [];
@@ -17,7 +16,6 @@ let hasMoreImagesBefore = false; // Track if there are images before current pag
 let infiniteScrollLoading = document.getElementById('infiniteScrollLoading');
 let visibleItems = new Set(); // Track visible items
 let virtualScrollEnabled = true; // Enable virtual scrolling
-let workspaceTransitioning = false; // Track workspace transitions
 let currentImage = null;
 let currentManualPreviewImage = null;
 
@@ -204,9 +202,7 @@ const RESOLUTIONS = [
     { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920 },
     { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088 }
 ];
-
-// Generate resolution groups from global RESOLUTIONS array
-const resolutionGroups = [
+const RESOLUTION_GROUPS = [
     {
         group: 'Normal',
         badge: 'N',
@@ -303,8 +299,9 @@ const manualBtn = document.getElementById('manualBtn');
 
 const lightboxModal = document.getElementById('lightboxModal');
 const lightboxImage = document.getElementById('lightboxImage');
-const closeLightboxBtn = document.getElementById('closeLightboxBtn');
-const downloadBtn = document.getElementById('downloadBtn');
+const lightboxCloseBtn = document.getElementById('lightboxCloseBtn');
+const lightboxDownloadBtn = document.getElementById('lightboxDownloadBtn');
+const lightboxScrapBtn = document.getElementById('lightboxScrapBtn');
 const generateBtn = document.getElementById('generateBtn');
 const presetSelect = document.getElementById('presetSelect');
 const gallery = document.getElementById('gallery');
@@ -314,7 +311,6 @@ const cacheGallery = document.getElementById('cacheGallery');
 // Pagination elements removed for infinite scroll
 const loadingOverlay = document.getElementById('loadingOverlay');
 const confettiContainer = document.getElementById('confettiContainer');
-const controlsWrapper = document.getElementById('controlsWrapper');
 const lightboxUpscaleBtn = document.getElementById('lightboxUpscaleBtn');
 const lightboxRerollBtn = document.getElementById('lightboxRerollBtn');
 const lightboxRerollEditBtn = document.getElementById('lightboxRerollEditBtn');
@@ -466,7 +462,6 @@ let appendQuality = true;
 const ucPresetsDropdown = document.getElementById('ucPresetsDropdown');
 const ucPresetsDropdownBtn = document.getElementById('ucPresetsDropdownBtn');
 const ucPresetsDropdownMenu = document.getElementById('ucPresetsDropdownMenu');
-// const ucPresetsSelected = document.getElementById('ucPresetsSelected'); // Removed - using UC boxes now
 let selectedUcPreset = 3; // Default to "Heavy"
 
 // Global variables for preset autocomplete
@@ -474,12 +469,6 @@ let presetAutocompleteTimeout = null;
 let currentPresetAutocompleteTarget = null;
 let selectedPresetAutocompleteIndex = -1;
 let presetSearchResults = [];
-
-const RESOLUTION_GROUPS = {
-    'Standard': ['1024x1024', '1152x896', '896x1152', '1216x832', '832x1216', '1344x768', '768x1344', '1536x640', '640x1536'],
-    'Portrait': ['1024x1280', '1024x1536', '1024x1792'],
-    'Landscape': ['1280x1024', '1536x1024', '1792x1024']
-};
 
 function renderGroupedDropdown(menu, groups, selectHandler, closeHandler, selectedVal, renderOptionContent) {
     menu.innerHTML = '';
@@ -700,7 +689,7 @@ function closeCustomPresetDropdown() {
 setupDropdown(customPresetDropdown, customPresetDropdownBtn, customPresetDropdownMenu, renderCustomPresetDropdown, () => selectedPreset);
 
 function renderManualResolutionDropdown(selectedVal) {
-    renderGroupedDropdown(manualResolutionDropdownMenu, resolutionGroups, selectManualResolution, closeManualResolutionDropdown, selectedVal, resolutionOptionRenderer);
+    renderGroupedDropdown(manualResolutionDropdownMenu, RESOLUTION_GROUPS, selectManualResolution, closeManualResolutionDropdown, selectedVal, resolutionOptionRenderer);
 }
 
 async function selectManualResolution(value, group) {
@@ -708,7 +697,7 @@ async function selectManualResolution(value, group) {
     
     // If group is not provided, find it automatically
     if (!group) {
-        for (const g of resolutionGroups) {
+        for (const g of RESOLUTION_GROUPS) {
             const found = g.options.find(o => o.value === value.toLowerCase());
             if (found) {
                 group = g.group;
@@ -738,7 +727,7 @@ async function selectManualResolution(value, group) {
     }
     
     // Update button display
-    const groupObj = resolutionGroups.find(g => g.group === group);
+    const groupObj = RESOLUTION_GROUPS.find(g => g.group === group);
     const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
     if (optObj) {
         manualResolutionSelected.innerHTML = `${optObj.name}${groupObj.badge ? '<span class="custom-dropdown-badge' + (groupObj.free ? ' free-badge' : '') + '">' + groupObj.badge + '</span>' : ''}`;
@@ -3426,11 +3415,6 @@ async function loadScraps() {
 
 // Move image to scraps
 async function moveToScraps(image) {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-
     try {
         const filename = image.filename || image.original || image.upscaled || image.pipeline || image.pipeline_upscaled;
         if (!filename) {
@@ -3470,11 +3454,6 @@ async function moveToScraps(image) {
 
 // Move manual preview image to scraps and advance to next image
 async function moveManualPreviewToScraps() {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-
     if (!currentManualPreviewImage) {
         showError('No image to move to scraps');
         return;
@@ -3557,11 +3536,6 @@ async function moveManualPreviewToScraps() {
 
 // Remove image from scraps
 async function removeFromScraps(image) {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-
     try {
         const filename = image.filename || image.original || image.upscaled || image.pipeline || image.pipeline_upscaled;
         if (!filename) {
@@ -3606,32 +3580,30 @@ document.addEventListener('DOMContentLoaded', async function() {
         galleryRows = calculateGalleryRows();
         imagesPerPage = galleryColumnsInput.value * galleryRows;  
         
-        if (isAuthenticated) {
-            await loadOptions();
-            await loadWorkspaces(); // Load workspace data
-            await loadActiveWorkspaceColor(); // Load workspace color for bokeh
-            await loadBalance();
-            await updateImageGenCounter();
-            await loadAvailablePresets();
-            await loadVibeReferences(); // Load vibe references for immediate use
-            renderManualSamplerDropdown(manualSelectedSampler);
-            selectManualSampler('k_euler_ancestral');
-            renderManualResolutionDropdown(manualSelectedResolution);
-            selectManualResolution('normal_square', 'Normal');
-            renderManualNoiseSchedulerDropdown(manualSelectedNoiseScheduler);
-            selectManualNoiseScheduler('karras');
-            renderManualMaskBiasDropdown(manualSelectedMaskBias);
-            selectManualMaskBias('2');
-            renderManualModelDropdown(manualSelectedModel);
-            selectManualModel('v4_5', '');
-            
-            // Initialize new dropdowns
-            renderDatasetDropdown();
-            updateDatasetDisplay();
-            renderDatasetBiasControls();
-            renderUcPresetsDropdown();
-            selectUcPreset(0);
-        }
+        await loadOptions();
+        await loadWorkspaces(); // Load workspace data
+        await loadActiveWorkspaceColor(); // Load workspace color for bokeh
+        await loadBalance();
+        await updateImageGenCounter();
+        await loadAvailablePresets();
+        await loadVibeReferences(); // Load vibe references for immediate use
+        renderManualSamplerDropdown(manualSelectedSampler);
+        selectManualSampler('k_euler_ancestral');
+        renderManualResolutionDropdown(manualSelectedResolution);
+        selectManualResolution('normal_square', 'Normal');
+        renderManualNoiseSchedulerDropdown(manualSelectedNoiseScheduler);
+        selectManualNoiseScheduler('karras');
+        renderManualMaskBiasDropdown(manualSelectedMaskBias);
+        selectManualMaskBias('2');
+        renderManualModelDropdown(manualSelectedModel);
+        selectManualModel('v4_5', '');
+
+        // Initialize new dropdowns
+        renderDatasetDropdown();
+        updateDatasetDisplay();
+        renderDatasetBiasControls();
+        renderUcPresetsDropdown();
+        selectUcPreset(0);
 
         await loadGallery();
         updateGenerateButton();
@@ -4251,8 +4223,8 @@ function setupEventListeners() {
     // The close button is now created dynamically in the character detail content
 
     // Lightbox events
-    if (closeLightboxBtn) {
-        closeLightboxBtn.addEventListener('click', hideLightbox);
+    if (lightboxCloseBtn) {
+        lightboxCloseBtn.addEventListener('click', hideLightbox);
     }
     
     // Metadata dialog events
@@ -5322,11 +5294,6 @@ function createGalleryItem(image, index) {
 
 
 async function rerollImage(image) {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-
     try {
         // Determine which filename to use for metadata
         // For gallery items, determine the filename based on available properties
@@ -5769,11 +5736,6 @@ async function rerollImage(image) {
 
 // Reroll an image with editable settings
 async function rerollImageWithEdit(image) {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-
     try {
         // Determine filename for metadata
         let filenameForMetadata = image.filename || image.pipeline_upscaled || image.pipeline || image.upscaled || image.original;
@@ -5905,11 +5867,6 @@ async function rerollImageWithEdit(image) {
 
 // Upscale an image
 async function upscaleImage(image) {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-
     // Show loading overlay (same as generation)
     showManualLoading(true, 'Upscaling image...');
 
@@ -7001,11 +6958,6 @@ async function navigateManualPreview(event) {
 
 async function handleManualGeneration(e) {
     e.preventDefault();
-
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
 
     const isPipelineEdit = window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit;
     const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
@@ -10232,11 +10184,6 @@ function updateGenerateButton() {
 
 // Generate image
 async function generateImage() {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-
     const selectedValue = presetSelect.value;
     if (!selectedValue) {
         showError('Please select a preset or pipeline');
@@ -10565,8 +10512,7 @@ function setupPromptPanel(metadata) {
     const promptBtn = document.getElementById('promptBtn');
     const promptPanel = document.getElementById('promptPanel');
     const allPromptsContent = document.getElementById('allPromptsContent');
-    const closeLightboxBtn = document.getElementById('closeLightboxBtn');
-    
+
     // Clear previous content
     if (allPromptsContent) allPromptsContent.innerHTML = '';
     
@@ -10586,8 +10532,8 @@ function setupPromptPanel(metadata) {
                 }, 300);
                 
                 // Move close button back to original position
-                if (closeLightboxBtn) {
-                    closeLightboxBtn.classList.remove('prompt-panel-open');
+                if (lightboxCloseBtn) {
+                    lightboxCloseBtn.classList.remove('prompt-panel-open');
                 }
             } else {
                 // Populate panel content
@@ -10625,8 +10571,8 @@ function setupPromptPanel(metadata) {
                 }, 10);
                 
                 // Move close button to accommodate panel
-                if (closeLightboxBtn) {
-                    closeLightboxBtn.classList.add('prompt-panel-open');
+                if (lightboxCloseBtn) {
+                    lightboxCloseBtn.classList.add('prompt-panel-open');
                 }
             }
         };
@@ -10822,9 +10768,8 @@ function hideLightbox() {
     }
     
     // Reset close button position
-    const closeLightboxBtn = document.getElementById('closeLightboxBtn');
-    if (closeLightboxBtn) {
-        closeLightboxBtn.classList.remove('prompt-panel-open');
+    if (lightboxCloseBtn) {
+        lightboxCloseBtn.classList.remove('prompt-panel-open');
     }
     
     // Hide dialog if open
@@ -11299,11 +11244,6 @@ function downloadImage(image) {
 
 // Delete image
 async function deleteImage(image) {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-    
     // Show confirmation dialog
     const confirmed = confirm('Are you sure you want to delete this image? This will permanently delete both the original and upscaled versions.');
     
@@ -11363,11 +11303,6 @@ async function deleteImage(image) {
 }
 
 async function deleteManualPreviewImage() {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-    
     if (!currentManualPreviewImage) {
         showError('No image to delete');
         return;
@@ -11587,25 +11522,19 @@ function showError(message) {
 
 // Update lightbox controls based on image type
 function updateLightboxControls(image) {
-    const downloadBtn = document.getElementById('downloadBtn');
-    const rerollBtn = document.getElementById('lightboxRerollBtn');
-    const rerollEditBtn = document.getElementById('lightboxRerollEditBtn');
-    const variationBtn = document.getElementById('lightboxVariationBtn');
-    const upscaleBtn = document.getElementById('lightboxUpscaleBtn');
-    const scrapBtn = document.getElementById('lightboxScrapBtn');
     const deleteBtn = document.getElementById('lightboxDeleteBtn');
     const toggleBaseBtn = document.getElementById('toggleBaseImageBtn');
     
     // Handle mask images (show only download button)
     if (image.isMask) {
-        downloadBtn.style.display = 'inline-block';
-        rerollBtn.style.display = 'none';
-        rerollEditBtn.style.display = 'none';
-        upscaleBtn.style.display = 'none';
+        lightboxDownloadBtn.style.display = 'inline-block';
+        lightboxRerollBtn.style.display = 'none';
+        lightboxRerollEditBtn.style.display = 'none';
+        lightboxUpscaleBtn.style.display = 'none';
         deleteBtn.style.display = 'none';
         
         // Set up download for mask
-        downloadBtn.onclick = (e) => {
+        lightboxDownloadBtn.onclick = (e) => {
             e.preventDefault();
             downloadImage(image);
         };
@@ -11613,44 +11542,30 @@ function updateLightboxControls(image) {
     }
     
     // Always show download button for regular images
-    downloadBtn.style.display = 'inline-block';
+    lightboxDownloadBtn.style.display = 'inline-block';
     
     // Show reroll button for all images (both original and upscaled)
-    rerollBtn.style.display = 'inline-block';
-    
-    // Show variation button for all images (both original and upscaled)
-    variationBtn.style.display = 'inline-block';
+    lightboxRerollBtn.style.display = 'inline-block';
     
     // Show combined edit button for all images (both original and upscaled)
-    rerollEditBtn.style.display = 'inline-block';
+    lightboxRerollEditBtn.style.display = 'inline-block';
     
     // Show upscale button only for non-upscaled images
     if (image.upscaled || image.pipeline_upscaled) {
-        upscaleBtn.style.display = 'none';
+        lightboxUpscaleBtn.style.display = 'none';
     } else {
-        upscaleBtn.style.display = 'inline-block';
+        lightboxUpscaleBtn.style.display = 'inline-block';
     }
     
     // Show scrap button only for logged-in users
-    if (isAuthenticated) {
-        scrapBtn.style.display = 'inline-block';
-        // Update scrap button based on current view
-        if (isViewingScraps) {
-            scrapBtn.innerHTML = '<i class="nai-undo"></i>';
-            scrapBtn.title = 'Remove from scraps';
-        } else {
-            scrapBtn.innerHTML = '<i class="nai-image-tool-sketch"></i>';
-            scrapBtn.title = 'Move to scraps';
-        }
+    lightboxScrapBtn.style.display = 'inline-block';
+    // Update scrap button based on current view
+    if (isViewingScraps) {
+        lightboxScrapBtn.innerHTML = '<i class="nai-undo"></i>';
+        lightboxScrapBtn.title = 'Remove from scraps';
     } else {
-        scrapBtn.style.display = 'none';
-    }
-    
-    // Show delete button only for logged-in users
-    if (isAuthenticated) {
-        deleteBtn.style.display = 'inline-block';
-    } else {
-        deleteBtn.style.display = 'none';
+        lightboxScrapBtn.innerHTML = '<i class="nai-image-tool-sketch"></i>';
+        lightboxScrapBtn.title = 'Move to scraps';
     }
     
     // Show toggle base image button for variations with base images
@@ -11676,15 +11591,14 @@ function updateLightboxControls(image) {
     };
     
     // Set up event listeners
-    downloadBtn.onclick = (e) => {
+    lightboxDownloadBtn.onclick = (e) => {
         e.preventDefault();
         downloadImage(imageObj);
     };
-    rerollBtn.onclick = () => rerollImage(imageObj); // Direct reroll
-    rerollEditBtn.onclick = () => rerollImageWithEdit(imageObj); // Combined edit (reroll/variation)
-    variationBtn.onclick = () => variationImage(imageObj); // Direct variation
-    upscaleBtn.onclick = () => upscaleImage(imageObj);
-    scrapBtn.onclick = () => {
+    lightboxRerollBtn.onclick = () => rerollImage(imageObj); // Direct reroll
+    lightboxRerollEditBtn.onclick = () => rerollImageWithEdit(imageObj); // Combined edit (reroll/variation)
+    lightboxUpscaleBtn.onclick = () => upscaleImage(imageObj);
+    lightboxScrapBtn.onclick = () => {
         if (isViewingScraps) {
             removeFromScraps(imageObj);
         } else {
@@ -11701,11 +11615,6 @@ function updateLightboxControls(image) {
 
 // Create variation from image
 async function variationImage(imageObj) {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-
     try {
         // Determine filename for metadata
         let filenameForMetadata = imageObj.filename || imageObj.pipeline_upscaled || imageObj.pipeline || imageObj.upscaled || imageObj.original;
@@ -11891,11 +11800,6 @@ function handleResize() {
 
 // Show mask preview for pipelines
 async function showMaskPreview() {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-
     const selectedValue = presetSelect.value;
     
     if (!selectedValue) {
@@ -12487,11 +12391,6 @@ function createToastContainer() {
 
 // Upload multiple images to server
 async function uploadImages(files) {
-    if (!isAuthenticated) {
-        showGlassToast('error', 'Authentication Required', 'Please login first');
-        return;
-    }
-    
     if (files.length === 0) return;
     
     const toastId = showGlassToast('info', 'Uploading Images', `Starting upload of ${files.length} images...`, true);
@@ -13139,11 +13038,6 @@ function clearSelection() {
 }
 
 async function handleBulkMoveToWorkspace() {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-    
     if (selectedImages.size === 0) {
         showError('No images selected');
         return;
@@ -13266,11 +13160,6 @@ async function moveBulkImagesToWorkspace(workspaceId) {
 }
 
 async function handleBulkDelete() {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-    
     if (selectedImages.size === 0) {
         showError('No images selected');
         return;
@@ -13331,11 +13220,6 @@ async function handleBulkDelete() {
 }
 
 async function handleBulkSequenzia() {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-    
     if (selectedImages.size === 0) {
         showError('No images selected');
         return;
@@ -13396,11 +13280,6 @@ async function handleBulkSequenzia() {
 }
 
 async function handleBulkMoveToScraps() {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-    
     if (selectedImages.size === 0) {
         showError('No images selected');
         return;
@@ -13475,11 +13354,6 @@ async function handleBulkMoveToScraps() {
 }
 
 async function handleBulkChangePreset() {
-    if (!isAuthenticated) {
-        showError('Please login first');
-        return;
-    }
-    
     if (selectedImages.size === 0) {
         showError('No images selected');
         return;
