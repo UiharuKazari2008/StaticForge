@@ -1,8 +1,8 @@
 const WINDOW_5_MIN = 5 * 60 * 1000;
 const WINDOW_15_MIN = 15 * 60 * 1000;
-const MIN_INTERVAL = 10 * 1000;
-const MAX_5MIN = 20;
-const MAX_15MIN = 50;
+const MIN_INTERVAL = 15 * 1000;
+const MAX_5MIN = 10;
+const MAX_15MIN = 20;
 
 // Store timestamps of requests
 let requestTimestamps = [];

@@ -5070,6 +5070,10 @@ app.get('/image-counter', authMiddleware, (req, res) => {
     res.json({ count: imageCounter.getCount() });
 });
 
+app.get('/ping', authMiddleware, (req, res) => {
+    res.json({ success: true });
+});
+
 // Add /queue-status endpoint
 app.get('/queue-status', authMiddleware, (req, res) => {
     res.json(getQueueStatus());

@@ -1,3 +1,148 @@
+// DOM elements
+const manualModal = document.getElementById('manualModal');
+const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
+const manualForm = document.getElementById('manualForm');
+const closeManualBtn = document.getElementById('closeManualBtn');
+const manualPreviewCloseBtn = document.getElementById('manualPreviewCloseBtn');
+const manualBtn = document.getElementById('manualBtn');
+const lightboxModal = document.getElementById('lightboxModal');
+const lightboxImage = document.getElementById('lightboxImage');
+const lightboxCloseBtn = document.getElementById('lightboxCloseBtn');
+const lightboxDownloadBtn = document.getElementById('lightboxDownloadBtn');
+const lightboxScrapBtn = document.getElementById('lightboxScrapBtn');
+const generateBtn = document.getElementById('generateBtn');
+const presetSelect = document.getElementById('presetSelect');
+const gallery = document.getElementById('gallery');
+const galleryColumnsInput = document.getElementById('galleryColumnsInput');
+const bulkSelectAllBtn = document.getElementById('bulkSelectAllBtn');
+const cacheGallery = document.getElementById('cacheGallery');
+const loadingOverlay = document.getElementById('loadingOverlay');
+const confettiContainer = document.getElementById('confettiContainer');
+const lightboxUpscaleBtn = document.getElementById('lightboxUpscaleBtn');
+const lightboxRerollBtn = document.getElementById('lightboxRerollBtn');
+const lightboxRerollEditBtn = document.getElementById('lightboxRerollEditBtn');
+const manualModel = document.getElementById('manualModel');
+const manualPrompt = document.getElementById('manualPrompt');
+const manualUc = document.getElementById('manualUc');
+const manualResolution = document.getElementById('manualResolution');
+const manualSteps = document.getElementById('manualSteps');
+const manualGuidance = document.getElementById('manualGuidance');
+const manualSeed = document.getElementById('manualSeed');
+const manualSampler = document.getElementById('manualSampler');
+const manualRescale = document.getElementById('manualRescale');
+const manualNoiseScheduler = document.getElementById('manualNoiseScheduler');
+const manualPresetName = document.getElementById('manualPresetName');
+const manualUpscale = document.getElementById('manualUpscale');
+const manualSaveBtn = document.getElementById('manualSaveBtn');
+const clearSeedBtn = document.getElementById('clearSeedBtn');
+const layer1SeedToggle = document.getElementById('layer1SeedToggle');
+const manualNoiseSchedulerDropdown = document.getElementById('manualNoiseSchedulerDropdown');
+const manualNoiseSchedulerDropdownBtn = document.getElementById('manualNoiseSchedulerDropdownBtn');
+const manualNoiseSchedulerDropdownMenu = document.getElementById('manualNoiseSchedulerDropdownMenu');
+const manualNoiseSchedulerSelected = document.getElementById('manualNoiseSchedulerSelected');
+const manualNoiseSchedulerHidden = document.getElementById('manualNoiseScheduler');
+let manualSelectedNoiseScheduler = '';
+const imageBiasDropdown = document.getElementById('imageBiasDropdown');
+const imageBiasDropdownBtn = document.getElementById('imageBiasDropdownBtn');
+const imageBiasDropdownMenu = document.getElementById('imageBiasDropdownMenu');
+const imageBiasSelected = document.getElementById('imageBiasSelected');
+const imageBiasHidden = document.getElementById('imageBias');
+const imageBiasGroup = document.getElementById('imageBiasGroup');
+let uploadedImageData = null;
+let originalImageData = null;
+const variationImage = document.getElementById('manualVariationImage');
+const manualResolutionDropdown = document.getElementById('manualResolutionDropdown');
+const manualResolutionDropdownBtn = document.getElementById('manualResolutionDropdownBtn');
+const manualResolutionDropdownMenu = document.getElementById('manualResolutionDropdownMenu');
+const manualResolutionSelected = document.getElementById('manualResolutionSelected');
+const manualResolutionHidden = document.getElementById('manualResolution');
+const manualCustomResolution = document.getElementById('manualCustomResolution');
+const manualCustomResolutionBtn = document.getElementById('manualCustomResolutionBtn');
+const manualWidth = document.getElementById('manualWidth');
+const manualHeight = document.getElementById('manualHeight');
+let manualSelectedResolution = '';
+let manualSelectedGroup = '';
+const customPresetDropdown = document.getElementById('customPresetDropdown');
+const customPresetDropdownBtn = document.getElementById('customPresetDropdownBtn');
+const customPresetDropdownMenu = document.getElementById('customPresetDropdownMenu');
+const customPresetSelected = document.getElementById('customPresetSelected');
+let selectedPreset = '';
+const manualSamplerDropdown = document.getElementById('manualSamplerDropdown');
+const manualSamplerDropdownBtn = document.getElementById('manualSamplerDropdownBtn');
+const manualSamplerDropdownMenu = document.getElementById('manualSamplerDropdownMenu');
+const manualSamplerSelected = document.getElementById('manualSamplerSelected');
+const manualSamplerHidden = document.getElementById('manualSampler');
+let manualSelectedSampler = '';
+const manualModelDropdown = document.getElementById('manualModelDropdown');
+const manualModelDropdownBtn = document.getElementById('manualModelDropdownBtn');
+const manualModelDropdownMenu = document.getElementById('manualModelDropdownMenu');
+const manualModelSelected = document.getElementById('manualModelSelected');
+const manualModelHidden = document.getElementById('manualModel');
+const customWidth = document.getElementById('manualCustomWidth');
+const customHeight = document.getElementById('manualCustomHeight');
+let manualSelectedModel = '';
+const characterAutocompleteOverlay = document.getElementById('characterAutocompleteOverlay');
+const characterAutocompleteList = document.querySelector('.character-autocomplete-list');
+const presetAutocompleteOverlay = document.getElementById('presetAutocompleteOverlay');
+const presetAutocompleteList = document.querySelector('.preset-autocomplete-list');
+const metadataDialog = document.getElementById('metadataDialog');
+const closeMetadataDialog = document.getElementById('closeMetadataDialog');
+const dialogPromptBtn = document.getElementById('dialogPromptBtn');
+const dialogUcBtn = document.getElementById('dialogUcBtn');
+const dialogPromptExpanded = document.getElementById('dialogPromptExpanded');
+const dialogUcExpanded = document.getElementById('dialogUcExpanded');
+const dialogPromptContent = document.getElementById('dialogPromptContent');
+const dialogUcContent = document.getElementById('dialogUcContent');
+const deleteImageBaseBtn = document.getElementById('deleteImageBaseBtn');
+const transformationDropdown = document.getElementById('transformationDropdown');
+const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
+const transformationDropdownMenu = document.getElementById('transformationDropdownMenu');
+const manualPreviewDownloadBtn = document.getElementById('manualPreviewDownloadBtn');
+const manualPreviewUpscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
+const manualPreviewVariationBtn = document.getElementById('manualPreviewVariationBtn');
+const manualPreviewSeedBtn = document.getElementById('manualPreviewSeedBtn');
+const manualPreviewDeleteBtn = document.getElementById('manualPreviewDeleteBtn');
+const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
+const manualStrengthValue = document.getElementById('manualStrengthValue');
+const manualNoiseValue = document.getElementById('manualNoiseValue');
+const manualPresetToggleBtn = document.getElementById('manualPresetToggleBtn');
+const manualPresetToggleText = document.getElementById('manualPresetToggleText');
+const manualPresetToggleIcon = document.getElementById('manualPresetToggleIcon');
+const manualPresetGroup = document.getElementById('manualPresetGroup');
+const manualPreviewLoadBtn = document.getElementById('manualPreviewLoadBtn');
+const manualPreviewScrapBtn = document.getElementById('manualPreviewScrapBtn');
+let characterAutocompleteTimeout = null;
+let currentCharacterAutocompleteTarget = null;
+let characterSearchResults = [];
+const datasetDropdown = document.getElementById('datasetDropdown');
+const datasetDropdownBtn = document.getElementById('datasetDropdownBtn');
+const datasetDropdownMenu = document.getElementById('datasetDropdownMenu');
+const datasetSelected = document.getElementById('datasetSelected');
+const datasetIcon = document.getElementById('datasetIcon');
+let selectedDatasets = [];  
+let datasetBias = {
+    anime: 1.0,
+    furry: 1.0,
+    backgrounds: 1.0
+};
+const qualityToggleBtn = document.getElementById('qualityToggleBtn');
+let appendQuality = true;
+const ucPresetsDropdown = document.getElementById('ucPresetsDropdown');
+const ucPresetsDropdownBtn = document.getElementById('ucPresetsDropdownBtn');
+const ucPresetsDropdownMenu = document.getElementById('ucPresetsDropdownMenu');
+let selectedUcPreset = 3; 
+let presetAutocompleteTimeout = null;
+let currentPresetAutocompleteTarget = null;
+let selectedPresetAutocompleteIndex = -1;
+let presetSearchResults = [];
+const logoutButton = document.getElementById('logoutButton');
+let infiniteScrollLoading = document.getElementById('infiniteScrollLoading');
+const addCharacterBtn = document.getElementById('addCharacterBtn');
+const characterPromptsContainer = document.getElementById('characterPromptsContainer');
+const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
+const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
+const vibeReferencesSection = document.getElementById('vibeReferencesSection');
+
 // Global variables
 let subscriptionData = null;
 let forcePaidRequest = false;
@@ -13,7 +158,6 @@ let imagesPerPage =12
 let isLoadingMore = false;
 let hasMoreImages = true;
 let hasMoreImagesBefore = false; // Track if there are images before current page
-let infiniteScrollLoading = document.getElementById('infiniteScrollLoading');
 let visibleItems = new Set(); // Track visible items
 let virtualScrollEnabled = true; // Enable virtual scrolling
 let currentImage = null;
@@ -55,7 +199,6 @@ function updateV3ModelVisibility() {
     const isV3Selected = isV3Model(getCurrentSelectedModel());
 
     // Hide/show dataset controls for V3 models
-    const datasetDropdown = document.getElementById('datasetDropdown');
     const datasetBiasControls = document.querySelector('#manualModal .prompt-tabs .tab-buttons button[data-tab="settings"]')
 
     if (datasetDropdown) {
@@ -66,9 +209,6 @@ function updateV3ModelVisibility() {
     }
 
     // Hide/show character prompts for V3 models
-    const addCharacterBtn = document.getElementById('addCharacterBtn');
-    const characterPromptsContainer = document.getElementById('characterPromptsContainer');
-
     if (addCharacterBtn) {
         addCharacterBtn.style.display = isV3Selected ? 'none' : '';
     }
@@ -168,7 +308,7 @@ async function loadPresetIntoForm(presetName) {
         const presetData = await response.json();
         await loadIntoManualForm(presetData);
 
-        showSuccess(`Preset "${presetName}" loaded successfully!`);
+        showGlassToast('success', null, `${presetName} Loaded`);
     } catch (error) {
         console.error('Load preset error:', error);
         showError(`Failed to load preset "${presetName}": ${error.message}`);
@@ -253,18 +393,17 @@ const modelGroups = [
     {
         group: 'Current Model',
         options: [
-            { value: 'v4_5', name: 'v4.5 Full', display: 'v4.5 Full' },
-            { value: 'v4_5_cur', name: 'v4.5 Curated', display: 'v4.5 Curated' },
-            { value: 'v4', name: 'v4 Full', display: 'v4 Full' },
-            { value: 'v4_cur', name: 'v4 Curated', display: 'v4 Curated' }
+            { value: 'v4_5', name: 'NovelAI v4.5', display: 'v4.5' },
+            { value: 'v4_5_cur', name: 'NovelAI v4.5 Curated', display: 'v4.5', badge: 'C', badge_class: 'curated-badge' },
+            { value: 'v4', name: 'NovelAI v4', display: 'v4' },
+            { value: 'v4_cur', name: 'NovelAI v4 Curated', display: 'v4', badge: 'C', badge_class: 'curated-badge' }
         ]
     },
     {
         group: 'Legacy Model',
-        badge: 'Legacy',
         options: [
-            { value: 'v3', name: 'v3 Full', display: 'v3 Full' },
-            { value: 'v3_furry', name: 'v3 Furry', display: 'v3 Furry' }
+            { value: 'v3', name: 'NovelAI v3 Anime', display: 'v3', badge: 'L', badge_class: 'legacy-badge' },
+            { value: 'v3_furry', name: 'NovelAI v3 Furry', display: 'v3', badge: 'LF', badge_class: 'legacy-furry-badge' }
         ]
     }
 ];
@@ -276,7 +415,7 @@ const modelKeys = {
     "nai-diffusion-4-5-full": { type: "Anime", version: "v4.5" },
     "nai-diffusion-4-5-curated": { type: "Anime", version: "v4.5C" },
     "nai-diffusion-furry-3": { type: "Furry", version: "v3" }
-  }
+}
 
 // Helper functions for sampler mapping
 function getSamplerMeta(meta) {
@@ -287,242 +426,6 @@ function getSamplerMeta(meta) {
 function getNoiseMeta(meta) {
   return NOISE_MAP.find(n => n.meta.toLowerCase() === meta.toLowerCase());
 }
-
-// DOM elements
-const logoutButton = document.getElementById('logoutButton');
-
-const manualModal = document.getElementById('manualModal');
-const manualForm = document.getElementById('manualForm');
-const closeManualBtn = document.getElementById('closeManualBtn');
-const manualPreviewCloseBtn = document.getElementById('manualPreviewCloseBtn');
-const manualBtn = document.getElementById('manualBtn');
-
-const lightboxModal = document.getElementById('lightboxModal');
-const lightboxImage = document.getElementById('lightboxImage');
-const lightboxCloseBtn = document.getElementById('lightboxCloseBtn');
-const lightboxDownloadBtn = document.getElementById('lightboxDownloadBtn');
-const lightboxScrapBtn = document.getElementById('lightboxScrapBtn');
-const generateBtn = document.getElementById('generateBtn');
-const presetSelect = document.getElementById('presetSelect');
-const gallery = document.getElementById('gallery');
-const galleryColumnsInput = document.getElementById('galleryColumnsInput');
-const bulkSelectAllBtn = document.getElementById('bulkSelectAllBtn');
-const cacheGallery = document.getElementById('cacheGallery');
-// Pagination elements removed for infinite scroll
-const loadingOverlay = document.getElementById('loadingOverlay');
-const confettiContainer = document.getElementById('confettiContainer');
-const lightboxUpscaleBtn = document.getElementById('lightboxUpscaleBtn');
-const lightboxRerollBtn = document.getElementById('lightboxRerollBtn');
-const lightboxRerollEditBtn = document.getElementById('lightboxRerollEditBtn');
-
-// Manual form elements
-const manualModel = document.getElementById('manualModel');
-const manualPrompt = document.getElementById('manualPrompt');
-const manualUc = document.getElementById('manualUc');
-const manualResolution = document.getElementById('manualResolution');
-const manualSteps = document.getElementById('manualSteps');
-const manualGuidance = document.getElementById('manualGuidance');
-const manualSeed = document.getElementById('manualSeed');
-const manualSampler = document.getElementById('manualSampler');
-const manualRescale = document.getElementById('manualRescale');
-const manualNoiseScheduler = document.getElementById('manualNoiseScheduler');
-const manualPresetName = document.getElementById('manualPresetName');
-const manualUpscale = document.getElementById('manualUpscale');
-const manualSaveBtn = document.getElementById('manualSaveBtn');
-const clearSeedBtn = document.getElementById('clearSeedBtn');
-const layer1SeedToggle = document.getElementById('layer1SeedToggle');
-const manualNoiseSchedulerDropdown = document.getElementById('manualNoiseSchedulerDropdown');
-const manualNoiseSchedulerDropdownBtn = document.getElementById('manualNoiseSchedulerDropdownBtn');
-const manualNoiseSchedulerDropdownMenu = document.getElementById('manualNoiseSchedulerDropdownMenu');
-const manualNoiseSchedulerSelected = document.getElementById('manualNoiseSchedulerSelected');
-const manualNoiseSchedulerHidden = document.getElementById('manualNoiseScheduler');
-let manualSelectedNoiseScheduler = '';
-
-// Image Bias Dropdown Elements
-const imageBiasDropdown = document.getElementById('imageBiasDropdown');
-const imageBiasDropdownBtn = document.getElementById('imageBiasDropdownBtn');
-const imageBiasDropdownMenu = document.getElementById('imageBiasDropdownMenu');
-const imageBiasSelected = document.getElementById('imageBiasSelected');
-const imageBiasHidden = document.getElementById('imageBias');
-const imageBiasGroup = document.getElementById('imageBiasGroup');
-
-// Global variables for image handling
-let uploadedImageData = null;
-let originalImageData = null;
-const manualResolutionDropdown = document.getElementById('manualResolutionDropdown');
-const manualResolutionDropdownBtn = document.getElementById('manualResolutionDropdownBtn');
-const manualResolutionDropdownMenu = document.getElementById('manualResolutionDropdownMenu');
-const manualResolutionSelected = document.getElementById('manualResolutionSelected');
-const manualResolutionHidden = document.getElementById('manualResolution');
-const manualCustomResolution = document.getElementById('manualCustomResolution');
-const manualCustomResolutionBtn = document.getElementById('manualCustomResolutionBtn');
-const manualWidth = document.getElementById('manualWidth');
-const manualHeight = document.getElementById('manualHeight');
-let manualSelectedResolution = '';
-let manualSelectedGroup = '';
-const customPresetDropdown = document.getElementById('customPresetDropdown');
-const customPresetDropdownBtn = document.getElementById('customPresetDropdownBtn');
-const customPresetDropdownMenu = document.getElementById('customPresetDropdownMenu');
-const customPresetSelected = document.getElementById('customPresetSelected');
-let selectedPreset = '';
-const manualSamplerDropdown = document.getElementById('manualSamplerDropdown');
-const manualSamplerDropdownBtn = document.getElementById('manualSamplerDropdownBtn');
-const manualSamplerDropdownMenu = document.getElementById('manualSamplerDropdownMenu');
-const manualSamplerSelected = document.getElementById('manualSamplerSelected');
-const manualSamplerHidden = document.getElementById('manualSampler');
-let manualSelectedSampler = '';
-const manualModelDropdown = document.getElementById('manualModelDropdown');
-const manualModelDropdownBtn = document.getElementById('manualModelDropdownBtn');
-const manualModelDropdownMenu = document.getElementById('manualModelDropdownMenu');
-const manualModelSelected = document.getElementById('manualModelSelected');
-const manualModelHidden = document.getElementById('manualModel');
-let manualSelectedModel = '';
-
-// Character autocomplete elements
-const characterAutocompleteOverlay = document.getElementById('characterAutocompleteOverlay');
-const characterAutocompleteList = document.querySelector('.character-autocomplete-list');
-
-// Preset autocomplete elements
-const presetAutocompleteOverlay = document.getElementById('presetAutocompleteOverlay');
-const presetAutocompleteList = document.querySelector('.preset-autocomplete-list');
-const metadataDialog = document.getElementById('metadataDialog');
-const closeMetadataDialog = document.getElementById('closeMetadataDialog');
-const dialogPromptBtn = document.getElementById('dialogPromptBtn');
-const dialogUcBtn = document.getElementById('dialogUcBtn');
-const dialogPromptExpanded = document.getElementById('dialogPromptExpanded');
-const dialogUcExpanded = document.getElementById('dialogUcExpanded');
-const dialogPromptContent = document.getElementById('dialogPromptContent');
-const dialogUcContent = document.getElementById('dialogUcContent');
-
-const inpaintBtn = document.getElementById('inpaintBtn');
-const deleteImageBaseBtn = document.getElementById('deleteImageBaseBtn');
-const transformationDropdown = document.getElementById('transformationDropdown');
-const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
-const transformationDropdownMenu = document.getElementById('transformationDropdownMenu');
-
-
-const manualPreviewDownloadBtn = document.getElementById('manualPreviewDownloadBtn');
-const manualPreviewUpscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
-const manualPreviewVariationBtn = document.getElementById('manualPreviewVariationBtn');
-const manualPreviewSeedBtn = document.getElementById('manualPreviewSeedBtn');
-const manualPreviewDeleteBtn = document.getElementById('manualPreviewDeleteBtn');
-const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
-const manualStrengthValue = document.getElementById('manualStrengthValue');
-const manualNoiseValue = document.getElementById('manualNoiseValue');
-
-const manualPresetToggleBtn = document.getElementById('manualPresetToggleBtn');
-const manualPresetToggleText = document.getElementById('manualPresetToggleText');
-const manualPresetToggleIcon = document.getElementById('manualPresetToggleIcon');
-const manualPresetGroup = document.getElementById('manualPresetGroup');
-
-
-const manualPreviewLoadBtn = document.getElementById('manualPreviewLoadBtn');
-const manualPreviewScrapBtn = document.getElementById('manualPreviewScrapBtn');
-
-// Global variables for character autocomplete
-let characterAutocompleteTimeout = null;
-let currentCharacterAutocompleteTarget = null;
-
-// Global variables for character autocomplete
-let characterSearchResults = [];
-
-// Dataset Dropdown Elements
-const datasetDropdown = document.getElementById('datasetDropdown');
-const datasetDropdownBtn = document.getElementById('datasetDropdownBtn');
-const datasetDropdownMenu = document.getElementById('datasetDropdownMenu');
-const datasetSelected = document.getElementById('datasetSelected');
-const datasetIcon = document.getElementById('datasetIcon');
-let selectedDatasets = []; // Default to anime enabled
-
-// Dataset Bias Variables
-let datasetBias = {
-    anime: 1.0,
-    furry: 1.0,
-    backgrounds: 1.0
-};
-
-// Quality Toggle Element
-const qualityToggleBtn = document.getElementById('qualityToggleBtn');
-let appendQuality = true;
-
-// UC Presets Dropdown Elements
-const ucPresetsDropdown = document.getElementById('ucPresetsDropdown');
-const ucPresetsDropdownBtn = document.getElementById('ucPresetsDropdownBtn');
-const ucPresetsDropdownMenu = document.getElementById('ucPresetsDropdownMenu');
-let selectedUcPreset = 3; // Default to "Heavy"
-
-// Global variables for preset autocomplete
-let presetAutocompleteTimeout = null;
-let currentPresetAutocompleteTarget = null;
-let selectedPresetAutocompleteIndex = -1;
-let presetSearchResults = [];
-
-function renderGroupedDropdown(menu, groups, selectHandler, closeHandler, selectedVal, renderOptionContent) {
-    menu.innerHTML = '';
-    groups.forEach(group => {
-        const groupHeader = document.createElement('div');
-        groupHeader.className = 'custom-dropdown-group';
-        groupHeader.textContent = group.group;
-        menu.appendChild(groupHeader);
-        group.options.forEach(opt => {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option' + (selectedVal === opt.value ? ' selected' : '');
-            option.tabIndex = 0;
-            option.dataset.value = opt.value;
-            option.dataset.group = group.group;
-            option.innerHTML = renderOptionContent(opt, group);
-            const action = () => {
-                selectHandler(opt.value, group.group);
-                closeHandler();
-            };
-            option.addEventListener('click', action);
-            option.addEventListener('keydown', e => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    action();
-                }
-            });
-            menu.appendChild(option);
-        });
-    });
-};
-
-function openDropdown(menu, button) {
-    menu.style.display = 'block';
-    if (button) button.classList.add('active');
-}
-
-function closeDropdown(menu, button) {
-    menu.style.display = 'none';
-    if (button) button.classList.remove('active');
-}
-
-function toggleDropdown(menu, button) {
-    if (menu.style.display === 'block') {
-        closeDropdown(menu, button);
-    } else {
-        openDropdown(menu, button);
-    }
-}
-
-function setupDropdown(container, button, menu, render, getSelectedValue) {
-    if (!container || !button || !menu) return;
-    button.addEventListener('click', async e => {
-        e.stopPropagation();
-        if (menu.style.display === 'block') {
-            closeDropdown(menu, button);
-        } else {
-            await render(getSelectedValue());
-            openDropdown(menu, button);
-        }
-    });
-
-    document.addEventListener('click', e => {
-        if (!container.contains(e.target)) {
-            closeDropdown(menu, button);
-        }
-    });
-}
-
 
 // Custom Preset Dropdown Functions
 async function renderCustomPresetDropdown(selectedVal) {
@@ -655,8 +558,7 @@ function selectCustomPreset(value) {
     }
 
     // Sync with hidden select for compatibility
-    const hiddenSelect = document.getElementById('presetSelect');
-    if (hiddenSelect) hiddenSelect.value = value;
+    presetSelect.value = value;
 
     // Trigger any listeners (e.g., updateGenerateButton)
     if (typeof updateGenerateButton === 'function') updateGenerateButton();
@@ -869,8 +771,6 @@ async function loadIntoManualForm(source, image = null) {
 
         // Handle custom dimensions after resolution is set
         if (data.width && data.height && resolutionToSet === 'custom') {
-            const customWidth = document.getElementById('manualCustomWidth');
-            const customHeight = document.getElementById('manualCustomHeight');
             if (customWidth && customHeight) {
                 customWidth.value = data.width;
                 customHeight.value = data.height;
@@ -1000,9 +900,11 @@ async function loadIntoManualForm(source, image = null) {
             if (data.mask_compressed || data.mask) {
                 console.log(`⚠️ Skipping vibe transfers due to inpainting mask presence`);
                 // Clear vibe references if inpainting is enabled
-                const container = document.getElementById('vibeReferencesContainer');
-                if (container) {
-                    container.innerHTML = '';
+                if (vibeReferencesContainer) {
+                    vibeReferencesContainer.innerHTML = '';
+                }
+                if (vibeNormalizeToggle) {
+                    vibeNormalizeToggle.style.display = 'none';
                 }
             } else {
                 // Load vibe references if not already loaded
@@ -1015,9 +917,8 @@ async function loadIntoManualForm(source, image = null) {
                 }
 
                 // Clear existing vibe references
-                const container = document.getElementById('vibeReferencesContainer');
-                if (container) {
-                    container.innerHTML = '';
+                if (vibeReferencesContainer) {
+                    vibeReferencesContainer.innerHTML = '';
                 }
 
                 // Add each vibe transfer back to the container
@@ -1026,30 +927,32 @@ async function loadIntoManualForm(source, image = null) {
                 }
 
                 // Show the vibe references section
-                const section = document.getElementById('vibeReferencesSection');
-                if (section) {
-                    section.style.display = '';
+                if (vibeReferencesSection) {
+                    vibeReferencesSection.style.display = '';
+                }
+                if (vibeNormalizeToggle) {
+                    vibeNormalizeToggle.style.display = '';
                 }
 
                 console.log(`🎨 Restored ${data.vibe_transfer.length} vibe transfers from forge data`);
             }
         } else {
             // Clear vibe references if no data
-            const container = document.getElementById('vibeReferencesContainer');
-            if (container) {
-                container.innerHTML = '';
+            if (vibeReferencesContainer) {
+                vibeReferencesContainer.innerHTML = '';
+            }
+            if (vibeNormalizeToggle) {
+                vibeNormalizeToggle.style.display = 'none';
             }
         }
 
         // Handle vibe normalize setting
         if (data.normalize_vibes !== undefined) {
-            const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
             if (vibeNormalizeToggle) {
                 vibeNormalizeToggle.setAttribute('data-state', data.normalize_vibes ? 'on' : 'off');
             }
         } else {
             // Default to on if not specified
-            const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
             if (vibeNormalizeToggle) {
                 vibeNormalizeToggle.setAttribute('data-state', 'on');
             }
@@ -1058,10 +961,6 @@ async function loadIntoManualForm(source, image = null) {
         // Handle image source data
         const hasBaseImage = data.image_source;
         const isPipeline = data.request_type === 'pipeline';
-
-        const variationImage = document.getElementById('manualVariationImage');
-        const strengthValue = document.getElementById('manualStrengthValue');
-        const noiseValue = document.getElementById('manualNoiseValue');
 
         // Handle pipeline images - show inpaint button and load pipeline mask if no mask exists
         if (isPipeline) {
@@ -1249,12 +1148,12 @@ async function loadIntoManualForm(source, image = null) {
                 }
             }
 
-            if (strengthValue && data.strength !== undefined && data.strength !== null) {
-                strengthValue.value = data.strength;
+            if (manualStrengthValue && data.strength !== undefined && data.strength !== null) {
+                manualStrengthValue.value = data.strength;
                 window.strengthValueLoaded = true;
             }
-            if (noiseValue && data.noise !== undefined && data.noise !== null) {
-                noiseValue.value = data.noise;
+            if (manualNoiseValue && data.noise !== undefined && data.noise !== null) {
+                manualNoiseValue.value = data.noise;
             }
 
         } else {
@@ -1389,7 +1288,16 @@ function isValidPresetName(name) {
 function updateManualPresetToggleBtn() {
     const presetName = manualPresetName.value.trim();
     const valid = isValidPresetName(presetName);
-    if (valid) {
+    if (presetName === "") {
+        // Hide everything, show only the toggle button as toggle-btn
+        manualPresetGroup.style.display = 'none';
+        manualPresetToggleBtn.style.display = '';
+        manualPresetToggleBtn.classList.add('toggle-btn');
+        manualPresetToggleBtn.classList.remove('hover-show');
+        manualPresetToggleText.style.display = 'none';
+        manualPresetToggleBtn.setAttribute('data-state', 'off');
+        if (manualPresetToggleIcon) manualPresetToggleIcon.style.display = '';
+    } else if (valid) {
         // Hide the group, show the toggle button with value
         manualPresetGroup.style.display = 'none';
         manualPresetToggleBtn.style.display = '';
@@ -1397,6 +1305,7 @@ function updateManualPresetToggleBtn() {
         manualPresetToggleBtn.classList.add('hover-show');
         manualPresetToggleText.textContent = presetName;
         manualPresetToggleText.style.display = '';
+        if (manualPresetToggleIcon) manualPresetToggleIcon.style.display = 'none';
     } else {
         // Show the group, hide the toggle button
         manualPresetGroup.style.display = '';
@@ -1404,6 +1313,7 @@ function updateManualPresetToggleBtn() {
         manualPresetToggleBtn.classList.add('toggle-btn');
         manualPresetToggleBtn.classList.remove('hover-show');
         manualPresetToggleText.style.display = 'none';
+        if (manualPresetToggleIcon) manualPresetToggleIcon.style.display = 'none';
     }
 }
 
@@ -1452,7 +1362,7 @@ function sanitizeCustomDimensions() {
         } else {
           message = `${result.changed.toLocaleUpperCase()} was clamped to ${result.changed === 'width' ? result.width : result.height}`;
         }
-        showSuccess(message);
+        showGlassToast('warning', null, message);
       }
 
       // Update the hidden resolution value
@@ -1539,7 +1449,7 @@ function closeManualNoiseSchedulerDropdown() {
 
 setupDropdown(manualNoiseSchedulerDropdown, manualNoiseSchedulerDropdownBtn, manualNoiseSchedulerDropdownMenu, renderManualNoiseSchedulerDropdown, () => manualSelectedNoiseScheduler);
 
-const modelOptionRenderer = (opt, group) => `<span>${opt.display}</span>`;
+const modelOptionRenderer = (opt, group) => `<span>${opt.name}</span>`;
 
 function renderManualModelDropdown(selectedVal) {
     renderGroupedDropdown(manualModelDropdownMenu, modelGroups, selectManualModel, closeManualModelDropdown, selectedVal, modelOptionRenderer);
@@ -1563,7 +1473,7 @@ function selectManualModel(value, group) {
   const groupObj = modelGroups.find(g => g.group === group);
   const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
   if (optObj) {
-    manualModelSelected.innerHTML = `${optObj.display}${groupObj.badge ? '<span class="custom-dropdown-badge">' + groupObj.badge + '</span>' : ''}`;
+    manualModelSelected.innerHTML = `${optObj.display}${optObj.badge ? '<span class="custom-dropdown-badge ' + optObj.badge_class + '">' + optObj.badge + '</span>' : groupObj.badge ? '<span class="custom-dropdown-badge ' + groupObj.badge_class + '">' + groupObj.badge + '</span>' : ''}`;
   } else {
     manualModelSelected.textContent = 'Select model...';
   }
@@ -1678,7 +1588,6 @@ function handleTransformationTypeChange(requestType) {
         const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
         const saveButton = document.getElementById('manualSaveBtn');
         const layer1SeedToggle = document.getElementById('layer1SeedToggle');
-        const variationImage = document.getElementById('manualVariationImage');
 
     // Clear existing data
     window.uploadedImageData = null;
@@ -1794,7 +1703,7 @@ function updateTransformationDropdownState(type, text) {
     const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
 
     if (transformationType) transformationType.value = type || '';
-    if (transformationSelected) transformationSelected.textContent = text || 'Select';
+    if (transformationSelected) transformationSelected.textContent = text || 'References';
 
     // Update toggle button state
     if (transformationDropdownBtn) {
@@ -1825,7 +1734,7 @@ async function moveCacheToDefaultWorkspace(cacheImage) {
             throw new Error(error.error || 'Failed to move cache file');
         }
 
-        showSuccess('Reference file moved to default workspace');
+        showGlassToast('success', null, 'Reference moved to default workspace');
         await loadCacheImages();
         displayCacheImages();
         displayCacheImagesContainer();
@@ -1909,7 +1818,7 @@ async function moveCacheToWorkspace(cacheImage, workspaceId) {
         }
 
         const workspace = workspaces.find(w => w.id === workspaceId);
-        showSuccess(`Reference file moved to ${workspace ? workspace.name : 'workspace'}`);
+        showGlassToast('success', null, `Reference file moved to ${workspace ? workspace.name : 'workspace'}`);
         await loadCacheImages();
         displayCacheImages();
         displayCacheImagesContainer();
@@ -2268,7 +2177,7 @@ async function createWorkspace(name) {
         await loadWorkspaces();
         await loadGallery(); // Refresh gallery to show new workspace filtering
         await loadCacheImages(); // Refresh cache browser to show new workspace filtering
-        showSuccess(`Workspace "${name}" created successfully`);
+        showGlassToast('success', null, `Workspace "${name}" created!`);
     } catch (error) {
         console.error('Error creating workspace:', error);
         showError('Failed to create workspace: ' + error.message);
@@ -2308,7 +2217,7 @@ async function deleteWorkspace(id) {
         await loadWorkspaces();
         await loadGallery(); // Refresh gallery to show updated filtering
         await loadCacheImages(); // Refresh cache browser to show updated filtering
-        showSuccess('Workspace deleted and items moved to default');
+        showGlassToast('success', null, 'Workspace deleted');
     } catch (error) {
         console.error('Error deleting workspace:', error);
         showError('Failed to delete workspace: ' + error.message);
@@ -2331,7 +2240,7 @@ async function dumpWorkspace(sourceId, targetId) {
         await loadWorkspaces();
         await loadGallery(); // Refresh gallery
         await loadCacheImages(); // Refresh cache browser
-        showSuccess('Workspace dumped successfully');
+        showGlassToast('success', null, 'Workspace Dumped');
     } catch (error) {
         console.error('Error dumping workspace:', error);
         showError('Failed to dump workspace: ' + error.message);
@@ -2382,8 +2291,6 @@ async function setActiveWorkspace(id) {
             gallery.style.transition = 'opacity 0.3s ease-in';
             gallery.style.opacity = '1';
         }
-
-        showSuccess('Active workspace changed');
     } catch (error) {
         console.error('Error setting active workspace:', error);
         showError('Failed to set active workspace: ' + error.message);
@@ -2410,7 +2317,7 @@ async function moveFilesToWorkspace(filenames, targetWorkspaceId) {
 
         const result = await response.json();
         await loadGallery(); // Refresh gallery
-        showSuccess(`Moved ${result.movedCount} files to workspace`);
+        showGlassToast('success', null, `Moved ${result.movedCount} files to workspace`);
     } catch (error) {
         console.error('Error moving files to workspace:', error);
         showError('Failed to move files: ' + error.message);
@@ -3185,7 +3092,7 @@ async function moveToScraps(image) {
 
         if (response.ok) {
             const result = await response.json();
-            showSuccess('Image moved to scraps');
+            showGlassToast('success', null, 'Image Scraped');
 
             // If currently viewing scraps, reload them
             if (isViewingScraps) {
@@ -3267,11 +3174,11 @@ async function moveManualPreviewToScraps() {
                 const imageUrl = `/images/${nextImage.original}`;
                 updateManualPreview(imageUrl);
 
-                showGlassToast('success', 'Scrap Image', 'Image moved to scraps!');
+                showGlassToast('success', null, 'Image scrapped');
             } else {
                 // No next image, reset the preview
                 resetManualPreview();
-                showGlassToast('success', 'Scrap Image', 'Image moved to scraps!');
+                showGlassToast('success', null, 'Image scrapped!');
             }
         } else {
             const error = await response.json();
@@ -3305,7 +3212,7 @@ async function removeFromScraps(image) {
         });
 
         if (response.ok) {
-            showGlassToast('success', 'Scrap Image', 'Image removed from scraps');
+            showGlassToast('success', null, 'Image restored');
 
             // If currently viewing scraps, reload them
             if (isViewingScraps) {
@@ -3811,17 +3718,13 @@ function setupEventListeners() {
                     };
 
                     // Set the variation image
-                    const variationImage = document.getElementById('manualVariationImage');
-                    if (variationImage) {
-                        variationImage.src = previewUrl;
-                        variationImage.style.display = 'block';
-                    }
+                    variationImage.src = previewUrl;
+                    variationImage.style.display = 'block';
+            
 
                     // Set strength to 0.8 and noise to 0.1 for variation
-                    const strengthValue = document.getElementById('manualStrengthValue');
-                    const noiseValue = document.getElementById('manualNoiseValue');
-                    if (strengthValue) strengthValue.value = '0.8';
-                    if (noiseValue) noiseValue.value = '0.1';
+                    if (manualStrengthValue) manualStrengthValue.value = '0.8';
+                    if (manualNoiseValue) manualNoiseValue.value = '0.1';
 
                     // Set transformation type to variation
                     updateTransformationDropdownState('variation', 'Variation');
@@ -3850,7 +3753,7 @@ function setupEventListeners() {
             if (window.lastGeneratedSeed) {
                 manualSeed.value = window.lastGeneratedSeed;
             } else {
-                showGlassToast('error', 'Load Failed', 'No seed available');
+                showGlassToast('error', null, 'No seed available');
             }
         });
     }
@@ -3899,7 +3802,6 @@ function setupEventListeners() {
     }
 
     // Vibe normalize toggle
-    const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
     if (vibeNormalizeToggle) {
         vibeNormalizeToggle.addEventListener('click', () => {
             const currentState = vibeNormalizeToggle.getAttribute('data-state') === 'on';
@@ -4110,19 +4012,6 @@ function setupEventListeners() {
         manualHeight.addEventListener('input', updateManualPriceDisplay);
     }
 
-    // Request type toggle functionality
-
-
-
-    if (inpaintBtn) {
-        inpaintBtn.addEventListener('click', () => {
-            // Always open the mask editor when inpaint button is clicked
-            openMaskEditor();
-        });
-    }
-
-
-
     if (deleteImageBaseBtn) {
         deleteImageBaseBtn.addEventListener('click', handleDeleteBaseImage);
     }
@@ -4178,7 +4067,6 @@ function setupEventListeners() {
 
     // Handle viewport changes for manual modal preview
     window.addEventListener('resize', () => {
-        const manualModal = document.getElementById('manualModal');
         const isWideViewport = window.innerWidth >= 1400;
         const isManualModalOpen = manualModal && manualModal.style.display === 'block';
 
@@ -4232,7 +4120,6 @@ function setupEventListeners() {
     }
 
     // Character prompts event listeners
-    const addCharacterBtn = document.getElementById('addCharacterBtn');
     if (addCharacterBtn) {
         addCharacterBtn.addEventListener('click', addCharacterPrompt);
     }
@@ -4325,19 +4212,43 @@ function setupEventListeners() {
 
     // Update the click event for manualPresetToggleBtn to toggle the group and button state
     manualPresetToggleBtn.addEventListener('click', function() {
-        if (manualPresetGroup.style.display === 'none') {
-            manualPresetGroup.style.display = '';
-            manualPresetToggleBtn.classList.add('toggle-btn');
-            manualPresetToggleBtn.classList.remove('hover-show');
-            manualPresetToggleIcon.style.display = '';
-            manualPresetToggleText.style.display = 'none';
+        const presetName = manualPresetName.value.trim();
+        const valid = isValidPresetName(presetName);
+        if (presetName === "" && !valid) {
+            // Only toggle group visibility and button state if name is empty
+            if (manualPresetGroup.style.display === 'none') {
+                manualPresetGroup.style.display = '';
+                manualPresetToggleBtn.classList.add('toggle-btn');
+                manualPresetToggleBtn.classList.remove('hover-show');
+                manualPresetToggleBtn.setAttribute('data-state', 'on');
+                manualPresetToggleIcon.style.display = '';
+                manualPresetToggleText.style.display = 'none';
+            } else {
+                manualPresetGroup.style.display = 'none';
+                manualPresetToggleBtn.classList.add('toggle-btn');
+                manualPresetToggleBtn.classList.remove('hover-show');
+                manualPresetToggleBtn.setAttribute('data-state', 'off');
+                manualPresetToggleIcon.style.display = '';
+                manualPresetToggleText.style.display = 'none';
+                manualPresetToggleText.textContent = presetName;
+            }
         } else {
-            manualPresetGroup.style.display = 'none';
-            manualPresetToggleBtn.classList.remove('toggle-btn');
-            manualPresetToggleBtn.classList.add('hover-show');
-            manualPresetToggleIcon.style.display = 'none';
-            manualPresetToggleText.style.display = '';
+            if (manualPresetGroup.style.display === 'none') {
+                manualPresetGroup.style.display = '';
+                manualPresetToggleBtn.classList.add('toggle-btn');
+                manualPresetToggleBtn.classList.remove('hover-show');
+                manualPresetToggleIcon.style.display = '';
+                manualPresetToggleText.style.display = 'none';
+            } else {
+                manualPresetGroup.style.display = 'none';
+                manualPresetToggleBtn.classList.remove('toggle-btn');
+                manualPresetToggleBtn.classList.add('hover-show');
+                manualPresetToggleIcon.style.display = 'none';
+                manualPresetToggleText.style.display = '';
+                manualPresetToggleText.textContent = presetName;
+            }
         }
+        // If there is a valid preset name, do nothing (button is not a toggle)
     });
 
     galleryColumnsInput?.addEventListener('input', e => setGalleryColumns(e.target.value));
@@ -5150,11 +5061,6 @@ async function rerollImage(image) {
                 workspace: activeWorkspace
             };
 
-            // Add mask_bias if available in metadata
-            if (metadata.mask_bias !== undefined) {
-                pipelineRequestBody.mask_bias = parseInt(metadata.mask_bias);
-            }
-
             // Check if layer1 seed toggle is enabled and we have a layer1 seed
             const useLayer1Seed = layer1SeedToggle.getAttribute('data-state') === 'on' && metadata.layer1Seed;
             if (useLayer1Seed) {
@@ -5208,7 +5114,6 @@ async function rerollImage(image) {
             const img = new Image();
             img.onload = function() {
                 createConfetti();
-                showSuccess('Pipeline rerolled successfully!');
 
                 // Refresh gallery and show the new image in lightbox
                 setTimeout(async () => {
@@ -5440,7 +5345,6 @@ async function rerollImage(image) {
             const img = new Image();
             img.onload = function() {
                 createConfetti();
-                showGlassToast('success', 'Reroll', 'Image rerolled successfully!');
 
                 // Refresh gallery and show the new image in lightbox
                 setTimeout(async () => {
@@ -5568,10 +5472,7 @@ async function rerollImageWithEdit(image) {
                 imageBiasAdjustmentData.currentBias = metadata.image_bias;
             }
 
-            const variationImage = document.getElementById('manualVariationImage');
-            if (variationImage) {
-                variationImage.style.display = 'block';
-            }
+            variationImage.style.display = 'block';
             updateInpaintButtonState();
             renderImageBiasDropdown((typeof metadata.image_bias === 'number' ? metadata.image_bias : 2).toString());
 
@@ -6074,10 +5975,7 @@ function clearManualForm() {
     // Clear pipeline context
     window.currentPipelineEdit = null;
 
-    const variationImage = document.getElementById('manualVariationImage');
-    if (variationImage) {
-        variationImage.src = '';
-    }
+    variationImage.src = '';
 
     // Reset transformation section states
     const transformationSection = document.getElementById('transformationSection');
@@ -6126,12 +6024,7 @@ function clearManualForm() {
     }
 
     // Reset inpaint button state and clear mask
-    if (inpaintBtn) {
-        inpaintBtn.setAttribute('data-state', 'off');
-        inpaintBtn.classList.remove('active');
-    }
-    window.currentMaskData = null;
-    window.currentMaskCompressed = null;
+    resetInpaint();
     window.pipelineMaskData = null;
     window.strengthValueLoaded = false;
     window.uploadedImageData = null;
@@ -6152,9 +6045,6 @@ function clearManualForm() {
     manualPreviewSeedNumber.textContent = '---'
 
     updateAutoPositionToggle();
-
-    updateInpaintButtonState();
-    updateMaskPreview();
 
     // Hide image bias dropdown
     hideImageBiasDropdown();
@@ -6181,7 +6071,6 @@ function clearManualForm() {
     updateLoadButtonState();
 }
 
-
 // Handle manual generation
 // Utility: Collect common form values
 function collectManualFormValues() {
@@ -6204,8 +6093,8 @@ function collectManualFormValues() {
         upscale: manualUpscale.getAttribute('data-state') === 'on',
         presetName: manualPresetName.value ? manualPresetName.value.trim() : "",
         autoPositionBtn: document.getElementById('autoPositionBtn'),
-        container: document.getElementById('characterPromptsContainer'),
-        characterItems: document.getElementById('characterPromptsContainer') ? document.getElementById('characterPromptsContainer').querySelectorAll('.character-prompt-item') : [],
+        container: characterPromptsContainer,
+        characterItems: characterPromptsContainer ? characterPromptsContainer.querySelectorAll('.character-prompt-item') : [],
         characterPrompts: getCharacterPrompts()
     };
 
@@ -6241,17 +6130,16 @@ function collectManualFormValues() {
 
     // Collect vibe transfer data
     values.vibe_transfer = collectVibeTransferData();
-    values.normalize_vibes = document.getElementById('vibeNormalizeToggle')?.getAttribute('data-state') === 'on';
+    values.normalize_vibes = vibeNormalizeToggle.getAttribute('data-state') === 'on';
 
     return values;
 }
 
 // Utility: Collect vibe transfer data from the container
 function collectVibeTransferData() {
-    const container = document.getElementById('vibeReferencesContainer');
-    if (!container) return [];
+    if (!vibeReferencesContainer) return [];
 
-    const vibeTransferItems = container.querySelectorAll('.vibe-reference-item');
+    const vibeTransferItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item');
     const vibeTransfers = [];
 
     vibeTransferItems.forEach(item => {
@@ -6382,12 +6270,8 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
                     window.uploadedImageData.isPlaceholder = true; // Keep as placeholder since it's the current pipeline image
                 }
 
-                // Update variation image display if it exists
-                const variationImage = document.getElementById('manualVariationImage');
-                if (variationImage) {
-                    variationImage.src = imageUrl;
-                    variationImage.style.display = 'block';
-                }
+                variationImage.src = imageUrl;
+                variationImage.style.display = 'block';
 
                 // Update mask editor background if it's currently open
                 const maskEditorDialog = document.getElementById('maskEditorDialog');
@@ -6773,8 +6657,8 @@ async function handleManualGeneration(e) {
 
         // Prepare requestBody
         const requestBody = {
-            strength: parseFloat(document.getElementById('manualStrengthValue').value) || 0.8,
-            noise: parseFloat(document.getElementById('manualNoiseValue').value) || 0.1,
+            strength: parseFloat(manualStrengthValue.value) || 0.8,
+            noise: parseFloat(manualNoiseValue.value) || 0.1,
             prompt: values.prompt,
             resolution: resolution,
             steps: values.steps,
@@ -6892,7 +6776,7 @@ async function saveManualPreset(presetName, config) {
 
         if (response.ok) {
             const result = await response.json();
-            showGlassToast('success', 'Save Preset', result.message);
+            showGlassToast('success', null, result.message);
 
             // Refresh the preset list
             await loadOptions();
@@ -6970,8 +6854,6 @@ async function handleManualSave() {
 
     // Add custom dimensions if resolution is custom
     if (manualResolution.value === 'custom') {
-        const customWidth = document.getElementById('manualCustomWidth');
-        const customHeight = document.getElementById('manualCustomHeight');
         if (customWidth && customHeight) {
             presetData.width = parseInt(customWidth.value) || undefined;
             presetData.height = parseInt(customHeight.value) || undefined;
@@ -6983,8 +6865,8 @@ async function handleManualSave() {
         // Add image source in the correct format type:value
         presetData.image_source = window.uploadedImageData.image_source;
 
-        presetData.strength = parseFloat(document.getElementById('manualStrengthValue').value) || 0.8;
-        presetData.noise = parseFloat(document.getElementById('manualNoiseValue').value) || 0.1;
+        presetData.strength = parseFloat(manualStrengthValue.value) || 0.8;
+        presetData.noise = parseFloat(manualNoiseValue.value) || 0.1;
 
         // Add image bias if available
         const imageBiasHidden = document.getElementById('manualImageBias');
@@ -10417,7 +10299,7 @@ async function copyToClipboard(text, title) {
         // Try modern clipboard API first
         if (navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(text);
-            showGlassToast('success', 'Clipboard', `Copied ${title} to clipboard`);
+            showGlassToast('success', null, `Copied ${title} to clipboard`);
         } else {
             // Fallback for older browsers
             const textArea = document.createElement('textarea');
@@ -10433,14 +10315,14 @@ async function copyToClipboard(text, title) {
             document.body.removeChild(textArea);
 
             if (successful) {
-                showGlassToast('success', 'Clipboard', `Copied ${title} to clipboard`);
+                showGlassToast('success', null, `Copied ${title} to clipboard`);
             } else {
                 throw new Error('execCommand copy failed');
             }
         }
     } catch (err) {
         console.error('Failed to copy text: ', err);
-        showGlassToast('error', 'Clipboard', 'Failed to copy to clipboard');
+        showGlassToast('error', null, 'Failed to copy to clipboard');
     }
 }
 
@@ -10999,7 +10881,7 @@ async function deleteImage(image) {
         const result = await response.json();
 
         if (result.success) {
-            showGlassToast('success', 'Delete Image', 'Image deleted successfully!');
+            showGlassToast('success', null, 'Image deleted!');
 
             // Close lightbox
             hideLightbox();
@@ -11095,11 +10977,11 @@ async function deleteManualPreviewImage() {
                 const imageUrl = `/images/${nextImage.original}`;
                 updateManualPreview(imageUrl);
 
-                showGlassToast('success', 'Delete Image', 'Image deleted!');
+                showGlassToast('success', null, 'Image deleted');
             } else {
                 // No next image, reset the preview
                 resetManualPreview();
-                showGlassToast('error', 'Delete Image', 'Image deleted!');
+                showGlassToast('success', null, 'Image deleted');
             }
         } else {
             throw new Error(result.error || 'Delete failed');
@@ -11224,11 +11106,6 @@ function showManualLoading(show, message = 'Generating Image...') {
     }
 }
 
-// Show success message (simple glass toast)
-function showSuccess(message) {
-    showGlassToast('success', null, message);
-}
-
 // Show error message (simple glass toast)
 function showError(message) {
     showGlassToast('error', null, message);
@@ -11238,8 +11115,7 @@ function showError(message) {
 function updateLightboxControls(image) {
     const deleteBtn = document.getElementById('lightboxDeleteBtn');
     const toggleBaseBtn = document.getElementById('toggleBaseImageBtn');
-
-    // Handle mask images (show only download button)
+    
     if (image.isMask) {
         lightboxDownloadBtn.style.display = 'inline-block';
         lightboxRerollBtn.style.display = 'none';
@@ -11256,24 +11132,16 @@ function updateLightboxControls(image) {
     }
 
     // Always show download button for regular images
-    lightboxDownloadBtn.style.display = 'inline-block';
-
-    // Show reroll button for all images (both original and upscaled)
-    lightboxRerollBtn.style.display = 'inline-block';
-
-    // Show combined edit button for all images (both original and upscaled)
-    lightboxRerollEditBtn.style.display = 'inline-block';
-
-    // Show upscale button only for non-upscaled images
+    lightboxDownloadBtn.style.display = '';
+    lightboxRerollBtn.style.display = '';
+    lightboxRerollEditBtn.style.display = '';
+    lightboxDeleteBtn.style.display = '';
     if (image.upscaled || image.pipeline_upscaled) {
         lightboxUpscaleBtn.style.display = 'none';
     } else {
         lightboxUpscaleBtn.style.display = 'inline-block';
     }
-
-    // Show scrap button only for logged-in users
     lightboxScrapBtn.style.display = 'inline-block';
-    // Update scrap button based on current view
     if (isViewingScraps) {
         lightboxScrapBtn.innerHTML = '<i class="nai-undo"></i>';
         lightboxScrapBtn.title = 'Remove from scraps';
@@ -11281,19 +11149,14 @@ function updateLightboxControls(image) {
         lightboxScrapBtn.innerHTML = '<i class="nai-image-tool-sketch"></i>';
         lightboxScrapBtn.title = 'Move to scraps';
     }
-
-    // Show toggle base image button for variations with base images
     if (image.metadata && image.metadata.base_image === true && image.metadata.original_filename) {
         toggleBaseBtn.style.display = 'inline-block';
-        toggleBaseBtn.setAttribute('data-state', 'variation'); // Start with variation view
+        toggleBaseBtn.setAttribute('data-state', 'variation');
         toggleBaseBtn.innerHTML = '<i class="fas fa-exchange-alt"></i> <span>Show Base</span>';
     } else {
         toggleBaseBtn.style.display = 'none';
     }
-
-    // Construct proper image object for functions
-    // The image.filename is the actual filename being displayed
-    // The pipeline/upscaled properties indicate what files exist
+    
     const imageObj = {
         filename: image.filename,
         base: image.base,
@@ -11303,14 +11166,12 @@ function updateLightboxControls(image) {
         pipeline_upscaled: image.pipeline_upscaled,
         metadata: image.metadata
     };
-
-    // Set up event listeners
     lightboxDownloadBtn.onclick = (e) => {
         e.preventDefault();
         downloadImage(imageObj);
     };
-    lightboxRerollBtn.onclick = () => rerollImage(imageObj); // Direct reroll
-    lightboxRerollEditBtn.onclick = () => rerollImageWithEdit(imageObj); // Combined edit (reroll/variation)
+    lightboxRerollBtn.onclick = () => rerollImage(imageObj);
+    lightboxRerollEditBtn.onclick = () => rerollImageWithEdit(imageObj);
     lightboxUpscaleBtn.onclick = () => upscaleImage(imageObj);
     lightboxScrapBtn.onclick = () => {
         if (isViewingScraps) {
@@ -11319,117 +11180,9 @@ function updateLightboxControls(image) {
             moveToScraps(imageObj);
         }
     };
-    deleteBtn.onclick = () => deleteImage(imageObj); // Delete image
-
-    // Set up toggle base image functionality
+    deleteBtn.onclick = () => deleteImage(imageObj);
     if (toggleBaseBtn.style.display !== 'none') {
         toggleBaseBtn.onclick = () => toggleBaseImage(imageObj);
-    }
-}
-
-// Create variation from image
-async function variationImage(imageObj) {
-    try {
-        // Determine filename for metadata
-        let filenameForMetadata = imageObj.filename || imageObj.pipeline_upscaled || imageObj.pipeline || imageObj.upscaled || imageObj.original;
-        if (!filenameForMetadata) {
-            throw new Error('No filename available for metadata lookup');
-        }
-
-        // Get metadata
-        const response = await fetchWithAuth(`/images/${filenameForMetadata}`, {
-            method: 'OPTIONS'
-        });
-        if (!response.ok) {
-            throw new Error(`Failed to load image metadata: ${response.status} ${response.statusText}`);
-        }
-        const metadata = await response.json();
-        if (!metadata) {
-            throw new Error('No metadata found for this image');
-        }
-
-        // Close lightbox
-        if (lightboxModal.style.display === 'block') {
-            hideLightbox();
-        }
-
-        // Store metadata and image
-        window.currentEditMetadata = metadata;
-        window.currentEditImage = imageObj;
-
-        // Load form values from metadata
-        await loadIntoManualForm(metadata, imageObj);
-
-        // Show request type row
-        const requestTypeRow = document.getElementById('requestTypeRow');
-        if (requestTypeRow) requestTypeRow.style.display = 'flex';
-
-        // Set transformation type to variation
-        updateTransformationDropdownState('variation', 'Current');
-
-        // Set up the image as base image for variation
-        const filename = imageObj.filename || imageObj.original || imageObj.pipeline || imageObj.pipeline_upscaled;
-        if (!filename) {
-            throw new Error('No filename available for variation');
-        }
-
-        const source = `file:${filename}`;
-        const previewUrl = `/images/${filename}`;
-
-        window.uploadedImageData = {
-            image_source: source,
-            width: metadata.width || 512,
-            height: metadata.height || 512,
-            bias: 2, // Default center bias
-            isBiasMode: true,
-            isClientSide: false
-        };
-
-        // Set the variation image
-        const variationImage = document.getElementById('manualVariationImage');
-        if (variationImage) {
-            variationImage.src = previewUrl;
-            variationImage.style.display = 'block';
-        }
-
-        // Set strength to 0.8 and noise to 0.1 for variation
-        const strengthValue = document.getElementById('manualStrengthValue');
-        const noiseValue = document.getElementById('manualNoiseValue');
-        if (strengthValue) strengthValue.value = '0.8';
-        if (noiseValue) noiseValue.value = '0.1';
-
-        // Show transformation section content
-        const transformationSection = document.getElementById('transformationSection');
-        if (transformationSection) {
-            transformationSection.classList.add('display-image');
-        }
-
-        // Update button visibility
-        updateRequestTypeButtonVisibility();
-        updateUploadDeleteButtonVisibility();
-
-        // Set form state for variation
-        const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
-        const saveButton = document.getElementById('manualSaveBtn');
-        const layer1SeedToggle = document.getElementById('layer1SeedToggle');
-
-        if (presetNameGroup) presetNameGroup.style.display = 'block';
-        if (saveButton) saveButton.style.display = 'inline-block';
-        if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
-
-        // Update inpaint button state
-        updateInpaintButtonState();
-
-        await cropImageToResolution();
-        manualModal.style.display = 'block';
-        manualPrompt.focus();
-
-        // Auto-resize textareas after modal is shown
-        autoResizeTextareasAfterModalShow();
-
-    } catch (error) {
-        console.error('Variation setup error:', error);
-        showError('Failed to set up variation: ' + error.message);
     }
 }
 
@@ -11483,10 +11236,6 @@ function handleResize() {
             // Redisplay current page
             displayCurrentPage();
         }
-
-        // Handle loading overlay switching on resize
-        const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
-        const manualModal = document.getElementById('manualModal');
 
         if (manualLoadingOverlay && manualModal) {
             const isManualModalOpen = manualModal.style.display !== 'none';
@@ -11550,7 +11299,6 @@ async function showMaskPreview() {
             };
 
             showLightbox(maskImage);
-            showSuccess('Mask preview loaded');
         };
         img.src = imageUrl;
 
@@ -12228,7 +11976,7 @@ async function handleManualImageUploadInternal(file) {
         // Crop and update preview
         await cropImageToResolution();
 
-        showSuccess('Base image uploaded and processed.');
+        showGlassToast('success', null, 'Referance Image Added');
 
     } catch (error) {
         console.error('Manual upload error:', error);
@@ -12556,6 +12304,7 @@ function cropImageToResolutionInternal(dataUrl, bias) {
         img.src = dataUrl;
     });
 }
+
 // Clean up blob URLs to prevent memory leaks
 function cleanupBlobUrls() {
     if (window.croppedImageBlobUrls) {
@@ -12575,10 +12324,7 @@ function handleDeleteBaseImage() {
     window.uploadedImageData = null;
 
     // Clear the variation image
-    const variationImage = document.getElementById('manualVariationImage');
-    if (variationImage) {
-        variationImage.src = '';
-    }
+    variationImage.src = '';
 
     // Hide transformation section content
     const transformationSection = document.getElementById('transformationSection');
@@ -12791,8 +12537,6 @@ async function handleBulkMoveToWorkspace() {
 async function moveBulkImagesToWorkspace(workspaceId) {
     try {
         const isScrapsView = isViewingScraps;
-        const loadingText = isScrapsView ? 'Moving scraps to workspace...' : 'Moving images to workspace...';
-        showLoading(true, loadingText);
 
         // Filter out any null/undefined values from selectedImages
         const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
@@ -12823,7 +12567,7 @@ async function moveBulkImagesToWorkspace(workspaceId) {
         const workspace = workspaces.find(w => w.id === workspaceId);
         const itemType = isScrapsView ? 'scraps' : 'images';
 
-        showSuccess(`Moved ${result.movedCount} ${itemType} to ${workspace ? workspace.name : 'workspace'}`);
+        showGlassToast('success', null, `Moved ${result.movedCount} ${itemType} to ${workspace ? workspace.name : 'workspace'}`);
 
         // Clear selection and reload gallery
         clearSelection();
@@ -12855,8 +12599,6 @@ async function handleBulkDelete() {
     }
 
     try {
-        showLoading(true, 'Deleting selected images...');
-
         // Filter out any null/undefined values from selectedImages
         const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
 
@@ -12881,7 +12623,7 @@ async function handleBulkDelete() {
         const result = await response.json();
 
         if (result.success) {
-            showSuccess(`Successfully deleted ${result.successful} image(s)`);
+            showGlassToast('success', null, `Successfully removed ${result.successful} image(s)`);
             if (result.failed > 0) {
                 showError(`${result.failed} image(s) failed to delete`);
             }
@@ -12941,7 +12683,7 @@ async function handleBulkSequenzia() {
         const result = await response.json();
 
         if (result.success) {
-            showSuccess(`Successfully sent ${result.successful} image(s) to Sequenzia`);
+            showGlassToast('success', null, `Successfully bounced ${result.successful} image(s) to Sequenzia`);
             if (result.failed > 0) {
                 showError(`${result.failed} image(s) failed to send`);
             }
@@ -13016,7 +12758,7 @@ async function handleBulkMoveToScraps() {
         }
 
         if (successCount > 0) {
-            showSuccess(`Successfully moved ${successCount} image(s) to scraps`);
+            showGlassToast('success', null, `Successfully scrapped ${successCount} image(s)`);
         }
 
         if (errorCount > 0) {
@@ -13104,8 +12846,8 @@ async function handleBulkChangePresetConfirm() {
         const result = await response.json();
 
         if (result.success) {
-            const action = newPresetName ? `set to "${newPresetName}"` : 'removed';
-            showSuccess(`Successfully updated preset name for ${result.updatedCount} image(s) (${action})`);
+            const action = newPresetName ? `Wrote "${newPresetName} to "` : 'Cleared';
+            showGlassToast('success', null, `Updated ${result.updatedCount} image(s) (${action})`);
 
             // Clear selection and refresh gallery
             clearSelection();
@@ -13225,7 +12967,7 @@ function transferRandomPrompt() {
     lastPromptState = null;
 
     // Show success message
-    showGlassToast('success', 'Random Prompt', 'Transferred to editor');
+    showGlassToast('success', null, 'Transferred to editor');
 }
 
 /**
@@ -13308,7 +13050,6 @@ async function toggleRandomPrompt() {
 }
 
 function addCharacterPrompt() {
-    const container = document.getElementById('characterPromptsContainer');
     const characterId = `character_${characterPromptCounter++}`;
 
     const characterItem = document.createElement('div');
@@ -13375,7 +13116,7 @@ function addCharacterPrompt() {
     // Store character name in dataset
     characterItem.dataset.charaName = `Character ${characterPromptCounter}`;
 
-    container.appendChild(characterItem);
+    characterPromptsContainer.appendChild(characterItem);
 
 
 
@@ -13439,7 +13180,7 @@ function addCharacterPrompt() {
 
     // Set initial collapsed state for new characters
     // First character should be open, others collapsed
-    const existingCharacters = container.querySelectorAll('.character-prompt-item');
+    const existingCharacters = characterPromptsContainer.querySelectorAll('.character-prompt-item');
     if (existingCharacters.length === 0) {
         // This is the first character, make it open
         characterItem.classList.remove('collapsed');
@@ -13463,8 +13204,7 @@ function deleteCharacterPrompt(characterId) {
 }
 
 function moveCharacterPrompt(characterId, direction) {
-    const container = document.getElementById('characterPromptsContainer');
-    const characterItems = Array.from(container.querySelectorAll('.character-prompt-item'));
+    const characterItems = Array.from(characterPromptsContainer.querySelectorAll('.character-prompt-item'));
     const currentIndex = characterItems.findIndex(item => item.id === characterId);
 
     if (currentIndex === -1) return;
@@ -13484,10 +13224,10 @@ function moveCharacterPrompt(characterId, direction) {
 
     if (newIndex > currentIndex) {
         // Moving down
-        container.insertBefore(targetItem, currentItem);
+        characterPromptsContainer.insertBefore(targetItem, currentItem);
     } else {
         // Moving up
-        container.insertBefore(currentItem, targetItem);
+        characterPromptsContainer.insertBefore(currentItem, targetItem);
     }
 
     // Update button states after reordering
@@ -13513,8 +13253,7 @@ function toggleCharacterPromptEnabled(characterId) {
 }
 
 function updateAutoPositionToggle() {
-    const container = document.getElementById('characterPromptsContainer');
-    const characterItems = container.querySelectorAll('.character-prompt-item');
+    const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
     const autoPositionBtn = document.getElementById('autoPositionBtn');
 
     if (characterItems.length === 0) {
@@ -13622,8 +13361,7 @@ function confirmPosition() {
 }
 
 function getCharacterPrompts() {
-    const container = document.getElementById('characterPromptsContainer');
-    const characterItems = container.querySelectorAll('.character-prompt-item');
+    const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
     const characterPrompts = [];
     const autoPositionBtn = document.getElementById('autoPositionBtn');
     const isAutoPosition = autoPositionBtn.getAttribute('data-state') === 'on';
@@ -13659,8 +13397,8 @@ function getCharacterPrompts() {
 }
 
 function clearCharacterPrompts() {
-    const container = document.getElementById('characterPromptsContainer');
-    container.innerHTML = '';
+    const characterPromptsContainer = document.getElementById('characterPromptsContainer');
+    characterPromptsContainer.innerHTML = '';
     characterPromptCounter = 0;
 }
 
@@ -13675,7 +13413,6 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
     characterPromptCounter = characterPrompts.length;
 
     characterPrompts.forEach((character, index) => {
-        const container = document.getElementById('characterPromptsContainer');
         const characterId = `character_${index}`;
         characterPromptCounter = index + 1;
 
@@ -13767,7 +13504,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
             characterItem.dataset.positionCell = getCellLabelFromCoords(character.center.x, character.center.y);
         }
 
-        container.appendChild(characterItem);
+        characterPromptsContainer.appendChild(characterItem);
 
 
 
@@ -14130,1349 +13867,6 @@ function updateManualPriceDisplay() {
     }
 }
 
-// Mask Editor Functionality
-let maskEditorCanvas = null;
-let maskEditorCanvasInner = null;
-let maskEditorCtx = null;
-let isDrawing = false;
-let currentTool = 'brush'; // 'brush' or 'eraser'
-let brushSize = 3;
-let brushSizePercent = 0.03; // 3% of canvas size as default
-let brushShape = 'square'; // 'square' or 'circle'
-let maskImageData = null;
-let displayScale = 1; // Track the display scale for cursor positioning
-let globalMouseDown = false; // Track global mouse state for continuous drawing
-
-// Initialize mask editor
-function initializeMaskEditor() {
-    maskEditorCanvas = document.getElementById('maskCanvas');
-    maskEditorCanvasInner = document.getElementById('maskEditorCanvasInner');
-    if (!maskEditorCanvas) return;
-
-    maskEditorCtx = maskEditorCanvas.getContext('2d');
-
-    // Create brush cursor element if it doesn't exist
-    let brushCursor = document.querySelector('.brush-cursor');
-    if (!brushCursor) {
-        brushCursor = document.createElement('div');
-        brushCursor.className = 'brush-cursor';
-        brushCursor.style.display = 'none';
-        document.body.appendChild(brushCursor);
-    }
-
-    // Set up canvas event listeners
-    maskEditorCanvas.addEventListener('mousedown', startDrawing);
-    maskEditorCanvas.addEventListener('mousemove', draw);
-    maskEditorCanvas.addEventListener('mouseup', stopDrawing);
-
-    // Brush cursor events
-    maskEditorCanvas.addEventListener('mousemove', updateBrushCursor);
-    maskEditorCanvas.addEventListener('mouseenter', handleCanvasMouseEnter);
-    maskEditorCanvas.addEventListener('mouseleave', () => {
-        if (brushCursor) brushCursor.style.display = 'none';
-    });
-
-    // Wheel event for brush size adjustment
-    maskEditorCanvas.addEventListener('wheel', handleCanvasWheel);
-
-    // Global mouse events for continuous drawing
-    document.addEventListener('mouseup', handleGlobalMouseUp);
-    document.addEventListener('mousemove', handleGlobalMouseMove);
-
-    // Touch events for mobile
-    maskEditorCanvas.addEventListener('touchstart', handleTouchStart);
-    maskEditorCanvas.addEventListener('touchmove', handleTouchMove);
-    maskEditorCanvas.addEventListener('touchend', handleTouchEnd);
-
-    // Tool buttons
-    const brushBtn = document.getElementById('maskBrushBtn');
-    const eraserBtn = document.getElementById('maskEraserBtn');
-    const brushShapeBtn = document.getElementById('brushShapeBtn');
-    const clearBtn = document.getElementById('clearMaskBtn');
-    const saveBtn = document.getElementById('saveMaskBtn');
-    const deleteBtn = document.getElementById('deleteMaskBtn');
-    const cancelBtn = document.getElementById('cancelMaskBtn');
-    const closeBtn = document.getElementById('closeMaskEditorBtn');
-    const brushSizeInput = document.getElementById('brushSize');
-
-    if (brushBtn) {
-        brushBtn.addEventListener('click', () => setTool('brush'));
-    }
-
-    if (eraserBtn) {
-        eraserBtn.addEventListener('click', () => setTool('eraser'));
-    }
-
-    if (brushShapeBtn) {
-        brushShapeBtn.addEventListener('click', toggleBrushShape);
-    }
-
-    if (clearBtn) {
-        clearBtn.addEventListener('click', clearMask);
-    }
-
-    if (saveBtn) {
-        saveBtn.addEventListener('click', saveMask);
-    }
-
-    if (deleteBtn) {
-        deleteBtn.addEventListener('click', () => deleteMask());
-    }
-
-    if (cancelBtn) {
-        cancelBtn.addEventListener('click', closeMaskEditor);
-    }
-
-    if (closeBtn) {
-        closeBtn.addEventListener('click', closeMaskEditor);
-    }
-
-    if (brushSizeInput) {
-        // Set initial value
-        brushSizeInput.value = brushSize;
-
-        // Input change handler
-        brushSizeInput.addEventListener('input', (e) => {
-            let val = parseInt(e.target.value);
-            if (isNaN(val)) val = 1;
-            val = Math.max(1, Math.min(15, val));
-            brushSize = val;
-            e.target.value = val;
-
-            // Calculate and store the percentage for future reference
-            if (maskEditorCanvas) {
-                const canvasDiagonal = Math.sqrt(maskEditorCanvas.width * maskEditorCanvas.width + maskEditorCanvas.height * maskEditorCanvas.height);
-                brushSizePercent = brushSize / canvasDiagonal;
-            }
-
-            // Update cursor size if it exists
-            const brushCursor = document.querySelector('.brush-cursor');
-            if (brushCursor && brushCursor.style.display !== 'none') {
-                const cursorSize = brushSize * displayScale;
-                brushCursor.style.width = cursorSize + 'px';
-                brushCursor.style.height = cursorSize + 'px';
-            }
-        });
-
-        // Mouse wheel handler for scrolling
-        brushSizeInput.addEventListener('wheel', function(e) {
-            e.preventDefault();
-            const delta = e.deltaY > 0 ? -1 : 1;
-            const currentValue = parseInt(this.value) || 3;
-            const newValue = Math.max(1, Math.min(15, currentValue + delta));
-            this.value = newValue;
-            brushSize = newValue;
-
-            // Calculate and store the percentage for future reference
-            if (maskEditorCanvas) {
-                const canvasDiagonal = Math.sqrt(maskEditorCanvas.width * maskEditorCanvas.width + maskEditorCanvas.height * maskEditorCanvas.height);
-                brushSizePercent = brushSize / canvasDiagonal;
-            }
-
-            // Update cursor size if it exists
-            const brushCursor = document.querySelector('.brush-cursor');
-            if (brushCursor && brushCursor.style.display !== 'none') {
-                const cursorSize = brushSize * displayScale;
-                brushCursor.style.width = cursorSize + 'px';
-                brushCursor.style.height = cursorSize + 'px';
-            }
-        });
-    }
-}
-
-// Set drawing tool
-function setTool(tool) {
-    currentTool = tool;
-
-    const brushBtn = document.getElementById('maskBrushBtn');
-    const eraserBtn = document.getElementById('maskEraserBtn');
-
-    if (brushBtn) {
-        brushBtn.setAttribute('data-state', tool === 'brush' ? 'on' : 'off');
-    }
-
-    if (eraserBtn) {
-        eraserBtn.setAttribute('data-state', tool === 'eraser' ? 'on' : 'off');
-    }
-}
-
-// Toggle brush shape
-function toggleBrushShape() {
-    brushShape = brushShape === 'square' ? 'circle' : 'square';
-
-    // Update the toggle button icon
-    const brushShapeBtn = document.getElementById('brushShapeBtn');
-    if (brushShapeBtn) {
-        const icon = brushShapeBtn.querySelector('i');
-        if (icon) {
-            if (brushShape === 'circle') {
-                icon.className = 'fas fa-circle';
-            } else {
-                icon.className = 'fas fa-square';
-            }
-        }
-    }
-
-    // Update cursor if it's visible
-    const brushCursor = document.querySelector('.brush-cursor');
-    if (brushCursor && brushCursor.style.display !== 'none') {
-        if (brushShape === 'circle') {
-            brushCursor.style.borderRadius = '50%';
-        } else {
-            brushCursor.style.borderRadius = '0';
-        }
-    }
-}
-
-// Handle canvas wheel for brush size adjustment
-function handleCanvasWheel(e) {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 1 : -1;
-    const currentValue = brushSize;
-    const newValue = Math.max(1, Math.min(15, currentValue + delta));
-    brushSize = newValue;
-
-    // Update brush size input if it exists
-    const brushSizeInput = document.getElementById('brushSize');
-    if (brushSizeInput) {
-        brushSizeInput.value = newValue;
-    }
-
-    // Calculate and store the percentage for future reference
-    if (maskEditorCanvas) {
-        const canvasDiagonal = Math.sqrt(maskEditorCanvas.width * maskEditorCanvas.width + maskEditorCanvas.height * maskEditorCanvas.height);
-        brushSizePercent = brushSize / canvasDiagonal;
-    }
-
-    // Update cursor size if it exists
-    const brushCursor = document.querySelector('.brush-cursor');
-    if (brushCursor && brushCursor.style.display !== 'none') {
-        const rect = maskEditorCanvas.getBoundingClientRect();
-        const visualScaleX = rect.width / maskEditorCanvas.width;
-        const visualScaleY = rect.height / maskEditorCanvas.height;
-        const visualScale = Math.min(visualScaleX, visualScaleY);
-        const cursorSize = brushSize * visualScale;
-        brushCursor.style.width = cursorSize + 'px';
-        brushCursor.style.height = cursorSize + 'px';
-    }
-}
-
-// Handle canvas mouse enter for continuous drawing
-function handleCanvasMouseEnter(e) {
-    const brushCursor = document.querySelector('.brush-cursor');
-    if (brushCursor) brushCursor.style.display = 'block';
-
-    // If global mouse is down, resume drawing
-    if (globalMouseDown && !isDrawing) {
-        isDrawing = true;
-        draw(e);
-    }
-}
-
-// Handle global mouse up to stop drawing
-function handleGlobalMouseUp() {
-    if (isDrawing) {
-        isDrawing = false;
-        globalMouseDown = false;
-    }
-}
-
-// Handle global mouse move for continuous drawing
-function handleGlobalMouseMove(e) {
-    // Only handle if we're drawing and mouse is over the canvas
-    if (globalMouseDown && !isDrawing && maskEditorCanvas) {
-        const rect = maskEditorCanvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
-        // Check if mouse is over the canvas
-        if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
-            isDrawing = true;
-            draw(e);
-        }
-    }
-}
-
-// Start drawing
-function startDrawing(e) {
-    isDrawing = true;
-    globalMouseDown = true;
-    draw(e);
-}
-
-// Draw function
-function draw(e) {
-    if (!isDrawing || !maskEditorCtx) return;
-
-    e.preventDefault();
-
-    const rect = maskEditorCanvas.getBoundingClientRect();
-
-    // Calculate the actual canvas content area (accounting for object-fit: contain)
-    const visualScaleX = rect.width / maskEditorCanvas.width;
-    const visualScaleY = rect.height / maskEditorCanvas.height;
-    const visualScale = Math.min(visualScaleX, visualScaleY);
-
-    // Calculate the actual canvas content dimensions
-    const actualCanvasWidth = maskEditorCanvas.width * visualScale;
-    const actualCanvasHeight = maskEditorCanvas.height * visualScale;
-
-    // Calculate padding around the canvas content
-    const paddingX = (rect.width - actualCanvasWidth) / 2;
-    const paddingY = (rect.height - actualCanvasHeight) / 2;
-
-    // Calculate position relative to the actual canvas content
-    const x = e.clientX - rect.left - paddingX;
-    const y = e.clientY - rect.top - paddingY;
-
-    // Only draw if mouse is over the actual canvas content
-    if (x >= 0 && x <= actualCanvasWidth && y >= 0 && y <= actualCanvasHeight) {
-        // Scale coordinates to canvas size
-        const canvasX = (x / actualCanvasWidth) * maskEditorCanvas.width;
-        const canvasY = (y / actualCanvasHeight) * maskEditorCanvas.height;
-
-        if (currentTool === 'brush') {
-            if (brushShape === 'circle') {
-                // Draw circle brush using direct pixel manipulation
-                drawCircle(canvasX, canvasY, brushSize / 2, '#ffffff', 1);
-            } else {
-                // Draw square brush using direct pixel manipulation
-                drawSquare(canvasX, canvasY, brushSize, '#ffffff', 1);
-            }
-        } else {
-            if (brushShape === 'circle') {
-                // Draw circle eraser using direct pixel manipulation
-                drawCircle(canvasX, canvasY, brushSize / 2, '#000000', 0);
-            } else {
-                // Draw square eraser using direct pixel manipulation
-                drawSquare(canvasX, canvasY, brushSize, '#000000', 0);
-            }
-        }
-    }
-}
-
-// Draw circle using direct pixel manipulation (like the inpainting editor)
-function drawCircle(x, y, radius, color, alpha) {
-    const roundedX = Math.round(x);
-    const roundedY = Math.round(y);
-    const roundedRadius = Math.round(radius);
-
-    const startX = roundedX - roundedRadius;
-    const startY = roundedY - roundedRadius;
-    const size = 2 * roundedRadius + 1;
-
-    const imageData = maskEditorCtx.getImageData(startX, startY, size, size);
-
-    for (let i = 0; i <= roundedRadius; i++) {
-        for (let j = 0; j <= roundedRadius; j++) {
-            // Check if pixel is within circle using distance calculation
-            const minDist = Math.min(
-                Math.sqrt((j + 0.5) * (j + 0.5) + (i + 0.5) * (i + 0.5)),
-                Math.sqrt((j - 0.5) * (j - 0.5) + (i - 0.5) * (i - 0.5))
-            );
-
-            if (minDist <= roundedRadius) {
-                // Set pixels in all four quadrants
-                const positions = [
-                    (roundedRadius + j) * 4 + (roundedRadius + i) * size * 4,
-                    (roundedRadius - j) * 4 + (roundedRadius + i) * size * 4,
-                    (roundedRadius + j) * 4 + (roundedRadius - i) * size * 4,
-                    (roundedRadius - j) * 4 + (roundedRadius - i) * size * 4
-                ];
-
-                positions.forEach(pos => {
-                    if (pos >= 0 && pos < imageData.data.length) {
-                        imageData.data[pos] = parseInt(color.slice(1, 3), 16);     // Red
-                        imageData.data[pos + 1] = parseInt(color.slice(3, 5), 16); // Green
-                        imageData.data[pos + 2] = parseInt(color.slice(5, 7), 16); // Blue
-                        imageData.data[pos + 3] = 255 * alpha;                    // Alpha
-                    }
-                });
-            }
-        }
-    }
-
-    maskEditorCtx.putImageData(imageData, startX, startY);
-}
-
-// Draw square using direct pixel manipulation (like the inpainting editor)
-function drawSquare(x, y, size, color, alpha) {
-    const startX = x - Math.floor(size / 2);
-    const startY = y - Math.floor(size / 2);
-    const endX = startX + size;
-    const endY = startY + size;
-
-    const imageData = maskEditorCtx.getImageData(startX, startY, endX - startX, endY - startY);
-
-    for (let i = 0; i < imageData.data.length; i += 4) {
-        imageData.data[i] = parseInt(color.slice(1, 3), 16);     // Red
-        imageData.data[i + 1] = parseInt(color.slice(3, 5), 16); // Green
-        imageData.data[i + 2] = parseInt(color.slice(5, 7), 16); // Blue
-        imageData.data[i + 3] = 255 * alpha;                    // Alpha
-    }
-
-    maskEditorCtx.putImageData(imageData, startX, startY);
-}
-
-// Stop drawing
-function stopDrawing() {
-    isDrawing = false;
-    globalMouseDown = false;
-}
-
-// Update brush cursor position and size
-function updateBrushCursor(e) {
-    const brushCursor = document.querySelector('.brush-cursor');
-    if (!brushCursor || !maskEditorCanvas) return;
-
-    const rect = maskEditorCanvas.getBoundingClientRect();
-    const containerRect = maskEditorCanvasInner.getBoundingClientRect();
-
-    // Calculate the actual canvas content area (accounting for object-fit: contain)
-    const visualScaleX = rect.width / maskEditorCanvas.width;
-    const visualScaleY = rect.height / maskEditorCanvas.height;
-    const visualScale = Math.min(visualScaleX, visualScaleY);
-
-    // Calculate the actual canvas content dimensions
-    const actualCanvasWidth = maskEditorCanvas.width * visualScale;
-    const actualCanvasHeight = maskEditorCanvas.height * visualScale;
-
-    // Calculate padding around the canvas content
-    const paddingX = (rect.width - actualCanvasWidth) / 2;
-    const paddingY = (rect.height - actualCanvasHeight) / 2;
-
-    // Calculate position relative to the actual canvas content
-    const x = e.clientX - rect.left - paddingX;
-    const y = e.clientY - rect.top - paddingY;
-
-    // Only show cursor if mouse is over the actual canvas content
-    if (x >= 0 && x <= actualCanvasWidth && y >= 0 && y <= actualCanvasHeight) {
-        brushCursor.style.display = 'block';
-
-        // Calculate cursor size based on visual scale
-        const cursorSize = brushSize * visualScale;
-
-        // Position cursor relative to the actual canvas content
-        brushCursor.style.left = (rect.left + paddingX + x - cursorSize / 2) + 'px';
-        brushCursor.style.top = (rect.top + paddingY + y - cursorSize / 2) + 'px';
-        brushCursor.style.width = cursorSize + 'px';
-        brushCursor.style.height = cursorSize + 'px';
-
-        // Update cursor shape
-        if (brushShape === 'circle') {
-            brushCursor.style.borderRadius = '50%';
-        } else {
-            brushCursor.style.borderRadius = '0';
-        }
-    } else {
-        brushCursor.style.display = 'none';
-    }
-}
-
-// Touch event handlers
-function handleTouchStart(e) {
-    e.preventDefault();
-    const touch = e.touches[0];
-    const mouseEvent = new MouseEvent('mousedown', {
-        clientX: touch.clientX,
-        clientY: touch.clientY
-    });
-    maskEditorCanvas.dispatchEvent(mouseEvent);
-}
-
-function handleTouchMove(e) {
-    e.preventDefault();
-    const touch = e.touches[0];
-    const mouseEvent = new MouseEvent('mousemove', {
-        clientX: touch.clientX,
-        clientY: touch.clientY
-    });
-    maskEditorCanvas.dispatchEvent(mouseEvent);
-}
-
-function handleTouchEnd(e) {
-    e.preventDefault();
-    const mouseEvent = new MouseEvent('mouseup', {});
-    maskEditorCanvas.dispatchEvent(mouseEvent);
-}
-
-// Clear mask
-function clearMask() {
-    if (!maskEditorCtx) return;
-
-    // Clear the entire canvas to transparent
-    maskEditorCtx.clearRect(0, 0, maskEditorCanvas.width, maskEditorCanvas.height);
-}
-
-// Save mask (upscaled version for display)
-function saveMask() {
-    if (!maskEditorCanvas) return;
-
-    try {
-        // Get target dimensions for scaling up
-        const targetWidth = maskEditorCanvas.targetWidth || maskEditorCanvas.width * 8;
-        const targetHeight = maskEditorCanvas.targetHeight || maskEditorCanvas.height * 8;
-
-        // Create a temporary canvas with the target resolution
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-
-        tempCanvas.width = targetWidth;
-        tempCanvas.height = targetHeight;
-
-        // Fill with black background
-        tempCtx.fillStyle = '#000000';
-        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-        // Disable image smoothing for nearest neighbor scaling
-        tempCtx.imageSmoothingEnabled = false;
-
-        // Draw the mask canvas scaled up to target resolution
-        tempCtx.drawImage(maskEditorCanvas, 0, 0, maskEditorCanvas.width, maskEditorCanvas.height, 0, 0, targetWidth, targetHeight);
-
-        // Binarize the image data to ensure crisp 1-bit mask
-        const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-        const data = imageData.data;
-
-        for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            const a = data[i + 3];
-
-            // If pixel is not black (has been drawn on), make it pure white
-            if (r > 0 || g > 0 || b > 0) {
-                data[i] = 255;     // Red
-                data[i + 1] = 255; // Green
-                data[i + 2] = 255; // Blue
-                data[i + 3] = 255; // Alpha
-            } else {
-                // Black pixels (background) stay pure black
-                data[i] = 0;       // Red
-                data[i + 1] = 0;   // Green
-                data[i + 2] = 0;   // Blue
-                data[i + 3] = 255; // Alpha
-            }
-        }
-
-        // Put the binarized image data back
-        tempCtx.putImageData(imageData, 0, 0);
-
-        // Convert to base64
-        const base64Data = tempCanvas.toDataURL('image/png');
-
-        // Store the mask data in a global variable
-        window.currentMaskData = base64Data;
-
-        // Also store the compressed version for server processing
-        const compressedMask = saveMaskCompressed();
-        if (compressedMask) {
-            window.currentMaskCompressed = compressedMask;
-        }
-
-        // Set inpaint button to on
-        if (inpaintBtn) {
-            inpaintBtn.setAttribute('data-state', 'on');
-            inpaintBtn.classList.add('active');
-        }
-
-        // Update vibe transfer UI state
-        updateInpaintButtonState();
-
-        showSuccess('Mask saved successfully!');
-        closeMaskEditor();
-    } catch (error) {
-        console.error('Error saving mask:', error);
-        showError('Failed to save mask');
-    }
-}
-
-// Save unupscaled mask for server processing
-function saveMaskCompressed() {
-    if (!maskEditorCanvas) return null;
-
-    // Check if canvas has valid dimensions
-    if (maskEditorCanvas.width === 0 || maskEditorCanvas.height === 0) {
-        console.warn('Mask editor canvas has invalid dimensions');
-        return null;
-    }
-
-    try {
-        // Create a temporary canvas with the original (unupscaled) dimensions
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-
-        tempCanvas.width = maskEditorCanvas.width;
-        tempCanvas.height = maskEditorCanvas.height;
-
-        // Fill with black background
-        tempCtx.fillStyle = '#000000';
-        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-        // Draw the mask canvas at original size
-        tempCtx.drawImage(maskEditorCanvas, 0, 0);
-
-        // Binarize the image data to ensure crisp 1-bit mask
-        const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-        const data = imageData.data;
-
-        for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            const a = data[i + 3];
-
-            // If pixel is not black (has been drawn on), make it pure white
-            if (r > 0 || g > 0 || b > 0) {
-                data[i] = 255;     // Red
-                data[i + 1] = 255; // Green
-                data[i + 2] = 255; // Blue
-                data[i + 3] = 255; // Alpha
-            } else {
-                // Black pixels (background) stay pure black
-                data[i] = 0;       // Red
-                data[i + 1] = 0;   // Green
-                data[i + 2] = 0;   // Blue
-                data[i + 3] = 255; // Alpha
-            }
-        }
-
-        // Put the binarized image data back
-        tempCtx.putImageData(imageData, 0, 0);
-
-        // Convert to base64 (without data URL prefix)
-        const base64Data = tempCanvas.toDataURL('image/png').replace('data:image/png;base64,', '');
-
-        return base64Data;
-    } catch (error) {
-        console.error('Error saving compressed mask:', error);
-        return null;
-    }
-}
-// Helper: Set mask editor canvas from a data URL
-function setMaskEditorFromDataUrl(dataUrl) {
-    if (!dataUrl && window.maskEditorCanvas.width !== undefined) return;
-
-    // Initialize mask editor if not already done
-    if (!window.maskEditorCanvas || !window.maskEditorCtx) {
-        if (typeof initializeMaskEditor === 'function') initializeMaskEditor();
-    }
-
-    const img = new Image();
-    img.onload = function() {
-        // Set canvas dimensions to match the image
-        window.maskEditorCanvas.width = img.width;
-        window.maskEditorCanvas.height = img.height;
-
-        // Clear and draw the mask
-        window.maskEditorCtx.clearRect(0, 0, img.width, img.height);
-        window.maskEditorCtx.drawImage(img, 0, 0);
-    };
-    img.onerror = function() {
-        console.error('Failed to load mask image for editor');
-    };
-    img.src = dataUrl;
-}
-
-// Helper function to convert standard mask to compressed format
-async function convertStandardMaskToCompressed(standardMaskBase64, originalWidth, originalHeight) {
-    return new Promise((resolve, reject) => {
-        // Validate input parameters
-        if (!standardMaskBase64 || !originalWidth || !originalHeight) {
-            reject(new Error('Invalid parameters: standardMaskBase64, originalWidth, and originalHeight are required'));
-            return;
-        }
-
-        if (originalWidth <= 0 || originalHeight <= 0) {
-            reject(new Error(`Invalid original dimensions: ${originalWidth}x${originalHeight}`));
-            return;
-        }
-
-        // Calculate compressed dimensions (1/8 scale)
-        const compressedWidth = Math.floor(originalWidth / 8);
-        const compressedHeight = Math.floor(originalHeight / 8);
-
-        // Create a temporary canvas to process the standard mask
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-
-        tempCanvas.width = compressedWidth;
-        tempCanvas.height = compressedHeight;
-
-        // Fill with black background
-        tempCtx.fillStyle = '#000000';
-        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-        // Disable image smoothing for nearest neighbor scaling
-        tempCtx.imageSmoothingEnabled = false;
-
-        // Create image from standard mask
-        const img = new Image();
-        img.onload = function() {
-            try {
-                // Validate loaded image dimensions
-                if (!img.width || !img.height || img.width <= 0 || img.height <= 0) {
-                    reject(new Error(`Invalid loaded mask image dimensions: ${img.width}x${img.height}`));
-                    return;
-                }
-
-                // Draw the standard mask scaled down to compressed size
-                tempCtx.drawImage(img, 0, 0, img.width, img.height, 0, 0, compressedWidth, compressedHeight);
-
-                // Binarize the image data to ensure crisp 1-bit mask
-                const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-                const data = imageData.data;
-
-                for (let i = 0; i < data.length; i += 4) {
-                    const r = data[i];
-                    const g = data[i + 1];
-                    const b = data[i + 2];
-                    const a = data[i + 3];
-
-                    // If pixel is not black (has been drawn on), make it pure white
-                    if (r > 0 || g > 0 || b > 0) {
-                        data[i] = 255;     // Red
-                        data[i + 1] = 255; // Green
-                        data[i + 2] = 255; // Blue
-                        data[i + 3] = 255; // Alpha
-                    } else {
-                        // Black pixels (background) stay pure black
-                        data[i] = 0;       // Red
-                        data[i + 1] = 0;   // Green
-                        data[i + 2] = 0;   // Blue
-                        data[i + 3] = 255; // Alpha
-                    }
-                }
-
-                // Put the binarized image data back
-                tempCtx.putImageData(imageData, 0, 0);
-
-                // Convert to base64 (without data URL prefix)
-                const compressedMaskBase64 = tempCanvas.toDataURL('image/png').replace('data:image/png;base64,', '');
-
-                // Resolve the promise
-                resolve(compressedMaskBase64);
-            } catch (error) {
-                console.error('Error converting standard mask to compressed:', error);
-                reject(error);
-            }
-        };
-
-        img.onerror = function() {
-            console.error('Failed to load standard mask image');
-            reject(new Error('Failed to load standard mask image'));
-        };
-
-        img.src = "data:image/png;base64," + standardMaskBase64;
-    });
-}
-
-// Helper function to process compressed mask to display resolution
-function processCompressedMask(compressedMaskBase64, targetWidth, targetHeight, callback) {
-    return new Promise((resolve, reject) => {
-        // Validate input parameters
-        if (!compressedMaskBase64 || !targetWidth || !targetHeight) {
-            reject(new Error('Invalid parameters: compressedMaskBase64, targetWidth, and targetHeight are required'));
-            return;
-        }
-
-        if (targetWidth <= 0 || targetHeight <= 0) {
-            reject(new Error(`Invalid target dimensions: ${targetWidth}x${targetHeight}`));
-            return;
-        }
-
-        // Create a temporary canvas to process the compressed mask
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-
-        tempCanvas.width = targetWidth;
-        tempCanvas.height = targetHeight;
-
-        // Fill with black background
-        tempCtx.fillStyle = '#000000';
-        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-
-        // Disable image smoothing for nearest neighbor scaling
-        tempCtx.imageSmoothingEnabled = false;
-
-        // Create image from compressed mask
-        const img = new Image();
-        img.onload = function() {
-            try {
-                // Validate loaded image dimensions
-                if (!img.width || !img.height || img.width <= 0 || img.height <= 0) {
-                    reject(new Error(`Invalid loaded mask image dimensions: ${img.width}x${img.height}`));
-                    return;
-                }
-
-                // Draw the compressed mask scaled up to target resolution
-                tempCtx.drawImage(img, 0, 0, img.width, img.height, 0, 0, targetWidth, targetHeight);
-
-                // Binarize the image data to ensure crisp 1-bit mask
-                const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-                const data = imageData.data;
-
-                for (let i = 0; i < data.length; i += 4) {
-                    const r = data[i];
-                    const g = data[i + 1];
-                    const b = data[i + 2];
-                    const a = data[i + 3];
-
-                    // If pixel is not black (has been drawn on), make it pure white
-                    if (r > 0 || g > 0 || b > 0) {
-                        data[i] = 255;     // Red
-                        data[i + 1] = 255; // Green
-                        data[i + 2] = 255; // Blue
-                        data[i + 3] = 255; // Alpha
-                    } else {
-                        // Black pixels (background) stay pure black
-                        data[i] = 0;       // Red
-                        data[i + 1] = 0;   // Green
-                        data[i + 2] = 0;   // Blue
-                        data[i + 3] = 255; // Alpha
-                    }
-                }
-
-                // Put the binarized image data back
-                tempCtx.putImageData(imageData, 0, 0);
-
-                // Convert to base64
-                const base64Data = tempCanvas.toDataURL('image/png');
-
-                // Call the callback with the processed mask if provided
-                if (callback) {
-                    callback(base64Data);
-                }
-
-                // Resolve the promise
-                resolve(base64Data);
-            } catch (error) {
-                console.error('Error processing compressed mask:', error);
-                reject(error);
-            }
-        };
-
-        img.onerror = function() {
-            console.error('Failed to load compressed mask image');
-            reject(new Error('Failed to load compressed mask image'));
-        };
-
-        img.src = "data:image/png;base64," + compressedMaskBase64;
-    });
-}
-
-// Delete mask
-async function deleteMask() {
-    // Clear the stored mask data
-    window.currentMaskData = null;
-
-    // Set inpaint button to off
-    if (inpaintBtn) {
-        inpaintBtn.setAttribute('data-state', 'off');
-        inpaintBtn.classList.remove('active');
-    }
-
-    // Clear the canvas
-    if (maskEditorCtx) {
-        maskEditorCtx.clearRect(0, 0, maskEditorCanvas.width, maskEditorCanvas.height);
-    }
-
-    // For pipeline images, restore the original pipeline mask
-    const isPipeline = window.currentEditMetadata && window.currentEditMetadata.request_type === 'pipeline';
-    if (isPipeline && window.pipelineMaskData) {
-        window.currentMaskData = window.pipelineMaskData + "";
-    }
-    window.currentMaskCompressed = null;
-
-    // Update vibe transfer UI state
-    updateInpaintButtonState();
-
-    closeMaskEditor();
-}
-
-// Close mask editor
-function closeMaskEditor() {
-    const maskEditorDialog = document.getElementById('maskEditorDialog');
-    if (maskEditorDialog) {
-        maskEditorDialog.style.display = 'none';
-    }
-
-    // Reset drawing state
-    isDrawing = false;
-    globalMouseDown = false;
-
-    // Remove global event listeners
-    document.removeEventListener('mouseup', handleGlobalMouseUp);
-    document.removeEventListener('mousemove', handleGlobalMouseMove);
-
-    // Update inpaint button state and mask preview
-    updateInpaintButtonState();
-    updateMaskPreview();
-}
-
-// Open mask editor
-function openMaskEditor() {
-    console.log('openMaskEditor called');
-    const maskEditorDialog = document.getElementById('maskEditorDialog');
-
-    if (!maskEditorDialog) {
-        console.error('maskEditorDialog not found');
-        return;
-    }
-
-    // Initialize mask editor first if not already done
-    if (!maskEditorCtx) {
-        initializeMaskEditor();
-    }
-
-    // Get the source image dimensions
-    const variationImage = document.getElementById('manualVariationImage');
-    const isPipelineEdit = window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit;
-
-    // For pipeline editing, we don't need a variation image
-    if (!isPipelineEdit && (!variationImage || !variationImage.src)) {
-        showError('No source image available');
-        return;
-    }
-
-    // Get the resolution from the form
-    let resolutionValue = document.getElementById('manualResolution').value;
-
-    // If resolution value is empty, try to get it from the dropdown display or use default
-    if (!resolutionValue) {
-        const resolutionSelected = document.getElementById('manualResolutionSelected');
-
-        if (resolutionSelected && resolutionSelected.textContent !== 'Select resolution...') {
-            // Try to find the resolution value from the display text
-            resolutionValue = getResolutionFromDisplay(resolutionSelected.textContent);
-        }
-
-        // Default to normal portrait if no resolution is selected or found
-        if (!resolutionValue) {
-            resolutionValue = 'normal_portrait';
-        }
-
-        // Ensure the hidden input is also set for consistency
-        const manualResolutionHidden = document.getElementById('manualResolution');
-        if (manualResolutionHidden) {
-            manualResolutionHidden.value = resolutionValue;
-        }
-    }
-
-    let canvasWidth, canvasHeight;
-
-    if (resolutionValue === 'custom') {
-        // Use custom resolution values
-        canvasWidth = parseInt(document.getElementById('manualWidth').value) || 512;
-        canvasHeight = parseInt(document.getElementById('manualHeight').value) || 512;
-    } else {
-        // Use resolution map to get dimensions
-        const dimensions = getDimensionsFromResolution(resolutionValue);
-        canvasWidth = dimensions.width;
-        canvasHeight = dimensions.height;
-    }
-
-    // Store target dimensions for saving
-    const targetWidth = canvasWidth;
-    const targetHeight = canvasHeight;
-
-    // Calculate 8x smaller canvas dimensions for editing
-    canvasWidth = Math.ceil(canvasWidth / 8);
-    canvasHeight = Math.ceil(canvasHeight / 8);
-
-    // Set canvas dimensions to the 8x smaller size
-    maskEditorCanvas.width = canvasWidth;
-    maskEditorCanvas.height = canvasHeight;
-
-    // Calculate display scale to fit in the container (max 512px)
-    const maxDisplaySize = 512;
-    const scaleX = maxDisplaySize / canvasWidth;
-    const scaleY = maxDisplaySize / canvasHeight;
-    displayScale = Math.min(scaleX, scaleY, 1); // Don't scale up, only down
-
-    // Set the canvas display size
-    maskEditorCanvasInner.style.aspectRatio = `${canvasWidth} / ${canvasHeight}`;
-
-    // Set nearest neighbor scaling
-    maskEditorCanvas.style.imageRendering = 'pixelated';
-    maskEditorCanvas.style.imageRendering = '-moz-crisp-edges';
-    maskEditorCanvas.style.imageRendering = 'crisp-edges';
-
-    // Store target dimensions for saving
-    maskEditorCanvas.targetWidth = targetWidth;
-    maskEditorCanvas.targetHeight = targetHeight;
-
-    // Calculate brush size based on canvas resolution (8x smaller canvas)
-    const canvasDiagonal = Math.sqrt(canvasWidth * canvasWidth + canvasHeight * canvasHeight);
-    brushSize = Math.round(canvasDiagonal * brushSizePercent);
-
-    // Ensure brush size is within bounds (1-15)
-    brushSize = Math.max(1, Math.min(15, brushSize));
-
-    // Update brush size input
-    const brushSizeInput = document.getElementById('brushSize');
-    if (brushSizeInput) {
-        brushSizeInput.value = brushSize;
-    }
-
-    // Set the background image in the inner container with aspect ratio scaling
-    const canvasInner = document.querySelector('.mask-editor-canvas-inner');
-    if (canvasInner) {
-        // Check if we have a placeholder image (current image for pipeline or regular image)
-        if (window.uploadedImageData && window.uploadedImageData.isPlaceholder) {
-            // Use the placeholder image as background
-            const backgroundImageValue = `url(${window.uploadedImageData.image_source.replace('file:', '/images/')})`;
-            canvasInner.style.setProperty('--background-image', backgroundImageValue);
-            canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
-            canvasInner.style.setProperty('--background-size', 'contain');
-            canvasInner.style.setProperty('--background-width', '100%');
-            canvasInner.style.setProperty('--background-height', '100%');
-        } else if (isPipelineEdit || !variationImage || !variationImage.src) {
-            // For pipeline editing or when no variation image, create a black placeholder
-            const placeholderCanvas = document.createElement('canvas');
-            const placeholderCtx = placeholderCanvas.getContext('2d');
-            placeholderCanvas.width = targetWidth;
-            placeholderCanvas.height = targetHeight;
-
-            // Fill with black
-            placeholderCtx.fillStyle = '#000000';
-            placeholderCtx.fillRect(0, 0, targetWidth, targetHeight);
-
-            // Convert to data URL and store as placeholder
-            window.uploadedImageData.image_source = placeholderCanvas.toDataURL('image/png');
-            window.uploadedImageData.isPlaceholder = true;
-
-            // Use the placeholder as background
-            const backgroundImageValue = `url(${window.uploadedImageData.image_source})`;
-            canvasInner.style.setProperty('--background-image', backgroundImageValue);
-            canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
-            canvasInner.style.setProperty('--background-size', 'contain');
-            canvasInner.style.setProperty('--background-width', '100%');
-            canvasInner.style.setProperty('--background-height', '100%');
-        } else {
-            // Use the variation image as background with aspect ratio scaling
-            const backgroundImageValue = `url(${variationImage.src})`;
-            canvasInner.style.setProperty('--background-image', backgroundImageValue);
-            canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
-            canvasInner.style.setProperty('--background-size', 'contain');
-            canvasInner.style.setProperty('--background-width', '100%');
-            canvasInner.style.setProperty('--background-height', '100%');
-        }
-    }
-
-    // Initialize canvas with transparent background (black will be drawn as needed)
-    maskEditorCtx.clearRect(0, 0, canvasWidth, canvasHeight);
-
-    // Load existing mask if available
-    if (window.currentMaskData) {
-        const maskImg = new Image();
-        maskImg.onload = function() {
-            // Create a temporary canvas to scale down the mask
-            const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCanvas.width = canvasWidth;
-            tempCanvas.height = canvasHeight;
-
-            // Disable image smoothing for nearest neighbor scaling
-            tempCtx.imageSmoothingEnabled = false;
-
-            // Draw the mask image onto the temp canvas (scaled down)
-            tempCtx.drawImage(maskImg, 0, 0, canvasWidth, canvasHeight);
-
-            // Get the scaled down image data
-            const imageData = tempCtx.getImageData(0, 0, canvasWidth, canvasHeight);
-            const data = imageData.data;
-
-            for (let i = 0; i < data.length; i += 4) {
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
-
-                // If pixel is pure black (0,0,0), make it transparent for editing
-                if (r === 0 && g === 0 && b === 0) {
-                    data[i + 3] = 0; // Set alpha to 0 (transparent)
-                } else if (r > 0 || g > 0 || b > 0) {
-                    // Any non-black pixel becomes white with full opacity
-                    data[i] = 255;     // Red
-                    data[i + 1] = 255; // Green
-                    data[i + 2] = 255; // Blue
-                    data[i + 3] = 255; // Alpha
-                }
-            }
-
-            // Put the modified image data back to the main canvas
-            maskEditorCtx.putImageData(imageData, 0, 0);
-        };
-        maskImg.src = window.currentMaskData;
-    }
-
-    // Show the dialog
-    maskEditorDialog.style.display = 'block';
-
-    // Add global event listeners for continuous drawing
-    document.addEventListener('mouseup', handleGlobalMouseUp);
-    document.addEventListener('mousemove', handleGlobalMouseMove);
-}
-
-// Update inpaint button state
-function updateInpaintButtonState() {
-    const noiseValue = document.getElementById('manualNoiseValue');
-    const strengthValue = document.getElementById('manualStrengthValue');
-
-    if (inpaintBtn) {
-        if (window.currentMaskData) {
-            inpaintBtn.setAttribute('data-state', 'on');
-            inpaintBtn.classList.add('active');
-        } else {
-            inpaintBtn.setAttribute('data-state', 'off');
-            inpaintBtn.classList.remove('active');
-        }
-    }
-
-    // Disable noise slider when mask is set
-    if (noiseValue) {
-        if (window.currentMaskData) {
-            noiseValue.disabled = true;
-            noiseValue.style.opacity = '0.5';
-        } else {
-            noiseValue.disabled = false;
-            noiseValue.style.opacity = '1';
-        }
-    }
-
-    // Disable vibe transfer section and tabs when inpainting is enabled
-    const vibeReferencesSection = document.getElementById('vibeReferencesSection');
-    const vibeReferencesTabBtn = document.querySelector('.cache-browser-tabs .tab-btn[data-tab="vibe-references"]');
-    const vibeTabBtn = document.querySelector('.cache-manager-tabs .tab-btn[data-tab="vibe"]');
-
-    if (window.currentMaskData) {
-        // Disable vibe references section
-        if (vibeReferencesSection) {
-            vibeReferencesSection.style.opacity = '0.5';
-            vibeReferencesSection.style.pointerEvents = 'none';
-        }
-
-        // Disable vibe references tab in cache browser
-        if (vibeReferencesTabBtn) {
-            vibeReferencesTabBtn.style.opacity = '0.5';
-            vibeReferencesTabBtn.style.pointerEvents = 'none';
-            vibeReferencesTabBtn.title = 'Vibe transfers disabled during inpainting';
-        }
-
-        // Disable vibe tab in cache manager
-        if (vibeTabBtn) {
-            vibeTabBtn.style.opacity = '0.5';
-            vibeTabBtn.style.pointerEvents = 'none';
-            vibeTabBtn.title = 'Vibe transfers disabled during inpainting';
-        }
-    } else {
-        // Re-enable vibe references section
-        if (vibeReferencesSection) {
-            vibeReferencesSection.style.opacity = '1';
-            vibeReferencesSection.style.pointerEvents = 'auto';
-        }
-
-        // Re-enable vibe references tab in cache browser
-        if (vibeReferencesTabBtn) {
-            vibeReferencesTabBtn.style.opacity = '1';
-            vibeReferencesTabBtn.style.pointerEvents = 'auto';
-            vibeReferencesTabBtn.title = '';
-        }
-
-        // Re-enable vibe tab in cache manager
-        if (vibeTabBtn) {
-            vibeTabBtn.style.opacity = '1';
-            vibeTabBtn.style.pointerEvents = 'auto';
-            vibeTabBtn.title = '';
-        }
-    }
-
-    // Show inpaint button for pipeline images or when there's uploaded image data
-    const shouldShowInpaint = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.request_type === 'pipeline');
-    if (shouldShowInpaint) {
-        if (inpaintBtn) {
-            inpaintBtn.classList.remove('hidden');
-        }
-        // Set strength value based on mask presence
-        if (strengthValue) {
-            if (window.currentMaskData) {
-                // Set strength to 1.0 when mask is set (unless it was loaded from a preset)
-                if (strengthValue.textContent === '0.8') {
-                    strengthValue.textContent = '1.0';
-                }
-            } else {
-                // Set strength to 0.8 when no mask (unless it was loaded from a preset)
-                if (strengthValue.textContent === '1.0') {
-                    strengthValue.textContent = '0.8';
-                }
-            }
-        }
-    } else {
-        if (inpaintBtn) {
-            inpaintBtn.classList.add('hidden');
-        }
-    }
-}
-
-// Update mask preview overlay
-async function updateMaskPreview() {
-    const maskPreviewCanvas = document.getElementById('maskPreviewCanvas');
-    const variationImage = document.getElementById('manualVariationImage');
-
-    if (!maskPreviewCanvas || !variationImage) {
-        if (maskPreviewCanvas) {
-            maskPreviewCanvas.style.display = 'none';
-        }
-        return;
-    }
-
-    // Wait for the image to load and get valid dimensions
-    let retryCount = 0;
-    const maxRetries = 20; // Increased retries for slower loading
-
-    while (retryCount < maxRetries) {
-        // Check if image is loaded and has valid dimensions
-        if (variationImage.complete && variationImage.naturalWidth > 0 && variationImage.naturalHeight > 0) {
-            // Get the actual displayed dimensions
-            const imageRect = variationImage.getBoundingClientRect();
-
-            // Check if the displayed dimensions are valid and the image is visible
-            if (imageRect.width > 0 && imageRect.height > 0 &&
-                variationImage.style.display !== 'none' &&
-                variationImage.style.visibility !== 'hidden') {
-                break; // Valid dimensions found, proceed
-            }
-        }
-
-        // Wait a bit before retrying
-        await new Promise(resolve => setTimeout(resolve, 150)); // Slightly longer wait
-        retryCount++;
-    }
-
-    if (retryCount >= maxRetries) {
-        console.warn('Failed to get valid image dimensions after retries');
-        if (maskPreviewCanvas) {
-            maskPreviewCanvas.style.display = 'none';
-        }
-        return;
-    }
-
-    // Check if we have a compressed mask first
-    let maskData = window.currentMaskData;
-    if (window.currentMaskCompressed && !maskData) {
-        // Get the current resolution for scaling
-        let dims = null;
-        if (manualHeight.value && manualWidth.value) {
-            dims = { width: manualWidth.value, height: manualHeight.value };
-        } else {
-            const resolutionValue = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-            dims = getDimensionsFromResolution(resolutionValue);
-        }
-
-        if (dims && dims.width > 0 && dims.height > 0) {
-            try {
-                // Process the compressed mask to display resolution
-                maskData = await processCompressedMask(window.currentMaskCompressed, dims.width, dims.height);
-            } catch (error) {
-                console.error('Error processing compressed mask:', error);
-                // Fallback to regular mask if available
-                maskData = window.currentMaskData;
-            }
-        } else {
-            console.warn('Invalid dimensions for mask processing:', dims);
-        }
-    }
-
-    if (!maskData) {
-        if (maskPreviewCanvas) {
-            maskPreviewCanvas.style.display = 'none';
-        }
-        return;
-    }
-
-    // Validate mask data format
-    if (typeof maskData !== 'string' || !maskData.startsWith('data:image/')) {
-        console.warn('Invalid mask data format:', typeof maskData, maskData ? maskData.substring(0, 50) + '...' : 'null');
-        if (maskPreviewCanvas) {
-            maskPreviewCanvas.style.display = 'none';
-        }
-        return;
-    }
-
-    // Get the actual displayed dimensions of the variation image
-    const imageRect = variationImage.getBoundingClientRect();
-    const containerRect = variationImage.closest('.variation-image-container').getBoundingClientRect();
-
-    // Validate that we have valid dimensions
-    if (imageRect.width <= 0 || imageRect.height <= 0) {
-        console.warn('Invalid image dimensions for mask preview:', imageRect);
-        if (maskPreviewCanvas) {
-            maskPreviewCanvas.style.display = 'none';
-        }
-        return;
-    }
-
-    // Set canvas size to match the actual displayed image dimensions
-    maskPreviewCanvas.width = imageRect.width;
-    maskPreviewCanvas.height = imageRect.height;
-
-    // Position the canvas to overlay the image exactly
-    maskPreviewCanvas.style.position = 'absolute';
-    maskPreviewCanvas.style.left = (imageRect.left - containerRect.left) + 'px';
-    maskPreviewCanvas.style.top = (imageRect.top - containerRect.top) + 'px';
-    maskPreviewCanvas.style.width = imageRect.width + 'px';
-    maskPreviewCanvas.style.height = imageRect.height + 'px';
-
-    const ctx = maskPreviewCanvas.getContext('2d');
-
-    // Load the mask image
-    const maskImg = new Image();
-    maskImg.onload = function() {
-        // Validate canvas dimensions before proceeding
-        if (maskPreviewCanvas.width <= 0 || maskPreviewCanvas.height <= 0) {
-            console.warn('Canvas dimensions are invalid for mask preview:', {
-                width: maskPreviewCanvas.width,
-                height: maskPreviewCanvas.height
-            });
-            return;
-        }
-
-        // Clear the canvas first
-        ctx.clearRect(0, 0, maskPreviewCanvas.width, maskPreviewCanvas.height);
-
-        // Draw the mask image onto the preview canvas, maintaining aspect ratio
-        ctx.drawImage(maskImg, 0, 0, maskPreviewCanvas.width, maskPreviewCanvas.height);
-
-        // Get image data to modify colors
-        const imageData = ctx.getImageData(0, 0, maskPreviewCanvas.width, maskPreviewCanvas.height);
-        const data = imageData.data;
-
-        for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-
-            // If pixel is white (masked area), make it green overlay
-            if (r === 255 && g === 255 && b === 255) {
-                data[i] = 149;     // Red
-                data[i + 1] = 254;   // Green
-                data[i + 2] = 108;   // Blue
-                data[i + 3] = 200; // Semi-transparent
-            } else {
-                // Make black areas transparent
-                data[i + 3] = 0;
-            }
-        }
-
-        // Put the modified image data back
-        ctx.putImageData(imageData, 0, 0);
-
-        // Show the preview canvas
-        maskPreviewCanvas.style.display = 'block';
-    };
-    maskImg.src = maskData;
-}
-
 // Character Prompt Collapse/Expand Functions
 function toggleCharacterPromptCollapse(characterId) {
     const characterItem = document.getElementById(characterId);
@@ -15535,7 +13929,6 @@ let vibeReferencesGallery = null;
 
 async function showCacheBrowser() {
     // Check if we're on desktop (manual modal is split)
-    const manualModal = document.getElementById('manualModal');
     const isDesktop = manualModal && window.innerWidth >= 1400;
 
     if (isDesktop) {
@@ -16008,8 +14401,6 @@ async function selectVibeReference(vibeRef) {
 
     // Close cache browser
     hideCacheBrowser();
-
-    showSuccess('Vibe reference selected successfully');
 }
 
 function createVibeReferenceItem(vibeRef) {
@@ -16187,11 +14578,10 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
         }
     }
 
-    const container = document.getElementById('vibeReferencesContainer');
-    if (!container) return;
+    if (!vibeReferencesContainer) return;
 
     // Check if already exists
-    const existingItem = container.querySelector(`[data-vibe-id="${vibeId}"]`);
+    const existingItem = vibeReferencesContainer.querySelector(`[data-vibe-id="${vibeId}"]`);
     if (existingItem) {
         console.warn(`Vibe reference ${vibeId} already exists in container`);
         return;
@@ -16217,29 +14607,32 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
         ratioInput.value = strength.toString();
     }
 
-    container.appendChild(item);
+    vibeReferencesContainer.appendChild(item);
 
     // Show the section
-    const section = document.getElementById('vibeReferencesSection');
-    if (section) {
-        section.style.display = '';
+    if (vibeReferencesSection) {
+        vibeReferencesSection.style.display = '';
+        if (vibeNormalizeToggle) {
+            vibeNormalizeToggle.style.display = '';
+        }
     }
 }
 
 function removeVibeReference(vibeId) {
-    const container = document.getElementById('vibeReferencesContainer');
-    if (!container) return;
+    if (!vibeReferencesContainer) return;
 
-    const item = container.querySelector(`[data-vibe-id="${vibeId}"]`);
+    const item = vibeReferencesContainer.querySelector(`[data-vibe-id="${vibeId}"]`);
     if (item) {
         item.remove();
 
         // Hide section if no more items
-        const remainingItems = container.querySelectorAll('.vibe-reference-item');
+        const remainingItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item');
         if (remainingItems.length === 0) {
-            const section = document.getElementById('vibeReferencesSection');
-            if (section) {
-                section.style.display = 'none';
+            if (vibeReferencesSection) {
+                vibeReferencesSection.style.display = 'none';
+            }
+            if (vibeNormalizeToggle) {
+                vibeNormalizeToggle.style.display = 'none';
             }
         }
     }
@@ -16349,8 +14742,6 @@ async function selectCacheImageInternal(cacheImage) {
         // Close cache browser
         hideCacheBrowser();
 
-        showSuccess('Reference image selected successfully');
-
     } catch (error) {
         console.error('Error selecting cache image:', error);
         showError('Failed to select cache image');
@@ -16375,7 +14766,7 @@ async function deleteCacheImage(cacheImage) {
             displayCacheImages();
             displayCacheImagesContainer();
 
-            showSuccess('Reference image deleted successfully');
+            showGlassToast('success', null, 'Reference deleted');
         } else {
             throw new Error(`Failed to delete cache image: ${response.statusText}`);
         }
@@ -17044,239 +15435,6 @@ async function generateConfirmationPreviews() {
     }
 }
 
-// Function to detect transparent pixels in an image
-function detectTransparentPixels(imageDataUrl) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = function() {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = img.width;
-            canvas.height = img.height;
-
-            ctx.drawImage(img, 0, 0);
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            const data = imageData.data;
-
-            let transparentPixels = 0;
-            const totalPixels = canvas.width * canvas.height;
-
-            for (let i = 0; i < data.length; i += 4) {
-                const alpha = data[i + 3];
-                if (alpha < 128) { // Consider pixels with alpha < 128 as transparent
-                    transparentPixels++;
-                }
-            }
-
-            const transparentPercentage = (transparentPixels / totalPixels) * 100;
-            resolve({
-                hasTransparentPixels: transparentPixels > 0,
-                transparentPercentage: transparentPercentage,
-                transparentPixels: transparentPixels,
-                totalPixels: totalPixels
-            });
-        };
-        img.src = imageDataUrl;
-    });
-}
-
-// Function to auto-fill mask based on transparent pixels
-async function autoFillMaskFromTransparentPixels() {
-    if (!window.uploadedImageData || !window.uploadedImageData.originalDataUrl) {
-        showError('No image data available for auto-fill');
-        return;
-    }
-
-    if (!window.currentMaskData) {
-        showError('No existing mask found for auto-fill');
-        return;
-    }
-
-    try {
-        // Get the current resolution
-        const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-        const resolutionDims = getDimensionsFromResolution(currentResolution);
-        if (!resolutionDims) {
-            showError('Invalid resolution for auto-fill');
-            return;
-        }
-
-        // Load the existing mask
-        const maskImg = new Image();
-        maskImg.onload = function() {
-            // Step 1: Upscale the mask 8x with nearest neighbor
-            const upscaledCanvas = document.createElement('canvas');
-            const upscaledCtx = upscaledCanvas.getContext('2d');
-            upscaledCanvas.width = resolutionDims.width;
-            upscaledCanvas.height = resolutionDims.height;
-
-            // Use nearest neighbor scaling for upscaling
-            upscaledCtx.imageSmoothingEnabled = false;
-            upscaledCtx.drawImage(maskImg, 0, 0, upscaledCanvas.width, upscaledCanvas.height);
-
-            // Step 2: Apply the same transforms as the image bias
-            const transformedCanvas = document.createElement('canvas');
-            const transformedCtx = transformedCanvas.getContext('2d');
-            transformedCanvas.width = resolutionDims.width;
-            transformedCanvas.height = resolutionDims.height;
-
-            // Fill with white background
-            transformedCtx.fillStyle = '#FFFFFF';
-            transformedCtx.fillRect(0, 0, transformedCanvas.width, transformedCanvas.height);
-
-            // Apply the same transforms as the image bias, calculating delta from original bias
-            const dynamicBias = window.uploadedImageData.image_bias;
-            const previousBias = window.uploadedImageData.previousBias; // The bias that was active when mask was created
-
-            if (dynamicBias && typeof dynamicBias === 'object') {
-                transformedCtx.save();
-
-                // Calculate the difference between current bias and the bias that was active when mask was created
-                if (previousBias && typeof previousBias === 'object') {
-                    // Calculate delta from previous bias to current bias
-                    const deltaX = (dynamicBias.x || 0) - (previousBias.x || 0);
-                    const deltaY = (dynamicBias.y || 0) - (previousBias.y || 0);
-                    const deltaRotate = (dynamicBias.rotate || 0) - (previousBias.rotate || 0);
-
-                    // For scale, we need to calculate the relative change
-                    // If previous scale was 1.2 and current is 1.5, delta should be 1.5/1.2 = 1.25
-                    const previousScale = previousBias.scale || 1;
-                    const currentScale = dynamicBias.scale || 1;
-                    const deltaScale = currentScale / previousScale;
-
-                    // Calculate the source image position when the mask was created
-                    // The source image fills the target area, so we need to find its top-left corner
-                    const sourceImageWidth = upscaledCanvas.width;
-                    const sourceImageHeight = upscaledCanvas.height;
-                    const targetWidth = resolutionDims.width;
-                    const targetHeight = resolutionDims.height;
-
-                    // Calculate how the source image was positioned (like in cropImageWithDynamicBias)
-                    const imageAR = sourceImageWidth / sourceImageHeight;
-                    const targetAR = targetWidth / targetHeight;
-
-                    let sourceX, sourceY, sourceWidth, sourceHeight;
-                    if (imageAR > targetAR) {
-                        // Image is wider than target, scale to match target height
-                        sourceHeight = targetHeight;
-                        sourceWidth = targetHeight * imageAR;
-                        sourceX = 0;
-                        sourceY = 0;
-                    } else {
-                        // Image is taller than target, scale to match target width
-                        sourceWidth = targetWidth;
-                        sourceHeight = targetWidth / imageAR;
-                        sourceX = 0;
-                        sourceY = 0;
-                    }
-
-                    // Apply transformations from the source image's top-left origin (like cropImageWithDynamicBias)
-                    transformedCtx.translate(deltaX, deltaY);
-                    transformedCtx.rotate(deltaRotate * Math.PI / 180);
-                    transformedCtx.scale(deltaScale, deltaScale);
-                } else {
-                    // No previous bias, apply the full current bias transformations
-                    // Calculate the source image position (same logic as above)
-                    const sourceImageWidth = upscaledCanvas.width;
-                    const sourceImageHeight = upscaledCanvas.height;
-                    const targetWidth = resolutionDims.width;
-                    const targetHeight = resolutionDims.height;
-
-                    const imageAR = sourceImageWidth / sourceImageHeight;
-                    const targetAR = targetWidth / targetHeight;
-
-                    let sourceX, sourceY, sourceWidth, sourceHeight;
-                    if (imageAR > targetAR) {
-                        sourceHeight = targetHeight;
-                        sourceWidth = targetHeight * imageAR;
-                        sourceX = 0;
-                        sourceY = 0;
-                    } else {
-                        sourceWidth = targetWidth;
-                        sourceHeight = targetWidth / imageAR;
-                        sourceX = 0;
-                        sourceY = 0;
-                    }
-
-                    // Apply transformations from the source image's top-left origin
-                    transformedCtx.translate(dynamicBias.x || 0, dynamicBias.y || 0);
-                    transformedCtx.rotate((dynamicBias.rotate || 0) * Math.PI / 180);
-                    transformedCtx.scale(dynamicBias.scale || 1, dynamicBias.scale || 1);
-                }
-
-                transformedCtx.drawImage(upscaledCanvas, 0, 0);
-                transformedCtx.restore();
-            } else {
-                // For regular bias, apply the standard crop transform
-                const bias = window.uploadedImageData.bias || 2;
-                const originalWidth = window.uploadedImageData.originalWidth;
-                const originalHeight = window.uploadedImageData.originalHeight;
-
-                const scale = Math.max(resolutionDims.width / originalWidth, resolutionDims.height / originalHeight) * (bias / 2);
-                const scaledWidth = originalWidth * scale;
-                const scaledHeight = originalHeight * scale;
-                const x = (resolutionDims.width - scaledWidth) / 2;
-                const y = (resolutionDims.height - scaledHeight) / 2;
-
-                // If there was a previous bias, calculate the delta
-                if (previousBias && typeof previousBias === 'number') {
-                    const previousScale = Math.max(resolutionDims.width / originalWidth, resolutionDims.height / originalHeight) * (previousBias / 2);
-                    const previousScaledWidth = originalWidth * previousScale;
-                    const previousScaledHeight = originalHeight * previousScale;
-                    const previousX = (resolutionDims.width - previousScaledWidth) / 2;
-                    const previousY = (resolutionDims.height - previousScaledHeight) / 2;
-
-                    // Calculate the offset to align the mask
-                    const offsetX = x - previousX;
-                    const offsetY = y - previousY;
-                    const scaleRatio = scale / previousScale;
-
-                    transformedCtx.save();
-                    transformedCtx.translate(offsetX, offsetY);
-                    transformedCtx.scale(scaleRatio, scaleRatio);
-                    transformedCtx.drawImage(upscaledCanvas, previousX, previousY, previousScaledWidth, previousScaledHeight);
-                    transformedCtx.restore();
-                } else {
-                    transformedCtx.drawImage(upscaledCanvas, x, y, scaledWidth, scaledHeight);
-                }
-            }
-
-            // Step 3: Scale down 8x with nearest neighbor
-            const finalCanvas = document.createElement('canvas');
-            const finalCtx = finalCanvas.getContext('2d');
-            finalCanvas.width = Math.floor(resolutionDims.width / 8);
-            finalCanvas.height = Math.floor(resolutionDims.height / 8);
-
-            // Use nearest neighbor scaling
-            finalCtx.imageSmoothingEnabled = false;
-            finalCtx.drawImage(transformedCanvas, 0, 0, finalCanvas.width, finalCanvas.height);
-
-            // Convert mask to base64
-            const maskBase64 = finalCanvas.toDataURL('image/png');
-
-            // Store the mask data
-            window.currentMaskData = maskBase64;
-
-            // Set inpaint button to on
-            if (inpaintBtn) {
-                inpaintBtn.setAttribute('data-state', 'on');
-                inpaintBtn.classList.add('active');
-            }
-
-            // Update mask preview
-            updateMaskPreview();
-
-            showSuccess('Mask auto-filled and aligned with image bias');
-        };
-
-        // Load the existing mask
-        maskImg.src = window.currentMaskData;
-
-    } catch (error) {
-        console.error('Error auto-filling mask:', error);
-        showError('Failed to auto-fill mask');
-    }
-}
 
 
 
@@ -17334,8 +15492,6 @@ function applyBiasAdjustment() {
     cropImageToResolution();
 
     renderImageBiasDropdown();
-
-    showSuccess('Bias adjustment saved');
 }
 
 
@@ -17431,100 +15587,6 @@ async function applyImageBiasChange(value, callback) {
     }
 }
 
-// Create mask from transparent pixels
-async function createMaskFromTransparentPixels() {
-    try {
-        if (!window.uploadedImageData || !window.uploadedImageData.originalDataUrl) {
-            showError('No image data available');
-            return;
-        }
-
-        // Get the processed image with current bias applied
-        let processedImageUrl;
-
-        // Check if we have a pending bias adjustment (custom bias)
-        if (window.pendingBiasAdjustment && imageBiasAdjustmentData.currentBias) {
-            processedImageUrl = await cropImageWithDynamicBias(window.uploadedImageData.originalDataUrl, imageBiasAdjustmentData.currentBias);
-        } else {
-            const dynamicBias = window.uploadedImageData.image_bias;
-            if (dynamicBias && typeof dynamicBias === 'object') {
-                processedImageUrl = await cropImageWithDynamicBias(window.uploadedImageData.originalDataUrl, dynamicBias);
-            } else {
-                const bias = window.uploadedImageData.bias || 2;
-                processedImageUrl = await cropImageToResolutionInternal(window.uploadedImageData.originalDataUrl, bias);
-            }
-        }
-
-        // Create a canvas to process the image
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const img = new Image();
-
-        await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-            img.src = processedImageUrl;
-        });
-
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-
-        // Get image data to analyze transparent pixels
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const data = imageData.data;
-
-        // Create mask canvas
-        const maskCanvas = document.createElement('canvas');
-        const maskCtx = maskCanvas.getContext('2d');
-        maskCanvas.width = canvas.width;
-        maskCanvas.height = canvas.height;
-
-        // Fill with black background
-        maskCtx.fillStyle = '#000000';
-        maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
-
-        // Process each pixel
-        for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-            const a = data[i + 3];
-
-            // If pixel is transparent or very transparent, make it white in the mask
-            if (a < 128) {
-                const pixelIndex = i / 4;
-                const x = pixelIndex % canvas.width;
-                const y = Math.floor(pixelIndex / canvas.width);
-
-                maskCtx.fillStyle = '#FFFFFF';
-                maskCtx.fillRect(x, y, 1, 1);
-            }
-        }
-
-        // Convert mask to base64
-        const maskDataUrl = maskCanvas.toDataURL('image/png');
-
-        // Store the mask data
-        window.currentMaskData = maskDataUrl;
-
-        // Set inpaint button to on
-        if (inpaintBtn) {
-            inpaintBtn.setAttribute('data-state', 'on');
-            inpaintBtn.classList.add('active');
-        }
-
-        // Update vibe transfer UI state
-        updateInpaintButtonState();
-
-        showSuccess('Mask created from transparent pixels!');
-
-    } catch (error) {
-        console.error('Error creating mask from transparent pixels:', error);
-        showError('Failed to create mask from transparent pixels');
-    }
-}
-
 // Hide image bias adjustment modal
 function hideImageBiasAdjustmentModal() {
     const modal = document.getElementById('imageBiasAdjustmentModal');
@@ -17595,13 +15657,10 @@ async function cropImageToResolution() {
         }
 
         // Update the preview image
-        const variationImage = document.getElementById('manualVariationImage');
-        if (variationImage) {
-            variationImage.src = croppedBlobUrl;
-            variationImage.style.display = 'block';
-            // Give the image more time to load before updating mask preview
-            setTimeout(updateMaskPreview, 500);
-        }
+        variationImage.src = croppedBlobUrl;
+        variationImage.style.display = 'block';
+        // Give the image more time to load before updating mask preview
+        setTimeout(updateMaskPreview, 500);
 
         window.uploadedImageData.croppedBlobUrl = croppedBlobUrl;
     } catch (error) {
@@ -18276,7 +16335,7 @@ async function deleteCacheManagerImage(cacheImage, workspace) {
             // Refresh display
             displayCacheManagerImages();
 
-            showSuccess('Reference image deleted successfully');
+            showGlassToast('success', null, 'Reference deleted');
         } else {
             throw new Error(`Failed to delete cache image: ${response.statusText}`);
         }
@@ -18353,7 +16412,7 @@ async function uploadCacheManagerImages() {
         }
 
         if (uploadedCount > 0) {
-            showSuccess(`${uploadedCount} image(s) uploaded successfully`);
+            showGlassToast('success', null, `${uploadedCount} image(s) uploaded`);
             hideCacheManagerUploadModal();
             loadCacheManagerImages(); // Refresh the gallery
         } else {
@@ -18427,7 +16486,7 @@ async function moveCacheManagerImages() {
         });
 
         if (response.ok) {
-            showSuccess(`${selectedHashes.length} image(s) moved successfully`);
+            showGlassToast('success', null, `${selectedHashes.length} image(s) moved`);
 
             // Clear selection and exit selection mode
             cacheManagerSelectedImages.clear();
@@ -18704,8 +16763,6 @@ async function createVibeManagerFromReference() {
 
         if (response.ok) {
             updateGlassToast(toastId, 'success', 'Encoding Complete', 'Vibe encoding created successfully from reference image');
-
-            showSuccess('Vibe encoding created successfully from reference image');
             hideVibeManagerFromReferenceModal();
             loadVibeManagerImages(); // Refresh the vibe gallery
         } else {
@@ -19033,7 +17090,7 @@ async function deleteSelectedVibeImages() {
         });
 
         if (response.ok) {
-            updateGlassToast(toastId, 'success', 'Delete Complete', 'Items deleted successfully');
+            updateGlassToast(toastId, 'success', 'Delete Complete', 'Items deleted');
 
             // Remove deleted vibes from local array
             vibeManagerImages = vibeManagerImages.filter(img => !vibesToDelete.includes(img.id));
@@ -19056,8 +17113,6 @@ async function deleteSelectedVibeImages() {
             // Refresh display
             displayVibeManagerImages();
             updateVibeManagerSelectionMode();
-
-            showSuccess(`${checkboxes.length} item(s) deleted successfully`);
         } else {
             const error = await response.json();
             throw new Error(error.error || 'Failed to delete items');
@@ -19129,7 +17184,7 @@ async function moveSelectedVibeImages() {
         });
 
         if (response.ok) {
-            updateGlassToast(toastId, 'success', 'Move Complete', 'Vibe images moved successfully');
+            updateGlassToast(toastId, 'success', 'Move Complete', 'Vibe images moved');
 
             // Remove moved images from local array
             vibeManagerImages = vibeManagerImages.filter(img => !vibeManagerSelectedImages.has(img.id));
@@ -19141,8 +17196,6 @@ async function moveSelectedVibeImages() {
             // Refresh display
             displayVibeManagerImages();
             updateVibeManagerSelectionMode();
-
-            showSuccess('Vibe images moved successfully');
         } else {
             const error = await response.json();
             throw new Error(error.error || 'Failed to move vibe images');
@@ -19251,9 +17304,7 @@ async function requestVibeManagerIe() {
         });
 
         if (response.ok) {
-            updateGlassToast(toastId, 'success', 'IE Complete', 'New Information Extraction requested successfully');
-
-            showSuccess('New Information Extraction requested successfully');
+            updateGlassToast(toastId, 'success', 'IE Complete', 'New Information Extraction successful');
             hideVibeManagerIeModal();
             loadVibeManagerImages(); // Refresh the gallery
         } else {
@@ -19588,38 +17639,40 @@ async function updateImageGenCounter() {
         const data = await response.json();
         const counter = data.count || 0;
         const counterElem = document.getElementById('imageGenCounter');
+        const statusElem = document.getElementById('queueStatus');
         if (counterElem) {
             counterElem.textContent = counter;
-            counterElem.classList.remove('light-orange', 'orange', 'red');
-            if (counter > 300) counterElem.classList.add('red');
-            else if (counter > 150) counterElem.classList.add('orange');
-            else if (counter > 50) counterElem.classList.add('light-orange');
+            statusElem.classList.remove('notice', 'warn', 'bad');
+            if (counter > 300) statusElem.classList.add('bad');
+            else if (counter > 150) statusElem.classList.add('warn');
+            else if (counter > 50) statusElem.classList.add('notice');
         }
     } catch (e) {
         const counterElem = document.getElementById('imageGenCounter');
-        if (counterElem) counterElem.textContent = '0';
+        const statusElem = document.getElementById('queueStatus');
+        if (counterElem) counterElem.textContent = '---';
+        if (statusElem) statusElem.classList.remove('notice', 'warn', 'bad');
     }
+}
+setInterval(updateImageGenCounter, 30000);
+setInterval(async () => {
     try {
         const response = await fetchWithAuth('/queue-status');
         if (!response.ok) throw new Error('Failed to fetch queue status');
         const data = await response.json();
-        const statusElem = document.getElementById('queueStatus');
+        const statusElem = document.getElementById('queueIcon');
         if (statusElem) {
-            let msg = '';
-            if (data.value === 2) msg = 'LIMITED';
-            else if (data.value === 1) msg = 'Warning';
-            else msg = 'OK';
-            statusElem.textContent = msg;
-            statusElem.classList.remove('warn', 'limit');
-            if (data.value === 2) statusElem.classList.add('limit');
-            else if (data.value === 1) statusElem.classList.add('warn');
+            let classList = 'fas ';
+            if (data.value === 2) classList += 'fa-octagon-exclamation';
+            else if (data.value === 1) classList += 'fa-exclamation-triangle';
+            else classList += 'fa-check';
+            statusElem.classList = classList;
         }
     } catch (e) {
-        const statusElem = document.getElementById('queueStatus');
-        if (statusElem) statusElem.textContent = '';
+        const statusElem = document.getElementById('queueIcon');
+        statusElem.classList = "";
     }
-}
-setInterval(updateImageGenCounter, 25000);
+}, 10000);
 
 let pinModalPromise = null;
 function showPinModal() {
@@ -19691,13 +17744,13 @@ function showPinModal() {
 async function ensureSessionValid() {
     // Try a lightweight authenticated endpoint
     try {
-        const resp = await fetch('/');
+        const resp = await fetch('/ping');
         if (resp.status !== 401) return true;
     } catch {}
     try {
         await showPinModal();
         // Try again after re-auth
-        const resp2 = await fetch('/balance');
+        const resp2 = await fetch('/ping');
         return resp2.status !== 401;
     } catch {
         // User cancelled
