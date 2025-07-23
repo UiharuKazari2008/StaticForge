@@ -34,7 +34,6 @@ const manualNoiseScheduler = document.getElementById('manualNoiseScheduler');
 const manualPresetName = document.getElementById('manualPresetName');
 const manualUpscale = document.getElementById('manualUpscale');
 const clearSeedBtn = document.getElementById('clearSeedBtn');
-const layer1SeedToggle = document.getElementById('layer1SeedToggle');
 const manualNoiseSchedulerDropdown = document.getElementById('manualNoiseSchedulerDropdown');
 const manualNoiseSchedulerDropdownBtn = document.getElementById('manualNoiseSchedulerDropdownBtn');
 const manualNoiseSchedulerDropdownMenu = document.getElementById('manualNoiseSchedulerDropdownMenu');
@@ -57,6 +56,7 @@ const manualResolutionSelected = document.getElementById('manualResolutionSelect
 const manualResolutionHidden = document.getElementById('manualResolution');
 const manualCustomResolution = document.getElementById('manualCustomResolution');
 const manualCustomResolutionBtn = document.getElementById('manualCustomResolutionBtn');
+const previewSection = document.getElementById('manualPanelSection');
 const manualWidth = document.getElementById('manualWidth');
 const manualHeight = document.getElementById('manualHeight');
 let manualSelectedResolution = '';
@@ -297,12 +297,12 @@ async function loadPresetIntoForm(presetName) {
 
 // Three-way mapping for samplers
 const SAMPLER_MAP = [
-  { meta: 'k_euler_ancestral', display: 'Euler Ancestral', request: 'EULER_ANC' },
-  { meta: 'k_dpmpp_sde', display: 'DPM++ SDE', request: 'DPMSDE' },
-  { meta: 'k_dpmpp_2m', display: 'DPM++ 2M', request: 'DPM2M' },
-  { meta: 'k_dpmpp_2m_sde', display: 'DPM++ 2M SDE', request: 'DPM2MSDE' },
-  { meta: 'k_euler', display: 'Euler', request: 'EULER' },
-  { meta: 'k_dpmpp_2s_ancestral', display: 'DPM++ 2S Ancestral', request: 'DPM2S_ANC' }
+  { meta: 'k_euler_ancestral', display: 'Euler Ancestral', display_short: 'Euler', badge: 'A', request: 'EULER_ANC' },
+  { meta: 'k_dpmpp_sde', display: 'DPM++ SDE', display_short: 'DPM', badge: 'SDE', request: 'DPMSDE' },
+  { meta: 'k_dpmpp_2m', display: 'DPM++ 2M', display_short: 'DPM', badge: '2M', request: 'DPM2M' },
+  { meta: 'k_dpmpp_2m_sde', display: 'DPM++ 2M SDE', display_short: 'DPM', badge: '2M/SDE', request: 'DPM2MSDE' },
+  { meta: 'k_euler', display: 'Euler', display_short: 'Euler', request: 'EULER' },
+  { meta: 'k_dpmpp_2s_ancestral', display: 'DPM++ 2S Ancestral', display_short: 'DPM', badge: '2S/A', request: 'DPM2S_ANC' }
 ];
 const NOISE_MAP = [
   { meta: 'karras', display: 'Kerras', request: 'KARRAS' },
@@ -325,7 +325,6 @@ const RESOLUTIONS = [
 const RESOLUTION_GROUPS = [
     {
         group: 'Normal',
-        badge: 'N',
         options: RESOLUTIONS.filter(r => r.value.startsWith('normal_')).map(r => ({
             value: r.value,
             name: r.display.replace('Normal ', ''),
@@ -335,7 +334,7 @@ const RESOLUTION_GROUPS = [
     },
     {
         group: 'Large',
-        badge: 'L',
+        badge: 'LG',
         options: RESOLUTIONS.filter(r => r.value.startsWith('large_')).map(r => ({
             value: r.value,
             name: r.display.replace('Large ', ''),
@@ -353,7 +352,7 @@ const RESOLUTION_GROUPS = [
     },
     {
         group: 'Small',
-        badge: 'S',
+        badge: 'SM',
         options: RESOLUTIONS.filter(r => r.value.startsWith('small_')).map(r => ({
             value: r.value,
             name: r.display.replace('Small ', ''),
@@ -1081,6 +1080,8 @@ async function loadIntoManualForm(source, image = null) {
                 if (transformationSection) {
                     transformationSection.classList.add('display-image');
                 }
+                document.getElementById('manualStrengthGroup').style.display = '';
+                document.getElementById('manualNoiseGroup').style.display = '';
             }
             // Ensure preview is updated with bias/crop
             await cropImageToResolution();
@@ -1153,6 +1154,8 @@ async function loadIntoManualForm(source, image = null) {
             if (transformationSection) {
                 transformationSection.classList.remove('display-image');
             }
+            document.getElementById('manualStrengthGroup').style.display = 'none';
+            document.getElementById('manualNoiseGroup').style.display = 'none';
         }
 
         // Type-specific handling
@@ -1385,9 +1388,9 @@ function selectManualSampler(value) {
   manualSelectedSampler = value;
   const s = SAMPLER_MAP.find(s => s.meta.toLowerCase() === value.toLowerCase());
   if (s) {
-    manualSamplerSelected.textContent = s.display;
+    manualSamplerSelected.innerHTML = `${s.display_short || s.display}${s.badge ? `<span class="custom-dropdown-badge ${s.badge_class}">${s.badge}</span>` : ''}`;
   } else {
-    manualSamplerSelected.textContent = 'Select sampler...';
+    manualSamplerSelected.innerHTML = 'Select sampler...';
   }
   if (manualSamplerHidden) manualSamplerHidden.value = value;
 
@@ -1553,7 +1556,7 @@ function selectTransformation(value) {
                 'reroll': 'Referance',
                 'variation': 'Current'
             };
-            const displayText = options[value] || 'Select';
+            const displayText = options[value] || 'References';
             updateTransformationDropdownState(value, displayText);
 
             // Handle reroll/variation logic
@@ -1566,10 +1569,8 @@ function selectTransformation(value) {
 }
 
 function handleTransformationTypeChange(requestType) {
-        const variationRow = document.getElementById('transformationSection');
         const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
         const saveButton = document.getElementById('manualSaveBtn');
-        const layer1SeedToggle = document.getElementById('layer1SeedToggle');
 
     // Clear existing data
     window.uploadedImageData = null;
@@ -1614,6 +1615,8 @@ function handleTransformationTypeChange(requestType) {
     if (transformationSection) {
         transformationSection.classList.add('display-image');
     }
+    document.getElementById('manualStrengthGroup').style.display = '';
+    document.getElementById('manualNoiseGroup').style.display = '';
 
     cropImageToResolution();
     updateInpaintButtonState();
@@ -1624,7 +1627,6 @@ function handleTransformationTypeChange(requestType) {
     // Hide preset name and save for variation
     if (presetNameGroup) presetNameGroup.style.display = 'none';
     if (saveButton) saveButton.style.display = 'none';
-    if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
 
     // For pipeline specific
     if (requestType === 'reroll' && (image.pipeline || image.pipeline_upscaled)) {
@@ -1637,10 +1639,6 @@ function handleTransformationTypeChange(requestType) {
             manualPresetName.style.opacity = '0.6';
         }
         if (saveButton) saveButton.style.display = 'none';
-        if (layer1SeedToggle) {
-            layer1SeedToggle.style.display = 'inline-block';
-            layer1SeedToggle.setAttribute('data-state', metadata.layer1Seed ? 'on' : 'off');
-        }
     }
 
     updateRequestTypeButtonVisibility();
@@ -1908,6 +1906,23 @@ async function removeFromScraps(image) {
         showError('Failed to remove image from scraps');
     }
 }
+function setSeedInputGroupState(open) {
+    const manualSeed = document.getElementById('manualSeed');
+    const sproutSeedBtn = document.getElementById('sproutSeedBtn');
+    const clearSeedBtn = document.getElementById('clearSeedBtn');
+    const editSeedBtn = document.getElementById('editSeedBtn');
+    if (open) {
+        manualSeed?.classList.remove('hidden');
+        sproutSeedBtn?.classList.remove('hidden');
+        clearSeedBtn?.classList.remove('hidden');
+        editSeedBtn?.classList.add('hidden');
+    } else {
+        manualSeed?.classList.add('hidden');
+        sproutSeedBtn?.classList.add('hidden');
+        clearSeedBtn?.classList.add('hidden');
+        editSeedBtn?.classList.remove('hidden');
+    }
+}
 
 document.addEventListener('DOMContentLoaded', async function() {
 
@@ -1961,6 +1976,30 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     if (manualUc) {
         initializeEmphasisOverlay(manualUc);
+    }
+
+
+    const manualSeed = document.getElementById('manualSeed');
+    const sproutSeedBtn = document.getElementById('sproutSeedBtn');
+    const clearSeedBtn = document.getElementById('clearSeedBtn');
+    const editSeedBtn = document.getElementById('editSeedBtn');
+    // Start closed
+    setSeedInputGroupState(false);
+    if (editSeedBtn) {
+        editSeedBtn.addEventListener('click', function() {
+            setSeedInputGroupState(true);
+            manualSeed?.focus();
+        });
+    }
+    if (clearSeedBtn) {
+        clearSeedBtn.addEventListener('click', function() {
+            if (manualSeed && manualSeed.value) {
+                manualSeed.value = '';
+                manualSeed.focus();
+            } else {
+                setSeedInputGroupState(false);
+            }
+        });
     }
 });
 
@@ -2297,7 +2336,15 @@ function setupEventListeners() {
     // Manual modal events
     manualBtn.addEventListener('click', showManualModal);
     closeManualBtn.addEventListener('click', hideManualModal);
-    manualPreviewCloseBtn.addEventListener('click', hideManualModal);
+    manualPreviewCloseBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (window.innerWidth > 1400) {
+            hideManualModal(e, false);
+        } else {
+            previewSection.classList.remove('active');
+            setTimeout(() => { previewSection.classList.remove('show'); }, 500);
+        }
+    });
 
     // Update save button state when preset name changes
     manualPresetName.addEventListener('input', () => {
@@ -2350,6 +2397,10 @@ function setupEventListeners() {
 
     manualPreviewLoadBtn.addEventListener('click', () => {
         if (currentManualPreviewImage) {
+            if (window.innerWidth <= 1400 && previewSection.classList.contains('show')) {
+                previewSection.classList.remove('active');
+                setTimeout(() => { previewSection.classList.remove('show'); }, 500);
+            }
             rerollImageWithEdit(currentManualPreviewImage);
         } else {
             showGlassToast('error', 'Load Failed', 'No image available');
@@ -2388,6 +2439,8 @@ function setupEventListeners() {
                 if (transformationSection) {
                     transformationSection.classList.add('display-image');
                 }
+                document.getElementById('manualStrengthGroup').style.display = '';
+                document.getElementById('manualNoiseGroup').style.display = '';
 
                 // Update inpaint button state
                 updateInpaintButtonState();
@@ -2403,7 +2456,12 @@ function setupEventListeners() {
 
     manualPreviewSeedBtn.addEventListener('click', () => {
         if (window.lastGeneratedSeed) {
-            manualSeed.value = window.lastGeneratedSeed;
+            manualSeed.value = window.lastGeneratedSeed; 
+            setSeedInputGroupState(true);
+            if (window.innerWidth <= 1400 && previewSection.classList.contains('show')) {
+                previewSection.classList.remove('active');
+                setTimeout(() => { previewSection.classList.remove('show'); }, 500);
+            }
         } else {
             showGlassToast('error', null, 'No seed available');
         }
@@ -2425,9 +2483,6 @@ function setupEventListeners() {
 
     // Clear seed button
     clearSeedBtn.addEventListener('click', clearSeed);
-
-    // Layer1 seed toggle
-    layer1SeedToggle.addEventListener('click', toggleLayer1Seed);
 
     // Paid request toggle
     paidRequestToggle.addEventListener('click', () => {
@@ -2675,17 +2730,6 @@ function setupEventListeners() {
     // Resize handler for dynamic gallery sizing
     window.addEventListener('resize', handleResize);
 
-    // Handle viewport changes for manual modal preview
-    window.addEventListener('resize', () => {
-        const isWideViewport = window.innerWidth >= 1400;
-        const isManualModalOpen = manualModal && manualModal.style.display === 'flex';
-
-        // If switching from wide to narrow viewport and modal is open, reset preview
-        if (!isWideViewport && isManualModalOpen) {
-            resetManualPreview();
-        }
-    });
-
     // Manual preview navigation buttons
     const manualPreviewPrevBtn = document.getElementById('manualPreviewPrevBtn');
     const manualPreviewNextBtn = document.getElementById('manualPreviewNextBtn');
@@ -2818,6 +2862,15 @@ function setupEventListeners() {
         btn.dataset.state = state;
         btn.classList.toggle('active', state === 'on');
         executeRandomPrompt();
+    });
+
+    document.getElementById('manualPreviewHandle').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!previewSection.classList.contains('show')) {
+            previewSection.classList.add('show');
+            setTimeout(() => { previewSection.classList.add('active'); }, 1);
+        }
     });
 
     // Update the click event for manualPresetToggleBtn to toggle the group and button state
@@ -3474,7 +3527,7 @@ function createGalleryItem(image, index) {
 
     // Download button
     const downloadBtn = document.createElement('button');
-    downloadBtn.className = 'btn-primary round-button';
+    downloadBtn.className = 'btn-secondary round-button';
     downloadBtn.innerHTML = '<i class="nai-save"></i>';
     downloadBtn.title = 'Download';
     downloadBtn.onclick = (e) => {
@@ -3484,7 +3537,7 @@ function createGalleryItem(image, index) {
 
     // Direct reroll button (left side)
     const rerollBtn = document.createElement('button');
-    rerollBtn.className = 'btn-primary round-button';
+    rerollBtn.className = 'btn-secondary round-button';
     rerollBtn.innerHTML = '<i class="nai-dice"></i>';
     rerollBtn.title = 'Reroll with same settings';
     rerollBtn.onclick = (e) => {
@@ -3494,7 +3547,7 @@ function createGalleryItem(image, index) {
 
     // Reroll with edit button (right side with cog)
     const rerollEditBtn = document.createElement('button');
-    rerollEditBtn.className = 'btn-primary round-button';
+    rerollEditBtn.className = 'btn-secondary round-button';
     rerollEditBtn.innerHTML = '<i class="nai-penwriting"></i>';
     rerollEditBtn.title = 'Reroll with Edit';
     rerollEditBtn.onclick = (e) => {
@@ -3504,7 +3557,7 @@ function createGalleryItem(image, index) {
 
     // Upscale button (only for non-upscaled images)
     const upscaleBtn = document.createElement('button');
-    upscaleBtn.className = 'btn-primary round-button';
+    upscaleBtn.className = 'btn-secondary round-button';
     upscaleBtn.innerHTML = '<i class="nai-upscale"></i>';
     upscaleBtn.title = 'Upscale';
     upscaleBtn.onclick = (e) => {
@@ -3701,12 +3754,6 @@ async function rerollImage(image) {
                 resolution: metadata.resolution || undefined,
                 workspace: activeWorkspace
             };
-
-            // Check if layer1 seed toggle is enabled and we have a layer1 seed
-            const useLayer1Seed = layer1SeedToggle.getAttribute('data-state') === 'on' && metadata.layer1Seed;
-            if (useLayer1Seed) {
-                pipelineRequestBody.layer1_seed = metadata.layer1Seed;
-            }
 
             addSharedFieldsToRequestBody(pipelineRequestBody, metadata);
 
@@ -4072,7 +4119,6 @@ async function rerollImageWithEdit(image) {
         // Set initial state
         const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
         const saveButton = document.getElementById('manualSaveBtn');
-        const layer1SeedToggle = document.getElementById('layer1SeedToggle');
 
         if (isPipeline) {
             window.currentRequestType = 'pipeline_reroll';
@@ -4085,13 +4131,8 @@ async function rerollImageWithEdit(image) {
                 manualPresetName.style.opacity = '0.6';
             }
             if (saveButton) saveButton.style.display = 'none';
-            if (layer1SeedToggle) {
-                layer1SeedToggle.style.display = 'inline-block';
-                layer1SeedToggle.setAttribute('data-state', metadata.layer1Seed ? 'on' : 'off');
-            }
 
             window.currentPipelineName = metadata.preset_name;
-            window.currentLayer1Seed = metadata.layer1Seed || metadata.seed;
 
         } else if (isVariation) {
             window.currentRequestType = 'reroll';
@@ -4119,15 +4160,13 @@ async function rerollImageWithEdit(image) {
 
             if (presetNameGroup) presetNameGroup.style.display = 'block';
             if (saveButton) saveButton.style.display = 'inline-block';
-            if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
         } else {
             window.currentRequestType = null;
             // Clear transformation type
-            updateTransformationDropdownState(undefined, 'Select');
+            updateTransformationDropdownState(undefined, 'References');
 
             if (presetNameGroup) presetNameGroup.style.display = 'block';
             if (saveButton) saveButton.style.display = 'inline-block';
-            if (layer1SeedToggle) layer1SeedToggle.style.display = 'none';
         }
 
         // Only call cropImageToResolution if uploadedImageData is available
@@ -4469,10 +4508,9 @@ async function showManualModal() {
 
 // Hide manual modal
 function hideManualModal(e, preventModalReset = false) {
-    const isWideViewport = window.innerWidth >= 1400;
     const isManualModalOpen = manualModal && manualModal.style.display === 'flex';
 
-    if (!preventModalReset || !(isWideViewport && isManualModalOpen)) {
+    if (!preventModalReset || !isManualModalOpen) {
         // Handle loading overlay when modal is closed
         const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
         if (manualLoadingOverlay && !manualLoadingOverlay.classList.contains('hidden')) {
@@ -4480,6 +4518,10 @@ function hideManualModal(e, preventModalReset = false) {
             const loadingMessage = manualLoadingOverlay.querySelector('p')?.textContent || 'Generating your image...';
             manualLoadingOverlay.classList.add('hidden');
             showLoading(true, loadingMessage);
+        }
+
+        if (previewSection) {
+            previewSection.classList.remove('active', 'show');
         }
 
         closeModal(manualModal);
@@ -4580,7 +4622,6 @@ function clearManualForm() {
 
     // Reset upscale toggle
     manualUpscale.setAttribute('data-state', 'off');
-    layer1SeedToggle.setAttribute('data-state', 'off');
 
     // Reset paid request toggle
     forcePaidRequest = false;
@@ -4627,10 +4668,21 @@ function clearManualForm() {
     if (transformationSectionRight) {
         transformationSectionRight.classList.remove('disabled');
     }
+    document.getElementById('manualStrengthGroup').style.display = 'none';
+    document.getElementById('manualNoiseGroup').style.display = 'none';
 
     const transformationDropdown = document.getElementById('transformationDropdown');
     if (transformationDropdown) {
         transformationDropdown.classList.remove('disabled');
+    }
+
+
+    if (vibeReferencesSection) {
+        vibeReferencesSection.style.display = 'none';
+        vibeReferencesContainer.innerHTML = '';
+    }
+    if (vibeNormalizeToggle) {
+        vibeNormalizeToggle.style.display = 'none';
     }
 
     // Clear variation context
@@ -4649,9 +4701,6 @@ function clearManualForm() {
     if (saveButton) {
         saveButton.style.display = 'inline-block';
     }
-
-    // Hide the layer1 seed toggle by default
-    layer1SeedToggle.style.display = 'none';
 
     // Clear character prompts
     clearCharacterPrompts();
@@ -4694,7 +4743,7 @@ function clearManualForm() {
     if (clearSeedBtn) clearSeedBtn.style.display = 'inline-block';
 
     // Reset transformation dropdown state
-    updateTransformationDropdownState(undefined, 'Select');
+    updateTransformationDropdownState(undefined, 'References');
 
     // Update button visibility
     updateRequestTypeButtonVisibility();
@@ -4892,11 +4941,10 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
         createConfetti();
 
         // Check if we're in wide viewport mode and manual modal is open
-        const isWideViewport = window.innerWidth >= 1400;
         const manualModal = document.getElementById('manualModal');
-        const isManualModalOpen = manualModal && manualModal.style.display === 'flex';
+        const isManualModalOpen = manualModal.style.display === 'flex';
 
-        if (isWideViewport && isManualModalOpen) {
+        if (isManualModalOpen) {
             // Update manual modal preview instead of opening lightbox
             // Don't clear context when modal is open in wide viewport mode
             await updateManualPreview(imageUrl, blob, response);
@@ -5232,7 +5280,6 @@ async function handleManualGeneration(e) {
 
         // Capture pipeline context BEFORE hiding modal (which clears it)
         let pipelineContext = { ...window.currentPipelineEdit };
-        const useLayer1Seed = layer1SeedToggle.getAttribute('data-state') === 'on';
 
         showManualLoading(true, 'Running Pipeline...');
 
@@ -5256,9 +5303,6 @@ async function handleManualGeneration(e) {
                 resolution: resolution,
                 workspace: activeWorkspace
             };
-            if (useLayer1Seed && pipelineContext.layer1Seed) {
-                pipelineRequestBody.layer1_seed = pipelineContext.layer1Seed;
-            }
             if (window.currentMaskCompressed) {
                 pipelineRequestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
             } else if (window.currentMaskData) {
@@ -8397,22 +8441,33 @@ function showManualLoading(show, message = 'Generating Image...') {
 
     // Check if manual modal is open and screen is wide enough for preview section
     const isManualModalOpen = manualModal.style.display !== 'none';
-    const isWideScreen = window.innerWidth > 1400;
 
-    if (show && isManualModalOpen && isWideScreen) {
+    if (isManualModalOpen) {
         // Use manual loading overlay for wide screens with modal open
         if (manualLoadingOverlay) {
-            manualLoadingOverlay.classList.remove('hidden');
+            if (show) {
+                manualLoadingOverlay.classList.remove('hidden');
+            } else {
+                manualLoadingOverlay.classList.add('hidden');
+            }
             // Update the loading message
             const loadingText = manualLoadingOverlay.querySelector('p');
             if (loadingText) {
                 loadingText.textContent = message;
             }
         }
+        if (previewSection && window.innerWidth <= 1400) {
+            if (!previewSection.classList.contains('show')) {
+                previewSection.classList.add('show');
+                setTimeout(() => { previewSection.classList.add('active'); }, 1);
+            }
+        }
     } else if (show) {
+        previewSection.classList.remove('active', 'show');
         // Fall back to regular loading overlay for narrow screens or when modal is closed
         showLoading(true, message);
     } else {
+        previewSection.classList.remove('active', 'show');
         // Hide both overlays
         if (manualLoadingOverlay) {
             manualLoadingOverlay.classList.add('hidden');
@@ -8547,28 +8602,8 @@ async function handleResize() {
             // Recalculate current page to maintain position
             const currentStartIndex = (currentPage - 1) * imagesPerPage;
             currentPage = Math.floor(currentStartIndex / imagesPerPage) + 1;
-
-            // Redisplay current page
-            displayCurrentPage();
         }
 
-        if (manualLoadingOverlay && manualModal) {
-            const isManualModalOpen = manualModal.style.display !== 'none';
-            const isWideScreen = window.innerWidth > 1400;
-            const isManualOverlayVisible = !manualLoadingOverlay.classList.contains('hidden');
-
-            if (isManualOverlayVisible && isManualModalOpen) {
-                if (isWideScreen) {
-                    // Switch to manual overlay for wide screens
-                    showLoading(false);
-                    manualLoadingOverlay.classList.remove('hidden');
-                } else {
-                    // Switch to regular overlay for narrow screens
-                    manualLoadingOverlay.classList.add('hidden');
-                    showLoading(true, manualLoadingOverlay.querySelector('p')?.textContent || 'Generating your image...');
-                }
-            }
-        }
         updateGalleryItemToolbars();
         updateGalleryPlaceholders(); // Update placeholders after resize
     }, 250); // 250ms delay
@@ -8891,17 +8926,6 @@ function clearSeed() {
     }
 }
 
-// Toggle layer1 seed function
-function toggleLayer1Seed() {
-    const currentState = layer1SeedToggle.getAttribute('data-state');
-    const newState = currentState === 'on' ? 'off' : 'on';
-
-    layer1SeedToggle.setAttribute('data-state', newState);
-
-    // The new CSS system handles styling automatically based on data-state
-    // No need to manually set styles - the CSS classes handle it
-}
-
 // Helper: Get pipeline preset resolution
 function getPipelinePresetResolution(pipelineName) {
     const pipeline = pipelines.find(p => p.name === pipelineName);
@@ -8962,6 +8986,7 @@ function toggleSproutSeed() {
     if (newState === 'on') {
         // Set the seed value and disable the field
         manualSeed.value = lastLoadedSeed;
+        setSeedInputGroupState(true);
         manualSeed.disabled = true;
         sproutSeedBtn.classList.add('active');
         // Hide the clear seed button
@@ -8969,6 +8994,7 @@ function toggleSproutSeed() {
     } else {
         // Clear the seed value and enable the field
         manualSeed.value = '';
+        setSeedInputGroupState(false);
         manualSeed.disabled = false;
         sproutSeedBtn.classList.remove('active');
         // Show the clear seed button
@@ -9280,6 +9306,9 @@ async function handleManualImageUploadInternal(file) {
         if (transformationSection) {
             transformationSection.classList.add('display-image');
         }
+
+        document.getElementById('manualStrengthGroup').style.display = '';
+        document.getElementById('manualNoiseGroup').style.display = '';
         updateUploadDeleteButtonVisibility();
         updateInpaintButtonState();
 
@@ -9636,6 +9665,8 @@ function handleDeleteBaseImage() {
     if (transformationSection) {
         transformationSection.classList.remove('display-image');
     }
+    document.getElementById('manualStrengthGroup').style.display = 'none';
+    document.getElementById('manualNoiseGroup').style.display = 'none';
 
     // Hide image bias dropdown
     hideImageBiasDropdown();
@@ -11240,66 +11271,39 @@ let vibeReferences = [];
 let vibeReferencesGallery = null;
 
 async function showCacheBrowser() {
-    // Check if we're on desktop (manual modal is split)
-    const isDesktop = manualModal && window.innerWidth >= 1400;
+    // Show as container in preview section
+    const cacheBrowserContainer = document.getElementById('cacheBrowserContainer');
+    const cacheBrowserLoadingContainer = document.getElementById('cacheBrowserLoadingContainer');
+    const cacheGalleryContainer = document.getElementById('cacheGalleryContainer');
 
-    if (isDesktop) {
-        // Show as container in preview section
-        const cacheBrowserContainer = document.getElementById('cacheBrowserContainer');
-        const cacheBrowserLoadingContainer = document.getElementById('cacheBrowserLoadingContainer');
-        const cacheGalleryContainer = document.getElementById('cacheGalleryContainer');
-        const previewSection = document.getElementById('manualPanelSection');
+    if (!cacheBrowserContainer || !cacheBrowserLoadingContainer || !cacheGalleryContainer || !previewSection) return;
 
-        if (!cacheBrowserContainer || !cacheBrowserLoadingContainer || !cacheGalleryContainer || !previewSection) return;
+    // Set active panel to cache browser
+    previewSection.setAttribute('data-active-panel', 'cache-browser');
+    cacheBrowserLoadingContainer.style.display = 'flex';
+    cacheGalleryContainer.innerHTML = '';
 
-        // Set active panel to cache browser
-        previewSection.setAttribute('data-active-panel', 'cache-browser');
-        cacheBrowserLoadingContainer.style.display = 'flex';
-        cacheGalleryContainer.innerHTML = '';
+    if (window.innerWidth <= 1400) {
+        previewSection.classList.add('show');
+        setTimeout(() => { previewSection.classList.add('active'); }, 1);
+    }
 
-        try {
-            await loadCacheImages();
-            await loadVibeReferences();
-            displayCacheImagesContainer();
-            displayVibeReferencesContainer();
-        } catch (error) {
-            console.error('Error loading cache images:', error);
-            showError('Failed to load cache images');
-        } finally {
-            cacheBrowserLoadingContainer.style.display = 'none';
-        }
-    } else {
-        // Show as modal (mobile/tablet)
-        const cacheBrowserModal = document.getElementById('cacheBrowserModal');
-        const cacheBrowserLoading = document.getElementById('cacheBrowserLoading');
-
-        if (!cacheBrowserModal || !cacheBrowserLoading || !cacheGallery) return;
-
-        openModal(cacheBrowserModal);
-        cacheBrowserLoading.style.display = 'flex';
-        cacheGallery.innerHTML = '';
-
-        try {
-            await loadCacheImages();
-            await loadVibeReferences();
-            displayCacheImages();
-            displayVibeReferences();
-        } catch (error) {
-            console.error('Error loading cache images:', error);
-            showError('Failed to load cache images');
-        } finally {
-            cacheBrowserLoading.style.display = 'none';
-        }
+    try {
+        await loadCacheImages();
+        await loadVibeReferences();
+        displayCacheImagesContainer();
+        displayVibeReferencesContainer();
+    } catch (error) {
+        console.error('Error loading cache images:', error);
+        showError('Failed to load cache images');
+    } finally {
+        cacheBrowserLoadingContainer.style.display = 'none';
     }
 }
 
 function hideCacheBrowser() {
     // Hide both modal and container versions
-    const cacheBrowserModal = document.getElementById('cacheBrowserModal');
     const cacheBrowserContainer = document.getElementById('cacheBrowserContainer');
-    const previewSection = document.getElementById('manualPanelSection');
-
-    closeModal(cacheBrowserModal);
 
     if (cacheBrowserContainer) {
         cacheBrowserContainer.style.display = 'none';
@@ -11307,7 +11311,13 @@ function hideCacheBrowser() {
 
     // Clear active panel to show manual preview
     if (previewSection) {
-        previewSection.removeAttribute('data-active-panel');
+        if (window.innerWidth <= 1400) {
+            previewSection.classList.remove('show');
+            setTimeout(() => { previewSection.classList.remove('active'); }, 1);
+            setTimeout(() => { previewSection.removeAttribute('data-active-panel'); }, 1000);
+        } else {
+            previewSection.removeAttribute('data-active-panel');
+        }
     }
 }
 
@@ -11319,9 +11329,6 @@ async function loadCacheImages() {
         if (response.ok) {
             cacheImages = await response.json();
             console.log('Loaded cache images:', cacheImages.length, 'items');
-            if (cacheImages.length > 0) {
-                console.log('Sample cache image:', cacheImages[0]);
-            }
         } else {
             throw new Error(`Failed to load cache: ${response.statusText}`);
         }
@@ -11762,10 +11769,6 @@ function createVibeReferenceItem(vibeRef) {
     ieDropdownBtn.type = 'button';
     ieDropdownBtn.className = 'custom-dropdown-btn hover-show colored';
 
-    const ieIcon = document.createElement('i');
-    ieIcon.className = 'nai-vibe-transfer';
-    ieDropdownBtn.appendChild(ieIcon);
-
     const ieText = document.createElement('span');
 
     // Get current model
@@ -11967,15 +11970,6 @@ function switchCacheBrowserTab(tabName) {
         }
     });
 
-    // Update tab panes (modal version)
-    const modalTabPanes = document.querySelectorAll('#cacheBrowserModal .cache-browser-body .tab-pane');
-    modalTabPanes.forEach(pane => {
-        pane.classList.remove('active');
-        if (pane.id === `${tabName}-tab`) {
-            pane.classList.add('active');
-        }
-    });
-
     // Update tab panes (container version)
     const containerTabPanes = document.querySelectorAll('#cacheBrowserContainer .cache-browser-body .tab-pane');
     containerTabPanes.forEach(pane => {
@@ -12034,6 +12028,8 @@ async function selectCacheImageInternal(cacheImage) {
         if (transformationSection) {
             transformationSection.classList.add('display-image');
         }
+        document.getElementById('manualStrengthGroup').style.display = '';
+        document.getElementById('manualNoiseGroup').style.display = '';
 
         // Update image bias - reset to center (2)
         if (imageBiasHidden != null) imageBiasHidden.value = '2';
@@ -14515,7 +14511,6 @@ async function deleteVibeManagerImage(vibeImage) {
     // Show the existing delete modal with this single image
     showVibeManagerDeleteModal();
 }
-
 
 
 async function uploadVibeManagerImage() {

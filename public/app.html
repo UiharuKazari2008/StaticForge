@@ -221,8 +221,35 @@
                                             <button type="button" id="autoPositionBtn" class="btn-secondary toggle-btn" data-state="on" title="Auto Position" style="display: none;">
                                                 <i class="fas fa-arrows-up-down-left-right"></i> Auto
                                             </button>
+                                            <button type="button" id="vibeNormalizeToggle" class="btn-secondary toggle-btn" data-state="on" title="Normalize vibe strengths">
+                                                <i class="fas fa-scale-balanced"></i>
+                                            </button>
+                                            <button type="button" id="inpaintBtn" class="btn-secondary toggle-btn" data-state="off">
+                                                <i class="nai-inpaint"></i>
+                                            </button>
+                                            <!-- Custom Transformation Dropdown -->
+                                            <div id="transformationDropdown" class="custom-dropdown dropright">
+                                                <button type="button" id="transformationDropdownBtn" class="btn-secondary toggle-btn" data-state="off">
+                                                    <i class="nai-img2img"></i>
+                                                    <span id="transformationSelected">Reference</span>
+                                                </button>
+                                                <div id="transformationDropdownMenu" class="custom-dropdown-menu" style="display: none;">
+                                                    <div class="custom-dropdown-option" data-value="browse">
+                                                        <i class="fas fa-folder-image"></i> Browse
+                                                    </div>
+                                                    <div class="custom-dropdown-option" data-value="upload">
+                                                        <i class="nai-import"></i> Upload
+                                                    </div>
+                                                    <div class="custom-dropdown-option" data-value="reroll" style="display: none;">
+                                                        <i class="nai-img2img"></i> Previous
+                                                    </div>
+                                                    <div class="custom-dropdown-option" data-value="variation" style="display: none;">
+                                                        <i class="nai-img2img"></i> Current
+                                                    </div>
+                                                </div>
+                                            </div>
                                             <button type="button" id="addCharacterBtn" class="btn-secondary">
-                                                <i class="nai-plus"></i> Add Character
+                                                <i class="nai-plus"></i> Character
                                             </button>
                                         </div>
                                     </div>
@@ -246,48 +273,13 @@
                                         </div>
                                     </div>
                                     <div id="transformationSectionRight" class="form-col">
-                                        <div class="form-row" style="align-self: flex-end;">    
-                                            <button type="button" id="vibeNormalizeToggle" class="btn-secondary toggle-btn" data-state="on" title="Normalize vibe strengths">
-                                                <i class="fas fa-scale-balanced"></i>
-                                            </button>
-                                            <button type="button" id="inpaintBtn" class="btn-secondary toggle-btn" data-state="off">
-                                                <i class="nai-inpaint"></i>
-                                            </button>
-                                            <!-- Custom Transformation Dropdown -->
-                                            <div id="transformationDropdown" class="custom-dropdown dropright">
-                                                <button type="button" id="transformationDropdownBtn" class="btn-secondary toggle-btn" data-state="off">
-                                                    <i class="nai-img2img"></i>
-                                                    <span id="transformationSelected">Reference</span>
-                                                </button>
-                                                <div id="transformationDropdownMenu" class="custom-dropdown-menu" style="display: none;">
-                                                    <div class="custom-dropdown-option" data-value="browse">
-                                                        <i class="fas fa-folder-image"></i> Browse References
-                                                    </div>
-                                                    <div class="custom-dropdown-option" data-value="upload">
-                                                        <i class="nai-import"></i> Upload Image
-                                                    </div>
-                                                    <div class="custom-dropdown-option" data-value="reroll" style="display: none;">
-                                                        <i class="nai-img2img"></i> Previous
-                                                    </div>
-                                                    <div class="custom-dropdown-option" data-value="variation" style="display: none;">
-                                                        <i class="nai-img2img"></i> Current
-                                                    </div>
-                                                </div>
-                                            </div>
+                                        <div class="form-row" style="align-self: flex-end;">
                                             <input type="hidden" id="transformationType" value="reroll">
                                             <button type="button" id="deleteImageBaseBtn" class="btn-secondary" style="display: none;">
                                                 <i class="nai-thin-cross"></i>
                                             </button>
                                         </div>
                                         <div class="form-row img2img-controls">
-                                            <div class="form-group" style="flex: unset;">
-                                                <label for="manualStrength">Strength</label>
-                                                <input type="number" id="manualStrengthValue" class="form-control hover-show colored slider-value-input" min="0.0" max="1.0" step="0.01" value="0.8" style="width: 60px; margin-right: 10px;" tabindex="0">
-                                            </div>
-                                            <div class="form-group" style="flex: unset;">
-                                                <label for="manualNoise">Noise</label>
-                                                <input type="number" id="manualNoiseValue" class="form-control hover-show colored slider-value-input" min="0.0" max="1.0" step="0.01" value="0.1" style="width: 60px; margin-right: 10px;" tabindex="0">
-                                            </div>
                                             <div class="form-group" id="imageBiasGroup" style="display: none;">
                                                 <label for="imageBias">Image Bias</label>
                                                 <div style="display: flex; gap: 8px; align-items: center;">
@@ -365,7 +357,7 @@
                                         <div class="guidance-group" style="display: flex; align-items: center; gap: 6px;">
                                             <input type="number" id="manualGuidance" class="form-control hover-show colored" min="0.0" max="10.0" step="0.01" value="5.0" placeholder="5.0">
                                             <button type="button" id="varietyBtn" class="btn-secondary toggle-btn" title="Enable Variety+">
-                                                <i class="nai-easel"></i>
+                                                <i class="fas fa-sparkle"></i>
                                             </button>
                                         </div>
                                     </div>
@@ -398,6 +390,14 @@
                                     </div>
                                 </div>
                                 <div class="form-row">
+                                    <div id="manualStrengthGroup" class="form-group" style="flex: unset;">
+                                        <label for="manualStrength"><i class="nai-img2img"></i>Strength</label>
+                                        <input type="number" id="manualStrengthValue" class="form-control hover-show colored slider-value-input" min="0.0" max="1.0" step="0.01" value="0.8" style="width: 60px; margin-right: 10px;" tabindex="0">
+                                    </div>
+                                    <div id="manualNoiseGroup" class="form-group" style="flex: unset;">
+                                        <label for="manualNoise"><i class="nai-img2img"></i> Noise</label>
+                                        <input type="number" id="manualNoiseValue" class="form-control hover-show colored slider-value-input" min="0.0" max="1.0" step="0.01" value="0.1" style="width: 60px; margin-right: 10px;" tabindex="0">
+                                    </div>
                                     <div class="form-group">
                                         <label for="manualSampler">Sampler</label>
                                         <!-- Custom Manual Sampler Dropdown -->
@@ -410,7 +410,7 @@
                                         <input type="hidden" id="manualSampler" value="">
                                     </div>
                                     <div class="form-group">
-                                        <label for="manualNoiseScheduler">Noise Scheduler</label>
+                                        <label for="manualNoiseScheduler">Noise Sch.</label>
                                         <!-- Custom Manual Noise Scheduler Dropdown -->
                                         <div id="manualNoiseSchedulerDropdown" class="custom-dropdown dropup">
                                             <button type="button" id="manualNoiseSchedulerDropdownBtn" class="custom-dropdown-btn hover-show colored">
@@ -420,19 +420,18 @@
                                         </div>
                                         <input type="hidden" id="manualNoiseScheduler" value="">
                                     </div>
-                                    <div class="form-group">
+                                    <div class="form-group" style="flex: unset;">
                                         <label for="manualSeed">Seed</label>
                                         <div class="seed-input-group">
-                                            <input type="number" id="manualSeed" class="form-control hover-show colored" placeholder="Randomize">
-                                            <button type="button" id="clearSeedBtn" class="btn-secondary" title="Clear seed">
-                                                <i class="nai-thin-cross"></i>
-                                            </button>
-                                            <button type="button" id="sproutSeedBtn" class="btn-secondary toggle-btn" data-state="off" title="Fill with seed value" style="display: none;">
+                                            <button type="button" id="editSeedBtn" class="btn-secondary toggle-btn" data-state="off" title="Edit seed">
                                                 <i class="nai-seed"></i>
                                             </button>
-                                            <button type="button" id="layer1SeedToggle" class="btn-secondary toggle-btn" data-state="off" title="Use Layer 1 Seed">
-                                                <i class="fas fa-l"></i>
-                                                <i class="fas fa-1"></i>
+                                            <input type="number" id="manualSeed" class="form-control hover-show colored" placeholder="Randomize" style="width: 125px;">
+                                            <button type="button" id="sproutSeedBtn" class="btn-secondary toggle-btn" data-state="off" title="Fill with seed value" style="display: none;">
+                                                <i class="fas fa-clipboard"></i>
+                                            </button>
+                                            <button type="button" id="clearSeedBtn" class="btn-secondary" title="Clear seed">
+                                                <i class="nai-thin-cross"></i>
                                             </button>
                                         </div>
                                     </div>
@@ -481,6 +480,11 @@
                             </div>
                         </form>
                     </div>
+                    <div class="manual-preview-handle">
+                        <div id="manualPreviewHandle" class="manual-preview-handle-inner">
+                            <i class="fas fa-grip-lines"></i>
+                        </div>
+                    </div>
                     <div class="manual-modal-preview-section" id="manualPanelSection">
                         <div class="manual-preview-container" id="manualPreviewContainer">
                             <!-- Manual Modal Loading Overlay -->
@@ -500,16 +504,16 @@
                                     </div>
                                 </div>
                                 <div class="manual-preview-controls">
-                                    <button id="manualPreviewDownloadBtn" class="btn-primary round-button" style="display: none;">
+                                    <button id="manualPreviewDownloadBtn" class="btn-secondary round-button" style="display: none;">
                                         <i class="nai-save"></i>
                                     </button>
-                                    <button id="manualPreviewUpscaleBtn" class="btn-primary round-button" style="display: none;">
+                                    <button id="manualPreviewUpscaleBtn" class="btn-secondary round-button" style="display: none;">
                                         <i class="nai-upscale"></i>
                                     </button>
-                                    <button id="manualPreviewVariationBtn" class="btn-primary round-button" style="display: none;">
+                                    <button id="manualPreviewVariationBtn" class="btn-secondary round-button" style="display: none;">
                                         <i class="nai-inpaint"></i>
                                     </button>
-                                    <button id="manualPreviewLoadBtn" class="btn-primary round-button" style="display: none;">
+                                    <button id="manualPreviewLoadBtn" class="btn-secondary round-button" style="display: none;">
                                         <i class="nai-penwriting"></i>
                                     </button>
                                     <div class="round-button-group">
@@ -522,20 +526,20 @@
                                     </div>
                                 </div>
                                 <div class="manual-preview-controls-top-right">
-                                    <button id="manualPreviewCloseBtn" class="btn-primary round-button">
+                                    <button id="manualPreviewCloseBtn" class="btn-secondary round-button">
                                         <i class="nai-thin-cross"></i>
                                     </button>
                                 </div>
                                 <div class="manual-preview-controls-left">
-                                    <button id="manualPreviewPrevBtn" class="btn-primary round-button" disabled>
+                                    <button id="manualPreviewPrevBtn" class="btn-secondary round-button" disabled>
                                         <i class="nai-directional-arrow-left"></i>
                                     </button>
-                                    <button id="manualPreviewNextBtn" class="btn-primary round-button" disabled>
+                                    <button id="manualPreviewNextBtn" class="btn-secondary round-button" disabled>
                                         <i class="nai-directional-arrow-right"></i>
                                     </button>
                                 </div>
                                 <div class="manual-preview-controls-right">
-                                    <div id="manualPreviewSeedBtn" class="preview-info-badge">
+                                    <div id="manualPreviewSeedBtn" class="preview-info-badge round-button">
                                         <i class="nai-seed"></i>
                                         <span id="manualPreviewSeedNumber">---</span>
                                     </div>
@@ -597,10 +601,10 @@
                     <span id="selectedCount">0</span> images selected
                 </div>
                 <div class="bulk-actions-buttons">
-                    <button id="bulkSequenziaBtn" class="btn-primary">
+                    <button id="bulkSequenziaBtn" class="btn-secondary">
                         <i class="fas fa-share"></i> Bounce
                     </button>
-                    <button id="bulkMoveToWorkspaceBtn" class="btn-primary">
+                    <button id="bulkMoveToWorkspaceBtn" class="btn-secondary">
                         <i class="fas fa-folder"></i> Transfer
                     </button>
                     <button id="bulkMoveToScrapsBtn" class="btn-secondary">
@@ -980,16 +984,16 @@
                     <!-- Controls Section -->
                     <div class="lightbox-controls-section">
                         <div class="lightbox-controls">
-                            <button id="lightboxDownloadBtn" class="btn-primary round-button">
+                            <button id="lightboxDownloadBtn" class="btn-secondary round-button">
                                 <i class="nai-save"></i>
                             </button>
-                            <button id="lightboxUpscaleBtn" class="btn-primary round-button" style="display:none;">
+                            <button id="lightboxUpscaleBtn" class="btn-secondary round-button" style="display:none;">
                                 <i class="nai-upscale"></i>
                             </button>
-                            <button id="lightboxRerollBtn" class="btn-primary round-button" style="display:none;">
+                            <button id="lightboxRerollBtn" class="btn-secondary round-button" style="display:none;">
                                 <i class="nai-dice"></i>
                             </button>
-                            <button id="lightboxRerollEditBtn" class="btn-primary round-button" style="display:none;">
+                            <button id="lightboxRerollEditBtn" class="btn-secondary round-button" style="display:none;">
                                 <i class="nai-settings"></i>
                             </button>
                             <button id="lightboxScrapBtn" class="btn-secondary round-button" style="display:none;">
@@ -1182,48 +1186,6 @@
                             <button class="close-expanded">&times;</button>
                         </div>
                         <div id="dialogUcContent" class="metadata-expanded-content"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- Reference Browser Modal -->
-    <div id="cacheBrowserModal" class="modal">
-        <div class="modal-content cache-browser-content">
-            <div class="cache-browser-header">
-                <!-- Tab Navigation -->
-                <div class="cache-browser-tabs">
-                    <div class="tab-buttons">
-                        <button type="button" class="tab-btn active" data-tab="references">
-                            <i class="fas fa-images"></i> Base Images
-                        </button>
-                        <button type="button" class="tab-btn" data-tab="vibe-references">
-                            <i class="nai-vibe-transfer"></i> Vibe References
-                        </button>
-                    </div>
-                </div>
-            </div>
-            <div class="cache-browser-body">
-                
-                <!-- References Tab -->
-                <div class="tab-pane active" id="references-tab">
-                    <div id="cacheGallery" class="cache-gallery">
-                        <!-- Reference images will be loaded here -->
-                    </div>
-                    <div class="cache-browser-loading" id="cacheBrowserLoading" style="display: none;">
-                        <div class="spinner"></div>
-                        <p>Loading cache images...</p>
-                    </div>
-                </div>
-                
-                <!-- Vibe References Tab -->
-                <div class="tab-pane" id="vibe-references-tab">
-                    <div id="vibeReferencesGallery" class="cache-gallery">
-                        <!-- Vibe reference images will be loaded here -->
-                    </div>
-                    <div class="cache-browser-loading" id="vibeReferencesLoading" style="display: none;">
-                        <div class="spinner"></div>
-                        <p>Loading vibe references...</p>
                     </div>
                 </div>
             </div>
@@ -1510,7 +1472,7 @@
                         </div>
                         <div class="form-group">
                             <label for="vibeManagerIeInput">Information Extraction</label>
-                            <input type="number" id="vibeManagerIeInput" class="form-control hover-show" min="0" max="1" step="0.01" value="0.5">
+                            <input type="number" id="vibeManagerIeInput" class="form-control hover-show" min="0" max="1" step="0.01" value="0.35">
                         </div>
                     </div>
                     <small class="form-text">Information Extraction: Controls how much information is extracted from the image (0 = minimal, 1 = maximum).</small>
@@ -1551,7 +1513,7 @@
                     </div>
                     <div class="form-group">
                         <label for="vibeManagerIeInput2">Information Extraction</label>
-                        <input type="number" id="vibeManagerIeInput2" class="form-control hover-show" min="0" max="1" step="0.01" value="0.5">
+                        <input type="number" id="vibeManagerIeInput2" class="form-control hover-show" min="0" max="1" step="0.01" value="0.35">
                     </div>
                     </div>
                     <small class="form-text">Information Extraction: Controls how much information is extracted from the image (0 = minimal, 1 = maximum). Use scroll wheel to adjust.</small>
@@ -1599,7 +1561,7 @@
                     </div>
                     <div class="form-group">
                         <label for="vibeManagerFromReferenceIeInput">Information Extraction</label>
-                        <input type="number" id="vibeManagerFromReferenceIeInput" class="form-control hover-show" min="0" max="1" step="0.01" value="0.5">
+                        <input type="number" id="vibeManagerFromReferenceIeInput" class="form-control hover-show" min="0" max="1" step="0.01" value="0.35">
                     </div>
                     </div>
                     <small class="form-text">Information Extraction: Controls how much information is extracted from the image (0 = minimal, 1 = maximum). Use scroll wheel to adjust.</small>

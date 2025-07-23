@@ -1306,7 +1306,7 @@ function updateInpaintButtonState() {
     const shouldShowInpaint = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.request_type === 'pipeline');
     if (shouldShowInpaint) {
         if (inpaintBtn) {
-            inpaintBtn.classList.remove('hidden');
+            inpaintBtn.style.display = '';
         }
         // Set strength value based on mask presence
         if (manualStrengthValue) {
@@ -1324,7 +1324,7 @@ function updateInpaintButtonState() {
         }
     } else {
         if (inpaintBtn) {
-            inpaintBtn.classList.add('hidden');
+            inpaintBtn.style.display = 'none';
         }
     }
 }
