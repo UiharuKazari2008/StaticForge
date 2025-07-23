@@ -33,7 +33,6 @@ const manualRescale = document.getElementById('manualRescale');
 const manualNoiseScheduler = document.getElementById('manualNoiseScheduler');
 const manualPresetName = document.getElementById('manualPresetName');
 const manualUpscale = document.getElementById('manualUpscale');
-const manualSaveBtn = document.getElementById('manualSaveBtn');
 const clearSeedBtn = document.getElementById('clearSeedBtn');
 const layer1SeedToggle = document.getElementById('layer1SeedToggle');
 const manualNoiseSchedulerDropdown = document.getElementById('manualNoiseSchedulerDropdown');
@@ -81,8 +80,6 @@ const manualModelHidden = document.getElementById('manualModel');
 const customWidth = document.getElementById('manualCustomWidth');
 const customHeight = document.getElementById('manualCustomHeight');
 let manualSelectedModel = '';
-const characterAutocompleteOverlay = document.getElementById('characterAutocompleteOverlay');
-const characterAutocompleteList = document.querySelector('.character-autocomplete-list');
 const presetAutocompleteOverlay = document.getElementById('presetAutocompleteOverlay');
 const presetAutocompleteList = document.querySelector('.preset-autocomplete-list');
 const metadataDialog = document.getElementById('metadataDialog');
@@ -105,15 +102,15 @@ const manualPreviewDeleteBtn = document.getElementById('manualPreviewDeleteBtn')
 const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
 const manualStrengthValue = document.getElementById('manualStrengthValue');
 const manualNoiseValue = document.getElementById('manualNoiseValue');
+const paidRequestToggle = document.getElementById('paidRequestToggle');
 const manualPresetToggleBtn = document.getElementById('manualPresetToggleBtn');
 const manualPresetToggleText = document.getElementById('manualPresetToggleText');
 const manualPresetToggleIcon = document.getElementById('manualPresetToggleIcon');
 const manualPresetGroup = document.getElementById('manualPresetGroup');
+const manualLoadBtn = document.getElementById('manualLoadBtn');
+const manualSaveBtn = document.getElementById('manualSaveBtn');
 const manualPreviewLoadBtn = document.getElementById('manualPreviewLoadBtn');
 const manualPreviewScrapBtn = document.getElementById('manualPreviewScrapBtn');
-let characterAutocompleteTimeout = null;
-let currentCharacterAutocompleteTarget = null;
-let characterSearchResults = [];
 const datasetDropdown = document.getElementById('datasetDropdown');
 const datasetDropdownBtn = document.getElementById('datasetDropdownBtn');
 const datasetDropdownMenu = document.getElementById('datasetDropdownMenu');
@@ -167,20 +164,9 @@ let currentManualPreviewImage = null;
 let displayedStartIndex = 0; // First displayed image index in allImages array
 let displayedEndIndex = 0;   // Last displayed image index in allImages array
 
-let selectedCharacterAutocompleteIndex = -1;
-
 // Selection state
 let selectedImages = new Set();
 let isSelectionMode = false;
-
-// Workspace state
-let workspaces = [];
-let activeWorkspace = 'default';
-let currentWorkspaceOperation = null;
-let activeWorkspaceColor = '#124'; // Default color
-let activeWorkspaceBackgroundColor = null; // Can be null for auto-generation
-let activeWorkspaceBackgroundImage = null; // Can be null for no background image
-let activeWorkspaceBackgroundOpacity = 0.3; // Default opacity
 
 // Helper function to check if a model is V3
 function isV3Model(modelValue) {
@@ -222,44 +208,38 @@ function updateV3ModelVisibility() {
 
 // Helper function to update save button state based on preset name
 function updateSaveButtonState() {
-    const saveBtn = document.getElementById('manualSaveBtn');
-    const presetNameInput = document.getElementById('manualPresetName');
-
-    if (saveBtn && presetNameInput) {
-        const hasPresetName = presetNameInput.value.trim().length > 0;
-        saveBtn.disabled = !hasPresetName;
+    if (manualSaveBtn && manualPresetName) {
+        const hasPresetName = manualPresetName.value.trim().length > 0;
+        manualSaveBtn.disabled = !hasPresetName;
 
         if (hasPresetName) {
-            saveBtn.classList.remove('disabled');
+            manualSaveBtn.classList.remove('disabled');
         } else {
-            saveBtn.classList.add('disabled');
+            manualSaveBtn.classList.add('disabled');
         }
     }
 }
 
 // Helper function to update load button state based on preset name validation
 function updateLoadButtonState() {
-    const loadBtn = document.getElementById('manualLoadBtn');
-    const presetNameInput = document.getElementById('manualPresetName');
+    if (!manualLoadBtn || !manualPresetName) return;
 
-    if (!loadBtn || !presetNameInput) return;
-
-    const presetName = presetNameInput.value.trim();
+    const presetName = manualPresetName.value.trim();
     if (!presetName) {
-        loadBtn.disabled = true;
-        loadBtn.classList.add('disabled');
+        manualLoadBtn.disabled = true;
+        manualLoadBtn.classList.add('disabled');
         return;
     }
 
     // Check if preset exists in available presets
     const isValidPreset = window.availablePresets && window.availablePresets.includes(presetName);
 
-    loadBtn.disabled = !isValidPreset;
+    manualLoadBtn.disabled = !isValidPreset;
 
     if (isValidPreset) {
-        loadBtn.classList.remove('disabled');
+        manualLoadBtn.classList.remove('disabled');
     } else {
-        loadBtn.classList.add('disabled');
+        manualLoadBtn.classList.add('disabled');
     }
 }
 
@@ -638,7 +618,7 @@ async function selectManualResolution(value, group) {
     updateManualPriceDisplay();
 
     // --- ADDED: Refresh preview image if in bias mode ---
-    if (window.uploadedImageData && window.uploadedImageData.isBiasMode && manualModal && manualModal.style.display === 'block') {
+    if (window.uploadedImageData && window.uploadedImageData.isBiasMode && manualModal && manualModal.style.display === 'flex') {
         // Reset bias to center (2) when resolution changes
         const resetBias = 2;
         if (imageBiasHidden != null) {
@@ -1102,6 +1082,8 @@ async function loadIntoManualForm(source, image = null) {
                     transformationSection.classList.add('display-image');
                 }
             }
+            // Ensure preview is updated with bias/crop
+            await cropImageToResolution();
 
             if (data.mask_compressed !== undefined && data.mask_compressed !== null) {
                 // Store the compressed mask data for later use
@@ -1142,9 +1124,9 @@ async function loadIntoManualForm(source, image = null) {
             if(data.image_bias !== undefined && data.image_bias !== null) {
                 // Handle both legacy (number) and dynamic (object) bias
                 if (typeof data.image_bias === 'object') {
-                    renderImageBiasDropdown('custom');
+                    await renderImageBiasDropdown('custom');
                 } else {
-                    renderImageBiasDropdown(data.image_bias.toString());
+                    await renderImageBiasDropdown(data.image_bias.toString());
                 }
             }
 
@@ -1244,7 +1226,7 @@ async function loadIntoManualForm(source, image = null) {
     }
 }
 
-function updateCustomResolutionValue() {
+async function updateCustomResolutionValue() {
     if (manualSelectedResolution === 'custom' && manualWidth && manualHeight) {
         const rawW = manualWidth.value;
         const rawH = manualHeight.value;
@@ -1271,7 +1253,7 @@ function updateCustomResolutionValue() {
                 window.uploadedImageData.bias = resetBias;
 
                 // Re-crop and update preview with reset bias
-                cropImageToResolution();
+                await cropImageToResolution();
 
                 // Re-render the dropdown options to reflect new resolution and reset bias
                 renderImageBiasDropdown(resetBias.toString());
@@ -1718,1314 +1700,6 @@ function updateTransformationDropdownState(type, text) {
 setupDropdown(transformationDropdown, transformationDropdownBtn, transformationDropdownMenu, renderTransformationDropdown, () => document.getElementById('transformationType').value);
 setupTransformationDropdownListeners();
 
-// ==================== WORKSPACE MANAGEMENT ====================
-
-// Reference workspace move functions
-async function moveCacheToDefaultWorkspace(cacheImage) {
-    try {
-        const response = await fetchWithAuth('/workspaces/default/references', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ hashes: [cacheImage.hash] })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to move cache file');
-        }
-
-        showGlassToast('success', null, 'Reference moved to default workspace');
-        await loadCacheImages();
-        displayCacheImages();
-        displayCacheImagesContainer();
-    } catch (error) {
-        console.error('Error moving cache file to default:', error);
-        showError('Failed to move cache file: ' + error.message);
-    }
-}
-
-function showCacheMoveToWorkspaceModal(cacheImage) {
-    // Create modal if it doesn't exist
-    let modal = document.getElementById('cacheMoveToWorkspaceModal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'cacheMoveToWorkspaceModal';
-        modal.className = 'modal';
-        modal.innerHTML = `
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Move to Workspace</h3>
-                    <button id="closeCacheMoveToWorkspaceBtn" class="close-dialog">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <p>Select workspace to move cache file:</p>
-                    <div class="workspace-move-list" id="cacheMoveWorkspaceList">
-                        <!-- Workspace list will be populated here -->
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-
-        // Close modal handlers
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.style.display = 'none';
-            }
-        });
-
-        document.getElementById('closeCacheMoveToWorkspaceBtn').addEventListener('click', () => {
-            modal.style.display = 'none';
-        });
-    }
-
-    // Populate workspace list
-    const workspaceList = document.getElementById('cacheMoveWorkspaceList');
-    workspaceList.innerHTML = '';
-
-    workspaces.forEach(workspace => {
-        const item = document.createElement('div');
-        item.className = 'workspace-move-item';
-        item.innerHTML = `
-            <div class="workspace-move-info">
-                <span class="workspace-name">${workspace.name}</span>
-                ${workspace.isActive ? '<span class="badge-active">Active</span>' : ''}
-            </div>
-        `;
-
-        item.addEventListener('click', async () => {
-            modal.style.display = 'none';
-            await moveCacheToWorkspace(cacheImage, workspace.id);
-        });
-
-        workspaceList.appendChild(item);
-    });
-
-    modal.style.display = 'block';
-}
-
-async function moveCacheToWorkspace(cacheImage, workspaceId) {
-    try {
-        const response = await fetchWithAuth(`/workspaces/${workspaceId}/references`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ hashes: [cacheImage.hash] })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to move cache file');
-        }
-
-        const workspace = workspaces.find(w => w.id === workspaceId);
-        showGlassToast('success', null, `Reference file moved to ${workspace ? workspace.name : 'workspace'}`);
-        await loadCacheImages();
-        displayCacheImages();
-        displayCacheImagesContainer();
-    } catch (error) {
-        console.error('Error moving cache file to workspace:', error);
-        showError('Failed to move cache file: ' + error.message);
-    }
-}
-
-// Workspace API functions
-async function loadWorkspaces() {
-    try {
-        const response = await fetchWithAuth('/workspaces', {
-            method: 'OPTIONS'
-        });
-        if (!response.ok) throw new Error('Failed to load workspaces');
-
-        const data = await response.json();
-        workspaces = data.workspaces;
-        activeWorkspace = data.activeWorkspace;
-
-        // Update active workspace color
-        const activeWorkspaceData = workspaces.find(w => w.id === activeWorkspace);
-        if (activeWorkspaceData) {
-            activeWorkspaceColor = activeWorkspaceData.color || '#124';
-            updateBokehBackground();
-        }
-
-        renderWorkspaceDropdown();
-        updateActiveWorkspaceDisplay();
-
-        console.log('✅ Loaded workspaces:', workspaces.length);
-    } catch (error) {
-        console.error('Error loading workspaces:', error);
-        showError('Failed to load workspaces: ' + error.message);
-    }
-}
-
-// Initialize background layers with default color
-function initializeBokehBackgrounds() {
-    const currentBg = document.querySelector('.current-bg');
-    const nextBg = document.querySelector('.next-bg');
-    const bokeh = document.querySelector('.bokeh');
-
-    if (currentBg) {
-        currentBg.style.backgroundColor = 'transparent';
-    }
-    if (nextBg) {
-        nextBg.style.opacity = '0';
-        nextBg.style.backgroundColor = 'transparent';
-    }
-    if (bokeh) {
-        bokeh.style.backgroundColor = addTransparency('#124', 0.5);
-    }
-}
-
-// Load active workspace color for bokeh background
-async function loadActiveWorkspaceColor() {
-    try {
-        const response = await fetchWithAuth('/workspaces/active/color');
-        if (!response.ok) throw new Error('Failed to load workspace color');
-
-        const data = await response.json();
-        activeWorkspaceColor = data.color;
-        activeWorkspaceBackgroundColor = data.backgroundColor;
-        activeWorkspaceBackgroundImage = data.backgroundImage;
-        activeWorkspaceBackgroundOpacity = data.backgroundOpacity || 0.3;
-        updateBokehBackground();
-
-        console.log('🎨 Loaded workspace settings:', {
-            color: activeWorkspaceColor,
-            backgroundColor: activeWorkspaceBackgroundColor,
-            backgroundImage: activeWorkspaceBackgroundImage,
-            backgroundOpacity: activeWorkspaceBackgroundOpacity
-        });
-    } catch (error) {
-        console.error('Error loading workspace color:', error);
-        // Use default values on error
-        activeWorkspaceColor = '#124';
-        activeWorkspaceBackgroundColor = null;
-        activeWorkspaceBackgroundImage = null;
-        activeWorkspaceBackgroundOpacity = 0.3;
-        updateBokehBackground();
-    }
-}
-
-// Animate workspace transition with bokeh circle movement
-async function animateWorkspaceTransition() {
-    const bokeh = document.querySelector('.bokeh');
-    const currentBg = document.querySelector('.current-bg');
-    const nextBg = document.querySelector('.next-bg');
-
-    if (!bokeh || !currentBg || !nextBg) return;
-
-
-    // Step 1: Move all circles off-screen (0.3s)
-    console.log('🎬 Starting workspace transition animation');
-
-    // Preload background image if it exists to prevent flickering
-    if (activeWorkspaceBackgroundImage) {
-        const img = new Image();
-        img.src = `/images/${activeWorkspaceBackgroundImage}`;
-        new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-            // Timeout after 2 seconds to prevent hanging
-            setTimeout(resolve, 2000);
-        }).catch(() => {
-            console.warn('Failed to preload background image:', activeWorkspaceBackgroundImage);
-        });
-    }
-
-    // Step 2: Update background with fade transition
-    updateBokehBackgroundWithFade();
-}
-
-// Update bokeh background with fade transition between layers
-async function updateBokehBackgroundWithFade() {
-    const currentBg = document.querySelector('.current-bg');
-    const nextBg = document.querySelector('.next-bg');
-    const bokeh = document.querySelector('.bokeh');
-
-    if (!currentBg || !nextBg || !bokeh) return;
-
-    // Generate color variations based on the workspace color
-    const baseColor = activeWorkspaceColor;
-    const colorVariations = generateColorVariations(baseColor);
-
-    // Update the bokeh circles with new colors and opacity
-    const circles = bokeh.querySelectorAll('circle');
-    circles.forEach((circle, index) => {
-        const colorIndex = index % colorVariations.length;
-        const color = colorVariations[colorIndex];
-        // Make circles more opaque than background
-        const circleOpacity = Math.min(1, activeWorkspaceBackgroundOpacity + 0.3);
-        circle.style.fill = color;
-        circle.style.opacity = circleOpacity;
-    });
-
-    // Set up the bokeh background color with transparency
-    const backgroundColor = activeWorkspaceBackgroundColor || generateBackgroundColor(baseColor);
-    const transparentColor = addTransparency(backgroundColor, 0.25); // 25% transparency
-    bokeh.style.backgroundColor = transparentColor;
-
-    // Set up the next background layer for images only
-    if (activeWorkspaceBackgroundImage) {
-        // Set background image on the div
-        nextBg.style.backgroundImage = `url('/images/${activeWorkspaceBackgroundImage}')`;
-        nextBg.style.backgroundSize = 'cover';
-        nextBg.style.backgroundPosition = 'top center';
-        nextBg.style.backgroundRepeat = 'no-repeat';
-        nextBg.style.backgroundColor = 'transparent';
-    } else {
-        // No background image
-        nextBg.style.backgroundImage = 'none';
-        nextBg.style.backgroundColor = 'transparent';
-    }
-
-    // Fade from current to next background
-    nextBg.style.opacity = '1';
-
-    // Wait for the fade transition to complete
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    // Swap the layers - copy all properties to ensure no flickering
-    currentBg.style.backgroundImage = nextBg.style.backgroundImage;
-    currentBg.style.backgroundSize = nextBg.style.backgroundSize;
-    currentBg.style.backgroundPosition = nextBg.style.backgroundPosition;
-    currentBg.style.backgroundRepeat = nextBg.style.backgroundRepeat;
-    currentBg.style.backgroundColor = nextBg.style.backgroundColor;
-    currentBg.style.backgroundBlendMode = nextBg.style.backgroundBlendMode || 'normal';
-
-    // Reset next background - ensure it's completely transparent
-    nextBg.style.opacity = '0';
-    nextBg.style.backgroundImage = 'none';
-    nextBg.style.backgroundColor = 'transparent';
-    nextBg.style.backgroundBlendMode = 'normal';
-
-    console.log('🎨 Updated bokeh background with fade:', {
-        color: baseColor,
-        backgroundColor: transparentColor,
-        backgroundImage: activeWorkspaceBackgroundImage,
-        opacity: activeWorkspaceBackgroundOpacity
-    });
-}
-
-// Update bokeh background with workspace color (for initial load and non-animated updates)
-function updateBokehBackground() {
-    const currentBg = document.querySelector('.current-bg');
-    const bokeh = document.querySelector('.bokeh');
-    if (!currentBg || !bokeh) return;
-
-    // Generate color variations based on the workspace color
-    const baseColor = activeWorkspaceColor;
-    const colorVariations = generateColorVariations(baseColor);
-
-    // Update the bokeh circles with new colors and opacity
-    const circles = bokeh.querySelectorAll('circle');
-    circles.forEach((circle, index) => {
-        const colorIndex = index % colorVariations.length;
-        const color = colorVariations[colorIndex];
-        // Make circles more opaque than background
-        const circleOpacity = Math.min(1, activeWorkspaceBackgroundOpacity + 0.3);
-        circle.style.fill = color;
-        circle.style.opacity = circleOpacity;
-    });
-
-    // Update the bokeh background color with transparency
-    const backgroundColor = activeWorkspaceBackgroundColor || generateBackgroundColor(baseColor);
-    const transparentColor = addTransparency(backgroundColor, 0.25); // 25% transparency
-    bokeh.style.backgroundColor = transparentColor;
-
-    // Update the current background layer for images only
-    if (activeWorkspaceBackgroundImage) {
-        // Set background image on the div
-        currentBg.style.backgroundImage = `url('/images/${activeWorkspaceBackgroundImage}')`;
-        currentBg.style.backgroundSize = 'cover';
-        currentBg.style.backgroundPosition = 'top center';
-        currentBg.style.backgroundRepeat = 'no-repeat';
-        currentBg.style.backgroundColor = 'transparent';
-    } else {
-        // No background image
-        currentBg.style.backgroundImage = 'none';
-        currentBg.style.backgroundColor = 'transparent';
-    }
-
-    console.log('🎨 Updated bokeh background:', {
-        color: baseColor,
-        backgroundColor: transparentColor,
-        backgroundImage: activeWorkspaceBackgroundImage,
-        opacity: activeWorkspaceBackgroundOpacity
-    });
-}
-
-// Generate color variations for bokeh circles with more variety
-function generateColorVariations(baseColor) {
-    // Convert hex to HSL for better color manipulation
-    const hsl = hexToHsl(baseColor);
-
-    // Generate variations with different hue shifts, saturation, and lightness
-    const variations = [
-        baseColor, // Original color
-        hslToHex(hsl.h, hsl.s, Math.min(100, hsl.l + 15)), // Lighter
-        hslToHex(hsl.h, hsl.s, Math.max(0, hsl.l - 20)), // Darker
-        hslToHex((hsl.h + 15) % 360, Math.min(100, hsl.s + 10), hsl.l), // Slightly different hue
-        hslToHex((hsl.h - 10 + 360) % 360, Math.max(0, hsl.s - 15), hsl.l), // Complementary direction
-        hslToHex(hsl.h, Math.max(0, hsl.s - 20), Math.min(100, hsl.l + 10)), // Less saturated, lighter
-        hslToHex((hsl.h + 25) % 360, Math.min(100, hsl.s + 5), Math.max(0, hsl.l - 15)), // Different hue, darker
-        hslToHex(hsl.h, Math.max(0, hsl.s - 10), Math.min(100, hsl.l + 20)), // Less saturated, much lighter
-        hslToHex((hsl.h - 20 + 360) % 360, hsl.s, Math.max(0, hsl.l - 25)), // Different hue, much darker
-        hslToHex(hsl.h, Math.min(100, hsl.s + 15), Math.max(0, hsl.l - 10)) // More saturated, darker
-    ];
-
-    return variations;
-}
-
-// Generate background color (darker, more muted version of workspace color)
-function generateBackgroundColor(baseColor) {
-    const hsl = hexToHsl(baseColor);
-    // Create a darker, more muted background color
-    return hslToHex(hsl.h, Math.max(0, hsl.s - 30), Math.max(0, hsl.l - 40));
-}
-
-// Helper function to convert hex to HSL
-function hexToHsl(hex) {
-    // Remove # if present
-    hex = hex.replace('#', '');
-
-    // Parse hex values
-    const r = parseInt(hex.substr(0, 2), 16) / 255;
-    const g = parseInt(hex.substr(2, 2), 16) / 255;
-    const b = parseInt(hex.substr(4, 2), 16) / 255;
-
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    let h, s, l = (max + min) / 2;
-
-    if (max === min) {
-        h = s = 0; // achromatic
-    } else {
-        const d = max - min;
-        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-
-        switch (max) {
-            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-            case g: h = (b - r) / d + 2; break;
-            case b: h = (r - g) / d + 4; break;
-        }
-        h /= 6;
-    }
-
-    return {
-        h: Math.round(h * 360),
-        s: Math.round(s * 100),
-        l: Math.round(l * 100)
-    };
-}
-
-// Helper function to convert HSL to hex
-function hslToHex(h, s, l) {
-    h /= 360;
-    s /= 100;
-    l /= 100;
-
-    const c = (1 - Math.abs(2 * l - 1)) * s;
-    const x = c * (1 - Math.abs((h * 6) % 2 - 1));
-    const m = l - c / 2;
-    let r = 0, g = 0, b = 0;
-
-    if (0 <= h && h < 1/6) {
-        r = c; g = x; b = 0;
-    } else if (1/6 <= h && h < 1/3) {
-        r = x; g = c; b = 0;
-    } else if (1/3 <= h && h < 1/2) {
-        r = 0; g = c; b = x;
-    } else if (1/2 <= h && h < 2/3) {
-        r = 0; g = x; b = c;
-    } else if (2/3 <= h && h < 5/6) {
-        r = x; g = 0; b = c;
-    } else if (5/6 <= h && h <= 1) {
-        r = c; g = 0; b = x;
-    }
-
-    const rHex = Math.round((r + m) * 255).toString(16).padStart(2, '0');
-    const gHex = Math.round((g + m) * 255).toString(16).padStart(2, '0');
-    const bHex = Math.round((b + m) * 255).toString(16).padStart(2, '0');
-
-    return `#${rHex}${gHex}${bHex}`;
-}
-
-// Helper function to add transparency to a hex color
-function addTransparency(hexColor, alpha) {
-    // Remove # if present
-    hexColor = hexColor.replace('#', '');
-
-    // Convert alpha to hex (0-255)
-    const alphaHex = Math.round(alpha * 255).toString(16).padStart(2, '0');
-
-    // Return hex color with alpha
-    return `#${hexColor}${alphaHex}`;
-}
-
-async function createWorkspace(name) {
-    try {
-        const response = await fetchWithAuth('/workspaces', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to create workspace');
-        }
-
-        await loadWorkspaces();
-        await loadGallery(); // Refresh gallery to show new workspace filtering
-        await loadCacheImages(); // Refresh cache browser to show new workspace filtering
-        showGlassToast('success', null, `Workspace "${name}" created!`);
-    } catch (error) {
-        console.error('Error creating workspace:', error);
-        showError('Failed to create workspace: ' + error.message);
-    }
-}
-
-async function renameWorkspace(id, newName) {
-    try {
-        if (id === 'default') return;
-        const response = await fetchWithAuth(`/workspaces/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: newName })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to rename workspace');
-        }
-    } catch (error) {
-        console.error('Error renaming workspace:', error);
-        showError('Failed to rename workspace: ' + error.message);
-    }
-}
-
-async function deleteWorkspace(id) {
-    try {
-        const response = await fetchWithAuth(`/workspaces/${id}`, {
-            method: 'DELETE'
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to delete workspace');
-        }
-
-        await loadWorkspaces();
-        await loadGallery(); // Refresh gallery to show updated filtering
-        await loadCacheImages(); // Refresh cache browser to show updated filtering
-        showGlassToast('success', null, 'Workspace deleted');
-    } catch (error) {
-        console.error('Error deleting workspace:', error);
-        showError('Failed to delete workspace: ' + error.message);
-    }
-}
-
-async function dumpWorkspace(sourceId, targetId) {
-    try {
-        const response = await fetchWithAuth(`/workspaces/${sourceId}/dump`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ targetId })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to dump workspace');
-        }
-
-        await loadWorkspaces();
-        await loadGallery(); // Refresh gallery
-        await loadCacheImages(); // Refresh cache browser
-        showGlassToast('success', null, 'Workspace Dumped');
-    } catch (error) {
-        console.error('Error dumping workspace:', error);
-        showError('Failed to dump workspace: ' + error.message);
-    }
-}
-
-async function setActiveWorkspace(id) {
-    try {
-        const response = await fetchWithAuth(`/workspaces/${id}/activate`, {
-            method: 'PUT'
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to set active workspace');
-        }
-
-        // Fade out gallery
-        if (gallery) {
-            gallery.style.transition = 'opacity 0.3s ease-out';
-            gallery.style.opacity = '0';
-        }
-
-        // Wait for fade out
-        await new Promise(resolve => setTimeout(resolve, 300));
-
-        activeWorkspace = id;
-
-        // Update workspace settings immediately
-        const workspace = workspaces.find(w => w.id === id);
-        if (workspace) {
-            activeWorkspaceColor = workspace.color || '#124';
-            activeWorkspaceBackgroundColor = workspace.backgroundColor;
-            activeWorkspaceBackgroundImage = workspace.backgroundImage;
-            activeWorkspaceBackgroundOpacity = workspace.backgroundOpacity || 0.3;
-
-            // Trigger workspace transition animation
-            await animateWorkspaceTransition();
-        }
-
-        loadWorkspaces();
-        updateActiveWorkspaceDisplay();
-        await loadGallery(); // Refresh gallery with new workspace filter
-        await loadCacheImages(); // Refresh cache browser with new workspace filter
-
-        // Fade in gallery
-        if (gallery) {
-            gallery.style.transition = 'opacity 0.3s ease-in';
-            gallery.style.opacity = '1';
-        }
-    } catch (error) {
-        console.error('Error setting active workspace:', error);
-        showError('Failed to set active workspace: ' + error.message);
-
-        // Ensure gallery is visible even on error
-        if (gallery) {
-            gallery.style.opacity = 1;
-        }
-    }
-}
-
-async function moveFilesToWorkspace(filenames, targetWorkspaceId) {
-    try {
-        const response = await fetchWithAuth(`/workspaces/${targetWorkspaceId}/files`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filenames })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to move files');
-        }
-
-        const result = await response.json();
-        await loadGallery(); // Refresh gallery
-        showGlassToast('success', null, `Moved ${result.movedCount} files to workspace`);
-    } catch (error) {
-        console.error('Error moving files to workspace:', error);
-        showError('Failed to move files: ' + error.message);
-    }
-}
-
-// Update workspace color
-async function updateWorkspaceColor(id, color) {
-    try {
-        const response = await fetchWithAuth(`/workspaces/${id}/color`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ color })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to update workspace color');
-        }
-    } catch (error) {
-        console.error('Error updating workspace color:', error);
-        showError('Failed to update workspace color: ' + error.message);
-    }
-}
-
-// Update workspace background color
-async function updateWorkspaceBackgroundColor(id, backgroundColor) {
-    try {
-        const response = await fetchWithAuth(`/workspaces/${id}/background-color`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ backgroundColor })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to update workspace background color');
-        }
-    } catch (error) {
-        console.error('Error updating workspace background color:', error);
-        showError('Failed to update workspace background color: ' + error.message);
-    }
-}
-
-// Update workspace background image
-async function updateWorkspaceBackgroundImage(id, backgroundImage) {
-    try {
-        const response = await fetchWithAuth(`/workspaces/${id}/background-image`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ backgroundImage })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to update workspace background image');
-        }
-    } catch (error) {
-        console.error('Error updating workspace background image:', error);
-        showError('Failed to update workspace background image: ' + error.message);
-    }
-}
-
-// Update workspace background opacity
-async function updateWorkspaceBackgroundOpacity(id, backgroundOpacity) {
-    try {
-        const response = await fetchWithAuth(`/workspaces/${id}/background-opacity`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ backgroundOpacity })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to update workspace background opacity');
-        }
-    } catch (error) {
-        console.error('Error updating workspace background opacity:', error);
-        showError('Failed to update workspace background opacity: ' + error.message);
-    }
-}
-
-// Workspace UI functions
-function renderWorkspaceDropdown(selectedVal) {
-    const workspaceMenu = document.getElementById('workspaceDropdownMenu');
-    if (!workspaceMenu) return;
-
-    workspaceMenu.innerHTML = '';
-
-    workspaces.forEach(workspace => {
-        const option = document.createElement('div');
-        option.className = 'custom-dropdown-option' + (workspace.isActive ? ' selected' : '');
-        option.tabIndex = 0;
-        option.dataset.value = workspace.id;
-
-        option.innerHTML = `
-            <div class="workspace-option-content">
-                <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#124'}"></div>
-                <span class="workspace-name">${workspace.name}</span>
-                <span class="workspace-counts">${workspace.fileCount} files</span>
-            </div>
-        `;
-
-        const action = () => {
-            if (!workspace.isActive) {
-                setActiveWorkspace(workspace.id);
-            }
-            closeWorkspaceDropdown();
-        };
-
-        option.addEventListener('click', action);
-        option.addEventListener('keydown', e => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                action();
-            }
-        });
-
-        workspaceMenu.appendChild(option);
-    });
-
-    // Update desktop workspace tabs
-    renderWorkspaceTabs();
-}
-
-function updateActiveWorkspaceDisplay() {
-    const workspaceSelected = document.getElementById('workspaceSelected');
-    if (!workspaceSelected) return;
-
-    const activeWorkspaceData = workspaces.find(w => w.id === activeWorkspace);
-    if (activeWorkspaceData) {
-        workspaceSelected.textContent = activeWorkspaceData.name;
-    }
-
-    // Update desktop workspace tabs
-    renderWorkspaceTabs();
-}
-
-function openWorkspaceDropdown() {
-    openDropdown(document.getElementById('workspaceDropdownMenu'), document.getElementById('workspaceDropdownBtn'));
-}
-
-function closeWorkspaceDropdown() {
-    closeDropdown(document.getElementById('workspaceDropdownMenu'), document.getElementById('workspaceDropdownBtn'));
-}
-
-// Desktop workspace tabs functionality
-function renderWorkspaceTabs() {
-    const workspaceTabs = document.getElementById('workspaceTabs');
-    if (!workspaceTabs) return;
-
-    workspaceTabs.innerHTML = '';
-
-    workspaces.forEach(workspace => {
-        const tab = document.createElement('div');
-        tab.className = 'workspace-tab' + (workspace.isActive ? ' active' : '');
-        tab.dataset.workspaceId = workspace.id;
-
-        // Use workspace color as background for active tab
-        if (workspace.isActive) {
-            const workspaceColor = workspace.color || '#124';
-            tab.style.background = `${workspaceColor}89`;
-            tab.style.color = '#ffffff';
-            tab.style.borderColor = `${workspaceColor}88`;
-        }
-
-        tab.innerHTML = `
-            <span class="workspace-name">${workspace.name}</span>
-        `;
-
-        const action = () => {
-            if (!workspace.isActive) {
-                setActiveWorkspace(workspace.id);
-            }
-        };
-
-        tab.addEventListener('click', action);
-        workspaceTabs.appendChild(tab);
-    });
-}
-
-function renderWorkspaceManagementList() {
-    const list = document.getElementById('workspaceManageList');
-    if (!list) return;
-
-    list.innerHTML = '';
-
-    workspaces.forEach(workspace => {
-        const item = document.createElement('div');
-        item.className = 'workspace-manage-item';
-
-        item.innerHTML = `
-            <div class="workspace-manage-info">
-                <div class="workspace-header">
-                    <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#124'}"></div>
-                    <h5>${workspace.name} ${workspace.isActive ? '<span class="badge-active">Active</span>' : ''}</h5>
-                </div>
-                <span class="workspace-manage-counts">${workspace.fileCount} files, ${workspace.cacheFileCount} references</span>
-            </div>
-            <div class="workspace-manage-actions">
-                <button type="button" class="btn-link" onclick="editWorkspaceSettings('${workspace.id}')" title="Workspace Settings">
-                    <i class="fas fa-cog"></i>
-                </button>
-                ${!workspace.isDefault ? `
-                    <button type="button" class="btn-link" onclick="editWorkspace('${workspace.id}', '${workspace.name}')" title="Rename">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button type="button" class="btn-link" onclick="showDumpWorkspaceModal('${workspace.id}', '${workspace.name}')" title="Dump">
-                        <i class="fas fa-arrow-right"></i>
-                    </button>
-                    <button type="button" class="btn-link text-danger" onclick="confirmDeleteWorkspace('${workspace.id}', '${workspace.name}')" title="Delete">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                ` : ''}
-            </div>
-        `;
-
-        list.appendChild(item);
-    });
-}
-
-// Workspace modal functions
-function showWorkspaceManagementModal() {
-    renderWorkspaceManagementList();
-    const modal = document.getElementById('workspaceManageModal');
-    if (modal) modal.style.display = 'block';
-}
-
-function hideWorkspaceManagementModal() {
-    const modal = document.getElementById('workspaceManageModal');
-    if (modal) modal.style.display = 'none';
-}
-
-function showAddWorkspaceModal() {
-    currentWorkspaceOperation = { type: 'add' };
-    document.getElementById('workspaceEditTitle').textContent = 'Add Workspace';
-    document.getElementById('workspaceNameInput').style.display = 'block';
-    document.getElementById('workspaceColorInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundColorInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundImageInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundOpacityInput').style.display = 'block';
-    document.getElementById('workspaceNameInput').value = '';
-    document.getElementById('workspaceColorInput').value = '#124';
-    document.getElementById('workspaceBackgroundColorInput').value = '#0a1a2a';
-    document.getElementById('workspaceBackgroundImageInput').value = '';
-    document.getElementById('workspaceBackgroundImageInput').placeholder = 'No background image selected';
-    document.getElementById('workspaceBackgroundOpacityInput').value = '0.3';
-    document.getElementById('workspaceBackgroundOpacityInput').textContent = '30';
-    const modal = document.getElementById('workspaceEditModal');
-    if (modal) modal.style.display = 'block';
-}
-
-function editWorkspace(id, currentName) {
-    currentWorkspaceOperation = { type: 'rename', id };
-    document.getElementById('workspaceEditTitle').textContent = 'Rename Workspace';
-    document.getElementById('workspaceNameInput').style.display = 'block';
-    document.getElementById('workspaceColorInput').style.display = 'none';
-    document.getElementById('workspaceBackgroundColorInput').style.display = 'none';
-    document.getElementById('workspaceBackgroundImageInput').style.display = 'none';
-    document.getElementById('workspaceBackgroundOpacityInput').style.display = 'none';
-    document.getElementById('workspaceNameInput').value = currentName;
-    const modal = document.getElementById('workspaceEditModal');
-    if (modal) modal.style.display = 'block';
-}
-
-async function editWorkspaceSettings(id) {
-    currentWorkspaceOperation = { type: 'settings', id };
-    document.getElementById('workspaceEditTitle').textContent = 'Workspace Settings';
-
-    // Show all form elements
-    document.getElementById('workspaceNameInput').style.display = 'block';
-    document.getElementById('workspaceColorInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundColorInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundImageInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundOpacityInput').style.display = 'block';
-
-    // Get workspace data
-    const workspace = workspaces.find(w => w.id === id);
-    if (workspace) {
-        // Set current values
-        document.getElementById('workspaceNameInput').value = workspace.name;
-        document.getElementById('workspaceColorInput').value = workspace.color || '#124';
-        document.getElementById('workspaceBackgroundColorInput').value = workspace.backgroundColor || '#0a1a2a';
-        document.getElementById('workspaceBackgroundOpacityInput').value = workspace.backgroundOpacity || 0.3;
-
-        // Update opacity display
-        const opacityValue = document.getElementById('workspaceBackgroundOpacityInput');
-        if (opacityValue) {
-            opacityValue.textContent = Math.round((workspace.backgroundOpacity || 0.3) * 100);
-        }
-
-        // Background images will be loaded when the modal is opened
-
-        // Set background image if exists
-        const backgroundImageInput = document.getElementById('workspaceBackgroundImageInput');
-        if (backgroundImageInput) {
-            backgroundImageInput.value = workspace.backgroundImage || '';
-            backgroundImageInput.placeholder = workspace.backgroundImage ? workspace.backgroundImage : 'No background image selected';
-        }
-    }
-
-    const modal = document.getElementById('workspaceEditModal');
-    if (modal) modal.style.display = 'block';
-}
-
-function hideWorkspaceEditModal() {
-    const modal = document.getElementById('workspaceEditModal');
-    if (modal) modal.style.display = 'none';
-
-    // Reset form
-    document.getElementById('workspaceNameInput').style.display = 'block';
-    document.getElementById('workspaceColorInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundColorInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundImageInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundOpacityInput').style.display = 'block';
-    document.getElementById('workspaceNameInput').value = '';
-    document.getElementById('workspaceColorInput').value = '#124';
-    document.getElementById('workspaceBackgroundColorInput').value = '#0a1a2a';
-    document.getElementById('workspaceBackgroundImageInput').value = '';
-    document.getElementById('workspaceBackgroundImageInput').placeholder = 'No background image selected';
-    document.getElementById('workspaceBackgroundOpacityInput').value = '0.3';
-    document.getElementById('workspaceBackgroundOpacityInput').textContent = '30%';
-
-    currentWorkspaceOperation = null;
-}
-
-function showDumpWorkspaceModal(sourceId, sourceName) {
-    document.getElementById('dumpSourceWorkspaceName').textContent = sourceName;
-
-    const select = document.getElementById('dumpTargetSelect');
-    select.innerHTML = '';
-
-    workspaces.forEach(workspace => {
-        if (workspace.id !== sourceId) {
-            const option = document.createElement('option');
-            option.value = workspace.id;
-            option.textContent = workspace.name;
-            select.appendChild(option);
-        }
-    });
-
-    currentWorkspaceOperation = { type: 'dump', sourceId };
-    const modal = document.getElementById('workspaceDumpModal');
-    if (modal) modal.style.display = 'block';
-}
-
-function hideWorkspaceDumpModal() {
-    const modal = document.getElementById('workspaceDumpModal');
-    if (modal) modal.style.display = 'none';
-    currentWorkspaceOperation = null;
-}
-
-function confirmDeleteWorkspace(id, name) {
-    if (confirm(`Are you sure you want to delete the workspace "${name}"?\n\nAll items will be moved to the default workspace.`)) {
-        deleteWorkspace(id);
-    }
-}
-
-// Initialize workspace system
-function initializeWorkspaceSystem() {
-    // Setup workspace dropdown using standard custom dropdown system
-    const workspaceDropdown = document.getElementById('workspaceDropdown');
-    const workspaceDropdownBtn = document.getElementById('workspaceDropdownBtn');
-    const workspaceDropdownMenu = document.getElementById('workspaceDropdownMenu');
-
-    setupDropdown(workspaceDropdown, workspaceDropdownBtn, workspaceDropdownMenu, renderWorkspaceDropdown, () => activeWorkspace);
-
-    // Workspace action button events
-    const workspaceManageBtn = document.getElementById('workspaceManageBtn');
-    const workspaceAddBtn = document.getElementById('workspaceAddBtn');
-
-    if (workspaceManageBtn) {
-        workspaceManageBtn.addEventListener('click', () => {
-            showWorkspaceManagementModal();
-        });
-    }
-
-    if (workspaceAddBtn) {
-        workspaceAddBtn.addEventListener('click', () => {
-            showAddWorkspaceModal();
-        });
-    }
-
-    // Modal close events
-    document.getElementById('closeWorkspaceManageBtn')?.addEventListener('click', hideWorkspaceManagementModal);
-    document.getElementById('closeWorkspaceEditBtn')?.addEventListener('click', hideWorkspaceEditModal);
-    document.getElementById('closeWorkspaceDumpBtn')?.addEventListener('click', hideWorkspaceDumpModal);
-    document.getElementById('workspaceCancelBtn')?.addEventListener('click', hideWorkspaceEditModal);
-    document.getElementById('workspaceDumpCancelBtn')?.addEventListener('click', hideWorkspaceDumpModal);
-
-    // Background image modal close events
-    document.getElementById('closeBackgroundImageModalBtn')?.addEventListener('click', hideBackgroundImageModal);
-    document.getElementById('backgroundImageCancelBtn')?.addEventListener('click', hideBackgroundImageModal);
-
-    // Bulk change preset modal events
-    document.getElementById('closeBulkChangePresetBtn')?.addEventListener('click', () => {
-        document.getElementById('bulkChangePresetModal').style.display = 'none';
-    });
-    document.getElementById('bulkChangePresetCancelBtn')?.addEventListener('click', () => {
-        document.getElementById('bulkChangePresetModal').style.display = 'none';
-    });
-    document.getElementById('bulkChangePresetConfirmBtn')?.addEventListener('click', handleBulkChangePresetConfirm);
-
-    // Save workspace
-    document.getElementById('workspaceSaveBtn')?.addEventListener('click', async () => {
-        if (currentWorkspaceOperation) {
-            if (currentWorkspaceOperation.type === 'add') {
-                const name = document.getElementById('workspaceNameInput').value.trim();
-                const color = document.getElementById('workspaceColorInput').value.trim();
-                const backgroundColor = document.getElementById('workspaceBackgroundColorInput').value.trim();
-                const backgroundImage = document.getElementById('workspaceBackgroundImageInput').value.trim();
-                const backgroundOpacity = parseFloat(document.getElementById('workspaceBackgroundOpacityInput').value);
-
-                if (!name) {
-                    showError('Please enter a workspace name');
-                    return;
-                }
-                // Create workspace with just the name
-                await createWorkspace(name);
-                // Get the newly created workspace ID and update its settings
-                await loadWorkspaces();
-                const newWorkspace = workspaces.find(w => w.name === name);
-                if (newWorkspace) {
-                    await Promise.all([
-                        updateWorkspaceColor(newWorkspace.id, color),
-                        updateWorkspaceBackgroundColor(newWorkspace.id, backgroundColor || null),
-                        updateWorkspaceBackgroundImage(newWorkspace.id, backgroundImage || null),
-                        updateWorkspaceBackgroundOpacity(newWorkspace.id, backgroundOpacity)
-                    ]);
-                    await loadWorkspaces();
-                }
-            } else if (currentWorkspaceOperation.type === 'rename') {
-                const name = document.getElementById('workspaceNameInput').value.trim();
-                if (!name) {
-                    showError('Please enter a workspace name');
-                    return;
-                }
-                await renameWorkspace(currentWorkspaceOperation.id, name);
-            } else if (currentWorkspaceOperation.type === 'settings') {
-                const name = document.getElementById('workspaceNameInput').value.trim();
-                const color = document.getElementById('workspaceColorInput').value.trim();
-                const backgroundColor = document.getElementById('workspaceBackgroundColorInput').value.trim();
-                const backgroundImage = document.getElementById('workspaceBackgroundImageInput').value.trim();
-                const backgroundOpacity = parseFloat(document.getElementById('workspaceBackgroundOpacityInput').value);
-
-                if (!name) {
-                    showError('Please enter a workspace name');
-                    return;
-                }
-
-                // Update all settings
-                await Promise.all([
-                    renameWorkspace(currentWorkspaceOperation.id, name),
-                    updateWorkspaceColor(currentWorkspaceOperation.id, color),
-                    updateWorkspaceBackgroundColor(currentWorkspaceOperation.id, backgroundColor || null),
-                    updateWorkspaceBackgroundImage(currentWorkspaceOperation.id, backgroundImage || null),
-                    updateWorkspaceBackgroundOpacity(currentWorkspaceOperation.id, backgroundOpacity)
-                ]);
-                await loadWorkspaces();
-
-                // Update bokeh background if this is the active workspace
-                if (currentWorkspaceOperation.id === activeWorkspace) {
-                    activeWorkspaceBackgroundOpacity = backgroundOpacity;
-                    activeWorkspaceBackgroundImage = backgroundImage;
-                    activeWorkspaceBackgroundColor = backgroundColor;
-                    activeWorkspaceColor = color;
-                    animateWorkspaceTransition();
-                }
-            }
-        }
-
-        hideWorkspaceEditModal();
-        hideWorkspaceManagementModal();
-    });
-
-    // Dump workspace
-    document.getElementById('workspaceDumpConfirmBtn')?.addEventListener('click', async () => {
-        const targetId = document.getElementById('dumpTargetSelect').value;
-        if (!targetId) {
-            showError('Please select a target workspace');
-            return;
-        }
-
-        if (currentWorkspaceOperation && currentWorkspaceOperation.type === 'dump') {
-            await dumpWorkspace(currentWorkspaceOperation.sourceId, targetId);
-        }
-
-        hideWorkspaceDumpModal();
-        hideWorkspaceManagementModal();
-    });
-
-    // Add wheel event for workspace background opacity input
-    const opacityInput = document.getElementById('workspaceBackgroundOpacityInput');
-    if (opacityInput) {
-        opacityInput.addEventListener('wheel', function(e) {
-            e.preventDefault();
-            const step = parseFloat(opacityInput.step) || 0.01;
-            let value = parseFloat(opacityInput.value) || 0.3;
-            if (e.deltaY < 0) {
-                value += step;
-            } else {
-                value -= step;
-            }
-            value = Math.max(0, Math.min(1, Math.round(value * 100) / 100));
-            opacityInput.value = value;
-            opacityInput.dispatchEvent(new Event('input', { bubbles: true }));
-        }, { passive: false });
-    }
-}
-
-// Initialize workspace settings form event listeners
-function initializeWorkspaceSettingsForm() {
-    // Background image selection button
-    const selectBackgroundImageBtn = document.getElementById('selectBackgroundImageBtn');
-    if (selectBackgroundImageBtn) {
-        selectBackgroundImageBtn.addEventListener('click', () => {
-            showBackgroundImageModal();
-        });
-    }
-}
-
-// Background Image Selection Modal Functions
-let selectedBackgroundImage = null;
-
-async function showBackgroundImageModal() {
-    const modal = document.getElementById('backgroundImageModal');
-    const grid = document.getElementById('backgroundImageGrid');
-    const loading = document.getElementById('backgroundImageLoading');
-    const searchInput = document.getElementById('backgroundImageSearchInput');
-
-    if (!modal || !grid || !loading) return;
-
-    // Show modal
-    modal.style.display = 'block';
-
-    // Show loading
-    loading.style.display = 'flex';
-    grid.innerHTML = '';
-
-    try {
-        // Get current workspace images
-        const workspaceImages = await getWorkspaceImages();
-
-        // Hide loading
-        loading.style.display = 'none';
-
-        // Populate grid
-        populateBackgroundImageGrid(workspaceImages);
-
-        // Set up search functionality
-        setupBackgroundImageSearch(searchInput, workspaceImages);
-
-        // Set up selection handlers
-        setupBackgroundImageSelection();
-
-    } catch (error) {
-        console.error('Error loading background images:', error);
-        loading.style.display = 'none';
-        grid.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">Error loading images</p>';
-    }
-}
-
-async function getWorkspaceImages() {
-    try {
-        // Get current workspace ID
-        const workspaceId = currentWorkspaceOperation?.id || activeWorkspace;
-        // Get workspace files from backend
-        const workspaceResponse = await fetchWithAuth(`/workspaces/${workspaceId}/files`);
-        if (!workspaceResponse.ok) throw new Error('Failed to load workspace files');
-
-        const workspaceData = await workspaceResponse.json();
-        const workspaceFiles = new Set(workspaceData.files || []);
-
-        // Get all images from the filesystem (not filtered by active workspace)
-        const allImagesResponse = await fetchWithAuth('/images/all');
-        if (!allImagesResponse.ok) throw new Error('Failed to load all images');
-
-        const allImagesItems = await allImagesResponse.json();
-
-        // Filter images to only include workspace files
-        const filteredImages = allImagesItems.filter(img => {
-            const file = img.pipeline_upscaled || img.pipeline || img.upscaled || img.original;
-            return workspaceFiles.has(file);
-        });
-
-        return filteredImages;
-    } catch (error) {
-        console.error('Error getting workspace images:', error);
-        return [];
-    }
-}
-
-function populateBackgroundImageGrid(images) {
-    const grid = document.getElementById('backgroundImageGrid');
-    if (!grid) return;
-
-    grid.innerHTML = '';
-
-    images.forEach(img => {
-        const file = img.pipeline_upscaled || img.pipeline || img.upscaled || img.original;
-        const preview = img.preview;
-
-        const option = document.createElement('button');
-        option.type = 'button';
-        option.className = 'background-image-option';
-        option.dataset.filename = file;
-
-        option.innerHTML = `
-            <div class="background-image-thumbnail" style="background-image: url('/previews/${preview}')"></div>
-        `;
-
-        grid.appendChild(option);
-    });
-}
-
-function setupBackgroundImageSearch(searchInput, allImages) {
-    if (!searchInput) return;
-
-    searchInput.addEventListener('input', (e) => {
-        const searchTerm = e.target.value.toLowerCase();
-        const grid = document.getElementById('backgroundImageGrid');
-        const options = grid.querySelectorAll('.background-image-option');
-
-        options.forEach(option => {
-            const filename = option.dataset.filename.toLowerCase();
-            if (filename.includes(searchTerm)) {
-                option.style.display = 'flex';
-            } else {
-                option.style.display = 'none';
-            }
-        });
-    });
-}
-
-function setupBackgroundImageSelection() {
-    const grid = document.getElementById('backgroundImageGrid');
-    const noImageBtn = document.getElementById('noBackgroundImageBtn');
-
-    // Clear previous selections
-    const allOptions = document.querySelectorAll('.background-image-option');
-    allOptions.forEach(option => option.classList.remove('selected'));
-    if (noImageBtn) noImageBtn.classList.remove('selected');
-
-    // Set current selection
-    const currentInput = document.getElementById('workspaceBackgroundImageInput');
-    const currentValue = currentInput ? currentInput.value : '';
-
-    if (!currentValue) {
-        if (noImageBtn) noImageBtn.classList.add('selected');
-    } else {
-        const selectedOption = grid.querySelector(`[data-filename="${currentValue}"]`);
-        if (selectedOption) selectedOption.classList.add('selected');
-    }
-
-    // Add click handlers
-    if (noImageBtn) {
-        noImageBtn.addEventListener('click', () => {
-            selectBackgroundImage(null);
-        });
-    }
-
-    const options = grid.querySelectorAll('.background-image-option');
-    options.forEach(option => {
-        option.addEventListener('click', () => {
-            const filename = option.dataset.filename;
-            selectBackgroundImage(filename);
-        });
-    });
-}
-
-function selectBackgroundImage(filename) {
-    selectedBackgroundImage = filename;
-
-    // Update visual selection
-    const allOptions = document.querySelectorAll('.background-image-option');
-    const noImageBtn = document.getElementById('noBackgroundImageBtn');
-
-    allOptions.forEach(option => option.classList.remove('selected'));
-    if (noImageBtn) noImageBtn.classList.remove('selected');
-
-    if (!filename) {
-        if (noImageBtn) noImageBtn.classList.add('selected');
-    } else {
-        const selectedOption = document.querySelector(`[data-filename="${filename}"]`);
-        if (selectedOption) selectedOption.classList.add('selected');
-    }
-
-    // Update input field
-    const input = document.getElementById('workspaceBackgroundImageInput');
-    if (input) {
-        input.value = filename || '';
-        input.placeholder = filename ? filename : 'No background image selected';
-    }
-
-    // Close modal
-    hideBackgroundImageModal();
-}
-
-function hideBackgroundImageModal() {
-    const modal = document.getElementById('backgroundImageModal');
-    if (modal) modal.style.display = 'none';
-
-    // Clear search
-    const searchInput = document.getElementById('backgroundImageSearchInput');
-    if (searchInput) searchInput.value = '';
-
-    selectedBackgroundImage = null;
-}
-
 // Scraps functionality
 let isViewingScraps = false;
 let scrapsImages = [];
@@ -3038,10 +1712,14 @@ function toggleGalleryView() {
     if (isViewingScraps) {
         toggleBtn.innerHTML = '<i class="nai-image-tool-sketch"></i>';
         toggleBtn.setAttribute('data-state', 'scraps');
+        document.querySelector('.bokeh-background.current-bg').classList.add('scraps-grayscale');
+        document.querySelector('.bokeh').classList.add('scraps-grayscale');
         loadScraps();
     } else {
-        toggleBtn.innerHTML = '<i class="nai-image-count"></i>';
+        toggleBtn.innerHTML = '<i class="fas fa-images"></i>';
         toggleBtn.setAttribute('data-state', 'images');
+        document.querySelector('.bokeh').classList.remove('scraps-grayscale');
+        document.querySelectorAll('.bokeh-background').forEach(el => el.classList.remove('scraps-grayscale'));
         loadGallery();
     }
 
@@ -3232,15 +1910,13 @@ async function removeFromScraps(image) {
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
-    // Initialize background layers
-    initializeBokehBackgrounds();
 
     try {
         // Calculate initial images per page based on current window size
         galleryRows = calculateGalleryRows();
         imagesPerPage = galleryColumnsInput.value * galleryRows;
 
-        await loadOptions();
+        await loadOptions(); // TODO: Check functionality
         await loadWorkspaces(); // Load workspace data
         await loadActiveWorkspaceColor(); // Load workspace color for bokeh
         await loadBalance();
@@ -3275,12 +1951,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // Initialize background gradient
     setupEventListeners();
-
-    // Initialize workspace system
-    initializeWorkspaceSystem();
-
-    // Initialize workspace settings form event listeners
-    initializeWorkspaceSettingsForm();
 
     // Initialize cache manager
     initializeCacheManager();
@@ -3630,151 +2300,128 @@ function setupEventListeners() {
     manualPreviewCloseBtn.addEventListener('click', hideManualModal);
 
     // Update save button state when preset name changes
-    const presetNameInput = document.getElementById('manualPresetName');
-    if (presetNameInput) {
-        presetNameInput.addEventListener('input', () => {
-            updateSaveButtonState();
-            validatePresetWithTimeout();
-            manualPresetToggleText.textContent = presetNameInput.value.trim();
-        });
-        presetNameInput.addEventListener('keyup', () => {
-            updateSaveButtonState();
-            validatePresetWithTimeout();
-            manualPresetToggleText.textContent = presetNameInput.value.trim();
-        });
-        presetNameInput.addEventListener('change', () => {
-            updateSaveButtonState();
-            validatePresetWithTimeout();
-            manualPresetToggleText.textContent = presetNameInput.value.trim();
-        });
-    }
+    manualPresetName.addEventListener('input', () => {
+        updateSaveButtonState();
+        validatePresetWithTimeout();
+        manualPresetToggleText.textContent = manualPresetName.value.trim();
+    });
+    manualPresetName.addEventListener('keyup', () => {
+        updateSaveButtonState();
+        validatePresetWithTimeout();
+        manualPresetToggleText.textContent = manualPresetName.value.trim();
+    });
+    manualPresetName.addEventListener('change', () => {
+        updateSaveButtonState();
+        validatePresetWithTimeout();
+        manualPresetToggleText.textContent = manualPresetName.value.trim();
+    });
 
     // Add load button click handler
-    const loadBtn = document.getElementById('manualLoadBtn');
-    if (loadBtn) {
-        loadBtn.addEventListener('click', () => {
-            const presetNameInput = document.getElementById('manualPresetName');
-            if (presetNameInput) {
-                const presetName = presetNameInput.value.trim();
-                if (presetName) {
-                    loadPresetIntoForm(presetName);
-                }
-            }
-        });
-    }
+    manualLoadBtn.addEventListener('click', () => {
+        const presetName = manualPresetName.value.trim();
+        if (presetName) {
+            loadPresetIntoForm(presetName);
+        }
+    });
     manualForm.addEventListener('submit', handleManualGeneration);
     manualSaveBtn.addEventListener('click', handleManualSave);
 
     // Manual preview control events
-    if (manualPreviewDownloadBtn) {
-        manualPreviewDownloadBtn.addEventListener('click', () => {
-            const previewImage = document.getElementById('manualPreviewImage');
-            if (previewImage && previewImage.dataset.blobUrl) {
-                const blobUrl = previewImage.dataset.blobUrl;
-                const a = document.createElement('a');
-                a.href = blobUrl;
-                a.download = `generated-image-${Date.now()}.png`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            }
-        });
-    }
+    manualPreviewDownloadBtn.addEventListener('click', () => {
+        const previewImage = document.getElementById('manualPreviewImage');
+        if (previewImage && previewImage.dataset.blobUrl) {
+            const blobUrl = previewImage.dataset.blobUrl;
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = `generated-image-${Date.now()}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    });
 
-    if (manualPreviewUpscaleBtn) {
-        manualPreviewUpscaleBtn.addEventListener('click', () => {
-            if (currentManualPreviewImage) {
-                upscaleImage(currentManualPreviewImage);
-            } else {
-                showGlassToast('error', 'Upscale Failed', 'No image available');
-            }
-        });
-    }
+    manualPreviewUpscaleBtn.addEventListener('click', () => {
+        if (currentManualPreviewImage) {
+            upscaleImage(currentManualPreviewImage);
+        } else {
+            showGlassToast('error', 'Upscale Failed', 'No image available');
+        }
+    });
 
-    if (manualPreviewLoadBtn) {
-        manualPreviewLoadBtn.addEventListener('click', () => {
-            if (currentManualPreviewImage) {
-                rerollImageWithEdit(currentManualPreviewImage);
-            } else {
-                showGlassToast('error', 'Load Failed', 'No image available');
-            }
-        });
-    }
+    manualPreviewLoadBtn.addEventListener('click', () => {
+        if (currentManualPreviewImage) {
+            rerollImageWithEdit(currentManualPreviewImage);
+        } else {
+            showGlassToast('error', 'Load Failed', 'No image available');
+        }
+    });
 
-    if (manualPreviewVariationBtn) {
-        manualPreviewVariationBtn.addEventListener('click', () => {
-            if (currentManualPreviewImage) {
-                // For preview, only set the base image without replacing dialog contents
-                const filename = currentManualPreviewImage.original || currentManualPreviewImage.pipeline || currentManualPreviewImage.pipeline_upscaled;
-                if (filename) {
-                    const source = `file:${filename}`;
-                    const previewUrl = `/images/${filename}`;
+    manualPreviewVariationBtn.addEventListener('click', () => {
+        if (currentManualPreviewImage) {
+            // For preview, only set the base image without replacing dialog contents
+            const filename = currentManualPreviewImage.original || currentManualPreviewImage.pipeline || currentManualPreviewImage.pipeline_upscaled;
+            if (filename) {
+                const source = `file:${filename}`;
+                const previewUrl = `/images/${filename}`;
 
-                    window.uploadedImageData = {
-                        image_source: source,
-                        bias: 2, // Default center bias
-                        isBiasMode: true,
-                        isClientSide: false
-                    };
+                window.uploadedImageData = {
+                    image_source: source,
+                    bias: 2, // Default center bias
+                    isBiasMode: true,
+                    isClientSide: false
+                };
 
-                    // Set the variation image
-                    variationImage.src = previewUrl;
-                    variationImage.style.display = 'block';
-            
+                // Set the variation image
+                variationImage.src = previewUrl;
+                variationImage.style.display = 'block';
+        
 
-                    // Set strength to 0.8 and noise to 0.1 for variation
-                    if (manualStrengthValue) manualStrengthValue.value = '0.8';
-                    if (manualNoiseValue) manualNoiseValue.value = '0.1';
+                // Set strength to 0.8 and noise to 0.1 for variation
+                if (manualStrengthValue) manualStrengthValue.value = '0.8';
+                if (manualNoiseValue) manualNoiseValue.value = '0.1';
 
-                    // Set transformation type to variation
-                    updateTransformationDropdownState('variation', 'Variation');
+                // Set transformation type to variation
+                updateTransformationDropdownState('variation', 'Variation');
 
-                    // Show transformation section content
-                    const transformationSection = document.getElementById('transformationSection');
-                    if (transformationSection) {
-                        transformationSection.classList.add('display-image');
-                    }
-
-                    // Update inpaint button state
-                    updateInpaintButtonState();
-                    renderImageBiasDropdown((typeof metadata.image_bias === 'number' ? metadata.image_bias : 2).toString());
-
-                } else {
-                    showGlassToast('error', 'Variation Failed', 'No image found');
+                // Show transformation section content
+                const transformationSection = document.getElementById('transformationSection');
+                if (transformationSection) {
+                    transformationSection.classList.add('display-image');
                 }
-            } else {
-                showGlassToast('error', 'Variation Failed', 'No image available');
-            }
-        });
-    }
 
-    if (manualPreviewSeedBtn) {
-        manualPreviewSeedBtn.addEventListener('click', () => {
-            if (window.lastGeneratedSeed) {
-                manualSeed.value = window.lastGeneratedSeed;
-            } else {
-                showGlassToast('error', null, 'No seed available');
-            }
-        });
-    }
+                // Update inpaint button state
+                updateInpaintButtonState();
+                renderImageBiasDropdown((typeof metadata.image_bias === 'number' ? metadata.image_bias : 2).toString());
 
-    if (manualPreviewDeleteBtn) {
-        manualPreviewDeleteBtn.addEventListener('click', deleteManualPreviewImage);
-    }
-
-    if (manualPreviewScrapBtn) {
-        manualPreviewScrapBtn.addEventListener('click', () => {
-            if (currentManualPreviewImage) {
-                if (isViewingScraps) {
-                    removeFromScraps(currentManualPreviewImage);
-                } else {
-                    moveManualPreviewToScraps();
-                }
             } else {
-                showGlassToast('error', 'Load Failed', 'No image available');
+                showGlassToast('error', 'Variation Failed', 'No image found');
             }
-        });
-    }
+        } else {
+            showGlassToast('error', 'Variation Failed', 'No image available');
+        }
+    });
+
+    manualPreviewSeedBtn.addEventListener('click', () => {
+        if (window.lastGeneratedSeed) {
+            manualSeed.value = window.lastGeneratedSeed;
+        } else {
+            showGlassToast('error', null, 'No seed available');
+        }
+    });
+
+    manualPreviewDeleteBtn.addEventListener('click', deleteManualPreviewImage);
+
+    manualPreviewScrapBtn.addEventListener('click', () => {
+        if (currentManualPreviewImage) {
+            if (isViewingScraps) {
+                removeFromScraps(currentManualPreviewImage);
+            } else {
+                moveManualPreviewToScraps();
+            }
+        } else {
+            showGlassToast('error', 'Load Failed', 'No image available');
+        }
+    });
 
     // Clear seed button
     clearSeedBtn.addEventListener('click', clearSeed);
@@ -3783,64 +2430,27 @@ function setupEventListeners() {
     layer1SeedToggle.addEventListener('click', toggleLayer1Seed);
 
     // Paid request toggle
-    const paidRequestToggle = document.getElementById('paidRequestToggle');
-    if (paidRequestToggle) {
-        paidRequestToggle.addEventListener('click', () => {
-            forcePaidRequest = !forcePaidRequest;
-            paidRequestToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
-        });
-    }
+    paidRequestToggle.addEventListener('click', () => {
+        forcePaidRequest = !forcePaidRequest;
+        paidRequestToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
+    });
 
     // Dataset dropdown
-    if (datasetDropdownBtn) {
-        setupDropdown(datasetDropdown, datasetDropdownBtn, datasetDropdownMenu, renderDatasetDropdown, () => selectedDatasets);
-    }
+    setupDropdown(datasetDropdown, datasetDropdownBtn, datasetDropdownMenu, renderDatasetDropdown, () => selectedDatasets);
 
     // Quality toggle
-    if (qualityToggleBtn) {
-        qualityToggleBtn.addEventListener('click', toggleQuality);
-    }
+    qualityToggleBtn.addEventListener('click', toggleQuality);
+
 
     // Vibe normalize toggle
-    if (vibeNormalizeToggle) {
-        vibeNormalizeToggle.addEventListener('click', () => {
-            const currentState = vibeNormalizeToggle.getAttribute('data-state') === 'on';
-            const newState = !currentState;
-            vibeNormalizeToggle.setAttribute('data-state', newState ? 'on' : 'off');
-        });
-    }
+    vibeNormalizeToggle.addEventListener('click', () => {
+        const currentState = vibeNormalizeToggle.getAttribute('data-state') === 'on';
+        const newState = !currentState;
+        vibeNormalizeToggle.setAttribute('data-state', newState ? 'on' : 'off');
+    });
 
     // UC Presets dropdown
-    if (ucPresetsDropdownBtn) {
-        setupDropdown(ucPresetsDropdown, ucPresetsDropdownBtn, ucPresetsDropdownMenu, renderUcPresetsDropdown, () => selectedUcPreset);
-    }
-
-    function syncSliderWithInput(slider, input, min, max, step) {
-        if (!slider || !input) return;
-        // Slider -> Input
-        slider.addEventListener('input', function() {
-            input.value = this.value;
-        });
-        // Input -> Slider
-        input.addEventListener('input', function() {
-            let val = parseFloat(this.value);
-            if (isNaN(val)) val = min;
-            val = Math.max(min, Math.min(max, val));
-            slider.value = val;
-            this.value = val;
-        });
-        // Mouse wheel on input
-        input.addEventListener('wheel', function(e) {
-            e.preventDefault();
-            let val = parseFloat(this.value) || min;
-            const delta = e.deltaY > 0 ? -step : step;
-            val = Math.max(min, Math.min(max, +(val + delta).toFixed(2)));
-            this.value = val;
-            slider.value = val;
-        });
-    }
-    syncSliderWithInput(manualStrengthValue, manualStrengthValue, 0.0, 1.0, 0.01);
-    syncSliderWithInput(manualNoiseValue, manualNoiseValue, 0.0, 1.0, 0.01);
+    setupDropdown(ucPresetsDropdown, ucPresetsDropdownBtn, ucPresetsDropdownMenu, renderUcPresetsDropdown, () => selectedUcPreset);
 
     // Character autocomplete events (for both prompt and UC fields)
     manualPrompt.addEventListener('input', handleCharacterAutocompleteInput);
@@ -3923,9 +2533,9 @@ function setupEventListeners() {
                     // We're showing autocomplete, hide it
                     hideCharacterAutocomplete();
                 }
-            } else if (lightboxModal.style.display === 'block') {
+            } else if (lightboxModal.style.display === 'flex') {
                 hideLightbox();
-            } else if (metadataDialog.style.display === 'block') {
+            } else if (metadataDialog.style.display === 'flex') {
                 hideMetadataDialog();
             }
         } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -3939,7 +2549,7 @@ function setupEventListeners() {
             }
         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
             // Handle arrow key navigation for lightbox
-            if (lightboxModal.style.display === 'block') {
+            if (lightboxModal.style.display === 'flex') {
                 e.preventDefault();
                 navigateLightbox(e.key === 'ArrowLeft' ? -1 : 1);
             }
@@ -4068,7 +2678,7 @@ function setupEventListeners() {
     // Handle viewport changes for manual modal preview
     window.addEventListener('resize', () => {
         const isWideViewport = window.innerWidth >= 1400;
-        const isManualModalOpen = manualModal && manualModal.style.display === 'block';
+        const isManualModalOpen = manualModal && manualModal.style.display === 'flex';
 
         // If switching from wide to narrow viewport and modal is open, reset preview
         if (!isWideViewport && isManualModalOpen) {
@@ -4278,7 +2888,24 @@ function setupEventListeners() {
     }
 
     // Infinite scroll
-    window.addEventListener('scroll', handleInfiniteScroll);
+    // Call handleInfiniteScroll both during scroll (throttled) and after scroll stops (debounced)
+    let lastScrollFrame = 0;
+    let scrollTimeout;
+    function throttledInfiniteScroll() {
+        const now = performance.now();
+        // 30 frames at 60fps ≈ 500ms
+        if (now - lastScrollFrame > (1000 / 60) * 30) {
+            handleInfiniteScroll();
+            lastScrollFrame = now;
+        }
+    }
+    window.addEventListener('scroll', () => {
+        throttledInfiniteScroll();
+        if (scrollTimeout) clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+            handleInfiniteScroll();
+        }, 200); // 200ms after scroll stops
+    });
 }
 
 // Tab switching functionality for prompt/UC tabs (Manual Generation Model)
@@ -4383,6 +3010,7 @@ async function loadOptions() {
 
         // Populate presets
         presets = options.presets;
+        window.presets = presets;
         pipelines = options.pipelines || [];
 
         // Populate resolutions using global RESOLUTIONS array
@@ -4622,7 +3250,10 @@ function updateGalleryPlaceholders() {
 
 function updateGalleryItemToolbars() {
     const items = document.querySelectorAll('.gallery-item');
-    items.forEach(item => {
+    let i = 0;
+    function updateNext() {
+        if (i >= items.length) return;
+        const item = items[i];
         const overlay = item.querySelector('.gallery-item-overlay');
         if (!overlay) return;
         // Check if item is too small (e.g., width < 120px or height < 120px)
@@ -4647,7 +3278,10 @@ function updateGalleryItemToolbars() {
                 miniToolbar.style.display = 'none';
             }
         }
-    });
+        i++;
+        requestAnimationFrame(updateNext);
+    }
+    updateNext();
 }
 
 // Optimized display function for infinite scroll
@@ -4665,20 +3299,27 @@ function displayCurrentPageOptimized() {
     // Start with a window in the middle/top
     displayedStartIndex = 0;
     displayedEndIndex = Math.min(imagesPerPage * 3, allImages.length);
-    for (let i = displayedStartIndex; i < displayedEndIndex; i++) {
+    let i = displayedStartIndex;
+    function addPlaceholder() {
+        if (i >= displayedEndIndex) {
+            hasMoreImages = displayedEndIndex < allImages.length;
+            hasMoreImagesBefore = displayedStartIndex > 0;
+            updateVirtualScroll();
+            updateGalleryItemToolbars();
+            updateGalleryPlaceholders();
+            return;
+        }
         const placeholder = document.createElement('div');
         placeholder.className = 'gallery-placeholder';
         placeholder.style.height = '256px';
         placeholder.style.width = '100%';
         placeholder.dataset.imageIndex = i;
+        placeholder.dataset.filename = allImages[i]?.filename || allImages[i]?.original || allImages[i]?.upscaled || allImages[i]?.pipeline || allImages[i]?.pipeline_upscaled || ''
         gallery.appendChild(placeholder);
+        i++;
+        requestAnimationFrame(addPlaceholder);
     }
-    hasMoreImages = displayedEndIndex < allImages.length;
-    hasMoreImagesBefore = displayedStartIndex > 0;
-    updateVirtualScroll();
-
-    updateGalleryItemToolbars();
-    updateGalleryPlaceholders();
+    addPlaceholder();
 }
 
 function resetInfiniteScroll() {
@@ -5406,7 +4047,7 @@ async function rerollImageWithEdit(image) {
         }
 
         // Close lightbox
-        if (lightboxModal.style.display === 'block') {
+        if (lightboxModal.style.display === 'flex') {
             hideLightbox();
         }
 
@@ -5493,7 +4134,7 @@ async function rerollImageWithEdit(image) {
         if (window.uploadedImageData) {
             await cropImageToResolution();
         }
-        manualModal.style.display = 'block';
+        openModal(manualModal);
         manualPrompt.focus();
 
         // Auto-resize textareas after modal is shown
@@ -5794,7 +4435,7 @@ async function showManualModal() {
         clearManualForm();
     }
 
-    manualModal.style.display = 'block';
+    openModal(manualModal);
     manualPrompt.focus();
     await cropImageToResolution();
 
@@ -5829,7 +4470,7 @@ async function showManualModal() {
 // Hide manual modal
 function hideManualModal(e, preventModalReset = false) {
     const isWideViewport = window.innerWidth >= 1400;
-    const isManualModalOpen = manualModal && manualModal.style.display === 'block';
+    const isManualModalOpen = manualModal && manualModal.style.display === 'flex';
 
     if (!preventModalReset || !(isWideViewport && isManualModalOpen)) {
         // Handle loading overlay when modal is closed
@@ -5841,7 +4482,7 @@ function hideManualModal(e, preventModalReset = false) {
             showLoading(true, loadingMessage);
         }
 
-        manualModal.style.display = 'none';
+        closeModal(manualModal);
         clearManualForm();
 
         // Reset manual preview
@@ -5943,7 +4584,6 @@ function clearManualForm() {
 
     // Reset paid request toggle
     forcePaidRequest = false;
-    const paidRequestToggle = document.getElementById('paidRequestToggle');
     if (paidRequestToggle) {
         paidRequestToggle.setAttribute('data-state', 'off');
     }
@@ -6254,7 +4894,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
         // Check if we're in wide viewport mode and manual modal is open
         const isWideViewport = window.innerWidth >= 1400;
         const manualModal = document.getElementById('manualModal');
-        const isManualModalOpen = manualModal && manualModal.style.display === 'block';
+        const isManualModalOpen = manualModal && manualModal.style.display === 'flex';
 
         if (isWideViewport && isManualModalOpen) {
             // Update manual modal preview instead of opening lightbox
@@ -6275,7 +4915,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
 
                 // Update mask editor background if it's currently open
                 const maskEditorDialog = document.getElementById('maskEditorDialog');
-                if (maskEditorDialog && maskEditorDialog.style.display === 'block') {
+                if (maskEditorDialog && maskEditorDialog.style.display === 'flex') {
                     const canvasInner = document.querySelector('.mask-editor-canvas-inner');
                     if (canvasInner) {
                         const backgroundImageValue = `url(${imageUrl})`;
@@ -6405,9 +5045,8 @@ async function updateManualPreview(imageUrl, blob, response = null, metadata = n
         if (upscaleBtn) upscaleBtn.style.display = 'flex';
         if (rerollBtn) rerollBtn.style.display = 'flex';
         if (variationBtn) variationBtn.style.display = 'flex';
-        const loadBtn = document.getElementById('manualPreviewLoadBtn');
+        if (manualPreviewLoadBtn) manualPreviewLoadBtn.style.display = 'flex';
         const scrapBtn = document.getElementById('manualPreviewScrapBtn');
-        if (loadBtn) loadBtn.style.display = 'flex';
         if (scrapBtn) {
             scrapBtn.style.display = 'flex';
             // Update scrap button based on current view
@@ -6464,8 +5103,7 @@ function resetManualPreview() {
         if (upscaleBtn) upscaleBtn.style.display = 'none';
         if (rerollBtn) rerollBtn.style.display = 'none';
         if (variationBtn) variationBtn.style.display = 'none';
-        const loadBtn = document.getElementById('manualPreviewLoadBtn');
-        if (loadBtn) loadBtn.style.display = 'none';
+        if (manualPreviewLoadBtn) manualPreviewLoadBtn.style.display = 'none';
         const scrapBtn = document.getElementById('manualPreviewScrapBtn');
         if (scrapBtn) scrapBtn.style.display = 'none';
         if (seedBtn) seedBtn.style.display = 'none';
@@ -6909,90 +5547,6 @@ async function handleManualSave() {
     await saveManualPreset(presetName, presetData);
 }
 
-// Character autocomplete functions
-function handleCharacterAutocompleteInput(e) {
-    // Don't trigger autocomplete if we're in navigation mode
-    if (autocompleteNavigationMode) {
-        autocompleteNavigationMode = false;
-        return;
-    }
-
-    // Handle backspace - if actively navigating, start normal search delay
-    if (e.inputType === 'deleteContentBackward') {
-        // If user is actively navigating or has an item selected, start normal search
-        if (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
-            // Clear existing timeout
-            if (characterAutocompleteTimeout) {
-                clearTimeout(characterAutocompleteTimeout);
-            }
-
-            // Set timeout to search after user stops typing (normal delay)
-            characterAutocompleteTimeout = setTimeout(() => {
-                if (searchText.startsWith('<') || searchText.length >= 2) {
-                    searchCharacters(searchText, target);
-                } else {
-                    hideCharacterAutocomplete();
-                }
-            }, 500);
-            return;
-        } else {
-            // Not actively navigating, hide autocomplete
-            hideCharacterAutocomplete();
-            return;
-        }
-    }
-
-    const target = e.target;
-    const value = target.value;
-    const cursorPosition = target.selectionStart;
-
-    // Get the text before the cursor
-    const textBeforeCursor = value.substring(0, cursorPosition);
-
-    // Find the last delimiter (:, |, ,) before the cursor, or start from the beginning
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('{'),
-        textBeforeCursor.lastIndexOf('}'),
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(',')
-    );
-    let searchText = lastDelimiterIndex >= 0 ?
-        textBeforeCursor.substring(lastDelimiterIndex + 1).trim() :
-        textBeforeCursor.trim();
-
-    // Special handling for text replacement searches starting with <
-    // If the search text starts with <, we need to preserve it for the search
-    if (searchText.startsWith('<')) {
-        // Keep the < in the search text
-        searchText = searchText;
-    } else {
-        // Check if there's a < character before the cursor that should be included
-        const lastLessThanIndex = textBeforeCursor.lastIndexOf('<');
-        if (lastLessThanIndex > lastDelimiterIndex) {
-            // There's a < after the last delimiter, include it in the search
-            searchText = textBeforeCursor.substring(lastLessThanIndex).trim();
-        }
-    }
-
-    // Clear existing timeout
-    if (characterAutocompleteTimeout) {
-        clearTimeout(characterAutocompleteTimeout);
-    }
-
-    // Set timeout to search after user stops typing
-    characterAutocompleteTimeout = setTimeout(() => {
-        // For text replacement searches (starting with <), search immediately even with 1 character
-        if (searchText.startsWith('<') || searchText.length >= 2) {
-            searchCharacters(searchText, target);
-        } else {
-            hideCharacterAutocomplete();
-        }
-    }, 500);
-}
-
 // Global variables for emphasis popup
 let emphasisPopupActive = false;
 let emphasisPopupValue = 1.0;
@@ -7009,346 +5563,6 @@ let emphasisEditingMode = 'normal'; // 'normal', 'brace', 'group'
 // Emphasis highlighting functionality
 let emphasisHighlightingActive = false;
 let emphasisHighlightingTarget = null;
-
-// Track if we're in autocomplete navigation mode
-let autocompleteNavigationMode = false;
-// Track if autocomplete is expanded to show all results
-let autocompleteExpanded = false;
-
-function handleCharacterAutocompleteKeydown(e) {
-    // Handle emphasis editing popup
-    if (emphasisEditingActive) {
-        switch (e.key) {
-            case 'ArrowUp':
-                e.preventDefault();
-                emphasisEditingValue = Math.min(emphasisEditingValue + 0.1, 5.0);
-                updateEmphasisEditingPopup();
-                break;
-            case 'ArrowDown':
-                e.preventDefault();
-                emphasisEditingValue = Math.max(emphasisEditingValue - 0.1, -3.0);
-                updateEmphasisEditingPopup();
-                break;
-            case 'ArrowLeft':
-                e.preventDefault();
-                switchEmphasisMode('left');
-                break;
-            case 'ArrowRight':
-                e.preventDefault();
-                switchEmphasisMode('right');
-                break;
-            case 'Enter':
-                e.preventDefault();
-                applyEmphasisEditing();
-                return;
-            case 'Escape':
-                e.preventDefault();
-                cancelEmphasisEditing();
-                return;
-            default:
-                // Any other key applies the emphasis
-                applyEmphasisEditing();
-                return;
-        }
-        return;
-    }
-
-    // Handle autocomplete navigation - only when autocomplete is visible AND we're in navigation mode
-    if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
-        const items = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
-
-        switch (e.key) {
-            case 'ArrowDown':
-                e.preventDefault();
-                autocompleteNavigationMode = true;
-                // Expand to show all items when navigating down
-                if (selectedCharacterAutocompleteIndex === -1) {
-                    expandAutocompleteToShowAll();
-                }
-                selectedCharacterAutocompleteIndex = Math.min(selectedCharacterAutocompleteIndex + 1, items.length - 1);
-                updateCharacterAutocompleteSelection();
-                updateEmphasisTooltipVisibility();
-                break;
-            case 'ArrowUp':
-                e.preventDefault();
-                autocompleteNavigationMode = true;
-                // If at the first item and pressing up, exit autocomplete
-                if (selectedCharacterAutocompleteIndex <= 0) {
-                    hideCharacterAutocomplete();
-                    autocompleteNavigationMode = false;
-                    return;
-                }
-                selectedCharacterAutocompleteIndex = Math.max(selectedCharacterAutocompleteIndex - 1, -1);
-                updateCharacterAutocompleteSelection();
-                updateEmphasisTooltipVisibility();
-                break;
-            case 'ArrowLeft':
-            case 'ArrowRight':
-                // Only handle left/right arrows when actively selecting items in the menu
-                if (selectedCharacterAutocompleteIndex >= 0) {
-                    e.preventDefault();
-                    if (e.key === 'ArrowRight') {
-                        // Insert the selected item
-                        if (items[selectedCharacterAutocompleteIndex]) {
-                            const selectedItem = items[selectedCharacterAutocompleteIndex];
-                            if (selectedItem.dataset.type === 'textReplacement') {
-                                // For text replacements, insert the actual text, not the placeholder
-                                const placeholder = selectedItem.dataset.placeholder;
-                                const actualText = textReplacements[placeholder] || placeholder;
-                                insertTextReplacement(actualText);
-                            } else if (selectedItem.dataset.type === 'tag') {
-                                selectTag(selectedItem.dataset.tagName);
-                            } else {
-                                const character = JSON.parse(selectedItem.dataset.characterData);
-                                selectCharacterItem(character);
-                            }
-                        }
-                    }
-                } else {
-                    // When not actively selecting, allow normal text navigation
-                    hideCharacterAutocomplete();
-                    autocompleteNavigationMode = false;
-                }
-                break;
-            case 'Enter':
-                e.preventDefault();
-                autocompleteNavigationMode = true;
-                if (selectedCharacterAutocompleteIndex >= 0 && items[selectedCharacterAutocompleteIndex]) {
-                    const selectedItem = items[selectedCharacterAutocompleteIndex];
-                    if (selectedItem.dataset.type === 'textReplacement') {
-                        selectTextReplacement(selectedItem.dataset.placeholder);
-                    } else if (selectedItem.dataset.type === 'tag') {
-                        selectTag(selectedItem.dataset.tagName);
-                    } else {
-                        const character = JSON.parse(selectedItem.dataset.characterData);
-                        selectCharacterItem(character);
-                    }
-                }
-                break;
-            case 'Escape':
-                e.preventDefault();
-                hideCharacterAutocomplete();
-                autocompleteNavigationMode = false;
-                break;
-            case 'e':
-            case 'E':
-                // Only handle 'E' key when we're in navigation mode (autocomplete is active)
-                if (autocompleteNavigationMode) {
-                    e.preventDefault();
-                    // Start emphasis editing for current tag
-                    startEmphasisEditing(currentCharacterAutocompleteTarget);
-                }
-                break;
-            case 'Backspace':
-                // When actively navigating in autocomplete, don't close it on backspace
-                if (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
-                    // Allow normal backspace behavior but keep autocomplete open
-                    // The input handler will handle the actual text deletion and search
-                    return;
-                }
-                break;
-        }
-    }
-    // Note: We don't handle any keys when autocomplete is not visible or not in navigation mode
-    // This allows all keys to work normally in text input
-}
-
-async function searchCharacters(query, target) {
-    try {
-        // Check if query starts with < - only return text replacements in this case
-        const isTextReplacementSearch = query.startsWith('<');
-
-        let searchResults = [];
-
-        if (!isTextReplacementSearch) {
-            // Only search server if not starting with <
-            const response = await fetchWithAuth(`/search/prompt?m=${manualModel.value}&q=${encodeURIComponent(query)}`);
-
-            if (!response.ok) {
-                throw new Error('Failed to search characters and tags');
-            }
-
-            searchResults = await response.json();
-        }
-
-        // Handle PICK_ prefix stripping for search but preserve in inserted text
-        let searchQuery = query;
-        let hasPickPrefix = false;
-
-        if (query.startsWith('PICK_')) {
-            searchQuery = query.substring(5); // Remove PICK_ prefix for searching
-            hasPickPrefix = true;
-        }
-
-        // For text replacement searches, strip the < character from the search query
-        if (isTextReplacementSearch) {
-            searchQuery = searchQuery.substring(1); // Remove the < character
-        }
-
-        // Search through text replacements
-        const textReplacementResults = Object.keys(textReplacements)
-            .filter(key => {
-                const keyToSearch = key.startsWith('PICK_') ? key.substring(5) : key;
-                // If searchQuery is empty (just < was typed), return all items
-                if (searchQuery === '') {
-                    return true;
-                }
-                return keyToSearch.toLowerCase().includes(searchQuery.toLowerCase());
-            })
-            .map(key => ({
-                type: 'textReplacement',
-                name: key,
-                description: textReplacements[key],
-                placeholder: key, // The placeholder name like <NAME> or <PICK_NAME>
-                // If we searched with PICK_ prefix, ensure the result preserves it
-                displayName: hasPickPrefix && !key.startsWith('PICK_') ? `PICK_${key}` : key
-            }));
-
-        // Combine search results with text replacement results
-        const allResults = [...searchResults, ...textReplacementResults];
-        characterSearchResults = allResults;
-
-        // Always show autocomplete, even with no results
-        showCharacterAutocompleteSuggestions(allResults, target);
-    } catch (error) {
-        console.error('Character and tag search error:', error);
-        hideCharacterAutocomplete();
-    }
-}
-
-function showCharacterAutocompleteSuggestions(results, target) {
-    if (!characterAutocompleteList || !characterAutocompleteOverlay) {
-        console.error('Character autocomplete elements not found');
-        return;
-    }
-
-    currentCharacterAutocompleteTarget = target;
-    selectedCharacterAutocompleteIndex = -1;
-
-    // Store all results for potential expansion
-    window.allAutocompleteResults = results;
-
-    // Check if we can add emphasis option
-    const canAddEmphasis = checkCanAddEmphasis(target);
-
-    // Show all results if expanded, otherwise show only first 5 items
-    const displayResults = autocompleteExpanded ? results : results.slice(0, 5);
-
-    // Populate character autocomplete list
-    characterAutocompleteList.innerHTML = '';
-
-    // If no results, show a "no results" message
-    if (results.length === 0) {
-        const noResultsItem = document.createElement('div');
-        noResultsItem.className = 'character-autocomplete-item no-results';
-        noResultsItem.innerHTML = `
-            <div class="character-info-row">
-                <span class="character-name">No results found</span>
-                <span class="character-copyright">Try a different search term</span>
-            </div>
-        `;
-        characterAutocompleteList.appendChild(noResultsItem);
-    } else {
-        // Add emphasis tooltip at the bottom if applicable
-        // Note: This will be shown/hidden based on navigation mode
-        if (canAddEmphasis) {
-            const emphasisTooltip = document.createElement('div');
-            emphasisTooltip.className = 'character-autocomplete-tooltip';
-            emphasisTooltip.id = 'emphasisTooltip';
-            emphasisTooltip.style.display = 'none'; // Hidden by default
-            emphasisTooltip.innerHTML = `
-                <span>Press E to add emphasis</span>
-            `;
-            characterAutocompleteList.appendChild(emphasisTooltip);
-        }
-
-        displayResults.forEach((result, index) => {
-            const item = document.createElement('div');
-            item.className = 'character-autocomplete-item';
-
-            if (result.type === 'textReplacement') {
-                // Handle text replacement results
-                item.dataset.type = 'textReplacement';
-                item.dataset.placeholder = result.placeholder;
-
-                // Use displayName if available, otherwise use placeholder
-                const displayName = result.displayName || result.placeholder;
-
-                item.innerHTML = `
-                    <div class="character-info-row">
-                        <span class="character-name">${displayName}</span>
-                        <span class="character-copyright">Text Replacement</span>
-                    </div>
-                    <div class="character-info-row">
-                        <div class="placeholder-desc"><span class="placeholder-desc-text">${result.description}</span></div>
-                    </div>
-                `;
-
-                item.addEventListener('click', () => selectTextReplacement(result.placeholder));
-            } else if (result.type === 'tag') {
-                // Handle tag results
-                item.dataset.type = 'tag';
-                item.dataset.tagName = result.name;
-                item.dataset.modelType = result.model.toLowerCase().includes('furry') ? 'furry' : 'anime';
-
-                item.innerHTML = `
-                    <div class="character-info-row">
-                        <span class="character-name">${result.name}</span>
-                        <span class="character-copyright">${modelKeys[result.model.toLowerCase()]?.type || 'NovelAI'}${modelKeys[result.model.toLowerCase()]?.version ? ' <span class="badge">' + modelKeys[result.model.toLowerCase()]?.version + '</span>' : ''}</span>
-                    </div>
-                `;
-
-                item.addEventListener('click', () => selectTag(result.name));
-            } else {
-                // Handle character results
-                item.dataset.type = 'character';
-                item.dataset.characterData = JSON.stringify(result.character);
-
-                // Parse name and copyright from character data
-                const character = result.character;
-                const name = character.name || result.name;
-                const copyright = character.copyright || '';
-
-                item.innerHTML = `
-                    <div class="character-info-row">
-                        <span class="character-name">${name}</span>
-                        <span class="character-copyright">${copyright}</span>
-                    </div>
-                `;
-
-                item.addEventListener('click', () => selectCharacterItem(result.character));
-            }
-
-            characterAutocompleteList.appendChild(item);
-        });
-
-        // Add "show more" indicator if there are more results and not expanded
-        if (results.length > 5 && !autocompleteExpanded) {
-            const moreItem = document.createElement('div');
-            moreItem.className = 'character-autocomplete-item more-indicator';
-            moreItem.innerHTML = `
-                <div class="character-info-row">
-                    <span class="character-name">Press ↓ to show all ${results.length} results</span>
-                </div>
-            `;
-            characterAutocompleteList.appendChild(moreItem);
-        }
-    }
-
-    // Position overlay relative to viewport
-    const rect = target.getBoundingClientRect();
-    characterAutocompleteOverlay.style.left = rect.left + 'px';
-    characterAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
-    characterAutocompleteOverlay.style.width = rect.width + 'px';
-
-    characterAutocompleteOverlay.classList.remove('hidden');
-
-    // Auto-select first item if there are results and user is in navigation mode
-    if (results.length > 0 && (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0)) {
-        selectedCharacterAutocompleteIndex = 0;
-        updateCharacterAutocompleteSelection();
-    }
-}
 
 function checkCanAddEmphasis(target) {
     const value = target.value;
@@ -7384,77 +5598,6 @@ function checkCanAddEmphasis(target) {
 
     // Check if we have a valid tag to emphasize
     return searchText.length >= 2 && /^[a-zA-Z0-9_]+$/.test(searchText);
-}
-
-function expandAutocompleteToShowAll() {
-    if (!window.allAutocompleteResults || !characterAutocompleteList) return;
-
-    autocompleteExpanded = true;
-
-    // Clear current list
-    characterAutocompleteList.innerHTML = '';
-
-    // Add all results
-    window.allAutocompleteResults.forEach((result, index) => {
-        const item = document.createElement('div');
-        item.className = 'character-autocomplete-item';
-
-        if (result.type === 'textReplacement') {
-            item.dataset.type = 'textReplacement';
-            item.dataset.placeholder = result.placeholder;
-
-            // Use displayName if available, otherwise use placeholder
-            const displayName = result.displayName || result.placeholder;
-
-            item.innerHTML = `
-                <div class="character-info-row">
-                    <span class="character-name">${displayName}</span>
-                    <span class="character-copyright">Text Replacement</span>
-                </div>
-                <div class="character-info-row">
-                    <div class="placeholder-desc"><span class="placeholder-desc-text">${result.description}</span></div>
-                </div>
-            `;
-
-            item.addEventListener('click', () => selectTextReplacement(result.placeholder));
-        } else if (result.type === 'tag') {
-            item.dataset.type = 'tag';
-            item.dataset.tagName = result.name;
-            item.dataset.modelType = result.model.toLowerCase().includes('furry') ? 'furry' : 'anime';
-
-            item.innerHTML = `
-                <div class="character-info-row">
-                    <span class="character-name">${result.name}</span>
-                    <span class="character-copyright">${modelKeys[result.model.toLowerCase()]?.type || 'NovelAI'}${modelKeys[result.model.toLowerCase()]?.version ? ' <span class="badge">' + modelKeys[result.model.toLowerCase()]?.version + '</span>' : ''}</span>
-                </div>
-            `;
-
-            item.addEventListener('click', () => selectTag(result.name));
-        } else {
-            item.dataset.type = 'character';
-            item.dataset.characterData = JSON.stringify(result.character);
-
-            const character = result.character;
-            const name = character.name || result.name;
-            const copyright = character.copyright || '';
-
-            item.innerHTML = `
-                <div class="character-info-row">
-                    <span class="character-name">${name}</span>
-                    <span class="character-copyright">${copyright}</span>
-                </div>
-            `;
-
-            item.addEventListener('click', () => selectCharacterItem(result.character));
-        }
-
-        characterAutocompleteList.appendChild(item);
-    });
-
-    // Maintain selection after expanding
-    if (selectedCharacterAutocompleteIndex >= 0) {
-        updateCharacterAutocompleteSelection();
-    }
 }
 
 // Emphasis popup functions
@@ -8771,774 +6914,10 @@ function cancelEmphasisEditing() {
     emphasisEditingMode = 'normal';
 }
 
-function updateCharacterAutocompleteSelection() {
-    if (!characterAutocompleteList) return;
-
-    const items = characterAutocompleteList.querySelectorAll('.character-autocomplete-item');
-    items.forEach((item, index) => {
-        item.classList.toggle('selected', index === selectedCharacterAutocompleteIndex);
-    });
-
-    // Scroll the selected item into view
-    if (selectedCharacterAutocompleteIndex >= 0 && items[selectedCharacterAutocompleteIndex]) {
-        const selectedItem = items[selectedCharacterAutocompleteIndex];
-        selectedItem.scrollIntoView({
-            block: 'nearest',
-            behavior: 'smooth'
-        });
-    }
-}
-
-function selectCharacterItem(character) {
-    try {
-        showCharacterDetail(character);
-    } catch (error) {
-        console.error('Error displaying character data:', error);
-        showError('Failed to display character data');
-    }
-}
-
-function selectTextReplacement(placeholder) {
-    if (!currentCharacterAutocompleteTarget) return;
-
-    const target = currentCharacterAutocompleteTarget;
-    const currentValue = target.value;
-    const cursorPosition = target.selectionStart;
-
-    // Get the text before the cursor
-    const textBeforeCursor = currentValue.substring(0, cursorPosition);
-
-    // Find the last delimiter (:, |, ,) before the cursor, or start from the beginning
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('{'),
-        textBeforeCursor.lastIndexOf('}'),
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(',')
-    );
-    const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
-
-    // Get the text after the cursor
-    const textAfterCursor = currentValue.substring(cursorPosition);
-
-    // Build the new prompt
-    let newPrompt = '';
-
-    // Keep the text before the current term (trim any trailing delimiters and spaces)
-    const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
-    newPrompt = textBefore;
-
-    // Add the placeholder wrapped in angle brackets
-    const wrappedPlaceholder = `<${placeholder}>`;
-    if (newPrompt) {
-        // Check if the text before ends with : or | - don't add comma in those cases
-        if (textBefore.endsWith(':')) {
-            newPrompt += wrappedPlaceholder;
-        } else if (textBefore.endsWith('|')) {
-            newPrompt += ' ' + wrappedPlaceholder;
-        } else {
-            newPrompt += ', ' + wrappedPlaceholder;
-        }
-    } else {
-        newPrompt = wrappedPlaceholder;
-    }
-
-    // Add the text after the cursor (trim any leading delimiters and spaces)
-    const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
-    if (textAfter) {
-        newPrompt += ', ' + textAfter;
-    }
-
-    // Update the target field
-    target.value = newPrompt;
-
-    // Set cursor position after the inserted placeholder
-    const newCursorPosition = newPrompt.length - textAfter.length;
-    target.setSelectionRange(newCursorPosition, newCursorPosition);
-
-    // Hide character autocomplete
-    hideCharacterAutocomplete();
-
-    // Focus back on the target field
-    if (target) {
-        target.focus();
-        autoResizeTextarea(target);
-        updateEmphasisHighlighting(target);
-    }
-}
-
-function insertTextReplacement(actualText) {
-    if (!currentCharacterAutocompleteTarget) return;
-
-    const target = currentCharacterAutocompleteTarget;
-    const currentValue = target.value;
-    const cursorPosition = target.selectionStart;
-
-    // Get the text before the cursor
-    const textBeforeCursor = currentValue.substring(0, cursorPosition);
-
-    // Find the last delimiter (:, |, ,) before the cursor, or start from the beginning
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('{'),
-        textBeforeCursor.lastIndexOf('}'),
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(',')
-    );
-    const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
-
-    // Get the text after the cursor
-    const textAfterCursor = currentValue.substring(cursorPosition);
-
-    // Build the new prompt
-    let newPrompt = '';
-
-    // Keep the text before the current term (trim any trailing delimiters and spaces)
-    const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
-    newPrompt = textBefore;
-
-    // Add the actual text (not wrapped in angle brackets)
-    if (newPrompt) {
-        // Check if the text before ends with : or | - don't add comma in those cases
-        if (textBefore.endsWith(':')) {
-            newPrompt += actualText;
-        } else if (textBefore.endsWith('|')) {
-            newPrompt += ' ' + actualText;
-        } else {
-            newPrompt += ', ' + actualText;
-        }
-    } else {
-        newPrompt = actualText;
-    }
-
-    // Add the text after the cursor (trim any leading delimiters and spaces)
-    const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
-    if (textAfter) {
-        newPrompt += ', ' + textAfter;
-    }
-
-    // Update the target field
-    target.value = newPrompt;
-
-    // Set cursor position after the inserted text
-    const newCursorPosition = newPrompt.length - textAfter.length;
-    target.setSelectionRange(newCursorPosition, newCursorPosition);
-
-    // Hide character autocomplete
-    hideCharacterAutocomplete();
-
-    // Focus back on the target field
-    if (target) {
-        target.focus();
-        autoResizeTextarea(target);
-        updateEmphasisHighlighting(target);
-    }
-}
-
-function selectTag(tagName) {
-    if (!currentCharacterAutocompleteTarget) return;
-
-    const target = currentCharacterAutocompleteTarget;
-    const currentValue = target.value;
-    const cursorPosition = target.selectionStart;
-
-    // Get the text before the cursor
-    const textBeforeCursor = currentValue.substring(0, cursorPosition);
-
-    // Find the last delimiter (:, |, ,) before the cursor, or start from the beginning
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('{'),
-        textBeforeCursor.lastIndexOf('}'),
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(',')
-    );
-    const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
-
-    // Get the text after the cursor
-    const textAfterCursor = currentValue.substring(cursorPosition);
-
-    // Build the new prompt
-    let newPrompt = '';
-
-    // Keep the text before the current term (trim any trailing delimiters and spaces)
-    const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
-    newPrompt = textBefore;
-
-    // Add the tag name
-    if (newPrompt) {
-        // Check if the text before ends with : or | - don't add comma in those cases
-        if (textBefore.endsWith(':')) {
-            newPrompt += tagName;
-        } else if (textBefore.endsWith('|')) {
-            newPrompt += ' ' + tagName;
-        } else {
-            newPrompt += ', ' + tagName;
-        }
-    } else {
-        newPrompt = tagName;
-    }
-
-    // Add the text after the cursor (trim any leading delimiters and spaces)
-    const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
-    if (textAfter) {
-        newPrompt += ', ' + textAfter;
-    }
-
-    // Update the target field
-    target.value = newPrompt;
-
-    // Set cursor position after the inserted tag
-    const newCursorPosition = newPrompt.length - textAfter.length;
-    target.setSelectionRange(newCursorPosition, newCursorPosition);
-
-    // Hide character autocomplete
-    hideCharacterAutocomplete();
-
-    // Focus back on the target field
-    if (target) {
-        target.focus();
-        autoResizeTextarea(target);
-        updateEmphasisHighlighting(target);
-    }
-}
-
-function selectTextReplacementFullText(placeholder) {
-    if (!currentCharacterAutocompleteTarget) return;
-
-    const target = currentCharacterAutocompleteTarget;
-    const currentValue = target.value;
-    const cursorPosition = target.selectionStart;
-
-    // Get the text before the cursor
-    const textBeforeCursor = currentValue.substring(0, cursorPosition);
-
-    // Find the last delimiter (:, |, ,) before the cursor, or start from the beginning
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('{'),
-        textBeforeCursor.lastIndexOf('}'),
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(',')
-    );
-    const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
-
-    // Get the text after the cursor
-    const textAfterCursor = currentValue.substring(cursorPosition);
-
-    // Build the new prompt
-    let newPrompt = '';
-
-    // Keep the text before the current term (trim any trailing delimiters and spaces)
-    const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
-    newPrompt = textBefore;
-
-    // Add the full text replacement description
-    const fullText = textReplacements[placeholder];
-    if (newPrompt) {
-        // Check if the text before ends with : or | - don't add comma in those cases
-        if (textBefore.endsWith(':')) {
-            newPrompt += fullText;
-        } else if (textBefore.endsWith('|')) {
-            newPrompt += ' ' + fullText;
-        } else {
-            newPrompt += ', ' + fullText;
-        }
-    } else {
-        newPrompt = fullText;
-    }
-
-    // Add the text after the cursor (trim any leading delimiters and spaces)
-    const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
-    if (textAfter) {
-        newPrompt += ', ' + textAfter;
-    }
-
-    // Update the target field
-    target.value = newPrompt;
-
-    // Set cursor position after the inserted text
-    const newCursorPosition = newPrompt.length - textAfter.length;
-    target.setSelectionRange(newCursorPosition, newCursorPosition);
-
-    // Hide character autocomplete
-    hideCharacterAutocomplete();
-
-    // Focus back on the target field
-    if (target) {
-        target.focus();
-        autoResizeTextarea(target);
-        updateEmphasisHighlighting(target);
-    }
-}
-
-function selectCharacterWithoutEnhancers(character) {
-    try {
-        if (!currentCharacterAutocompleteTarget) return;
-
-        const target = currentCharacterAutocompleteTarget;
-        const currentValue = target.value;
-        const cursorPosition = target.selectionStart;
-
-        // Get the text before the cursor
-        const textBeforeCursor = currentValue.substring(0, cursorPosition);
-
-        // Find the last delimiter (:, |, ,) before the cursor, or start from the beginning
-        const lastDelimiterIndex = Math.max(
-            textBeforeCursor.lastIndexOf('{'),
-            textBeforeCursor.lastIndexOf('}'),
-            textBeforeCursor.lastIndexOf('['),
-            textBeforeCursor.lastIndexOf(']'),
-            textBeforeCursor.lastIndexOf(':'),
-            textBeforeCursor.lastIndexOf('|'),
-            textBeforeCursor.lastIndexOf(',')
-        );
-        const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
-
-        // Get the text after the cursor
-        const textAfterCursor = currentValue.substring(cursorPosition);
-
-        // Build the new prompt
-        let newPrompt = '';
-
-        // Keep the text before the current term (trim any trailing delimiters and spaces)
-        const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
-        newPrompt = textBefore;
-
-        // Add just the character prompt without any enhancers
-        if (character.prompt) {
-            if (newPrompt) {
-                // Check if the text before ends with : or | - don't add comma in those cases
-                if (textBefore.endsWith(':')) {
-                    newPrompt += character.prompt;
-                } else if (textBefore.endsWith('|')) {
-                    newPrompt += ' ' + character.prompt;
-                } else {
-                    newPrompt += ', ' + character.prompt;
-                }
-            } else {
-                newPrompt = character.prompt;
-            }
-        }
-
-        // Add the text after the cursor (trim any leading delimiters and spaces)
-        const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
-        if (textAfter) {
-            if (newPrompt) {
-                newPrompt += ', ' + textAfter;
-            } else {
-                newPrompt = textAfter;
-            }
-        }
-
-        // Update the target field
-        target.value = newPrompt;
-
-        // Set cursor position after the inserted text
-        const newCursorPosition = newPrompt.length - textAfter.length;
-        target.setSelectionRange(newCursorPosition, newCursorPosition);
-
-        // Hide character autocomplete
-        hideCharacterAutocomplete();
-
-        // Focus back on the target field
-        if (target) {
-            target.focus();
-            autoResizeTextarea(target);
-            updateEmphasisHighlighting(target);
-        }
-    } catch (error) {
-        console.error('Error loading character data:', error);
-        showError('Failed to load character data');
-    }
-}
-
-function showCharacterDetail(character) {
-    try {
-
-        // Reset selected enhancer group index
-        selectedEnhancerGroupIndex = -1;
-
-        // Instead of using a separate overlay, replace the content inside the existing autocomplete overlay
-        const autocompleteList = document.querySelector('.character-autocomplete-list');
-
-        if (!autocompleteList) {
-            console.error('Character autocomplete list not found');
-            return;
-        }
-
-        // Create enhancers HTML
-        let enhancersHTML = '';
-
-        // Add "None" option first
-        enhancersHTML += `
-            <div class="enhancer-group" 
-                 data-enhancer-group="null" 
-                 data-character='${JSON.stringify(character)}'
-                 onclick="selectEnhancerGroupFromDetail(null, ${JSON.stringify(character).replace(/"/g, '&quot;')})">
-                <div class="enhancer-group-header">
-                    <span class="enhancer-group-name">None</span>
-                    <span class="enhancer-group-count">0</span>
-                </div>
-            </div>
-        `;
-
-        // Ensure character.enhancers exists and is an array
-        if (character.enhancers && Array.isArray(character.enhancers)) {
-            // Add enhancer groups
-            character.enhancers.forEach((enhancerGroup, groupIndex) => {
-                // Handle mixed structure: convert strings to single-item arrays
-                let processedGroup;
-                if (typeof enhancerGroup === 'string') {
-                    // Convert string to single-item array
-                    processedGroup = [enhancerGroup];
-                } else if (Array.isArray(enhancerGroup)) {
-                    // Already an array, use as-is
-                    processedGroup = enhancerGroup;
-                } else {
-                    console.warn(`Enhancer group ${groupIndex} is neither string nor array:`, enhancerGroup);
-                    return; // Skip this group
-                }
-
-                enhancersHTML += `
-                    <div class="enhancer-group" 
-                         data-enhancer-group='${JSON.stringify(processedGroup)}'
-                         data-character='${JSON.stringify(character)}'
-                         onclick="selectEnhancerGroupFromDetail(${JSON.stringify(processedGroup).replace(/"/g, '&quot;')}, ${JSON.stringify(character).replace(/"/g, '&quot;')})">
-                        <div class="enhancer-group-header">
-                            <span class="enhancer-group-name">Group ${groupIndex + 1}</span>
-                            <span class="enhancer-group-count">${processedGroup.length}</span>
-                        </div>
-                        <div class="enhancer-items">
-                            ${processedGroup.map(item => {
-                                // Ensure item is a string
-                                if (typeof item !== 'string') {
-                                    console.warn(`Enhancer item is not a string:`, item);
-                                    return '';
-                                }
-                                const isNegative = item.startsWith('--');
-                                const displayItem = isNegative ? item.substring(2) : item;
-                                return `<span class="enhancer-item ${isNegative ? 'negative' : ''}">${displayItem}</span>`;
-                            }).join('')}
-                        </div>
-                    </div>
-                `;
-            });
-        } else {
-            enhancersHTML += '<div class="no-enhancers">No enhancers available</div>';
-        }
-
-        // Replace the autocomplete content with character detail
-        autocompleteList.innerHTML = `
-            <div class="character-detail-content">
-                <div class="character-detail-header">
-                    <div class="character-name-copyright">
-                        <span class="character-name">${character.name || 'Unknown Character'}</span>
-                        <span class="character-copyright">${character.copyright || ''}</span>
-                    </div>
-                    <button class="close-character-detail" onclick="hideCharacterDetail()">&times;</button>
-                </div>
-                <div class="character-detail-body">
-                    <div class="character-prompt">
-                        <strong>Prompt:</strong> <span>${character.prompt || 'No prompt available'}</span>
-                    </div>
-                    <div class="character-enhancers">
-                        <strong>Enhancers:</strong>
-                        <div class="enhancers-list">
-                            ${enhancersHTML}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        // Ensure the autocomplete overlay maintains its width
-        if (characterAutocompleteOverlay) {
-            characterAutocompleteOverlay.style.width = characterAutocompleteOverlay.style.width || '400px';
-        }
-
-        // The autocomplete overlay is already visible, so no need to show/hide anything
-    } catch (error) {
-        console.error('Error showing character detail:', error);
-        console.error('Character that caused error:', character);
-        showError('Failed to display character details');
-    }
-}
-
-function selectEnhancerGroup(enhancerGroup, character) {
-    if (!currentCharacterAutocompleteTarget) return;
-
-    const target = currentCharacterAutocompleteTarget;
-
-    // Update the target field with character prompt
-    if (character.prompt) {
-        target.value = character.prompt;
-    }
-
-    // Add enhancer items to the prompt if selected
-    if (enhancerGroup && Array.isArray(enhancerGroup) && enhancerGroup.length > 0) {
-        const currentPrompt = target.value;
-        const enhancerText = enhancerGroup.join(', ');
-        target.value = currentPrompt + ', ' + enhancerText;
-    }
-
-    // Hide character detail overlay and autocomplete
-    hideCharacterDetail();
-    hideCharacterAutocomplete();
-
-    // Focus back on the target field
-    if (target) {
-        target.focus();
-        updateEmphasisHighlighting(target);
-    }
-}
-
-function selectEnhancerGroupFromDetail(enhancerGroup, character) {
-    if (!currentCharacterAutocompleteTarget) return;
-
-    const target = currentCharacterAutocompleteTarget;
-    const currentValue = target.value;
-    const cursorPosition = target.selectionStart;
-
-    // Get the text before the cursor
-    const textBeforeCursor = currentValue.substring(0, cursorPosition);
-
-    // Find the last comma before the cursor, or start from the beginning
-    const lastCommaIndex = textBeforeCursor.lastIndexOf(',');
-    const startOfCurrentTerm = lastCommaIndex >= 0 ? lastCommaIndex + 1 : 0;
-
-    // Get the text after the cursor
-    const textAfterCursor = currentValue.substring(cursorPosition);
-
-    // Build the new prompt
-    let newPrompt = '';
-
-    // Keep the text before the current term (trim any trailing commas and spaces)
-    const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
-    newPrompt = textBefore;
-
-    // Add character prompt if this is the first item or we're at the beginning
-    if (character.prompt) {
-        if (startOfCurrentTerm === 0) {
-            // This is the first item, use the character prompt
-            newPrompt = character.prompt;
-        } else {
-            // Add character prompt after existing text
-            if (newPrompt) {
-                newPrompt += ', ' + character.prompt;
-            } else {
-                newPrompt = character.prompt;
-            }
-        }
-    }
-
-    // Add enhancer items if selected
-    if (enhancerGroup && Array.isArray(enhancerGroup) && enhancerGroup.length > 0) {
-        const enhancerText = enhancerGroup.join(', ');
-        if (newPrompt) {
-            newPrompt += ', ' + enhancerText;
-        } else {
-            newPrompt = enhancerText;
-        }
-    }
-
-    // Add the text after the cursor (trim any leading commas and spaces)
-    const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
-    if (textAfter) {
-        if (newPrompt) {
-            newPrompt += ', ' + textAfter;
-        } else {
-            newPrompt = textAfter;
-        }
-    }
-
-    // Update the target field
-    target.value = newPrompt;
-
-    // Set cursor position after the inserted text
-    const newCursorPosition = newPrompt.length - textAfter.length;
-    target.setSelectionRange(newCursorPosition, newCursorPosition);
-
-    // Hide character autocomplete (which now contains the detail view)
-    hideCharacterAutocomplete();an
-
-    // Focus back on the target field
-    if (target) {
-        target.focus();
-        autoResizeTextarea(target);
-        updateEmphasisHighlighting(target);
-    }
-}
-
-function applyFormattedText(textarea, lostFocus) {
-    // Store cursor position if textarea is in focus
-    const cursorPosition = !lostFocus ? textarea.selectionStart : -1;
-
-    let text = textarea.value;
-
-    // Process text based on focus state
-    if (lostFocus) {
-        // When losing focus, clean up the text
-        text = text
-            .split('\n').map(item => item.trim()).join(' ')
-            .split(',').map(item => item.trim()).join(', ')
-            .split('|').map(item => item.trim()).filter(Boolean).join(' | ');
-
-        // Remove leading | or , and trim start
-        text = text.replace(/^(\||,)+\s*/, '');
-    } else {
-        // When focused, just clean up basic formatting
-        text = text
-            .split('\n').map(item => item.trim()).join(' ')
-            .split(',').map(item => item.trim()).join(', ')
-            .split('|').map(item => item.trim()).join(' | ');
-    }
-
-    // Fix curly brace groups: ensure each group has equal number of { and }
-    // Only process if there is a "}," to terminate it
-    if (text.includes('},')) {
-        text = text.replace(/(\{+)([^{}]*)(\}*)/g, (match, openBraces, content, closeBraces, offset, str) => {
-            const after = str.slice(offset + match.length, offset + match.length + 1);
-            if (closeBraces.length > 0 && after === ',') {
-                const openCount = openBraces.length;
-                return openBraces + content + '}'.repeat(openCount);
-            }
-            return match;
-        });
-    }
-
-    // Fix square bracket groups: ensure each group has equal number of [ and ]
-    // Only process if there is "]," to terminate it
-    if (text.includes('],')) {
-        text = text.replace(/(\[+)([^\[\]]*)(\]*)/g, (match, openBrackets, content, closeBrackets, offset, str) => {
-            const after = str.slice(offset + match.length, offset + match.length + 1);
-            if (closeBrackets.length > 0 && after === ',') {
-                const openCount = openBrackets.length;
-                return openBrackets + content + ']'.repeat(openCount);
-            }
-            return match;
-        });
-    }
-
-    // If not focused, remove empty tags (consecutive commas with only spaces between)
-    if (lostFocus) {
-        // Remove any sequence of commas (with any amount of spaces between) that does not have text between them
-        // e.g. ",   ,", ", ,", ",,"
-        text = text.replace(/(?:^|,)\s*(?=,|$)/g, ''); // Remove empty segments
-        // Remove any leading or trailing commas left after cleanup
-        text = text.replace(/^,|,$/g, '');
-        // Remove extra spaces after cleanup
-        text = text.replace(/,\s+/g, ', ');
-        text = text.replace(/\s+,/g, ',');
-    }
-
-    textarea.value = text;
-
-    // Restore cursor position if textarea was in focus
-    if (!lostFocus && cursorPosition >= 0) {
-        // Ensure cursor position doesn't exceed the new text length
-        const newPosition = Math.min(cursorPosition, text.length);
-        textarea.setSelectionRange(newPosition, newPosition);
-        textarea.focus();
-    }
-}
-// Global variable to track selected enhancer group index
-let selectedEnhancerGroupIndex = -1;
-
-function handleCharacterDetailArrowKeys(key) {
-    const enhancerGroups = document.querySelectorAll('.character-detail-content .enhancer-group');
-    if (enhancerGroups.length === 0) return;
-
-    // Remove previous selection
-    enhancerGroups.forEach(group => group.classList.remove('selected'));
-
-    if (key === 'ArrowUp') {
-        selectedEnhancerGroupIndex = selectedEnhancerGroupIndex <= 0 ? enhancerGroups.length - 1 : selectedEnhancerGroupIndex - 1;
-    } else if (key === 'ArrowDown') {
-        selectedEnhancerGroupIndex = selectedEnhancerGroupIndex >= enhancerGroups.length - 1 ? 0 : selectedEnhancerGroupIndex + 1;
-    }
-
-    // Add selection to current item
-    if (selectedEnhancerGroupIndex >= 0 && selectedEnhancerGroupIndex < enhancerGroups.length) {
-        enhancerGroups[selectedEnhancerGroupIndex].classList.add('selected');
-
-        // Scroll the selected item into view
-        enhancerGroups[selectedEnhancerGroupIndex].scrollIntoView({
-            behavior: 'smooth',
-            block: 'nearest'
-        });
-    }
-}
-
-function handleCharacterDetailEnter() {
-    const enhancerGroups = document.querySelectorAll('.character-detail-content .enhancer-group');
-    if (selectedEnhancerGroupIndex >= 0 && selectedEnhancerGroupIndex < enhancerGroups.length) {
-        const selectedGroup = enhancerGroups[selectedEnhancerGroupIndex];
-
-        // Get the data from data attributes (much more reliable than parsing onclick)
-        const enhancerGroupData = selectedGroup.getAttribute('data-enhancer-group');
-        const characterData = selectedGroup.getAttribute('data-character');
-
-        if (enhancerGroupData && characterData) {
-            try {
-                // Parse the data attributes
-                const enhancerGroup = enhancerGroupData === 'null' ? null : JSON.parse(enhancerGroupData);
-                const character = JSON.parse(characterData);
-
-                selectEnhancerGroupFromDetail(enhancerGroup, character);
-            } catch (error) {
-                console.error('Error parsing data attributes:', error);
-                console.error('enhancerGroupData:', enhancerGroupData);
-                console.error('characterData:', characterData);
-
-                // Fallback: try to trigger the click event instead
-                selectedGroup.click();
-            }
-        } else {
-            // Fallback: try to trigger the click event instead
-            selectedGroup.click();
-        }
-    }
-}
-
-function hideCharacterAutocomplete() {
-    if (characterAutocompleteOverlay) {
-        characterAutocompleteOverlay.classList.add('hidden');
-    }
-    currentCharacterAutocompleteTarget = null;
-    selectedCharacterAutocompleteIndex = -1;
-    characterSearchResults = [];
-    autocompleteNavigationMode = false;
-    autocompleteExpanded = false;
-    updateEmphasisTooltipVisibility();
-}
-
 function updateEmphasisTooltipVisibility() {
     const tooltip = document.getElementById('emphasisTooltip');
     if (tooltip) {
         tooltip.style.display = autocompleteNavigationMode ? 'block' : 'none';
-    }
-}
-
-function hideCharacterDetail() {
-    // Since we're now replacing the content inside the autocomplete overlay,
-    // we need to restore the original autocomplete list content
-    const autocompleteList = document.querySelector('.character-autocomplete-list');
-
-    if (autocompleteList && characterSearchResults.length > 0) {
-        // Restore the original autocomplete suggestions
-        showCharacterAutocompleteSuggestions(characterSearchResults, currentCharacterAutocompleteTarget);
-    } else {
-        // If no search results, just hide the overlay
-        hideCharacterAutocomplete();
     }
 }
 
@@ -9691,65 +7070,6 @@ function updatePresetAutocompleteSelection() {
     }
 }
 
-// Update autocomplete positions when page scrolls
-function updateAutocompletePositions() {
-    // Update character autocomplete position
-    if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden') && currentCharacterAutocompleteTarget) {
-        const rect = currentCharacterAutocompleteTarget.getBoundingClientRect();
-        characterAutocompleteOverlay.style.left = rect.left + 'px';
-        characterAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
-        characterAutocompleteOverlay.style.width = rect.width + 'px';
-    }
-
-    // Update preset autocomplete position
-    if (presetAutocompleteOverlay && !presetAutocompleteOverlay.classList.contains('hidden') && currentPresetAutocompleteTarget) {
-        const rect = currentPresetAutocompleteTarget.getBoundingClientRect();
-        const overlayHeight = Math.min(400, window.innerHeight * 0.5);
-        const spaceAbove = rect.top;
-        const spaceBelow = window.innerHeight - rect.bottom;
-
-        presetAutocompleteOverlay.style.left = rect.left + 'px';
-        presetAutocompleteOverlay.style.width = rect.width + 'px';
-
-        // Check if there's enough space above, otherwise show below
-        if (spaceAbove >= overlayHeight) {
-            // Position above
-            presetAutocompleteOverlay.style.top = (rect.top - 5) + 'px';
-            presetAutocompleteOverlay.style.transform = 'translateY(-100%)';
-            presetAutocompleteOverlay.style.maxHeight = overlayHeight + 'px';
-        } else {
-            // Position below if not enough space above
-            presetAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
-            presetAutocompleteOverlay.style.transform = 'none';
-            presetAutocompleteOverlay.style.maxHeight = Math.min(spaceBelow - 10, overlayHeight) + 'px';
-        }
-    }
-}
-
-function selectPresetItem(presetName) {
-    if (!currentPresetAutocompleteTarget) return;
-
-    const target = currentPresetAutocompleteTarget;
-    target.value = presetName;
-
-    // Hide preset autocomplete
-    hidePresetAutocomplete();
-
-    // Focus back on the target field
-    if (target) {
-        target.focus();
-    }
-}
-
-function hidePresetAutocomplete() {
-    if (presetAutocompleteOverlay) {
-        presetAutocompleteOverlay.classList.add('hidden');
-    }
-    currentPresetAutocompleteTarget = null;
-    selectedPresetAutocompleteIndex = -1;
-    presetSearchResults = [];
-}
-
 // Update generate button state
 function updateGenerateButton() {
     const selectedValue = presetSelect.value;
@@ -9898,10 +7218,7 @@ async function showLightbox(image) {
         lightboxImage.src = `/images/${image.filename}`;
     }
 
-    lightboxModal.style.display = 'block';
-
-    // Prevent body scrolling
-    document.body.style.overflow = 'hidden';
+    openModal(lightboxModal);
 
     // Store current image for download
     lightboxImage.dataset.filename = image.filename;
@@ -10341,8 +7658,7 @@ function formatRequestType(requestType) {
 
 // Hide lightbox
 function hideLightbox() {
-    lightboxModal.style.display = 'none';
-    document.body.style.overflow = 'auto';
+    closeModal(lightboxModal);
 
     // Clear any existing metadata
     const metadataTable = document.querySelector('.lightbox-metadata-section .metadata-table tbody');
@@ -11078,10 +8394,9 @@ function showLoading(show, message = 'Generating Image...') {
 // Show manual modal loading overlay
 function showManualLoading(show, message = 'Generating Image...') {
     const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
-    const manualModal = document.getElementById('manualModal');
 
     // Check if manual modal is open and screen is wide enough for preview section
-    const isManualModalOpen = manualModal && manualModal.style.display !== 'none';
+    const isManualModalOpen = manualModal.style.display !== 'none';
     const isWideScreen = window.innerWidth > 1400;
 
     if (show && isManualModalOpen && isWideScreen) {
@@ -11214,7 +8529,7 @@ async function toggleBaseImage(imageObj) {
 
 let resizeTimeout = null;
 // Debounced resize handler
-function handleResize() {
+async function handleResize() {
     if (resizeTimeout) {
         clearTimeout(resizeTimeout);
     }
@@ -11350,7 +8665,7 @@ function updateRequestTypeButtonVisibility() {
 function showMetadataDialog() {
     if (currentImage && currentImage.metadata && metadataDialog) {
         populateDialogMetadataTable(currentImage.metadata);
-        metadataDialog.style.display = 'block';
+        openModal(metadataDialog);
     }
 }
 
@@ -11898,11 +9213,6 @@ async function uploadImages(files) {
     }
 }
 
-// Upload single image to server (for backward compatibility)
-async function uploadImage(file) {
-    await uploadImages([file]);
-}
-
 // Handle manual image upload for variation/reroll
 async function handleManualImageUpload(file) {
     if (!file.type.startsWith('image/')) {
@@ -12022,84 +9332,9 @@ async function renderImageBiasDropdown(selectedVal) {
     // Check if we have dynamic bias (object) instead of legacy bias (number)
     const hasDynamicBias = window.uploadedImageData && window.uploadedImageData.image_bias && typeof window.uploadedImageData.image_bias === 'object';
 
-    // Render image bias options with correct labels
-    function renderImageBiasOptions() {
-        const isPortraitImage = imageAR < targetAR;
-        imageBiasDropdownMenu.innerHTML = '';
-
-        // Create bias options based on image orientation (exclude Custom from dropdown)
-        const biasOptions = [
-            { value: '0', display: isPortraitImage ? 'Top' : 'Left' },
-            { value: '1', display: isPortraitImage ? 'Mid-Top' : 'Mid-Left' },
-            { value: '2', display: 'Center' },
-            { value: '3', display: isPortraitImage ? 'Mid-Bottom' : 'Mid-Right' },
-            { value: '4', display: isPortraitImage ? 'Bottom' : 'Right' }
-        ];
-
-        biasOptions.forEach(option => {
-            const optionElement = document.createElement('div');
-            optionElement.className = 'custom-dropdown-option';
-            optionElement.dataset.value = option.value;
-
-            // Create grid based on orientation
-            let gridHTML = '';
-            if (isPortraitImage) {
-                // Portrait: 3 columns, 5 rows (vertical layout)
-                for (let i = 0; i < 15; i++) {
-                    gridHTML += '<div class="grid-cell"></div>';
-                }
-            } else {
-                // Landscape: 5 columns, 3 rows (horizontal layout)
-                for (let i = 0; i < 15; i++) {
-                    gridHTML += '<div class="grid-cell"></div>';
-                }
-            }
-
-            optionElement.innerHTML = `
-                <div class="mask-bias-option-content">
-                    <div class="mask-bias-grid" data-bias="${option.value}" data-orientation="${isPortraitImage ? 'portrait' : 'landscape'}">
-                        ${gridHTML}
-                    </div>
-                    <span class="mask-bias-label">${option.display}</span>
-                </div>
-            `;
-
-            optionElement.addEventListener('click', () => {
-                selectImageBias(option.value);
-            });
-
-            imageBiasDropdownMenu.appendChild(optionElement);
-        });
-
-        // Update button display
-        if (imageBiasDropdownBtn) {
-            const buttonGrid = imageBiasDropdownBtn.querySelector('.mask-bias-grid');
-            if (buttonGrid) {
-                if (hasDynamicBias) {
-                    // Show custom bias with diagonal grid
-                    buttonGrid.setAttribute('data-bias', 'custom');
-                    buttonGrid.setAttribute('data-orientation', isPortraitImage ? 'portrait' : 'landscape');
-                    buttonGrid.classList.add('custom-bias');
-                } else {
-                    // Show normal bias
-                    buttonGrid.setAttribute('data-bias', selectedVal);
-                    buttonGrid.setAttribute('data-orientation', isPortraitImage ? 'portrait' : 'landscape');
-                    buttonGrid.classList.remove('custom-bias');
-                }
-            }
-        }
-
-        // Call updateImageBiasDisplay with appropriate value
-        if (hasDynamicBias) {
-            updateImageBiasDisplay('custom');
-        } else {
-            updateImageBiasDisplay(selectedVal);
-        }
-    }
-
     if (hasDynamicBias) {
         imageBiasGroup.style.display = 'flex';
-        renderImageBiasOptions();
+        await updateImageBiasDisplay('custom');
         return;
     }
 
@@ -12142,7 +9377,77 @@ async function renderImageBiasDropdown(selectedVal) {
         return;
     }
 
-    renderImageBiasOptions();
+    const isPortraitImage = imageAR < targetAR;
+    imageBiasDropdownMenu.innerHTML = '';
+
+    // Create bias options based on image orientation (exclude Custom from dropdown)
+    const biasOptions = [
+        { value: '0', display: isPortraitImage ? 'Top' : 'Left' },
+        { value: '1', display: isPortraitImage ? 'Mid-Top' : 'Mid-Left' },
+        { value: '2', display: 'Center' },
+        { value: '3', display: isPortraitImage ? 'Mid-Bottom' : 'Mid-Right' },
+        { value: '4', display: isPortraitImage ? 'Bottom' : 'Right' }
+    ];
+
+    biasOptions.forEach(option => {
+        const optionElement = document.createElement('div');
+        optionElement.className = 'custom-dropdown-option';
+        optionElement.dataset.value = option.value;
+
+        // Create grid based on orientation
+        let gridHTML = '';
+        if (isPortraitImage) {
+            // Portrait: 3 columns, 5 rows (vertical layout)
+            for (let i = 0; i < 15; i++) {
+                gridHTML += '<div class="grid-cell"></div>';
+            }
+        } else {
+            // Landscape: 5 columns, 3 rows (horizontal layout)
+            for (let i = 0; i < 15; i++) {
+                gridHTML += '<div class="grid-cell"></div>';
+            }
+        }
+
+        optionElement.innerHTML = `
+            <div class="mask-bias-option-content">
+                <div class="mask-bias-grid" data-bias="${option.value}" data-orientation="${isPortraitImage ? 'portrait' : 'landscape'}">
+                    ${gridHTML}
+                </div>
+                <span class="mask-bias-label">${option.display}</span>
+            </div>
+        `;
+
+        optionElement.addEventListener('click', () => {
+            selectImageBias(option.value);
+        });
+
+        imageBiasDropdownMenu.appendChild(optionElement);
+    });
+
+    // Update button display
+    if (imageBiasDropdownBtn) {
+        const buttonGrid = imageBiasDropdownBtn.querySelector('.mask-bias-grid');
+        if (buttonGrid) {
+            if (hasDynamicBias) {
+                // Show custom bias with diagonal grid
+                buttonGrid.setAttribute('data-bias', 'custom');
+                buttonGrid.setAttribute('data-orientation', isPortraitImage ? 'portrait' : 'landscape');
+                buttonGrid.classList.add('custom-bias');
+            } else {
+                // Show normal bias
+                buttonGrid.setAttribute('data-bias', selectedVal);
+                buttonGrid.setAttribute('data-orientation', isPortraitImage ? 'portrait' : 'landscape');
+                buttonGrid.classList.remove('custom-bias');
+            }
+        }
+    }
+
+    // Call updateImageBiasDisplay with appropriate value
+    if (hasDynamicBias) {
+        await updateImageBiasDisplay('custom');
+    } else {
+        await updateImageBiasDisplay(selectedVal);
+    }
 }
 
 // Select image bias
@@ -12370,7 +9675,7 @@ function updateUploadDeleteButtonVisibility() {
 }
 
 // Selection handling functions
-function handleImageSelection(image, isSelected, event) {
+async function handleImageSelection(image, isSelected, event) {
     const filename = image.filename || image.original || image.upscaled || image.pipeline || image.pipeline_upscaled;
 
     // Skip if no valid filename found
@@ -12388,7 +9693,12 @@ function handleImageSelection(image, isSelected, event) {
         const clickedIndex = checkboxes.findIndex(cb => cb.dataset.filename === filename);
         if (lastSelectedGalleryIndex !== null && clickedIndex !== -1) {
             const [start, end] = [lastSelectedGalleryIndex, clickedIndex].sort((a, b) => a - b);
-            for (let i = start; i <= end; i++) {
+            let i = start;
+            function selectNext() {
+                if (i > end) {
+                    updateBulkActionsBar();
+                    return;
+                }
                 const cb = checkboxes[i];
                 const img = allImages[i];
                 if (cb && img) {
@@ -12396,8 +9706,10 @@ function handleImageSelection(image, isSelected, event) {
                     selectedImages.add(cb.dataset.filename);
                     cb.closest('.gallery-item').classList.add('selected');
                 }
+                i++;
+                requestAnimationFrame(selectNext);
             }
-            updateBulkActionsBar();
+            selectNext();
             return;
         }
     }
@@ -12496,12 +9808,12 @@ async function handleBulkMoveToWorkspace() {
         // Close modal handlers
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
-                modal.style.display = 'none';
+                closeModal(modal);
             }
         });
 
         document.getElementById('closeBulkMoveToWorkspaceBtn').addEventListener('click', () => {
-            modal.style.display = 'none';
+            closeModal(modal);
         });
     }
 
@@ -12524,14 +9836,14 @@ async function handleBulkMoveToWorkspace() {
         `;
 
         item.addEventListener('click', async () => {
-            modal.style.display = 'none';
+            closeModal(modal);
             await moveBulkImagesToWorkspace(workspace.id);
         });
 
         workspaceList.appendChild(item);
     });
 
-    modal.style.display = 'block';
+    openModal(modal);
 }
 
 async function moveBulkImagesToWorkspace(workspaceId) {
@@ -12800,7 +10112,7 @@ async function handleBulkChangePreset() {
     presetNameInput.value = '';
 
     // Show modal
-    modal.style.display = 'block';
+    openModal(modal);
 
     // Focus on input
     presetNameInput.focus();
@@ -12861,7 +10173,7 @@ async function handleBulkChangePresetConfirm() {
         showError('Failed to update preset names: ' + error.message);
     } finally {
         showLoading(false);
-        modal.style.display = 'none';
+        closeModal(modal);
     }
 }
 
@@ -13963,7 +11275,7 @@ async function showCacheBrowser() {
 
         if (!cacheBrowserModal || !cacheBrowserLoading || !cacheGallery) return;
 
-        cacheBrowserModal.style.display = 'block';
+        openModal(cacheBrowserModal);
         cacheBrowserLoading.style.display = 'flex';
         cacheGallery.innerHTML = '';
 
@@ -13987,9 +11299,7 @@ function hideCacheBrowser() {
     const cacheBrowserContainer = document.getElementById('cacheBrowserContainer');
     const previewSection = document.getElementById('manualPanelSection');
 
-    if (cacheBrowserModal) {
-        cacheBrowserModal.style.display = 'none';
-    }
+    closeModal(cacheBrowserModal);
 
     if (cacheBrowserContainer) {
         cacheBrowserContainer.style.display = 'none';
@@ -14865,7 +12175,7 @@ async function showImageBiasAdjustmentModal() {
         }
 
         // Show modal first
-        modal.style.display = 'flex';
+        openModal(modal);
 
         // Update UI after modal is visible (so we can get proper container dimensions)
         setTimeout(() => {
@@ -15410,7 +12720,7 @@ async function showBiasAdjustmentConfirmDialog() {
     await generateConfirmationPreviews();
 
     // Show dialog
-    dialog.style.display = 'flex';
+    openModal(dialog);
 }
 
 // Generate previews for confirmation dialog
@@ -15500,7 +12810,7 @@ function applyBiasAdjustment() {
 function hideBiasAdjustmentConfirmDialog() {
     const dialog = document.getElementById('biasAdjustmentConfirmDialog');
     if (dialog) {
-        dialog.style.display = 'none';
+        closeModal(dialog);
     }
 }
 
@@ -15508,7 +12818,7 @@ function hideBiasAdjustmentConfirmDialog() {
 function showBaseImageChangeAlertModal() {
     const modal = document.getElementById('baseImageChangeAlertModal');
     if (modal) {
-        modal.style.display = 'flex';
+        openModal(modal);
     }
 }
 
@@ -15516,7 +12826,7 @@ function showBaseImageChangeAlertModal() {
 function hideBaseImageChangeAlertModal() {
     const modal = document.getElementById('baseImageChangeAlertModal');
     if (modal) {
-        modal.style.display = 'none';
+        closeModal(modal);
     }
 }
 
@@ -15524,7 +12834,7 @@ function hideBaseImageChangeAlertModal() {
 function showImageBiasMaskAlertModal() {
     const modal = document.getElementById('imageBiasMaskAlertModal');
     if (modal) {
-        modal.style.display = 'flex';
+        openModal(modal);
     }
 }
 
@@ -15532,7 +12842,7 @@ function showImageBiasMaskAlertModal() {
 function hideImageBiasMaskAlertModal() {
     const modal = document.getElementById('imageBiasMaskAlertModal');
     if (modal) {
-        modal.style.display = 'none';
+        closeModal(modal);
     }
 }
 
@@ -15591,7 +12901,7 @@ async function applyImageBiasChange(value, callback) {
 function hideImageBiasAdjustmentModal() {
     const modal = document.getElementById('imageBiasAdjustmentModal');
     if (modal) {
-        modal.style.display = 'none';
+        closeModal(modal);
     }
 
     // Clean up test results
@@ -15781,8 +13091,8 @@ function setupImageBiasAdjustmentListeners() {
     const imageContainer = document.getElementById('imagePreviewContainer');
     if (imageContainer) {
         imageContainer.addEventListener('mousedown', handleBiasImageMouseDown);
-        document.addEventListener('mousemove', handleBiasImageMouseMove);
-        document.addEventListener('mouseup', handleBiasImageMouseUp);
+        imageContainer.addEventListener('mousemove', handleBiasImageMouseMove);
+        imageContainer.addEventListener('mouseup', handleBiasImageMouseUp);
     }
 
     // Preview toggle button
@@ -16054,16 +13364,14 @@ function showCacheManagerModal() {
 
     const modal = document.getElementById('cacheManagerModal');
     if (modal) {
-        modal.style.display = 'block';
-        disablePageScroll();
+        openModal(modal);
     }
 }
 
 function hideCacheManagerModal() {
     const modal = document.getElementById('cacheManagerModal');
     if (modal) {
-        modal.style.display = 'none';
-        enablePageScroll();
+        closeModal(modal);
     }
 
     // Reset state
@@ -16131,6 +13439,7 @@ function renderCacheManagerWorkspaceDropdown() {
                 cacheManagerCurrentWorkspace = workspace.id;
                 cacheManagerSelectedImages.clear();
                 loadCacheManagerImages();
+                loadVibeManagerImages();
 
                 // Update selected workspace display
                 const selectedSpan = document.getElementById('cacheManagerWorkspaceSelected');
@@ -16348,8 +13657,7 @@ async function deleteCacheManagerImage(cacheImage, workspace) {
 function showCacheManagerUploadModal() {
     const modal = document.getElementById('cacheManagerUploadModal');
     if (modal) {
-        modal.style.display = 'block';
-        disablePageScroll();
+        openModal(modal);
     }
 
     // Reset form
@@ -16365,8 +13673,7 @@ function showCacheManagerUploadModal() {
 function hideCacheManagerUploadModal() {
     const modal = document.getElementById('cacheManagerUploadModal');
     if (modal) {
-        modal.style.display = 'none';
-        enablePageScroll();
+        closeModal(modal);
     }
 }
 
@@ -16452,15 +13759,13 @@ function showCacheManagerMoveModal() {
         }
     });
 
-    modal.style.display = 'block';
-    disablePageScroll();
+    openModal(modal);
 }
 
 function hideCacheManagerMoveModal() {
     const modal = document.getElementById('cacheManagerMoveModal');
     if (modal) {
-        modal.style.display = 'none';
-        enablePageScroll();
+        closeModal(modal);
     }
 }
 
@@ -16510,8 +13815,7 @@ async function moveCacheManagerImages() {
 function showVibeManagerUploadModal() {
     const modal = document.getElementById('vibeManagerUploadModal');
     if (modal) {
-        modal.style.display = 'block';
-        disablePageScroll();
+        openModal(modal);
     }
 
     // Reset form
@@ -16530,14 +13834,13 @@ function showVibeManagerUploadModal() {
 function hideVibeManagerUploadModal() {
     const modal = document.getElementById('vibeManagerUploadModal');
     if (modal) {
-        modal.style.display = 'none';
-        enablePageScroll();
+        closeModal(modal);
     }
 }
 
 function showVibeManagerIeModal(vibeImage) {
     const modal = document.getElementById('vibeManagerIeModal');
-    if (modal) modal.style.display = 'block';
+    if (modal) openModal(modal);
 
     // Store the vibe image for later use
     modal.dataset.vibeImageId = vibeImage.id;
@@ -16651,7 +13954,7 @@ function populateVibeManagerIeModelDropdown() {
 
 function showVibeManagerFromReferenceModal(cacheImage) {
     const modal = document.getElementById('vibeManagerFromReferenceModal');
-    if (modal) modal.style.display = 'block';
+    if (modal) openModal(modal);
 
     // Store the reference image
     vibeManagerFromReferenceImage = cacheImage;
@@ -16681,7 +13984,7 @@ function showVibeManagerFromReferenceModal(cacheImage) {
 
 function hideVibeManagerFromReferenceModal() {
     const modal = document.getElementById('vibeManagerFromReferenceModal');
-    if (modal) modal.style.display = 'none';
+    if (modal) closeModal(modal);
     vibeManagerFromReferenceImage = null;
 }
 
@@ -16781,7 +14084,7 @@ async function createVibeManagerFromReference() {
 
 function hideVibeManagerIeModal() {
     const modal = document.getElementById('vibeManagerIeModal');
-    if (modal) modal.style.display = 'none';
+    if (modal) closeModal(modal);
 }
 
 async function loadVibeManagerImages() {
@@ -17010,16 +14313,14 @@ function showVibeManagerDeleteModal() {
 
     const modal = document.getElementById('vibeManagerDeleteModal');
     if (modal) {
-        modal.style.display = 'flex';
-        disablePageScroll();
+        openModal(modal);
     }
 }
 
 function hideVibeManagerDeleteModal() {
     const modal = document.getElementById('vibeManagerDeleteModal');
     if (modal) {
-        modal.style.display = 'none';
-        enablePageScroll();
+        closeModal(modal);
     }
 }
 
@@ -17148,15 +14449,13 @@ function showVibeManagerMoveModal() {
         }
     });
 
-    modal.style.display = 'flex';
-    disablePageScroll();
+    openModal(modal);
 }
 
 function hideVibeManagerMoveModal() {
     const modal = document.getElementById('vibeManagerMoveModal');
     if (modal) {
-        modal.style.display = 'none';
-        enablePageScroll();
+        closeModal(modal);
     }
 }
 
@@ -17194,7 +14493,7 @@ async function moveSelectedVibeImages() {
             vibeManagerIsSelectionMode = false;
 
             // Refresh display
-            displayVibeManagerImages();
+            loadVibeManagerImages();
             updateVibeManagerSelectionMode();
         } else {
             const error = await response.json();
@@ -17560,23 +14859,7 @@ function initializeCacheManager() {
         if (modal) {
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) {
-                    if (modalId === 'cacheManagerModal') {
-                        hideCacheManagerModal();
-                    } else if (modalId === 'cacheManagerUploadModal') {
-                        hideCacheManagerUploadModal();
-                    } else if (modalId === 'cacheManagerMoveModal') {
-                        hideCacheManagerMoveModal();
-                    } else if (modalId === 'vibeManagerUploadModal') {
-                        hideVibeManagerUploadModal();
-                    } else if (modalId === 'vibeManagerIeModal') {
-                        hideVibeManagerIeModal();
-                    } else if (modalId === 'vibeManagerFromReferenceModal') {
-                        hideVibeManagerFromReferenceModal();
-                    } else if (modalId === 'vibeManagerDeleteModal') {
-                        hideVibeManagerDeleteModal();
-                    } else if (modalId === 'vibeManagerMoveModal') {
-                        hideVibeManagerMoveModal();
-                    }
+                    closeModal(modal);
                 }
             });
         }
@@ -17693,7 +14976,7 @@ function showPinModal() {
         resolveFn = resolve;
         rejectFn = reject;
         function cleanup() {
-            modal.style.display = 'none';
+            closeModal(modal);
             form.removeEventListener('submit', onSubmit);
             cancelBtn.removeEventListener('click', onCancel);
             closeBtn.removeEventListener('click', onCancel);

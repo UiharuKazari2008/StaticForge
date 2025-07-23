@@ -154,6 +154,10 @@ body::after {
     transition: all 3s ease;
 }
 
+body.dialog-open {
+    overflow: clip;
+}
+
 /* Container */
 .container {
     max-width: 1400px;
@@ -277,7 +281,8 @@ body::after {
 
 /* Toggle Buttons - Layer-Aware */
 .toggle-btn,
-.toggle-btn[data-state="off"] {
+.toggle-btn[data-state="off"],
+.tab-btn {
     background: var(--glass-layer-3);
     border: 1px solid var(--glass-border-3);
     box-shadow: var(--glass-shadow-3);
@@ -287,7 +292,8 @@ body::after {
 }
 
 
-.toggle-btn[data-state="on"] {
+.toggle-btn[data-state="on"],
+.tab-btn.active {
     background: rgb(255 133 47 / 52%);
     color: var(--text-primary);
     border: 1px solid var(--glass-border-3);
@@ -298,7 +304,8 @@ body::after {
     position: relative;
 }
 
-.toggle-btn[data-state="on"]::before {
+.toggle-btn[data-state="on"]::before,
+.tab-btn.active::before {
     content: '';
     position: absolute;
     top: 0;
@@ -311,25 +318,29 @@ body::after {
     z-index: 1;
 }
 
-.toggle-btn:hover:not(:disabled) {
+.toggle-btn:hover:not(:disabled),
+.tab-btn:hover:not(:disabled) {
     background: var(--glass-layer-4);
     border-color: var(--glass-border-4);
     color: #ffffff;
     z-index: var(--z-layer-4);
 }
 
-.toggle-btn[data-state="on"]:hover:not(:disabled) {
+.toggle-btn[data-state="on"]:hover:not(:disabled),
+.tab-btn.active:hover:not(:disabled) {
     background: rgb(255 154 83 / 52%);
     border: 1px solid var(--glass-border-4);
     color: var(--text-primary);
     z-index: var(--z-layer-1);
 }
 
-.toggle-btn[data-state="on"]:hover {
+.toggle-btn[data-state="on"]:hover,
+.tab-btn.active:hover {
     /* Hover state handled by main toggle-btn:hover rule */
 }
 
-.toggle-btn[data-state="off"]:hover {
+.toggle-btn[data-state="off"]:hover,
+.tab-btn:hover {
     background: var(--glass-layer-4);
     border-color: var(--glass-border-4);
 }
@@ -520,6 +531,8 @@ button#varietyBtn {
     border-radius: var(--border-radius-lg);
     box-shadow: var(--glass-shadow-1);
     transition: all var(--transition-normal);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .glass-panel:hover {
@@ -535,6 +548,8 @@ button#varietyBtn {
     border: 1px solid var(--glass-border-1);
     box-shadow: var(--glass-shadow-1);
     z-index: var(--z-layer-1);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .glass-panel.layer-2 {
@@ -543,6 +558,8 @@ button#varietyBtn {
     border: 1px solid var(--glass-border-2);
     box-shadow: var(--glass-shadow-2);
     z-index: var(--z-layer-2);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .glass-panel.layer-3 {
@@ -551,6 +568,8 @@ button#varietyBtn {
     border: 1px solid var(--glass-border-3);
     box-shadow: var(--glass-shadow-3);
     z-index: var(--z-layer-3);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .glass-panel.layer-4 {
@@ -559,6 +578,8 @@ button#varietyBtn {
     border: 1px solid var(--glass-border-4);
     box-shadow: var(--glass-shadow-4);
     z-index: var(--z-layer-4);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .glass-panel.layer-5 {
@@ -567,6 +588,8 @@ button#varietyBtn {
     border: 1px solid var(--glass-border-5);
     box-shadow: var(--glass-shadow-5);
     z-index: var(--z-layer-5);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 /* Buttons - Layer-Aware Design System */
@@ -591,6 +614,8 @@ button#varietyBtn {
     box-shadow: var(--glass-shadow-2);
     z-index: var(--z-layer-2);
     letter-spacing: 0.3px;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 /* Base button layer awareness */
@@ -779,6 +804,8 @@ button.round-button:hover {
     padding: 0;
     background: transparent;
     backdrop-filter: blur(var(--glass-blur-2));
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .round-button-group .round-button {
@@ -809,7 +836,6 @@ button.round-button:hover {
     display: flex;
     justify-content: center;
     box-shadow: 0 2px 8px var(--shadow-secondary);
-    backdrop-filter: blur(var(--glass-blur-2));
     flex-direction: row;
     flex-wrap: nowrap;
     gap: 0.4em;
@@ -818,6 +844,7 @@ button.round-button:hover {
     background: #0000005c;
     color: #ffffff;
 }
+
 span#manualPreviewSeedNumber {
     font-family: 'Oxanium';
     line-height: 1;
@@ -970,7 +997,6 @@ textarea:active {
 
 .gallery-controls .toggle-btn {
     background: var(--glass-layer-2);
-    backdrop-filter: blur(var(--glass-blur-2));
     border: 1px solid var(--glass-border-2);
     color: var(--text-primary);
     padding: var(--spacing-sm) var(--spacing-md);
@@ -1020,7 +1046,6 @@ textarea:active {
     border: 1px solid var(--glass-border-2);
     border-radius: var(--border-radius-xl);
     background: var(--glass-layer-2);
-    backdrop-filter: blur(var(--glass-blur-2));
     box-shadow: var(--glass-shadow-2);
     z-index: var(--z-layer-2);
 }
@@ -1112,30 +1137,6 @@ textarea:active {
     color: var(--primary-color);
 }
 
-/* Pagination */
-.pagination {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: var(--spacing-md);
-    margin-top: var(--spacing-xxl);
-    padding: var(--spacing-xl);
-    background: var(--glass-layer-2);
-    backdrop-filter: blur(var(--glass-blur-2));
-    border: 1px solid var(--glass-border-2);
-    border-radius: var(--border-radius-xl);
-    box-shadow: var(--glass-shadow-2);
-    position: relative;
-    z-index: var(--z-layer-2);
-}
-
-#pageInfo {
-    font-weight: 600;
-    color: var(--primary-color);
-    min-width: 80px;
-    text-align: center;
-}
-
 /* Modal Styles */
 .modal {
     display: none;
@@ -1165,6 +1166,8 @@ textarea:active {
     border-radius: var(--border-radius-xl);
     box-shadow: var(--glass-shadow-5);
     z-index: var(--z-layer-5);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .modal-content.center {
@@ -1187,7 +1190,6 @@ textarea:active {
 @media (min-width: 1400px) {
     div#manualModal {
         position: fixed;
-        z-index: 4;
         box-shadow: none;
     }
 
@@ -1228,7 +1230,6 @@ textarea:active {
     
     .manual-preview-container {
         background: var(--glass-layer-5);
-        backdrop-filter: blur(var(--glass-blur-2));
         border-left: 1px solid var(--glass-border-2);
         border-radius: var(--border-radius-xl);
         height: 100%;
@@ -1369,17 +1370,24 @@ textarea:active {
     
     .workspace-tabs {
         position: fixed;
-        bottom: 0;
+        bottom: -20px;
         left: 0;
         right: 0;
         background: transparent;
         padding: 0 var(--spacing-lg);
-        z-index: 1000;
+        z-index: 999;
         display: flex;
         gap: var(--spacing-xs);
         align-items: center;
         justify-content: flex-start;
         flex-wrap: wrap;
+        padding-top: 15px;
+        transition: all 0.2s ease;
+    }
+
+    
+    .workspace-tabs:hover {
+        bottom: 0;
     }
     
     .workspace-tab {
@@ -1404,8 +1412,15 @@ textarea:active {
         border: 1px solid var(--glass-border-3);
         box-shadow: var(--glass-shadow-3);
         font-weight: 100;
+        transform: translateZ(0);
+        will-change: backdrop-filter;
     }
     
+    .workspace-tabs:not(:hover) .workspace-tab.active {
+        margin-bottom: 10px;
+        bottom: 0;
+    }
+
     .workspace-tab.active {
         margin-bottom: -1px;
         font-weight: 600;
@@ -1585,7 +1600,6 @@ textarea:active {
 .form-control {
     border: 1px solid var(--glass-border-2);
     background: var(--glass-layer-2);
-    backdrop-filter: blur(var(--glass-blur-2));
     color: var(--text-primary);
     font-size: 1rem;
     transition: all var(--transition-normal);
@@ -1633,7 +1647,6 @@ textarea:active {
     -webkit-tap-highlight-color: transparent;
     border: 1px solid var(--glass-border-3);
     box-shadow: var(--glass-shadow-3);
-    backdrop-filter: blur(var(--glass-blur-3));
     z-index: var(--z-layer-3);
 }
 
@@ -1718,6 +1731,10 @@ textarea:active {
     -webkit-appearance: none;
     -webkit-tap-highlight-color: transparent;
     border: 1px solid rgba(255, 255, 255, 1);
+}
+
+div#characterPromptsContainer {
+    padding-top: var(--spacing-lg);
 }
 
 /* Inset textarea styling */
@@ -2056,6 +2073,8 @@ div#transformationSection {
     display: flex;
     align-items: center;
     justify-content: center;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .lightbox-close-btn:hover {
@@ -2151,6 +2170,8 @@ div#transformationSection {
     border-top: 1px solid rgba(255, 255, 255, 0.2);
     padding: 20px;
     min-height: 200px;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 /* Metadata Table Styles */
@@ -2341,6 +2362,8 @@ div#transformationSection {
     margin-left: auto;
     margin-right: auto;
     overflow: hidden;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .metadata-dialog-header {
@@ -2510,7 +2533,6 @@ div#transformationSection {
     border-radius: var(--border-radius-md);
     padding: var(--spacing-md);
     margin-bottom: var(--spacing-sm);
-    backdrop-filter: blur(10px);
     background: #000000ad;
 }
 
@@ -2812,7 +2834,6 @@ div#transformationSection {
 /* Glass-style toast notifications */
 .glass-toast {
     background: var(--glass-layer-dark-4);
-    backdrop-filter: blur(var(--glass-blur-3));
     border: 1px solid var(--glass-border-3);
     border-radius: var(--border-radius-lg);
     padding: 16px 20px;
@@ -2937,6 +2958,8 @@ div#transformationSection {
     border: 1px solid var(--glass-border-1);
     box-shadow: var(--glass-shadow-1);
     z-index: var(--z-layer-1);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .glass-layer-2 {
@@ -2945,6 +2968,8 @@ div#transformationSection {
     border: 1px solid var(--glass-border-2);
     box-shadow: var(--glass-shadow-2);
     z-index: var(--z-layer-2);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .glass-layer-3 {
@@ -2953,6 +2978,8 @@ div#transformationSection {
     border: 1px solid var(--glass-border-3);
     box-shadow: var(--glass-shadow-3);
     z-index: var(--z-layer-3);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .glass-layer-4 {
@@ -2961,6 +2988,8 @@ div#transformationSection {
     border: 1px solid var(--glass-border-4);
     box-shadow: var(--glass-shadow-4);
     z-index: var(--z-layer-4);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .glass-layer-5 {
@@ -2969,6 +2998,8 @@ div#transformationSection {
     border: 1px solid var(--glass-border-5);
     box-shadow: var(--glass-shadow-5);
     z-index: var(--z-layer-5);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 /* Glass Panel Utility Classes */
@@ -3197,6 +3228,8 @@ div#transformationSection {
     align-items: center;
     z-index: var(--z-loading);
     backdrop-filter: blur(5px);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .loading-overlay.hidden {
@@ -3439,6 +3472,8 @@ textarea:focus {
     max-width: 500px;
     width: 400px; /* Fixed width for consistency */
     scroll-behavior: smooth;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .character-autocomplete-overlay.hidden {
@@ -3602,6 +3637,8 @@ textarea:focus {
     padding: var(--spacing-sm);
     width: 350px;
     display: none;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .emphasis-popup-content {
@@ -3735,6 +3772,8 @@ textarea:focus {
     font-size: 0.9em;
     transform-origin: bottom center;
     scroll-behavior: smooth;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 /* Preset Autocomplete Size Classes */
@@ -4118,7 +4157,6 @@ textarea:focus {
     cursor: pointer;
     transition: all 0.3s ease;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    backdrop-filter: blur(10px);
     background: rgba(23, 162, 184, 0.9);
 }
 
@@ -4184,27 +4222,27 @@ textarea:focus {
 }
 
 /* Workspace Controls */
-.workspace-controls {
+.workspace-controls, .button-group {
     display: flex;
     align-items: center;
     gap: 0;
     box-shadow: var(--glass-shadow-2);
 }
-.workspace-controls .btn-secondary {
+.workspace-controls .btn-secondary, .button-group [class^="btn-"] {
     box-shadow: none;
 }
-.workspace-controls .btn-secondary:not(:first-child):not(:last-child) {
+.workspace-controls .btn-secondary:not(:first-child):not(:last-child), .button-group [class^="btn-"]:not(:first-child):not(:last-child) {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
 }
-.workspace-controls .btn-secondary:first-child {
+.workspace-controls .btn-secondary:first-child, .button-group [class^="btn-"]:first-child {
     border-top-right-radius: 0;
     border-bottom-right-radius: 0;
     border-right: none;
 }
-.workspace-controls .btn-secondary:last-child {
+.workspace-controls .btn-secondary:last-child, .button-group [class^="btn-"]:last-child {
     border-top-left-radius: 0;
     border-bottom-left-radius: 0;
     border-left: none;
@@ -4233,7 +4271,6 @@ textarea:focus {
 /* Bulk Actions Bar */
 .bulk-actions-bar {
     background: var(--glass-layer-dark-5);
-    backdrop-filter: blur(var(--glass-blur-4));
     border: 1px solid var(--glass-border-4);
     border-radius: var(--border-radius-xl);
     padding: var(--spacing-lg) var(--spacing-xl);
@@ -4368,7 +4405,6 @@ textarea:focus {
     background: var(--glass-layer-3);
     border: 1px solid var(--glass-border-3);
     box-shadow: var(--glass-shadow-3);
-    backdrop-filter: blur(var(--glass-blur-3));
     transition: all var(--transition-normal);
     z-index: var(--z-layer-3);
     gap: 0;
@@ -4464,9 +4500,9 @@ textarea:focus {
 }
 
 .character-prompt-item {
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-secondary);
-    padding: var(--spacing-md);
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-2);
+    padding: var(--spacing-sm);
     margin-bottom: var(--spacing-sm);
     position: relative;
     border-radius: var(--border-radius-md);
@@ -4722,7 +4758,6 @@ textarea:focus {
 .custom-dropdown-btn {
     width: 100%;
     background: var(--glass-layer-2);
-    backdrop-filter: blur(var(--glass-blur-2));
     color: #fff;
     border: 1px solid var(--glass-border-2);
     border-radius: var(--border-radius-md);
@@ -4774,6 +4809,8 @@ textarea:focus {
     max-height: 340px;
     overflow-y: auto;
     min-width: 165px;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 #manualModelDropdown .custom-dropdown-menu,
@@ -4994,6 +5031,8 @@ textarea:focus {
     top: 100%;
     left: 0;
     right: 0;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 /* Update preset dropdown option hover and selected states to match custom dropdown */
@@ -5070,41 +5109,15 @@ textarea:focus {
     margin-left: auto;
 }
 
+
 .tab-btn {
     padding: var(--spacing-sm) var(--spacing-lg);
-    background: var(--bg-quaternary);
-    border: 1px solid var(--border-secondary);
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-weight: bold;
     cursor: pointer;
     transition: all var(--transition-normal);
     display: flex;
     align-items: center;
     justify-content: center;
     gap: var(--spacing-sm);
-    border-radius: var(--border-radius-md);
-}
-
-.tab-btn:last-child {
-    border-right: none;
-}
-
-.tab-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border-color: var(--border-tertiary);
-}
-
-.tab-btn.active {
-    background: var(--primary-gradient);
-    color: var(--text-primary);
-    box-shadow: 0 2px 8px var(--shadow-primary);
-    border-color: var(--primary-color);
-}
-
-.tab-btn.active:hover {
-    box-shadow: 0 5px 15px var(--shadow-primary);
 }
 
 .show-both-btn {
@@ -5302,38 +5315,6 @@ textarea:focus {
     border: 1px solid rgba(255, 255, 255, 1) !important;
 }
 
-.character-prompt-tabs .tab-btn {
-    padding: var(--spacing-sm) var(--spacing-lg);
-    background: var(--bg-quaternary);
-    border: 1px solid var(--border-secondary);
-    color: var(--text-secondary);
-    font-size: 12px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: all var(--transition-normal);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-sm);
-    border-radius: var(--border-radius-md);
-}
-
-.character-prompt-tabs .tab-btn:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border-color: var(--border-tertiary);
-}
-
-.character-prompt-tabs .tab-btn.active {
-    background: var(--primary-gradient);
-    color: var(--text-primary);
-    box-shadow: 0 2px 8px var(--shadow-primary);
-    border-color: var(--primary-color);
-}
-
-.character-prompt-tabs .tab-btn.active:hover {
-    box-shadow: 0 5px 15px var(--shadow-primary);
-}
 
 .character-prompt-tabs .tab-content {
     position: relative;
@@ -5865,100 +5846,6 @@ button#layer1SeedToggle {
     background: var(--glass-layer-2);
 }
 
-/* Aspect Ratio Dialog Styles */
-.aspect-ratio-dialog-content {
-    max-width: 500px;
-    max-height: calc(100vh - 10%);
-    background: var(--glass-layer-4);
-    backdrop-filter: blur(var(--glass-blur-4));
-    border: 1px solid var(--glass-border-4);
-    border-radius: var(--border-radius-xl);
-    box-shadow: var(--glass-shadow-4);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-.aspect-ratio-dialog-header {
-    background: var(--glass-layer-5);
-    backdrop-filter: blur(var(--glass-blur-5));
-    border-bottom: 1px solid var(--glass-border-4);
-    padding: var(--spacing-lg) var(--spacing-xl);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.aspect-ratio-dialog-header h3 {
-    margin: 0;
-    color: var(--text-primary);
-    font-weight: 600;
-    font-size: 1.2rem;
-}
-
-.aspect-ratio-dialog-body {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    padding: var(--spacing-lg);
-    gap: var(--spacing-xl);
-}
-
-.aspect-ratio-info {
-    text-align: center;
-}
-
-.aspect-ratio-info p {
-    color: var(--text-primary);
-    margin-bottom: var(--spacing-lg);
-}
-
-.aspect-ratio-details {
-    display: flex;
-    justify-content: space-around;
-    gap: var(--spacing-lg);
-}
-
-.aspect-ratio-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--spacing-sm);
-}
-
-.aspect-ratio-label {
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-}
-
-.aspect-ratio-value {
-    color: var(--primary-color);
-    font-weight: 600;
-    font-size: 1.1rem;
-}
-
-.aspect-ratio-options {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-}
-
-.aspect-ratio-options button {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-lg);
-    border-radius: var(--border-radius-lg);
-    transition: all 0.2s ease;
-}
-
-.option-subtitle {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    font-weight: 400;
-}
-
 /* Mask Editor Styles */
 .mask-editor-content {
     max-width: 1200px;
@@ -5972,6 +5859,8 @@ button#layer1SeedToggle {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .mask-editor-body {
@@ -5988,7 +5877,6 @@ button#layer1SeedToggle {
     flex-wrap: wrap;
     padding: var(--spacing-md);
     background: var(--glass-layer-dark-5);
-    backdrop-filter: blur(var(--glass-blur-2));
     border: 1px solid var(--glass-border-2);
     border-radius: var(--border-radius-lg);
 }
@@ -6221,7 +6109,6 @@ button#layer1SeedToggle {
   background: var(--glass-layer-3);
   border: 1px solid var(--glass-border-3);
   box-shadow: var(--glass-shadow-3);
-  backdrop-filter: blur(var(--glass-blur-3));
   outline: none;
 }
 
@@ -6371,7 +6258,6 @@ button#layer1SeedToggle {
     text-align: center;
     color: var(--text-primary);
     background: rgb(255 255 255 / 63%);
-    backdrop-filter: blur(var(--glass-blur-4));
     padding: 30px;
     border-radius: var(--border-radius-lg);
     border: 1px solid var(--glass-border-4);
@@ -6623,7 +6509,6 @@ button#layer1SeedToggle {
     border: 1px solid var(--glass-border-2);
     border-radius: var(--border-radius-lg);
     background: var(--glass-layer-2);
-    backdrop-filter: blur(var(--glass-blur-2));
     box-shadow: var(--glass-shadow-2);
     z-index: var(--z-layer-2);
 }
@@ -6790,7 +6675,6 @@ button#layer1SeedToggle {
     border: 1px solid var(--glass-border-2);
     border-radius: var(--border-radius-md);
     background: var(--glass-layer-2);
-    backdrop-filter: blur(var(--glass-blur-2));
     overflow: hidden;
     transition: all var(--transition-normal);
 }
@@ -6900,6 +6784,8 @@ button#layer1SeedToggle {
     flex-direction: column;
     z-index: var(--z-layer-5);
     height: 100%;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .modal-actions {
@@ -6955,6 +6841,8 @@ button#layer1SeedToggle {
     border-radius: 12px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     height: auto;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .image-bias-adjustment-header {
@@ -6994,7 +6882,6 @@ button#layer1SeedToggle {
     flex-wrap: wrap;
     padding: var(--spacing-md);
     background: var(--glass-layer-dark-5);
-    backdrop-filter: blur(var(--glass-blur-2));
     border: 1px solid var(--glass-border-2);
     border-radius: var(--border-radius-lg);
 }
@@ -7210,6 +7097,8 @@ button#layer1SeedToggle {
     border: 1px solid var(--glass-border-3);
     border-radius: var(--border-radius-xl);
     box-shadow: var(--glass-shadow-3);
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .bias-confirm-header {
@@ -7411,6 +7300,8 @@ button#layer1SeedToggle {
     border: 2px solid rgb(99 41 46 / 42%);
     box-shadow: 0 8px 32px rgb(220 53 69 / 25%), 0 0 0 1px rgb(220 53 69 / 18%);
     animation: modalAlertSlideIn 0.3s ease-out;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .modal.alert-theme .modal-content h2,
@@ -7492,6 +7383,8 @@ button#layer1SeedToggle {
     border: 2px solid rgba(255, 193, 7, 0.8);
     box-shadow: 0 8px 32px rgba(255, 193, 7, 0.4), 0 0 0 1px rgba(255, 193, 7, 0.2);
     animation: modalWarningSlideIn 0.3s ease-out;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .modal.warning-theme .modal-content h2,
@@ -7561,6 +7454,8 @@ button#layer1SeedToggle {
     border: 2px solid rgba(40, 167, 69, 0.8);
     box-shadow: 0 8px 32px rgba(40, 167, 69, 0.4), 0 0 0 1px rgba(40, 167, 69, 0.2);
     animation: modalSuccessSlideIn 0.3s ease-out;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .modal.success-theme .modal-content h2,
@@ -8012,7 +7907,6 @@ div#workspaceDropdownMenu {
     margin-top: var(--spacing-xxl);
     padding: var(--spacing-xl);
     background: var(--glass-layer-2);
-    backdrop-filter: blur(var(--glass-blur-2));
     border: 1px solid var(--glass-border-2);
     border-radius: var(--border-radius-xl);
     box-shadow: var(--glass-shadow-2);
@@ -8058,6 +7952,8 @@ div#workspaceDropdownMenu {
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     overflow: hidden;
     box-sizing: border-box;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
 }
 
 .cache-manager-controls {
@@ -8162,7 +8058,6 @@ div#workspaceDropdownMenu {
 }
 
 .cache-manager-gallery-item:hover {
-    transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     border-color: rgba(255, 255, 255, 0.3);
 }
@@ -8551,7 +8446,6 @@ div#cacheManagerMoveModal, #workspaceEditModal {
 }
 
 .vibe-manager-gallery-item:hover {
-    transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     border-color: rgba(255, 255, 255, 0.3);
 }
@@ -8716,7 +8610,6 @@ div#cacheManagerMoveModal, #workspaceEditModal {
 
 .vibe-manager-gallery.selection-mode .vibe-manager-gallery-item:hover {
     opacity: 1;
-    transform: translateY(-2px);
 }
 
 /* Vibe delete items list styling */
@@ -8726,7 +8619,6 @@ div#cacheManagerMoveModal, #workspaceEditModal {
     background: var(--glass-layer-1);
     border: 1px solid var(--glass-border-2);
     border-radius: var(--border-radius-lg);
-    backdrop-filter: blur(var(--glass-blur-2));
     box-shadow: var(--glass-shadow-2);
 }
 
@@ -8791,7 +8683,6 @@ div#cacheManagerMoveModal, #workspaceEditModal {
     background: var(--glass-layer-1);
     margin-bottom: 0.5rem;
     transition: all var(--transition-normal);
-    backdrop-filter: blur(var(--glass-blur-1));
 }
 
 .vibe-delete-item:hover {
@@ -9042,4 +8933,9 @@ div#cacheManagerMoveModal, #workspaceEditModal {
     background: #7e121278;
     color: #ff9999;
     border-color: rgb(255 136 136 / 20%);
+}
+
+.scraps-grayscale {
+    filter: grayscale(1) blur(20px) brightness(0.4) !important;
+    transition: filter 0.3s;
 }

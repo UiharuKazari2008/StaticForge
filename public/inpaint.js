@@ -731,20 +731,16 @@ function saveMaskCompressed() {
 }
 // Helper: Set mask editor canvas from a data URL
 function setMaskEditorFromDataUrl(dataUrl) {
-    if (!dataUrl && window.maskEditorCanvas.width !== undefined) return;
-
-    // Initialize mask editor if not already done
+    // Ensure mask editor is initialized
     if (!window.maskEditorCanvas || !window.maskEditorCtx) {
         if (typeof initializeMaskEditor === 'function') initializeMaskEditor();
     }
+    if (!window.maskEditorCanvas) return; // Still not available, abort
 
     const img = new Image();
     img.onload = function() {
-        // Set canvas dimensions to match the image
         window.maskEditorCanvas.width = img.width;
         window.maskEditorCanvas.height = img.height;
-
-        // Clear and draw the mask
         window.maskEditorCtx.clearRect(0, 0, img.width, img.height);
         window.maskEditorCtx.drawImage(img, 0, 0);
     };
@@ -1000,6 +996,48 @@ function openMaskEditor() {
     // Initialize mask editor first if not already done
     if (!maskEditorCtx) {
         initializeMaskEditor();
+    }
+
+    // Pipeline mask edit mode
+    if (window.isPipelineMaskEdit) {
+        let canvasWidth = window.pipelineMaskEditWidth || 1024;
+        let canvasHeight = window.pipelineMaskEditHeight || 1536;
+        maskEditorCanvas.width = canvasWidth;
+        maskEditorCanvas.height = canvasHeight;
+        if (maskBrushPreviewCanvas) {
+            maskBrushPreviewCanvas.width = canvasWidth;
+            maskBrushPreviewCanvas.height = canvasHeight;
+        }
+        // Set the canvas display size
+        maskEditorCanvasInner.style.aspectRatio = `${canvasWidth} / ${canvasHeight}`;
+        maskEditorCanvas.style.imageRendering = 'pixelated';
+        maskEditorCanvas.style.imageRendering = '-moz-crisp-edges';
+        maskEditorCanvas.style.imageRendering = 'crisp-edges';
+        maskEditorCanvas.targetWidth = canvasWidth;
+        maskEditorCanvas.targetHeight = canvasHeight;
+        // Set brush size
+        const canvasDiagonal = Math.sqrt(canvasWidth * canvasWidth + canvasHeight * canvasHeight);
+        brushSize = Math.round(canvasDiagonal * brushSizePercent);
+        brushSize = Math.max(1, Math.min(10, brushSize));
+        const brushSizeInput = document.getElementById('brushSize');
+        if (brushSizeInput) brushSizeInput.value = brushSize;
+        // Set gray background
+        const canvasInner = document.querySelector('.mask-editor-canvas-inner');
+        if (canvasInner && window.setMaskEditorFromDataUrl && window.pipelineMaskEditWidth && window.pipelineMaskEditHeight) {
+            // Use the gray image as background
+            if (window.currentMaskData) {
+                // If editing an existing mask, draw it
+                window.setMaskEditorFromDataUrl(window.currentMaskData);
+            } else if (window.pipelineMaskEditGrayBg) {
+                window.setMaskEditorFromDataUrl(window.pipelineMaskEditGrayBg);
+            }
+        }
+        // Clear any reference/variation/placeholder logic
+        // Show the dialog
+        maskEditorDialog.style.display = 'block';
+        document.addEventListener('mouseup', handleGlobalMouseUp);
+        document.addEventListener('mousemove', handleGlobalMouseMove);
+        return;
     }
 
     // Get the source image dimensions
