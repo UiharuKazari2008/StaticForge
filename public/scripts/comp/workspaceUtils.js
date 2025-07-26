@@ -588,7 +588,8 @@ async function setActiveWorkspace(id) {
         updateActiveWorkspaceDisplay();
         await loadGallery(); // Refresh gallery with new workspace filter
         await loadCacheImages(); // Refresh cache browser with new workspace filter
-
+        await loadVibeReferences(); // Refresh vibe references
+        
         // Fade in gallery
         if (gallery) {
             gallery.style.transition = 'opacity 0.3s ease-in';
@@ -820,17 +821,14 @@ function renderWorkspaceManagementList() {
                 <span class="workspace-manage-counts">${workspace.fileCount} files, ${workspace.cacheFileCount} references</span>
             </div>
             <div class="workspace-manage-actions">
-                <button type="button" class="btn-link" onclick="editWorkspaceSettings('${workspace.id}')" title="Workspace Settings">
+                <button type="button" class="btn-secondary" onclick="editWorkspaceSettings('${workspace.id}')" title="Workspace Settings">
                     <i class="fas fa-cog"></i>
                 </button>
                 ${!workspace.isDefault ? `
-                    <button type="button" class="btn-link" onclick="editWorkspace('${workspace.id}', '${workspace.name}')" title="Rename">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button type="button" class="btn-link" onclick="showDumpWorkspaceModal('${workspace.id}', '${workspace.name}')" title="Dump">
+                    <button type="button" class="btn-secondary" onclick="showDumpWorkspaceModal('${workspace.id}', '${workspace.name}')" title="Dump">
                         <i class="fas fa-arrow-right"></i>
                     </button>
-                    <button type="button" class="btn-link text-danger" onclick="confirmDeleteWorkspace('${workspace.id}', '${workspace.name}')" title="Delete">
+                    <button type="button" class="btn-secondary text-danger" onclick="confirmDeleteWorkspace('${workspace.id}', '${workspace.name}')" title="Delete">
                         <i class="fas fa-trash"></i>
                     </button>
                 ` : ''}
@@ -870,19 +868,6 @@ function showAddWorkspaceModal() {
     document.getElementById('workspaceBackgroundOpacityInput').textContent = '30';
     const modal = document.getElementById('workspaceEditModal');
     openModal(modal);
-}
-
-function editWorkspace(id, currentName) {
-    currentWorkspaceOperation = { type: 'rename', id };
-    document.getElementById('workspaceEditTitle').textContent = 'Rename Workspace';
-    document.getElementById('workspaceNameInput').style.display = 'block';
-    document.getElementById('workspaceColorInput').style.display = 'none';
-    document.getElementById('workspaceBackgroundColorInput').style.display = 'none';
-    document.getElementById('workspaceBackgroundImageInput').style.display = 'none';
-    document.getElementById('workspaceBackgroundOpacityInput').style.display = 'none';
-    document.getElementById('workspaceNameInput').value = currentName;
-    const modal = document.getElementById('workspaceEditModal');
-    if (modal) openModal(modal);
 }
 
 async function editWorkspaceSettings(id) {
@@ -1198,7 +1183,7 @@ async function getWorkspaceImages() {
 
         // Filter images to only include workspace files
         const filteredImages = allImagesItems.filter(img => {
-            const file = img.pipeline_upscaled || img.pipeline || img.upscaled || img.original;
+            const file = img.upscaled || img.original;
             return workspaceFiles.has(file);
         });
 
@@ -1216,7 +1201,7 @@ function populateBackgroundImageGrid(images) {
     grid.innerHTML = '';
 
     images.forEach(img => {
-        const file = img.pipeline_upscaled || img.pipeline || img.upscaled || img.original;
+        const file = img.upscaled || img.original;
         const preview = img.preview;
 
         const option = document.createElement('button');

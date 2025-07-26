@@ -953,11 +953,6 @@ async function deleteMask() {
         maskEditorCtx.clearRect(0, 0, maskEditorCanvas.width, maskEditorCanvas.height);
     }
 
-    // For pipeline images, restore the original pipeline mask
-    const isPipeline = window.currentEditMetadata && window.currentEditMetadata.request_type === 'pipeline';
-    if (isPipeline && window.pipelineMaskData) {
-        window.currentMaskData = window.pipelineMaskData + "";
-    }
     window.currentMaskCompressed = null;
 
     // Update vibe transfer UI state
@@ -998,53 +993,8 @@ function openMaskEditor() {
         initializeMaskEditor();
     }
 
-    // Pipeline mask edit mode
-    if (window.isPipelineMaskEdit) {
-        let canvasWidth = window.pipelineMaskEditWidth || 1024;
-        let canvasHeight = window.pipelineMaskEditHeight || 1536;
-        maskEditorCanvas.width = canvasWidth;
-        maskEditorCanvas.height = canvasHeight;
-        if (maskBrushPreviewCanvas) {
-            maskBrushPreviewCanvas.width = canvasWidth;
-            maskBrushPreviewCanvas.height = canvasHeight;
-        }
-        // Set the canvas display size
-        maskEditorCanvasInner.style.aspectRatio = `${canvasWidth} / ${canvasHeight}`;
-        maskEditorCanvas.style.imageRendering = 'pixelated';
-        maskEditorCanvas.style.imageRendering = '-moz-crisp-edges';
-        maskEditorCanvas.style.imageRendering = 'crisp-edges';
-        maskEditorCanvas.targetWidth = canvasWidth;
-        maskEditorCanvas.targetHeight = canvasHeight;
-        // Set brush size
-        const canvasDiagonal = Math.sqrt(canvasWidth * canvasWidth + canvasHeight * canvasHeight);
-        brushSize = Math.round(canvasDiagonal * brushSizePercent);
-        brushSize = Math.max(1, Math.min(10, brushSize));
-        const brushSizeInput = document.getElementById('brushSize');
-        if (brushSizeInput) brushSizeInput.value = brushSize;
-        // Set gray background
-        const canvasInner = document.querySelector('.mask-editor-canvas-inner');
-        if (canvasInner && window.setMaskEditorFromDataUrl && window.pipelineMaskEditWidth && window.pipelineMaskEditHeight) {
-            // Use the gray image as background
-            if (window.currentMaskData) {
-                // If editing an existing mask, draw it
-                window.setMaskEditorFromDataUrl(window.currentMaskData);
-            } else if (window.pipelineMaskEditGrayBg) {
-                window.setMaskEditorFromDataUrl(window.pipelineMaskEditGrayBg);
-            }
-        }
-        // Clear any reference/variation/placeholder logic
-        // Show the dialog
-        maskEditorDialog.style.display = 'block';
-        document.addEventListener('mouseup', handleGlobalMouseUp);
-        document.addEventListener('mousemove', handleGlobalMouseMove);
-        return;
-    }
-
     // Get the source image dimensions
-    const isPipelineEdit = window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit;
-
-    // For pipeline editing, we don't need a variation image
-    if (!isPipelineEdit && (!variationImage || !variationImage.src)) {
+    if (!variationImage || !variationImage.src) {
         showError('No source image available');
         return;
     }
@@ -1136,7 +1086,7 @@ function openMaskEditor() {
     // Set the background image in the inner container with aspect ratio scaling
     const canvasInner = document.querySelector('.mask-editor-canvas-inner');
     if (canvasInner) {
-        // Check if we have a placeholder image (current image for pipeline or regular image)
+        // Check if we have a placeholder image (current image for regular image)
         if (window.uploadedImageData && window.uploadedImageData.isPlaceholder) {
             // Use the placeholder image as background
             const backgroundImageValue = `url(${window.uploadedImageData.image_source.replace('file:', '/images/')})`;
@@ -1145,8 +1095,8 @@ function openMaskEditor() {
             canvasInner.style.setProperty('--background-size', 'contain');
             canvasInner.style.setProperty('--background-width', '100%');
             canvasInner.style.setProperty('--background-height', '100%');
-        } else if (isPipelineEdit || !variationImage || !variationImage.src) {
-            // For pipeline editing or when no variation image, create a black placeholder
+        } else if (!variationImage || !variationImage.src) {
+            // When no variation image, create a black placeholder
             const placeholderCanvas = document.createElement('canvas');
             const placeholderCtx = placeholderCanvas.getContext('2d');
             placeholderCanvas.width = targetWidth;
@@ -1256,15 +1206,15 @@ function updateInpaintButtonState() {
     }
 
     // Disable vibe transfer section and tabs when inpainting is enabled
-    const vibeReferencesSection = document.getElementById('vibeReferencesSection');
+    const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
     const vibeReferencesTabBtn = document.querySelector('.cache-browser-tabs .tab-btn[data-tab="vibe-references"]');
     const vibeTabBtn = document.querySelector('.cache-manager-tabs .tab-btn[data-tab="vibe"]');
 
     if (window.currentMaskData) {
         // Disable vibe references section
-        if (vibeReferencesSection) {
-            vibeReferencesSection.style.opacity = '0.5';
-            vibeReferencesSection.style.pointerEvents = 'none';
+        if (vibeReferencesContainer) {
+            vibeReferencesContainer.style.opacity = '0.5';
+            vibeReferencesContainer.style.pointerEvents = 'none';
         }
 
         // Disable vibe references tab in cache browser
@@ -1282,9 +1232,9 @@ function updateInpaintButtonState() {
         }
     } else {
         // Re-enable vibe references section
-        if (vibeReferencesSection) {
-            vibeReferencesSection.style.opacity = '1';
-            vibeReferencesSection.style.pointerEvents = 'auto';
+        if (vibeReferencesContainer) {
+            vibeReferencesContainer.style.opacity = '1';
+            vibeReferencesContainer.style.pointerEvents = 'auto';
         }
 
         // Re-enable vibe references tab in cache browser
@@ -1302,8 +1252,8 @@ function updateInpaintButtonState() {
         }
     }
 
-    // Show inpaint button for pipeline images or when there's uploaded image data
-    const shouldShowInpaint = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.request_type === 'pipeline');
+    // Show inpaint button when there's uploaded image data
+    const shouldShowInpaint = window.uploadedImageData;
     if (shouldShowInpaint) {
         if (inpaintBtn) {
             inpaintBtn.style.display = '';
@@ -1426,30 +1376,39 @@ async function updateMaskPreview() {
         return;
     }
 
-    // Set canvas size to match the actual displayed image dimensions
-    maskPreviewCanvas.width = imageRect.width;
-    maskPreviewCanvas.height = imageRect.height;
-
-    // Position the canvas to overlay the image exactly
-    maskPreviewCanvas.style.position = 'absolute';
-    maskPreviewCanvas.style.left = (imageRect.left - containerRect.left) + 'px';
-    maskPreviewCanvas.style.top = (imageRect.top - containerRect.top) + 'px';
-    maskPreviewCanvas.style.width = imageRect.width + 'px';
-    maskPreviewCanvas.style.height = imageRect.height + 'px';
-
-    const ctx = maskPreviewCanvas.getContext('2d');
-
-    // Load the mask image
+    // Load the mask image to get its natural aspect ratio
     const maskImg = new Image();
     maskImg.onload = function() {
-        // Validate canvas dimensions before proceeding
-        if (maskPreviewCanvas.width <= 0 || maskPreviewCanvas.height <= 0) {
-            console.warn('Canvas dimensions are invalid for mask preview:', {
-                width: maskPreviewCanvas.width,
-                height: maskPreviewCanvas.height
-            });
-            return;
+        // Calculate aspect ratio of the mask image
+        const maskAspect = maskImg.width / maskImg.height;
+        const containerWidth = imageRect.width;
+        const containerHeight = imageRect.height;
+        let drawWidth = containerWidth;
+        let drawHeight = containerHeight;
+
+        // Adjust drawWidth/drawHeight to maintain aspect ratio
+        if (containerWidth / containerHeight > maskAspect) {
+            // Container is wider than mask, fit by height
+            drawHeight = containerHeight;
+            drawWidth = maskAspect * drawHeight;
+        } else {
+            // Container is taller than mask, fit by width
+            drawWidth = containerWidth;
+            drawHeight = drawWidth / maskAspect;
         }
+
+        // Set canvas size to match the actual displayed image dimensions
+        maskPreviewCanvas.width = drawWidth;
+        maskPreviewCanvas.height = drawHeight;
+
+        // Position the canvas to overlay the image exactly
+        maskPreviewCanvas.style.width = drawWidth + 'px';
+        maskPreviewCanvas.style.height = drawHeight + 'px';
+        maskPreviewCanvas.style.left = ((containerWidth - drawWidth) / 2) + 'px';
+        maskPreviewCanvas.style.top = ((containerHeight - drawHeight) / 2) + 'px';
+        maskPreviewCanvas.style.position = 'absolute';
+
+        const ctx = maskPreviewCanvas.getContext('2d');
 
         // Clear the canvas first
         ctx.clearRect(0, 0, maskPreviewCanvas.width, maskPreviewCanvas.height);

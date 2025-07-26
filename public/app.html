@@ -68,9 +68,6 @@
                     </div>
                 </div>
                 <!-- Workspace Action Buttons -->
-                <button type="button" id="workspaceAddBtn" class="btn-secondary" title="Add Workspace">
-                    <i class="fas fa-grid-2-plus"></i>
-                </button>
                 <button type="button" id="workspaceManageBtn" class="btn-secondary" title="Manage Workspaces">
                     <i class="fas fa-hammer-brush"></i>
                 </button>
@@ -99,9 +96,6 @@
                 <div id="customPresetDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
             </div>
             <input type="hidden" id="presetSelect" value="">
-            <button id="openPipelineEditorBtn" class="btn-secondary hidden">
-                <i class="fas fa-project-diagram"></i> Pipelines
-            </button>
             <button id="manualBtn" class="btn-secondary">
                 <i class="nai-penwriting"></i> Editor
             </button>
@@ -134,10 +128,10 @@
                                         <div class="tab-header">
                                             <div id="tab-buttons" class="tab-buttons">
                                                 <button type="button" class="tab-btn active" data-tab="prompt">
-                                                    <i class="nai-penwriting"></i> Prompt
+                                                    <i class="nai-penwriting"></i>
                                                 </button>
                                                 <button type="button" class="tab-btn" data-tab="uc">
-                                                    <i class="nai-minus"></i> UC
+                                                    <i class="nai-minus"></i>
                                                 </button>
                                                 <button type="button" class="tab-btn" data-tab="settings">
                                                     <i class="nai-settings"></i>
@@ -224,10 +218,8 @@
                                             <button type="button" id="vibeNormalizeToggle" class="btn-secondary toggle-btn" data-state="on" title="Normalize vibe strengths">
                                                 <i class="fas fa-scale-balanced"></i>
                                             </button>
-                                            <button type="button" id="inpaintBtn" class="btn-secondary toggle-btn" data-state="off">
-                                                <i class="nai-inpaint"></i>
-                                            </button>
                                             <!-- Custom Transformation Dropdown -->
+                                            <input type="hidden" id="transformationType" value="reroll">
                                             <div id="transformationDropdown" class="custom-dropdown dropright">
                                                 <button type="button" id="transformationDropdownBtn" class="btn-secondary toggle-btn" data-state="off">
                                                     <i class="nai-img2img"></i>
@@ -256,80 +248,68 @@
                                     <div id="characterPromptsContainer" class="character-prompts-container">
                                     </div>
                                 </div>
-
-                                <!-- Transformation Section -->
-                                <div class="form-row" id="transformationSection">
-                                    <div id="transformationSectionLeft" class="form-col" style="width: 100%; height: 100%; max-width: 50%;">
-                                        <div id="transformationSectionLeftHeader" class="form-row">
-                                            <div class="form-group">
-                                                <span class="character-prompts-title">Transformation</span>
-                                            </div>
-                                        </div>
-                                        <div id="transformationSectionLeftContent" class="form-row" style="flex: 1 0 auto;">
-                                            <div class="variation-image-container">
-                                                <img id="manualVariationImage" src="" alt="Source Image" style="max-width: 240px; max-height: 140px;">
-                                                <canvas id="maskPreviewCanvas" style="max-width: 240px; max-height: 140px; pointer-events: none;"></canvas>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div id="transformationSectionRight" class="form-col">
-                                        <div class="form-row" style="align-self: flex-end;">
-                                            <input type="hidden" id="transformationType" value="reroll">
-                                            <button type="button" id="deleteImageBaseBtn" class="btn-secondary" style="display: none;">
+                                
+                                <div id="transformationRow" class="transforms-container form-row">
+                                    <!-- Transformation Section -->
+                                    <div id="transformationSection" class="transformation-image-container">
+                                        <div class="overlay-buttons-container">
+                                            <button type="button" id="inpaintBtn" class="btn-secondary toggle-btn blur" data-state="off">
+                                                <i class="nai-inpaint"></i>
+                                            </button>
+                                            <button type="button" id="deleteImageBaseBtn" class="btn-secondary blur" style="display: none;">
                                                 <i class="nai-thin-cross"></i>
                                             </button>
                                         </div>
-                                        <div class="form-row img2img-controls">
-                                            <div class="form-group" id="imageBiasGroup" style="display: none;">
-                                                <label for="imageBias">Image Bias</label>
-                                                <div style="display: flex; gap: 8px; align-items: center;">
-                                                    <!-- Custom Image Bias Dropdown -->
-                                                    <div id="imageBiasDropdown" class="custom-dropdown dropup">
-                                                        <button type="button" id="imageBiasDropdownBtn" class="custom-dropdown-btn hover-show colored">
-                                                            <div class="mask-bias-button-content">
-                                                                <div class="mask-bias-grid" data-bias="2" data-orientation="landscape">
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                    <div class="grid-cell"></div>
-                                                                </div>
-                                                                <span id="imageBiasSelected">Center</span>
-                                                            </div>
-                                                        </button>
-                                                        <div id="imageBiasDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
-                                                    </div>
-                                                    <!-- Advanced Bias Adjustment Button -->
-                                                    <button type="button" id="imageBiasAdjustBtn" class="btn-secondary" title="Advanced Bias Adjustment">
-                                                        <i class="nai-resize    "></i>
-                                                    </button>
-                                                </div>
-                                                <input type="hidden" id="imageBias" value="2">
+                                        <div class="variation-image-container">
+                                            <img id="manualVariationImage" src="" alt="Source Image" class="variation-image">
+                                            <canvas id="maskPreviewCanvas" class="mask-preview-canvas" style="pointer-events: none;"></canvas>
+                                                
+                                            <div class="overlay-icon-container">
+                                                <i class="nai-img2img"></i>
                                             </div>
                                         </div>
+                                        <div id="imageBiasGroup" class="vibe-reference-info">
+                                            <!-- Custom Image Bias Dropdown -->
+                                            <div id="imageBiasDropdown" class="custom-dropdown dropup">
+                                                <button type="button" id="imageBiasDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                                    <div class="mask-bias-button-content">
+                                                        <div class="mask-bias-grid" data-bias="2" data-orientation="landscape">
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                            <div class="grid-cell"></div>
+                                                        </div>
+                                                        <span id="imageBiasSelected">Center</span>
+                                                    </div>
+                                                </button>
+                                                <div id="imageBiasDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                            </div>
+                                            <!-- Advanced Bias Adjustment Button -->
+                                            <button type="button" id="imageBiasAdjustBtn" class="btn-secondary" title="Advanced Bias Adjustment">
+                                                <i class="nai-resize"></i>
+                                            </button>
+                                            <input type="hidden" id="imageBias" value="2">
+                                        </div>
                                     </div>
-                                </div>
-                                
-                                <!-- Vibe References Section -->
-                                <div class="form-row" id="vibeReferencesSection" style="display: none;">
                                     <div id="vibeReferencesContainer" class="vibe-references-container">
                                         <!-- Vibe reference items will be added here -->
                                     </div>
@@ -468,7 +448,7 @@
                                         <!-- Preset Toggle Button -->
                                         <button type="button" id="manualPresetToggleBtn" class="btn-secondary hover-show" data-state="off">
                                             <span id="manualPresetToggleText"></span>
-                                            <i id="manualPresetToggleIcon" class="nai-dotdotdot"></i>
+                                            <i id="manualPresetToggleIcon" class="fas fa-pen-field"></i>
                                         </button>
                                     </div>
                                     <button type="button" id="closeManualBtn" class="btn-secondary">Cancel</button>
@@ -504,42 +484,42 @@
                                     </div>
                                 </div>
                                 <div class="manual-preview-controls">
-                                    <button id="manualPreviewDownloadBtn" class="btn-secondary round-button" style="display: none;">
+                                    <button id="manualPreviewDownloadBtn" class="btn-secondary round-button blur" style="display: none;">
                                         <i class="nai-save"></i>
                                     </button>
-                                    <button id="manualPreviewUpscaleBtn" class="btn-secondary round-button" style="display: none;">
+                                    <button id="manualPreviewUpscaleBtn" class="btn-secondary round-button blur" style="display: none;">
                                         <i class="nai-upscale"></i>
                                     </button>
-                                    <button id="manualPreviewVariationBtn" class="btn-secondary round-button" style="display: none;">
+                                    <button id="manualPreviewVariationBtn" class="btn-secondary round-button blur" style="display: none;">
                                         <i class="nai-inpaint"></i>
                                     </button>
-                                    <button id="manualPreviewLoadBtn" class="btn-secondary round-button" style="display: none;">
+                                    <button id="manualPreviewLoadBtn" class="btn-secondary round-button blur" style="display: none;">
                                         <i class="nai-penwriting"></i>
                                     </button>
                                     <div class="round-button-group">
-                                        <button id="manualPreviewScrapBtn" class="btn-secondary round-button" style="display: none;">
+                                        <button id="manualPreviewScrapBtn" class="btn-secondary round-button blur" style="display: none;">
                                             <i class="nai-image-tool-sketch"></i>
                                         </button>
-                                        <button id="manualPreviewDeleteBtn" class="btn-danger round-button" style="display: none;">
+                                        <button id="manualPreviewDeleteBtn" class="btn-danger round-button blur" style="display: none;">
                                             <i class="nai-trash"></i>
                                         </button>
                                     </div>
                                 </div>
                                 <div class="manual-preview-controls-top-right">
-                                    <button id="manualPreviewCloseBtn" class="btn-secondary round-button">
+                                    <button id="manualPreviewCloseBtn" class="btn-secondary round-button blur">
                                         <i class="nai-thin-cross"></i>
                                     </button>
                                 </div>
                                 <div class="manual-preview-controls-left">
-                                    <button id="manualPreviewPrevBtn" class="btn-secondary round-button" disabled>
+                                    <button id="manualPreviewPrevBtn" class="btn-secondary round-button blur" disabled>
                                         <i class="nai-directional-arrow-left"></i>
                                     </button>
-                                    <button id="manualPreviewNextBtn" class="btn-secondary round-button" disabled>
+                                    <button id="manualPreviewNextBtn" class="btn-secondary round-button blur" disabled>
                                         <i class="nai-directional-arrow-right"></i>
                                     </button>
                                 </div>
                                 <div class="manual-preview-controls-right">
-                                    <div id="manualPreviewSeedBtn" class="preview-info-badge round-button">
+                                    <div id="manualPreviewSeedBtn" class="preview-info-badge round-button blur">
                                         <i class="nai-seed"></i>
                                         <span id="manualPreviewSeedNumber">---</span>
                                     </div>
@@ -648,58 +628,7 @@
     <!-- Desktop Workspace Tabs -->
     <div id="workspaceTabs" class="workspace-tabs">
         <!-- Workspace tabs will be populated here -->
-    </div>
-
-    <!-- Pipeline Editor Modal -->
-    <div id="pipelineEditorModal" class="modal hidden">
-        <div class="modal-content pipeline-editor-content">
-            <div class="modal-header">
-            <h3 id="pipelineEditorTitle">Edit Pipeline</h3>
-            <button id="closePipelineEditorBtn" class="close-dialog">&times;</button>
-            </div>
-            <div class="modal-body">
-            <form id="pipelineEditorForm">
-                <div class="form-group">
-                <label for="pipelineNameInput">Pipeline Name</label>
-                <input type="text" id="pipelineNameInput" class="form-control hover-show colored" placeholder="Enter pipeline name..." maxlength="100">
-                </div>
-                <div class="form-group">
-                <label for="pipelineResolutionSelect">Resolution</label>
-                <select id="pipelineResolutionSelect" class="form-control hover-show colored">
-                    <option value="normal_portrait">Normal Portrait</option>
-                    <option value="normal_landscape">Normal Landscape</option>
-                    <option value="normal_square">Normal Square</option>
-                    <option value="large_portrait">Large Portrait</option>
-                    <option value="large_landscape">Large Landscape</option>
-                    <option value="large_square">Large Square</option>
-                    <option value="wallpaper_portrait">Wallpaper Portrait</option>
-                    <option value="wallpaper_landscape">Wallpaper Landscape</option>
-                    <option value="custom">Custom</option>
-                </select>
-                </div>
-                <div class="form-group" id="pipelineCustomResolutionGroup" style="display:none;">
-                <label>Custom Resolution</label>
-                <input type="number" id="pipelineCustomWidth" class="form-control hover-show colored" placeholder="Width" min="512" max="2048" step="8">
-                <span style="color: #ccc; padding-bottom: 5px;">×</span>
-                <input type="number" id="pipelineCustomHeight" class="form-control hover-show colored" placeholder="Height" min="512" max="2048" step="8">
-                </div>
-                <div class="form-group">
-                <label>Layers</label>
-                <div id="pipelineLayersContainer"></div>
-                <button type="button" id="addPipelineLayerBtn" class="btn-secondary" style="margin-top:10px;">
-                    <i class="fas fa-plus"></i> Add Layer
-                </button>
-                </div>
-                <div class="modal-actions btn-group">
-                <button type="button" id="savePipelineBtn" class="btn-primary">
-                    <i class="fas fa-save"></i> Save Pipeline
-                </button>
-                <button type="button" id="cancelPipelineBtn" class="btn-secondary">Cancel</button>
-                </div>
-            </form>
-            </div>
-        </div>
-    </div>      
+    </div>   
 
     <!-- Position Dialog Modal -->
     <div id="positionDialog" class="modal">
@@ -1205,6 +1134,12 @@
                         <!-- Workspace management items will be populated here -->
                     </div>
                 </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="workspaceAddBtn" class="btn-secondary" title="Add Workspace">
+                    <span>New Workspace</span>
+                    <i class="fas fa-grid-2-plus"></i>
+                </button>
             </div>
         </div>
     </div>
@@ -1723,12 +1658,12 @@
     <!-- Toast Container -->
     <div id="toastContainer" class="toast-container"></div>
 
-    <script src="dropdown.js"></script>
-    <script src="modalUtils.js"></script>
-    <script src="inpaint.js"></script>
-    <script src="pipelines.js"></script>
-    <script src="workspaceUtils.js"></script>
-    <script src="autocompleteUtils.js"></script>
-    <script src="script.js"></script>
+    <script src="scripts/comp/dropdown.js"></script>
+    <script src="scripts/comp/modalUtils.js"></script>
+    <script src="scripts/comp/inpaint.js"></script>
+    <script src="scripts/comp/workspaceUtils.js"></script>
+    <script src="scripts/comp/autocompleteUtils.js"></script>
+    <script src="scripts/comp/imageBias.js"></script>
+    <script src="scripts/app.js"></script>
 </body>
 </html> 

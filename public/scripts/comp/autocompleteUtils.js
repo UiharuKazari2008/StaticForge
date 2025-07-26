@@ -1,6 +1,6 @@
 // Overlay and list elements
 const characterAutocompleteOverlay = document.getElementById('characterAutocompleteOverlay');
-let characterAutocompleteList = null;
+const characterAutocompleteList = document.querySelector('.character-autocomplete-list');
 
 // State variables
 let characterAutocompleteTimeout = null;
@@ -174,7 +174,7 @@ function handleCharacterAutocompleteKeydown(e) {
                             if (selectedItem.dataset.type === 'textReplacement') {
                                 // For text replacements, insert the actual text, not the placeholder
                                 const placeholder = selectedItem.dataset.placeholder;
-                                const actualText = textReplacements[placeholder] || placeholder;
+                                const actualText = window.optionsData?.textReplacements[placeholder] || placeholder;
                                 insertTextReplacement(actualText);
                             } else if (selectedItem.dataset.type === 'tag') {
                                 selectTag(selectedItem.dataset.tagName);
@@ -266,7 +266,7 @@ async function searchCharacters(query, target) {
         }
 
         // Search through text replacements
-        const textReplacementResults = Object.keys(textReplacements)
+        const textReplacementResults = Object.keys(window.optionsData?.textReplacements || {})
             .filter(key => {
                 const keyToSearch = key.startsWith('PICK_') ? key.substring(5) : key;
                 // If searchQuery is empty (just < was typed), return all items
@@ -278,7 +278,7 @@ async function searchCharacters(query, target) {
             .map(key => ({
                 type: 'textReplacement',
                 name: key,
-                description: textReplacements[key],
+                description: window.optionsData?.textReplacements[key],
                 placeholder: key, // The placeholder name like <NAME> or <PICK_NAME>
                 // If we searched with PICK_ prefix, ensure the result preserves it
                 displayName: hasPickPrefix && !key.startsWith('PICK_') ? `PICK_${key}` : key
@@ -493,9 +493,11 @@ function selectTextReplacement(placeholder) {
     const wrappedPlaceholder = `<${placeholder}>`;
     if (newPrompt) {
         // Check if the text before ends with : or | - don't add comma in those cases
-        if (textBefore.endsWith(':')) {
+        // Only skip comma if the last non-space character is a single ':'
+        const trimmed = textBefore.replace(/\s+$/, '');
+        if (trimmed.endsWith(':') && !trimmed.endsWith('::')) {
             newPrompt += wrappedPlaceholder;
-        } else if (textBefore.endsWith('|')) {
+        } else if (trimmed.endsWith('|')) {
             newPrompt += ' ' + wrappedPlaceholder;
         } else {
             newPrompt += ', ' + wrappedPlaceholder;
@@ -563,9 +565,11 @@ function insertTextReplacement(actualText) {
     // Add the actual text (not wrapped in angle brackets)
     if (newPrompt) {
         // Check if the text before ends with : or | - don't add comma in those cases
-        if (textBefore.endsWith(':')) {
+        // Only skip comma if the last non-space character is a single ':'
+        const trimmed = textBefore.replace(/\s+$/, '');
+        if (trimmed.endsWith(':') && !trimmed.endsWith('::')) {
             newPrompt += actualText;
-        } else if (textBefore.endsWith('|')) {
+        } else if (trimmed.endsWith('|')) {
             newPrompt += ' ' + actualText;
         } else {
             newPrompt += ', ' + actualText;
@@ -633,9 +637,11 @@ function selectTag(tagName) {
     // Add the tag name
     if (newPrompt) {
         // Check if the text before ends with : or | - don't add comma in those cases
-        if (textBefore.endsWith(':')) {
+        // Only skip comma if the last non-space character is a single ':'
+        const trimmed = textBefore.replace(/\s+$/, '');
+        if (trimmed.endsWith(':') && !trimmed.endsWith('::')) {
             newPrompt += tagName;
-        } else if (textBefore.endsWith('|')) {
+        } else if (trimmed.endsWith('|')) {
             newPrompt += ' ' + tagName;
         } else {
             newPrompt += ', ' + tagName;
@@ -701,7 +707,7 @@ function selectTextReplacementFullText(placeholder) {
     newPrompt = textBefore;
 
     // Add the full text replacement description
-    const fullText = textReplacements[placeholder];
+    const fullText = window.optionsData?.textReplacements[placeholder];
     if (newPrompt) {
         // Check if the text before ends with : or | - don't add comma in those cases
         if (textBefore.endsWith(':')) {

@@ -14,6 +14,7 @@
     "nan": "^2.22.2",
     "nekoai-js": "file:../NekoAI-JS",
     "sharp": "^0.32.6",
-    "tokenizers": "^0.13.3"
+    "tokenizers": "^0.13.3",
+    "ws": "^8.18.3"
   }
 }

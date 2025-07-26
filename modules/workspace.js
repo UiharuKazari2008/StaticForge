@@ -81,7 +81,6 @@ function loadWorkspaces() {
                     presets: [],
                     vibeImages: [],
                     cacheFiles: [],
-                    pipelines: [],
                     files: [],
                     scraps: []
                 }
@@ -101,7 +100,6 @@ function loadWorkspaces() {
                 presets: [],
                 vibeImages: [],
                 cacheFiles: [],
-                pipelines: [],
                 files: [],
                 scraps: []
             }
@@ -234,7 +232,6 @@ function createWorkspace(name, color = null, backgroundColor = null, backgroundI
         presets: [],
         vibeImages: [],
         cacheFiles: [],
-        pipelines: [],
         files: [],
         scraps: []
     };
@@ -349,7 +346,6 @@ function deleteWorkspace(id) {
     workspaces.default.presets.push(...workspace.presets);
     workspaces.default.vibeImages.push(...workspace.vibeImages);
     workspaces.default.cacheFiles.push(...workspace.cacheFiles);
-    workspaces.default.pipelines.push(...workspace.pipelines);
     workspaces.default.files.push(...workspace.files);
     workspaces.default.scraps.push(...workspace.scraps);
 
@@ -357,7 +353,6 @@ function deleteWorkspace(id) {
     workspaces.default.presets = [...new Set(workspaces.default.presets)];
     workspaces.default.vibeImages = [...new Set(workspaces.default.vibeImages)];
     workspaces.default.cacheFiles = [...new Set(workspaces.default.cacheFiles)];
-    workspaces.default.pipelines = [...new Set(workspaces.default.pipelines)];
     workspaces.default.files = [...new Set(workspaces.default.files)];
     workspaces.default.scraps = [...new Set(workspaces.default.scraps)];
 
@@ -389,7 +384,6 @@ function dumpWorkspace(sourceId, targetId) {
     targetWorkspace.presets.push(...sourceWorkspace.presets);
     targetWorkspace.vibeImages.push(...sourceWorkspace.vibeImages);
     targetWorkspace.cacheFiles.push(...sourceWorkspace.cacheFiles);
-    targetWorkspace.pipelines.push(...sourceWorkspace.pipelines);
     targetWorkspace.files.push(...sourceWorkspace.files);
     targetWorkspace.scraps.push(...sourceWorkspace.scraps);
 
@@ -397,7 +391,6 @@ function dumpWorkspace(sourceId, targetId) {
     targetWorkspace.presets = [...new Set(targetWorkspace.presets)];
     targetWorkspace.vibeImages = [...new Set(targetWorkspace.vibeImages)];
     targetWorkspace.cacheFiles = [...new Set(targetWorkspace.cacheFiles)];
-    targetWorkspace.pipelines = [...new Set(targetWorkspace.pipelines)];
     targetWorkspace.files = [...new Set(targetWorkspace.files)];
     targetWorkspace.scraps = [...new Set(targetWorkspace.scraps)];
 
@@ -697,15 +690,6 @@ function addToWorkspaceArray(type, items, workspaceId = null) {
             });
             break;
             
-        case 'pipelines':
-            validItems.forEach(item => {
-                if (!workspaces[targetId].pipelines.includes(item)) {
-                    workspaces[targetId].pipelines.push(item);
-                    addedCount++;
-                }
-            });
-            break;
-            
         case 'cacheFiles':
             validItems.forEach(item => {
                 if (!workspaces[targetId].cacheFiles.includes(item)) {
@@ -725,7 +709,7 @@ function addToWorkspaceArray(type, items, workspaceId = null) {
             break;
             
         default:
-            throw new Error(`Invalid type: ${type}. Must be one of: files, scraps, presets, pipelines, cacheFiles, vibeImages`);
+            throw new Error(`Invalid type: ${type}. Must be one of: files, scraps, presets, cacheFiles, vibeImages`);
     }
 
     if (addedCount > 0) {
@@ -796,12 +780,6 @@ function removeFromWorkspaceArray(type, items, workspaceId = null) {
             removedCount = originalPresetsLength - workspaces[targetId].presets.length;
             break;
             
-        case 'pipelines':
-            const originalPipelinesLength = workspaces[targetId].pipelines.length;
-            workspaces[targetId].pipelines = workspaces[targetId].pipelines.filter(item => !validItems.includes(item));
-            removedCount = originalPipelinesLength - workspaces[targetId].pipelines.length;
-            break;
-            
         case 'cacheFiles':
             const originalCacheFilesLength = workspaces[targetId].cacheFiles.length;
             workspaces[targetId].cacheFiles = workspaces[targetId].cacheFiles.filter(item => !validItems.includes(item));
@@ -815,7 +793,7 @@ function removeFromWorkspaceArray(type, items, workspaceId = null) {
             break;
             
         default:
-            throw new Error(`Invalid type: ${type}. Must be one of: files, scraps, presets, pipelines, cacheFiles, vibeImages`);
+            throw new Error(`Invalid type: ${type}. Must be one of: files, scraps, presets, cacheFiles, vibeImages`);
     }
 
     if (removedCount > 0) {
@@ -874,11 +852,9 @@ function moveToWorkspaceArray(type, items, targetWorkspaceId, sourceWorkspaceId 
                         const ext = extMatch ? extMatch[0] : '';
                         // Always add the original file
                         allFilesToMove.add(filename);
-                        // Add upscaled and pipeline_upscaled variants if present in any workspace
+                        // Add upscaled variants if present in any workspace
                         const upscaled = `${baseName}_upscaled${ext}`;
-                        const pipelineUpscaled = `${baseName}_pipeline_upscaled${ext}`;
                         if (allWorkspaceFiles.has(upscaled)) allFilesToMove.add(upscaled);
-                        if (allWorkspaceFiles.has(pipelineUpscaled)) allFilesToMove.add(pipelineUpscaled);
                         // Add all other related files (legacy logic)
                         const relatedFiles = findRelatedFiles(filename, Array.from(allWorkspaceFiles));
                         relatedFiles.forEach(file => allFilesToMove.add(file));
@@ -902,12 +878,6 @@ function moveToWorkspaceArray(type, items, targetWorkspaceId, sourceWorkspaceId 
                     const originalPresetsLength = workspace.presets.length;
                     workspace.presets = workspace.presets.filter(item => !validItems.includes(item));
                     movedCount += originalPresetsLength - workspace.presets.length;
-                    break;
-                    
-                case 'pipelines':
-                    const originalPipelinesLength = workspace.pipelines.length;
-                    workspace.pipelines = workspace.pipelines.filter(item => !validItems.includes(item));
-                    movedCount += originalPipelinesLength - workspace.pipelines.length;
                     break;
                     
                 case 'cacheFiles':

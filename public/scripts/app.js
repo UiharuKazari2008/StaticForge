@@ -138,10 +138,9 @@ const addCharacterBtn = document.getElementById('addCharacterBtn');
 const characterPromptsContainer = document.getElementById('characterPromptsContainer');
 const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
 const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
-const vibeReferencesSection = document.getElementById('vibeReferencesSection');
+const transformationRow = document.getElementById('transformationRow');
 
 // Global variables
-let subscriptionData = null;
 let forcePaidRequest = false;
 let allImages = [];
 
@@ -150,8 +149,7 @@ if (typeof u1 !== 'undefined') {
     window.u1 = u1;
 }
 // Infinite scroll variables
-let currentPage = 1;
-let imagesPerPage =12
+let imagesPerPage = 12;
 let isLoadingMore = false;
 let hasMoreImages = true;
 let hasMoreImagesBefore = false; // Track if there are images before current page
@@ -164,9 +162,32 @@ let currentManualPreviewImage = null;
 let displayedStartIndex = 0; // First displayed image index in allImages array
 let displayedEndIndex = 0;   // Last displayed image index in allImages array
 
+// Improved infinite scroll configuration
+let infiniteScrollConfig = {
+    // Percentage-based triggers (more responsive to different screen sizes)
+    bottomTriggerPercent: 0.15, // 15% from bottom
+    topTriggerPercent: 0.15,    // 15% from top
+    placeholderTriggerPercent: 0.25, // 25% for placeholder scheduling
+    
+    // Dynamic batch sizing based on viewport
+    minBatchSize: 6,
+    maxBatchSize: 24,
+    
+    // Performance optimization
+    throttleDelay: 100, // ms between scroll checks
+    debounceDelay: 300, // ms after scroll stops
+    
+    // Responsive adjustments
+    smallScreenThreshold: 768, // px
+    smallScreenMultiplier: 0.5, // Reduce triggers on small screens
+};
+
 // Selection state
 let selectedImages = new Set();
 let isSelectionMode = false;
+
+// Global options data
+let optionsData = null;
 
 // Helper function to check if a model is V3
 function isV3Model(modelValue) {
@@ -232,7 +253,7 @@ function updateLoadButtonState() {
     }
 
     // Check if preset exists in available presets
-    const isValidPreset = window.availablePresets && window.availablePresets.includes(presetName);
+    const isValidPreset = window.optionsData.presets && window.optionsData.presets.includes(presetName);
 
     manualLoadBtn.disabled = !isValidPreset;
 
@@ -251,24 +272,6 @@ function validatePresetWithTimeout() {
         updateLoadButtonState();
         updateSaveButtonState();
     }, 300); // 300ms delay
-}
-
-// Load available presets for validation
-async function loadAvailablePresets() {
-    try {
-        const response = await fetchWithAuth('/', {
-            method: 'OPTIONS'
-        });
-        if (response.ok) {
-            const options = await response.json();
-            if (options.presets) {
-                window.availablePresets = options.presets.map(preset => preset.name);
-            }
-        }
-    } catch (error) {
-        console.warn('Failed to load available presets:', error);
-        window.availablePresets = [];
-    }
 }
 
 // Load preset into manual form
@@ -322,6 +325,7 @@ const RESOLUTIONS = [
     { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920 },
     { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088 }
 ];
+const resolutions = RESOLUTIONS.map(r => r.value);
 const RESOLUTION_GROUPS = [
     {
         group: 'Normal',
@@ -410,15 +414,15 @@ function getNoiseMeta(meta) {
 async function renderCustomPresetDropdown(selectedVal) {
     customPresetDropdownMenu.innerHTML = '';
 
-    // Use global presets and pipelines loaded from /options
-    if (Array.isArray(presets) && presets.length > 0) {
+    // Use global presets loaded from /options
+    if (Array.isArray(window.optionsData.presets) && window.optionsData.presets.length > 0) {
         // Presets group header
         const presetsGroupHeader = document.createElement('div');
         presetsGroupHeader.className = 'custom-dropdown-group';
         presetsGroupHeader.innerHTML = '<i class="nai-heart-enabled"></i> Presets';
         customPresetDropdownMenu.appendChild(presetsGroupHeader);
 
-        for (const preset of presets) {
+        for (const preset of window.optionsData.presets) {
             const option = document.createElement('div');
             option.className = 'custom-dropdown-option' + (selectedVal === `preset:${preset.name}` ? ' selected' : '');
             option.tabIndex = 0;
@@ -428,7 +432,7 @@ async function renderCustomPresetDropdown(selectedVal) {
                 <div class="preset-option-content">
                     <div class="preset-name">${preset.name}</div>
                     <div class="preset-details">
-                        <span class="preset-model">${modelsShort[preset.model.toUpperCase()] || preset.model || 'Default'}</span>
+                        <span class="preset-model">${window.optionsData?.modelsShort[preset.model.toUpperCase()] || preset.model || 'Default'}</span>
                         <div class="preset-icons">
                             ${preset.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
                             ${preset.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
@@ -453,73 +457,6 @@ async function renderCustomPresetDropdown(selectedVal) {
             customPresetDropdownMenu.appendChild(option);
         }
     }
-
-    // Add pipelines group
-    if (Array.isArray(pipelines) && pipelines.length > 0) {
-        // Pipelines group header
-        const pipelinesGroupHeader = document.createElement('div');
-        pipelinesGroupHeader.className = 'custom-dropdown-group';
-        pipelinesGroupHeader.innerHTML = '<i class="nai-inpaint"></i> Pipelines';
-        customPresetDropdownMenu.appendChild(pipelinesGroupHeader);
-
-        for (const pipeline of pipelines) {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option' + (selectedVal === `pipeline:${pipeline.name}` ? ' selected' : '');
-            option.tabIndex = 0;
-            option.dataset.value = `pipeline:${pipeline.name}`;
-            option.dataset.type = 'pipeline';
-            // Use layer info from /options
-            const l1 = pipeline.layer1.info;
-            const l2 = pipeline.layer2.info;
-            option.innerHTML = `
-                <div class="pipeline-option-content">
-                    <div class="pipeline-name">${pipeline.name}</div>
-                    <div class="pipeline-layers">
-                        <div class="pipeline-layer">
-                            <span class="layer-type">${pipeline.layer1.type}</span>
-                            <span class="layer-value">${pipeline.layer1.value}</span>
-                        </div>
-                        <div class="pipeline-layer">
-                            <span class="layer-type">${pipeline.layer2.type}</span>
-                            <span class="layer-value">${pipeline.layer2.value}</span>
-                        </div>
-                    </div>
-                    <div class="pipeline-details">
-                        <div class="pipeline-models">
-                            <span class="pipeline-model">${modelsShort[l1.model?.toUpperCase()] || l1.model || 'Default'}</span>
-                            <div class="pipeline-icons">
-                                ${l1.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
-                                ${l1.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
-                                ${l1.variety ? '<i class="nai-wand-sparkles" title="Variety enabled"></i>' : ''}
-                                ${l1.character_prompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
-                                ${l1.base_image ? '<i class="fas fa-image" title="Has base image"></i>' : ''}
-                            </div>
-                        </div>
-                        <div class="pipeline-models">
-                            <span class="pipeline-model">${modelsShort[l2.model?.toUpperCase()] || l2.model || 'Default'}</span>
-                            <div class="pipeline-icons">
-                                ${l2.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
-                                ${l2.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
-                                ${l2.character_prompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="pipeline-resolution">${pipeline.resolution || 'Default'}</div>
-                </div>
-            `;
-            option.addEventListener('click', () => {
-                selectCustomPreset(`pipeline:${pipeline.name}`);
-                closeCustomPresetDropdown();
-            });
-            option.addEventListener('keydown', e => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    selectCustomPreset(`pipeline:${pipeline.name}`);
-                    closeCustomPresetDropdown();
-                }
-            });
-            customPresetDropdownMenu.appendChild(option);
-        }
-    }
 }
 
 function selectCustomPreset(value) {
@@ -529,11 +466,8 @@ function selectCustomPreset(value) {
     if (value.startsWith('preset:')) {
         const presetName = value.replace('preset:', '');
         customPresetSelected.innerHTML = `<i class="nai-heart-enabled"></i> ${presetName}`;
-    } else if (value.startsWith('pipeline:')) {
-        const pipelineName = value.replace('pipeline:', '');
-        customPresetSelected.innerHTML = `<i class="nai-inpaint"></i> ${pipelineName}`;
     } else {
-        customPresetSelected.innerHTML = '<i class="nai-pen-tip-light"></i> Select Preset or Pipeline';
+        customPresetSelected.innerHTML = '<i class="nai-pen-tip-light"></i> Select Preset';
     }
 
     // Sync with hidden select for compatibility
@@ -554,6 +488,17 @@ setupDropdown(
     renderCustomPresetDropdown,
     () => selectedPreset
 );
+
+function generateResolutionOptions() {
+    // Populate resolutions using global RESOLUTIONS array
+    manualResolution.innerHTML = '<option value="">Unchanged</option>';
+    RESOLUTIONS.forEach(resolution => {
+        const manualOption = document.createElement('option');
+        manualOption.value = resolution.value;
+        manualOption.textContent = resolution.display;
+        manualResolution.appendChild(manualOption);
+    });
+}
 
 function renderManualResolutionDropdown(selectedVal) {
     renderGroupedDropdown(
@@ -665,9 +610,6 @@ async function loadIntoManualForm(source, image = null) {
             if (presetType === 'preset') {
                 type = 'preset';
                 endpoint = `/preset/${presetName}`;
-            } else if (presetType === 'pipeline') {
-                type = 'pipeline';
-                endpoint = `/pipeline/${presetName}`;
             } else {
                 throw new Error('Invalid type');
             }
@@ -679,11 +621,6 @@ async function loadIntoManualForm(source, image = null) {
                 throw new Error(`Failed to load ${presetType} data`);
             }
             data = await response.json();
-
-            // For pipeline, we only edit layer2
-            if (type === 'pipeline') {
-                data = data.layer2 || {};
-            }
 
             // Preprocess sampler and noiseScheduler
             if (data.sampler) {
@@ -882,6 +819,9 @@ async function loadIntoManualForm(source, image = null) {
                 if (vibeReferencesContainer) {
                     vibeReferencesContainer.innerHTML = '';
                 }
+                if (transformationRow) {
+                    transformationRow.classList.remove('display-vibe');
+                }
                 if (vibeNormalizeToggle) {
                     vibeNormalizeToggle.style.display = 'none';
                 }
@@ -899,16 +839,15 @@ async function loadIntoManualForm(source, image = null) {
                 if (vibeReferencesContainer) {
                     vibeReferencesContainer.innerHTML = '';
                 }
+                if (transformationRow) {
+                    transformationRow.classList.add('display-vibe');
+                }
 
                 // Add each vibe transfer back to the container
                 for (const vibeTransfer of data.vibe_transfer) {
                     await addVibeReferenceToContainer(vibeTransfer.id, vibeTransfer.ie, vibeTransfer.strength);
                 }
-
-                // Show the vibe references section
-                if (vibeReferencesSection) {
-                    vibeReferencesSection.style.display = '';
-                }
+                
                 if (vibeNormalizeToggle) {
                     vibeNormalizeToggle.style.display = '';
                 }
@@ -919,6 +858,9 @@ async function loadIntoManualForm(source, image = null) {
             // Clear vibe references if no data
             if (vibeReferencesContainer) {
                 vibeReferencesContainer.innerHTML = '';
+            }
+            if (transformationRow) {
+                transformationRow.classList.remove('display-vibe');
             }
             if (vibeNormalizeToggle) {
                 vibeNormalizeToggle.style.display = 'none';
@@ -939,109 +881,6 @@ async function loadIntoManualForm(source, image = null) {
 
         // Handle image source data
         const hasBaseImage = data.image_source;
-        const isPipeline = data.request_type === 'pipeline';
-
-        // Handle pipeline images - show inpaint button and load pipeline mask if no mask exists
-        if (isPipeline) {
-            if (data.mask_compressed) {
-                // Store the compressed mask data for later use
-                window.currentMaskCompressed = data.mask_compressed;
-
-                // Process compressed mask to display resolution
-                const targetWidth = data.width || 1024;
-                const targetHeight = data.height || 1024;
-
-                try {
-                    window.pipelineMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
-                    window.currentMaskData = window.pipelineMaskData;
-                    console.log('✅ Successfully processed compressed mask for pipeline');
-                    // Update vibe transfer UI state after mask is loaded
-                    updateInpaintButtonState();
-                } catch (error) {
-                    console.error('❌ Failed to process compressed mask for pipeline:', error);
-                    // Fallback to regular mask if available
-                    if (data.mask) {
-                        window.pipelineMaskData = "data:image/png;base64," + data.mask;
-                        window.currentMaskData = window.pipelineMaskData;
-                        // Update vibe transfer UI state after mask is loaded
-                        updateInpaintButtonState();
-                    }
-                }
-            } else if (data.mask) {
-                window.pipelineMaskData = "data:image/png;base64," + data.mask;
-                window.currentMaskData = window.pipelineMaskData;
-                console.log('✅ Loaded regular mask for pipeline');
-            } else {
-                // Get pipeline name from metadata (pipeline_name then preset_name)
-                let pipelineName = data.pipeline_name || data.preset_name || 'generated';
-
-                // Load pipeline mask from server
-                try {
-                    const maskResponse = await fetchWithAuth(`/pipeline/${pipelineName}?render_mask=true`, {
-                        method: 'OPTIONS',
-                    });
-                    if (maskResponse.ok) {
-                        const maskData = await maskResponse.json();
-                        if (maskData.mask) {
-                            window.currentMaskData = "data:image/png;base64," + maskData.mask;
-                            window.pipelineMaskData = "data:image/png;base64," + maskData.mask;
-                            console.log(`🎭 Loaded pipeline mask for: ${pipelineName}`);
-                            // Update vibe transfer UI state after mask is loaded
-                            updateInpaintButtonState();
-                        }
-                    }
-                } catch (error) {
-                    console.error('Failed to load pipeline mask:', error);
-                }
-            }
-
-            // For pipeline images, get the current image and set it as placeholder
-            if (image) {
-                let imageToShow = image.filename;
-                if (image.pipeline_upscaled) {
-                    imageToShow = image.pipeline_upscaled;
-                } else if (image.pipeline) {
-                    imageToShow = image.pipeline;
-                } else if (image.upscaled) {
-                    imageToShow = image.upscaled;
-                } else if (image.original) {
-                    imageToShow = image.original;
-                }
-
-                if (imageToShow) {
-                    // Set up uploaded image data with the current image as placeholder
-                    window.uploadedImageData = {
-                        image_source: `file:${imageToShow}`,
-                        width: data.width || 1024,
-                        height: data.height || 1024,
-                        bias: 2,
-                        isBiasMode: true,
-                        isClientSide: false,
-                        isPlaceholder: true
-                    };
-
-                    // Show the variation image
-                    if (variationImage) {
-                        variationImage.style.display = 'block';
-                    }
-                }
-            }
-
-            // Hide the image bias dropdown for pipeline images
-            hideImageBiasDropdown();
-
-            // Disable transformation dropdown for pipeline images
-            const transformationDropdown = document.getElementById('transformationDropdown');
-            if (transformationDropdown) {
-                transformationDropdown.classList.add('disabled');
-            }
-
-            window.currentPipelineEdit = {
-                isPipelineEdit: true,
-                pipelineName: name,
-                layer1Seed: data.layer1Seed
-            };
-        }
 
         if (hasBaseImage) {
             const [imageType, identifier] = data.image_source.split(':', 2);
@@ -1076,9 +915,8 @@ async function loadIntoManualForm(source, image = null) {
                     // Image is always visible now, just set the source
                 }
                 // Show transformation section content
-                const transformationSection = document.getElementById('transformationSection');
-                if (transformationSection) {
-                    transformationSection.classList.add('display-image');
+                if (transformationRow) {
+                    transformationRow.classList.add('display-image');
                 }
                 document.getElementById('manualStrengthGroup').style.display = '';
                 document.getElementById('manualNoiseGroup').style.display = '';
@@ -1129,6 +967,8 @@ async function loadIntoManualForm(source, image = null) {
                 } else {
                     await renderImageBiasDropdown(data.image_bias.toString());
                 }
+            } else {
+                await renderImageBiasDropdown();
             }
 
             if (manualStrengthValue && data.strength !== undefined && data.strength !== null) {
@@ -1150,9 +990,8 @@ async function loadIntoManualForm(source, image = null) {
             }
 
             // Hide transformation section content
-            const transformationSection = document.getElementById('transformationSection');
-            if (transformationSection) {
-                transformationSection.classList.remove('display-image');
+            if (transformationRow) {
+                transformationRow.classList.remove('display-image');
             }
             document.getElementById('manualStrengthGroup').style.display = 'none';
             document.getElementById('manualNoiseGroup').style.display = 'none';
@@ -1163,22 +1002,7 @@ async function loadIntoManualForm(source, image = null) {
             manualPresetName.value = name;
         }
 
-        if (type === 'pipeline') {
-            // Pipeline-specific: disable preset name, etc.
-            const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
-            if (presetNameGroup) {
-                presetNameGroup.style.display = 'block';
-                manualPresetName.disabled = true;
-                manualPresetName.style.opacity = '0.6';
-            }
-            const saveButton = document.getElementById('manualSaveBtn');
-            if (saveButton) saveButton.style.display = 'none';
-            window.currentPipelineEdit = {
-                isPipelineEdit: true,
-                pipelineName: name,
-                layer1Seed: null
-            };
-        } else if (type === 'preset') {
+        if (type === 'preset') {
             // Preset-specific
             const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
             if (presetNameGroup) {
@@ -1188,7 +1012,6 @@ async function loadIntoManualForm(source, image = null) {
             }
             const saveButton = document.getElementById('manualSaveBtn');
             if (saveButton) saveButton.style.display = 'flex';
-            window.currentPipelineEdit = null;
         } else if (type === 'metadata') {
             manualStrengthValue.value = (data.strength !== undefined && data.strength !== null) ? data.strength : 0.8;
             manualNoiseValue.value = (data.noise !== undefined && data.noise !== null) ? data.noise : 0.1;
@@ -1196,11 +1019,7 @@ async function loadIntoManualForm(source, image = null) {
             // Load image into preview panel when loading from metadata
             if (image) {
                 let imageToShow = image.filename;
-                if (image.pipeline_upscaled) {
-                    imageToShow = image.pipeline_upscaled;
-                } else if (image.pipeline) {
-                    imageToShow = image.pipeline;
-                } else if (image.upscaled) {
+                if (image.upscaled) {
                     imageToShow = image.upscaled;
                 } else if (image.original) {
                     imageToShow = image.original;
@@ -1213,7 +1032,6 @@ async function loadIntoManualForm(source, image = null) {
 
         updateInpaintButtonState();
         updateManualPriceDisplay();
-        updateRequestTypeButtonVisibility();
         updateUploadDeleteButtonVisibility();
         updateSaveButtonState();
         updateLoadButtonState();
@@ -1267,7 +1085,7 @@ async function updateCustomResolutionValue() {
 
 function isValidPresetName(name) {
     if (!name) return false;
-    return window.availablePresets && window.availablePresets.includes(name);
+    return window.optionsData.presets && window.optionsData.presets.includes(name);
 }
 
 function updateManualPresetToggleBtn() {
@@ -1380,6 +1198,17 @@ function renderSimpleDropdown(menu, items, value_key, display_key, selectHandler
     });
 }
 
+function generateSamplerOptions() {
+    // Populate sampler dropdown with display names, value=meta name
+    manualSampler.innerHTML = '<option value="">Default</option>';
+    SAMPLER_MAP.forEach(s => {
+        const option = document.createElement('option');
+        option.value = s.meta;
+        option.textContent = s.display;
+        manualSampler.appendChild(option);
+    });
+}
+
 function renderManualSamplerDropdown(selectedVal) {
   renderSimpleDropdown(manualSamplerDropdownMenu, SAMPLER_MAP, 'meta', 'display', selectManualSampler, closeManualSamplerDropdown, selectedVal);
 }
@@ -1410,6 +1239,17 @@ function closeManualSamplerDropdown() {
 
 setupDropdown(manualSamplerDropdown, manualSamplerDropdownBtn, manualSamplerDropdownMenu, renderManualSamplerDropdown, () => manualSelectedSampler);
 
+function generateNoiseSchedulerOptions() {
+    // Populate noise scheduler dropdown with display names, value=meta name
+    manualNoiseScheduler.innerHTML = '<option value="">Default</option>';
+    NOISE_MAP.forEach(n => {
+        const option = document.createElement('option');
+        option.value = n.meta;
+        option.textContent = n.display;
+        manualNoiseScheduler.appendChild(option);
+    });
+}
+
 function renderManualNoiseSchedulerDropdown(selectedVal) {
   renderSimpleDropdown(manualNoiseSchedulerDropdownMenu, NOISE_MAP, 'meta', 'display', selectManualNoiseScheduler, closeManualNoiseSchedulerDropdown, selectedVal);
 }
@@ -1434,10 +1274,19 @@ function closeManualNoiseSchedulerDropdown() {
 
 setupDropdown(manualNoiseSchedulerDropdown, manualNoiseSchedulerDropdownBtn, manualNoiseSchedulerDropdownMenu, renderManualNoiseSchedulerDropdown, () => manualSelectedNoiseScheduler);
 
-const modelOptionRenderer = (opt, group) => `<span>${opt.name}</span>`;
+function generateModelOptions() {
+    // Populate models for manual form
+    manualModel.innerHTML = '<option value="">Select model...</option>';
+    Object.keys(window.optionsData?.models || {}).forEach(model => {
+        const option = document.createElement('option');
+        option.value = model.toLowerCase(); // Use lowercase to match config
+        option.textContent = window.optionsData?.models[model]; // Use pretty display name
+        manualModel.appendChild(option);
+    });   
+}
 
 function renderManualModelDropdown(selectedVal) {
-    renderGroupedDropdown(manualModelDropdownMenu, modelGroups, selectManualModel, closeManualModelDropdown, selectedVal, modelOptionRenderer);
+    renderGroupedDropdown(manualModelDropdownMenu, modelGroups, selectManualModel, closeManualModelDropdown, selectedVal, (opt, group) => `<span>${opt.name}</span>`);
 }
 
 function selectManualModel(value, group) {
@@ -1481,7 +1330,6 @@ function selectManualModel(value, group) {
 function closeManualModelDropdown() {
     closeDropdown(manualModelDropdownMenu, manualModelDropdownBtn);
 }
-
 setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel);
 
 // Transformation Dropdown Functions
@@ -1489,15 +1337,14 @@ function renderTransformationDropdown(selectedVal) {
     const hasValidImage = window.currentEditImage && window.currentEditMetadata;
     const hasBaseImage = hasValidImage && (
         window.currentEditMetadata.original_filename ||
-        (window.currentEditImage.filename || window.currentEditImage.original || window.currentEditImage.pipeline || window.currentEditImage.pipeline_upscaled)
+        (window.currentEditImage.filename || window.currentEditImage.original)
     );
 
-    // Check if this is an img2img (has base image) or pipeline image
+    // Check if this is an img2img (has base image)
     const isImg2Img = hasValidImage && window.currentEditMetadata.base_image === true;
-    const isPipeline = hasValidImage && (window.currentEditImage.pipeline || window.currentEditImage.pipeline_upscaled);
 
-    // Show reroll button only if there's a base image available (for img2img) or if it's a pipeline
-    const shouldShowReroll = hasValidImage && (isImg2Img || isPipeline);
+    // Show reroll button only if there's a base image available (for img2img)
+    const shouldShowReroll = hasValidImage && isImg2Img;
 
     // Get all option elements
     const rerollOption = transformationDropdownMenu.querySelector('[data-value="reroll"]');
@@ -1563,9 +1410,6 @@ function selectTransformation(value) {
             handleTransformationTypeChange(value);
             break;
     }
-
-    // Update button states for reroll/variation
-    updateRequestTypeButtonVisibility();
 }
 
 function handleTransformationTypeChange(requestType) {
@@ -1596,11 +1440,10 @@ function handleTransformationTypeChange(requestType) {
         const [type, id] = source.split(':');
         previewUrl = type === 'file' ? `/images/${id}` : `/cache/preview/${id}.webp`;
     } else {
-        const filename = image.filename || image.original || image.pipeline || image.pipeline_upscaled;
+        const filename = image.filename || image.original;
         if (!filename) return;
         source = `file:${filename}`;
         previewUrl = `/images/${filename}`;
-        // For pipeline, it might be pipeline image, but we can treat as base
     }
 
     window.uploadedImageData = {
@@ -1611,9 +1454,8 @@ function handleTransformationTypeChange(requestType) {
     };
 
     // Show transformation section content
-    const transformationSection = document.getElementById('transformationSection');
-    if (transformationSection) {
-        transformationSection.classList.add('display-image');
+    if (transformationRow) {
+        transformationRow.classList.add('display-image');
     }
     document.getElementById('manualStrengthGroup').style.display = '';
     document.getElementById('manualNoiseGroup').style.display = '';
@@ -1628,20 +1470,6 @@ function handleTransformationTypeChange(requestType) {
     if (presetNameGroup) presetNameGroup.style.display = 'none';
     if (saveButton) saveButton.style.display = 'none';
 
-    // For pipeline specific
-    if (requestType === 'reroll' && (image.pipeline || image.pipeline_upscaled)) {
-        // Pipeline reroll logic, no uploadedImageData for image, but use pipeline endpoint in generation
-        window.currentRequestType = 'pipeline_reroll';
-        // Set other fields for pipeline
-        if (presetNameGroup) {
-            presetNameGroup.style.display = 'block';
-            manualPresetName.disabled = true;
-            manualPresetName.style.opacity = '0.6';
-        }
-        if (saveButton) saveButton.style.display = 'none';
-    }
-
-    updateRequestTypeButtonVisibility();
     updateUploadDeleteButtonVisibility();
 }
 
@@ -1752,7 +1580,7 @@ async function loadScraps() {
 // Move image to scraps
 async function moveToScraps(image) {
     try {
-        const filename = image.filename || image.original || image.upscaled || image.pipeline || image.pipeline_upscaled;
+        const filename = image.filename || image.original || image.upscaled;
         if (!filename) {
             showError('No filename available for this image');
             return;
@@ -1796,7 +1624,7 @@ async function moveManualPreviewToScraps() {
     }
 
     try {
-        const filename = currentManualPreviewImage.filename || currentManualPreviewImage.original || currentManualPreviewImage.upscaled || currentManualPreviewImage.pipeline || currentManualPreviewImage.pipeline_upscaled;
+        const filename = currentManualPreviewImage.filename || currentManualPreviewImage.original || currentManualPreviewImage.upscaled;
         if (!filename) {
             showError('No filename available for this image');
             return;
@@ -1814,9 +1642,7 @@ async function moveManualPreviewToScraps() {
             // Find the current image index in the manual preview image list
             const currentIndex = allImages.findIndex(img =>
                 img.original === currentManualPreviewImage.original ||
-                img.upscaled === currentManualPreviewImage.upscaled ||
-                img.pipeline === currentManualPreviewImage.pipeline ||
-                img.pipeline_upscaled === currentManualPreviewImage.pipeline_upscaled
+                img.upscaled === currentManualPreviewImage.upscaled
             );
 
             // Remove the current image from the manual preview list
@@ -1873,7 +1699,7 @@ async function moveManualPreviewToScraps() {
 // Remove image from scraps
 async function removeFromScraps(image) {
     try {
-        const filename = image.filename || image.original || image.upscaled || image.pipeline || image.pipeline_upscaled;
+        const filename = image.filename || image.original || image.upscaled;
         if (!filename) {
             showError('No filename available for this image');
             return;
@@ -1906,6 +1732,7 @@ async function removeFromScraps(image) {
         showError('Failed to remove image from scraps');
     }
 }
+
 function setSeedInputGroupState(open) {
     const manualSeed = document.getElementById('manualSeed');
     const sproutSeedBtn = document.getElementById('sproutSeedBtn');
@@ -1924,6 +1751,39 @@ function setSeedInputGroupState(open) {
     }
 }
 
+// Load options from server
+async function loadOptions() {
+    try {
+        const response = await fetchWithAuth('/app', { method: 'OPTIONS' });
+        if (!response.ok) throw new Error('Failed to load options');
+
+        const options = await response.json();
+        if (!options.ok) throw new Error("Failed to load application configuration: " + options.error);
+
+        window.optionsData = options;
+
+        updateBalanceDisplay(window.optionsData?.balance);
+    } catch (error) {
+        console.error('Error loading options:', error);
+        throw error;
+    }
+}
+
+// Load balance from server
+async function loadBalance() {
+    try {
+        const response = await fetchWithAuth('/balance');
+        if (!response.ok) throw new Error('Failed to load balance');
+
+        const balance = await response.json();
+        updateBalanceDisplay(balance);
+    } catch (error) {
+        console.error('Error loading balance:', error);
+        // Don't throw error for balance loading failure
+        updateBalanceDisplay({ totalCredits: 0, fixedTrainingStepsLeft: 0, purchasedTrainingSteps: 0 });
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
 
     try {
@@ -1933,19 +1793,27 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         await loadOptions(); // TODO: Check functionality
         await loadWorkspaces(); // Load workspace data
-        await loadActiveWorkspaceColor(); // Load workspace color for bokeh
+        loadActiveWorkspaceColor(); // Load workspace color for bokeh
         await loadBalance();
-        await updateImageGenCounter();
-        await loadAvailablePresets();
         await loadVibeReferences(); // Load vibe references for immediate use
+
+        generateSamplerOptions();
         renderManualSamplerDropdown(manualSelectedSampler);
         selectManualSampler('k_euler_ancestral');
+
+        generateResolutionOptions();
         renderManualResolutionDropdown(manualSelectedResolution);
         selectManualResolution('normal_square', 'Normal');
+
+        generateNoiseSchedulerOptions();
         renderManualNoiseSchedulerDropdown(manualSelectedNoiseScheduler);
         selectManualNoiseScheduler('karras');
+
+        generateModelOptions();
         renderManualModelDropdown(manualSelectedModel);
         selectManualModel('v4_5', '');
+
+        await renderCustomPresetDropdown(selectedPreset);
 
         // Initialize new dropdowns
         renderDatasetDropdown();
@@ -1955,43 +1823,33 @@ document.addEventListener('DOMContentLoaded', async function() {
         selectUcPreset(0);
 
         await loadGallery();
+        await updateGalleryColumnsFromLayout();
         updateGenerateButton();
 
         // Initialize image bias adjustment functionality
         initializeImageBiasAdjustment();
-    } catch (error) {
-        console.error('Failed to initialize app:', error);
-        showError('Failed to load application data');
-    }
 
-    // Initialize background gradient
-    setupEventListeners();
-
-    // Initialize cache manager
-    initializeCacheManager();
-
-    // Initialize emphasis highlighting for manual fields
-    if (manualPrompt) {
+        // Initialize background gradient
+        setupEventListeners();
+    
+        // Initialize cache manager
+        initializeCacheManager();
+    
+        // Initialize emphasis highlighting for manual fields
         initializeEmphasisOverlay(manualPrompt);
-    }
-    if (manualUc) {
         initializeEmphasisOverlay(manualUc);
-    }
-
-
-    const manualSeed = document.getElementById('manualSeed');
-    const sproutSeedBtn = document.getElementById('sproutSeedBtn');
-    const clearSeedBtn = document.getElementById('clearSeedBtn');
-    const editSeedBtn = document.getElementById('editSeedBtn');
-    // Start closed
-    setSeedInputGroupState(false);
-    if (editSeedBtn) {
+    
+    
+        const manualSeed = document.getElementById('manualSeed');
+        const clearSeedBtn = document.getElementById('clearSeedBtn');
+        const editSeedBtn = document.getElementById('editSeedBtn');
+        // Start closed
+        setSeedInputGroupState(false);
+    
         editSeedBtn.addEventListener('click', function() {
             setSeedInputGroupState(true);
             manualSeed?.focus();
         });
-    }
-    if (clearSeedBtn) {
         clearSeedBtn.addEventListener('click', function() {
             if (manualSeed && manualSeed.value) {
                 manualSeed.value = '';
@@ -2000,11 +1858,11 @@ document.addEventListener('DOMContentLoaded', async function() {
                 setSeedInputGroupState(false);
             }
         });
+    } catch (error) {
+        console.error('Failed to initialize app:', error);
+        showError('Failed to load application data');
     }
 });
-
-// Global options data
-let optionsData = null;
 
 // Dataset Dropdown Functions
 function renderDatasetDropdown() {
@@ -2138,8 +1996,8 @@ function renderDatasetBiasControls() {
         inputGroup.appendChild(input);
 
         // Add sub-toggles for datasets that have them
-        if (window.datasetOptions && window.datasetOptions[dataset] && window.datasetOptions[dataset].sub_toggles) {
-            window.datasetOptions[dataset].sub_toggles.forEach(subToggle => {
+        if (window.optionsData?.datasets[dataset]?.sub_toggles) {
+            window.optionsData?.datasets[dataset]?.sub_toggles.forEach(subToggle => {
                 const toggleBtn = document.createElement('button');
                 toggleBtn.type = 'button';
                 toggleBtn.className = 'btn-secondary toggle-btn';
@@ -2277,14 +2135,12 @@ function toggleQuality() {
 function renderUcPresetsDropdown() {
     ucPresetsDropdownMenu.innerHTML = '';
 
-    const presets = [
+    [
         { value: 0, display: 'None' },
         { value: 1, display: 'Human Focus' },
         { value: 2, display: 'Light' },
         { value: 3, display: 'Heavy' }
-    ];
-
-    presets.forEach(preset => {
+    ].forEach(preset => {
         const option = document.createElement('div');
         option.className = 'custom-dropdown-option';
         option.dataset.value = preset.value;
@@ -2410,7 +2266,7 @@ function setupEventListeners() {
     manualPreviewVariationBtn.addEventListener('click', () => {
         if (currentManualPreviewImage) {
             // For preview, only set the base image without replacing dialog contents
-            const filename = currentManualPreviewImage.original || currentManualPreviewImage.pipeline || currentManualPreviewImage.pipeline_upscaled;
+            const filename = currentManualPreviewImage.original;
             if (filename) {
                 const source = `file:${filename}`;
                 const previewUrl = `/images/${filename}`;
@@ -2435,9 +2291,8 @@ function setupEventListeners() {
                 updateTransformationDropdownState('variation', 'Variation');
 
                 // Show transformation section content
-                const transformationSection = document.getElementById('transformationSection');
-                if (transformationSection) {
-                    transformationSection.classList.add('display-image');
+                if (transformationRow) {
+                    transformationRow.classList.add('display-image');
                 }
                 document.getElementById('manualStrengthGroup').style.display = '';
                 document.getElementById('manualNoiseGroup').style.display = '';
@@ -2940,24 +2795,39 @@ function setupEventListeners() {
         });
     }
 
-    // Infinite scroll
-    // Call handleInfiniteScroll both during scroll (throttled) and after scroll stops (debounced)
-    let lastScrollFrame = 0;
+    // Improved infinite scroll with percentage-based triggers
+    let lastScrollTime = 0;
     let scrollTimeout;
+    
     function throttledInfiniteScroll() {
-        const now = performance.now();
-        // 30 frames at 60fps ≈ 500ms
-        if (now - lastScrollFrame > (1000 / 60) * 30) {
+        const now = Date.now();
+        if (now - lastScrollTime > infiniteScrollConfig.throttleDelay) {
             handleInfiniteScroll();
-            lastScrollFrame = now;
+            lastScrollTime = now;
         }
     }
+    
     window.addEventListener('scroll', () => {
         throttledInfiniteScroll();
         if (scrollTimeout) clearTimeout(scrollTimeout);
         scrollTimeout = setTimeout(() => {
             handleInfiniteScroll();
-        }, 200); // 200ms after scroll stops
+        }, infiniteScrollConfig.debounceDelay);
+    });
+    
+    // Handle window resize to update infinite scroll configuration
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        if (resizeTimeout) clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+            // Update batch size and trigger distances for new viewport
+            imagesPerPage = calculateDynamicBatchSize();
+            
+            // Recalculate gallery layout if needed
+            if (gallery && gallery.children.length > 0) {
+                updateGalleryColumnsFromLayout();
+            }
+        }, 250); // Debounce resize events
     });
 }
 
@@ -3052,111 +2922,6 @@ function switchCharacterTab(characterId, targetTab) {
     if (targetPane) targetPane.classList.add('active');
 }
 
-let presets, pipelines, resolutions, models, modelsNames, modelsShort, textReplacements, samplers, noiseSchedulers;
-// Load options from server
-async function loadOptions() {
-    try {
-        const response = await fetchWithAuth('/', { method: 'OPTIONS' });
-        if (!response.ok) throw new Error('Failed to load options');
-
-        const options = await response.json();
-
-        // Populate presets
-        presets = options.presets;
-        window.presets = presets;
-        pipelines = options.pipelines || [];
-
-        // Populate resolutions using global RESOLUTIONS array
-        resolutions = RESOLUTIONS.map(r => r.value);
-        manualResolution.innerHTML = '<option value="">Unchanged</option>';
-        RESOLUTIONS.forEach(resolution => {
-            const manualOption = document.createElement('option');
-            manualOption.value = resolution.value;
-            manualOption.textContent = resolution.display;
-            manualResolution.appendChild(manualOption);
-        });
-
-        // Populate models for manual form
-        models = Object.keys(options.models);
-        modelsNames = options.models;
-        modelsShort = options.modelsShort;
-        manualModel.innerHTML = '<option value="">Select model...</option>';
-        models.forEach(model => {
-            const option = document.createElement('option');
-            option.value = model.toLowerCase(); // Use lowercase to match config
-            option.textContent = options.models[model]; // Use pretty display name
-            manualModel.appendChild(option);
-        });
-
-
-
-        // Store text replacements for autocomplete
-        textReplacements = options.textReplacements || {};
-
-        // Load additional options (datasets, quality presets, UC presets)
-        try {
-            const optionsResponse = await fetchWithAuth('/', {
-                method: 'OPTIONS'
-            });
-            if (optionsResponse.ok) {
-                optionsData = await optionsResponse.json();
-                // Store dataset options globally for sub-toggle rendering
-                // Convert array to object keyed by dataset value
-                const datasetsArray = optionsData.datasets || [];
-                window.datasetOptions = {};
-                datasetsArray.forEach(dataset => {
-                    window.datasetOptions[dataset.value] = dataset;
-                });
-                console.log('✅ Loaded enhanced options data');
-            }
-        } catch (error) {
-            console.log('⚠️ Failed to load enhanced options, using defaults:', error.message);
-            window.datasetOptions = {};
-        }
-
-        // Populate sampler dropdown with display names, value=meta name
-        manualSampler.innerHTML = '<option value="">Default</option>';
-        SAMPLER_MAP.forEach(s => {
-          const option = document.createElement('option');
-          option.value = s.meta;
-          option.textContent = s.display;
-          manualSampler.appendChild(option);
-        });
-
-        // Populate noise scheduler dropdown with display names, value=meta name
-        manualNoiseScheduler.innerHTML = '<option value="">Default</option>';
-        NOISE_MAP.forEach(n => {
-          const option = document.createElement('option');
-          option.value = n.meta;
-          option.textContent = n.display;
-          manualNoiseScheduler.appendChild(option);
-        });
-
-        // Initialize custom preset dropdown
-        await renderCustomPresetDropdown(selectedPreset);
-
-    } catch (error) {
-        console.error('Error loading options:', error);
-        throw error;
-    }
-}
-
-// Load balance from server
-async function loadBalance() {
-    try {
-        const response = await fetchWithAuth('/balance');
-        if (!response.ok) throw new Error('Failed to load balance');
-
-        const balance = await response.json();
-        subscriptionData = balance.subscription;
-        updateBalanceDisplay(balance);
-    } catch (error) {
-        console.error('Error loading balance:', error);
-        // Don't throw error for balance loading failure
-        updateBalanceDisplay({ totalCredits: 0, fixedTrainingStepsLeft: 0, purchasedTrainingSteps: 0 });
-    }
-}
-
 // Update balance display
 function updateBalanceDisplay(balance) {
     const balanceDisplay = document.getElementById('balanceDisplay');
@@ -3197,7 +2962,7 @@ function updateBalanceDisplay(balance) {
 }
 
 // Load gallery images with optimized rendering to prevent flickering
-async function loadGallery(noReset) {
+async function loadGallery(addLatest) {
     try {
         const response = await fetchWithAuth('/images');
         if (response.ok) {
@@ -3211,9 +2976,11 @@ async function loadGallery(noReset) {
             allImages = newImages;
 
             // Reset infinite scroll state and display initial batch
-            if (!noReset) {
+            if (!addLatest) {
                 resetInfiniteScroll();
                 displayCurrentPageOptimized();
+            } else {
+                await addNewGalleryItemAfterGeneration(newImages[0]);
             }
         } else {
             console.error('Failed to load gallery:', response.statusText);
@@ -3226,7 +2993,38 @@ async function loadGallery(noReset) {
     }
 }
 
+// Add a new gallery item after generation with fade-in and slide-in animations
+async function addNewGalleryItemAfterGeneration(newImage) {
+    // Add placeholder with fade-in
+    const placeholder = document.createElement('div');
+    placeholder.className = 'gallery-placeholder fade-in';
+    placeholder.style.height = '256px';
+    placeholder.style.width = '100%';
+    placeholder.dataset.filename = newImage.filename || newImage.original || newImage.upscaled;
+    placeholder.dataset.time = newImage.mtime;
+    placeholder.dataset.index = 0;
+    gallery.insertBefore(placeholder, gallery.children[0]);
+    // Wait for fade-in animation to finish
+    await new Promise(resolve => {
+        placeholder.addEventListener('animationend', function handler() {
+            placeholder.classList.remove('fade-in');
+            placeholder.removeEventListener('animationend', handler);
+            resolve();
+        });
+    });
+    // Replace placeholder with real item, slide in
+    const newItem = createGalleryItem(newImage, 0);
+    newItem.classList.add('slide-in');
+    gallery.replaceChild(newItem, placeholder);
+    newItem.addEventListener('animationend', function handler() {
+        newItem.classList.remove('slide-in');
+        newItem.removeEventListener('animationend', handler);
+    });
+    reindexGallery();
+}
+
 let galleryColumns = parseInt(galleryColumnsInput?.value) || 5;
+let realGalleryColumns = galleryColumns;
 let galleryRows = 5;
 let debounceGalleryTimeout = null;
 
@@ -3240,7 +3038,7 @@ function calculateGalleryRows() {
 
     // Estimate gallery item height (including gap and margins)
     // Gallery items are square (aspect-ratio: 1) with gap and padding
-    const itemSize = galleryRect.width / galleryColumns; // Width of each item
+    const itemSize = galleryRect.width / realGalleryColumns; // Width of each item
     const gap = 24; // var(--spacing-xl) from CSS
     const itemHeight = itemSize + gap; // Item height plus gap
 
@@ -3266,28 +3064,12 @@ function setGalleryColumns(cols) {
 
     // Recalculate rows based on new column count
     galleryRows = calculateGalleryRows();
-
-    // Find the filename of the first visible gallery item
-    let firstFilename = null;
-    const firstItem = gallery.querySelector('.gallery-item .gallery-item-checkbox');
-    if (firstItem) {
-        firstFilename = firstItem.dataset.filename;
-    }
-    imagesPerPage = galleryColumns * galleryRows;
-    // Find the index of that filename in allImages
-    let newPage = 1;
-    if (firstFilename) {
-        const idx = allImages.findIndex(img => (img.original || img.pipeline || img.pipeline_upscaled) === firstFilename);
-        if (idx !== -1) {
-            newPage = Math.floor(idx / imagesPerPage) + 1;
-        }
-    }
-    currentPage = newPage;
+    
     if (debounceGalleryTimeout) clearTimeout(debounceGalleryTimeout);
     debounceGalleryTimeout = setTimeout(() => {
-        imagesPerPage = galleryColumns * galleryRows; // Ensure up-to-date
-        resetInfiniteScroll();
+        updateGalleryColumnsFromLayout();
         displayCurrentPageOptimized();
+        resetInfiniteScroll();
     }, 500);
     updateGalleryPlaceholders();
 }
@@ -3337,7 +3119,7 @@ function updateGalleryItemToolbars() {
     updateNext();
 }
 
-// Optimized display function for infinite scroll
+// Optimized display function for infinite scroll using document fragment
 function displayCurrentPageOptimized() {
     if (!gallery) return;
 
@@ -3349,30 +3131,44 @@ function displayCurrentPageOptimized() {
         return;
     }
 
-    // Start with a window in the middle/top
     displayedStartIndex = 0;
-    displayedEndIndex = Math.min(imagesPerPage * 3, allImages.length);
-    let i = displayedStartIndex;
-    function addPlaceholder() {
-        if (i >= displayedEndIndex) {
-            hasMoreImages = displayedEndIndex < allImages.length;
-            hasMoreImagesBefore = displayedStartIndex > 0;
-            updateVirtualScroll();
-            updateGalleryItemToolbars();
-            updateGalleryPlaceholders();
-            return;
-        }
+    const galleryRect = gallery.getBoundingClientRect();
+    const itemHeight = 256;
+    const itemsPerCol = Math.floor(window.innerHeight / itemHeight);
+    const buffer = Math.ceil(itemsPerCol * 0.15);
+    const totalItems = Math.min((itemsPerCol + buffer) * realGalleryColumns, allImages.length);
+    displayedEndIndex = totalItems;
+
+    const fragment = document.createDocumentFragment();
+    for (let i = displayedStartIndex; i < displayedEndIndex; i++) {
         const placeholder = document.createElement('div');
-        placeholder.className = 'gallery-placeholder';
+        placeholder.className = 'gallery-placeholder initial-placeholder';
         placeholder.style.height = '256px';
         placeholder.style.width = '100%';
-        placeholder.dataset.imageIndex = i;
-        placeholder.dataset.filename = allImages[i]?.filename || allImages[i]?.original || allImages[i]?.upscaled || allImages[i]?.pipeline || allImages[i]?.pipeline_upscaled || ''
-        gallery.appendChild(placeholder);
-        i++;
-        requestAnimationFrame(addPlaceholder);
+        placeholder.dataset.index = i;
+        placeholder.dataset.filename = allImages[i]?.filename || allImages[i]?.original || allImages[i]?.upscaled || '';
+        placeholder.dataset.time = allImages[i]?.mtime || 0;
+        fragment.appendChild(placeholder);
     }
-    addPlaceholder();
+    gallery.appendChild(fragment);
+
+    // Fade in placeholders one by one
+    const placeholders = gallery.querySelectorAll('.gallery-placeholder.initial-placeholder');
+    placeholders.forEach((el, idx) => {
+        setTimeout(() => {
+            el.classList.add('fade-in');
+            el.addEventListener('animationend', function handler() {
+                el.classList.remove('fade-in');
+                el.removeEventListener('animationend', handler);
+            });
+        }, idx * 60);
+    });
+
+    hasMoreImages = displayedEndIndex < allImages.length;
+    hasMoreImagesBefore = displayedStartIndex > 0;
+    updateVirtualScroll();
+    updateGalleryItemToolbars();
+    updateGalleryPlaceholders();
 }
 
 function resetInfiniteScroll() {
@@ -3382,6 +3178,10 @@ function resetInfiniteScroll() {
     isLoadingMore = false;
     hasMoreImages = true;
     hasMoreImagesBefore = false;
+    
+    // Update batch size based on current viewport
+    imagesPerPage = calculateDynamicBatchSize();
+    
     if (infiniteScrollLoading) {
         infiniteScrollLoading.style.display = 'none';
     }
@@ -3390,9 +3190,10 @@ function resetInfiniteScroll() {
 // Create gallery item element
 function createGalleryItem(image, index) {
     const item = document.createElement('div');
-    item.className = 'gallery-item';
-    const filename = image.filename || image.original || image.upscaled || image.pipeline || image.pipeline_upscaled;
+    item.className = 'gallery-item fade-in';
+    const filename = image.filename || image.original || image.upscaled;
     item.dataset.filename = filename;
+    item.dataset.time = image.mtime || 0;
     item.dataset.index = index;
     // Restore selection state from data-selected if present
     if (item.dataset.selected === 'true' || selectedImages.has(filename)) {
@@ -3458,36 +3259,11 @@ function createGalleryItem(image, index) {
     let seed = '';
     let layer1Seed = '';
 
-    if (image.pipeline || image.pipeline_upscaled) {
-        // Pipeline filename format: timestamp_preset_layer1Seed_layer2Seed (base already has _pipeline removed)
-        const parts = image.base.split('_');
-        if (parts.length >= 4) {
-            // Format: [timestamp, preset, layer1Seed, layer2Seed]
-            const timestamp = parts[0];
-            const presetParts = parts.slice(1, -2); // Everything between timestamp and the two seeds
-            const layer1SeedPart = parts[parts.length - 2];
-            const layer2SeedPart = parts[parts.length - 1];
-
-            presetName = presetParts.join('_') || 'generated';
-            seed = layer2SeedPart || '';
-            layer1Seed = layer1SeedPart || '';
-        } else if (parts.length === 3) {
-            // Format: [timestamp, preset, layer1Seed] (only one seed)
-            const timestamp = parts[0];
-            const presetName = parts[1] || 'generated';
-            const layer1SeedPart = parts[2] || '';
-            seed = ''; // No layer2 seed
-            layer1Seed = layer1SeedPart;
-        } else {
-            presetName = parts.slice(1).join('_') || 'generated';
-        }
-    } else {
-        // Regular filename format: timestamp_preset_seed.png
-        const parts = image.base.split('_');
-        if (parts.length >= 3) {
-            presetName = parts.slice(1, -1).join('_') || 'generated';
-            seed = parts[parts.length - 1] || '';
-        }
+    // Regular filename format: timestamp_preset_seed.png
+    const parts = image.base.split('_');
+    if (parts.length >= 3) {
+        presetName = parts.slice(1, -1).join('_') || 'generated';
+        seed = parts[parts.length - 1] || '';
     }
 
     const dateTime = new Date(image.mtime).toLocaleString();
@@ -3499,17 +3275,7 @@ function createGalleryItem(image, index) {
 
     const seedRow = document.createElement('div');
     seedRow.className = 'gallery-info-row';
-    if (image.pipeline || image.pipeline_upscaled) {
-        if (layer1Seed && seed) {
-            seedRow.textContent = `Seeds: ${layer1Seed} → ${seed}`;
-        } else if (layer1Seed) {
-            seedRow.textContent = `Seed: ${layer1Seed}`;
-        } else {
-            seedRow.textContent = `Seed: ${seed}`;
-        }
-    } else {
-        seedRow.textContent = `Seed: ${seed}`;
-    }
+    seedRow.textContent = `Seed: ${seed}`;
 
     const dateRow = document.createElement('div');
     dateRow.className = 'gallery-info-row';
@@ -3566,7 +3332,7 @@ function createGalleryItem(image, index) {
     };
 
     // Only show upscale button for non-upscaled images
-    if (!image.upscaled && !image.pipeline_upscaled) {
+    if (!image.upscaled) {
         upscaleBtn.style.display = 'inline-block';
     } else {
         upscaleBtn.style.display = 'none';
@@ -3622,20 +3388,14 @@ function createGalleryItem(image, index) {
         }
 
         let filenameToShow = image.original;
-        if (image.pipeline_upscaled) {
-            filenameToShow = image.pipeline_upscaled;
-        } else if (image.pipeline) {
-            filenameToShow = image.pipeline;
-        } else if (image.upscaled) {
+        if (image.upscaled) {
             filenameToShow = image.upscaled;
         }
 
         const imageToShow = {
             filename: filenameToShow,
             base: image.base,
-            upscaled: image.upscaled,
-            pipeline: image.pipeline,
-            pipeline_upscaled: image.pipeline_upscaled
+            upscaled: image.upscaled
         };
         showLightbox(imageToShow);
     });
@@ -3643,6 +3403,16 @@ function createGalleryItem(image, index) {
     return item;
 }
 
+// Reindex gallery items and placeholders
+function reindexGallery() {
+    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+    if (items.length === 0) return;
+    if (parseInt(items[items.length - 1]?.dataset?.index || '0') !== (items.length - 1)) {
+        items.forEach((el, i) => {
+            el.dataset.index = i.toString();
+        });
+    }
+}
 
 async function rerollImage(image) {
     try {
@@ -3652,11 +3422,7 @@ async function rerollImage(image) {
 
         if (!filenameForMetadata) {
             // If no filename property, determine from gallery image object
-            if (image.pipeline_upscaled) {
-                filenameForMetadata = image.pipeline_upscaled;
-            } else if (image.pipeline) {
-                filenameForMetadata = image.pipeline;
-            } else if (image.upscaled) {
+            if (image.upscaled) {
                 filenameForMetadata = image.upscaled;
             } else if (image.original) {
                 filenameForMetadata = image.original;
@@ -3683,387 +3449,230 @@ async function rerollImage(image) {
             throw new Error('No metadata found for this image');
         }
 
-            // Show loading
-    showManualLoading(true, 'Rerolling image...');
+        // Show loading
+        showManualLoading(true, 'Rerolling image...');
 
-        // Check if this is a pipeline image
-        const isPipeline = image.pipeline || image.pipeline_upscaled;
+        // Check if this is a variation and we have the original base image
+        const isVariation = metadata.base_image === true;
+        const hasOriginalFilename = metadata.original_filename;
 
-        if (isPipeline) {
-            // Handle pipeline reroll
+        let generateResponse;
 
-            // Extract pipeline name from filename (metadata doesn't contain preset name for pipelines)
-            const parts = image.base.split('_');
-            let pipelineName = 'generated';
-
-            if (parts.length >= 4) {
-                // Pipeline format: [timestamp, preset, layer1Seed, layer2Seed]
-                const presetParts = parts.slice(1, -2); // Everything between timestamp and the two seeds
-                pipelineName = presetParts.join('_') || 'generated';
-            } else if (parts.length === 3) {
-                // Format: [timestamp, preset, layer1Seed] (only one seed)
-                pipelineName = parts[1] || 'generated';
-            }
-
-            // Use pipeline endpoint with original layer1 seed from metadata
-            // Build layer2 configuration from metadata
-            const layer2Config = {
+        if (isVariation && hasOriginalFilename) {
+            // Handle variation reroll - use the original base image
+            // Build request body from metadata
+            const requestBody = {
+                image: `file:${hasOriginalFilename}`, // Use the original filename with file: prefix
+                strength: metadata.strength || 0.8, // Use strength from metadata or default
+                noise: metadata.noise || 0.1, // Use noise from metadata or default
                 prompt: metadata.prompt || '',
-                model: metadata.model || 'v4_5',
-                resolution: metadata.resolution || 'NORMAL_PORTRAIT',
+                resolution: metadata.resolution || '',
                 steps: metadata.steps || 25,
                 guidance: metadata.scale || 5.0,
                 rescale: metadata.cfg_rescale || 0.0,
-                allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : true
+                allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : false,
+                workspace: activeWorkspace
             };
 
-            if (metadata.skip_cfg_above_sigma) {
-                layer2Config.variety = true;
-            }
-
-            // Add upscale if it was used in original generation
-            if (metadata.upscaled) {
-                layer2Config.upscale = true;
-            }
-
-            // Add character prompts if available
-            if (metadata.characterPrompts && Array.isArray(metadata.characterPrompts) && metadata.characterPrompts.length > 0) {
-                layer2Config.allCharacterPrompts = metadata.characterPrompts;
-                layer2Config.use_coords = !!metadata.use_coords;
+            // Add mask data if it exists
+            if (window.currentMaskCompressed) {
+                requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
+            } else if (window.currentMaskData) {
+                const compressedMask = saveMaskCompressed();
+                if (compressedMask) {
+                    requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
+                }
             }
 
             // Add optional fields if they have values
             if (metadata.uc) {
-                layer2Config.uc = metadata.uc;
+                requestBody.uc = metadata.uc;
             }
 
             if (metadata.sampler) {
                 const samplerObj = getSamplerMeta(metadata.sampler);
-                layer2Config.sampler = samplerObj ? samplerObj.request : metadata.sampler;
+                requestBody.sampler = samplerObj ? samplerObj.request : metadata.sampler;
             }
 
             if (metadata.noise_schedule) {
                 const noiseObj = getNoiseMeta(metadata.noise_schedule);
-                layer2Config.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
+                requestBody.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
             }
 
-            // Build pipeline request body using captured pipeline context
-            const pipelineRequestBody = {
-                preset: pipelineName,
-                layer2: layer2Config,
-                resolution: metadata.resolution || undefined,
-                workspace: activeWorkspace
-            };
+            if (metadata.skip_cfg_above_sigma) {
+                requestBody.variety = true;
+            }
 
-            addSharedFieldsToRequestBody(pipelineRequestBody, metadata);
+            // Add upscale if it was used in original generation
+            if (metadata.upscaled) {
+                requestBody.upscale = true;
+            }
 
-            delete pipelineRequestBody.seed;
+            // Add preset if available
+            if (metadata.preset_name) {
+                requestBody.preset = metadata.preset_name;
+            }
 
-            const pipelineUrl = `/pipeline/generate`;
-            const generateResponse = await fetch(pipelineUrl, {
+            // Add image_bias if available (for variations)
+            if (metadata.image_bias !== undefined) {
+                requestBody.image_bias = metadata.image_bias;
+            }
+
+            // Add character prompts if available
+            if (metadata.characterPrompts && Array.isArray(metadata.characterPrompts) && metadata.characterPrompts.length > 0) {
+                requestBody.allCharacterPrompts = metadata.characterPrompts;
+                requestBody.use_coords = !!metadata.use_coords;
+            }
+
+
+            addSharedFieldsToRequestBody(requestBody, metadata);
+
+            delete requestBody.seed;
+
+            // Generate variation with same settings using original base image
+            const model = metadata.model ? metadata.model.toLowerCase() : 'v4_5';
+            const url = `/${model}/generate`;
+            generateResponse = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(pipelineRequestBody)
+                body: JSON.stringify(requestBody)
             });
-
-            if (!generateResponse.ok) {
-                throw new Error(`Pipeline generation failed: ${generateResponse.statusText}`);
-            }
-
-            const blob = await generateResponse.blob();
-            const imageUrl = URL.createObjectURL(blob);
-
-            // Extract seed from response header if available
-            const headerSeed = generateResponse.headers.get('X-Seed');
-            if (headerSeed) {
-                window.lastGeneratedSeed = parseInt(headerSeed);
-                manualPreviewSeedNumber.textContent = parseInt(headerSeed);
-            }
-
-            // Fetch metadata for the generated image if we have a filename
-            const generatedFilename = generateResponse.headers.get('X-Generated-Filename');
-            if (generatedFilename) {
-                try {
-                    const metadataResponse = await fetchWithAuth(`/images/${generatedFilename}`, {
-                        method: 'OPTIONS'
-                    });
-                    if (metadataResponse.ok) {
-                        const metadata = await metadataResponse.json();
-                        window.lastGeneration = metadata;
-                    }
-                } catch (error) {
-                    console.warn('Failed to fetch metadata for generated image:', error);
-                }
-            }
-
-            // Create a temporary image to get dimensions
-            const img = new Image();
-            img.onload = function() {
-                createConfetti();
-
-                // Refresh gallery and show the new image in lightbox
-                setTimeout(async () => {
-                    await loadGallery();
-
-                    // Find the newly generated image (should be the first one)
-                    if (allImages.length > 0) {
-                        const newImage = allImages[0]; // Newest image is first
-                        let filenameToShow = newImage.original;
-                        if (newImage.pipeline_upscaled) {
-                            filenameToShow = newImage.pipeline_upscaled;
-                        } else if (newImage.pipeline) {
-                            filenameToShow = newImage.pipeline;
-                        } else if (newImage.upscaled) {
-                            filenameToShow = newImage.upscaled;
-                        }
-
-                        const imageToShow = {
-                            filename: filenameToShow,
-                            base: newImage.base,
-                            upscaled: newImage.upscaled,
-                            pipeline: newImage.pipeline,
-                            pipeline_upscaled: newImage.pipeline_upscaled
-                        };
-                        showLightbox(imageToShow);
-                    }
-                }, 1000);
-            };
-            img.src = imageUrl;
-
         } else {
             // Handle regular image reroll (existing logic)
-
-            // Check if this is a variation and we have the original base image
-            const isVariation = metadata.base_image === true;
-            const hasOriginalFilename = metadata.original_filename;
-
-            let generateResponse;
-
-            if (isVariation && hasOriginalFilename) {
-                // Handle variation reroll - use the original base image
-                // Build request body from metadata
-                const requestBody = {
-                    image: `file:${hasOriginalFilename}`, // Use the original filename with file: prefix
-                    strength: metadata.strength || 0.8, // Use strength from metadata or default
-                    noise: metadata.noise || 0.1, // Use noise from metadata or default
-                    prompt: metadata.prompt || '',
-                    resolution: metadata.resolution || '',
-                    steps: metadata.steps || 25,
-                    guidance: metadata.scale || 5.0,
-                    rescale: metadata.cfg_rescale || 0.0,
-                    allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : false,
-                    workspace: activeWorkspace
-                };
-
-                // Add mask data if it exists
-                if (window.currentMaskCompressed) {
-                    requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
-                } else if (window.currentMaskData) {
-                    const compressedMask = saveMaskCompressed();
-                    if (compressedMask) {
-                        requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
-                    }
-                }
-
-                // Add optional fields if they have values
-                if (metadata.uc) {
-                    requestBody.uc = metadata.uc;
-                }
-
-                if (metadata.sampler) {
-                    const samplerObj = getSamplerMeta(metadata.sampler);
-                    requestBody.sampler = samplerObj ? samplerObj.request : metadata.sampler;
-                }
-
-                if (metadata.noise_schedule) {
-                    const noiseObj = getNoiseMeta(metadata.noise_schedule);
-                    requestBody.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
-                }
-
-                if (metadata.skip_cfg_above_sigma) {
-                    requestBody.variety = true;
-                }
-
-                // Add upscale if it was used in original generation
-                if (metadata.upscaled) {
-                    requestBody.upscale = true;
-                }
-
-                // Add preset if available
-                if (metadata.preset_name) {
-                    requestBody.preset = metadata.preset_name;
-                }
-
-                // Add image_bias if available (for variations)
-                if (metadata.image_bias !== undefined) {
-                    requestBody.image_bias = metadata.image_bias;
-                }
-
-                // Add character prompts if available
-                if (metadata.characterPrompts && Array.isArray(metadata.characterPrompts) && metadata.characterPrompts.length > 0) {
-                    requestBody.allCharacterPrompts = metadata.characterPrompts;
-                    requestBody.use_coords = !!metadata.use_coords;
-                }
-
-
-                addSharedFieldsToRequestBody(requestBody, metadata);
-
-                delete requestBody.seed;
-
-                // Generate variation with same settings using original base image
-                const model = metadata.model ? metadata.model.toLowerCase() : 'v4_5';
-                const url = `/${model}/generate`;
-                generateResponse = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(requestBody)
-                });
-            } else {
-                // Handle regular image reroll (existing logic)
-                // Build request body from metadata
-                const requestBody = {
-                    prompt: metadata.prompt || '',
-                    resolution: metadata.resolution || '',
-                    steps: metadata.steps || 25,
-                    guidance: metadata.scale || 5.0,
-                    rescale: metadata.cfg_rescale || 0.0,
-                    allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : false,
-                    workspace: activeWorkspace
-                };
-
-                // Add optional fields if they have values
-                if (metadata.uc) {
-                    requestBody.uc = metadata.uc;
-                }
-
-                if (metadata.sampler) {
-                    const samplerObj = getSamplerMeta(metadata.sampler);
-                    requestBody.sampler = samplerObj ? samplerObj.request : metadata.sampler;
-                }
-
-                if (metadata.noise_schedule) {
-                    const noiseObj = getNoiseMeta(metadata.noise_schedule);
-                    requestBody.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
-                }
-
-                if (metadata.skip_cfg_above_sigma) {
-                    requestBody.variety = true;
-                }
-
-                // Add upscale if it was used in original generation
-                if (metadata.upscaled) {
-                    requestBody.upscale = true;
-                }
-
-                // Add preset if available
-                if (metadata.preset_name) {
-                    requestBody.preset = metadata.preset_name;
-                }
-
-                // Add character prompts if available
-                if (metadata.characterPrompts && Array.isArray(metadata.characterPrompts) && metadata.characterPrompts.length > 0) {
-                    requestBody.allCharacterPrompts = metadata.characterPrompts;
-                    requestBody.use_coords = !!metadata.use_coords;
-                }
-
-                // Add mask data if it exists
-                if (window.currentMaskCompressed) {
-                    requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
-                } else if (window.currentMaskData) {
-                    // Add compressed mask for server processing
-                    let compressedMask = saveMaskCompressed();
-                    if (compressedMask) {
-                        requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
-                    }
-                }
-
-
-
-                addSharedFieldsToRequestBody(requestBody, metadata);
-
-                delete requestBody.seed;
-
-                // Generate image with same settings
-                const model = metadata.model ? metadata.model.toLowerCase() : 'v4_5';
-                const url = `/${model}/generate`;
-                generateResponse = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(requestBody)
-                });
-            }
-
-            if (!generateResponse.ok) {
-                throw new Error(`Generation failed: ${generateResponse.statusText}`);
-            }
-
-            const blob = await generateResponse.blob();
-            const imageUrl = URL.createObjectURL(blob);
-
-            // Extract seed from response header if available
-            const headerSeed = generateResponse.headers.get('X-Seed');
-            if (headerSeed) {
-                window.lastGeneratedSeed = parseInt(headerSeed);
-                manualPreviewSeedNumber.textContent = parseInt(headerSeed);
-            }
-
-            // Fetch metadata for the generated image if we have a filename
-            const generatedFilename = generateResponse.headers.get('X-Generated-Filename');
-            if (generatedFilename) {
-                try {
-                    const metadataResponse = await fetchWithAuth(`/images/${generatedFilename}`, {
-                        method: 'OPTIONS'
-                    });
-                    if (metadataResponse.ok) {
-                        const metadata = await metadataResponse.json();
-                        window.lastGeneration = metadata;
-                    }
-                } catch (error) {
-                    console.warn('Failed to fetch metadata for generated image:', error);
-                }
-            }
-
-            // Create a temporary image to get dimensions
-            const img = new Image();
-            img.onload = function() {
-                createConfetti();
-
-                // Refresh gallery and show the new image in lightbox
-                setTimeout(async () => {
-                    await loadGallery();
-
-                    // Find the newly generated image (should be the first one)
-                    if (allImages.length > 0) {
-                        const newImage = allImages[0]; // Newest image is first
-                        let filenameToShow = newImage.original;
-                        if (newImage.pipeline_upscaled) {
-                            filenameToShow = newImage.pipeline_upscaled;
-                        } else if (newImage.pipeline) {
-                            filenameToShow = newImage.pipeline;
-                        } else if (newImage.upscaled) {
-                            filenameToShow = newImage.upscaled;
-                        }
-
-                        const imageToShow = {
-                            filename: filenameToShow,
-                            base: newImage.base,
-                            upscaled: newImage.upscaled,
-                            pipeline: newImage.pipeline,
-                            pipeline_upscaled: newImage.pipeline_upscaled
-                        };
-                        showLightbox(imageToShow);
-                    }
-                }, 1000);
+            // Build request body from metadata
+            const requestBody = {
+                prompt: metadata.prompt || '',
+                resolution: metadata.resolution || '',
+                steps: metadata.steps || 25,
+                guidance: metadata.scale || 5.0,
+                rescale: metadata.cfg_rescale || 0.0,
+                allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : false,
+                workspace: activeWorkspace
             };
-            img.src = imageUrl;
+
+            // Add optional fields if they have values
+            if (metadata.uc) {
+                requestBody.uc = metadata.uc;
+            }
+
+            if (metadata.sampler) {
+                const samplerObj = getSamplerMeta(metadata.sampler);
+                requestBody.sampler = samplerObj ? samplerObj.request : metadata.sampler;
+            }
+
+            if (metadata.noise_schedule) {
+                const noiseObj = getNoiseMeta(metadata.noise_schedule);
+                requestBody.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
+            }
+
+            if (metadata.skip_cfg_above_sigma) {
+                requestBody.variety = true;
+            }
+
+            // Add upscale if it was used in original generation
+            if (metadata.upscaled) {
+                requestBody.upscale = true;
+            }
+
+            // Add preset if available
+            if (metadata.preset_name) {
+                requestBody.preset = metadata.preset_name;
+            }
+
+            // Add character prompts if available
+            if (metadata.characterPrompts && Array.isArray(metadata.characterPrompts) && metadata.characterPrompts.length > 0) {
+                requestBody.allCharacterPrompts = metadata.characterPrompts;
+                requestBody.use_coords = !!metadata.use_coords;
+            }
+
+            // Add mask data if it exists
+            if (window.currentMaskCompressed) {
+                requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
+            } else if (window.currentMaskData) {
+                // Add compressed mask for server processing
+                let compressedMask = saveMaskCompressed();
+                if (compressedMask) {
+                    requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
+                }
+            }
+
+
+
+            addSharedFieldsToRequestBody(requestBody, metadata);
+
+            delete requestBody.seed;
+
+            // Generate image with same settings
+            const model = metadata.model ? metadata.model.toLowerCase() : 'v4_5';
+            const url = `/${model}/generate`;
+            generateResponse = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
         }
 
+        if (!generateResponse.ok) {
+            throw new Error(`Generation failed: ${generateResponse.statusText}`);
+        }
+
+        const blob = await generateResponse.blob();
+        const imageUrl = URL.createObjectURL(blob);
+
+        // Extract seed from response header if available
+        const headerSeed = generateResponse.headers.get('X-Seed');
+        if (headerSeed) {
+            window.lastGeneratedSeed = parseInt(headerSeed);
+            manualPreviewSeedNumber.textContent = parseInt(headerSeed);
+        }
+
+        // Fetch metadata for the generated image if we have a filename
+        const generatedFilename = generateResponse.headers.get('X-Generated-Filename');
+        if (generatedFilename) {
+            try {
+                const metadataResponse = await fetchWithAuth(`/images/${generatedFilename}`, {
+                    method: 'OPTIONS'
+                });
+                if (metadataResponse.ok) {
+                    const metadata = await metadataResponse.json();
+                    window.lastGeneration = metadata;
+                }
+            } catch (error) {
+                console.warn('Failed to fetch metadata for generated image:', error);
+            }
+        }
+
+        // Create a temporary image to get dimensions
+        const img = new Image();
+        img.onload = function() {
+            createConfetti();
+
+            // Refresh gallery and show the new image in lightbox
+            setTimeout(async () => {
+                await loadGallery();
+
+                // Find the newly generated image (should be the first one)
+                if (allImages.length > 0) {
+                    const newImage = allImages[0]; // Newest image is first
+                    let filenameToShow = newImage.original;
+                    if (newImage.upscaled) {
+                        filenameToShow = newImage.upscaled;
+                    }
+
+                    const imageToShow = {
+                        filename: filenameToShow,
+                        base: newImage.base,
+                        upscaled: newImage.upscaled
+                    };
+                    showLightbox(imageToShow);
+                }
+            }, 1000);
+        };
+        img.src = imageUrl;
     } catch (error) {
         console.error('Direct reroll error:', error);
         showError('Image reroll failed: ' + error.message);
@@ -4076,7 +3685,7 @@ async function rerollImage(image) {
 async function rerollImageWithEdit(image) {
     try {
         // Determine filename for metadata
-        let filenameForMetadata = image.filename || image.pipeline_upscaled || image.pipeline || image.upscaled || image.original;
+        let filenameForMetadata = image.filename || image.upscaled || image.original;
         if (!filenameForMetadata) {
             throw new Error('No filename available for metadata lookup');
         }
@@ -4111,30 +3720,12 @@ async function rerollImageWithEdit(image) {
 
         // Determine types
         const isVariation = metadata.base_image === true;
-        const isPipeline = image.pipeline || image.pipeline_upscaled;
-
-        // Update button visibility
-        updateRequestTypeButtonVisibility();
 
         // Set initial state
         const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
         const saveButton = document.getElementById('manualSaveBtn');
 
-        if (isPipeline) {
-            window.currentRequestType = 'pipeline_reroll';
-            // Set transformation type to reroll
-            updateTransformationDropdownState('reroll', 'Referance');
-
-            if (presetNameGroup) {
-                presetNameGroup.style.display = 'block';
-                manualPresetName.disabled = true;
-                manualPresetName.style.opacity = '0.6';
-            }
-            if (saveButton) saveButton.style.display = 'none';
-
-            window.currentPipelineName = metadata.preset_name;
-
-        } else if (isVariation) {
+        if (isVariation) {
             window.currentRequestType = 'reroll';
             // Set transformation type to reroll
             updateTransformationDropdownState('reroll', 'Referance');
@@ -4178,6 +3769,10 @@ async function rerollImageWithEdit(image) {
 
         // Auto-resize textareas after modal is shown
         autoResizeTextareasAfterModalShow();
+        
+        if (!document.body.classList.contains('editor-open')) {
+            document.body.classList.add('editor-open');
+        }
 
     } catch (error) {
         console.error('Reroll with edit error:', error);
@@ -4218,28 +3813,20 @@ async function upscaleImage(image) {
         let upscaledFilename = image.original.replace('.png', '_upscaled.png');
         let upscaledImage = allImages.find(img =>
             img.original === upscaledFilename ||
-            img.upscaled === upscaledFilename ||
-            img.pipeline === upscaledFilename ||
-            img.pipeline_upscaled === upscaledFilename
+            img.upscaled === upscaledFilename
         );
 
         if (upscaledImage) {
             // Determine which filename to show based on what's available
             let filenameToShow = upscaledImage.original;
-            if (upscaledImage.pipeline_upscaled) {
-                filenameToShow = upscaledImage.pipeline_upscaled;
-            } else if (upscaledImage.pipeline) {
-                filenameToShow = upscaledImage.pipeline;
-            } else if (upscaledImage.upscaled) {
+            if (upscaledImage.upscaled) {
                 filenameToShow = upscaledImage.upscaled;
             }
 
             const imageToShow = {
                 filename: filenameToShow,
                 base: upscaledImage.base,
-                upscaled: upscaledImage.upscaled,
-                pipeline: upscaledImage.pipeline,
-                pipeline_upscaled: upscaledImage.pipeline_upscaled
+                upscaled: upscaledImage.upscaled
             };
             showLightbox(imageToShow);
         }
@@ -4252,56 +3839,206 @@ async function upscaleImage(image) {
     }
 }
 
-// Infinite scroll handler
+// Deferred placeholder addition for rapid scrolling
+let deferredPlaceholderTimeout = null;
+let pendingPlaceholderAdditions = {
+    above: false,
+    below: false
+};
+
+function scheduleDeferredPlaceholderAddition(direction) {
+    pendingPlaceholderAdditions[direction] = true;
+    
+    if (deferredPlaceholderTimeout) {
+        clearTimeout(deferredPlaceholderTimeout);
+    }
+    
+    deferredPlaceholderTimeout = setTimeout(() => {
+        if (pendingPlaceholderAdditions.above) {
+            addPlaceholdersAbove();
+            pendingPlaceholderAdditions.above = false;
+        }
+        if (pendingPlaceholderAdditions.below) {
+            addPlaceholdersBelow();
+            pendingPlaceholderAdditions.below = false;
+        }
+    }, 50); // 50ms delay to batch rapid scroll events
+}
+
+function addPlaceholdersAbove() {
+    if (!gallery || isLoadingMore) return;
+    
+    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+    const bufferRows = 8;
+    const itemsPerRow = realGalleryColumns;
+    const bufferSize = bufferRows * itemsPerRow;
+    
+    // Count placeholders above
+    let placeholdersAbove = 0;
+    let firstRealIndex = -1;
+    
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].classList.contains('gallery-placeholder')) {
+            placeholdersAbove++;
+        } else {
+            firstRealIndex = parseInt(items[i].dataset.index);
+            break;
+        }
+    }
+    
+    // Add placeholders in row batches until buffer is filled
+    while (placeholdersAbove < bufferSize && firstRealIndex > 0) {
+        const needed = Math.min(bufferSize - placeholdersAbove, itemsPerRow);
+        for (let i = 0; i < needed; i++) {
+            const idx = firstRealIndex - i - 1;
+            if (idx < 0) break;
+            
+            // Check if placeholder already exists
+            const existingPlaceholder = gallery.querySelector(`[data-index="${idx}"].gallery-placeholder`);
+            if (!existingPlaceholder) {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'gallery-placeholder';
+                placeholder.style.height = '256px';
+                placeholder.style.width = '100%';
+                placeholder.dataset.index = idx;
+                gallery.insertBefore(placeholder, gallery.firstChild);
+                placeholdersAbove++;
+            }
+        }
+        firstRealIndex = Math.max(0, firstRealIndex - needed);
+    }
+}
+
+function addPlaceholdersBelow() {
+    if (!gallery || isLoadingMore) return;
+    
+    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+    const bufferRows = 8;
+    const itemsPerRow = realGalleryColumns;
+    const bufferSize = bufferRows * itemsPerRow;
+    
+    // Count placeholders below
+    let placeholdersBelow = 0;
+    let lastRealIndex = -1;
+    
+    for (let i = items.length - 1; i >= 0; i--) {
+        if (items[i].classList.contains('gallery-placeholder')) {
+            placeholdersBelow++;
+        } else {
+            lastRealIndex = parseInt(items[i].dataset.index);
+            break;
+        }
+    }
+    
+    // Add placeholders in row batches until buffer is filled
+    while (placeholdersBelow < bufferSize && lastRealIndex < allImages.length - 1) {
+        const needed = Math.min(bufferSize - placeholdersBelow, itemsPerRow);
+        for (let i = 0; i < needed; i++) {
+            const idx = lastRealIndex + i + 1;
+            if (idx >= allImages.length) break;
+            
+            // Check if placeholder already exists
+            const existingPlaceholder = gallery.querySelector(`[data-index="${idx}"].gallery-placeholder`);
+            if (!existingPlaceholder) {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'gallery-placeholder';
+                placeholder.style.height = '256px';
+                placeholder.style.width = '100%';
+                placeholder.dataset.index = idx;
+                gallery.appendChild(placeholder);
+                placeholdersBelow++;
+            }
+        }
+        lastRealIndex = Math.min(allImages.length - 1, lastRealIndex + needed);
+    }
+}
+
+// Improved infinite scroll handler with percentage-based triggers
 function handleInfiniteScroll() {
     if (isLoadingMore) return;
 
     const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
     const windowHeight = window.innerHeight;
     const documentHeight = document.documentElement.scrollHeight;
+    
+    // Calculate responsive trigger distances
+    const isSmallScreen = window.innerWidth <= infiniteScrollConfig.smallScreenThreshold;
+    const multiplier = isSmallScreen ? infiniteScrollConfig.smallScreenMultiplier : 1;
+    
+    // Use percentage-based triggers that adapt to page height
+    const bottomTriggerDistance = Math.max(
+        windowHeight * infiniteScrollConfig.bottomTriggerPercent * multiplier,
+        windowHeight * 0.1 // Minimum 10% of viewport height
+    );
+    
+    const topTriggerDistance = Math.max(
+        windowHeight * infiniteScrollConfig.topTriggerPercent * multiplier,
+        windowHeight * 0.1 // Minimum 10% of viewport height
+    );
+    
+    const placeholderTriggerDistance = Math.max(
+        windowHeight * infiniteScrollConfig.placeholderTriggerPercent * multiplier,
+        windowHeight * 0.15 // Minimum 15% of viewport height
+    );
 
-    // Load more when user is near the bottom (within 200px)
-    if (scrollTop + windowHeight >= documentHeight - 200 && hasMoreImages) {
+    // Load more when user is near the bottom (percentage-based)
+    if (scrollTop + windowHeight >= documentHeight - bottomTriggerDistance && hasMoreImages) {
         loadMoreImages();
     }
-    // Load more when user is near the top (within 200px)
-    if (scrollTop <= 200 && hasMoreImagesBefore) {
+    
+    // Load more when user is near the top (percentage-based)
+    if (scrollTop <= topTriggerDistance && hasMoreImagesBefore) {
         loadMoreImagesBefore();
     }
+    
+    // Schedule deferred placeholder additions for rapid scrolling
+    if (scrollTop <= placeholderTriggerDistance) {
+        scheduleDeferredPlaceholderAddition('above');
+    }
+    if (scrollTop + windowHeight >= documentHeight - placeholderTriggerDistance) {
+        scheduleDeferredPlaceholderAddition('below');
+    }
+    
     // Virtual scrolling: remove items that are too far from viewport
     if (virtualScrollEnabled) {
         updateVirtualScroll();
     }
 }
 
-// Load more images for infinite scroll (scroll down)
+// Load more images for infinite scroll (scroll down) with dynamic batch sizing
 async function loadMoreImages() {
     if (isLoadingMore || !hasMoreImages) return;
     isLoadingMore = true;
     if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'flex';
+    
     try {
+        // Calculate dynamic batch size based on viewport
+        const dynamicBatchSize = calculateDynamicBatchSize();
+        
         // Calculate next batch of images
         const startIndex = displayedEndIndex;
-        const endIndex = Math.min(startIndex + imagesPerPage, allImages.length);
+        const endIndex = Math.min(startIndex + dynamicBatchSize, allImages.length);
         const nextBatch = allImages.slice(startIndex, endIndex);
+        
         if (nextBatch.length === 0) {
             hasMoreImages = false;
             return;
         }
-        // Add placeholders for new items
+        
+        // Add placeholders for new items with responsive height
         for (let i = startIndex; i < endIndex; i++) {
             const placeholder = document.createElement('div');
             placeholder.className = 'gallery-placeholder';
-            placeholder.style.height = '256px'; // or your item height
+            placeholder.style.height = calculatePlaceholderHeight() + 'px';
             placeholder.style.width = '100%';
-            placeholder.dataset.imageIndex = i;
+            placeholder.dataset.index = i;
             gallery.appendChild(placeholder);
         }
-        // Fill visible placeholders with real items
-        updateVirtualScroll();
+        
         // Update displayed range
         displayedEndIndex = endIndex;
         hasMoreImages = endIndex < allImages.length;
+        
     } catch (error) {
         console.error('Error loading more images:', error);
     } finally {
@@ -4310,34 +4047,40 @@ async function loadMoreImages() {
     }
 }
 
-// Load more images before for infinite scroll (scroll up)
+// Load more images before for infinite scroll (scroll up) with dynamic batch sizing
 async function loadMoreImagesBefore() {
     if (isLoadingMore || !hasMoreImagesBefore) return;
     isLoadingMore = true;
     if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'flex';
+    
     try {
+        // Calculate dynamic batch size based on viewport
+        const dynamicBatchSize = calculateDynamicBatchSize();
+        
         // Calculate previous batch of images
         const endIndex = displayedStartIndex;
-        const startIndex = Math.max(0, endIndex - imagesPerPage);
+        const startIndex = Math.max(0, endIndex - dynamicBatchSize);
         const prevBatch = allImages.slice(startIndex, endIndex);
+        
         if (prevBatch.length === 0) {
             hasMoreImagesBefore = false;
             return;
         }
-        // Add placeholders for new items at the top
+        
+        // Add placeholders for new items at the top with responsive height
         for (let i = endIndex - 1; i >= startIndex; i--) {
             const placeholder = document.createElement('div');
             placeholder.className = 'gallery-placeholder';
-            placeholder.style.height = '256px'; // or your item height
+            placeholder.style.height = calculatePlaceholderHeight() + 'px';
             placeholder.style.width = '100%';
-            placeholder.dataset.imageIndex = i;
+            placeholder.dataset.index = i;
             gallery.insertBefore(placeholder, gallery.firstChild);
         }
-        // Fill visible placeholders with real items
-        updateVirtualScroll();
+        
         // Update displayed range
         displayedStartIndex = startIndex;
         hasMoreImagesBefore = startIndex > 0;
+        
     } catch (error) {
         console.error('Error loading more images before:', error);
     } finally {
@@ -4345,6 +4088,83 @@ async function loadMoreImagesBefore() {
         if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'none';
     }
 }
+
+// Helper functions for improved infinite scroll
+function calculateDynamicBatchSize() {
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+    
+    // Base batch size on viewport size
+    let baseSize = Math.ceil((windowWidth * windowHeight) / (300 * 300)); // Rough calculation
+    
+    // Adjust for small screens
+    if (windowWidth <= infiniteScrollConfig.smallScreenThreshold) {
+        baseSize = Math.ceil(baseSize * 0.7);
+    }
+    
+    // Ensure batch size is within configured bounds
+    return Math.max(
+        infiniteScrollConfig.minBatchSize,
+        Math.min(infiniteScrollConfig.maxBatchSize, baseSize)
+    );
+}
+
+function calculatePlaceholderHeight() {
+    // Calculate responsive placeholder height based on viewport
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+    
+    // Base height calculation
+    let baseHeight = Math.min(windowWidth, windowHeight) * 0.3; // 30% of smaller viewport dimension
+    
+    // Adjust for different screen sizes
+    if (windowWidth <= 480) {
+        baseHeight = Math.min(baseHeight, 200); // Mobile: max 200px
+    } else if (windowWidth <= 768) {
+        baseHeight = Math.min(baseHeight, 250); // Tablet: max 250px
+    } else {
+        baseHeight = Math.min(baseHeight, 300); // Desktop: max 300px
+    }
+    
+    // Ensure minimum height
+    return Math.max(baseHeight, 150);
+}
+
+function calculateTrueItemsPerRow() {
+    if (!gallery) return 5; // Fallback
+    
+    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+    if (items.length < 2) return 5; // Need at least 2 items
+    
+    const firstItem = items[0];
+    const firstRect = firstItem.getBoundingClientRect();
+    const firstY = firstRect.top;
+    
+    // Find the next item that's at the same Y position (same row)
+    let itemsInRow = 1;
+    for (let i = 1; i < items.length; i++) {
+        const item = items[i];
+        const rect = item.getBoundingClientRect();
+        // Check if this item is at the same Y position (within 5px tolerance)
+        if (Math.abs(rect.top - firstY) < 5) {
+            itemsInRow++;
+        } else {
+            break; // Found the end of the first row
+        }
+    }
+    
+    return Math.max(1, itemsInRow);
+}
+// Update gallery columns based on true layout
+function updateGalleryColumnsFromLayout() {
+    const trueColumns = calculateTrueItemsPerRow();
+    if (trueColumns !== realGalleryColumns) {
+        realGalleryColumns = trueColumns;
+        galleryRows = calculateGalleryRows();
+        imagesPerPage = realGalleryColumns * galleryRows;
+    }
+}
+
 
 // Update visible items tracking for virtual scrolling
 function updateVisibleItems() {
@@ -4376,44 +4196,39 @@ function updateVirtualScroll() {
 
     const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
     const total = items.length;
-    const bufferRows = 4; // Number of rows to keep above and below viewport
-    const itemsPerRow = galleryColumns;
+    const bufferRows = 8; // Number of rows to keep above and below viewport
+    const itemsPerRow = realGalleryColumns;
     const visibleIndices = Array.from(visibleItems);
 
     if (visibleIndices.length === 0) return;
 
     const minVisible = Math.min(...visibleIndices);
     const maxVisible = Math.max(...visibleIndices);
-    const minKeep = Math.max(0, minVisible - bufferRows * itemsPerRow);
-    const maxKeep = Math.min(total - 1, maxVisible + bufferRows * itemsPerRow);
+    const minKeep = Math.max(0, minVisible - itemsPerRow); // 1 screen above
+    const maxKeep = Math.min(total - 1, maxVisible + itemsPerRow); // 1 screen below
+    const bufferSize = bufferRows * itemsPerRow;
 
-    // Process items in reverse order to avoid index shifting issues
+    // Replace far-away items with placeholders, restore real items near viewport
     for (let i = 0; i < total; i++) {
         const el = items[i];
-
         if (i < minKeep || i > maxKeep) {
-            // Replace with placeholder if not already
             if (!el.classList.contains('gallery-placeholder')) {
                 const placeholder = document.createElement('div');
                 placeholder.className = 'gallery-placeholder';
                 placeholder.style.height = el.offsetHeight + 'px';
                 placeholder.style.width = el.offsetWidth + 'px';
                 placeholder.dataset.filename = el.dataset.filename;
-                placeholder.dataset.index = el.dataset.index;
-                placeholder.dataset.imageIndex = el.dataset.imageIndex || i;
-                // Preserve selection state
+                placeholder.dataset.index = el.dataset.index || i;
+                placeholder.dataset.time = el.dataset.time || 0;
                 placeholder.dataset.selected = el.dataset.selected;
                 gallery.replaceChild(placeholder, el);
             }
         } else {
-            // If it's a placeholder, restore the real item
             if (el.classList.contains('gallery-placeholder')) {
-                const imageIndex = parseInt(el.dataset.index || el.dataset.imageIndex || i);
+                const imageIndex = parseInt(el.dataset.index || i);
                 const image = allImages[imageIndex];
                 if (image) {
                     const realItem = createGalleryItem(image, imageIndex);
-                    realItem.dataset.imageIndex = imageIndex;
-                    // Restore selection state
                     if (el.dataset.selected === 'true') {
                         realItem.dataset.selected = 'true';
                         realItem.classList.add('selected');
@@ -4431,6 +4246,190 @@ function updateVirtualScroll() {
                 }
             }
         }
+    }
+
+    // --- Dynamic placeholder management above and below buffer, in full row batches ---
+    const allPlaceholders = Array.from(gallery.querySelectorAll('.gallery-placeholder'));
+    // Find checked placeholders
+    const checkedIndices = allPlaceholders
+        .map((el, idx) => el.dataset.selected === 'true' ? idx : -1)
+        .filter(idx => idx !== -1);
+    const firstChecked = checkedIndices.length > 0 ? checkedIndices[0] : null;
+    const lastChecked = checkedIndices.length > 0 ? checkedIndices[checkedIndices.length - 1] : null;
+
+    // Build a set of all indices currently present in the DOM
+    const presentIndices = new Set();
+    Array.from(gallery.children).forEach(el => {
+        if (el.dataset && el.dataset.index !== undefined) {
+            presentIndices.add(parseInt(el.dataset.index));
+        }
+    });
+
+    // Count placeholders above and below buffer
+    let placeholdersAbove = 0, placeholdersBelow = 0;
+    for (let i = 0; i < allPlaceholders.length; i++) {
+        const idx = Array.prototype.indexOf.call(gallery.children, allPlaceholders[i]);
+        if (idx < minKeep) placeholdersAbove++;
+        if (idx > maxKeep) placeholdersBelow++;
+    }
+    // Remove excess placeholders above (in full row batches, not checked or after first checked)
+    let toRemoveAbove = placeholdersAbove - bufferSize;
+    if (toRemoveAbove >= itemsPerRow) {
+        toRemoveAbove = Math.floor(toRemoveAbove / itemsPerRow) * itemsPerRow;
+        let removed = 0;
+        for (let i = 0; i < allPlaceholders.length && removed < toRemoveAbove; i++) {
+            const el = allPlaceholders[i];
+            const idx = Array.prototype.indexOf.call(gallery.children, el);
+            if (idx < minKeep) {
+                if (el.dataset.selected === 'true' || (firstChecked !== null && i >= firstChecked)) break;
+                presentIndices.delete(parseInt(el.dataset.index));
+                el.remove();
+                removed++;
+            }
+        }
+    }
+    // Remove excess placeholders below (in full row batches, not checked or before last checked)
+    let toRemoveBelow = placeholdersBelow - bufferSize;
+    if (toRemoveBelow >= itemsPerRow) {
+        toRemoveBelow = Math.floor(toRemoveBelow / itemsPerRow) * itemsPerRow;
+        let removed = 0;
+        for (let i = allPlaceholders.length - 1; i >= 0 && removed < toRemoveBelow; i--) {
+            const el = allPlaceholders[i];
+            const idx = Array.prototype.indexOf.call(gallery.children, el);
+            if (idx > maxKeep) {
+                if (el.dataset.selected === 'true' || (lastChecked !== null && i <= lastChecked)) break;
+                presentIndices.delete(parseInt(el.dataset.index));
+                el.remove();
+                removed++;
+            }
+        }
+    }
+    // Add missing placeholders above (in full row batches, only for missing indices)
+    while (placeholdersAbove < bufferSize) {
+        let firstChild = gallery.firstChild;
+        let firstIndex = firstChild && firstChild.dataset && firstChild.dataset.index !== undefined ? parseInt(firstChild.dataset.index) : displayedStartIndex;
+        if (firstIndex <= 0) break;
+        let needed = Math.min(bufferSize - placeholdersAbove, itemsPerRow);
+        let actuallyAdded = 0;
+        for (let i = 0; i < needed; i++) {
+            const idx = firstIndex - i - 1;
+            if (idx < 0) break;
+            if (!presentIndices.has(idx)) {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'gallery-placeholder';
+                placeholder.style.height = '256px';
+                placeholder.style.width = '100%';
+                placeholder.dataset.index = idx;
+                gallery.insertBefore(placeholder, gallery.firstChild);
+                presentIndices.add(idx);
+                actuallyAdded++;
+            }
+        }
+        placeholdersAbove += actuallyAdded;
+        if (actuallyAdded === 0 || needed < itemsPerRow) break;
+    }
+    // Add missing placeholders below (in full row batches, only for missing indices)
+    while (placeholdersBelow < bufferSize && displayedEndIndex < allImages.length) {
+        // Find the current last index in the gallery
+        let lastChild = gallery.lastChild;
+        let lastIndex = lastChild && lastChild.dataset && lastChild.dataset.index !== undefined ? parseInt(lastChild.dataset.index) : displayedEndIndex;
+        let needed = Math.min(bufferSize - placeholdersBelow, itemsPerRow);
+        let actuallyAdded = 0;
+        for (let i = 0; i < needed; i++) {
+            const idx = lastIndex + i + 1;
+            if (idx >= allImages.length) break;
+            if (!presentIndices.has(idx)) {
+                const placeholder = document.createElement('div');
+                placeholder.className = 'gallery-placeholder';
+                placeholder.style.height = '256px';
+                placeholder.style.width = '100%';
+                placeholder.dataset.index = idx;
+                gallery.appendChild(placeholder);
+                presentIndices.add(idx);
+                actuallyAdded++;
+            }
+        }
+        placeholdersBelow += actuallyAdded;
+        if (actuallyAdded === 0 || needed < itemsPerRow) break;
+    }
+    // After all changes, update displayedStartIndex and displayedEndIndex to match the DOM
+    let newFirst = gallery.firstChild && gallery.firstChild.dataset && gallery.firstChild.dataset.index !== undefined ? parseInt(gallery.firstChild.dataset.index) : 0;
+    let newLast = gallery.lastChild && gallery.lastChild.dataset && gallery.lastChild.dataset.index !== undefined ? parseInt(gallery.lastChild.dataset.index) : 0;
+    displayedStartIndex = Math.max(0, newFirst);
+    displayedEndIndex = Math.max(displayedStartIndex, newLast + 1);
+
+    // --- Force resolve all placeholders in the visible/buffered range to real items ---
+    // Recompute visible/buffered range after any placeholder changes
+    const updatedItems = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+    const updatedTotal = updatedItems.length;
+    // Recompute visible indices
+    const viewportTop = window.pageYOffset;
+    const viewportBottom = viewportTop + window.innerHeight;
+    let updatedVisible = new Set();
+    updatedItems.forEach((item, index) => {
+        const rect = item.getBoundingClientRect();
+        const itemTop = rect.top + window.pageYOffset;
+        const itemBottom = rect.bottom + window.pageYOffset;
+        if (itemBottom > viewportTop && itemTop < viewportBottom) {
+            updatedVisible.add(index);
+        }
+    });
+    const updatedVisibleIndices = Array.from(updatedVisible);
+    if (updatedVisibleIndices.length > 0) {
+        const minVisible = Math.min(...updatedVisibleIndices);
+        const maxVisible = Math.max(...updatedVisibleIndices);
+        const minKeep = Math.max(0, minVisible - itemsPerRow); // 1 screen above
+        const maxKeep = Math.min(updatedTotal - 1, maxVisible + itemsPerRow); // 1 screen below
+        for (let i = minKeep; i <= maxKeep; i++) {
+            const el = updatedItems[i];
+            if (el && el.classList.contains('gallery-placeholder')) {
+                const imageIndex = parseInt(el.dataset.index || i);
+                const image = allImages[imageIndex];
+                if (image) {
+                    const realItem = createGalleryItem(image, imageIndex);
+                    if (el.dataset.selected === 'true') {
+                        realItem.dataset.selected = 'true';
+                        realItem.classList.add('selected');
+                        selectedImages.add(realItem.dataset.filename);
+                        const cb = realItem.querySelector('.gallery-item-checkbox');
+                        if (cb) cb.checked = true;
+                    } else {
+                        realItem.dataset.selected = 'false';
+                        realItem.classList.remove('selected');
+                        selectedImages.delete(realItem.dataset.filename);
+                        const cb = realItem.querySelector('.gallery-item-checkbox');
+                        if (cb) cb.checked = false;
+                    }
+                    gallery.replaceChild(realItem, el);
+                }
+            }
+        }
+    }
+
+    // --- If still at bottom or top, keep updating until filled or no more can be loaded ---
+    let safetyCounter = 0;
+    while (safetyCounter < 10) { // Prevent infinite loops
+        safetyCounter++;
+        // Re-calculate after DOM updates
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const windowHeight = window.innerHeight;
+        const documentHeight = document.documentElement.scrollHeight;
+        const atBottom = (windowHeight + scrollTop) >= (documentHeight - 10); // 10px threshold
+        const atTop = scrollTop <= 10;
+        let didWork = false;
+        // If at bottom, try to add/resolve more below
+        if (atBottom && hasMoreImages) {
+            loadMoreImages();
+            didWork = true;
+        }
+        // If at top, try to add/resolve more above
+        if (atTop && hasMoreImagesBefore) {
+            loadMoreImagesBefore();
+            didWork = true;
+        }
+        // If no more work, break
+        if (!didWork) break;
+        // After loading, placeholders will be resolved in the next loop iteration
     }
 }
 
@@ -4455,20 +4454,16 @@ async function handleLogout() {
 
 // Show manual modal
 async function showManualModal() {
+    // Close editor if open
+    if (!document.body.classList.contains('editor-open')) {
+        document.body.classList.add('editor-open');
+    }
 
     // Check if a preset is selected for editing
     const selectedValue = presetSelect.value;
     if (selectedValue) {
-        // Parse the selected value to determine if it's a preset or pipeline
-        const [type, name] = selectedValue.split(':');
-
-        if (type === 'preset') {
-            // Load preset for editing
-            await loadIntoManualForm(selectedValue);
-        } else if (type === 'pipeline') {
-            // Load pipeline for limited editing (layer2 only)
-            await loadIntoManualForm(selectedValue);
-        }
+        // Load preset for editing
+        await loadIntoManualForm(selectedValue);
     } else {
         // Clear form for new generation
         clearManualForm();
@@ -4489,9 +4484,6 @@ async function showManualModal() {
 
     // Calculate initial price display
     updateManualPriceDisplay();
-
-    // Update button visibility
-    updateRequestTypeButtonVisibility();
 
     // Check if "show both" mode is active and hide tab buttons container if needed
     const promptTabs = document.querySelector('#manualModal .prompt-tabs');
@@ -4525,13 +4517,13 @@ function hideManualModal(e, preventModalReset = false) {
         }
 
         closeModal(manualModal);
+        if (document.body.classList.contains('editor-open')) {
+            document.body.classList.remove('editor-open');
+        }
         clearManualForm();
 
         // Reset manual preview
         resetManualPreview();
-
-        // Clear pipeline context
-        window.currentPipelineEdit = null;
 
         // Hide request type toggle row
         const requestTypeRow = document.getElementById('requestTypeRow');
@@ -4569,9 +4561,6 @@ function hideManualModal(e, preventModalReset = false) {
             nsfwBtn.classList.remove('active');
             nsfwBtn.style.display = 'none';
         }
-
-        // Update button visibility
-        updateRequestTypeButtonVisibility();
     }
 }
 
@@ -4653,21 +4642,13 @@ function clearManualForm() {
     manualPresetName.disabled = false;
     manualPresetName.style.opacity = '1';
 
-    // Clear pipeline context
-    window.currentPipelineEdit = null;
-
     variationImage.src = '';
 
     // Reset transformation section states
-    const transformationSection = document.getElementById('transformationSection');
-    if (transformationSection) {
-        transformationSection.classList.remove('display-image');
+    if (transformationRow) {
+        transformationRow.classList.remove('display-image');
     }
 
-    const transformationSectionRight = document.getElementById('transformationSectionRight');
-    if (transformationSectionRight) {
-        transformationSectionRight.classList.remove('disabled');
-    }
     document.getElementById('manualStrengthGroup').style.display = 'none';
     document.getElementById('manualNoiseGroup').style.display = 'none';
 
@@ -4677,9 +4658,12 @@ function clearManualForm() {
     }
 
 
-    if (vibeReferencesSection) {
-        vibeReferencesSection.style.display = 'none';
+    if (vibeReferencesContainer) {
+        vibeReferencesContainer.style.display = 'none';
         vibeReferencesContainer.innerHTML = '';
+    }
+    if (transformationRow) {
+        transformationRow.classList.remove('display-vibe');
     }
     if (vibeNormalizeToggle) {
         vibeNormalizeToggle.style.display = 'none';
@@ -4714,7 +4698,6 @@ function clearManualForm() {
 
     // Reset inpaint button state and clear mask
     resetInpaint();
-    window.pipelineMaskData = null;
     window.strengthValueLoaded = false;
     window.uploadedImageData = null;
     // Clear any stored previous bias
@@ -4745,8 +4728,6 @@ function clearManualForm() {
     // Reset transformation dropdown state
     updateTransformationDropdownState(undefined, 'References');
 
-    // Update button visibility
-    updateRequestTypeButtonVisibility();
     updateUploadDeleteButtonVisibility();
 
     // Hide autocomplete overlays
@@ -4949,33 +4930,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
             // Don't clear context when modal is open in wide viewport mode
             await updateManualPreview(imageUrl, blob, response);
 
-            // Update placeholder image for pipeline edits
-            if (window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit) {
-                // Update the placeholder image with the newly generated image
-                const generatedFilename = response && response.headers ? response.headers.get('X-Generated-Filename') : null;
-                if (generatedFilename) {
-                    window.uploadedImageData.image_source = `file:${generatedFilename}`;
-                    window.uploadedImageData.isPlaceholder = true; // Keep as placeholder since it's the current pipeline image
-                }
-
-                variationImage.src = imageUrl;
-                variationImage.style.display = 'block';
-
-                // Update mask editor background if it's currently open
-                const maskEditorDialog = document.getElementById('maskEditorDialog');
-                if (maskEditorDialog && maskEditorDialog.style.display === 'flex') {
-                    const canvasInner = document.querySelector('.mask-editor-canvas-inner');
-                    if (canvasInner) {
-                        const backgroundImageValue = `url(${imageUrl})`;
-                        canvasInner.style.setProperty('--background-image', backgroundImageValue);
-                        console.log('🖼️ Updated mask editor background with newly generated pipeline image');
-                    }
-                }
-
-                console.log('🖼️ Updated placeholder image with newly generated pipeline image');
-            }
-
-            loadGallery();
+            loadGallery(true);
         } else {
             // Clear context only when modal is not open or not in wide viewport mode
             if (typeof clearContextFn === "function") clearContextFn();
@@ -4983,29 +4938,15 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
             // Normal behavior - open lightbox
             setTimeout(async () => {
                 await loadGallery();
-                if (typeof loadBalance === "function") await loadBalance();
+                await loadBalance();
                 if (allImages.length > 0) {
                     const newImage = allImages[0];
-                    let imageToShow;
-                    if (newImage.pipeline_upscaled || newImage.pipeline) {
-                        let filenameToShow = newImage.original;
-                        if (newImage.pipeline_upscaled) filenameToShow = newImage.pipeline_upscaled;
-                        else if (newImage.pipeline) filenameToShow = newImage.pipeline;
-                        else if (newImage.upscaled) filenameToShow = newImage.upscaled;
-                        imageToShow = {
-                            filename: filenameToShow,
-                            base: newImage.base,
-                            upscaled: newImage.upscaled,
-                            pipeline: newImage.pipeline,
-                            pipeline_upscaled: newImage.pipeline_upscaled
-                        };
-                    } else {
-                        imageToShow = {
-                            filename: newImage.upscaled || newImage.original,
-                            base: newImage.base,
-                            upscaled: newImage.upscaled
-                        };
-                    }
+                    const imageToShow = {
+                        filename: newImage.upscaled || newImage.original,
+                        base: newImage.base,
+                        upscaled: newImage.upscaled
+                    };
+                    
                     showLightbox(imageToShow);
                 }
             }, 1000);
@@ -5048,11 +4989,11 @@ async function updateManualPreview(imageUrl, blob, response = null, metadata = n
         }
 
         // Only load gallery if we don't have allImages or if this is a newly generated image (has response)
-        if (!allImages || allImages.length === 0 || response) {
+        if (!allImages || allImages.length === 0) {
             await loadGallery();
         }
 
-        const found = allImages.find(img => img.original === generatedFilename || img.upscaled === generatedFilename || img.pipeline === generatedFilename || img.pipeline_upscaled === generatedFilename);
+        const found = allImages.find(img => img.original === generatedFilename || img.upscaled === generatedFilename);
 
         if (found) {
             currentManualPreviewImage = found;
@@ -5078,9 +5019,7 @@ async function updateManualPreview(imageUrl, blob, response = null, metadata = n
             const tempImage = {
                 original: generatedFilename,
                 base: generatedFilename,
-                upscaled: null,
-                pipeline: null,
-                pipeline_upscaled: null
+                upscaled: null
             };
             currentManualPreviewImage = tempImage;
         } else {
@@ -5188,9 +5127,7 @@ function updateManualPreviewNavigation() {
     const currentFilename = currentManualPreviewImage.original || currentManualPreviewImage.filename;
     const currentIndex = allImages.findIndex(img =>
         img.original === currentFilename ||
-        img.upscaled === currentFilename ||
-        img.pipeline === currentFilename ||
-        img.pipeline_upscaled === currentFilename
+        img.upscaled === currentFilename
     );
 
     if (currentIndex === -1) {
@@ -5215,9 +5152,7 @@ async function navigateManualPreview(event) {
     const currentFilename = currentManualPreviewImage.original || currentManualPreviewImage.filename;
     const currentIndex = allImages.findIndex(img =>
         img.original === currentFilename ||
-        img.upscaled === currentFilename ||
-        img.pipeline === currentFilename ||
-        img.pipeline_upscaled === currentFilename
+        img.upscaled === currentFilename
     );
 
     if (currentIndex === -1) return;
@@ -5252,7 +5187,6 @@ async function navigateManualPreview(event) {
 async function handleManualGeneration(e) {
     e.preventDefault();
 
-    const isPipelineEdit = window.currentPipelineEdit && window.currentPipelineEdit.isPipelineEdit;
     const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
     const values = collectManualFormValues();
 
@@ -5273,66 +5207,7 @@ async function handleManualGeneration(e) {
         return resolutionData.isCustom ? `${resolutionData.width}x${resolutionData.height}` : resolutionData.resolution;
     }
 
-    if (isPipelineEdit) {
-        // Pipeline Edit
-        if (!validateFields(['prompt', 'resolutionValue'], 'Please fill in all required fields (Prompt, Resolution)')) return;
-        const resolution = getResolution(values.resolutionValue);
-
-        // Capture pipeline context BEFORE hiding modal (which clears it)
-        let pipelineContext = { ...window.currentPipelineEdit };
-
-        showManualLoading(true, 'Running Pipeline...');
-
-        try {
-            // Build layer2 config
-            const layer2Config = {
-                prompt: values.prompt,
-                model: values.model,
-                resolution: resolution,
-                steps: values.steps,
-                guidance: values.guidance,
-                rescale: values.rescale,
-                allow_paid: forcePaidRequest
-            };
-            addSharedFieldsToRequestBody(layer2Config, values);
-
-            // Build pipeline request body
-            const pipelineRequestBody = {
-                preset: pipelineContext.pipelineName,
-                layer2: layer2Config,
-                resolution: resolution,
-                workspace: activeWorkspace
-            };
-            if (window.currentMaskCompressed) {
-                pipelineRequestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
-            } else if (window.currentMaskData) {
-                const compressedMask = saveMaskCompressed();
-                if (compressedMask) {
-                    pipelineRequestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
-                }
-            }
-
-            // For pipeline images, don't send image data since they don't have image_source
-            // and are generated at runtime without requiring a base image
-            hideManualModal(undefined, true);
-            const pipelineUrl = `/pipeline/generate`;
-            const generateResponse = await fetch(pipelineUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(pipelineRequestBody)
-            });
-
-            if (!generateResponse.ok) throw new Error(`Pipeline generation failed: ${generateResponse.statusText}`);
-            const blob = await generateResponse.blob();
-            await handleImageResult(blob, 'Pipeline edited successfully!', () => {  }, values.seed, generateResponse);
-        } catch (error) {
-            hideManualModal(undefined, true);
-            console.error('Pipeline edit generation error:', error);
-            showError('Pipeline generation failed. Please try again.');
-        } finally {
-            showManualLoading(false);
-        }
-    } else if (isImg2Img) {
+    if (isImg2Img) {
         // Img2Img / Variation Edit/Reroll
         if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
         const resolution = getResolution(values.resolutionValue);
@@ -5506,7 +5381,7 @@ async function handleManualSave() {
         guidance: parseFloat(manualGuidance.value) || 5.0,
         rescale: parseFloat(manualRescale.value) || 0.0,
         upscale: manualUpscale.getAttribute('data-state') === 'on',
-        allow_paid: forcePaidRequest, // Default to true for presets
+        allow_paid: forcePaidRequest,
         characterPrompts: getCharacterPrompts()
     };
 
@@ -7053,7 +6928,7 @@ function showPresetAutocompleteSuggestions(results, target) {
 
         item.innerHTML = `
             <span class="preset-name">${result.name}</span>
-            <span class="preset-details">${modelsShort[result.model.toUpperCase()] || result.model || 'Default'}</span>
+            <span class="preset-details">${window.optionsData?.modelsShort[result.model.toUpperCase()] || result.model || 'Default'}</span>
         `;
 
         item.addEventListener('click', () => selectPresetItem(result.name));
@@ -7123,37 +6998,22 @@ function updateGenerateButton() {
         return;
     }
 
-    // Parse the selected value to determine if it's a preset or pipeline
-    const [type, name] = selectedValue.split(':');
-
-    if (!type || !name) {
-        generateBtn.disabled = true;
-        return;
-    }
-
-    if (type === 'preset') {
-        // For presets, resolution is required and no mask preview
-        generateBtn.disabled = false;
-    } else if (type === 'pipeline') {
-        // For pipelines, resolution is optional and show mask preview
+    if (selectedValue.startsWith('preset:')) {
         generateBtn.disabled = false;
     } else {
         generateBtn.disabled = true;
-    }
+    }   
 }
 
 // Generate image
 async function generateImage() {
     const selectedValue = presetSelect.value;
     if (!selectedValue) {
-        showError('Please select a preset or pipeline');
+        showError('Please select a preset');
         return;
     }
 
-    // Parse the selected value to determine if it's a preset or pipeline
-    const [type, name] = selectedValue.split(':');
-
-    if (!type || !name) {
+    if (!selectedValue.startsWith('preset:')) {
         showError('Invalid selection');
         return;
     }
@@ -7162,19 +7022,11 @@ async function generateImage() {
 
     try {
         let url;
-        if (type === 'preset') {
-            // For presets, resolution is optional
+        if (selectedValue.startsWith('preset:')) {
             const params = new URLSearchParams({ forceGenerate: 'true' });
             if (activeWorkspace) params.append('workspace', activeWorkspace);
 
-            url = `/preset/${name}?${params.toString()}`;
-        } else if (type === 'pipeline') {
-            // For pipelines, resolution is optional (uses pipeline's resolution if not specified)
-            const params = new URLSearchParams({
-                forceGenerate: 'true'
-            });
-            if (activeWorkspace) params.append('workspace', activeWorkspace);
-            url = `/pipeline/${name}?${params.toString()}`;
+            url = `/preset/${selectedValue.replace('preset:', '')}?${params.toString()}`;
         } else {
             throw new Error('Invalid selection type');
         }
@@ -7210,11 +7062,12 @@ async function generateImage() {
             if (metadataResponse.ok) {
                 const metadata = await metadataResponse.json();
                 window.lastGeneration = metadata;
+                window.lastGeneration.filename = generatedFilename;
             }
         } catch (error) {
             console.warn('Failed to fetch metadata for generated image:', error);
         }
-        // Wait for the image to load, then refresh gallery and open the correct image
+        // Wait for the image to load, then insert into gallery and reindex
         const img = new Image();
         img.onload = async function() {
             createConfetti();
@@ -7225,16 +7078,14 @@ async function generateImage() {
             await loadBalance();
 
             // Find the image in the gallery by filename
-            const found = allImages.find(img => img.original === generatedFilename || img.upscaled === generatedFilename || img.pipeline === generatedFilename || img.pipeline_upscaled === generatedFilename);
+            const found = allImages.find(img => img.original === generatedFilename || img.upscaled === generatedFilename);
             if (found) {
                 // Construct proper image object with filename property
                 const imageToShow = {
                     filename: generatedFilename,
                     base: found.base,
                     original: found.original,
-                    upscaled: found.upscaled,
-                    pipeline: found.pipeline,
-                    pipeline_upscaled: found.pipeline_upscaled
+                    upscaled: found.upscaled
                 };
                 showLightbox(imageToShow);
             } else {
@@ -7415,25 +7266,12 @@ function populateMetadataTable(metadata) {
         const seed2Label = seed2Cell ? seed2Cell.querySelector('.metadata-label') : null;
 
         if (seed1Label && seed2Label) {
-            // Check if this is a pipeline with both seeds
-            const isPipeline = metadata.request_type === 'pipeline' || metadata.request_type === 'custom_pipeline';
-            const hasLayer2Seed = metadata.layer2Seed !== undefined;
-
-            if (isPipeline && hasLayer2Seed) {
-                // Pipeline with both seeds - show both
-                seed1Label.textContent = 'Seed 1';
-                seed2Label.textContent = 'Seed 2';
-                seed1Element.textContent = metadata.layer1Seed || '-';
-                seed2Element.textContent = metadata.layer2Seed || '-';
-                seed1Cell.style.display = 'flex';
-                seed2Cell.style.display = 'flex';
-            } else {
-                // Single seed - hide seed 2 and rename seed 1
-                seed1Label.textContent = 'Seed';
-                seed1Element.textContent = metadata.layer1Seed || metadata.seed || '-';
-                seed1Cell.style.display = 'flex';
-                seed2Cell.style.display = 'none';
-            }
+            // Single seed - hide seed 2 and rename seed 1
+            seed1Label.textContent = 'Seed';
+            seed1Element.textContent = metadata.layer1Seed || metadata.seed || '-';
+            seed1Cell.style.display = 'flex';
+            seed2Cell.style.display = 'none';
+            
         }
     }
 
@@ -7692,9 +7530,7 @@ async function copyToClipboard(text, title) {
 function formatRequestType(requestType) {
     const typeMappings = {
         'custom': 'Manual Generation',
-        'preset': 'Image Preset',
-        'pipeline': 'Image Pipeline',
-        'custom_pipeline': 'Custom Pipeline'
+        'preset': 'Image Preset'
     };
 
     return typeMappings[requestType] || requestType;
@@ -7740,10 +7576,7 @@ function navigateLightbox(direction) {
     // Find current image index by matching the filename
     const currentImageIndex = allImages.findIndex(img => {
         const currentFilename = currentLightboxImage?.filename;
-        return img.original === currentFilename ||
-               img.pipeline === currentFilename ||
-               img.pipeline_upscaled === currentFilename ||
-               img.upscaled === currentFilename;
+        return img.original === currentFilename || img.upscaled === currentFilename;
     });
 
     if (currentImageIndex === -1) return;
@@ -7763,20 +7596,14 @@ function navigateLightbox(direction) {
     if (newImageObj) {
         // Construct the image object the same way as in createGalleryItem
         let filenameToShow = newImageObj.original;
-        if (newImageObj.pipeline_upscaled) {
-            filenameToShow = newImageObj.pipeline_upscaled;
-        } else if (newImageObj.pipeline) {
-            filenameToShow = newImageObj.pipeline;
-        } else if (newImageObj.upscaled) {
+        if (newImageObj.upscaled) {
             filenameToShow = newImageObj.upscaled;
         }
 
         const imageToShow = {
             filename: filenameToShow,
             base: newImageObj.base,
-            upscaled: newImageObj.upscaled,
-            pipeline: newImageObj.pipeline,
-            pipeline_upscaled: newImageObj.pipeline_upscaled
+            upscaled: newImageObj.upscaled
         };
 
         showLightbox(imageToShow);
@@ -8165,13 +7992,9 @@ function downloadImage(image) {
         // For newly generated images (lightbox)
         url = image.url;
         filename = image.filename;
-    } else if (image.pipeline_upscaled || image.pipeline || image.upscaled || image.original) {
+    } else if (image.upscaled || image.original) {
         // For gallery images - prefer highest quality version
-        if (image.pipeline_upscaled) {
-            filename = image.pipeline_upscaled;
-        } else if (image.pipeline) {
-            filename = image.pipeline;
-        } else if (image.upscaled) {
+        if (image.upscaled) {
             filename = image.upscaled;
         } else {
             filename = image.original;
@@ -8211,14 +8034,8 @@ async function deleteImage(image) {
         // Determine which filename to use for deletion
         let filenameToDelete = null;
 
-        // For pipeline images, prioritize pipeline_upscaled, then pipeline
-        if (image.pipeline_upscaled) {
-            filenameToDelete = image.pipeline_upscaled;
-        } else if (image.pipeline) {
-            filenameToDelete = image.pipeline;
-        }
         // For regular images, prioritize original, then upscaled
-        else if (image.original) {
+        if (image.original) {
             filenameToDelete = image.original;
         } else if (image.upscaled) {
             filenameToDelete = image.upscaled;
@@ -8268,14 +8085,8 @@ async function deleteManualPreviewImage() {
         // Determine which filename to use for deletion
         let filenameToDelete = null;
 
-        // For pipeline images, prioritize pipeline_upscaled, then pipeline
-        if (currentManualPreviewImage.pipeline_upscaled) {
-            filenameToDelete = currentManualPreviewImage.pipeline_upscaled;
-        } else if (currentManualPreviewImage.pipeline) {
-            filenameToDelete = currentManualPreviewImage.pipeline;
-        }
         // For regular images, prioritize original, then upscaled
-        else if (currentManualPreviewImage.original) {
+        if (currentManualPreviewImage.original) {
             filenameToDelete = currentManualPreviewImage.original;
         } else if (currentManualPreviewImage.upscaled) {
             filenameToDelete = currentManualPreviewImage.upscaled;
@@ -8301,9 +8112,7 @@ async function deleteManualPreviewImage() {
             // Find the current image index in the manual preview image list
             const currentIndex = allImages.findIndex(img =>
                 img.original === currentManualPreviewImage.original ||
-                img.upscaled === currentManualPreviewImage.upscaled ||
-                img.pipeline === currentManualPreviewImage.pipeline ||
-                img.pipeline_upscaled === currentManualPreviewImage.pipeline_upscaled
+                img.upscaled === currentManualPreviewImage.upscaled
             );
 
             // Remove the current image from the manual preview list
@@ -8506,7 +8315,7 @@ function updateLightboxControls(image) {
     lightboxRerollBtn.style.display = '';
     lightboxRerollEditBtn.style.display = '';
     lightboxDeleteBtn.style.display = '';
-    if (image.upscaled || image.pipeline_upscaled) {
+    if (image.upscaled) {
         lightboxUpscaleBtn.style.display = 'none';
     } else {
         lightboxUpscaleBtn.style.display = 'inline-block';
@@ -8532,8 +8341,6 @@ function updateLightboxControls(image) {
         base: image.base,
         original: image.original || image.filename,
         upscaled: image.upscaled,
-        pipeline: image.pipeline,
-        pipeline_upscaled: image.pipeline_upscaled,
         metadata: image.metadata
     };
     lightboxDownloadBtn.onclick = (e) => {
@@ -8598,64 +8405,12 @@ async function handleResize() {
         if (newImagesPerPage !== imagesPerPage || newRows !== galleryRows) {
             galleryRows = newRows;
             imagesPerPage = newImagesPerPage;
-
-            // Recalculate current page to maintain position
-            const currentStartIndex = (currentPage - 1) * imagesPerPage;
-            currentPage = Math.floor(currentStartIndex / imagesPerPage) + 1;
         }
 
         updateGalleryItemToolbars();
         updateGalleryPlaceholders(); // Update placeholders after resize
+        updateGalleryColumnsFromLayout();
     }, 250); // 250ms delay
-}
-
-// Show mask preview for pipelines
-async function showMaskPreview() {
-    const selectedValue = presetSelect.value;
-
-    if (!selectedValue) {
-        showError('Please select a pipeline');
-        return;
-    }
-
-    // Parse the selected value to determine if it's a pipeline
-    const [type, name] = selectedValue.split(':');
-
-    if (type !== 'pipeline' || !name) {
-        showError('Please select a pipeline to preview mask');
-        return;
-    }
-
-    try {
-        const url = `/pipeline/${name}/mask`;
-        const response = await fetch(url);
-
-        if (!response.ok) {
-            throw new Error(`Failed to load mask: ${response.statusText}`);
-        }
-
-        const blob = await response.blob();
-        const imageUrl = URL.createObjectURL(blob);
-
-        // Create a temporary image to get dimensions
-        const img = new Image();
-        img.onload = function() {
-            const maskImage = {
-                filename: `mask_${name}_${Date.now()}.png`,
-                width: img.width,
-                height: img.height,
-                url: imageUrl,
-                isMask: true
-            };
-
-            showLightbox(maskImage);
-        };
-        img.src = imageUrl;
-
-    } catch (error) {
-        console.error('Mask preview error:', error);
-        showError('Failed to load mask preview. Please try again.');
-    }
 }
 
 // Toggle manual upscale button functionality
@@ -8665,35 +8420,6 @@ function toggleManualUpscale() {
 
     manualUpscale.setAttribute('data-state', newState);
 
-}
-
-// Update button visibility based on available image
-function updateRequestTypeButtonVisibility() {
-    const hasValidImage = window.currentEditImage && window.currentEditMetadata;
-    const hasBaseImage = hasValidImage && (
-        window.currentEditMetadata.original_filename ||
-        (window.currentEditImage.filename || window.currentEditImage.original || window.currentEditImage.pipeline || window.currentEditImage.pipeline_upscaled)
-    );
-
-    // Check if this is an img2img (has base image) or pipeline image
-    const isImg2Img = hasValidImage && window.currentEditMetadata.base_image === true;
-    const isPipeline = hasValidImage && (window.currentEditImage.pipeline || window.currentEditImage.pipeline_upscaled);
-
-    // Show reroll button only if there's a base image available (for img2img) or if it's a pipeline
-    const shouldShowReroll = hasValidImage && (isImg2Img || isPipeline);
-
-    // Update transformation dropdown options based on available images
-    const transformationDropdown = document.getElementById('transformationDropdown');
-    if (transformationDropdown) {
-        // For pipeline images, hide the transformation dropdown
-        const isPipeline = window.currentEditMetadata && window.currentEditMetadata.request_type === 'pipeline';
-        if (isPipeline) {
-            transformationDropdown.style.display = 'none';
-        } else {
-            transformationDropdown.style.display = 'inline-block';
-            renderTransformationDropdown(document.getElementById('transformationType').value);
-        }
-    }
 }
 
 // Metadata dialog functions
@@ -8789,12 +8515,10 @@ function populateDialogMetadataTable(metadata) {
         const seed2Label = seed2Cell ? seed2Cell.querySelector('.metadata-label') : null;
 
         if (seed1Label && seed2Label) {
-            // Check if this is a pipeline with both seeds
-            const isPipeline = metadata.request_type === 'pipeline' || metadata.request_type === 'custom_pipeline';
+            // Check if this is both seeds
             const hasLayer2Seed = metadata.layer2Seed !== undefined;
 
-            if (isPipeline && hasLayer2Seed) {
-                // Pipeline with both seeds - show both
+            if (hasLayer2Seed) {
                 seed1Label.textContent = 'Seed 1';
                 seed2Label.textContent = 'Seed 2';
                 seed1Element.textContent = metadata.layer1Seed || '-';
@@ -8924,12 +8648,6 @@ function clearSeed() {
         manualSeed.value = '';
         manualSeed.focus();
     }
-}
-
-// Helper: Get pipeline preset resolution
-function getPipelinePresetResolution(pipelineName) {
-    const pipeline = pipelines.find(p => p.name === pipelineName);
-    return pipeline ? pipeline.resolution : null;
 }
 
 // Helper: Get dimensions from resolution name
@@ -9302,9 +9020,8 @@ async function handleManualImageUploadInternal(file) {
         updateTransformationDropdownState('upload', 'Upload');
 
         // Show transformation section content
-        const transformationSection = document.getElementById('transformationSection');
-        if (transformationSection) {
-            transformationSection.classList.add('display-image');
+        if (transformationRow) {
+            transformationRow.classList.add('display-image');
         }
 
         document.getElementById('manualStrengthGroup').style.display = '';
@@ -9360,11 +9077,9 @@ async function renderImageBiasDropdown(selectedVal) {
 
     // Check if we have dynamic bias (object) instead of legacy bias (number)
     const hasDynamicBias = window.uploadedImageData && window.uploadedImageData.image_bias && typeof window.uploadedImageData.image_bias === 'object';
-
     if (hasDynamicBias) {
         imageBiasGroup.style.display = 'flex';
         await updateImageBiasDisplay('custom');
-        return;
     }
 
     const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
@@ -9661,9 +9376,8 @@ function handleDeleteBaseImage() {
     variationImage.src = '';
 
     // Hide transformation section content
-    const transformationSection = document.getElementById('transformationSection');
-    if (transformationSection) {
-        transformationSection.classList.remove('display-image');
+    if (transformationRow) {
+        transformationRow.classList.remove('display-image');
     }
     document.getElementById('manualStrengthGroup').style.display = 'none';
     document.getElementById('manualNoiseGroup').style.display = 'none';
@@ -9691,11 +9405,7 @@ function handleDeleteBaseImage() {
 // Update upload/delete button visibility based on whether an image is uploaded
 function updateUploadDeleteButtonVisibility() {
     if (deleteImageBaseBtn) {
-        // For pipeline images, don't show delete button since they use placeholder images
-        const isPipeline = window.currentEditMetadata && window.currentEditMetadata.request_type === 'pipeline';
-        if (isPipeline) {
-            deleteImageBaseBtn.style.display = 'none';
-        } else if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
+        if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
             // Image is uploaded (not a placeholder), show delete button
             deleteImageBaseBtn.style.display = 'inline-block';
         } else {
@@ -9707,7 +9417,7 @@ function updateUploadDeleteButtonVisibility() {
 
 // Selection handling functions
 async function handleImageSelection(image, isSelected, event) {
-    const filename = image.filename || image.original || image.upscaled || image.pipeline || image.pipeline_upscaled;
+    const filename = image.filename || image.original || image.upscaled;
 
     // Skip if no valid filename found
     if (!filename) {
@@ -10404,10 +10114,10 @@ function addCharacterPrompt() {
                 <div class="tab-header">
                     <div class="tab-buttons">
                         <button type="button" class="tab-btn active" data-tab="prompt">
-                            <i class="nai-penwriting"></i> Prompt
+                            <i class="nai-penwriting"></i>
                         </button>
                         <button type="button" class="tab-btn" data-tab="uc">
-                            <i class="nai-minus"></i> UC
+                            <i class="nai-minus"></i>
                         </button>
                         <div class="character-name-editable" onclick="editCharacterName('${characterId}')">
                             <span class="character-name-text">Character ${characterPromptCounter}</span>
@@ -10429,7 +10139,7 @@ function addCharacterPrompt() {
                             <i class="nai-directional-arrow-down"></i>
                         </button>
                         <button type="button" class="btn-secondary position-btn" onclick="showPositionDialog('${characterId}')" style="display: none;">
-                            <i class="fas fa-crosshairs"></i> Position
+                            <i class="fas fa-crosshairs"></i>
                         </button>
                         <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${characterId}')">
                             <i class="nai-trash"></i>
@@ -10768,7 +10478,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
         }
 
         // Determine position button text
-        let positionBtnText = '<i class="fas fa-crosshairs"></i> Position';
+        let positionBtnText = '<i class="fas fa-crosshairs"></i>';
         if (character.center && useCoords) {
             // Find the cell label for the stored position
             const x = character.center.x;
@@ -10784,10 +10494,10 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                 <div class="tab-header">
                     <div class="tab-buttons">
                         <button type="button" class="tab-btn active" data-tab="prompt">
-                            <i class="nai-penwriting"></i> Prompt
+                            <i class="nai-penwriting"></i>
                         </button>
                         <button type="button" class="tab-btn" data-tab="uc">
-                            <i class="nai-minus"></i> UC
+                            <i class="nai-minus"></i>
                         </button>
                         <div class="character-name-editable" onclick="editCharacterName('${characterId}')">
                             <span class="character-name-text">${character.chara_name || `Character ${index + 1}`}</span>
@@ -11189,7 +10899,7 @@ function updateManualPriceDisplay() {
             steps: steps,
             model: model,
             sampler: samplerObj,
-            subscription: subscriptionData || { perks: { unlimitedImageGenerationLimits: [] } },
+            subscription: window.optionsData?.user?.subscription || { perks: { unlimitedImageGenerationLimits: [] } },
             nSamples: 1,
             image: isImg2Img,
             strength: isImg2Img ? strength : 1
@@ -11437,7 +11147,9 @@ function displayVibeReferencesContainer() {
 
     vibeReferencesGalleryContainer.innerHTML = '';
 
-    if (vibeReferences.length === 0) {
+    const thisVibeReferences = vibeReferences.filter(vibeRef => vibeRef.workspaceId === 'default' || vibeRef.workspaceId === activeWorkspace);
+
+    if (thisVibeReferences.length === 0) {
         vibeReferencesGalleryContainer.innerHTML = '<div class="no-images">No vibe references found</div>';
         return;
     }
@@ -11446,7 +11158,7 @@ function displayVibeReferencesContainer() {
     const currentWorkspaceItems = [];
     const defaultWorkspaceItems = [];
 
-    vibeReferences.forEach(vibeRef => {
+    thisVibeReferences.forEach(vibeRef => {
         if (vibeRef.workspaceId === 'default') {
             defaultWorkspaceItems.push(vibeRef);
         } else {
@@ -11466,7 +11178,7 @@ function displayVibeReferencesContainer() {
     });
 
     // Add few-items class if there are 3 or fewer items
-    if (vibeReferences.length <= 3) {
+    if (thisVibeReferences.length <= 3) {
         vibeReferencesGalleryContainer.classList.add('few-items');
     } else {
         vibeReferencesGalleryContainer.classList.remove('few-items');
@@ -11572,12 +11284,13 @@ function displayVibeReferences() {
     // Get the vibe references tab gallery (modal version)
     const vibeReferencesTab = document.getElementById('vibe-references-tab');
     const vibeReferencesGallery = vibeReferencesTab ? vibeReferencesTab.querySelector('#vibeReferencesGallery') : null;
+    const thisVibeReferences = vibeReferences.filter(vibeRef => vibeRef.workspaceId === 'default' || vibeRef.workspaceId === activeWorkspace);
 
     if (!vibeReferencesGallery) return;
 
     vibeReferencesGallery.innerHTML = '';
 
-    if (vibeReferences.length === 0) {
+    if (thisVibeReferences.length === 0) {
         vibeReferencesGallery.innerHTML = '<div class="no-images">No vibe references found</div>';
         return;
     }
@@ -11586,7 +11299,7 @@ function displayVibeReferences() {
     const currentWorkspaceItems = [];
     const defaultWorkspaceItems = [];
 
-    vibeReferences.forEach(vibeRef => {
+    thisVibeReferences.forEach(vibeRef => {
         if (vibeRef.workspaceId === 'default') {
             defaultWorkspaceItems.push(vibeRef);
         } else {
@@ -11606,7 +11319,7 @@ function displayVibeReferences() {
     });
 
     // Add few-items class if there are 3 or fewer items
-    if (vibeReferences.length <= 3) {
+    if (thisVibeReferences.length <= 3) {
         vibeReferencesGallery.classList.add('few-items');
     } else {
         vibeReferencesGallery.classList.remove('few-items');
@@ -11725,6 +11438,9 @@ function createVibeReferenceItem(vibeRef) {
     item.className = 'vibe-reference-item';
     item.setAttribute('data-vibe-id', vibeRef.id);
 
+    const previewContainer = document.createElement('div');
+    previewContainer.className = 'variation-image-container';
+
     // Create preview image
     const preview = document.createElement('img');
     preview.className = 'vibe-reference-preview';
@@ -11738,14 +11454,21 @@ function createVibeReferenceItem(vibeRef) {
     }
     preview.alt = `Vibe reference ${vibeRef.id}`;
 
+    previewContainer.appendChild(preview);
+
+    const overlayIconContainer = document.createElement('div');
+    overlayIconContainer.className = 'overlay-icon-container';
+    overlayIconContainer.innerHTML = '<i class="nai-vibe-transfer"></i>';
+    previewContainer.appendChild(overlayIconContainer);
+
     // Create controls
     const controls = document.createElement('div');
     controls.className = 'vibe-reference-controls';
 
     // Create delete button
     const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'vibe-reference-delete-btn';
-    deleteBtn.innerHTML = '<i class="nai-trash"></i>';
+    deleteBtn.className = 'btn-secondary blur';
+    deleteBtn.innerHTML = '<i class="nai-thin-cross"></i>';
     deleteBtn.title = 'Remove vibe reference';
     deleteBtn.addEventListener('click', () => {
         removeVibeReference(vibeRef.id);
@@ -11781,7 +11504,7 @@ function createVibeReferenceItem(vibeRef) {
     if (availableEncodings.length > 0) {
         // Use the first encoding as default
         const defaultEncoding = availableEncodings[0];
-        ieText.textContent = `${defaultEncoding.informationExtraction}`;
+        ieText.textContent = `${(parseFloat(defaultEncoding.informationExtraction) * 100).toFixed(0)}%`;
         ieDropdownBtn.dataset.selectedModel = defaultEncoding.model;
         ieDropdownBtn.dataset.selectedIe = defaultEncoding.informationExtraction;
     } else {
@@ -11789,6 +11512,11 @@ function createVibeReferenceItem(vibeRef) {
         ieDropdownBtn.disabled = true;
     }
     ieDropdownBtn.appendChild(ieText);
+
+    const ieSuffix = document.createElement('span');
+    ieSuffix.style.opacity = '0.5';
+    ieSuffix.textContent = 'IE';
+    ieDropdownBtn.appendChild(ieSuffix);
 
     const ieDropdownMenu = document.createElement('div');
     ieDropdownMenu.className = 'custom-dropdown-menu';
@@ -11798,12 +11526,16 @@ function createVibeReferenceItem(vibeRef) {
     availableEncodings.forEach(encoding => {
         const option = document.createElement('div');
         option.className = 'custom-dropdown-option';
-        option.textContent = `${encoding.informationExtraction}`;
+        option.textContent = `${(parseFloat(encoding.informationExtraction) * 100).toFixed(0)}%`;
         option.dataset.model = encoding.model;
         option.dataset.ie = encoding.informationExtraction;
 
         option.addEventListener('click', () => {
-            ieDropdownBtn.textContent = `${encoding.informationExtraction}`;
+            const optionText = document.createElement('span');
+            optionText.textContent = `${(parseFloat(encoding.informationExtraction) * 100).toFixed(0)}%`;
+            ieDropdownBtn.innerHTML = '';
+            ieDropdownBtn.appendChild(optionText);
+            ieDropdownBtn.appendChild(ieSuffix);
             ieDropdownBtn.dataset.selectedModel = encoding.model;
             ieDropdownBtn.dataset.selectedIe = encoding.informationExtraction;
             ieDropdownMenu.style.display = 'none';
@@ -11857,7 +11589,7 @@ function createVibeReferenceItem(vibeRef) {
     info.appendChild(ieControl);
     info.appendChild(ratioControl);
 
-    item.appendChild(preview);
+    item.appendChild(previewContainer);
     item.appendChild(controls);
     item.appendChild(info);
 
@@ -11906,11 +11638,19 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
     const ieDropdownBtn = item.querySelector('.custom-dropdown-btn');
     const ratioInput = item.querySelector('.vibe-reference-ratio-input');
 
+    const ieSuffix = document.createElement('span');
+    ieSuffix.style.opacity = '0.5';
+    ieSuffix.textContent = 'IE';
+    
     if (ieDropdownBtn && selectedIe) {
         // Find the encoding with the specified IE
         const encoding = vibeRef.encodings?.find(enc => enc.informationExtraction === selectedIe);
         if (encoding) {
-            ieDropdownBtn.textContent = `${encoding.informationExtraction}`;
+            const optionText = document.createElement('span');
+            optionText.textContent = `${(parseFloat(encoding.informationExtraction) * 100).toFixed(0)}%`;
+            ieDropdownBtn.innerHTML = '';
+            ieDropdownBtn.appendChild(optionText);
+            ieDropdownBtn.appendChild(ieSuffix);
             ieDropdownBtn.dataset.selectedModel = encoding.model;
             ieDropdownBtn.dataset.selectedIe = encoding.informationExtraction;
         }
@@ -11923,10 +11663,13 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
     vibeReferencesContainer.appendChild(item);
 
     // Show the section
-    if (vibeReferencesSection) {
-        vibeReferencesSection.style.display = '';
+    if (vibeReferencesContainer) {
+        vibeReferencesContainer.style.display = '';
         if (vibeNormalizeToggle) {
             vibeNormalizeToggle.style.display = '';
+        }
+        if (transformationRow) {
+            transformationRow.classList.add('display-vibe');
         }
     }
 }
@@ -11941,8 +11684,11 @@ function removeVibeReference(vibeId) {
         // Hide section if no more items
         const remainingItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item');
         if (remainingItems.length === 0) {
-            if (vibeReferencesSection) {
-                vibeReferencesSection.style.display = 'none';
+            if (vibeReferencesContainer) {
+                vibeReferencesContainer.style.display = 'none';
+            }
+            if (transformationRow) {
+                transformationRow.classList.remove('display-vibe');
             }
             if (vibeNormalizeToggle) {
                 vibeNormalizeToggle.style.display = 'none';
@@ -12024,9 +11770,8 @@ async function selectCacheImageInternal(cacheImage) {
 
 
         // Show transformation section content
-        const transformationSection = document.getElementById('transformationSection');
-        if (transformationSection) {
-            transformationSection.classList.add('display-image');
+        if (transformationRow) {
+            transformationRow.classList.add('display-image');
         }
         document.getElementById('manualStrengthGroup').style.display = '';
         document.getElementById('manualNoiseGroup').style.display = '';
@@ -12741,9 +12486,6 @@ async function generateConfirmationPreviews() {
     }
 }
 
-
-
-
 // Accept bias adjustment and save
 function acceptBiasAdjustment() {
     if (!imageBiasAdjustmentData.currentBias) {
@@ -12799,8 +12541,6 @@ function applyBiasAdjustment() {
 
     renderImageBiasDropdown();
 }
-
-
 
 // Hide bias adjustment confirmation dialog
 function hideBiasAdjustmentConfirmDialog() {
@@ -13286,8 +13026,6 @@ function addBiasAdjustmentButton() {
 
     imageBiasDropdown.parentNode.insertBefore(adjustBtn, imageBiasDropdown.nextSibling);
 }
-
-
 
 // Initialize image bias adjustment functionality
 function initializeImageBiasAdjustment() {
@@ -13859,8 +13597,8 @@ function populateVibeManagerModelDropdown() {
     dropdownMenu.innerHTML = '';
 
     // Get V4+ models from optionsData
-    if (optionsData && optionsData.models) {
-        const v4Models = Object.entries(optionsData.models)
+    if (window.optionsData?.models) {
+        const v4Models = Object.entries(window.optionsData?.models)
             .filter(([key, value]) => {
                 // Filter for V4+ models (kayra, v4, v4_5, etc.)
                 const modelKey = key.toLowerCase();
@@ -13894,8 +13632,8 @@ function populateVibeManagerModelDropdown() {
     }
 
     // Update selected display
-    if (optionsData && optionsData.models && optionsData.models[vibeManagerSelectedModel]) {
-        selectedSpan.textContent = optionsData.models[vibeManagerSelectedModel];
+    if (window.optionsData?.models[vibeManagerSelectedModel]) {
+        selectedSpan.textContent = window.optionsData?.models[vibeManagerSelectedModel];
     }
 }
 
@@ -13908,8 +13646,8 @@ function populateVibeManagerIeModelDropdown() {
     dropdownMenu.innerHTML = '';
 
     // Get V4+ models from optionsData
-    if (optionsData && optionsData.models) {
-        const v4Models = Object.entries(optionsData.models)
+    if (window.optionsData?.models) {
+        const v4Models = Object.entries(window.optionsData?.models)
             .filter(([key, value]) => {
                 // Filter for V4+ models (kayra, v4, v4_5, etc.)
                 const modelKey = key.toLowerCase();
@@ -13943,8 +13681,8 @@ function populateVibeManagerIeModelDropdown() {
     }
 
     // Update selected display
-    if (optionsData && optionsData.models && optionsData.models[vibeManagerIeSelectedModel]) {
-        selectedSpan.textContent = optionsData.models[vibeManagerIeSelectedModel];
+    if (window.optionsData?.models[vibeManagerIeSelectedModel]) {
+        selectedSpan.textContent = window.optionsData?.models[vibeManagerIeSelectedModel];
     }
 }
 
@@ -13993,8 +13731,8 @@ function populateVibeManagerFromReferenceModelDropdown() {
     dropdownMenu.innerHTML = '';
 
     // Get V4+ models from optionsData
-    if (optionsData && optionsData.models) {
-        const v4Models = Object.entries(optionsData.models)
+    if (window.optionsData?.models) {
+        const v4Models = Object.entries(window.optionsData?.models)
             .filter(([key, value]) => {
                 // Filter for V4+ models (kayra, v4, v4_5, etc.)
                 const modelKey = key.toLowerCase();
@@ -14028,8 +13766,8 @@ function populateVibeManagerFromReferenceModelDropdown() {
     }
 
     // Update selected display
-    if (optionsData && optionsData.models && optionsData.models[vibeManagerFromReferenceSelectedModel]) {
-        selectedSpan.textContent = optionsData.models[vibeManagerFromReferenceSelectedModel];
+    if (window.optionsData?.models[vibeManagerFromReferenceSelectedModel]) {
+        selectedSpan.textContent = window.optionsData?.models[vibeManagerFromReferenceSelectedModel];
     }
 }
 
@@ -14075,8 +13813,6 @@ async function createVibeManagerFromReference() {
         // Toast will auto-remove after 3 seconds
     }
 }
-
-
 
 function hideVibeManagerIeModal() {
     const modal = document.getElementById('vibeManagerIeModal');
@@ -14161,7 +13897,7 @@ function createVibeManagerGalleryItem(vibeImage) {
         vibeImage.encodings.forEach(encoding => {
             // Get model display name
             const modelKey = encoding.model || 'kayra';
-            const modelDisplayName = optionsData && optionsData.models && optionsData.models[modelKey] ? optionsData.models[modelKey] : modelKey;
+            const modelDisplayName = window.optionsData?.models[modelKey] ? window.optionsData?.models[modelKey] : modelKey;
 
             // Combined model and IE badge with split colors
             const combinedBadge = document.createElement('div');
@@ -14288,8 +14024,6 @@ function updateVibeManagerGallerySelection() {
         }
     });
 }
-
-
 
 function updateVibeManagerBulkActions() {
     const moveBtn = document.getElementById('vibeManagerMoveBtn');
@@ -14511,7 +14245,6 @@ async function deleteVibeManagerImage(vibeImage) {
     // Show the existing delete modal with this single image
     showVibeManagerDeleteModal();
 }
-
 
 async function uploadVibeManagerImage() {
     const fileInput = document.getElementById('vibeManagerFileInput');
@@ -14910,20 +14643,16 @@ function switchCacheManagerTab(tabName) {
     }
 }
 
-async function updateImageGenCounter() {
+async function updateImageGenCounter(counter = 0) {
     try {
-        const response = await fetchWithAuth('/image-counter');
-        if (!response.ok) throw new Error('Failed to fetch image counter');
-        const data = await response.json();
-        const counter = data.count || 0;
         const counterElem = document.getElementById('imageGenCounter');
         const statusElem = document.getElementById('queueStatus');
-        if (counterElem) {
+        if (counterElem && statusElem && counterElem.textContent !== counter.toString()) {
             counterElem.textContent = counter;
             statusElem.classList.remove('notice', 'warn', 'bad');
             if (counter > 300) statusElem.classList.add('bad');
-            else if (counter > 150) statusElem.classList.add('warn');
-            else if (counter > 50) statusElem.classList.add('notice');
+            else if (counter > 200) statusElem.classList.add('warn');
+            else if (counter > 150) statusElem.classList.add('notice');
         }
     } catch (e) {
         const counterElem = document.getElementById('imageGenCounter');
@@ -14932,25 +14661,28 @@ async function updateImageGenCounter() {
         if (statusElem) statusElem.classList.remove('notice', 'warn', 'bad');
     }
 }
-setInterval(updateImageGenCounter, 30000);
-setInterval(async () => {
+
+async function updateQueueStatus(data) {
     try {
-        const response = await fetchWithAuth('/queue-status');
-        if (!response.ok) throw new Error('Failed to fetch queue status');
-        const data = await response.json();
+        const counterElem = document.getElementById('imageGenCounter');
         const statusElem = document.getElementById('queueIcon');
         if (statusElem) {
             let classList = 'fas ';
             if (data.value === 2) classList += 'fa-octagon-exclamation';
-            else if (data.value === 1) classList += 'fa-exclamation-triangle';
+            else if (data.value === 1) classList += 'fa-ban';
             else classList += 'fa-check';
+
+            if (data.value === 2) counterElem.classList.add('stopped');
+            else counterElem.classList.remove('stopped');
+            statusElem.setAttribute('data-value', data.value);
             statusElem.classList = classList;
         }
     } catch (e) {
         const statusElem = document.getElementById('queueIcon');
+        statusElem.setAttribute('data-value', 0);
         statusElem.classList = "";
-    }
-}, 10000);
+    }   
+}
 
 let pinModalPromise = null;
 function showPinModal() {
@@ -15019,20 +14751,36 @@ function showPinModal() {
     });
     return pinModalPromise;
 }
+
 async function ensureSessionValid() {
     // Try a lightweight authenticated endpoint
     try {
         const resp = await fetch('/ping');
-        if (resp.status !== 401) return true;
+        if (resp.status !== 401) {
+            const data = await resp.json();
+            updateImageGenCounter(data.image_count);
+            updateQueueStatus(data.queue_status);
+            return true;
+        }
     } catch {}
     try {
         await showPinModal();
         // Try again after re-auth
         const resp2 = await fetch('/ping');
-        return resp2.status !== 401;
+        if (resp2.status !== 401) {
+            const data = await resp2.json();
+            updateImageGenCounter(data.image_count);
+            updateQueueStatus(data.queue_status);
+            return true;
+        }
     } catch {
         // User cancelled
         window.location.href = '/';
         return false;
     }
 }
+
+(async () => {
+    await ensureSessionValid();
+    setInterval(ensureSessionValid, 10000);
+})();

@@ -7,7 +7,7 @@ const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 let timestamps = [];
 
-function pruneOld(now = Date.now()) {
+async function pruneOld(now = Date.now()) {
     timestamps = timestamps.filter(ts => now - ts < ROLLING_WINDOW_MS);
 }
 

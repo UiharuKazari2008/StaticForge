@@ -59,7 +59,6 @@ const {
     getActiveWorkspaceData
 } = require('./modules/workspace');
 const imageCounter = require('./modules/imageCounter');
-const { executePipeline: runPipeline } = require('./modules/pipeline');
 
 console.log(config);
 
@@ -123,6 +122,90 @@ app.get('/app', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'app.html'));
     } else {
         res.redirect('/');
+    }
+});
+
+app.options('/app', authMiddleware, async (req, res) => {
+    try {
+        const currentPromptConfig = loadPromptConfig();
+        const cacheStatus = getCacheStatus();
+        
+        // Filter out _INP models and use pretty names
+        const modelEntries = Object.keys(Model)
+            .filter(key => !key.endsWith('_INP'))
+            .map(key => [key, getModelDisplayName(key)]);
+        const modelEntriesShort = Object.keys(Model)
+            .filter(key => !key.endsWith('_INP'))
+            .map(key => [key, getModelDisplayName(key,true)]);
+
+        const queueStatus = getQueueStatus();
+        const imageCount = imageCounter.getCount();
+        const userData = await getUserData();
+
+        // Helper to extract relevant preset info
+        const extractPresetInfo = (name, preset) => ({
+            name,
+            model: preset.model || 'Default',
+            upscale: preset.upscale || false,
+            allow_paid: preset.allow_paid || false,
+            variety: preset.variety || false,
+            character_prompts: preset.character_prompts || false,
+            base_image: preset.base_image || false,
+            resolution: preset.resolution || 'Default',
+            steps: preset.steps || 25,
+            guidance: preset.guidance || 5.0,
+            rescale: preset.rescale || 0.0,
+            sampler: preset.sampler || null,
+            noiseScheduler: preset.noiseScheduler || null,
+            image: !!(preset.image || null),
+            strength: preset.strength || 0.8,
+            noise: preset.noise || 0.1,
+            image_bias: preset.image_bias || null,
+            mask_compressed: !!(preset.mask_compressed || null),
+        });
+
+        // Build detailed preset info
+        const detailedPresets = Object.entries(currentPromptConfig.presets || {}).map(
+            ([name, preset]) => extractPresetInfo(name, preset)
+        );
+        // Extract training steps information
+        const fixedTrainingStepsLeft = userData?.subscription?.trainingStepsLeft?.fixedTrainingStepsLeft || 0;
+        const purchasedTrainingSteps = userData?.subscription?.trainingStepsLeft?.purchasedTrainingSteps || 0;
+        const totalCredits = fixedTrainingStepsLeft + purchasedTrainingSteps;
+
+        const userBalance = {
+            fixedTrainingStepsLeft,
+            purchasedTrainingSteps,
+            totalCredits
+        };
+
+        const options = {
+            ok: true,
+            user: userData.ok ? userData : null,
+            balance: userData.ok ? userBalance : null,
+            presets: detailedPresets,
+            queue_status: queueStatus,
+            image_count: imageCount,
+            models: Object.fromEntries(modelEntries),
+            modelsShort: Object.fromEntries(modelEntriesShort),
+            actions: Object.fromEntries(Object.keys(Action).map(key => [key, Action[key]])),
+            samplers: Object.fromEntries(Object.keys(Sampler).map(key => [key, Sampler[key]])),
+            noiseSchedulers: Object.fromEntries(Object.keys(Noise).map(key => [key, Noise[key]])),
+            resolutions: Object.fromEntries(Object.keys(Resolution).map(key => [key, Resolution[key]])),
+            textReplacements: currentPromptConfig.text_replacements || {},
+            datasets: currentPromptConfig.datasets || [],
+            quality_presets: currentPromptConfig.quality_presets || {},
+            uc_presets: currentPromptConfig.uc_presets || {},
+            cache: {
+                enabled: true,
+                ttl: "30 minutes",
+                entries: cacheStatus.totalEntries
+            }
+        }
+        res.json(options);
+    } catch(e) {
+        console.log('❌ Error occurred:', e);
+        res.status(500).json({ ok: false, error: e.message });
     }
 });
 
@@ -213,10 +296,8 @@ async function syncPreviews() {
     // Pair originals and upscales
     for (const file of files) {
         const base = getBaseName(file);
-        if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null, pipeline: null, pipeline_upscaled: null };
-        if (file.includes('_pipeline_upscaled')) baseMap[base].pipeline_upscaled = file;
-        else if (file.includes('_pipeline')) baseMap[base].pipeline = file;
-        else if (file.includes('_upscaled')) baseMap[base].upscaled = file;
+        if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
+        if (file.includes('_upscaled')) baseMap[base].upscaled = file;
         else baseMap[base].original = file;
     }
     // Generate missing previews
@@ -224,8 +305,8 @@ async function syncPreviews() {
         const previewFile = getPreviewFilename(base);
         const previewPath = path.join(previewsDir, previewFile);
         if (!fs.existsSync(previewPath)) {
-            // Prefer pipeline_upscaled, then pipeline, then upscaled, then original
-            const imgFile = baseMap[base].pipeline_upscaled || baseMap[base].pipeline || baseMap[base].upscaled || baseMap[base].original;
+            // Prefer upscaled, then original
+            const imgFile = baseMap[base].upscaled || baseMap[base].original;
             if (imgFile) {
                 const imgPath = path.join(imagesDir, imgFile);
                 await generatePreview(imgPath, previewPath);
@@ -262,12 +343,26 @@ async function encodeVibeDirect(imageBase64, informationExtracted, model) {
             path: '/ai/encode-vibe',
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${config.apiKey}`,
-                'x-correlation-id': correlationId,
-                'x-initiated-at': new Date().toISOString(),
-                'Content-Length': Buffer.byteLength(postData)
-            }
+                "accept": "*/*",
+                "accept-language": "en-US,en;q=0.9,en-GB;q=0.8",
+                "authorization": `Bearer ${config.apiKey}`,
+                "content-type": "application/json",
+                "content-length": Buffer.byteLength(postData),
+                "priority": "u=1, i",
+                "dnt": "1",
+                "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Microsoft Edge\";v=\"138\"",
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": "\"macOS\"",
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "same-site",
+                "x-correlation-id": crypto.randomBytes(3).toString('hex').toUpperCase(),
+                "x-initiated-at": new Date().toISOString(),
+                "referer": "https://novelai.net/",
+                "origin": "https://novelai.net",
+                "sec-gpc": "1",
+                "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
+              }
         };
         
         const req = https.request(options, (res) => {
@@ -303,6 +398,157 @@ async function encodeVibeDirect(imageBase64, informationExtracted, model) {
     });
 }
 
+async function getBalance() {
+    try {
+        const options = {
+            hostname: 'api.novelai.net',
+            port: 443,
+            path: '/user/subscription',
+            method: 'GET',
+            headers: {
+                "accept": "*/*",
+                "accept-language": "en-US,en;q=0.9,en-GB;q=0.8",
+                "authorization": `Bearer ${config.apiKey}`,
+                "content-type": "application/json",
+                "priority": "u=1, i",
+                "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Microsoft Edge\";v=\"138\"",
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": "\"macOS\"",
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "same-site",
+                "x-correlation-id": crypto.randomBytes(3).toString('hex').toUpperCase(),
+                "x-initiated-at": new Date().toISOString(),
+                "referer": "https://novelai.net/",
+                "origin": "https://novelai.net",
+                "sec-gpc": "1",
+                "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
+              }
+        };
+        
+        const balanceData = await new Promise((resolve, reject) => {
+            const req = https.request(options, (res) => {
+                let data = [];
+                res.on('data', chunk => data.push(chunk));
+                res.on('end', () => {
+                    const buffer = Buffer.concat(data);
+                    if (res.statusCode === 200) {
+                        try {
+                            const response = JSON.parse(buffer.toString());
+                            resolve(response);
+                        } catch (e) {
+                            reject(new Error('Invalid JSON response from NovelAI API'));
+                        }
+                    } else {
+                        try {
+                            const errorResponse = JSON.parse(buffer.toString());
+                            reject(new Error(`Balance API error: ${errorResponse.error || 'Unknown error'}`));
+                        } catch (e) {
+                            reject(new Error(`Balance API error: HTTP ${res.statusCode}`));
+                        }
+                    }
+                });
+            });
+            
+            req.on('error', error => {
+                console.log('❌ Balance API request error:', error.message);
+                reject(error);
+            });
+            
+            req.end();
+        });
+        
+        // Extract training steps information
+        const fixedTrainingStepsLeft = balanceData?.trainingStepsLeft?.fixedTrainingStepsLeft || 0;
+        const purchasedTrainingSteps = balanceData?.trainingStepsLeft?.purchasedTrainingSteps || 0;
+        const totalCredits = fixedTrainingStepsLeft + purchasedTrainingSteps;
+        
+        return {
+            ok: true,
+            fixedTrainingStepsLeft,
+            purchasedTrainingSteps,
+            totalCredits,
+            subscription: balanceData
+        }
+        
+    } catch (error) {
+        console.error('Balance check error:', error);
+        return {
+            ok: false,
+            fixedTrainingStepsLeft: 0,
+            purchasedTrainingSteps: 0,
+            totalCredits: 0,
+            subscription: null
+        }
+    }
+}
+
+async function getUserData() {
+    try {
+        const options = {
+            hostname: 'api.novelai.net',
+            port: 443,
+            path: '/user/data',
+            method: 'GET',
+            headers: {
+                "accept": "*/*",
+                "accept-language": "en-US,en;q=0.9,en-GB;q=0.8",
+                "authorization": `Bearer ${config.apiKey}`,
+                "content-type": "application/json",
+                "priority": "u=1, i",
+                "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Microsoft Edge\";v=\"138\"",
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": "\"macOS\"",
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "same-site",
+                "x-correlation-id": crypto.randomBytes(3).toString('hex').toUpperCase(),
+                "x-initiated-at": new Date().toISOString(),
+                "Referer": "https://novelai.net/",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0"
+              }
+        };
+        const userData = await new Promise((resolve, reject) => {
+            const req = https.request(options, (res) => {
+                let data = [];
+                res.on('data', chunk => data.push(chunk));
+                res.on('end', () => {
+                    const buffer = Buffer.concat(data);
+                    if (res.statusCode === 200) {
+                        try {
+                            const response = JSON.parse(buffer.toString());
+                            resolve(response);
+                        } catch (e) {
+                            reject(new Error('Invalid JSON response from NovelAI API'));
+                        }
+                    } else {
+                        try {
+                            const errorResponse = JSON.parse(buffer.toString());
+                            reject(new Error(`User data API error: ${errorResponse.error || 'Unknown error'}`));
+                        } catch (e) {
+                            reject(new Error(`User data API error: HTTP ${res.statusCode}`));
+                        }
+                    }
+                });
+            });
+            req.on('error', error => {
+                console.log('❌ User data API request error:', error.message);
+                reject(error);
+            });
+            req.end();
+        });
+        return {
+            ok: true,
+            ...userData
+        };
+    } catch (error) {
+        console.error('User data error:', error);
+        return {
+            ok: false
+        }
+    }
+}
+
 // Updated /images endpoint with workspace filtering
 app.get('/images', async (req, res) => {
     try {
@@ -322,17 +568,15 @@ app.get('/images', async (req, res) => {
         const baseMap = {};
         for (const file of files) {
             const base = getBaseName(file);
-            if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null, pipeline: null, pipeline_upscaled: null };
-            if (file.includes('_pipeline_upscaled')) baseMap[base].pipeline_upscaled = file;
-            else if (file.includes('_pipeline')) baseMap[base].pipeline = file;
-            else if (file.includes('_upscaled')) baseMap[base].upscaled = file;
+            if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
+            if (file.includes('_upscaled')) baseMap[base].upscaled = file;
             else baseMap[base].original = file;
         }
         const gallery = [];
         for (const base in baseMap) {
-            const { original, upscaled, pipeline, pipeline_upscaled } = baseMap[base];
-            // Prefer pipeline_upscaled, then pipeline, then upscaled, then original
-            const file = pipeline_upscaled || pipeline || upscaled || original;
+            const { original, upscaled} = baseMap[base];
+            // Prefer upscaled, then original
+            const file = upscaled || original;
             if (!file) continue;
             const filePath = path.join(imagesDir, file);
             // Check if file exists before trying to get stats
@@ -343,10 +587,8 @@ app.get('/images', async (req, res) => {
                     base,
                     original,
                     upscaled,
-                    pipeline,
-                    pipeline_upscaled,
                     preview,
-                    mtime: stats.mtime,
+                    mtime: stats.mtime.valueOf(),
                     size: stats.size
                 });
             } catch (error) {
@@ -375,17 +617,15 @@ app.get('/images/all', async (req, res) => {
         const baseMap = {};
         for (const file of allFiles) {
             const base = getBaseName(file);
-            if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null, pipeline: null, pipeline_upscaled: null };
-            if (file.includes('_pipeline_upscaled')) baseMap[base].pipeline_upscaled = file;
-            else if (file.includes('_pipeline')) baseMap[base].pipeline = file;
-            else if (file.includes('_upscaled')) baseMap[base].upscaled = file;
+            if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
+            if (file.includes('_upscaled')) baseMap[base].upscaled = file;
             else baseMap[base].original = file;
         }
         const gallery = [];
         for (const base in baseMap) {
-            const { original, upscaled, pipeline, pipeline_upscaled } = baseMap[base];
-            // Prefer pipeline_upscaled, then pipeline, then upscaled, then original
-            const file = pipeline_upscaled || pipeline || upscaled || original;
+            const { original, upscaled } = baseMap[base];
+            // Prefer upscaled, then original
+            const file = upscaled || original;
             if (!file) continue;
             const filePath = path.join(imagesDir, file);
             const stats = fs.statSync(filePath);
@@ -394,10 +634,8 @@ app.get('/images/all', async (req, res) => {
                 base,
                 original,
                 upscaled,
-                pipeline,
-                pipeline_upscaled,
                 preview,
-                mtime: stats.mtime,
+                mtime: stats.mtime.valueOf(),
                 size: stats.size
             });
         }
@@ -464,20 +702,6 @@ app.delete('/images/bulk', authMiddleware, async (req, res) => {
                     filenamesToRemoveFromWorkspaces.push(upscaledFilename);
                 }
 
-                // Also handle pipeline and pipeline_upscaled variants
-                const pipelineFilename = baseName + '_pipeline.png';
-                const pipelineUpscaledFilename = baseName + '_pipeline_upscaled.png';
-                const pipelinePath = path.join(imagesDir, pipelineFilename);
-                const pipelineUpscaledPath = path.join(imagesDir, pipelineUpscaledFilename);
-
-                if (fs.existsSync(pipelinePath)) {
-                    filesToDelete.push({ path: pipelinePath, type: 'pipeline' });
-                    filenamesToRemoveFromWorkspaces.push(pipelineFilename);
-                }
-                if (fs.existsSync(pipelineUpscaledPath)) {
-                    filesToDelete.push({ path: pipelineUpscaledPath, type: 'pipeline_upscaled' });
-                    filenamesToRemoveFromWorkspaces.push(pipelineUpscaledFilename);
-                }
 
                 // Add the preview file
                 if (fs.existsSync(previewPath)) {
@@ -1017,115 +1241,81 @@ app.post('/vibe/encode', authMiddleware, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
-// GET /vibe/images (get vibe images for workspace)
+// Helper to collect vibe image details from a list of filenames and workspaceId
+function collectVibeImageDetails(filenames, workspaceId) {
+    const vibeImageDetails = [];
+    for (const filename of filenames) {
+        const filePath = path.join(vibeCacheDir, filename);
+        if (fs.existsSync(filePath)) {
+            const stats = fs.statSync(filePath);
+            try {
+                const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                const previewPath = path.join(previewCacheDir, `${vibeData.preview}.webp`);
+                // Get all encodings for this file
+                const encodings = [];
+                for (const [model, modelEncodings] of Object.entries(vibeData.encodings || {})) {
+                    for (const [extractionValue, encoding] of Object.entries(modelEncodings)) {
+                        encodings.push({
+                            model,
+                            informationExtraction: parseFloat(extractionValue),
+                            encoding: encoding
+                        });
+                    }
+                }
+                vibeImageDetails.push({
+                    filename,
+                    id: vibeData.id,
+                    preview: fs.existsSync(previewPath) ? `${vibeData.preview}.webp` : null,
+                    mtime: stats.mtime.valueOf(),
+                    size: stats.size,
+                    encodings: encodings,
+                    type: vibeData.type === 'base64' ? 'base64' : 'cache',
+                    source: vibeData.image,
+                    workspaceId: workspaceId
+                });
+            } catch (parseError) {
+                console.error(`Error parsing vibe file ${filename}:`, parseError);
+                continue;
+            }
+        }
+    }
+    return vibeImageDetails;
+}
+// GET /vibe/images (get vibe images for workspace or all)
 app.get('/vibe/images', authMiddleware, async (req, res) => {
     try {
+        if (!req.query.workspace) {
+            // Return all vibe images across all workspaces
+            const allVibeImageDetails = [];
+            const workspaces = getWorkspaces();
+            for (const [workspaceId, workspace] of Object.entries(workspaces)) {
+                const vibeImages = workspace.vibeImages || [];
+                const details = collectVibeImageDetails(vibeImages, workspaceId);
+                allVibeImageDetails.push(...details);
+            }
+            // Sort by newest first
+            allVibeImageDetails.sort((a, b) => b.mtime - a.mtime);
+            return res.json(allVibeImageDetails);
+        }
+        // Existing behavior: return for specific workspace (and default if not default)
         const workspaceId = req.query.workspace || getActiveWorkspace();
         const workspace = getWorkspace(workspaceId);
-        
         if (!workspace) {
             return res.status(404).json({ error: 'Workspace not found' });
         }
-        
-        const vibeImageDetails = [];
-        
-        // Get vibes from current workspace
-        const currentWorkspaceVibes = workspace.vibeImages || [];
-        for (const filename of currentWorkspaceVibes) {
-            const filePath = path.join(vibeCacheDir, filename);
-            if (fs.existsSync(filePath)) {
-                const stats = fs.statSync(filePath);
-                
-                // Parse JSON file to get details
-                try {
-                    const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                    const previewPath = path.join(previewCacheDir, `${vibeData.preview}.webp`);
-                    
-                    // Get all encodings for this file
-                    const encodings = [];
-                    for (const [model, modelEncodings] of Object.entries(vibeData.encodings || {})) {
-                        for (const [extractionValue, encoding] of Object.entries(modelEncodings)) {
-                            encodings.push({
-                                model,
-                                informationExtraction: parseFloat(extractionValue),
-                                encoding: encoding
-                            });
-                        }
-                    }
-                    
-                    vibeImageDetails.push({
-                        filename,
-                        id: vibeData.id,
-                        preview: fs.existsSync(previewPath) ? `${vibeData.preview}.webp` : null,
-                        mtime: stats.mtime,
-                        size: stats.size,
-                        encodings: encodings,
-                        type: vibeData.type === 'base64' ? 'base64' : 'cache',
-                        source: vibeData.image,
-                        workspaceId: workspaceId
-                    });
-                } catch (parseError) {
-                    console.error(`Error parsing vibe file ${filename}:`, parseError);
-                    // Skip this file if it can't be parsed
-                    continue;
-                }
-            }
-        }
-        
+        let vibeImageDetails = collectVibeImageDetails(workspace.vibeImages || [], workspaceId);
         // Get vibes from default workspace (if current workspace is not default)
         if (workspaceId !== 'default' && !req.query?.workspace) {
             const defaultWorkspace = getWorkspace('default');
             if (defaultWorkspace) {
-                const defaultWorkspaceVibes = defaultWorkspace.vibeImages || [];
-                for (const filename of defaultWorkspaceVibes) {
-                    const filePath = path.join(vibeCacheDir, filename);
-                    if (fs.existsSync(filePath)) {
-                        const stats = fs.statSync(filePath);
-                        
-                        // Parse JSON file to get details
-                        try {
-                            const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                            const previewPath = path.join(previewCacheDir, `${vibeData.preview}.webp`);
-                            
-                            // Get all encodings for this file
-                            const encodings = [];
-                            for (const [model, modelEncodings] of Object.entries(vibeData.encodings || {})) {
-                                for (const [extractionValue, encoding] of Object.entries(modelEncodings)) {
-                                    encodings.push({
-                                        model,
-                                        informationExtraction: parseFloat(extractionValue),
-                                        encoding: encoding
-                                    });
-                                }
-                            }
-                            
-                            vibeImageDetails.push({
-                                filename,
-                                id: vibeData.id,
-                                preview: fs.existsSync(previewPath) ? `${vibeData.preview}.webp` : null,
-                                mtime: stats.mtime,
-                                size: stats.size,
-                                encodings: encodings,
-                                type: vibeData.type === 'base64' ? 'base64' : 'cache',
-                                source: vibeData.image,
-                                workspaceId: 'default'
-                            });
-                        } catch (parseError) {
-                            console.error(`Error parsing vibe file ${filename}:`, parseError);
-                            // Skip this file if it can't be parsed
-                            continue;
-                        }
-                    }
-                }
+                vibeImageDetails = vibeImageDetails.concat(
+                    collectVibeImageDetails(defaultWorkspace.vibeImages || [], 'default')
+                );
             }
         }
-        
         // Sort by newest first
         vibeImageDetails.sort((a, b) => b.mtime - a.mtime);
-        
         res.json(vibeImageDetails);
-        
     } catch (error) {
         console.error('Error getting vibe images:', error);
         res.status(500).json({ error: error.message });
@@ -1662,21 +1852,6 @@ app.delete('/images/:filename', authMiddleware, async (req, res) => {
             filenamesToRemoveFromWorkspaces.push(upscaledFilename);
         }
 
-        // Also handle pipeline and pipeline_upscaled variants
-        const pipelineFilename = baseName + '_pipeline.png';
-        const pipelineUpscaledFilename = baseName + '_pipeline_upscaled.png';
-        const pipelinePath = path.join(imagesDir, pipelineFilename);
-        const pipelineUpscaledPath = path.join(imagesDir, pipelineUpscaledFilename);
-
-        if (fs.existsSync(pipelinePath)) {
-            filesToDelete.push({ path: pipelinePath, type: 'pipeline' });
-            filenamesToRemoveFromWorkspaces.push(pipelineFilename);
-        }
-        if (fs.existsSync(pipelineUpscaledPath)) {
-            filesToDelete.push({ path: pipelineUpscaledPath, type: 'pipeline_upscaled' });
-            filenamesToRemoveFromWorkspaces.push(pipelineUpscaledFilename);
-        }
-
         // Add the preview file
         if (fs.existsSync(previewPath)) {
             filesToDelete.push({ path: previewPath, type: 'preview' });
@@ -2210,7 +2385,6 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
 
 async function handleGeneration(opts, returnImage = false, presetName = null, workspaceId = null) {
     const seed = opts.seed || Math.floor(0x100000000 * Math.random() - 1);
-    const isPipeline = opts.isPipeline || false;
     const layer1Seed = opts.layer1Seed || null;
     
     opts.n_samples = 1;
@@ -2229,7 +2403,6 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     const apiOpts = { ...opts };
     delete apiOpts.upscale;
     delete apiOpts.no_save;
-    delete apiOpts.isPipeline;
     delete apiOpts.layer1Seed;
     delete apiOpts.allCharacterPrompts;
     delete apiOpts.original_filename;
@@ -2281,13 +2454,9 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     const timestamp = Date.now().toString();
     let namePrefix = presetName || 'generated';
     
-    // Generate filename based on whether it's a pipeline or standard generation
+    // Generate filename based on standard generation
     let name;
-    if (isPipeline && layer1Seed !== null) {
-        name = `${timestamp}_${namePrefix}_${layer1Seed}_${seed}_pipeline.png`;
-    } else {
-        name = `${timestamp}_${namePrefix}_${seed}.png`;
-    }
+    name = `${timestamp}_${namePrefix}_${seed}.png`;
     
     const shouldSave = opts.no_save !== true;
     
@@ -2297,7 +2466,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         // Prepare forge metadata
         const forgeData = {
             date_generated: Date.now(),
-            request_type: isPipeline ? 'pipeline' : 'preset',
+            request_type: 'preset',
             generation_type: 'regular',
             upscale_ratio: null,
             upscaled_at: null
@@ -2459,17 +2628,11 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             
             // Return result with appropriate seed information
             const result = { buffer: updatedScaledBuffer, filename: name, saved: shouldSave, seed: seed };
-            if (isPipeline && layer1Seed !== null) {
-                result.layer1Seed = layer1Seed;
-            }
             return result;
         }
         
         // Return result with appropriate seed information
         const finalResult = { buffer, filename: name, saved: shouldSave, seed: seed };
-        if (isPipeline && layer1Seed !== null) {
-            finalResult.layer1Seed = layer1Seed;
-        }
         return finalResult;
     } else {
         // Save image and return filename only (legacy behavior)
@@ -2488,9 +2651,6 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         
         // Return result with appropriate seed information
         const result = { filename: name, saved: shouldSave, seed: seed };
-        if (isPipeline && layer1Seed !== null) {
-            result.layer1Seed = layer1Seed;
-        }
         return result;
     }
 }
@@ -2521,26 +2681,25 @@ const upscaleImage = async (imageBuffer, scale = 4, width, height) => {
                 path: '/ai/upscale',
                 method: 'POST',
                 headers: {
-                    Accept: "*/*",
-                    "Accept-Language": "en-US,en;q=0.5",
-                    "Accept-Encoding": "gzip, deflate, br",
-                    "Content-Type": "application/json",
-                    Host: "api.novelai.net",
-                    Origin: "https://novelai.net",
-                    Referer: "https://novelai.net",
-                    DNT: "1",
-                    "Sec-GPC": "1",
-                    Connection: "keep-alive",
-                    "Sec-Fetch-Dest": "empty",
-                    "Sec-Fetch-Mode": "cors",
-                    "Sec-Fetch-Site": "same-site",
-                    Priority: "u=0",
-                    Pragma: "no-cache",
-                    "Cache-Control": "no-cache",
-                    TE: "trailers",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0",
-                    'Content-Length': Buffer.byteLength(postData),
-                    'Authorization': `Bearer ${config.apiKey}`
+                    "accept": "*/*",
+                    "accept-language": "en-US,en;q=0.9,en-GB;q=0.8",
+                    "authorization": `Bearer ${config.apiKey}`,
+                    "content-type": "application/json",
+                    "content-length": Buffer.byteLength(postData),
+                    "priority": "u=1, i",
+                    "dnt": "1",
+                    "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Microsoft Edge\";v=\"138\"",
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": "\"macOS\"",
+                    "sec-fetch-dest": "empty",
+                    "sec-fetch-mode": "cors",
+                    "sec-fetch-site": "same-site",
+                    "x-correlation-id": crypto.randomBytes(3).toString('hex').toUpperCase(),
+                    "x-initiated-at": new Date().toISOString(),
+                    "referer": "https://novelai.net/",
+                    "origin": "https://novelai.net",
+                    "sec-gpc": "1",
+                    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
                 }
             };
             
@@ -2633,7 +2792,7 @@ const handleImageRequest = async (req, res, opts, presetName = null) => {
         res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
     }
     res.send(finalBuffer);
-};
+}; 
 
 
 // Helper functions for cache management
@@ -3308,257 +3467,15 @@ app.get('/preset/:name/:resolution', authMiddleware, async (req, res) => {
     }
 });
 
-app.options('/', authMiddleware, (req, res) => {
-    try {
-        const currentPromptConfig = loadPromptConfig();
-        const cacheStatus = getCacheStatus();
-        
-        // Filter out _INP models and use pretty names
-        const modelEntries = Object.keys(Model)
-            .filter(key => !key.endsWith('_INP'))
-            .map(key => [key, getModelDisplayName(key)]);
-        const modelEntriesShort = Object.keys(Model)
-            .filter(key => !key.endsWith('_INP'))
-            .map(key => [key, getModelDisplayName(key,true)]);
-
-        // Helper to extract relevant preset info
-        const extractPresetInfo = (name, preset) => ({
-            name,
-            model: preset.model || 'Default',
-            upscale: preset.upscale || false,
-            allow_paid: preset.allow_paid || false,
-            variety: preset.variety || false,
-            character_prompts: preset.character_prompts || false,
-            base_image: preset.base_image || false,
-            resolution: preset.resolution || 'Default',
-            steps: preset.steps || 25,
-            guidance: preset.guidance || 5.0,
-            rescale: preset.rescale || 0.0,
-            sampler: preset.sampler || null,
-            noiseScheduler: preset.noiseScheduler || null
-        });
-
-        // Helper to resolve pipeline layer info (copied from OPTIONS /pipeline/:name)
-        const resolveLayerInfo = (layer) => {
-            if (typeof layer === 'string') {
-                // It's a preset name, resolve the preset
-                const preset = currentPromptConfig.presets[layer];
-                if (preset) {
-                    return {
-                        type: 'preset',
-                        name: layer,
-                        model: preset.model || 'Default',
-                        upscale: preset.upscale || false,
-                        allow_paid: preset.allow_paid || false,
-                        variety: preset.variety || false,
-                        character_prompts: preset.character_prompts || false,
-                        base_image: preset.base_image || false
-                    };
-                }
-            } else if (typeof layer === 'object' && layer !== null) {
-                // It's an inline preset
-                return {
-                    type: 'inline',
-                    model: layer.model || 'Default',
-                    upscale: layer.upscale || false,
-                    allow_paid: layer.allow_paid || false,
-                    variety: layer.variety || false,
-                    character_prompts: layer.character_prompts || false,
-                    base_image: layer.base_image || false
-                };
-            }
-            return {
-                type: 'unknown',
-                model: 'Default',
-                upscale: false,
-                allow_paid: false,
-                variety: false,
-                character_prompts: false,
-                base_image: false
-            };
-        };
-
-        // Build detailed preset info
-        const detailedPresets = Object.entries(currentPromptConfig.presets || {}).map(
-            ([name, preset]) => extractPresetInfo(name, preset)
-        );
-
-        // Build detailed pipeline info
-        const detailedPipelines = Object.entries(currentPromptConfig.pipelines || {}).map(
-            ([name, pipeline]) => ({
-                name,
-                layer1: {
-                    type: typeof pipeline.layer1 === 'string' ? 'preset' : 'inline',
-                    value: typeof pipeline.layer1 === 'string' ? pipeline.layer1 : 'inline preset',
-                    info: resolveLayerInfo(pipeline.layer1)
-                },
-                layer2: {
-                    type: typeof pipeline.layer2 === 'string' ? 'preset' : 'inline',
-                    value: typeof pipeline.layer2 === 'string' ? pipeline.layer2 : 'inline preset',
-                    info: resolveLayerInfo(pipeline.layer2)
-                },
-                resolution: pipeline.resolution
-            })
-        );
-
-        const options = {
-            models: Object.fromEntries(modelEntries),
-            modelsShort: Object.fromEntries(modelEntriesShort),
-            actions: Object.fromEntries(Object.keys(Action).map(key => [key, Action[key]])),
-            samplers: Object.fromEntries(Object.keys(Sampler).map(key => [key, Sampler[key]])),
-            noiseSchedulers: Object.fromEntries(Object.keys(Noise).map(key => [key, Noise[key]])),
-            resolutions: Object.fromEntries(Object.keys(Resolution).map(key => [key, Resolution[key]])),
-            presets: detailedPresets,
-            pipelines: detailedPipelines,
-            textReplacements: currentPromptConfig.text_replacements || {},
-            datasets: currentPromptConfig.datasets || [],
-            quality_presets: currentPromptConfig.quality_presets || {},
-            uc_presets: currentPromptConfig.uc_presets || {},
-            cache: {
-                enabled: true,
-                ttl: "30 minutes",
-                entries: cacheStatus.totalEntries,
-                clearEndpoint: "/cache/clear"
-            }
-        }
-        res.json(options);
-    } catch(e) {
-        console.log('❌ Error occurred:', e);
-        res.status(500).json({ error: e.message });
-    }
-});
 
 // GET /balance (get balance information)
 app.get('/balance', authMiddleware, async (req, res) => {
     try {
-        const options = {
-            hostname: 'api.novelai.net',
-            port: 443,
-            path: '/user/subscription',
-            method: 'GET',
-            headers: {
-                Accept: "*/*",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Accept-Encoding": "",
-                "Content-Type": "application/json",
-                Host: "api.novelai.net",
-                Origin: "https://novelai.net",
-                Referer: "https://novelai.net",
-                DNT: "1",
-                "Sec-GPC": "1",
-                Connection: "keep-alive",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-site",
-                Priority: "u=0",
-                Pragma: "no-cache",
-                "Cache-Control": "no-cache",
-                TE: "trailers",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0",
-                'Authorization': `Bearer ${config.apiKey}`
-            }
-        };
-        
-        const balanceData = await new Promise((resolve, reject) => {
-            const req = https.request(options, (res) => {
-                let data = [];
-                res.on('data', chunk => data.push(chunk));
-                res.on('end', () => {
-                    const buffer = Buffer.concat(data);
-                    if (res.statusCode === 200) {
-                        try {
-                            const response = JSON.parse(buffer.toString());
-                            resolve(response);
-                        } catch (e) {
-                            reject(new Error('Invalid JSON response from NovelAI API'));
-                        }
-                    } else {
-                        try {
-                            const errorResponse = JSON.parse(buffer.toString());
-                            reject(new Error(`Balance API error: ${errorResponse.error || 'Unknown error'}`));
-                        } catch (e) {
-                            reject(new Error(`Balance API error: HTTP ${res.statusCode}`));
-                        }
-                    }
-                });
-            });
-            
-            req.on('error', error => {
-                console.log('❌ Balance API request error:', error.message);
-                reject(error);
-            });
-            
-            req.end();
-        });
-        
-        // Extract training steps information
-        const fixedTrainingStepsLeft = balanceData?.trainingStepsLeft?.fixedTrainingStepsLeft || 0;
-        const purchasedTrainingSteps = balanceData?.trainingStepsLeft?.purchasedTrainingSteps || 0;
-        const totalCredits = fixedTrainingStepsLeft + purchasedTrainingSteps;
-        
-        res.json({
-            fixedTrainingStepsLeft,
-            purchasedTrainingSteps,
-            totalCredits,
-            subscription: balanceData
-        });
-        
-    } catch (error) {
-        console.error('Balance check error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /pipeline/generate (run a custom pipeline)
-app.post('/pipeline/generate', authMiddleware, async (req, res) => {
-    try {
-        const currentPromptConfig = loadPromptConfig();
-        let pipelineConfig;
-        let pipelineName = req.body.preset || req.body.name || 'generated';
-        if (req.body.preset) {
-            // Load pipeline from config and allow overrides
-            const basePipeline = currentPromptConfig.pipelines[req.body.preset];
-            if (!basePipeline) return res.status(404).json({ error: `Pipeline preset "${req.body.preset}" not found` });
-            pipelineConfig = { ...basePipeline, ...req.body };
-            if (req.body.layers) pipelineConfig.layers = req.body.layers;
-            if (req.body.resolution) pipelineConfig.resolution = req.body.resolution;
-        } else {
-            // Custom pipeline in body
-            pipelineConfig = req.body;
-        }
-        if (!pipelineConfig.layers || !pipelineConfig.resolution) {
-            return res.status(400).json({ error: 'Pipeline must have layers and resolution' });
-        }
-        const result = await runPipeline(pipelineConfig, currentPromptConfig.presets, {
-            queryParams: req.query,
-            workspaceId: req.body.workspace || req.query.workspace || null,
-            seed: req.body.seed || null
-        });
-        res.setHeader('Content-Type', 'image/png');
-        res.send(result.buffer);
-    } catch (error) {
-        console.error('❌ Pipeline execution failed:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// GET /pipeline/:name (run a named pipeline from config)
-app.get('/pipeline/:name', authMiddleware, async (req, res) => {
-    try {
-        const pipelineName = req.params.name;
-        const currentPromptConfig = loadPromptConfig();
-        const pipelineConfig = currentPromptConfig.pipelines[pipelineName];
-        if (!pipelineConfig) return res.status(404).json({ error: 'Pipeline not found' });
-        const result = await runPipeline(pipelineConfig, currentPromptConfig.presets, {
-            queryParams: req.query,
-            workspaceId: req.body.workspace || req.query.workspace || null,
-            seed: req.query.seed || null
-        });
-        res.setHeader('Content-Type', 'image/png');
-        res.send(result.buffer);
-    } catch (error) {
-        console.error('❌ Pipeline execution failed:', error);
-        res.status(500).json({ error: error.message });
+        const balance = await getBalance();
+        res.json(balance);
+    } catch(e) {
+        console.log('❌ Error getting balance:', e);
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -3739,9 +3656,6 @@ app.post('/test-bias-adjustment', async (req, res) => {
     }
 });
 
-// ==================== WORKSPACE API ENDPOINTS ====================
-
-
 // GET /workspaces (get active workspace info)
 app.get('/workspaces', authMiddleware, (req, res) => {
     try {
@@ -3761,7 +3675,6 @@ app.get('/workspaces', authMiddleware, (req, res) => {
             backgroundOpacity: workspace.backgroundOpacity || 0.3, // Default opacity
             fileCount: workspace.files.length,
             presetCount: workspace.presets.length,
-            pipelineCount: workspace.pipelines.length,
             cacheFileCount: workspace.cacheFiles.length
         });
     } catch (error) {
@@ -3785,7 +3698,6 @@ app.options('/workspaces', authMiddleware, (req, res) => {
             backgroundOpacity: workspace.backgroundOpacity || 0.3, // Default opacity
             fileCount: workspace.files.length,
             presetCount: workspace.presets.length,
-            pipelineCount: workspace.pipelines.length,
             cacheFileCount: workspace.cacheFiles.length,
             isActive: id === activeWorkspaceId,
             isDefault: id === 'default'
@@ -4092,7 +4004,7 @@ app.options('/references', authMiddleware, (req, res) => {
             cacheFiles.push({
                 hash: file,
                 filename: file,
-                mtime: stats.mtime,
+                mtime: stats.mtime.valueOf(),
                 size: stats.size,
                 hasPreview: fs.existsSync(previewPath),
                 workspaceId: workspaceId
@@ -4129,7 +4041,7 @@ app.options('/workspaces/:id/references', authMiddleware, (req, res) => {
             cacheFiles.push({
                 hash: file,
                 filename: file,
-                mtime: stats.mtime,
+                mtime: stats.mtime.valueOf(),
                 size: stats.size,
                 hasPreview: fs.existsSync(previewPath)
             });
@@ -4364,16 +4276,8 @@ process.on('SIGINT', gracefulShutdown);
 
 app.listen(config.port, () => console.log(`Server running on port ${config.port}`));
 
-// --- Add endpoint for frontend to fetch counter ---
-app.get('/image-counter', authMiddleware, (req, res) => {
-    res.json({ count: imageCounter.getCount() });
-});
-
 app.get('/ping', authMiddleware, (req, res) => {
-    res.json({ success: true });
-});
-
-// Add /queue-status endpoint
-app.get('/queue-status', authMiddleware, (req, res) => {
-    res.json(getQueueStatus());
+    const queueStatus = getQueueStatus();
+    const imageCount = imageCounter.getCount();
+    res.json({ success: true, queue_status: queueStatus, image_count: imageCount });
 });
