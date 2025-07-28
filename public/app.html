@@ -8,7 +8,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Oxanium:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <script src="/tagSets.js"></script>
+    <link rel="stylesheet" href="pin-modal.css">
+    <script src="/scripts/comp/tagSets.js"></script>
     <link rel="stylesheet" href="/fontawesome/css/fontawesome.min.css">
     <link rel="stylesheet" href="/fontawesome/css/all.min.css">
 
@@ -56,17 +57,50 @@
                 <i class="nai-wand-sparkles"></i>
                 <span class="logo-text">StaticForge</span>
             </span>
-            <div class="workspace-controls">
-                <!-- Workspace Dropdown -->
-                <div id="workspaceDropdown" class="custom-dropdown">
-                    <button type="button" id="workspaceDropdownBtn" class="btn-secondary">
-                        <i class="fas fa-folder"></i>
-                        <span id="workspaceSelected">Default</span>
-                    </button>
-                    <div id="workspaceDropdownMenu" class="custom-dropdown-menu" style="display: none;">
-                        <!-- Workspace options will be populated here -->
-                    </div>
+            <!-- Workspace Dropdown -->
+            <div id="workspaceDropdown" class="custom-dropdown">
+                <button type="button" id="workspaceDropdownBtn" class="btn-secondary">
+                    <i class="fas fa-folder"></i>
+                    <span id="workspaceSelected">Default</span>
+                </button>
+                <div id="workspaceDropdownMenu" class="custom-dropdown-menu" style="display: none;">
+                    <!-- Workspace options will be populated here -->
                 </div>
+            </div>
+            <div id="galleryToggleGroup" class="gallery-toggle-group" title="Gallery View">
+                <button type="button" class="gallery-toggle-btn" data-view="scraps" title="Scraps">
+                    <i class="nai-image-tool-sketch"></i>
+                </button>
+                <button type="button" class="gallery-toggle-btn active" data-view="images" title="Images">
+                    <i class="nai-image-count"></i>
+                </button>
+                <button type="button" class="gallery-toggle-btn" data-view="pinned" title="Pinned">
+                    <i class="nai-heart-enabled"></i>
+                </button>
+                <button type="button" class="gallery-toggle-btn" data-view="upscaled" title="Upscaled">
+                    <i class="nai-upscale"></i>
+                </button>
+                <div class="gallery-toggle-slider"></div>
+            </div>
+            <input type="number" id="galleryColumnsInput" class="form-control hover-show colored" min="3" max="10" value="5" style="width: 42px;">
+        </div>
+        <div class="header-controls">
+            <div id="customPresetDropdown" class="custom-dropdown">
+                <div class="button-group">
+                <button type="button" id="customPresetDropdownBtn" class="btn-secondary">
+                    <span id="customPresetSelected"><i class="fas fa-book-spells"></i> Spellbook</span>
+                </button>
+                <button id="generateBtn" class="btn-primary" disabled>
+                    <i class="nai-sparkles"></i>
+                </button>
+                </div>
+                <div id="customPresetDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+            </div>
+            <input type="hidden" id="presetSelect" value="">
+            <button id="manualBtn" class="btn-secondary">
+                <span class="btn-text">Creator</span><i class="nai-pen-tip-light"></i>
+            </button>
+            <div class="workspace-controls">
                 <!-- Workspace Action Buttons -->
                 <button type="button" id="workspaceManageBtn" class="btn-secondary" title="Manage Workspaces">
                     <i class="fas fa-hammer-brush"></i>
@@ -78,27 +112,6 @@
                     <i class="fas fa-file-import"></i>
                 </button>
             </div>
-            <button id="galleryToggleBtn" class="btn-secondary toggle-btn" data-state="off" data-state="images" title="Toggle between Images and Scraps">
-                <i class="fas fa-images"></i>
-            </button>
-            <input type="number" id="galleryColumnsInput" class="form-control hover-show colored" min="3" max="10" value="5" style="width: 42px;">
-        </div>
-        <div class="header-controls">
-            <div id="customPresetDropdown" class="custom-dropdown">
-                <div class="button-group">
-                <button type="button" id="customPresetDropdownBtn" class="btn-secondary">
-                    <span id="customPresetSelected"><i class="fas fa-hand-holding-seedling"></i> Presets</span>
-                </button>
-                <button id="generateBtn" class="btn-primary" disabled>
-                    <i class="nai-sparkles"></i>
-                </button>
-                </div>
-                <div id="customPresetDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
-            </div>
-            <input type="hidden" id="presetSelect" value="">
-            <button id="manualBtn" class="btn-secondary">
-                <i class="nai-penwriting"></i> Editor
-            </button>
             
             <div id="queueStatus" class="inset-badge queue-status" title="Flow Control and Generated Images Counter">
                 <i id="queueIcon" class="fas fa-spinner fa-spin"></i>
@@ -114,6 +127,21 @@
         </div>
     </header>
 
+    <!-- Error Sub-Header -->
+    <div id="errorSubHeader" class="error-sub-header hidden">
+        <div class="error-sub-header-content">
+            <div class="error-sub-header-left">
+                <i class="error-sub-header-icon"></i>
+                <span class="error-sub-header-text"></span>
+            </div>
+            <div class="error-sub-header-right">
+                <button type="button" class="error-sub-header-close" title="Dismiss">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Main Container -->
     <div class="container">
         <!-- Manual Generation Modal -->
@@ -126,20 +154,21 @@
                                 <div class="form-group">
                                     <div class="prompt-tabs">
                                         <div class="tab-header">
-                                            <div id="tab-buttons" class="tab-buttons">
-                                                <button type="button" class="tab-btn active" data-tab="prompt">
+                                            <div id="tab-buttons" class="gallery-toggle-group" data-active="prompt">
+                                                <button type="button" class="gallery-toggle-btn active" data-tab="prompt" title="Base Prompt">
                                                     <i class="nai-penwriting"></i>
                                                 </button>
-                                                <button type="button" class="tab-btn" data-tab="uc">
+                                                <button type="button" class="gallery-toggle-btn" data-tab="uc" title="Undesired Content">
                                                     <i class="nai-minus"></i>
                                                 </button>
-                                                <button type="button" class="tab-btn" data-tab="settings">
+                                                <button type="button" class="gallery-toggle-btn" data-tab="settings" title="Dataset Settings">
                                                     <i class="nai-settings"></i>
                                                 </button>
+                                                <div class="gallery-toggle-slider"></div>
                                             </div>
                                             <div class="extra-buttons">
                                                 <!-- Dataset Dropdown -->
-                                                <div id="datasetDropdown" class="custom-dropdown dropdown">
+                                                <div id="datasetDropdown" class="custom-dropdown dropdown dropright">
                                                     <button type="button" id="datasetDropdownBtn" class="btn-secondary toggle-btn" data-state="off" title="Dataset Selection">
                                                         <i id="datasetIcon" class="nai-sakura"></i>
                                                         <span id="datasetSelected" class="badge hidden"></span>
@@ -153,7 +182,7 @@
                                                 </button>
                                                 
                                                 <!-- UC Presets Dropdown -->
-                                                <div id="ucPresetsDropdown" class="custom-dropdown dropdown">
+                                                <div id="ucPresetsDropdown" class="custom-dropdown dropdown dropright">
                                                     <button type="button" id="ucPresetsDropdownBtn" class="btn-secondary toggle-btn" data-state="off" title="UC Presets">
                                                         <div class="uc-boxes">
                                                             <div class="uc-box" data-level="1"></div>
@@ -173,13 +202,13 @@
                                             <div class="tab-pane active" id="prompt-tab" data-label="Base Prompt">
                                                 <div class="prompt-textarea-container">
                                                     <div class="prompt-textarea-background"></div>
-                                                    <textarea id="manualPrompt" class="form-control prompt-textarea textarea-inset" placeholder="Enter your prompt..." required></textarea>
+                                                    <textarea id="manualPrompt" class="form-control prompt-textarea textarea-inset" placeholder="Enter your prompt..." required  autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
                                                 </div>
                                             </div>
                                             <div class="tab-pane" id="uc-tab" data-label="Undesired Content">
                                                 <div class="prompt-textarea-container">
                                                     <div class="prompt-textarea-background"></div>
-                                                    <textarea id="manualUc" class="form-control prompt-textarea textarea-inset" rows="3" placeholder="Enter undesired content..."></textarea>
+                                                    <textarea id="manualUc" class="form-control prompt-textarea textarea-inset" rows="3" placeholder="Enter undesired content..."  autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
                                                 </div>
                                             </div>
                                             <div class="tab-pane" id="settings-tab" data-label="Dataset Settings">
@@ -195,7 +224,7 @@
                                 </div>
 
                                 <!-- Character Prompts Section -->
-                                <div class="form-group" style="margin-top: -10px;">
+                                <div class="form-group">
                                     <div class="character-prompts-header">
                                         <div class="character-prompts-title-group">
                                             <button type="button" id="randomPromptToggleBtn" class="btn-secondary toggle-btn" data-state="off" title="Random Prompt">
@@ -420,7 +449,7 @@
                                 <div id="manualPresetGroup" class="form-row">
                                     <div class="form-group">
                                         <label for="manualPresetName">Preset Name</label>
-                                        <input type="text" id="manualPresetName" class="form-control hover-show colored" placeholder="Enter preset name to save...">
+                                        <input type="text" id="manualPresetName" class="form-control hover-show colored" placeholder="Enter preset name to save..." autocorrect="false"  autocapitalize="false">
                                     </div>
                                     <div class="form-group" style="flex: unset;">
                                         <label>&nbsp;</label>
@@ -468,7 +497,7 @@
                     <div class="manual-modal-preview-section" id="manualPanelSection">
                         <div class="manual-preview-container" id="manualPreviewContainer">
                             <!-- Manual Modal Loading Overlay -->
-                            <div id="manualLoadingOverlay" class="manual-loading-overlay hidden">
+                            <div id="manualLoadingOverlay" class="manual-loading-overlay hidden return">
                                 <div class="manual-loading-content">
                                     <div class="spinner"></div>
                                     <p>Generating your image...</p>
@@ -477,6 +506,9 @@
                             <div class="manual-preview-content">
                                 <!-- Navigation buttons -->
                                 <div class="manual-preview-image-container">
+                                    <!-- Original image (shown on the right when editing) -->
+                                    <img id="manualPreviewOriginalImage" src="" alt="Original Image" class="manual-preview-original-image" style="display: none;">
+                                    <!-- Generated image (shown on the left) -->
                                     <img id="manualPreviewImage" src="" alt="Generated Image" style="display: none;">
                                     <div id="manualPreviewPlaceholder" class="manual-preview-placeholder">
                                         <i class="nai-image-placeholder-odd"></i>
@@ -486,6 +518,9 @@
                                 <div class="manual-preview-controls">
                                     <button id="manualPreviewDownloadBtn" class="btn-secondary round-button blur" style="display: none;">
                                         <i class="nai-save"></i>
+                                    </button>
+                                    <button id="manualPreviewPinBtn" class="btn-secondary round-button blur" style="display: none;">
+                                        <i class="nai-heart-disabled"></i>
                                     </button>
                                     <button id="manualPreviewUpscaleBtn" class="btn-secondary round-button blur" style="display: none;">
                                         <i class="nai-upscale"></i>
@@ -519,7 +554,7 @@
                                     </button>
                                 </div>
                                 <div class="manual-preview-controls-right">
-                                    <div id="manualPreviewSeedBtn" class="preview-info-badge round-button blur">
+                                    <div id="manualPreviewSeedBtn" class="btn-secondary round-button blur">
                                         <i class="nai-seed"></i>
                                         <span id="manualPreviewSeedNumber">---</span>
                                     </div>
@@ -531,14 +566,16 @@
                             <div class="cache-browser-header">
                                 <!-- Tab Navigation -->
                                 <div class="cache-browser-tabs">
-                                    <div class="tab-buttons">
-                                        <button type="button" class="tab-btn active" data-tab="references">
-                                            <i class="fas fa-images"></i> Base Images
+                                    <div class="gallery-toggle-group" data-active="references">
+                                        <button type="button" class="gallery-toggle-btn active" data-tab="references" data-title="Base Images">
+                                            <i class="fas fa-images"></i>
                                         </button>
-                                        <button type="button" class="tab-btn" data-tab="vibe-references">
-                                            <i class="nai-vibe-transfer"></i> Vibe References
+                                        <button type="button" class="gallery-toggle-btn" data-tab="vibe-references" data-title="Vibe References">
+                                            <i class="nai-vibe-transfer"></i>
                                         </button>
+                                        <div class="gallery-toggle-slider"></div>
                                     </div>
+                                    <span id="cacheBrowserTabTitle" class="tab-text">Base Images</span>
                                 </div>
                                 <button id="closeCacheBrowserContainerBtn" class="close-dialog">&times;</button>
                             </div>
@@ -576,22 +613,28 @@
         <div class="gallery-container">
             
             <!-- Bulk Actions Bar -->
-            <div id="bulkActionsBar" class="bulk-actions-bar" style="display: none;">
+            <div id="bulkActionsBar" class="bulk-actions-bar blur" style="display: none;">
                 <div class="bulk-actions-info">
                     <span id="selectedCount">0</span> images selected
                 </div>
                 <div class="bulk-actions-buttons">
                     <button id="bulkSequenziaBtn" class="btn-secondary">
-                        <i class="fas fa-share"></i> Bounce
+                        <i class="fas fa-share"></i>
                     </button>
                     <button id="bulkMoveToWorkspaceBtn" class="btn-secondary">
-                        <i class="fas fa-folder"></i> Transfer
+                        <i class="fas fa-folder"></i>
                     </button>
                     <button id="bulkMoveToScrapsBtn" class="btn-secondary">
-                        <i class="nai-image-tool-sketch"></i> Scrap
+                        <i class="nai-image-tool-sketch"></i>
+                    </button>
+                    <button id="bulkPinBtn" class="btn-secondary" style="display: none;">
+                        <i class="nai-heart-enabled"></i>
+                    </button>
+                    <button id="bulkUnpinBtn" class="btn-secondary" style="display: none;">
+                        <i class="nai-heart-disabled"></i>
                     </button>
                     <button id="bulkChangePresetBtn" class="btn-secondary">
-                        <i class="nai-pen-tip-light"></i> Change Preset
+                        <i class="fas fa-pen-field"></i>
                     </button>
                     <button id="bulkDeleteBtn" class="btn-danger">
                         <i class="nai-trash"></i> Delete
@@ -928,6 +971,9 @@
                             <button id="lightboxScrapBtn" class="btn-secondary round-button" style="display:none;">
                                 <i class="nai-image-tool-sketch"></i>
                             </button>
+                            <button id="lightboxPinBtn" class="btn-secondary round-button" style="display:none;">
+                                <i class="nai-heart-disabled"></i>
+                            </button>
                             <button id="metadataBtn" class="btn-secondary metadata-btn-mobile round-button">
                                 <i class="fas fa-info-circle"></i>
                             </button>
@@ -1155,7 +1201,7 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="workspaceNameInput">Workspace Name</label>
-                            <input type="text" id="workspaceNameInput" class="form-control hover-show colored" placeholder="Enter workspace name..." maxlength="50">
+                            <input type="text" id="workspaceNameInput" class="form-control hover-show colored" placeholder="Enter workspace name..." maxlength="50"  autocorrect="false"  autocapitalize="false">
                         </div>
                     </div>
                     <div class="form-row">
@@ -1273,14 +1319,16 @@
                 
                 <!-- Tab Navigation -->
                 <div class="cache-manager-tabs">
-                    <div class="tab-buttons">
-                        <button type="button" class="tab-btn active" data-tab="references">
-                            <i class="fas fa-images"></i> Base Images
+                    <div class="gallery-toggle-group" data-active="references">
+                        <button type="button" class="gallery-toggle-btn active" data-tab="references" data-title="Base Images">
+                            <i class="fas fa-images"></i>
                         </button>
-                        <button type="button" class="tab-btn" data-tab="vibe">
-                            <i class="nai-vibe-transfer"></i> Vibe Encodings
+                        <button type="button" class="gallery-toggle-btn" data-tab="vibe" data-title="Vibe Encodings">
+                            <i class="nai-vibe-transfer"></i>
                         </button>
+                        <div class="gallery-toggle-slider"></div>
                     </div>
+                    <span id="cacheManagerTabTitle" class="tab-text">Base Images</span>
                 </div>
                 
                 <div class="cache-manager-body">
@@ -1576,7 +1624,7 @@
             </div>
             <div class="modal-body">
                 <div class="background-image-search">
-                    <input type="text" id="backgroundImageSearchInput" class="form-control" placeholder="Search images...">
+                    <input type="text" id="backgroundImageSearchInput" class="form-control" placeholder="Search images..."  autocorrect="false"  autocapitalize="false" >
                 </div>
                 <div class="background-image-options">
                     <button type="button" id="noBackgroundImageBtn" class="background-image-option no-image-option">
@@ -1613,7 +1661,7 @@
                 <p>Change preset name for <span id="bulkChangePresetSelectedCount">0</span> selected image(s):</p>
                 <div class="form-group">
                     <label for="bulkChangePresetNameInput">New Preset Name</label>
-                    <input type="text" id="bulkChangePresetNameInput" class="form-control" placeholder="Enter new preset name..." maxlength="100">
+                    <input type="text" id="bulkChangePresetNameInput" class="form-control" placeholder="Enter new preset name..." maxlength="100"  autocorrect="false"  autocapitalize="false">
                     <small class="form-text">Leave empty to remove preset name</small>
                 </div>
                 <div class="modal-actions btn-group">
@@ -1637,14 +1685,46 @@
             </div>
             <div class="modal-body">
                 <p>Enter your PIN to continue.</p>
-                <form id="pinModalForm" autocomplete="off">
-                    <input id="pinModalInput" type="password" maxlength="6" pattern="[0-9]*" inputmode="numeric" class="form-control" placeholder="Enter 6-digit PIN" required style="text-align:center; font-size:1.5em; letter-spacing:0.5em; width: 12em; margin-bottom: 1em;" />
-                    <div id="pinModalError" class="form-text" style="color: var(--danger-color); display: none;"></div>
-                    <div class="modal-actions btn-group" style="margin-top:1em;">
-                        <button type="submit" id="pinModalSubmitBtn" class="btn-primary">Login</button>
-                        <button type="button" id="pinModalCancelBtn" class="btn-secondary">Cancel</button>
+                <div class="pin-display">
+                    <div class="pin-dots">
+                        <div class="pin-dot" data-index="0"></div>
+                        <div class="pin-dot" data-index="1"></div>
+                        <div class="pin-dot" data-index="2"></div>
+                        <div class="pin-dot" data-index="3"></div>
+                        <div class="pin-dot" data-index="4"></div>
+                        <div class="pin-dot" data-index="5"></div>
                     </div>
-                </form>
+                </div>
+                <div class="pin-pad">
+                    <div class="pin-row">
+                        <button class="pin-button" data-number="1"><i class="fas fa-1"></i></button>
+                        <button class="pin-button" data-number="2"><i class="fas fa-2"></i></button>
+                        <button class="pin-button" data-number="3"><i class="fas fa-3"></i></button>
+                    </div>
+                    <div class="pin-row">
+                        <button class="pin-button" data-number="4"><i class="fas fa-4"></i></button>
+                        <button class="pin-button" data-number="5"><i class="fas fa-5"></i></button>
+                        <button class="pin-button" data-number="6"><i class="fas fa-6"></i></button>
+                    </div>
+                    <div class="pin-row">
+                        <button class="pin-button" data-number="7"><i class="fas fa-7"></i></button>
+                        <button class="pin-button" data-number="8"><i class="fas fa-8"></i></button>
+                        <button class="pin-button" data-number="9"><i class="fas fa-9"></i></button>
+                    </div>
+                    <div class="pin-row">
+                        <button class="pin-button clear-btn" data-action="clear">
+                          <i class="fas fa-c"></i>
+                        </button>
+                        <button class="pin-button" data-number="0"><i class="fas fa-0"></i></button>
+                        <button class="pin-button backspace-btn" data-action="backspace">
+                            <i class="fas fa-delete-left"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="pinModalError" class="form-text" style="color: var(--danger-color); display: none;"></div>
+                <div class="modal-actions btn-group" style="margin-top:1em;">
+                    <button type="button" id="pinModalCancelBtn" class="btn-secondary">Cancel</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1659,11 +1739,21 @@
     <div id="toastContainer" class="toast-container"></div>
 
     <script src="scripts/comp/dropdown.js"></script>
+    <script src="scripts/comp/lightbox.js"></script>
     <script src="scripts/comp/modalUtils.js"></script>
     <script src="scripts/comp/inpaint.js"></script>
     <script src="scripts/comp/workspaceUtils.js"></script>
     <script src="scripts/comp/autocompleteUtils.js"></script>
     <script src="scripts/comp/imageBias.js"></script>
+    <script src="scripts/comp/referenceManager.js"></script>
+    <script src="scripts/comp/emphasisManager.js"></script>
+    <script src="scripts/comp/confirmationDialog.js"></script>
+    <script src="scripts/comp/creditCostDialog.js"></script>
+    <script src="scripts/comp/galleryToolbar.js"></script>
+    <script src="scripts/comp/customScrollbar.js"></script>
+    <script src="scripts/comp/pinModal.js"></script>
+    <script src="scripts/comp/keyboardShortcuts.js"></script>
+    <script src="scripts/websocket.js"></script>
     <script src="scripts/app.js"></script>
 </body>
 </html> 

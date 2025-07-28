@@ -15,6 +15,7 @@ const { authMiddleware } = require('./modules/auth');
 const { loadPromptConfig, applyTextReplacements, getUsedReplacements } = require('./modules/textReplacements');
 const { getPresetCacheKey, getCachedPreset, setCachedPreset, getCacheStatus } = require('./modules/cache');
 const { queueMiddleware, getStatus: getQueueStatus } = require('./modules/queue');
+const { WebSocketServer, setGlobalWsServer } = require('./modules/websocket');
 const { 
     extractNovelAIMetadata, 
     readMetadata,
@@ -45,6 +46,7 @@ const {
     deleteWorkspace,
     dumpWorkspace,
     moveFilesToWorkspace,
+    movePinnedToWorkspace,
     getActiveWorkspace,
     setActiveWorkspace,
     getActiveWorkspaceFiles,
@@ -54,11 +56,23 @@ const {
     getActiveWorkspaceCacheFiles,
     removeFilesFromWorkspaces,
     getActiveWorkspaceScraps,
+    getActiveWorkspacePinned,
     syncWorkspaceFiles,
     getWorkspacesData,
-    getActiveWorkspaceData
+    getActiveWorkspaceData,
+    // Group management functions
+    createGroup,
+    getGroup,
+    getWorkspaceGroups,
+    addImagesToGroup,
+    removeImagesFromGroup,
+    renameGroup,
+    deleteGroup,
+    getGroupsForImage,
+    getActiveWorkspaceGroups
 } = require('./modules/workspace');
 const imageCounter = require('./modules/imageCounter');
+const SpellChecker = require('./spellChecker');
 
 console.log(config);
 
@@ -69,11 +83,17 @@ const client = new NovelAI({
     verbose: true
  });
 
+// Initialize spell checker
+const spellChecker = new SpellChecker();
+
 // Create Express app
 const app = express();
+const server = require('http').createServer(app);
 app.use(express.json({limit: '100mb'}));
 app.use(cookieParser());
-app.use(session({
+
+// Create session middleware
+const sessionMiddleware = session({
     secret: config.sessionSecret || 'staticforge-very-secret-key',
     resave: false,
     saveUninitialized: false,
@@ -83,7 +103,9 @@ app.use(session({
         sameSite: 'strict',
         maxAge: 24 * 60 * 60 * 1000 // 24 hours
     }
-}));
+});
+
+app.use(sessionMiddleware);
 
 // Create cache directories
 const cacheDir = path.resolve(__dirname, '.cache');
@@ -181,8 +203,8 @@ app.options('/app', authMiddleware, async (req, res) => {
 
         const options = {
             ok: true,
-            user: userData.ok ? userData : null,
-            balance: userData.ok ? userBalance : null,
+            user: userData || {},
+            balance: userBalance || {},
             presets: detailedPresets,
             queue_status: queueStatus,
             image_count: imageCount,
@@ -517,14 +539,22 @@ async function getUserData() {
                     if (res.statusCode === 200) {
                         try {
                             const response = JSON.parse(buffer.toString());
-                            resolve(response);
+                            resolve({
+                                ok: true,
+                                ...response,
+                            });
                         } catch (e) {
                             reject(new Error('Invalid JSON response from NovelAI API'));
                         }
                     } else {
                         try {
                             const errorResponse = JSON.parse(buffer.toString());
-                            reject(new Error(`User data API error: ${errorResponse.error || 'Unknown error'}`));
+                            console.log('❌ User data API error:', errorResponse);
+                            resolve({
+                                ok: false,
+                                statusCode: res.statusCode,
+                                error: errorResponse.message || 'Unknown error'
+                            })
                         } catch (e) {
                             reject(new Error(`User data API error: HTTP ${res.statusCode}`));
                         }
@@ -552,13 +582,22 @@ async function getUserData() {
 // Updated /images endpoint with workspace filtering
 app.get('/images', async (req, res) => {
     try {
-        // Check if scraps are requested
+        // Check if scraps, pinned, or upscaled are requested
         const isScraps = req.query.scraps === 'true';
+        const isPinned = req.query.pinned === 'true';
+        const isUpscaled = req.query.upscaled === 'true';
         
         let files;
         if (isScraps) {
             // Get scraps for active workspace (includes default + active workspace)
             files = getActiveWorkspaceScraps();
+        } else if (isPinned) {
+            // Get pinned images for active workspace
+            files = getActiveWorkspacePinned();
+        } else if (isUpscaled) {
+            // Get files for active workspace (includes default + active workspace)
+            const workspaceFiles = getActiveWorkspaceFiles();
+            files = workspaceFiles;
         } else {
             // Get files for active workspace (includes default + active workspace)
             const workspaceFiles = getActiveWorkspaceFiles();
@@ -575,26 +614,51 @@ app.get('/images', async (req, res) => {
         const gallery = [];
         for (const base in baseMap) {
             const { original, upscaled} = baseMap[base];
-            // Prefer upscaled, then original
-            const file = upscaled || original;
-            if (!file) continue;
-            const filePath = path.join(imagesDir, file);
-            // Check if file exists before trying to get stats
-            try {
-                const stats = fs.statSync(filePath);
-                const preview = getPreviewFilename(base);
-                gallery.push({
-                    base,
-                    original,
-                    upscaled,
-                    preview,
-                    mtime: stats.mtime.valueOf(),
-                    size: stats.size
-                });
-            } catch (error) {
-                // File doesn't exist, skip it (it will be cleaned up by syncWorkspaceFiles)
-                console.warn(`Skipping non-existent file: ${file}`);
-                continue;
+            
+            if (isUpscaled) {
+                // For upscaled view, only include images that have upscaled versions
+                if (!upscaled) continue;
+                const file = upscaled;
+                const filePath = path.join(imagesDir, file);
+                // Check if file exists before trying to get stats
+                try {
+                    const stats = fs.statSync(filePath);
+                    const preview = getPreviewFilename(base);
+                    gallery.push({
+                        base,
+                        original,
+                        upscaled,
+                        preview,
+                        mtime: stats.mtime.valueOf(),
+                        size: stats.size
+                    });
+                } catch (error) {
+                    // File doesn't exist, skip it (it will be cleaned up by syncWorkspaceFiles)
+                    console.warn(`Skipping non-existent file: ${file}`);
+                    continue;
+                }
+            } else {
+                // For other views, prefer upscaled, then original
+                const file = upscaled || original;
+                if (!file) continue;
+                const filePath = path.join(imagesDir, file);
+                // Check if file exists before trying to get stats
+                try {
+                    const stats = fs.statSync(filePath);
+                    const preview = getPreviewFilename(base);
+                    gallery.push({
+                        base,
+                        original,
+                        upscaled,
+                        preview,
+                        mtime: stats.mtime.valueOf(),
+                        size: stats.size
+                    });
+                } catch (error) {
+                    // File doesn't exist, skip it (it will be cleaned up by syncWorkspaceFiles)
+                    console.warn(`Skipping non-existent file: ${file}`);
+                    continue;
+                }
             }
         }
         // Sort by newest first
@@ -981,6 +1045,7 @@ app.post('/images/:filename/upscale', authMiddleware, async (req, res) => {
     try {
         const filename = req.params.filename;
         const filePath = path.join(imagesDir, filename);
+        const workspaceId = req.body.workspace || null;
         
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: 'Image not found' });
@@ -1008,6 +1073,10 @@ app.post('/images/:filename/upscale', authMiddleware, async (req, res) => {
         const upscaledPath = path.join(imagesDir, upscaledFilename);
         fs.writeFileSync(upscaledPath, updatedUpscaledBuffer);
         console.log(`💾 Saved upscaled: ${upscaledFilename}`);
+
+        // Add upscaled file to workspace
+        const targetWorkspaceId = workspaceId || getActiveWorkspace();
+        addToWorkspaceArray('files', upscaledFilename, targetWorkspaceId);
         
         // Generate preview for the base image (if not exists)
         const baseName = getBaseName(filename);
@@ -1892,6 +1961,16 @@ app.delete('/images/:filename', authMiddleware, async (req, res) => {
 
 // Common request logging middleware
 const requestLogger = (req, res, next) => {
+    const skippedPaths = [
+        '/images',
+        '/ping',
+        '/spellcheck',
+        '/vibe',
+        '/vibe/images',
+    ];
+    if (skippedPaths.some(path => req.path.startsWith(path))) {
+        return next();
+    }
     const startTime = Date.now();
     const timestamp = new Date().toLocaleString('en-US', {
         month: '2-digit',
@@ -2476,9 +2555,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
 
         if (opts.input_character_prompts) {
             forgeData.allCharacters = opts.input_character_prompts;
-            if (opts.use_coords !== undefined) {
-                forgeData.use_coords = opts.use_coords;
-            }
+            forgeData.use_coords = opts.use_coords;
         } else if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts) && opts.allCharacterPrompts.length > 0) {
             // Post-process character prompts for forge metadata: replace 1girl/1boy with girl/boy
             const processedCharacterPrompts = opts.allCharacterPrompts.map(char => ({
@@ -2509,10 +2586,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                 forgeData.characterNames = characterNames;
             }
             
-            // Save use_coords setting if present
-            if (opts.use_coords !== undefined) {
-                forgeData.use_coords = opts.use_coords;
-            }
+            forgeData.use_coords = opts.use_coords;
         }
         
         // Preserve existing preset_name if it exists, otherwise set new one
@@ -2577,13 +2651,13 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         
         // Update buffer with forge metadata
         buffer = updateMetadata(buffer, forgeData);
+        const targetWorkspaceId = workspaceId || getActiveWorkspace();
         
         if (shouldSave) {
             fs.writeFileSync(path.join(imagesDir, name), buffer);
             console.log(`💾 Saved: ${name}`);
             
             // Add file to workspace
-            const targetWorkspaceId = workspaceId || getActiveWorkspace();
             addToWorkspaceArray('files', name, targetWorkspaceId);
             
             // Generate preview
@@ -2615,7 +2689,6 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                 console.log(`💾 Saved: ${upscaledName}`);
                 
                 // Add upscaled file to workspace
-                const targetWorkspaceId = workspaceId || getActiveWorkspace();
                 addToWorkspaceArray('files', upscaledName, targetWorkspaceId);
                 
                 // Update preview with upscaled version
@@ -2869,6 +2942,10 @@ app.get('/search/prompt', authMiddleware, async (req, res) => {
             return res.json([]);
         }
         
+        // Check for spelling errors
+        const spellCheckResult = spellChecker.checkText(query);
+        const hasSpellingErrors = spellCheckResult.misspelled.length > 0;
+        
         const searchTerm = query.trim().toLowerCase();
         const queryHash = generateQueryHash(searchTerm, model);
         
@@ -2928,7 +3005,6 @@ app.get('/search/prompt', authMiddleware, async (req, res) => {
         if (!cacheHit) {
             const makeTagRequest = async (apiModel) => {
                 const url = `https://image.novelai.net/ai/generate-image/suggest-tags?model=${apiModel}&prompt=${encodeURIComponent(query)}`;
-                
                 const options = {
                     method: 'GET',
                     headers: {
@@ -2937,6 +3013,11 @@ app.get('/search/prompt', authMiddleware, async (req, res) => {
                         'authorization': `Bearer ${config.apiKey}`,
                         'cache-control': 'no-cache',
                         'content-type': 'application/json',
+                        'dnt': '1',
+                        'sec-gpc': '1',
+                        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0',
+                        'referer': 'https://novelai.net/',
+                        'origin': 'https://novelai.net',
                         'pragma': 'no-cache',
                         'priority': 'u=1, i',
                         'sec-ch-ua': '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
@@ -2944,11 +3025,10 @@ app.get('/search/prompt', authMiddleware, async (req, res) => {
                         'sec-ch-ua-platform': '"Windows"',
                         'sec-fetch-dest': 'empty',
                         'sec-fetch-mode': 'cors',
-                        'sec-fetch-site': 'same-site',
-                        'Referer': 'https://novelai.net/'
+                        'sec-fetch-site': 'same-site'
                     }
                 };
-                
+
                 return new Promise((resolve, reject) => {
                     const urlObj = new URL(url);
                     const req = https.request({
@@ -2974,11 +3054,22 @@ app.get('/search/prompt', authMiddleware, async (req, res) => {
                             }
                         });
                     });
-                    
+
+                    // Timeout after 5 seconds
+                    const timeout = setTimeout(() => {
+                        req.destroy();
+                        reject(new Error('Tag suggestion API request timed out after 5 seconds'));
+                    }, 5000);
+
                     req.on('error', error => {
+                        clearTimeout(timeout);
                         reject(error);
                     });
-                    
+
+                    req.on('close', () => {
+                        clearTimeout(timeout);
+                    });
+
                     req.end();
                 });
             };
@@ -3125,10 +3216,42 @@ app.get('/search/prompt', authMiddleware, async (req, res) => {
         // Final result order: high count tags, characters (limited), low count tags
         const finalResults = [...highCountTags, ...characterResults.slice(0, 25), ...lowCountTags];
         
-        res.json(finalResults);
+        // Add spell checking information to response
+        const response = {
+            results: finalResults,
+            spellCheck: {
+                hasErrors: hasSpellingErrors,
+                misspelled: spellCheckResult.misspelled,
+                suggestions: spellCheckResult.suggestions
+            }
+        };
+        
+        res.json(response);
         
     } catch (error) {
         console.log('❌ Auto-complete search error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Add custom word to spell checker
+app.post('/spellcheck/add-word', authMiddleware, async (req, res) => {
+    try {
+        const { word } = req.body;
+        
+        if (!word || typeof word !== 'string') {
+            return res.status(400).json({ error: 'Word is required' });
+        }
+        
+        const success = spellChecker.addCustomWord(word);
+        
+        if (success) {
+            res.json({ success: true, message: `Added "${word}" to custom words` });
+        } else {
+            res.status(400).json({ error: 'Invalid word' });
+        }
+    } catch (error) {
+        console.log('❌ Add custom word error:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
@@ -3938,6 +4061,30 @@ app.get('/workspaces/:id/scraps', authMiddleware, (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+// GET /workspaces/:id/pinned (get workspace pinned images)
+app.get('/workspaces/:id/pinned', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const workspace = getWorkspace(id);
+        
+        if (!workspace) {
+            return res.status(404).json({ error: 'Workspace not found' });
+        }
+        
+        // Get pinned images for the requested workspace
+        const pinned = getActiveWorkspacePinned();
+        
+        res.json({
+            workspaceId: id,
+            workspaceName: workspace.name,
+            pinned: pinned
+        });
+    } catch (error) {
+        console.log('❌ Error getting workspace pinned images:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 // PUT /workspaces/:id/scraps (add file to scraps)
 app.put('/workspaces/:id/scraps', authMiddleware, (req, res) => {
     try {
@@ -3973,6 +4120,214 @@ app.delete('/workspaces/:id/scraps', authMiddleware, (req, res) => {
     }
 });
 
+// PUT /workspaces/:id/pinned (add file to pinned)
+app.put('/workspaces/:id/pinned', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { filename } = req.body;
+        
+        if (!filename) {
+            return res.status(400).json({ error: 'Filename is required' });
+        }
+        
+        addToWorkspaceArray('pinned', filename, id);
+        res.json({ success: true, message: 'File added to pinned' });
+    } catch (error) {
+        console.log('❌ Error adding file to pinned:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /workspaces/:id/pinned (remove file from pinned)
+app.delete('/workspaces/:id/pinned', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { filename } = req.body;
+        
+        if (!filename) {
+            return res.status(400).json({ error: 'Filename is required' });
+        }
+        
+        removeFromWorkspaceArray('pinned', filename, id);
+        res.json({ success: true, message: 'File removed from pinned' });
+    } catch (error) {
+        console.log('❌ Error removing file from pinned:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// PUT /workspaces/:id/pinned/bulk (add multiple files to pinned)
+app.put('/workspaces/:id/pinned/bulk', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { filenames } = req.body;
+        
+        if (!filenames || !Array.isArray(filenames) || filenames.length === 0) {
+            return res.status(400).json({ error: 'Filenames array is required' });
+        }
+        
+        const addedCount = addToWorkspaceArray('pinned', filenames, id);
+        res.json({ success: true, addedCount, message: `${addedCount} files added to pinned` });
+    } catch (error) {
+        console.log('❌ Error adding files to pinned:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /workspaces/:id/pinned/bulk (remove multiple files from pinned)
+app.delete('/workspaces/:id/pinned/bulk', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { filenames } = req.body;
+        
+        if (!filenames || !Array.isArray(filenames) || filenames.length === 0) {
+            return res.status(400).json({ error: 'Filenames array is required' });
+        }
+        
+        const removedCount = removeFromWorkspaceArray('pinned', filenames, id);
+        res.json({ success: true, removedCount, message: `${removedCount} files removed from pinned` });
+    } catch (error) {
+        console.log('❌ Error removing files from pinned:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Group management endpoints
+
+// GET /workspaces/:id/groups (get workspace groups)
+app.get('/workspaces/:id/groups', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const groups = getWorkspaceGroups(id);
+        res.json({ groups });
+    } catch (error) {
+        console.log('❌ Error getting workspace groups:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /workspaces/:id/groups (create new group)
+app.post('/workspaces/:id/groups', authMiddleware, (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, imageFilenames = [] } = req.body;
+        
+        if (!name || !name.trim()) {
+            return res.status(400).json({ error: 'Group name is required' });
+        }
+        
+        const groupId = createGroup(id, name.trim(), imageFilenames);
+        const group = getGroup(id, groupId);
+        
+        res.json({ success: true, group });
+    } catch (error) {
+        console.log('❌ Error creating group:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /workspaces/:id/groups/:groupId (get specific group)
+app.get('/workspaces/:id/groups/:groupId', authMiddleware, (req, res) => {
+    try {
+        const { id, groupId } = req.params;
+        const group = getGroup(id, groupId);
+        
+        if (!group) {
+            return res.status(404).json({ error: 'Group not found' });
+        }
+        
+        res.json({ group });
+    } catch (error) {
+        console.log('❌ Error getting group:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// PUT /workspaces/:id/groups/:groupId (update group)
+app.put('/workspaces/:id/groups/:groupId', authMiddleware, (req, res) => {
+    try {
+        const { id, groupId } = req.params;
+        const { name, imageFilenames } = req.body;
+        
+        if (name !== undefined) {
+            renameGroup(id, groupId, name.trim());
+        }
+        
+        if (imageFilenames && Array.isArray(imageFilenames)) {
+            addImagesToGroup(id, groupId, imageFilenames);
+        }
+        
+        const group = getGroup(id, groupId);
+        res.json({ success: true, group });
+    } catch (error) {
+        console.log('❌ Error updating group:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /workspaces/:id/groups/:groupId/images (add images to group)
+app.post('/workspaces/:id/groups/:groupId/images', authMiddleware, (req, res) => {
+    try {
+        const { id, groupId } = req.params;
+        const { imageFilenames } = req.body;
+        
+        if (!Array.isArray(imageFilenames) || imageFilenames.length === 0) {
+            return res.status(400).json({ error: 'Image filenames array is required' });
+        }
+        
+        const addedCount = addImagesToGroup(id, groupId, imageFilenames);
+        const group = getGroup(id, groupId);
+        
+        res.json({ success: true, addedCount, group });
+    } catch (error) {
+        console.log('❌ Error adding images to group:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /workspaces/:id/groups/:groupId/images (remove images from group)
+app.delete('/workspaces/:id/groups/:groupId/images', authMiddleware, (req, res) => {
+    try {
+        const { id, groupId } = req.params;
+        const { imageFilenames } = req.body;
+        
+        if (!Array.isArray(imageFilenames) || imageFilenames.length === 0) {
+            return res.status(400).json({ error: 'Image filenames array is required' });
+        }
+        
+        const removedCount = removeImagesFromGroup(id, groupId, imageFilenames);
+        const group = getGroup(id, groupId);
+        
+        res.json({ success: true, removedCount, group });
+    } catch (error) {
+        console.log('❌ Error removing images from group:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE /workspaces/:id/groups/:groupId (delete group)
+app.delete('/workspaces/:id/groups/:groupId', authMiddleware, (req, res) => {
+    try {
+        const { id, groupId } = req.params;
+        deleteGroup(id, groupId);
+        res.json({ success: true, message: 'Group deleted' });
+    } catch (error) {
+        console.log('❌ Error deleting group:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /workspaces/:id/images/:filename/groups (get groups for specific image)
+app.get('/workspaces/:id/images/:filename/groups', authMiddleware, (req, res) => {
+    try {
+        const { id, filename } = req.params;
+        const groups = getGroupsForImage(id, filename);
+        res.json({ groups });
+    } catch (error) {
+        console.log('❌ Error getting groups for image:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // List cache files for browsing with workspace filtering
 app.options('/references', authMiddleware, (req, res) => {
@@ -4142,6 +4497,67 @@ app.post('/workspaces/:id/references', authMiddleware, cacheUpload.single('image
     }
 });
 
+// POST /workspaces/:id/references/copy (copy existing image to cache)
+app.post('/workspaces/:id/references/copy', authMiddleware, async (req, res) => {
+    const { id } = req.params;
+    const { filename } = req.body;
+    
+    try {
+        if (!filename) {
+            return res.status(400).json({ error: 'Filename is required' });
+        }
+
+        // Determine the source image path
+        let sourcePath;
+        if (filename.includes('_upscaled')) {
+            // This is an upscaled image
+            sourcePath = path.join(upscaledDir, filename);
+        } else {
+            // This is a regular generated image
+            sourcePath = path.join(imagesDir, filename);
+        }
+
+        // Check if source file exists
+        if (!fs.existsSync(sourcePath)) {
+            return res.status(404).json({ error: 'Source image not found' });
+        }
+
+        // Read the image file
+        const imageBuffer = fs.readFileSync(sourcePath);
+        const hash = crypto.createHash('md5').update(imageBuffer).digest('hex');
+        const uploadPath = path.join(uploadCacheDir, hash);
+        const previewPath = path.join(previewCacheDir, `${hash}.webp`);
+
+        // Check if file already exists in cache
+        if (fs.existsSync(uploadPath) && fs.existsSync(previewPath)) {
+            console.log(`✅ Cache hit for copied image: ${hash}`);
+            // Still add to workspace if not already there
+            addToWorkspaceArray('cacheFiles', hash, id);
+            return res.json({ success: true, hash: hash });
+        }
+
+        // Copy original image to upload cache
+        fs.writeFileSync(uploadPath, imageBuffer);
+        console.log(`💾 Copied to upload cache: ${hash}`);
+
+        // Add cache file to workspace
+        addToWorkspaceArray('cacheFiles', hash, id);
+
+        // Generate and save preview
+        await sharp(imageBuffer)
+            .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+            .webp({ quality: 80 })
+            .toFile(previewPath);
+        console.log(`📸 Generated cached preview: ${hash}.webp`);
+        
+        res.json({ success: true, hash: hash });
+
+    } catch (e) {
+        console.log('❌ Base image copy error:', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // GET /workspaces/active/color (get active workspace color for bokeh)
 app.get('/workspaces/active/color', authMiddleware, (req, res) => {
     try {
@@ -4274,7 +4690,44 @@ function gracefulShutdown() {
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 
-app.listen(config.port, () => console.log(`Server running on port ${config.port}`));
+
+// WebSocket message handler function
+async function handleWebSocketMessage(ws, message, clientInfo, wsServer) {
+    //console.log(`📨 WebSocket message from ${clientInfo.username}:`, message.type);
+
+    switch (message.type) {
+        case 'ping':
+            wsServer.sendToClient(ws, {
+                type: 'pong',
+                timestamp: new Date().toISOString()
+            });
+            break;
+
+        case 'subscribe':
+            // Handle subscription to specific events
+            wsServer.sendToClient(ws, {
+                type: 'subscribed',
+                channels: message.channels || [],
+                timestamp: new Date().toISOString()
+            });
+            break;
+
+        default:
+            wsServer.sendToClient(ws, {
+                type: 'error',
+                message: 'Unknown message type',
+                timestamp: new Date().toISOString()
+            });
+    }
+}
+
+
+// Initialize WebSocket server with session store and message handler
+const wsServer = new WebSocketServer(server, sessionMiddleware.store, handleWebSocketMessage);
+setGlobalWsServer(wsServer);
+
+// Start server
+server.listen(config.port, () => console.log(`Server running on port ${config.port}`));
 
 app.get('/ping', authMiddleware, (req, res) => {
     const queueStatus = getQueueStatus();

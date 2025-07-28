@@ -413,7 +413,7 @@ async function extractRelevantFields(meta, filename) {
     
     // Use saved input values if available, otherwise use extracted values
     const resultPrompt = forgeData.input_prompt !== undefined ? forgeData.input_prompt : meta.prompt;
-    const resultUc = forgeData.input_uc !== undefined ? forgeData.input_uc : meta.uc;
+    const resultUc = forgeData.input_prompt !== undefined ? forgeData.input_uc : meta.uc;
 
     const result = {
         prompt: resultPrompt,

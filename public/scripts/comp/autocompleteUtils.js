@@ -163,25 +163,45 @@ function handleCharacterAutocompleteKeydown(e) {
                 updateEmphasisTooltipVisibility();
                 break;
             case 'ArrowLeft':
-            case 'ArrowRight':
-                // Only handle left/right arrows when actively selecting items in the menu
+                // Only handle left arrow when actively selecting items in the menu
                 if (selectedCharacterAutocompleteIndex >= 0) {
                     e.preventDefault();
-                    if (e.key === 'ArrowRight') {
-                        // Insert the selected item
-                        if (items[selectedCharacterAutocompleteIndex]) {
-                            const selectedItem = items[selectedCharacterAutocompleteIndex];
-                            if (selectedItem.dataset.type === 'textReplacement') {
-                                // For text replacements, insert the actual text, not the placeholder
-                                const placeholder = selectedItem.dataset.placeholder;
-                                const actualText = window.optionsData?.textReplacements[placeholder] || placeholder;
-                                insertTextReplacement(actualText);
-                            } else if (selectedItem.dataset.type === 'tag') {
-                                selectTag(selectedItem.dataset.tagName);
-                            } else {
-                                const character = JSON.parse(selectedItem.dataset.characterData);
-                                selectCharacterItem(character);
-                            }
+                } else {
+                    // When not actively selecting, allow normal text navigation
+                    hideCharacterAutocomplete();
+                    autocompleteNavigationMode = false;
+                }
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                // Check if there are spell check suggestions available
+                const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
+                if (spellCheckSection) {
+                    const firstSuggestionBtn = spellCheckSection.querySelector('.suggestion-btn');
+                    if (firstSuggestionBtn) {
+                        // Apply the first spell check suggestion
+                        const originalWord = firstSuggestionBtn.dataset.original;
+                        const suggestion = firstSuggestionBtn.dataset.suggestion;
+                        applySpellCorrection(currentCharacterAutocompleteTarget, originalWord, suggestion);
+                        return;
+                    }
+                }
+                
+                // If no spell check suggestions, handle normal autocomplete selection
+                if (selectedCharacterAutocompleteIndex >= 0) {
+                    // Insert the selected item
+                    if (items[selectedCharacterAutocompleteIndex]) {
+                        const selectedItem = items[selectedCharacterAutocompleteIndex];
+                        if (selectedItem.dataset.type === 'textReplacement') {
+                            // For text replacements, insert the actual text, not the placeholder
+                            const placeholder = selectedItem.dataset.placeholder;
+                            const actualText = window.optionsData?.textReplacements[placeholder] || placeholder;
+                            insertTextReplacement(actualText);
+                        } else if (selectedItem.dataset.type === 'tag') {
+                            selectTag(selectedItem.dataset.tagName);
+                        } else {
+                            const character = JSON.parse(selectedItem.dataset.characterData);
+                            selectCharacterItem(character);
                         }
                     }
                 } else {
@@ -210,15 +230,6 @@ function handleCharacterAutocompleteKeydown(e) {
                 hideCharacterAutocomplete();
                 autocompleteNavigationMode = false;
                 break;
-            case 'e':
-            case 'E':
-                // Only handle 'E' key when we're in navigation mode (autocomplete is active)
-                if (autocompleteNavigationMode) {
-                    e.preventDefault();
-                    // Start emphasis editing for current tag
-                    startEmphasisEditing(currentCharacterAutocompleteTarget);
-                }
-                break;
             case 'Backspace':
                 // When actively navigating in autocomplete, don't close it on backspace
                 if (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
@@ -239,6 +250,7 @@ async function searchCharacters(query, target) {
         const isTextReplacementSearch = query.startsWith('<');
 
         let searchResults = [];
+        let spellCheckData = null;
 
         if (!isTextReplacementSearch) {
             // Only search server if not starting with <
@@ -248,7 +260,16 @@ async function searchCharacters(query, target) {
                 throw new Error('Failed to search characters and tags');
             }
 
-            searchResults = await response.json();
+            const responseData = await response.json();
+            
+            // Handle new response format with spell checking
+            if (responseData.results && responseData.spellCheck) {
+                searchResults = responseData.results;
+                spellCheckData = responseData.spellCheck;
+            } else {
+                // Fallback to old format
+                searchResults = responseData;
+            }
         }
 
         // Handle PICK_ prefix stripping for search but preserve in inserted text
@@ -289,14 +310,14 @@ async function searchCharacters(query, target) {
         characterSearchResults = allResults;
 
         // Always show autocomplete, even with no results
-        showCharacterAutocompleteSuggestions(allResults, target);
+        showCharacterAutocompleteSuggestions(allResults, target, spellCheckData);
     } catch (error) {
         console.error('Character and tag search error:', error);
         hideCharacterAutocomplete();
     }
 }
 
-function showCharacterAutocompleteSuggestions(results, target) {
+function showCharacterAutocompleteSuggestions(results, target, spellCheckData = null) {
     if (!characterAutocompleteList || !characterAutocompleteOverlay) {
         console.error('Character autocomplete elements not found');
         return;
@@ -316,6 +337,14 @@ function showCharacterAutocompleteSuggestions(results, target) {
 
     // Populate character autocomplete list
     characterAutocompleteList.innerHTML = '';
+
+    // Show spell checking suggestions if available
+    if (spellCheckData && spellCheckData.hasErrors) {
+        window.currentSpellCheckData = spellCheckData; // Store globally for expansion
+        showSpellCheckSuggestions(spellCheckData, target);
+    } else {
+        window.currentSpellCheckData = null; // Clear if no spell check data
+    }
 
     // If no results, show a "no results" message
     if (results.length === 0) {
@@ -430,6 +459,155 @@ function showCharacterAutocompleteSuggestions(results, target) {
     }
 }
 
+function showSpellCheckSuggestions(spellCheckData, target) {
+    if (!spellCheckData.misspelled || spellCheckData.misspelled.length === 0) {
+        return;
+    }
+
+    // Create spell check section
+    const spellCheckSection = document.createElement('div');
+    spellCheckSection.className = 'spell-check-section';
+    spellCheckSection.innerHTML = `
+        <div class="spell-check-header">
+            <i class="fas fa-spell-check"></i>
+            <span>Spell Check</span>
+        </div>
+    `;
+
+    // Add suggestions for each misspelled word
+    spellCheckData.misspelled.forEach(word => {
+        const suggestions = spellCheckData.suggestions[word] || [];
+        
+        const wordSection = document.createElement('div');
+        wordSection.className = 'spell-check-word';
+        wordSection.innerHTML = `
+            <div class="misspelled-word">"${word}"</div>
+            <div class="suggestions-list">
+                ${suggestions.map(suggestion => `
+                    <button class="suggestion-btn" data-original="${word}" data-suggestion="${suggestion}">
+                        ${suggestion}
+                    </button>
+                `).join('')}
+                <button class="add-word-btn" data-word="${word}">
+                    <i class="fas fa-plus"></i> Add to dictionary
+                </button>
+            </div>
+        `;
+
+        // Add event listeners for suggestions
+        wordSection.querySelectorAll('.suggestion-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                applySpellCorrection(target, btn.dataset.original, btn.dataset.suggestion);
+            });
+        });
+
+        // Add event listener for adding word to dictionary
+        wordSection.querySelector('.add-word-btn').addEventListener('click', () => {
+            addWordToDictionary(word);
+        });
+
+        spellCheckSection.appendChild(wordSection);
+    });
+
+    // Insert spell check section at the top of the autocomplete list
+    characterAutocompleteList.insertBefore(spellCheckSection, characterAutocompleteList.firstChild);
+}
+
+function applySpellCorrection(target, originalWord, suggestion) {
+    const currentValue = target.value;
+    const cursorPos = target.selectionStart;
+    
+    // Find the word at cursor position
+    const words = currentValue.split(/\b/);
+    let currentPos = 0;
+    let wordIndex = -1;
+    let wordStartPos = 0;
+    
+    for (let i = 0; i < words.length; i++) {
+        const word = words[i];
+        if (word.toLowerCase() === originalWord.toLowerCase() && 
+            currentPos <= cursorPos && 
+            currentPos + word.length >= cursorPos) {
+            wordIndex = i;
+            wordStartPos = currentPos;
+            break;
+        }
+        currentPos += word.length;
+    }
+    
+    if (wordIndex !== -1) {
+        // Replace the word
+        words[wordIndex] = suggestion;
+        const newValue = words.join('');
+        target.value = newValue;
+        
+        // Calculate new cursor position - place it at the end of the replaced word
+        const newCursorPos = wordStartPos + suggestion.length;
+        
+        // Set cursor position after the replacement
+        setTimeout(() => {
+            target.setSelectionRange(newCursorPos, newCursorPos);
+            target.focus();
+        }, 0);
+        
+        // Trigger search with corrected text
+        const event = new Event('input', { bubbles: true });
+        target.dispatchEvent(event);
+        
+        // Hide autocomplete to show new results
+        hideCharacterAutocomplete();
+    }
+}
+
+async function addWordToDictionary(word) {
+    try {
+        const response = await fetchWithAuth('/spellcheck/add-word', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ word })
+        });
+
+        if (response.ok) {
+            // Show success message
+            const successMsg = document.createElement('div');
+            successMsg.className = 'spell-check-success';
+            successMsg.textContent = `Added "${word}" to dictionary`;
+            successMsg.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #4CAF50;
+                color: white;
+                padding: 10px 15px;
+                border-radius: 5px;
+                z-index: 10000;
+                font-size: 14px;
+            `;
+            document.body.appendChild(successMsg);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                if (successMsg.parentNode) {
+                    successMsg.parentNode.removeChild(successMsg);
+                }
+            }, 3000);
+            
+            // Refresh search to update spell check
+            const target = currentCharacterAutocompleteTarget;
+            if (target) {
+                const event = new Event('input', { bubbles: true });
+                target.dispatchEvent(event);
+            }
+        } else {
+            console.error('Failed to add word to dictionary');
+        }
+    } catch (error) {
+        console.error('Error adding word to dictionary:', error);
+    }
+}
+
 function updateCharacterAutocompleteSelection() {
     if (!characterAutocompleteList) return;
 
@@ -492,15 +670,11 @@ function selectTextReplacement(placeholder) {
     // Add the placeholder wrapped in angle brackets
     const wrappedPlaceholder = `<${placeholder}>`;
     if (newPrompt) {
-        // Check if the text before ends with : or | - don't add comma in those cases
-        // Only skip comma if the last non-space character is a single ':'
-        const trimmed = textBefore.replace(/\s+$/, '');
-        if (trimmed.endsWith(':') && !trimmed.endsWith('::')) {
-            newPrompt += wrappedPlaceholder;
-        } else if (trimmed.endsWith('|')) {
-            newPrompt += ' ' + wrappedPlaceholder;
-        } else {
+        // Check if we should add a comma before the text
+        if (shouldAddCommaBefore(currentValue, cursorPosition)) {
             newPrompt += ', ' + wrappedPlaceholder;
+        } else {
+            newPrompt += wrappedPlaceholder;
         }
     } else {
         newPrompt = wrappedPlaceholder;
@@ -509,7 +683,12 @@ function selectTextReplacement(placeholder) {
     // Add the text after the cursor (trim any leading delimiters and spaces)
     const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
     if (textAfter) {
-        newPrompt += ', ' + textAfter;
+        // Check if we should add a comma after the inserted text
+        if (shouldAddCommaAfter(currentValue, cursorPosition)) {
+            newPrompt += ', ' + textAfter;
+        } else {
+            newPrompt += textAfter;
+        }
     }
 
     // Update the target field
@@ -564,15 +743,11 @@ function insertTextReplacement(actualText) {
 
     // Add the actual text (not wrapped in angle brackets)
     if (newPrompt) {
-        // Check if the text before ends with : or | - don't add comma in those cases
-        // Only skip comma if the last non-space character is a single ':'
-        const trimmed = textBefore.replace(/\s+$/, '');
-        if (trimmed.endsWith(':') && !trimmed.endsWith('::')) {
-            newPrompt += actualText;
-        } else if (trimmed.endsWith('|')) {
-            newPrompt += ' ' + actualText;
-        } else {
+        // Check if we should add a comma before the text
+        if (shouldAddCommaBefore(currentValue, cursorPosition)) {
             newPrompt += ', ' + actualText;
+        } else {
+            newPrompt += actualText;
         }
     } else {
         newPrompt = actualText;
@@ -581,7 +756,12 @@ function insertTextReplacement(actualText) {
     // Add the text after the cursor (trim any leading delimiters and spaces)
     const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
     if (textAfter) {
-        newPrompt += ', ' + textAfter;
+        // Check if we should add a comma after the inserted text
+        if (shouldAddCommaAfter(currentValue, cursorPosition)) {
+            newPrompt += ', ' + textAfter;
+        } else {
+            newPrompt += textAfter;
+        }
     }
 
     // Update the target field
@@ -636,15 +816,11 @@ function selectTag(tagName) {
 
     // Add the tag name
     if (newPrompt) {
-        // Check if the text before ends with : or | - don't add comma in those cases
-        // Only skip comma if the last non-space character is a single ':'
-        const trimmed = textBefore.replace(/\s+$/, '');
-        if (trimmed.endsWith(':') && !trimmed.endsWith('::')) {
-            newPrompt += tagName;
-        } else if (trimmed.endsWith('|')) {
-            newPrompt += ' ' + tagName;
-        } else {
+        // Check if we should add a comma before the text
+        if (shouldAddCommaBefore(currentValue, cursorPosition)) {
             newPrompt += ', ' + tagName;
+        } else {
+            newPrompt += tagName;
         }
     } else {
         newPrompt = tagName;
@@ -653,7 +829,12 @@ function selectTag(tagName) {
     // Add the text after the cursor (trim any leading delimiters and spaces)
     const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
     if (textAfter) {
-        newPrompt += ', ' + textAfter;
+        // Check if we should add a comma after the inserted text
+        if (shouldAddCommaAfter(currentValue, cursorPosition)) {
+            newPrompt += ', ' + textAfter;
+        } else {
+            newPrompt += textAfter;
+        }
     }
 
     // Update the target field
@@ -709,13 +890,11 @@ function selectTextReplacementFullText(placeholder) {
     // Add the full text replacement description
     const fullText = window.optionsData?.textReplacements[placeholder];
     if (newPrompt) {
-        // Check if the text before ends with : or | - don't add comma in those cases
-        if (textBefore.endsWith(':')) {
-            newPrompt += fullText;
-        } else if (textBefore.endsWith('|')) {
-            newPrompt += ' ' + fullText;
-        } else {
+        // Check if we should add a comma before the text
+        if (shouldAddCommaBefore(currentValue, cursorPosition)) {
             newPrompt += ', ' + fullText;
+        } else {
+            newPrompt += fullText;
         }
     } else {
         newPrompt = fullText;
@@ -724,7 +903,12 @@ function selectTextReplacementFullText(placeholder) {
     // Add the text after the cursor (trim any leading delimiters and spaces)
     const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
     if (textAfter) {
-        newPrompt += ', ' + textAfter;
+        // Check if we should add a comma after the inserted text
+        if (shouldAddCommaAfter(currentValue, cursorPosition)) {
+            newPrompt += ', ' + textAfter;
+        } else {
+            newPrompt += textAfter;
+        }
     }
 
     // Update the target field
@@ -781,13 +965,11 @@ function selectCharacterWithoutEnhancers(character) {
         // Add just the character prompt without any enhancers
         if (character.prompt) {
             if (newPrompt) {
-                // Check if the text before ends with : or | - don't add comma in those cases
-                if (textBefore.endsWith(':')) {
-                    newPrompt += character.prompt;
-                } else if (textBefore.endsWith('|')) {
-                    newPrompt += ' ' + character.prompt;
-                } else {
+                // Check if we should add a comma before the text
+                if (shouldAddCommaBefore(currentValue, cursorPosition)) {
                     newPrompt += ', ' + character.prompt;
+                } else {
+                    newPrompt += character.prompt;
                 }
             } else {
                 newPrompt = character.prompt;
@@ -798,7 +980,12 @@ function selectCharacterWithoutEnhancers(character) {
         const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
         if (textAfter) {
             if (newPrompt) {
-                newPrompt += ', ' + textAfter;
+                // Check if we should add a comma after the inserted text
+                if (shouldAddCommaAfter(currentValue, cursorPosition)) {
+                    newPrompt += ', ' + textAfter;
+                } else {
+                    newPrompt += textAfter;
+                }
             } else {
                 newPrompt = textAfter;
             }
@@ -997,7 +1184,12 @@ function selectEnhancerGroupFromDetail(enhancerGroup, character) {
         } else {
             // Add character prompt after existing text
             if (newPrompt) {
-                newPrompt += ', ' + character.prompt;
+                // Check if we should add a comma before the text
+                if (shouldAddCommaBefore(currentValue, cursorPosition)) {
+                    newPrompt += ', ' + character.prompt;
+                } else {
+                    newPrompt += character.prompt;
+                }
             } else {
                 newPrompt = character.prompt;
             }
@@ -1008,7 +1200,12 @@ function selectEnhancerGroupFromDetail(enhancerGroup, character) {
     if (enhancerGroup && Array.isArray(enhancerGroup) && enhancerGroup.length > 0) {
         const enhancerText = enhancerGroup.join(', ');
         if (newPrompt) {
-            newPrompt += ', ' + enhancerText;
+            // Check if we should add a comma before the text
+            if (shouldAddCommaBefore(currentValue, cursorPosition)) {
+                newPrompt += ', ' + enhancerText;
+            } else {
+                newPrompt += enhancerText;
+            }
         } else {
             newPrompt = enhancerText;
         }
@@ -1018,7 +1215,12 @@ function selectEnhancerGroupFromDetail(enhancerGroup, character) {
     const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
     if (textAfter) {
         if (newPrompt) {
-            newPrompt += ', ' + textAfter;
+            // Check if we should add a comma after the inserted text
+            if (shouldAddCommaAfter(currentValue, cursorPosition)) {
+                newPrompt += ', ' + textAfter;
+            } else {
+                newPrompt += textAfter;
+            }
         } else {
             newPrompt = textAfter;
         }
@@ -1053,8 +1255,27 @@ function applyFormattedText(textarea, lostFocus) {
         // When losing focus, clean up the text
         text = text
             .split('\n').map(item => item.trim()).join(' ')
-            .split(',').map(item => item.trim()).join(', ')
             .split('|').map(item => item.trim()).filter(Boolean).join(' | ');
+
+        // Handle comma splitting more carefully to preserve :: groups
+        // First, protect :: groups by temporarily replacing them
+        const emphasisGroups = [];
+        let emphasisCounter = 0;
+        text = text.replace(/(-?\d+\.?\d*)::([^:]+)::/g, (match, weight, content) => {
+            const placeholder = `__EMPHASIS_${emphasisCounter}__`;
+            emphasisGroups.push({ placeholder, match });
+            emphasisCounter++;
+            return placeholder;
+        });
+
+        // Now split by commas, but be careful not to split within protected groups
+        const commaParts = text.split(',').map(item => item.trim()).filter(Boolean);
+        text = commaParts.join(', ');
+
+        // Restore emphasis groups
+        emphasisGroups.forEach(({ placeholder, match }) => {
+            text = text.replace(placeholder, match);
+        });
 
         // Remove leading | or , and trim start
         text = text.replace(/^(\||,)+\s*/, '');
@@ -1062,8 +1283,27 @@ function applyFormattedText(textarea, lostFocus) {
         // When focused, just clean up basic formatting
         text = text
             .split('\n').map(item => item.trim()).join(' ')
-            .split(',').map(item => item.trim()).join(', ')
             .split('|').map(item => item.trim()).join(' | ');
+
+        // Handle comma splitting more carefully to preserve :: groups
+        // First, protect :: groups by temporarily replacing them
+        const emphasisGroups = [];
+        let emphasisCounter = 0;
+        text = text.replace(/(-?\d+\.?\d*)::([^:]+)::/g, (match, weight, content) => {
+            const placeholder = `__EMPHASIS_${emphasisCounter}__`;
+            emphasisGroups.push({ placeholder, match });
+            emphasisCounter++;
+            return placeholder;
+        });
+
+        // Now split by commas, but be careful not to split within protected groups
+        const commaParts = text.split(',').map(item => item.trim()).join(', ');
+        text = commaParts;
+
+        // Restore emphasis groups
+        emphasisGroups.forEach(({ placeholder, match }) => {
+            text = text.replace(placeholder, match);
+        });
     }
 
     // Fix curly brace groups: ensure each group has equal number of { and }
@@ -1113,6 +1353,125 @@ function applyFormattedText(textarea, lostFocus) {
         textarea.setSelectionRange(newPosition, newPosition);
         textarea.focus();
     }
+}
+
+// Helper function to check if cursor is inside a :: emphasis group (between the :: markers)
+function isInsideEmphasisGroup(text, cursorPosition) {
+    const textBeforeCursor = text.substring(0, cursorPosition);
+    const textAfterCursor = text.substring(cursorPosition);
+    
+    // Find the last :: before cursor
+    const lastDoubleColonBefore = textBeforeCursor.lastIndexOf('::');
+    // Find the first :: after cursor
+    const firstDoubleColonAfter = textAfterCursor.indexOf('::');
+    
+    // If we have :: before and after, we're inside an emphasis group
+    // But we need to make sure we're not at the start or end of the group
+    if (lastDoubleColonBefore === -1 || firstDoubleColonAfter === -1) {
+        return false;
+    }
+    
+    // Check if we're at the start of the group (right after opening ::)
+    if (isAtStartOfEmphasisGroup(text, cursorPosition)) {
+        return false;
+    }
+    
+    // Check if we're at the end of the group (right before closing ::)
+    if (isAtEndOfEmphasisGroupBefore(text, cursorPosition)) {
+        return false;
+    }
+    
+    return true;
+}
+
+// Helper function to check if cursor is at the start of a :: emphasis group (right after opening ::)
+function isAtStartOfEmphasisGroup(text, cursorPosition) {
+    const textBeforeCursor = text.substring(0, cursorPosition);
+    const trimmed = textBeforeCursor.trim();
+    
+    // Look for the pattern: weight:: at the end of text before cursor
+    const emphasisStartPattern = /(-?\d+\.?\d*)::$/;
+    const result = emphasisStartPattern.test(trimmed);
+    
+    // If the pattern doesn't match at the end, check if we're right after a weight:: pattern
+    if (!result) {
+        // Look for the last occurrence of weight:: in the text before cursor
+        const lastWeightPattern = trimmed.match(/(-?\d+\.?\d*)::/g);
+        if (lastWeightPattern) {
+            const lastMatch = lastWeightPattern[lastWeightPattern.length - 1];
+            const lastMatchIndex = trimmed.lastIndexOf(lastMatch);
+            
+            // Check if the cursor is right after this weight:: pattern
+            if (lastMatchIndex + lastMatch.length === trimmed.length) {
+                return true;
+            } else {
+                // Check if we're inside an emphasis group and at the start of its content
+                const textAfterWeight = trimmed.substring(lastMatchIndex + lastMatch.length);
+                
+                // If the text after the weight:: is just whitespace or very short, 
+                // we might be at the start of the emphasis group content
+                if (textAfterWeight.trim().length <= 10) { // Allow for some short content
+                    return true;
+                }
+            }
+        }
+    }
+    
+    return result;
+}
+
+// Helper function to check if cursor is at the end of an emphasis group (right before closing ::)
+function isAtEndOfEmphasisGroupBefore(text, cursorPosition) {
+    const textAfterCursor = text.substring(cursorPosition);
+    
+    // Look for the pattern: :: right after cursor
+    return textAfterCursor.trim().startsWith('::');
+}
+
+// Helper function to check if cursor is at the end of a :: emphasis group (right after closing ::)
+function isAtEndOfEmphasisGroup(text, cursorPosition) {
+    const textBeforeCursor = text.substring(0, cursorPosition);
+    
+    // Look for the pattern: :: at the end of text before cursor
+    return textBeforeCursor.trim().endsWith('::');
+}
+
+// Helper function to check if we should add a comma before inserting text
+function shouldAddCommaBefore(text, cursorPosition) {
+    const textBeforeCursor = text.substring(0, cursorPosition);
+    const trimmed = textBeforeCursor.trim();
+    
+    // Don't add comma if:
+    // 1. We're at the start of text
+    if (trimmed === '') return false;
+    
+    // 2. We're at the start of an emphasis group (right after opening ::)
+    if (isAtStartOfEmphasisGroup(text, cursorPosition)) return false;
+    
+    // 3. We're at the end of a line with : or |
+    if (trimmed.endsWith(':') && !trimmed.endsWith('::')) return false;
+    if (trimmed.endsWith('|')) return false;
+    
+    // Add comma in all other cases (including inside emphasis groups and at the end of emphasis groups)
+    return true;
+}
+
+// Helper function to check if we should add a comma after inserting text
+function shouldAddCommaAfter(text, cursorPosition) {
+    const textAfterCursor = text.substring(cursorPosition);
+    const trimmed = textAfterCursor.trim();
+    
+    // Don't add comma if:
+    // 1. We're at the end of text
+    if (trimmed === '') return false;
+    
+    // 2. We're at the end of an emphasis group (right before closing ::)
+    if (isAtEndOfEmphasisGroupBefore(text, cursorPosition)) {
+        return false;
+    }
+    
+    // Add comma in all other cases (including inside emphasis groups)
+    return true;
 }
 
 function handleCharacterDetailArrowKeys(key) {
@@ -1180,6 +1539,7 @@ function hideCharacterAutocomplete() {
     characterSearchResults = [];
     autocompleteNavigationMode = false;
     autocompleteExpanded = false;
+    window.currentSpellCheckData = null; // Clear spell check data when hiding
     updateEmphasisTooltipVisibility();
 }
 
@@ -1262,6 +1622,11 @@ function expandAutocompleteToShowAll() {
 
     // Clear current list
     characterAutocompleteList.innerHTML = '';
+
+    // Re-add spell check section if it exists
+    if (window.currentSpellCheckData && window.currentSpellCheckData.hasErrors) {
+        showSpellCheckSuggestions(window.currentSpellCheckData, currentCharacterAutocompleteTarget);
+    }
 
     // Add all results
     window.allAutocompleteResults.forEach((result, index) => {

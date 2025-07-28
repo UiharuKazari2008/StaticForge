@@ -4,39 +4,59 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>StaticForge - Login</title>
-    <link rel="stylesheet" href="login.css">
+    <link rel="stylesheet" href="login_new.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
     <!-- Animated Bokeh Background -->
-    <div class="bokeh-background current-bg"></div>
-    <div class="bokeh-background next-bg" style="opacity: 0;"></div>
-    <svg class="bokeh" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="10%" cy="85%" r="60%"  />
-      <circle cx="45%" cy="50%" r="12%"  />
-      <circle cx="85%" cy="35%" r="25%"  />
-      <circle cx="60%" cy="85%" r="16%"  />
-      <circle cx="45%" cy="50%" r="24%"  />
-      <circle cx="35%" cy="25%" r="16%"  />
-      <circle cx="90%" cy="-25%" r="28%" />
-      <circle cx="-15%" cy="30%" r="24%" />
-      <circle cx="65%" cy="85%" r="44%"  />
-      <circle cx="45%" cy="50%" r="16%"  />
-      <circle cx="25%" cy="75%" r="20%"  />
-      <circle cx="75%" cy="15%" r="18%"  />
-      <circle cx="15%" cy="15%" r="22%"  />
-      <circle cx="80%" cy="70%" r="14%"  />
-      <circle cx="5%" cy="45%" r="26%"  />
-    </svg>
+    <div class="background">
+      <div class="block-container">
+        <!-- Blocks generated dynamically -->
+      </div>
+    </div>
     <!-- Product Name Top Left -->
     <div class="login-product-name">
       <i class="nai-wand-sparkles"></i>
       <span>StaticForge</span>
     </div>
-    <div class="login-container">
+    <div class="login-container minimize">
         <div class="login-dialog">
-            <!-- Hidden login form, no visible PIN UI -->
-            <form id="loginForm" class="login-form" autocomplete="off" style="display:none;"></form>
+            <div class="pin-display">
+                <div class="pin-dots">
+                    <div class="pin-dot" data-index="0"></div>
+                    <div class="pin-dot" data-index="1"></div>
+                    <div class="pin-dot" data-index="2"></div>
+                    <div class="pin-dot" data-index="3"></div>
+                    <div class="pin-dot" data-index="4"></div>
+                    <div class="pin-dot" data-index="5"></div>
+                </div>
+            </div>
+            <div class="pin-pad">
+                <div class="pin-row">
+                    <button class="pin-button" data-number="1"><i class="fas fa-1"></i></button>
+                    <button class="pin-button" data-number="2"><i class="fas fa-2"></i></button>
+                    <button class="pin-button" data-number="3"><i class="fas fa-3"></i></button>
+                </div>
+                <div class="pin-row">
+                    <button class="pin-button" data-number="4"><i class="fas fa-4"></i></button>
+                    <button class="pin-button" data-number="5"><i class="fas fa-5"></i></button>
+                    <button class="pin-button" data-number="6"><i class="fas fa-6"></i></button>
+                </div>
+                <div class="pin-row">
+                    <button class="pin-button" data-number="7"><i class="fas fa-7"></i></button>
+                    <button class="pin-button" data-number="8"><i class="fas fa-8"></i></button>
+                    <button class="pin-button" data-number="9"><i class="fas fa-9"></i></button>
+                </div>
+                <div class="pin-row">
+                    <button class="pin-button clear-btn" data-action="clear">
+                      <i class="fas fa-c"></i>
+                    </button>
+                    <button class="pin-button" data-number="0"><i class="fas fa-0"></i></button>
+                    <button class="pin-button backspace-btn" data-action="backspace">
+                        <i class="fas fa-delete-left"></i>
+                    </button>
+                </div>
+            </div>
             <div id="errorMessage" class="error-message hidden"></div>
         </div>
     </div>

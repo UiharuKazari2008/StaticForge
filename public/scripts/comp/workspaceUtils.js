@@ -957,8 +957,13 @@ function hideWorkspaceDumpModal() {
     currentWorkspaceOperation = null;
 }
 
-function confirmDeleteWorkspace(id, name) {
-    if (confirm(`Are you sure you want to delete the workspace "${name}"?\n\nAll items will be moved to the default workspace.`)) {
+async function confirmDeleteWorkspace(id, name) {
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to delete the workspace "${name}"?\n\nAll items will be moved to the default workspace.`,
+        'Delete Workspace',
+        'Cancel'
+    );
+    if (confirmed) {
         deleteWorkspace(id);
     }
 }

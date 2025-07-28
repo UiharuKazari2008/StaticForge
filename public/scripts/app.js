@@ -1,15 +1,11 @@
 // DOM elements
 const manualModal = document.getElementById('manualModal');
 const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
+const manualGenerateBtn = document.getElementById('manualGenerateBtn');
 const manualForm = document.getElementById('manualForm');
 const closeManualBtn = document.getElementById('closeManualBtn');
 const manualPreviewCloseBtn = document.getElementById('manualPreviewCloseBtn');
 const manualBtn = document.getElementById('manualBtn');
-const lightboxModal = document.getElementById('lightboxModal');
-const lightboxImage = document.getElementById('lightboxImage');
-const lightboxCloseBtn = document.getElementById('lightboxCloseBtn');
-const lightboxDownloadBtn = document.getElementById('lightboxDownloadBtn');
-const lightboxScrapBtn = document.getElementById('lightboxScrapBtn');
 const generateBtn = document.getElementById('generateBtn');
 const presetSelect = document.getElementById('presetSelect');
 const gallery = document.getElementById('gallery');
@@ -18,9 +14,6 @@ const bulkSelectAllBtn = document.getElementById('bulkSelectAllBtn');
 const cacheGallery = document.getElementById('cacheGallery');
 const loadingOverlay = document.getElementById('loadingOverlay');
 const confettiContainer = document.getElementById('confettiContainer');
-const lightboxUpscaleBtn = document.getElementById('lightboxUpscaleBtn');
-const lightboxRerollBtn = document.getElementById('lightboxRerollBtn');
-const lightboxRerollEditBtn = document.getElementById('lightboxRerollEditBtn');
 const manualModel = document.getElementById('manualModel');
 const manualPrompt = document.getElementById('manualPrompt');
 const manualUc = document.getElementById('manualUc');
@@ -40,14 +33,6 @@ const manualNoiseSchedulerDropdownMenu = document.getElementById('manualNoiseSch
 const manualNoiseSchedulerSelected = document.getElementById('manualNoiseSchedulerSelected');
 const manualNoiseSchedulerHidden = document.getElementById('manualNoiseScheduler');
 let manualSelectedNoiseScheduler = '';
-const imageBiasDropdown = document.getElementById('imageBiasDropdown');
-const imageBiasDropdownBtn = document.getElementById('imageBiasDropdownBtn');
-const imageBiasDropdownMenu = document.getElementById('imageBiasDropdownMenu');
-const imageBiasSelected = document.getElementById('imageBiasSelected');
-const imageBiasHidden = document.getElementById('imageBias');
-const imageBiasGroup = document.getElementById('imageBiasGroup');
-let uploadedImageData = null;
-let originalImageData = null;
 const variationImage = document.getElementById('manualVariationImage');
 const manualResolutionDropdown = document.getElementById('manualResolutionDropdown');
 const manualResolutionDropdownBtn = document.getElementById('manualResolutionDropdownBtn');
@@ -110,6 +95,7 @@ const manualPresetGroup = document.getElementById('manualPresetGroup');
 const manualLoadBtn = document.getElementById('manualLoadBtn');
 const manualSaveBtn = document.getElementById('manualSaveBtn');
 const manualPreviewLoadBtn = document.getElementById('manualPreviewLoadBtn');
+const manualPreviewPinBtn = document.getElementById('manualPreviewPinBtn');
 const manualPreviewScrapBtn = document.getElementById('manualPreviewScrapBtn');
 const datasetDropdown = document.getElementById('datasetDropdown');
 const datasetDropdownBtn = document.getElementById('datasetDropdownBtn');
@@ -139,6 +125,7 @@ const characterPromptsContainer = document.getElementById('characterPromptsConta
 const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
 const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
 const transformationRow = document.getElementById('transformationRow');
+const manualPreviewOriginalImage = document.getElementById('manualPreviewOriginalImage');
 
 // Global variables
 let forcePaidRequest = false;
@@ -185,9 +172,114 @@ let infiniteScrollConfig = {
 // Selection state
 let selectedImages = new Set();
 let isSelectionMode = false;
+let lastSelectedGalleryIndex = null; // Track last selected index for range selection
 
 // Global options data
 let optionsData = null;
+
+let currentBalance = null;
+
+// Three-way mapping for samplers
+const SAMPLER_MAP = [
+  { meta: 'k_euler_ancestral', display: 'Euler Ancestral', display_short: 'Euler', badge: 'A', request: 'EULER_ANC' },
+  { meta: 'k_dpmpp_sde', display: 'DPM++ SDE', display_short: 'DPM', badge: 'SDE', request: 'DPMSDE' },
+  { meta: 'k_dpmpp_2m', display: 'DPM++ 2M', display_short: 'DPM', badge: '2M', request: 'DPM2M' },
+  { meta: 'k_dpmpp_2m_sde', display: 'DPM++ 2M SDE', display_short: 'DPM', badge: '2M/SDE', request: 'DPM2MSDE' },
+  { meta: 'k_euler', display: 'Euler', display_short: 'Euler', request: 'EULER' },
+  { meta: 'k_dpmpp_2s_ancestral', display: 'DPM++ 2S Ancestral', display_short: 'DPM', badge: '2S/A', request: 'DPM2S_ANC' }
+];
+const NOISE_MAP = [
+  { meta: 'karras', display: 'Kerras', request: 'KARRAS' },
+  { meta: 'exponential', display: 'Exponential', request: 'EXPONENTIAL' },
+  { meta: 'polyexponential', display: 'Polyexponental', request: 'POLYEXPONENTIAL' }
+];
+const RESOLUTIONS = [
+    { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768 },
+    { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512 },
+    { value: 'small_square', display: 'Small Square', width: 640, height: 640 },
+    { value: 'normal_portrait', display: 'Normal Portrait', width: 832, height: 1216 },
+    { value: 'normal_landscape', display: 'Normal Landscape', width: 1216, height: 832 },
+    { value: 'normal_square', display: 'Normal Square', width: 1024, height: 1024 },
+    { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536 },
+    { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024 },
+    { value: 'large_square', display: 'Large Square', width: 1472, height: 1472 },
+    { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920 },
+    { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088 }
+];
+const resolutions = RESOLUTIONS.map(r => r.value);
+const RESOLUTION_GROUPS = [
+    {
+        group: 'Normal',
+        options: RESOLUTIONS.filter(r => r.value.startsWith('normal_')).map(r => ({
+            value: r.value,
+            name: r.display.replace('Normal ', ''),
+            dims: `${r.width}x${r.height}`
+        })),
+        free: true
+    },
+    {
+        group: 'Large',
+        badge: 'LG',
+        options: RESOLUTIONS.filter(r => r.value.startsWith('large_')).map(r => ({
+            value: r.value,
+            name: r.display.replace('Large ', ''),
+            dims: `${r.width}x${r.height}`
+        }))
+    },
+    {
+        group: 'Wallpaper',
+        badge: 'WP',
+        options: RESOLUTIONS.filter(r => r.value.startsWith('wallpaper_')).map(r => ({
+            value: r.value,
+            name: r.display.replace('Wallpaper ', ''),
+            dims: `${r.width}x${r.height}`
+        }))
+    },
+    {
+        group: 'Small',
+        badge: 'SM',
+        options: RESOLUTIONS.filter(r => r.value.startsWith('small_')).map(r => ({
+            value: r.value,
+            name: r.display.replace('Small ', ''),
+            dims: `${r.width}x${r.height}`
+        })),
+        free: true
+    },
+    {
+        group: 'Custom',
+        options: [
+            { value: 'custom', name: 'Custom Resolution' },
+        ]
+    }
+];
+
+const modelGroups = [
+    {
+        group: 'Current Model',
+        options: [
+            { value: 'v4_5', name: 'NovelAI v4.5', display: 'v4.5' },
+            { value: 'v4_5_cur', name: 'NovelAI v4.5 Curated', display: 'v4.5', badge: 'C', badge_class: 'curated-badge' },
+            { value: 'v4', name: 'NovelAI v4', display: 'v4' },
+            { value: 'v4_cur', name: 'NovelAI v4 Curated', display: 'v4', badge: 'C', badge_class: 'curated-badge' }
+        ]
+    },
+    {
+        group: 'Legacy Model',
+        options: [
+            { value: 'v3', name: 'NovelAI v3 Anime', display: 'v3', badge: 'L', badge_class: 'legacy-badge' },
+            { value: 'v3_furry', name: 'NovelAI v3 Furry', display: 'v3', badge: 'LF', badge_class: 'legacy-furry-badge' }
+        ]
+    }
+];
+
+const modelKeys = {
+    "nai-diffusion-3": { type: "Anime", version: "v3" },
+    "nai-diffusion-4-full": { type: "Anime", version: "v4" },
+    "nai-diffusion-4-curated-preview": { type: "Anime", version: "v4C" },
+    "nai-diffusion-4-5-full": { type: "Anime", version: "v4.5" },
+    "nai-diffusion-4-5-curated": { type: "Anime", version: "v4.5C" },
+    "nai-diffusion-furry-3": { type: "Furry", version: "v3" }
+}
 
 // Helper function to check if a model is V3
 function isV3Model(modelValue) {
@@ -296,108 +388,6 @@ async function loadPresetIntoForm(presetName) {
         console.error('Load preset error:', error);
         showError(`Failed to load preset "${presetName}": ${error.message}`);
     }
-}
-
-// Three-way mapping for samplers
-const SAMPLER_MAP = [
-  { meta: 'k_euler_ancestral', display: 'Euler Ancestral', display_short: 'Euler', badge: 'A', request: 'EULER_ANC' },
-  { meta: 'k_dpmpp_sde', display: 'DPM++ SDE', display_short: 'DPM', badge: 'SDE', request: 'DPMSDE' },
-  { meta: 'k_dpmpp_2m', display: 'DPM++ 2M', display_short: 'DPM', badge: '2M', request: 'DPM2M' },
-  { meta: 'k_dpmpp_2m_sde', display: 'DPM++ 2M SDE', display_short: 'DPM', badge: '2M/SDE', request: 'DPM2MSDE' },
-  { meta: 'k_euler', display: 'Euler', display_short: 'Euler', request: 'EULER' },
-  { meta: 'k_dpmpp_2s_ancestral', display: 'DPM++ 2S Ancestral', display_short: 'DPM', badge: '2S/A', request: 'DPM2S_ANC' }
-];
-const NOISE_MAP = [
-  { meta: 'karras', display: 'Kerras', request: 'KARRAS' },
-  { meta: 'exponential', display: 'Exponential', request: 'EXPONENTIAL' },
-  { meta: 'polyexponential', display: 'Polyexponental', request: 'POLYEXPONENTIAL' }
-];
-const RESOLUTIONS = [
-    { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768 },
-    { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512 },
-    { value: 'small_square', display: 'Small Square', width: 640, height: 640 },
-    { value: 'normal_portrait', display: 'Normal Portrait', width: 832, height: 1216 },
-    { value: 'normal_landscape', display: 'Normal Landscape', width: 1216, height: 832 },
-    { value: 'normal_square', display: 'Normal Square', width: 1024, height: 1024 },
-    { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536 },
-    { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024 },
-    { value: 'large_square', display: 'Large Square', width: 1472, height: 1472 },
-    { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920 },
-    { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088 }
-];
-const resolutions = RESOLUTIONS.map(r => r.value);
-const RESOLUTION_GROUPS = [
-    {
-        group: 'Normal',
-        options: RESOLUTIONS.filter(r => r.value.startsWith('normal_')).map(r => ({
-            value: r.value,
-            name: r.display.replace('Normal ', ''),
-            dims: `${r.width}x${r.height}`
-        })),
-        free: true
-    },
-    {
-        group: 'Large',
-        badge: 'LG',
-        options: RESOLUTIONS.filter(r => r.value.startsWith('large_')).map(r => ({
-            value: r.value,
-            name: r.display.replace('Large ', ''),
-            dims: `${r.width}x${r.height}`
-        }))
-    },
-    {
-        group: 'Wallpaper',
-        badge: 'WP',
-        options: RESOLUTIONS.filter(r => r.value.startsWith('wallpaper_')).map(r => ({
-            value: r.value,
-            name: r.display.replace('Wallpaper ', ''),
-            dims: `${r.width}x${r.height}`
-        }))
-    },
-    {
-        group: 'Small',
-        badge: 'SM',
-        options: RESOLUTIONS.filter(r => r.value.startsWith('small_')).map(r => ({
-            value: r.value,
-            name: r.display.replace('Small ', ''),
-            dims: `${r.width}x${r.height}`
-        })),
-        free: true
-    },
-    {
-        group: 'Custom',
-        options: [
-            { value: 'custom', name: 'Custom Resolution' },
-        ]
-    }
-];
-
-const modelGroups = [
-    {
-        group: 'Current Model',
-        options: [
-            { value: 'v4_5', name: 'NovelAI v4.5', display: 'v4.5' },
-            { value: 'v4_5_cur', name: 'NovelAI v4.5 Curated', display: 'v4.5', badge: 'C', badge_class: 'curated-badge' },
-            { value: 'v4', name: 'NovelAI v4', display: 'v4' },
-            { value: 'v4_cur', name: 'NovelAI v4 Curated', display: 'v4', badge: 'C', badge_class: 'curated-badge' }
-        ]
-    },
-    {
-        group: 'Legacy Model',
-        options: [
-            { value: 'v3', name: 'NovelAI v3 Anime', display: 'v3', badge: 'L', badge_class: 'legacy-badge' },
-            { value: 'v3_furry', name: 'NovelAI v3 Furry', display: 'v3', badge: 'LF', badge_class: 'legacy-furry-badge' }
-        ]
-    }
-];
-
-const modelKeys = {
-    "nai-diffusion-3": { type: "Anime", version: "v3" },
-    "nai-diffusion-4-full": { type: "Anime", version: "v4" },
-    "nai-diffusion-4-curated-preview": { type: "Anime", version: "v4C" },
-    "nai-diffusion-4-5-full": { type: "Anime", version: "v4.5" },
-    "nai-diffusion-4-5-curated": { type: "Anime", version: "v4.5C" },
-    "nai-diffusion-furry-3": { type: "Furry", version: "v3" }
 }
 
 // Helper functions for sampler mapping
@@ -596,6 +586,12 @@ async function loadIntoManualForm(source, image = null) {
         // Save the current preset name before clearing the form
         const currentPresetName = manualPresetName ? manualPresetName.value.trim() : '';
 
+        // Save source and image to initialEdit for preview functionality
+        window.initialEdit = {
+            source: source,
+            image: image
+        };
+
         // Clear form first for all cases
         clearManualForm();
 
@@ -694,9 +690,15 @@ async function loadIntoManualForm(source, image = null) {
             // Sanitize dimensions after setting
             sanitizeCustomDimensions();
         }
-        if (manualSteps) manualSteps.value = data.steps || (type === 'metadata' ? 25 : undefined);
-        if (manualGuidance) manualGuidance.value = data.scale || data.guidance || (type === 'metadata' ? 5.0 : undefined);
-        if (manualRescale) manualRescale.value = data.cfg_rescale || data.rescale || (type === 'metadata' ? 0.0 : undefined);
+        if (manualSteps) manualSteps.value = data.steps || 25;
+        if (manualGuidance) {
+            const guidanceValue = data.scale ?? data.guidance ?? 5.0;
+            manualGuidance.value = guidanceValue !== undefined ? Number(guidanceValue).toFixed(1) : '';
+        }
+        if (manualRescale) {
+            const rescaleValue = data.cfg_rescale ?? data.rescale ?? 0.0;
+            manualRescale.value = rescaleValue !== undefined ? Number(rescaleValue).toFixed(2) : '';
+        }
         if (manualSeed) manualSeed.value = ''; // Do not autofill for metadata, undefined for others
         if (data.seed) {
             window.lastGeneratedSeed = data.layer2_seed || data.seed;
@@ -718,11 +720,11 @@ async function loadIntoManualForm(source, image = null) {
         const autoPositionBtn = document.getElementById('autoPositionBtn');
         if (data.characterPrompts && Array.isArray(data.characterPrompts)) {
             loadCharacterPrompts(data.characterPrompts, data.use_coords);
-            autoPositionBtn.setAttribute('data-state', data.use_coords ? 'on' : 'off');
+            autoPositionBtn.setAttribute('data-state', data.use_coords ? 'off' : 'on');
         } else if (data.allCharacterPrompts && Array.isArray(data.allCharacterPrompts)) {
             // Handle new allCharacterPrompts format
             loadCharacterPrompts(data.allCharacterPrompts, data.use_coords);
-            autoPositionBtn.setAttribute('data-state', data.use_coords ? 'on' : 'off');
+            autoPositionBtn.setAttribute('data-state', data.use_coords ? 'off' : 'on');
         } else {
             clearCharacterPrompts();
         }
@@ -1526,30 +1528,49 @@ function updateTransformationDropdownState(type, text) {
 setupDropdown(transformationDropdown, transformationDropdownBtn, transformationDropdownMenu, renderTransformationDropdown, () => document.getElementById('transformationType').value);
 setupTransformationDropdownListeners();
 
-// Scraps functionality
-let isViewingScraps = false;
-let scrapsImages = [];
+// Gallery view functionality
+let currentGalleryView = 'images'; // 'images', 'scraps', 'pinned'
 
-// Toggle between images and scraps
-function toggleGalleryView() {
-    isViewingScraps = !isViewingScraps;
-    const toggleBtn = document.getElementById('galleryToggleBtn');
 
-    if (isViewingScraps) {
-        toggleBtn.innerHTML = '<i class="nai-image-tool-sketch"></i>';
-        toggleBtn.setAttribute('data-state', 'scraps');
-        document.querySelector('.bokeh-background.current-bg').classList.add('scraps-grayscale');
-        document.querySelector('.bokeh').classList.add('scraps-grayscale');
-        loadScraps();
-    } else {
-        toggleBtn.innerHTML = '<i class="fas fa-images"></i>';
-        toggleBtn.setAttribute('data-state', 'images');
-        document.querySelector('.bokeh').classList.remove('scraps-grayscale');
-        document.querySelectorAll('.bokeh-background').forEach(el => el.classList.remove('scraps-grayscale'));
-        loadGallery();
+// Switch between gallery views
+function switchGalleryView(view) {
+    if (currentGalleryView === view) return;
+    
+    currentGalleryView = view;
+    const toggleGroup = document.getElementById('galleryToggleGroup');
+    
+    // Update button states
+    toggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    toggleGroup.querySelector(`[data-view="${view}"]`).classList.add('active');
+    
+    // Update slider position
+    toggleGroup.setAttribute('data-active', view);
+    
+    // Handle view-specific logic
+    switch (view) {
+        case 'scraps':
+            document.querySelector('.bokeh-background.current-bg')?.classList.add('scraps-grayscale');
+            document.querySelector('.bokeh')?.classList.add('scraps-grayscale');
+            loadScraps();
+            break;
+        case 'images':
+            document.querySelector('.bokeh')?.classList.remove('scraps-grayscale');
+            document.querySelectorAll('.bokeh-background').forEach(el => el.classList.remove('scraps-grayscale'));
+            loadGallery();
+            break;
+        case 'pinned':
+            document.querySelector('.bokeh')?.classList.remove('scraps-grayscale');
+            document.querySelectorAll('.bokeh-background').forEach(el => el.classList.remove('scraps-grayscale'));
+            loadPinned();
+            break;
+        case 'upscaled':
+            document.querySelector('.bokeh')?.classList.remove('scraps-grayscale');
+            document.querySelectorAll('.bokeh-background').forEach(el => el.classList.remove('scraps-grayscale'));
+            loadUpscaled();
+            break;
     }
-
-    toggleBtn.setAttribute('data-state', isViewingScraps ? 'on' : 'off');
 }
 
 // Load scraps for current workspace
@@ -1577,6 +1598,56 @@ async function loadScraps() {
     }
 }
 
+// Load pinned images for current workspace
+async function loadPinned() {
+    try {
+        // Use the new /images endpoint with pinned query parameter
+        const response = await fetchWithAuth('/images?pinned=true');
+        if (response.ok) {
+            const pinnedImageData = await response.json();
+            // Update display
+            allImages = pinnedImageData;
+            displayCurrentPageOptimized();
+        } else {
+            console.error('Failed to load pinned images:', response.statusText);
+            allImages = [];
+            resetInfiniteScroll();
+            displayCurrentPageOptimized();
+        }
+        updateGalleryPlaceholders();
+    } catch (error) {
+        console.error('Error loading pinned images:', error);
+        allImages = [];
+        resetInfiniteScroll();
+        displayCurrentPageOptimized();
+    }
+}
+
+// Load upscaled images for current workspace
+async function loadUpscaled() {
+    try {
+        // Use the new /images endpoint with upscaled query parameter
+        const response = await fetchWithAuth('/images?upscaled=true');
+        if (response.ok) {
+            const upscaledImageData = await response.json();
+            // Update display
+            allImages = upscaledImageData;
+            displayCurrentPageOptimized();
+        } else {
+            console.error('Failed to load upscaled images:', response.statusText);
+            allImages = [];
+            resetInfiniteScroll();
+            displayCurrentPageOptimized();
+        }
+        updateGalleryPlaceholders();
+    } catch (error) {
+        console.error('Error loading upscaled images:', error);
+        allImages = [];
+        resetInfiniteScroll();
+        displayCurrentPageOptimized();
+    }
+}
+
 // Move image to scraps
 async function moveToScraps(image) {
     try {
@@ -1598,12 +1669,14 @@ async function moveToScraps(image) {
             const result = await response.json();
             showGlassToast('success', null, 'Image Scraped');
 
-            // If currently viewing scraps, reload them
-            if (isViewingScraps) {
+                    // If currently viewing scraps, reload them
+            if (currentGalleryView === 'scraps') {
                 await loadScraps();
+            } else if (currentGalleryView === 'pinned') {
+                await loadPinned();
             } else {
-                // If viewing images, reload the gallery to remove the moved image
-                await loadGallery();
+                // If viewing images, remove from gallery and add placeholder
+                removeImageFromGallery(image);
             }
         } else {
             const error = await response.json();
@@ -1717,8 +1790,10 @@ async function removeFromScraps(image) {
             showGlassToast('success', null, 'Image restored');
 
             // If currently viewing scraps, reload them
-            if (isViewingScraps) {
+            if (currentGalleryView === 'scraps') {
                 await loadScraps();
+            } else if (currentGalleryView === 'pinned') {
+                await loadPinned();
             } else {
                 // If viewing images, reload the gallery to show the restored image
                 await loadGallery();
@@ -1730,6 +1805,326 @@ async function removeFromScraps(image) {
     } catch (error) {
         console.error('Error removing from scraps:', error);
         showError('Failed to remove image from scraps');
+    }
+}
+
+// Toggle pin status of an image
+async function togglePinImage(image, pinBtn = null) {
+    try {
+        const filename = image.filename || image.original || image.upscaled;
+        if (!filename) {
+            showError('No filename available for this image');
+            return;
+        }
+
+        // Check if image is currently pinned
+        const isPinned = await checkIfImageIsPinned(filename);
+        
+        if (isPinned) {
+            // Remove from pinned
+            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filename })
+            });
+
+            if (response.ok) {
+                showGlassToast('success', null, 'Image unpinned');
+            } else {
+                const error = await response.json();
+                showError(`Failed to unpin image: ${error.error}`);
+                return;
+            }
+        } else {
+            // Add to pinned
+            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filename })
+            });
+
+            if (response.ok) {
+                showGlassToast('success', null, 'Image pinned');
+            } else {
+                const error = await response.json();
+                showError(`Failed to pin image: ${error.error}`);
+                return;
+            }
+        }
+
+        // Update the specific pin button that was clicked
+        if (pinBtn) {
+            await updatePinButtonAppearance(pinBtn, filename);
+        } else {
+            await updateSpecificPinButton(filename);
+        }
+        
+        // Update lightbox pin button if lightbox is open
+        if (window.lightboxPinBtn && window.lightboxPinBtn.style.display !== 'none') {
+            await updateLightboxPinButtonAppearance(filename);
+        }
+    } catch (error) {
+        console.error('Error toggling pin status:', error);
+        showError('Failed to toggle pin status');
+    }
+}
+
+// Check if an image is pinned
+async function checkIfImageIsPinned(filename) {
+    try {
+        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned`);
+        if (response.ok) {
+            const data = await response.json();
+            return data.pinned && data.pinned.includes(filename);
+        }
+        return false;
+    } catch (error) {
+        console.error('Error checking pin status:', error);
+        return false;
+    }
+}
+
+// Update pin button appearance based on pin status
+async function updatePinButtonAppearance(pinBtn, filename) {
+    try {
+        const isPinned = await checkIfImageIsPinned(filename);
+        if (isPinned) {
+            pinBtn.innerHTML = '<i class="nai-heart-enabled"></i>';
+            pinBtn.title = 'Unpin image';
+        } else {
+            pinBtn.innerHTML = '<i class="nai-heart-disabled"></i>';
+            pinBtn.title = 'Pin image';
+        }
+    } catch (error) {
+        console.error('Error updating pin button appearance:', error);
+    }
+}
+
+// Update specific pin button for an image
+async function updateSpecificPinButton(filename) {
+    try {
+        const galleryItems = document.querySelectorAll('.gallery-item');
+        for (const item of galleryItems) {
+            const img = item.querySelector('img');
+            const pinBtn = item.querySelector('.btn-secondary[title*="Pin"]');
+            
+            if (img && pinBtn) {
+                const itemFilename = img.getAttribute('data-filename') || img.src.split('/').pop();
+                if (itemFilename === filename) {
+                    await updatePinButtonAppearance(pinBtn, filename);
+                    break; // Found the specific item, no need to continue
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error updating specific pin button:', error);
+    }
+}
+
+// Remove image from gallery and add placeholder at the end
+function removeImageFromGallery(image) {
+    try {
+        const filename = image.filename || image.original || image.upscaled;
+        if (!filename) {
+            console.error('No filename available for image removal');
+            return;
+        }
+
+        // Find the gallery item to remove
+        const galleryItems = document.querySelectorAll('.gallery-item');
+        let itemToRemove = null;
+        let itemIndex = -1;
+
+        // Try to find by exact filename match first
+        for (const item of galleryItems) {
+            const img = item.querySelector('img');
+            if (img) {
+                const itemFilename = img.getAttribute('data-filename') || img.src.split('/').pop();
+                if (itemFilename === filename) {
+                    itemToRemove = item;
+                    itemIndex = parseInt(item.dataset.index);
+                    break;
+                }
+            }
+        }
+
+        // If not found by exact match, try to find by base name (for variations/upscaled)
+        if (!itemToRemove) {
+            const baseName = filename.split('_')[0]; // Get the timestamp part
+            for (const item of galleryItems) {
+                const img = item.querySelector('img');
+                if (img) {
+                    const itemFilename = img.getAttribute('data-filename') || img.src.split('/').pop();
+                    const itemBaseName = itemFilename.split('_')[0];
+                    if (itemBaseName === baseName) {
+                        itemToRemove = item;
+                        itemIndex = parseInt(item.dataset.index);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!itemToRemove) {
+            console.warn('Gallery item not found for removal:', filename);
+            // Don't return, just log the warning and continue with the operation
+            // The image will still be removed from allImages array and workspace
+        }
+
+        // Remove the item from the gallery if found
+        if (itemToRemove) {
+            itemToRemove.remove();
+        }
+
+        // Remove from allImages array
+        const allImagesIndex = allImages.findIndex(img => 
+            img.original === image.original || 
+            img.upscaled === image.upscaled ||
+            img.filename === filename
+        );
+        
+        if (allImagesIndex !== -1) {
+            allImages.splice(allImagesIndex, 1);
+        }
+
+        // Add placeholder at the index after the last item on the page
+        // Re-query gallery items since we may have removed one
+        const remainingGalleryItems = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+        const lastItemIndex = remainingGalleryItems.length > 0 ? 
+            Math.min(Math.max(...Array.from(remainingGalleryItems).map(item => parseInt(item.dataset.index))), allImages.length) : -1;
+        const placeholderIndex = lastItemIndex + 1;
+        
+        const placeholder = document.createElement('div');
+        placeholder.className = 'gallery-placeholder';
+        placeholder.style.height = '256px';
+        placeholder.style.width = '100%';
+        placeholder.dataset.index = placeholderIndex.toString();
+        gallery.appendChild(placeholder);
+
+        // Reindex all gallery items after the removed one (only if we found and removed an item)
+        if (itemToRemove && itemIndex !== -1) {
+            const remainingItems = gallery.querySelectorAll('.gallery-item');
+            for (const item of remainingItems) {
+                const currentIndex = parseInt(item.dataset.index);
+                if (currentIndex > itemIndex) {
+                    item.dataset.index = (currentIndex - 1).toString();
+                }
+            }
+
+            // Update placeholder indices
+            const placeholders = gallery.querySelectorAll('.gallery-placeholder');
+            for (const placeholder of placeholders) {
+                const currentIndex = parseInt(placeholder.dataset.index);
+                if (currentIndex > itemIndex) {
+                    placeholder.dataset.index = (currentIndex - 1).toString();
+                }
+            }
+        }
+
+        console.log(`Removed image ${filename} from gallery and added placeholder`);
+    } catch (error) {
+        console.error('Error removing image from gallery:', error);
+    }
+}
+
+// Remove multiple images from gallery and add placeholders at the end
+function removeMultipleImagesFromGallery(images) {
+    try {
+        if (!Array.isArray(images) || images.length === 0) {
+            console.warn('No images provided for bulk removal');
+            return;
+        }
+
+        const galleryItems = document.querySelectorAll('.gallery-item');
+        const itemsToRemove = [];
+        const indicesToRemove = [];
+
+        // Find all items to remove
+        for (const image of images) {
+            const filename = image.filename || image.original || image.upscaled;
+            if (!filename) continue;
+
+            for (const item of galleryItems) {
+                const img = item.querySelector('img');
+                if (img) {
+                    const itemFilename = img.getAttribute('data-filename') || img.src.split('/').pop();
+                    if (itemFilename === filename) {
+                        itemsToRemove.push(item);
+                        indicesToRemove.push(parseInt(item.dataset.index));
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Sort indices in descending order to remove from end to beginning
+        indicesToRemove.sort((a, b) => b - a);
+
+        // Remove items from gallery
+        itemsToRemove.forEach(item => item.remove());
+
+        // Remove from allImages array
+        for (const image of images) {
+            const allImagesIndex = allImages.findIndex(img => 
+                img.original === image.original || 
+                img.upscaled === image.upscaled ||
+                img.filename === (image.filename || image.original || image.upscaled)
+            );
+            
+            if (allImagesIndex !== -1) {
+                allImages.splice(allImagesIndex, 1);
+            }
+        }
+
+        // Add placeholders at the end
+        for (let i = 0; i < images.length; i++) {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'gallery-placeholder';
+            placeholder.style.height = '256px';
+            placeholder.style.width = '100%';
+            placeholder.dataset.index = allImages.length + i;
+            gallery.appendChild(placeholder);
+        }
+
+        // Reindex all remaining gallery items
+        const remainingItems = gallery.querySelectorAll('.gallery-item');
+        for (const item of remainingItems) {
+            const currentIndex = parseInt(item.dataset.index);
+            let newIndex = currentIndex;
+            
+            // Count how many items were removed before this one
+            for (const removedIndex of indicesToRemove) {
+                if (currentIndex > removedIndex) {
+                    newIndex--;
+                }
+            }
+            
+            item.dataset.index = newIndex.toString();
+        }
+
+        // Update placeholder indices
+        const placeholders = gallery.querySelectorAll('.gallery-placeholder');
+        for (const placeholder of placeholders) {
+            const currentIndex = parseInt(placeholder.dataset.index);
+            let newIndex = currentIndex;
+            
+            // Count how many items were removed before this one
+            for (const removedIndex of indicesToRemove) {
+                if (currentIndex > removedIndex) {
+                    newIndex--;
+                }
+            }
+            
+            placeholder.dataset.index = newIndex.toString();
+        }
+
+        console.log(`Removed ${images.length} images from gallery and added placeholders`);
+    } catch (error) {
+        console.error('Error removing multiple images from gallery:', error);
     }
 }
 
@@ -1761,6 +2156,10 @@ async function loadOptions() {
         if (!options.ok) throw new Error("Failed to load application configuration: " + options.error);
 
         window.optionsData = options;
+
+        if (window.optionsData?.user?.ok !== true) {
+            showErrorSubHeader(window.optionsData.user.error, 'error', 0);
+        }
 
         updateBalanceDisplay(window.optionsData?.balance);
     } catch (error) {
@@ -1796,6 +2195,12 @@ document.addEventListener('DOMContentLoaded', async function() {
         loadActiveWorkspaceColor(); // Load workspace color for bokeh
         await loadBalance();
         await loadVibeReferences(); // Load vibe references for immediate use
+        
+        // Initialize gallery toggle group
+        const galleryToggleGroup = document.getElementById('galleryToggleGroup');
+        if (galleryToggleGroup) {
+            galleryToggleGroup.setAttribute('data-active', currentGalleryView);
+        }
 
         generateSamplerOptions();
         renderManualSamplerDropdown(manualSelectedSampler);
@@ -1834,6 +2239,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     
         // Initialize cache manager
         initializeCacheManager();
+        
+        // Initialize keyboard shortcuts for manual modal
+        initializeManualModalShortcuts();
     
         // Initialize emphasis highlighting for manual fields
         initializeEmphasisOverlay(manualPrompt);
@@ -1967,14 +2375,14 @@ function renderDatasetBiasControls() {
         biasGroup.className = 'form-group dataset-bias-group';
 
         const label = document.createElement('label');
-        label.textContent = dataset.charAt(0).toUpperCase() + dataset.slice(1) + ' Bias';
+        label.textContent = dataset.charAt(0).toUpperCase() + dataset.slice(1);
 
         const inputGroup = document.createElement('div');
         inputGroup.className = 'form-row';
 
         const input = document.createElement('input');
         input.type = 'number';
-        input.className = 'form-control hover-show';
+        input.className = 'form-control hover-show colored';
         input.min = '-3';
         input.max = '5';
         input.step = '0.1';
@@ -2243,9 +2651,9 @@ function setupEventListeners() {
         }
     });
 
-    manualPreviewUpscaleBtn.addEventListener('click', () => {
+    manualPreviewUpscaleBtn.addEventListener('click', (e) => {
         if (currentManualPreviewImage) {
-            upscaleImage(currentManualPreviewImage);
+            upscaleImage(currentManualPreviewImage, e);
         } else {
             showGlassToast('error', 'Upscale Failed', 'No image available');
         }
@@ -2324,9 +2732,17 @@ function setupEventListeners() {
 
     manualPreviewDeleteBtn.addEventListener('click', deleteManualPreviewImage);
 
+    manualPreviewPinBtn.addEventListener('click', () => {
+        if (currentManualPreviewImage) {
+            togglePinImage(currentManualPreviewImage, manualPreviewPinBtn);
+        } else {
+            showGlassToast('error', 'Pin Failed', 'No image available');
+        }
+    });
+
     manualPreviewScrapBtn.addEventListener('click', () => {
         if (currentManualPreviewImage) {
-            if (isViewingScraps) {
+            if (currentGalleryView === 'scraps') {
                 removeFromScraps(currentManualPreviewImage);
             } else {
                 moveManualPreviewToScraps();
@@ -2391,14 +2807,6 @@ function setupEventListeners() {
     // Update autocomplete positions on scroll and resize
     window.addEventListener('scroll', updateAutocompletePositions);
     window.addEventListener('resize', updateAutocompletePositions);
-
-    // Character detail events - no longer needed since we're using inline onclick handlers
-    // The close button is now created dynamically in the character detail content
-
-    // Lightbox events
-    if (lightboxCloseBtn) {
-        lightboxCloseBtn.addEventListener('click', hideLightbox);
-    }
 
     // Metadata dialog events
     if (metadataBtn) {
@@ -2482,13 +2890,20 @@ function setupEventListeners() {
                 console.log('Starting emphasis editing...');
                 startEmphasisEditing(activeElement);
             }
+        } else if (e.key === 'w' && e.altKey) {
+            // Alt+W: Show text search popup
+            e.preventDefault();
+            const activeElement = document.activeElement;
+            if (activeElement && (activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'INPUT')) {
+                startTextSearch(activeElement);
+            }
         }
     });
 
 
     // Generation controls
     presetSelect.addEventListener('change', updateGenerateButton);
-    generateBtn.addEventListener('click', generateImage);
+    generateBtn.addEventListener('click', (e) => generateImage(e));
 
     // Upload functionality
     const uploadBtn = document.getElementById('uploadBtn');
@@ -2548,11 +2963,25 @@ function setupEventListeners() {
     }
 
     // Cache browser tab event listeners
-    const cacheBrowserTabButtons = document.querySelectorAll('.cache-browser-tabs .tab-btn');
+    const cacheBrowserTabButtons = document.querySelectorAll('.cache-browser-tabs .gallery-toggle-btn');
     cacheBrowserTabButtons.forEach(button => {
         button.addEventListener('click', function() {
             const targetTab = this.getAttribute('data-tab');
-            switchCacheBrowserTab(targetTab);
+            const toggleGroup = this.closest('.gallery-toggle-group');
+            const tabTitle = this.getAttribute('data-title');
+            
+            // Update the data-active attribute
+            toggleGroup.setAttribute('data-active', targetTab);
+            
+            // Remove active class from all buttons
+            toggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Add active class to clicked button
+            this.classList.add('active');
+            
+            switchCacheBrowserTab(targetTab, tabTitle);
         });
     });
 
@@ -2601,6 +3030,8 @@ function setupEventListeners() {
     const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
     const bulkSequenziaBtn = document.getElementById('bulkSequenziaBtn');
     const bulkMoveToScrapsBtn = document.getElementById('bulkMoveToScrapsBtn');
+    const bulkPinBtn = document.getElementById('bulkPinBtn');
+    const bulkUnpinBtn = document.getElementById('bulkUnpinBtn');
     const bulkChangePresetBtn = document.getElementById('bulkChangePresetBtn');
     const clearSelectionBtn = document.getElementById('clearSelectionBtn');
 
@@ -2609,15 +3040,23 @@ function setupEventListeners() {
     }
 
     if (bulkDeleteBtn) {
-        bulkDeleteBtn.addEventListener('click', handleBulkDelete);
+        bulkDeleteBtn.addEventListener('click', (e) => handleBulkDelete(e));
     }
 
     if (bulkSequenziaBtn) {
-        bulkSequenziaBtn.addEventListener('click', handleBulkSequenzia);
+        bulkSequenziaBtn.addEventListener('click', (e) => handleBulkSequenzia(e));
     }
 
     if (bulkMoveToScrapsBtn) {
-        bulkMoveToScrapsBtn.addEventListener('click', handleBulkMoveToScraps);
+        bulkMoveToScrapsBtn.addEventListener('click', (e) => handleBulkMoveToScraps(e));
+    }
+
+    if (bulkPinBtn) {
+        bulkPinBtn.addEventListener('click', (e) => handleBulkPin(e));
+    }
+
+    if (bulkUnpinBtn) {
+        bulkUnpinBtn.addEventListener('click', (e) => handleBulkUnpin(e));
     }
 
     if (bulkChangePresetBtn) {
@@ -2688,7 +3127,7 @@ function setupEventListeners() {
     }
 
     // Tab switching functionality for prompt/UC tabs (Manual Generation Model)
-    const manualTabButtons = document.querySelectorAll('#manualModal .prompt-tabs .tab-buttons .tab-btn');
+    const manualTabButtons = document.querySelectorAll('#manualModal .prompt-tabs .gallery-toggle-group .gallery-toggle-btn');
     const showBothBtn = document.getElementById('showBothBtn');
     const promptTabs = document.querySelector('#manualModal .prompt-tabs');
 
@@ -2779,10 +3218,15 @@ function setupEventListeners() {
         setGalleryColumns(newValue);
     });
 
-    // Gallery toggle button
-    const galleryToggleBtn = document.getElementById('galleryToggleBtn');
-    if (galleryToggleBtn) {
-        galleryToggleBtn.addEventListener('click', toggleGalleryView);
+    // Gallery toggle group
+    const galleryToggleGroup = document.getElementById('galleryToggleGroup');
+    if (galleryToggleGroup) {
+        galleryToggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const view = e.currentTarget.getAttribute('data-view');
+                switchGalleryView(view);
+            });
+        });
     }
 
     // === Select All functionality ===
@@ -2834,11 +3278,12 @@ function setupEventListeners() {
 // Tab switching functionality for prompt/UC tabs (Manual Generation Model)
 function switchManualTab(targetTab) {
     // Target ONLY the tab buttons within the manual modal's prompt-tabs section
-    const tabButtons = document.querySelectorAll('#manualModal .prompt-tabs .tab-buttons .tab-btn');
+    const tabButtons = document.querySelectorAll('#manualModal .prompt-tabs .gallery-toggle-group .gallery-toggle-btn');
     // Target ONLY the tab panes within the manual modal's prompt-tabs section
     const tabPanes = document.querySelectorAll('#manualModal .prompt-tabs .tab-content .tab-pane');
     const showBothBtn = document.getElementById('showBothBtn');
     const promptTabs = document.querySelector('#manualModal .prompt-tabs');
+    const toggleGroup = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-group');
 
     // Remove show-both state
     promptTabs.classList.remove('show-both');
@@ -2849,23 +3294,111 @@ function switchManualTab(targetTab) {
     tabPanes.forEach(pane => pane.classList.remove('active'));
 
     // Add active class to clicked button and corresponding pane
-    const targetButton = document.querySelector(`#manualModal .prompt-tabs .tab-buttons .tab-btn[data-tab="${targetTab}"]`);
+    const targetButton = document.querySelector(`#manualModal .prompt-tabs .gallery-toggle-group .gallery-toggle-btn[data-tab="${targetTab}"]`);
     const targetPane = document.getElementById(`${targetTab}-tab`);
 
     if (targetButton) targetButton.classList.add('active');
     if (targetPane) targetPane.classList.add('active');
+    
+    // Update the data-active attribute for the slider
+    if (toggleGroup) {
+        toggleGroup.setAttribute('data-active', targetTab);
+    }
+
+    // Update emphasis highlighting for the active main textarea
+    const activeTextarea = document.getElementById(targetTab);
+    if (activeTextarea) {
+        updateEmphasisHighlighting(activeTextarea);
+    }
+
+    // Sync the selection to all character prompts
+    syncCharacterPromptTabs(targetTab);
+}
+
+// New function to sync main window tab selection to all character prompts
+function syncCharacterPromptTabs(mainTab) {
+    const characterItems = document.querySelectorAll('.character-prompt-item');
+    
+    characterItems.forEach(characterItem => {
+        const characterTabButtons = characterItem.querySelectorAll('.gallery-toggle-btn');
+        const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
+        const toggleGroup = characterItem.querySelector('.gallery-toggle-group');
+        const characterPromptTabs = characterItem.querySelector('.character-prompt-tabs');
+
+        // Remove active class from all character tab buttons and panes
+        characterTabButtons.forEach(btn => btn.classList.remove('active'));
+        characterTabPanes.forEach(pane => pane.classList.remove('active'));
+
+        // Add active class to the corresponding character tab button and pane
+        const targetButton = characterItem.querySelector(`.gallery-toggle-btn[data-tab="${mainTab}"]`);
+        const characterId = characterItem.id;
+        const targetPane = document.getElementById(`${characterId}_${mainTab}-tab`);
+
+        if (targetButton) targetButton.classList.add('active');
+        if (targetPane) targetPane.classList.add('active');
+        
+        // Remove show-both class when switching to single tab mode
+        if (characterPromptTabs) {
+            characterPromptTabs.classList.remove('show-both');
+        }
+        
+        // Update the data-active attribute for the character's slider
+        if (toggleGroup) {
+            toggleGroup.setAttribute('data-active', mainTab);
+        }
+
+        // Update emphasis highlighting for the active textarea
+        const activeTextarea = characterItem.querySelector(`#${characterId}_${mainTab}`);
+        if (activeTextarea) {
+            updateEmphasisHighlighting(activeTextarea);
+        }
+    });
+}
+
+// New function to sync character prompts to show both tabs
+function syncCharacterPromptTabsShowBoth() {
+    const characterItems = document.querySelectorAll('.character-prompt-item');
+    
+    characterItems.forEach(characterItem => {
+        const characterTabButtons = characterItem.querySelectorAll('.gallery-toggle-btn');
+        const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
+        const toggleGroup = characterItem.querySelector('.gallery-toggle-group');
+        const characterPromptTabs = characterItem.querySelector('.character-prompt-tabs');
+        const characterId = characterItem.id;
+
+        // Show both character tab buttons and panes
+        characterTabButtons.forEach(btn => btn.classList.add('active'));
+        characterTabPanes.forEach(pane => pane.classList.add('active'));
+        
+        // Add show-both class to character-prompt-tabs for visual separation
+        if (characterPromptTabs) {
+            characterPromptTabs.classList.add('show-both');
+        }
+        
+        // Update the data-active attribute for the character's slider (keep current state)
+        if (toggleGroup) {
+            const currentActive = toggleGroup.getAttribute('data-active') || 'prompt';
+            toggleGroup.setAttribute('data-active', currentActive);
+        }
+
+        // Update emphasis highlighting for both prompt and UC textareas
+        const promptTextarea = characterItem.querySelector(`#${characterId}_prompt`);
+        const ucTextarea = characterItem.querySelector(`#${characterId}_uc`);
+        
+        if (promptTextarea) {
+            updateEmphasisHighlighting(promptTextarea);
+        }
+        if (ucTextarea) {
+            updateEmphasisHighlighting(ucTextarea);
+        }
+    });
 }
 
 // Show both panes functionality for manual generation model
 function toggleManualShowBoth() {
     const showBothBtn = document.getElementById('showBothBtn');
     const promptTabs = document.querySelector('#manualModal .prompt-tabs');
-    // Target ONLY the tab buttons within the manual modal's prompt-tabs section
-    const tabButtons = document.querySelectorAll('#manualModal .prompt-tabs .tab-buttons .tab-btn');
-    // Target ONLY the tab panes within the manual modal's prompt-tabs section
-    const tabPanes = document.querySelectorAll('#manualModal .prompt-tabs .tab-content .tab-pane');
-    const tabButtonsContainer = document.querySelector('#manualModal .prompt-tabs .tab-buttons');
-
+    
     const isShowingBoth = promptTabs.classList.contains('show-both');
 
     if (isShowingBoth) {
@@ -2873,53 +3406,55 @@ function toggleManualShowBoth() {
         promptTabs.classList.remove('show-both');
         showBothBtn.classList.remove('active');
 
-        // Show tab buttons container
-        if (tabButtonsContainer) {
-            tabButtonsContainer.style.display = '';
-        }
-
         // Set Base Prompt as default when returning from show both mode
-        tabButtons.forEach(btn => btn.classList.remove('active'));
-        tabPanes.forEach(pane => pane.classList.remove('active'));
-
-        // Activate the Base Prompt tab
-        const promptTabBtn = document.querySelector('#manualModal .prompt-tabs .tab-buttons .tab-btn[data-tab="prompt"]');
-        const promptTabPane = document.getElementById('prompt-tab');
-
-        if (promptTabBtn && promptTabPane) {
-            promptTabBtn.classList.add('active');
-            promptTabPane.classList.add('active');
-        }
+        syncCharacterPromptTabs('prompt');
     } else {
         // Show both panes
         promptTabs.classList.add('show-both');
         showBothBtn.classList.add('active');
 
-        // Hide tab buttons container when showing both
-        if (tabButtonsContainer) {
-            tabButtonsContainer.style.display = 'none';
-        }
+        // Sync character prompts to show both tabs
+        syncCharacterPromptTabsShowBoth();
     }
 }
 
-// Tab switching functionality for character prompt tabs
-function switchCharacterTab(characterId, targetTab) {
-    const characterItem = document.getElementById(characterId);
-    if (!characterItem) return;
+// New function to sync character prompts to show both tabs
+function syncCharacterPromptTabsShowBoth() {
+    const characterItems = document.querySelectorAll('.character-prompt-item');
+    
+    characterItems.forEach(characterItem => {
+        const characterTabButtons = characterItem.querySelectorAll('.gallery-toggle-btn');
+        const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
+        const toggleGroup = characterItem.querySelector('.gallery-toggle-group');
+        const characterPromptTabs = characterItem.querySelector('.character-prompt-tabs');
+        const characterId = characterItem.id;
 
-    const characterTabButtons = characterItem.querySelectorAll('.tab-btn');
-    const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
+        // Show both character tab buttons and panes
+        characterTabButtons.forEach(btn => btn.classList.add('active'));
+        characterTabPanes.forEach(pane => pane.classList.add('active'));
+        
+        // Add show-both class to character-prompt-tabs for visual separation
+        if (characterPromptTabs) {
+            characterPromptTabs.classList.add('show-both');
+        }
+        
+        // Update the data-active attribute for the character's slider (keep current state)
+        if (toggleGroup) {
+            const currentActive = toggleGroup.getAttribute('data-active') || 'prompt';
+            toggleGroup.setAttribute('data-active', currentActive);
+        }
 
-    // Remove active class from all buttons and panes
-    characterTabButtons.forEach(btn => btn.classList.remove('active'));
-    characterTabPanes.forEach(pane => pane.classList.remove('active'));
-
-    // Add active class to clicked button and corresponding pane
-    const targetButton = characterItem.querySelector(`.tab-btn[data-tab="${targetTab}"]`);
-    const targetPane = document.getElementById(`${characterId}_${targetTab}-tab`);
-
-    if (targetButton) targetButton.classList.add('active');
-    if (targetPane) targetPane.classList.add('active');
+        // Update emphasis highlighting for both prompt and UC textareas
+        const promptTextarea = characterItem.querySelector(`#${characterId}_prompt`);
+        const ucTextarea = characterItem.querySelector(`#${characterId}_uc`);
+        
+        if (promptTextarea) {
+            updateEmphasisHighlighting(promptTextarea);
+        }
+        if (ucTextarea) {
+            updateEmphasisHighlighting(ucTextarea);
+        }
+    });
 }
 
 // Update balance display
@@ -2930,9 +3465,9 @@ function updateBalanceDisplay(balance) {
 
     if (!balanceDisplay || !balanceAmount) return;
 
-    const totalCredits = balance.totalCredits || 0;
-    const fixedCredits = balance.fixedTrainingStepsLeft || 0;
-    const purchasedCredits = balance.purchasedTrainingSteps || 0;
+    const totalCredits = balance?.totalCredits || -1;
+    const fixedCredits = balance?.fixedTrainingStepsLeft || -1;
+    const purchasedCredits = balance?.purchasedTrainingSteps || -1;
 
     // Update amount
     balanceAmount.textContent = totalCredits;
@@ -2944,7 +3479,15 @@ function updateBalanceDisplay(balance) {
     // Update styling based on credit levels
     balanceDisplay.classList.remove('low-credits');
 
-    if (totalCredits === 0) {
+    if (totalCredits !== -1) {
+        currentBalance = totalCredits;
+    }
+
+    if (totalCredits === -1) {
+        balanceIcon.className = 'nai-anla';
+        balanceAmount.textContent = 'Account Error';
+        balanceDisplay.classList.add('low-credits');
+    } else if (totalCredits === 0) {
         // No credits - show dollar sign and warning styling
         balanceIcon.className = 'nai-anla';
         balanceDisplay.classList.add('low-credits');
@@ -3132,7 +3675,6 @@ function displayCurrentPageOptimized() {
     }
 
     displayedStartIndex = 0;
-    const galleryRect = gallery.getBoundingClientRect();
     const itemHeight = 256;
     const itemsPerCol = Math.floor(window.innerHeight / itemHeight);
     const buffer = Math.ceil(itemsPerCol * 0.15);
@@ -3195,44 +3737,56 @@ function createGalleryItem(image, index) {
     item.dataset.filename = filename;
     item.dataset.time = image.mtime || 0;
     item.dataset.index = index;
-    // Restore selection state from data-selected if present
-    if (item.dataset.selected === 'true' || selectedImages.has(filename)) {
-        item.dataset.selected = 'true';
+    
+    // Use data-selected as single source of truth for selection state
+    const isSelected = selectedImages.has(filename);
+    item.dataset.selected = isSelected ? 'true' : 'false';
+    if (isSelected) {
         item.classList.add('selected');
     } else {
-        item.dataset.selected = 'false';
         item.classList.remove('selected');
     }
+    
     // Add selection checkbox
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.className = 'gallery-item-checkbox';
     checkbox.dataset.filename = filename;
-    checkbox.checked = item.dataset.selected === 'true';
+    checkbox.checked = isSelected;
+    
     // ALT+click range selection on click event
     checkbox.addEventListener('click', (e) => {
         if (e.altKey) {
             e.preventDefault();
-            // Use all .gallery-item and .gallery-placeholder with data-filename for range selection
-            const items = Array.from(document.querySelectorAll('.gallery-item[data-filename], .gallery-placeholder[data-filename]'));
-            const clickedIndex = items.findIndex(div => div.dataset.filename === filename);
+            // Get all gallery items (both real items and placeholders) in order
+            const allItems = Array.from(document.querySelectorAll('.gallery-item[data-filename], .gallery-placeholder[data-filename]'));
+            const clickedIndex = allItems.findIndex(div => div.dataset.filename === filename);
+            
             if (lastSelectedGalleryIndex !== null && clickedIndex !== -1) {
                 const [start, end] = [lastSelectedGalleryIndex, clickedIndex].sort((a, b) => a - b);
+                
+                // Select all items in range
                 for (let i = start; i <= end; i++) {
-                    const div = items[i];
+                    const div = allItems[i];
+                    const itemFilename = div.dataset.filename;
+                    
+                    // Update data-selected attribute
                     div.dataset.selected = 'true';
                     div.classList.add('selected');
-                    selectedImages.add(div.dataset.filename);
-                    // If it's a real item, update checkbox
+                    selectedImages.add(itemFilename);
+                    
+                    // Update checkbox if it's a real item
                     const cb = div.querySelector('.gallery-item-checkbox');
                     if (cb) cb.checked = true;
                 }
+                
                 updateBulkActionsBar();
                 lastSelectedGalleryIndex = clickedIndex;
                 return;
             }
         }
     });
+    
     // Normal selection on change event
     checkbox.addEventListener('change', (e) => {
         if (!e.altKey) {
@@ -3328,7 +3882,7 @@ function createGalleryItem(image, index) {
     upscaleBtn.title = 'Upscale';
     upscaleBtn.onclick = (e) => {
         e.stopPropagation();
-        upscaleImage(image);
+        upscaleImage(image, e);
     };
 
     // Only show upscale button for non-upscaled images
@@ -3338,41 +3892,35 @@ function createGalleryItem(image, index) {
         upscaleBtn.style.display = 'none';
     }
 
-    // Scrap button
-    const scrapBtn = document.createElement('button');
-    scrapBtn.className = 'btn-secondary round-button';
-    if (isViewingScraps) {
-        scrapBtn.innerHTML = '<i class="nai-undo"></i>';
-        scrapBtn.title = 'Remove from scraps';
-        scrapBtn.onclick = (e) => {
-            e.stopPropagation();
-            removeFromScraps(image);
-        };
-    } else {
-        scrapBtn.innerHTML = '<i class="nai-image-tool-sketch"></i>';
-        scrapBtn.title = 'Move to scraps';
-        scrapBtn.onclick = (e) => {
-            e.stopPropagation();
-            moveToScraps(image);
-        };
-    }
-
-    // Delete button
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'btn-danger round-button';
-    deleteBtn.innerHTML = '<i class="nai-trash"></i>';
-    deleteBtn.title = 'Delete image';
-    deleteBtn.onclick = (e) => {
+    // Pin button
+    const pinBtn = document.createElement('button');
+    pinBtn.className = 'btn-secondary round-button';
+    pinBtn.innerHTML = '<i class="nai-heart-disabled"></i>';
+    pinBtn.title = 'Pin/Unpin image';
+    pinBtn.onclick = (e) => {
         e.stopPropagation();
-        deleteImage(image);
+        togglePinImage(image, pinBtn);
+    };
+    
+    // Update pin button appearance based on pin status
+    updatePinButtonAppearance(pinBtn, filename);
+
+    // Toolbar trigger button (combines scrap and delete)
+    const toolbarBtn = document.createElement('button');
+    toolbarBtn.className = 'btn-secondary round-button';
+    toolbarBtn.innerHTML = '<i class="nai-dotdotdot"></i>';
+    toolbarBtn.title = 'More actions';
+    toolbarBtn.onclick = (e) => {
+        e.stopPropagation();
+        showGalleryToolbar(image, e);
     };
 
     actionsDiv.appendChild(downloadBtn);
     actionsDiv.appendChild(upscaleBtn);
     actionsDiv.appendChild(rerollBtn);
     actionsDiv.appendChild(rerollEditBtn);
-    actionsDiv.appendChild(scrapBtn);
-    actionsDiv.appendChild(deleteBtn);
+    actionsDiv.appendChild(pinBtn);
+    actionsDiv.appendChild(toolbarBtn);
 
     overlay.appendChild(actionsDiv);
 
@@ -3380,7 +3928,7 @@ function createGalleryItem(image, index) {
     item.appendChild(img);
     item.appendChild(overlay);
 
-    // Click to show lightbox - prefer highest quality version
+    
     item.addEventListener('click', (e) => {
         // Don't open lightbox if clicking on checkbox
         if (e.target.type === 'checkbox') {
@@ -3415,6 +3963,27 @@ function reindexGallery() {
 }
 
 async function rerollImage(image) {
+    // Check if we're in a modal context
+    const isInModal = document.getElementById('manualModal').style.display === 'block';
+    
+    let toastId;
+    let progressInterval;
+    
+    if (!isInModal) {
+        // Use glass toast with progress when not in modal
+        toastId = showGlassToast('info', 'Rerolling Image', 'Generating new image...', true);
+        
+        // Start progress animation (1% per second)
+        let progress = 0;
+        progressInterval = setInterval(() => {
+            progress += 1;
+            updateGlassToastProgress(toastId, progress);
+        }, 1000);
+    } else {
+        // Use existing modal loading overlay when in modal
+        showManualLoading(true, 'Rerolling image...');
+    }
+
     try {
         // Determine which filename to use for metadata
         // For gallery items, determine the filename based on available properties
@@ -3448,9 +4017,6 @@ async function rerollImage(image) {
         if (!metadata) {
             throw new Error('No metadata found for this image');
         }
-
-        // Show loading
-        showManualLoading(true, 'Rerolling image...');
 
         // Check if this is a variation and we have the original base image
         const isVariation = metadata.base_image === true;
@@ -3640,6 +4206,8 @@ async function rerollImage(image) {
                 if (metadataResponse.ok) {
                     const metadata = await metadataResponse.json();
                     window.lastGeneration = metadata;
+                    window.lastGeneration.filename = generatedFilename;
+                    manualPreviewOriginalImage.classList.remove('hidden');
                 }
             } catch (error) {
                 console.warn('Failed to fetch metadata for generated image:', error);
@@ -3673,11 +4241,30 @@ async function rerollImage(image) {
             }, 1000);
         };
         img.src = imageUrl;
+
+        // Show success message
+        if (!isInModal) {
+            clearInterval(progressInterval);
+            updateGlassToastProgress(toastId, 100);
+            updateGlassToast(toastId, 'success', 'Reroll Complete', 'Image generated successfully!');
+            const imageContainer = document.querySelector('.manual-preview-image-container');
+            imageContainer.classList.remove('swapped');
+        } else {
+            showGlassToast('success', 'Reroll Complete', 'Image generated successfully!');
+        }
+
     } catch (error) {
         console.error('Direct reroll error:', error);
-        showError('Image reroll failed: ' + error.message);
+        if (!isInModal) {
+            clearInterval(progressInterval);
+            updateGlassToast(toastId, 'error', 'Reroll Failed', 'Image reroll failed: ' + error.message);
+        } else {
+            showError('Image reroll failed: ' + error.message);
+        }
     } finally {
-        showManualLoading(false);
+        if (isInModal) {
+            showManualLoading(false);
+        }
     }
 }
 
@@ -3764,6 +4351,10 @@ async function rerollImageWithEdit(image) {
         if (window.uploadedImageData) {
             await cropImageToResolution();
         }
+        manualLoadingOverlay.classList.remove('hidden');
+        manualLoadingOverlay.classList.add('return');
+        manualPreviewOriginalImage.classList.add('hidden');
+        
         openModal(manualModal);
         manualPrompt.focus();
 
@@ -3781,9 +4372,37 @@ async function rerollImageWithEdit(image) {
 }
 
 // Upscale an image
-async function upscaleImage(image) {
-    // Show loading overlay (same as generation)
-    showManualLoading(true, 'Upscaling image...');
+async function upscaleImage(image, event = null) {
+    // Check if user has already allowed paid requests
+    const cost = 7; // Upscaling cost
+    if (!forcePaidRequest) {
+        const confirmed = await showCreditCostDialog(cost, event);
+        
+        if (!confirmed) {
+            return;
+        }
+    }
+    
+    // Check if we're in a modal context
+    const isInModal = document.getElementById('manualModal').style.display === 'block';
+    
+    let toastId;
+    let progressInterval;
+    
+    if (!isInModal) {
+        // Use glass toast with progress when not in modal
+        toastId = showGlassToast('info', 'Upscaling Image', 'Upscaling image...', true);
+        
+        // Start progress animation (1% per second)
+        let progress = 0;
+        progressInterval = setInterval(() => {
+            progress += 1;
+            updateGlassToastProgress(toastId, progress);
+        }, 1000);
+    } else {
+        // Use existing modal loading overlay when in modal
+        showManualLoading(true, 'Upscaling image...');
+    }
 
     try {
         const upscaleResponse = await fetchWithAuth(`/images/${image.original}/upscale`, {
@@ -3801,13 +4420,19 @@ async function upscaleImage(image) {
         const imageUrl = URL.createObjectURL(blob);
 
         // Show success message
-        showGlassToast('success', 'Upscale', 'Image upscaled successfully!');
+        if (!isInModal) {
+            clearInterval(progressInterval);
+            updateGlassToastProgress(toastId, 100);
+            updateGlassToast(toastId, 'success', 'Upscale Complete', 'Image upscaled successfully!');
+        } else {
+            showGlassToast('success', 'Upscale Complete', 'Image upscaled successfully!');
+        }
 
         // Reload gallery to show new upscaled image
         await loadGallery();
 
-        // Refresh balance after successful upscaling
-        await loadBalance();
+        // Update balance and show credit deduction toast
+        await updateBalanceAndShowCreditDeduction('image upscaling', cost);
 
         // Find the upscaled image in the gallery and show it in lightbox
         let upscaledFilename = image.original.replace('.png', '_upscaled.png');
@@ -3833,9 +4458,16 @@ async function upscaleImage(image) {
 
     } catch (error) {
         console.error('Upscaling error:', error);
-        showError('Image upscaling failed. Please try again.');
+        if (!isInModal) {
+            clearInterval(progressInterval);
+            updateGlassToast(toastId, 'error', 'Upscale Failed', 'Image upscaling failed. Please try again.');
+        } else {
+            showError('Image upscaling failed. Please try again.');
+        }
     } finally {
-        showManualLoading(false);
+        if (isInModal) {
+            showManualLoading(false);
+        }
     }
 }
 
@@ -4229,19 +4861,8 @@ function updateVirtualScroll() {
                 const image = allImages[imageIndex];
                 if (image) {
                     const realItem = createGalleryItem(image, imageIndex);
-                    if (el.dataset.selected === 'true') {
-                        realItem.dataset.selected = 'true';
-                        realItem.classList.add('selected');
-                        selectedImages.add(realItem.dataset.filename);
-                        const cb = realItem.querySelector('.gallery-item-checkbox');
-                        if (cb) cb.checked = true;
-                    } else {
-                        realItem.dataset.selected = 'false';
-                        realItem.classList.remove('selected');
-                        selectedImages.delete(realItem.dataset.filename);
-                        const cb = realItem.querySelector('.gallery-item-checkbox');
-                        if (cb) cb.checked = false;
-                    }
+                    // The createGalleryItem function already handles selection state based on selectedImages Set
+                    // No need to manually manage selectedImages here
                     gallery.replaceChild(realItem, el);
                 }
             }
@@ -4387,19 +5008,8 @@ function updateVirtualScroll() {
                 const image = allImages[imageIndex];
                 if (image) {
                     const realItem = createGalleryItem(image, imageIndex);
-                    if (el.dataset.selected === 'true') {
-                        realItem.dataset.selected = 'true';
-                        realItem.classList.add('selected');
-                        selectedImages.add(realItem.dataset.filename);
-                        const cb = realItem.querySelector('.gallery-item-checkbox');
-                        if (cb) cb.checked = true;
-                    } else {
-                        realItem.dataset.selected = 'false';
-                        realItem.classList.remove('selected');
-                        selectedImages.delete(realItem.dataset.filename);
-                        const cb = realItem.querySelector('.gallery-item-checkbox');
-                        if (cb) cb.checked = false;
-                    }
+                    // The createGalleryItem function already handles selection state based on selectedImages Set
+                    // No need to manually manage selectedImages here
                     gallery.replaceChild(realItem, el);
                 }
             }
@@ -4469,6 +5079,9 @@ async function showManualModal() {
         clearManualForm();
     }
 
+    manualLoadingOverlay.classList.remove('hidden');
+    manualLoadingOverlay.classList.add('return');
+    manualPreviewOriginalImage.classList.add('hidden');
     openModal(manualModal);
     manualPrompt.focus();
     await cropImageToResolution();
@@ -4488,7 +5101,7 @@ async function showManualModal() {
     // Check if "show both" mode is active and hide tab buttons container if needed
     const promptTabs = document.querySelector('#manualModal .prompt-tabs');
     const showBothBtn = document.getElementById('showBothBtn');
-    const tabButtonsContainer = document.querySelector('#manualModal .prompt-tabs .tab-buttons');
+    const tabButtonsContainer = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-group');
 
     if (promptTabs && promptTabs.classList.contains('show-both') && showBothBtn && showBothBtn.classList.contains('active')) {
         // "Show both" mode is active, hide the tab buttons container
@@ -4496,6 +5109,9 @@ async function showManualModal() {
             tabButtonsContainer.style.display = 'none';
         }
     }
+
+    // Initialize keyboard shortcuts
+    initializeKeyboardShortcuts();
 }
 
 // Hide manual modal
@@ -4508,8 +5124,8 @@ function hideManualModal(e, preventModalReset = false) {
         if (manualLoadingOverlay && !manualLoadingOverlay.classList.contains('hidden')) {
             // If manual loading overlay is visible, switch to regular loading overlay
             const loadingMessage = manualLoadingOverlay.querySelector('p')?.textContent || 'Generating your image...';
-            manualLoadingOverlay.classList.add('hidden');
-            showLoading(true, loadingMessage);
+            manualLoadingOverlay.classList.add('hidden', 'return');
+            showManualLoading(true, loadingMessage);
         }
 
         if (previewSection) {
@@ -4535,6 +5151,8 @@ function hideManualModal(e, preventModalReset = false) {
         window.currentEditMetadata = null;
         window.currentEditImage = null;
         window.currentRequestType = null;
+        window.initialEdit = null;
+        window.lastGeneration = null;
 
         // Reset random prompt state
         savedRandomPromptState = null;
@@ -4561,6 +5179,9 @@ function hideManualModal(e, preventModalReset = false) {
             nsfwBtn.classList.remove('active');
             nsfwBtn.style.display = 'none';
         }
+
+        // Hide keyboard shortcuts overlay
+        hideShortcutsOverlay();
     }
 }
 
@@ -4596,6 +5217,8 @@ function clearManualForm() {
     cleanupBlobUrls();
 
     manualForm.reset();
+
+    manualGenerateBtn.disabled = false;
 
     // Reset custom dropdowns to defaults
     selectManualModel('v4_5', '');
@@ -4633,6 +5256,8 @@ function clearManualForm() {
     if (qualityToggleBtn) {
         qualityToggleBtn.setAttribute('data-state', 'on');
     }
+
+    autoPositionBtn.setAttribute('data-state', 'on');
 
     selectedUcPreset = 3; // Default to "Heavy"
     selectUcPreset(3);
@@ -4751,9 +5376,9 @@ function collectManualFormValues() {
 
     const values = {
         model: manualModel.value,
-        prompt: manualPrompt.value.trim(),
+        prompt: manualPrompt.value.trim() + '',
         resolutionValue: manualResolution.value,
-        uc: manualUc.value.trim(),
+        uc: manualUc.value.trim() + '',
         seed: manualSeed.value.trim(),
         sampler: manualSampler.value,
         noiseScheduler: manualNoiseScheduler.value,
@@ -4801,6 +5426,8 @@ function collectManualFormValues() {
     // Collect vibe transfer data
     values.vibe_transfer = collectVibeTransferData();
     values.normalize_vibes = vibeNormalizeToggle.getAttribute('data-state') === 'on';
+
+    values.upscale = manualUpscale.getAttribute('data-state') === 'on' ? 2 : undefined;
 
     return values;
 }
@@ -4884,6 +5511,9 @@ function addSharedFieldsToRequestBody(requestBody, values) {
 // Utility: Show image and confetti, refresh gallery, etc.
 async function handleImageResult(blob, successMsg, clearContextFn, seed = null, response = null) {
     // Store the seed for manual preview
+    const priceList = document.getElementById('manualPriceList');
+    const cost = parseInt(priceList.textContent);
+    
     if (seed !== null) {
         window.lastGeneratedSeed = seed;
         manualPreviewSeedNumber.textContent = parseInt(seed);
@@ -4909,6 +5539,8 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
                 if (metadataResponse.ok) {
                     const metadata = await metadataResponse.json();
                     window.lastGeneration = metadata;
+                    window.lastGeneration.filename = filename;
+                    manualPreviewOriginalImage.classList.remove('hidden');
                 }
             } catch (error) {
                 console.warn('Failed to fetch metadata for generated image:', error);
@@ -4928,9 +5560,15 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
         if (isManualModalOpen) {
             // Update manual modal preview instead of opening lightbox
             // Don't clear context when modal is open in wide viewport mode
-            await updateManualPreview(imageUrl, blob, response);
 
-            loadGallery(true);
+            const imageContainer = document.querySelector('.manual-preview-image-container');
+            imageContainer.classList.remove('swapped');
+
+            await loadGallery(true);
+            await updateManualPreview(imageUrl, blob, response);
+            
+            // Update balance and show credit deduction toast for manual generation
+            await updateBalanceAndShowCreditDeduction('image generation', cost);
         } else {
             // Clear context only when modal is not open or not in wide viewport mode
             if (typeof clearContextFn === "function") clearContextFn();
@@ -4938,7 +5576,10 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
             // Normal behavior - open lightbox
             setTimeout(async () => {
                 await loadGallery();
-                await loadBalance();
+                
+                // Update balance and show credit deduction toast
+                await updateBalanceAndShowCreditDeduction('image generation', cost);
+                
                 if (allImages.length > 0) {
                     const newImage = allImages[0];
                     const imageToShow = {
@@ -4955,10 +5596,54 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
     img.src = imageUrl;
 }
 
+// Helper function to get current balance
+async function getCurrentBalance() {
+    try {
+        const balanceResponse = await fetchWithAuth('/balance');
+        if (balanceResponse.ok) {
+            const balanceData = await balanceResponse.json();
+            return balanceData;
+        }
+    } catch (error) {
+        console.warn('Failed to get current balance:', error);
+    }
+    return null;
+}
+
+// Helper function to update balance and show credit deduction toast with true cost calculation
+async function updateBalanceAndShowCreditDeduction(operationType, estimatedCost) {
+    try {
+        // Get current balance
+        const balanceAfter = await getCurrentBalance();
+        
+        if (balanceAfter !== null && currentBalance !== null) {
+            const actualCost = currentBalance - balanceAfter.totalCredits;
+            
+            // Show credit deduction toast with actual cost
+            if (actualCost > 0) {
+                showGlassToast('warning', 'Transaction', `<i class="nai-anla"></i> ${actualCost} deducted for ${operationType}. New balance: <i class="nai-anla"></i> ${balanceAfter.totalCredits}`);
+            }
+            // Update balance display
+            updateBalanceDisplay(balanceAfter);
+        } else if (actualCost < 0) {
+            // Fallback to estimated cost if we can't get actual cost
+            showGlassToast('warning', 'Transaction', `<i class="nai-anla"></i> ${estimatedCost} deducted for ${operationType}.`);
+        }
+    } catch (error) {
+        console.warn('Failed to update balance after operation:', error);
+        // Still show the deduction toast even if balance update fails
+        if (actualCost > 0) {
+            showGlassToast('warning', 'Transaction', `<i class="nai-anla"></i> ${actualCost} deducted for ${operationType}.`);
+        }
+    }
+}
+
 // Function to update manual modal preview
 async function updateManualPreview(imageUrl, blob, response = null, metadata = null) {
     const previewImage = document.getElementById('manualPreviewImage');
+    const originalImage = document.getElementById('manualPreviewOriginalImage');
     const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
+    const imageContainer = document.querySelector('.manual-preview-image-container');
     const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
@@ -4974,6 +5659,30 @@ async function updateManualPreview(imageUrl, blob, response = null, metadata = n
 
         // Store the blob URL for download functionality
         previewImage.dataset.blobUrl = imageUrl;
+
+        // Check if we have initialEdit data for side-by-side preview
+        if (window.initialEdit && window.initialEdit.image) {
+            // Show original image for comparison
+            if (originalImage) {
+                const originalImageUrl = `/images/${window.initialEdit.image.original || window.initialEdit.image.filename}`;
+                originalImage.src = originalImageUrl;
+                originalImage.style.display = 'block';
+                
+                // Add click handler to load original image into main preview
+                originalImage.onclick = function() {
+                    swapManualPreviewImages();
+                };
+                
+                // Enable dual mode
+                imageContainer.classList.add('dual-mode');
+            }
+        } else {
+            // Single image mode
+            if (originalImage) {
+                originalImage.style.display = 'none';
+            }
+            imageContainer.classList.remove('dual-mode', 'original-hidden');
+        }
 
         // Get the actual filename from response headers if available, otherwise extract from URL
         let generatedFilename = null;
@@ -5033,11 +5742,23 @@ async function updateManualPreview(imageUrl, blob, response = null, metadata = n
         if (rerollBtn) rerollBtn.style.display = 'flex';
         if (variationBtn) variationBtn.style.display = 'flex';
         if (manualPreviewLoadBtn) manualPreviewLoadBtn.style.display = 'flex';
+        
+        // Show and update pin button
+        if (manualPreviewPinBtn) {
+            manualPreviewPinBtn.style.display = 'flex';
+            if (currentManualPreviewImage) {
+                const filename = currentManualPreviewImage.filename || currentManualPreviewImage.original || currentManualPreviewImage.upscaled;
+                if (filename) {
+                    updatePinButtonAppearance(manualPreviewPinBtn, filename);
+                }
+            }
+        }
+        
         const scrapBtn = document.getElementById('manualPreviewScrapBtn');
         if (scrapBtn) {
             scrapBtn.style.display = 'flex';
             // Update scrap button based on current view
-            if (isViewingScraps) {
+            if (currentGalleryView === 'scraps') {
                 scrapBtn.innerHTML = '<i class="nai-undo"></i>';
                 scrapBtn.title = 'Remove from scraps';
             } else {
@@ -5067,10 +5788,40 @@ async function updateManualPreview(imageUrl, blob, response = null, metadata = n
     }
 }
 
+// Function to handle image swapping in manual preview
+function swapManualPreviewImages() {
+    const previewImage = document.getElementById('manualPreviewImage');
+    const originalImage = document.getElementById('manualPreviewOriginalImage');
+    const imageContainer = document.querySelector('.manual-preview-image-container');
+    const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
+    
+    if (!previewImage || !originalImage || !imageContainer || !window.lastGeneration || !window.initialEdit) return;
+    
+    // Check if we're currently showing the original image
+    if (imageContainer.classList.contains('swapped')) {
+        // Switch back to generated image
+        if (window.lastGeneration && window.lastGeneration.filename) {
+            previewImage.src = `/images/${window.lastGeneration.filename}`;
+            manualPreviewSeedNumber.textContent = window.lastGeneration.seed;
+        }
+        imageContainer.classList.remove('swapped');
+    } else {
+        // Switch to original image
+        if (window.initialEdit && window.initialEdit.image) {
+            const originalImageUrl = `/images/${window.initialEdit.image.upscaled || window.initialEdit.image.original}`;
+            previewImage.src = originalImageUrl;
+            manualPreviewSeedNumber.textContent = window.initialEdit.source.seed;
+        }
+        imageContainer.classList.add('swapped');
+    }
+}
+
 // Function to reset manual modal preview
 function resetManualPreview() {
     const previewImage = document.getElementById('manualPreviewImage');
+    const originalImage = document.getElementById('manualPreviewOriginalImage');
     const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
+    const imageContainer = document.querySelector('.manual-preview-image-container');
     const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
@@ -5085,12 +5836,24 @@ function resetManualPreview() {
         previewImage.dataset.blobUrl = '';
         previewPlaceholder.style.display = 'flex';
 
+        // Hide original image and reset dual mode
+        if (originalImage) {
+            originalImage.style.display = 'none';
+            originalImage.src = '';
+            originalImage.onclick = null;
+            originalImage.classList.add('hidden');
+        }
+        if (imageContainer) {
+            imageContainer.classList.remove('dual-mode', 'original-hidden', 'swapped');
+        }
+
         // Hide control buttons
         if (downloadBtn) downloadBtn.style.display = 'none';
         if (upscaleBtn) upscaleBtn.style.display = 'none';
         if (rerollBtn) rerollBtn.style.display = 'none';
         if (variationBtn) variationBtn.style.display = 'none';
         if (manualPreviewLoadBtn) manualPreviewLoadBtn.style.display = 'none';
+        if (manualPreviewPinBtn) manualPreviewPinBtn.style.display = 'none';
         const scrapBtn = document.getElementById('manualPreviewScrapBtn');
         if (scrapBtn) scrapBtn.style.display = 'none';
         if (seedBtn) seedBtn.style.display = 'none';
@@ -5101,6 +5864,7 @@ function resetManualPreview() {
 
         // Clear stored seed and current image
         window.lastGeneratedSeed = null;
+        window.lastGeneration = null;
         manualPreviewSeedNumber.textContent = '---';
         currentManualPreviewImage = null;
 
@@ -5182,10 +5946,15 @@ async function navigateManualPreview(event) {
     // Update the preview with the new image and metadata
     const imageUrl = `/images/${newImage.original}`;
     updateManualPreview(imageUrl, null, null, newImage.metadata);
+    
+    const imageContainer = document.querySelector('.manual-preview-image-container');
+    imageContainer.classList.add('swapped');
 }
 
 async function handleManualGeneration(e) {
     e.preventDefault();
+
+    manualGenerateBtn.disabled = true;
 
     const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
     const values = collectManualFormValues();
@@ -5254,6 +6023,20 @@ async function handleManualGeneration(e) {
         // Add preset name if available
         if (values.presetName) requestBody.preset = values.presetName;
 
+        // Check if this requires paid credits and user hasn't already allowed paid
+        if (requiresPaidCredits(requestBody) && !forcePaidRequest) {
+            const cost = calculateCreditCost(requestBody);
+            const confirmed = await showCreditCostDialog(cost, e);
+            
+            if (!confirmed) {
+                manualGenerateBtn.disabled = false;
+                return;
+            }
+            
+            // Set allow_paid to true for this request only (don't change UI)
+            requestBody.allow_paid = true;
+        }
+
         hideManualModal(undefined, true);
         showManualLoading(true, 'Generating Image...');
 
@@ -5274,6 +6057,7 @@ async function handleManualGeneration(e) {
             showError('Variation generation failed. Please try again.');
         } finally {
             showManualLoading(false);
+            manualGenerateBtn.disabled = false;
         }
     } else {
         // Regular manual generation or reroll
@@ -5292,10 +6076,25 @@ async function handleManualGeneration(e) {
         if (values.presetName) requestBody.preset = values.presetName;
 
         addSharedFieldsToRequestBody(requestBody, values);
+    
+        // Check if this requires paid credits and user hasn't already allowed paid
+        if (requiresPaidCredits(requestBody) && !forcePaidRequest) {
+            const cost = calculateCreditCost(requestBody);
+            const confirmed = await showCreditCostDialog(cost, e);
+            
+            if (!confirmed) {
+                manualGenerateBtn.disabled = false;
+                return;
+            }
+            
+            // Set allow_paid to true for this request only (don't change UI)
+            requestBody.allow_paid = true;
+        }
 
         showManualLoading(true, 'Generating Image...');
 
         hideManualModal(undefined, true);
+        
         try {
             const url = `/${values.model.toLowerCase()}/generate`;
             const response = await fetch(url, {
@@ -5313,6 +6112,7 @@ async function handleManualGeneration(e) {
             showError('Image generation failed. Please try again.');
         } finally {
             showManualLoading(false);
+            manualGenerateBtn.disabled = false;
         }
     }
 }
@@ -5387,7 +6187,7 @@ async function handleManualSave() {
 
     // Set auto position button state
     const autoPositionBtn = document.getElementById('autoPositionBtn');
-    presetData.use_coords = autoPositionBtn.getAttribute('data-state') === 'on';
+    presetData.use_coords = autoPositionBtn.getAttribute('data-state') === 'off';
 
     // Add variety setting if enabled
     if (typeof varietyEnabled !== "undefined" && varietyEnabled) {
@@ -5464,1380 +6264,6 @@ async function handleManualSave() {
     presetData.append_uc = selectedUcPreset;
 
     await saveManualPreset(presetName, presetData);
-}
-
-// Global variables for emphasis popup
-let emphasisPopupActive = false;
-let emphasisPopupValue = 1.0;
-let emphasisPopupTarget = null;
-let emphasisPopupSelection = null;
-
-// Global variables for emphasis editing
-let emphasisEditingActive = false;
-let emphasisEditingValue = 1.0;
-let emphasisEditingTarget = null;
-let emphasisEditingSelection = null;
-let emphasisEditingMode = 'normal'; // 'normal', 'brace', 'group'
-
-// Emphasis highlighting functionality
-let emphasisHighlightingActive = false;
-let emphasisHighlightingTarget = null;
-
-function checkCanAddEmphasis(target) {
-    const value = target.value;
-    const cursorPosition = target.selectionStart;
-    const textBeforeCursor = value.substring(0, cursorPosition);
-
-    // First check if cursor is inside a {} or [] block
-    const bracePattern = /\{([^}]*)\}|\[([^\]]*)\]/g;
-    let braceMatch;
-    while ((braceMatch = bracePattern.exec(value)) !== null) {
-        const braceStart = braceMatch.index;
-        const braceEnd = braceMatch.index + braceMatch[0].length;
-
-        if (cursorPosition >= braceStart && cursorPosition <= braceEnd) {
-            // Cursor is inside a {} or [] block, can add emphasis
-            return true;
-        }
-    }
-
-    // Check if cursor is at end of a tag pattern (same logic as autocomplete)
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('{'),
-        textBeforeCursor.lastIndexOf('}'),
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(',')
-    );
-    const searchText = lastDelimiterIndex >= 0 ?
-        textBeforeCursor.substring(lastDelimiterIndex + 1).trim() :
-        textBeforeCursor.trim();
-
-    // Check if we have a valid tag to emphasize
-    return searchText.length >= 2 && /^[a-zA-Z0-9_]+$/.test(searchText);
-}
-
-// Emphasis popup functions
-function showEmphasisPopup() {
-    // Create popup if it doesn't exist
-    let popup = document.getElementById('emphasisPopup');
-    if (!popup) {
-        popup = document.createElement('div');
-        popup.id = 'emphasisPopup';
-        popup.className = 'emphasis-popup';
-        popup.innerHTML = `
-            <div class="emphasis-popup-content">
-                <div class="emphasis-label">Emphasis Weight</div>
-                <div class="emphasis-value">${emphasisPopupValue.toFixed(1)}</div>
-                <div class="emphasis-controls">
-                    <button class="emphasis-btn" onclick="adjustEmphasis(-0.1)">-</button>
-                    <input type="range" min="0.1" max="2.0" step="0.1" value="${emphasisPopupValue}" 
-                           oninput="updateEmphasisFromSlider(this.value)" 
-                           onwheel="adjustEmphasisFromWheel(event)">
-                    <button class="emphasis-btn" onclick="adjustEmphasis(0.1)">+</button>
-                </div>
-                <div class="emphasis-help">Use ↑↓ arrows or scroll to adjust</div>
-            </div>
-        `;
-        document.body.appendChild(popup);
-    }
-
-    // Position popup near cursor
-    const rect = emphasisPopupTarget.getBoundingClientRect();
-    const cursorPosition = emphasisPopupTarget.selectionStart;
-    const textBeforeCursor = emphasisPopupTarget.value.substring(0, cursorPosition);
-
-    // Calculate approximate cursor position
-    const tempSpan = document.createElement('span');
-    tempSpan.style.font = window.getComputedStyle(emphasisPopupTarget).font;
-    tempSpan.style.visibility = 'hidden';
-    tempSpan.style.position = 'absolute';
-    tempSpan.style.whiteSpace = 'pre';
-    tempSpan.textContent = textBeforeCursor;
-    document.body.appendChild(tempSpan);
-
-    const textWidth = tempSpan.offsetWidth;
-    document.body.removeChild(tempSpan);
-
-    popup.style.left = (rect.left + textWidth) + 'px';
-    popup.style.top = (rect.top - popup.offsetHeight - 10) + 'px';
-    popup.style.display = 'block';
-
-    updateEmphasisPopup();
-}
-
-function updateEmphasisPopup() {
-    const popup = document.getElementById('emphasisPopup');
-    if (!popup) return;
-
-    const valueElement = popup.querySelector('.emphasis-value');
-    const slider = popup.querySelector('input[type="range"]');
-
-    if (valueElement) valueElement.textContent = emphasisPopupValue.toFixed(1);
-    if (slider) slider.value = emphasisPopupValue;
-}
-
-function adjustEmphasis(delta) {
-    emphasisPopupValue = Math.max(0.1, Math.min(2.0, emphasisPopupValue + delta));
-    updateEmphasisPopup();
-}
-
-function updateEmphasisFromSlider(value) {
-    emphasisPopupValue = parseFloat(value);
-    updateEmphasisPopup();
-}
-
-function adjustEmphasisFromWheel(event) {
-    event.preventDefault();
-    const delta = event.deltaY > 0 ? -0.1 : 0.1;
-    adjustEmphasis(delta);
-}
-
-function startEmphasisEditing(target) {
-    if (!target) return;
-
-    emphasisEditingTarget = target;
-    const value = target.value;
-    const cursorPosition = target.selectionStart;
-    const textBeforeCursor = value.substring(0, cursorPosition);
-
-    // First, check if cursor is inside an existing emphasis block
-    const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
-    let emphasisMatch;
-    let insideEmphasis = false;
-    let emphasisMode = 'normal'; // 'normal', 'brace', 'group'
-
-    while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
-        const emphasisStart = emphasisMatch.index;
-        const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
-
-        if (cursorPosition >= emphasisStart && cursorPosition <= emphasisEnd) {
-            // Cursor is inside an existing emphasis block
-            insideEmphasis = true;
-            emphasisEditingValue = parseFloat(emphasisMatch[1]);
-            emphasisEditingSelection = {
-                start: emphasisStart,
-                end: emphasisEnd
-            };
-
-            // Check if there's a {} block inside this emphasis block
-            const emphasisText = emphasisMatch[2];
-            const bracePattern = /\{([^}]*)\}/g;
-            let braceMatch;
-            while ((braceMatch = bracePattern.exec(emphasisText)) !== null) {
-                const braceStartInEmphasis = emphasisStart + emphasisMatch.index;
-                const braceEndInEmphasis = braceStartInEmphasis + braceMatch[0].length;
-
-                if (cursorPosition >= braceStartInEmphasis && cursorPosition <= braceEndInEmphasis) {
-                    // Cursor is inside a {} block within the emphasis block
-                    emphasisMode = 'brace';
-                    emphasisEditingSelection = {
-                        start: braceStartInEmphasis,
-                        end: braceEndInEmphasis
-                    };
-                    break;
-                }
-            }
-
-            if (emphasisMode !== 'brace') {
-                emphasisMode = 'group';
-            }
-            break;
-        }
-    }
-
-    if (!insideEmphasis) {
-        // Check if cursor is inside a {} or [] block
-        const bracePattern = /\{([^}]*)\}|\[([^\]]*)\]/g;
-        let braceMatch;
-        let insideBrace = false;
-
-        while ((braceMatch = bracePattern.exec(value)) !== null) {
-            const braceStart = braceMatch.index;
-            const braceEnd = braceMatch.index + braceMatch[0].length;
-
-            if (cursorPosition >= braceStart && cursorPosition <= braceEnd) {
-                // Cursor is inside a {} or [] block
-                insideBrace = true;
-                emphasisMode = 'brace';
-                // Calculate weight based on number of {} or [] around it
-                const braceText = braceMatch[0];
-                const isBracket = braceText.startsWith('[');
-
-                if (isBracket) {
-                    // [] block - negative emphasis
-                    const openBrackets = (braceText.match(/\[/g) || []).length;
-                    const closeBrackets = (braceText.match(/\]/g) || []).length;
-                    const bracketLevel = openBrackets - closeBrackets;
-                    emphasisEditingValue = 1.0 - (bracketLevel * 0.1);
-                } else {
-                    // {} block - positive emphasis
-                    const openBraces = (braceText.match(/\{/g) || []).length;
-                    const closeBraces = (braceText.match(/\}/g) || []).length;
-                    const braceLevel = openBraces - closeBraces;
-                    emphasisEditingValue = 1.0 + (braceLevel * 0.1);
-                }
-
-                emphasisEditingSelection = {
-                    start: braceStart,
-                    end: braceEnd
-                };
-                break;
-            }
-        }
-
-        // If not inside a brace, check if we're at the start/end of a brace block within an emphasis group
-        if (!insideBrace) {
-            const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
-            let emphasisMatch;
-
-            while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
-                const emphasisStart = emphasisMatch.index;
-                const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
-                const emphasisText = emphasisMatch[2];
-
-                // Check if cursor is at the start or end of a brace block within this emphasis
-                if (cursorPosition >= emphasisStart && cursorPosition <= emphasisEnd) {
-                    const relativePos = cursorPosition - emphasisStart;
-                    const emphasisContent = emphasisText;
-
-                    // Check if cursor is at the start of a brace block
-                    const braceStartMatch = emphasisContent.match(/^(\{+|\[+)/);
-                    if (braceStartMatch && relativePos <= braceStartMatch[0].length) {
-                        insideBrace = true;
-                        emphasisMode = 'brace';
-                        const braceLevel = braceStartMatch[0].length;
-                        emphasisEditingValue = braceStartMatch[0].startsWith('[') ?
-                            1.0 - (braceLevel * 0.1) : 1.0 + (braceLevel * 0.1);
-                        emphasisEditingSelection = {
-                            start: emphasisStart + emphasisMatch.index + 1,
-                            end: emphasisStart + emphasisMatch.index + 1 + braceStartMatch[0].length
-                        };
-                        break;
-                    }
-
-                    // Check if cursor is at the end of a brace block
-                    const braceEndMatch = emphasisContent.match(/(\}+|]+)$/);
-                    if (braceEndMatch && relativePos >= emphasisContent.length - braceEndMatch[0].length) {
-                        insideBrace = true;
-                        emphasisMode = 'brace';
-                        const braceLevel = braceEndMatch[0].length;
-                        emphasisEditingValue = braceEndMatch[0].startsWith(']') ?
-                            1.0 - (braceLevel * 0.1) : 1.0 + (braceLevel * 0.1);
-                        emphasisEditingSelection = {
-                            start: emphasisStart + emphasisMatch.index + 1 + emphasisContent.length - braceEndMatch[0].length,
-                            end: emphasisStart + emphasisMatch.index + 1 + emphasisContent.length
-                        };
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (!insideBrace) {
-            // Check if there's a text selection
-            const selectionStart = target.selectionStart;
-            const selectionEnd = target.selectionEnd;
-            const hasSelection = selectionStart !== selectionEnd;
-
-            if (hasSelection) {
-                // Use the selected text for emphasis
-                emphasisEditingSelection = {
-                    start: selectionStart,
-                    end: selectionEnd
-                };
-                emphasisEditingValue = 1.0;
-                emphasisMode = 'normal';
-            } else {
-                // For new blocks, search back to find the block boundary
-                const searchBackIndex = Math.max(
-                    textBeforeCursor.lastIndexOf(','),
-                    textBeforeCursor.lastIndexOf('|'),
-                    textBeforeCursor.lastIndexOf(':'),
-                    textBeforeCursor.lastIndexOf('{'),
-                    textBeforeCursor.lastIndexOf('}'),
-                    textBeforeCursor.lastIndexOf('['),
-                    textBeforeCursor.lastIndexOf(']')
-                );
-
-                const blockStart = searchBackIndex >= 0 ? searchBackIndex + 1 : 0;
-
-                // Search forward to find the end of the current tag
-                const textAfterCursor = value.substring(cursorPosition);
-                const searchForwardIndex = Math.min(
-                    textAfterCursor.indexOf(',') >= 0 ? textAfterCursor.indexOf(',') : Infinity,
-                    textAfterCursor.indexOf('|') >= 0 ? textAfterCursor.indexOf('|') : Infinity,
-                    textAfterCursor.indexOf(':') >= 0 ? textAfterCursor.indexOf(':') : Infinity,
-                    textAfterCursor.indexOf('{') >= 0 ? textAfterCursor.indexOf('{') : Infinity,
-                    textAfterCursor.indexOf('}') >= 0 ? textAfterCursor.indexOf('}') : Infinity,
-                    textAfterCursor.indexOf('[') >= 0 ? textAfterCursor.indexOf('[') : Infinity,
-                    textAfterCursor.indexOf(']') >= 0 ? textAfterCursor.indexOf(']') : Infinity
-                );
-
-                const blockEnd = searchForwardIndex !== Infinity ? cursorPosition + searchForwardIndex : value.length;
-                const blockText = value.substring(blockStart, blockEnd).trim();
-
-                if (blockText.length < 2) return;
-
-                // Check if the current tag is already emphasized
-                const currentTagEmphasisPattern = new RegExp(`(\\d+\\.\\d+)::${blockText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}::`);
-                const currentTagMatch = value.match(currentTagEmphasisPattern);
-
-                if (currentTagMatch) {
-                    // Current tag is already emphasized, adjust its weight
-                    emphasisEditingValue = parseFloat(currentTagMatch[1]);
-                    emphasisEditingSelection = {
-                        start: currentTagMatch.index,
-                        end: currentTagMatch.index + currentTagMatch[0].length
-                    };
-                    emphasisMode = 'group';
-                } else {
-                    // Create new emphasis block
-                    emphasisEditingValue = 1.0;
-                    emphasisEditingSelection = {
-                        start: blockStart,
-                        end: blockEnd
-                    };
-                    emphasisMode = 'normal';
-                }
-            }
-        }
-    }
-
-    emphasisEditingTarget = target;
-    emphasisEditingActive = true;
-    emphasisEditingMode = emphasisMode; // Store the mode for later use
-
-    // Hide autocomplete
-    hideCharacterAutocomplete();
-
-    // Show emphasis editing popup
-    showEmphasisEditingPopup();
-}
-
-function showEmphasisEditingPopup() {
-    // Create popup if it doesn't exist
-    let popup = document.getElementById('emphasisEditingPopup');
-    if (!popup) {
-        popup = document.createElement('div');
-        popup.id = 'emphasisEditingPopup';
-        popup.className = 'emphasis-popup';
-        popup.innerHTML = `
-            <div class="emphasis-popup-content">
-                <div class="emphasis-header">
-                    <div class="emphasis-text" id="emphasisText">Select text...</div>
-                </div>
-                <div class="emphasis-toolbar">
-                    <div class="emphasis-value" id="emphasisValue">1.0</div>
-                    <div class="emphasis-type" id="emphasisType">New Group</div>
-                    <div class="emphasis-controls">
-                        <button class="btn-secondary emphasis-btn emphasis-up" onclick="adjustEmphasisEditing(0.1)" title="Increase">
-                        <i class="nai-plus"></i>
-                        </button>
-                        <button class="btn-secondary emphasis-btn emphasis-down" onclick="adjustEmphasisEditing(-0.1)" title="Decrease">
-                        <i class="nai-minus"></i>
-                        </button>
-                        <button class="btn-secondary emphasis-btn emphasis-toggle" id="emphasisToggleBtn" onclick="switchEmphasisMode('toggle')" title="Toggle Mode" style="display: none;">
-                        <i class="nai-arrow-left"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(popup);
-    }
-
-    // Position popup near text cursor
-    const rect = emphasisEditingTarget.getBoundingClientRect();
-    const cursorPosition = emphasisEditingTarget.selectionStart;
-    const textBeforeCursor = emphasisEditingTarget.value.substring(0, cursorPosition);
-
-    // Position popup relative to the input field
-    const inputPadding = parseInt(window.getComputedStyle(emphasisEditingTarget).paddingLeft) || 0;
-
-    // Position popup near the center-right of the input field
-    const cursorX = rect.left + (rect.width * 0.7); // 70% from the left
-    const cursorY = rect.top;
-
-    // Position popup above the cursor
-    popup.style.left = cursorX + 'px';
-    popup.style.top = (cursorY - popup.offsetHeight - 10) + 'px';
-    popup.style.display = 'block';
-    popup.style.zIndex = '9999'; // Ensure it's on top
-
-    updateEmphasisEditingPopup();
-}
-
-function updateEmphasisEditingPopup() {
-    const popup = document.getElementById('emphasisEditingPopup');
-    if (!popup) return;
-
-    const valueElement = popup.querySelector('#emphasisValue');
-    const typeElement = popup.querySelector('#emphasisType');
-    const textElement = popup.querySelector('#emphasisText');
-    const toggleBtn = popup.querySelector('#emphasisToggleBtn');
-
-    if (valueElement) {
-        valueElement.textContent = emphasisEditingValue.toFixed(1);
-
-        // Color code the emphasis value
-        if (emphasisEditingValue > 1.0) {
-            valueElement.style.color = '#ff8c00'; // Orange for > 1
-        } else if (emphasisEditingValue < 1.0) {
-            valueElement.style.color = '#87ceeb'; // Light blue for < 1
-        } else {
-            valueElement.style.color = '#ffffff'; // White for = 1
-        }
-    }
-
-    // Update type indicator
-    if (typeElement) {
-        let typeText = '';
-        let modeClass = '';
-        switch (emphasisEditingMode) {
-            case 'normal':
-                typeText = 'New Group';
-                modeClass = 'mode-normal';
-                break;
-            case 'brace':
-                typeText = 'Brace Block';
-                modeClass = 'mode-brace';
-                break;
-            case 'group':
-                typeText = 'Modify Group';
-                modeClass = 'mode-group';
-                break;
-        }
-        typeElement.textContent = typeText;
-        typeElement.className = `emphasis-type ${modeClass}`;
-    }
-
-    // Update text content
-    if (textElement && emphasisEditingTarget && emphasisEditingSelection) {
-        const target = emphasisEditingTarget;
-        const text = target.value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
-
-        // Remove :: wrapper if it's an emphasis block, or {}/[] if it's a brace block
-        let displayText = text;
-        if (emphasisEditingMode === 'group') {
-            const emphasisMatch = text.match(/\d+\.\d+::(.+?)::/);
-            if (emphasisMatch) {
-                displayText = emphasisMatch[1];
-            }
-        } else if (emphasisEditingMode === 'brace') {
-            // Remove all { and } or [ and ] from the beginning and end
-            displayText = text.replace(/^\{+|\[+/, '').replace(/\}+|\]+$/, '');
-        }
-
-        textElement.textContent = displayText;
-    }
-
-    // Update toggle button visibility and direction
-    if (toggleBtn) {
-        let arrowDirection = '';
-        let tooltipText = '';
-
-        console.log('Current emphasis mode:', emphasisEditingMode);
-
-        // Always show toggle button, determine direction based on current mode
-        if (emphasisEditingMode === 'group') {
-            arrowDirection = '<i class="fas fa-brackets-curly"></i>';
-            tooltipText = 'Switch to Brace Block';
-        } else if (emphasisEditingMode === 'brace') {
-            arrowDirection = '<i class="fas fa-colon"></i>';
-            tooltipText = 'Switch to Group';
-        } else if (emphasisEditingMode === 'normal') {
-            arrowDirection = '<i class="fas fa-brackets-curly"></i>';
-            tooltipText = 'Switch to Brace Block';
-        }
-
-        // Always show the button
-        toggleBtn.style.display = '';
-        toggleBtn.innerHTML = arrowDirection;
-        toggleBtn.title = tooltipText;
-    }
-}
-
-function adjustEmphasisEditing(delta) {
-    emphasisEditingValue = Math.max(-1.0, Math.min(2.5, emphasisEditingValue + delta));
-    updateEmphasisEditingPopup();
-}
-
-function updateEmphasisEditingFromSlider(value) {
-    emphasisEditingValue = parseFloat(value);
-    updateEmphasisEditingPopup();
-}
-
-function adjustEmphasisEditingFromWheel(event) {
-    event.preventDefault();
-    const delta = event.deltaY > 0 ? -0.1 : 0.1;
-    adjustEmphasisEditing(delta);
-}
-
-function applyEmphasisEditing() {
-    if (!emphasisEditingTarget || !emphasisEditingSelection) return;
-
-    const target = emphasisEditingTarget;
-    const value = target.value;
-    const weight = emphasisEditingValue.toFixed(1);
-
-    // Get the text to emphasize (trim any leading/trailing spaces)
-    const textToEmphasize = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end).trim();
-
-    // Check if we're inside an existing emphasis block
-    const emphasisPattern = /(\d+\.\d+)::([^:]+)::/;
-    const isInsideEmphasis = emphasisPattern.test(textToEmphasize);
-
-    // Check if we're inside a {} or [] block
-    const isInsideBrace = (textToEmphasize.startsWith('{') && textToEmphasize.endsWith('}')) ||
-                          (textToEmphasize.startsWith('[') && textToEmphasize.endsWith(']'));
-
-    let emphasizedText;
-    if (emphasisEditingMode === 'brace') {
-        // Brace mode: create or update {} or [] blocks
-        if (isInsideBrace) {
-            // Update existing brace block - extract the actual text content
-            let innerText;
-            if (textToEmphasize.startsWith('{') && textToEmphasize.endsWith('}')) {
-                // Remove all { and } from the beginning and end
-                innerText = textToEmphasize.replace(/^\{+/, '').replace(/\}+$/, '');
-            } else if (textToEmphasize.startsWith('[') && textToEmphasize.endsWith(']')) {
-                // Remove all [ and ] from the beginning and end
-                innerText = textToEmphasize.replace(/^\[+/, '').replace(/\]+$/, '');
-            } else {
-                innerText = textToEmphasize;
-            }
-
-            const braceLevel = Math.round((emphasisEditingValue - 1.0) * 10);
-
-            if (braceLevel > 0) {
-                // Positive emphasis: use {} - ensure clean conversion from []
-                const braces = '{'.repeat(braceLevel + 1);
-                emphasizedText = `${braces}${innerText}${'}'.repeat(braceLevel + 1)}`;
-            } else if (braceLevel < 0) {
-                // Negative emphasis: use [] - ensure clean conversion from {}
-                const bracketLevel = Math.abs(Math.round((1.0 - emphasisEditingValue) * 10));
-                const brackets = '['.repeat(bracketLevel);
-                emphasizedText = `${brackets}${innerText}${']'.repeat(bracketLevel)}`;
-            } else {
-                // No emphasis: just the text - remove all braces/brackets
-                emphasizedText = innerText;
-            }
-        } else {
-            // Create new brace block
-            const braceLevel = Math.round((emphasisEditingValue - 1.0) * 10);
-
-            if (braceLevel > 0) {
-                // Positive emphasis: use {}
-                const braces = '{'.repeat(braceLevel + 1);
-                emphasizedText = `${braces}${textToEmphasize}${'}'.repeat(braceLevel + 1)}`;
-            } else if (braceLevel < 0) {
-                // Negative emphasis: use [] (inverted calculation)
-                const bracketLevel = Math.abs(Math.round((1.0 - emphasisEditingValue) * 10));
-                const brackets = '['.repeat(bracketLevel);
-                emphasizedText = `${brackets}${textToEmphasize}${']'.repeat(bracketLevel)}`;
-            } else {
-                // No emphasis: just the text
-                emphasizedText = textToEmphasize;
-            }
-        }
-    } else if (isInsideEmphasis) {
-        // We're inside an existing emphasis block, just update the weight
-        const match = textToEmphasize.match(emphasisPattern);
-        if (match) {
-            emphasizedText = textToEmphasize.replace(match[1], weight);
-        } else {
-            emphasizedText = `${weight}::${textToEmphasize}::`;
-        }
-    } else {
-        // Create new emphasis block - no extra spaces inside
-        emphasizedText = `${weight}::${textToEmphasize}::`;
-    }
-
-    // Replace the text, preserving the original spacing around the selection
-    const beforeText = value.substring(0, emphasisEditingSelection.start);
-    let afterText = value.substring(emphasisEditingSelection.end);
-
-    // For brace mode, handle closing braces/brackets around the entire tag
-    if (emphasisEditingMode === 'brace') {
-        // Find the start and end of the tag by searching for delimiters
-        let tagStart = emphasisEditingSelection.start;
-        let tagEnd = emphasisEditingSelection.end;
-
-        // Expand tagStart backwards to skip spaces, commas, and braces/brackets
-        while (tagStart > 0) {
-            const char = value[tagStart - 1];
-            if (char === ' ' || char === '{' || char === '[' || char === '}' || char === ']') {
-                tagStart--;
-            } else if (char === ',') {
-                // If comma, ensure a space follows it
-                if (value[tagStart] !== ' ') {
-                    // Insert a space after the comma if missing
-                    beforeTag = value.substring(0, tagStart) + ', ';
-                    tagStart = beforeTag.length;
-                }
-                break;
-            } else if (char === ':' || char === '|') {
-                break;
-            } else {
-                break;
-            }
-        }
-        // Expand tagEnd forwards to skip spaces, commas, and braces/brackets
-        while (tagEnd < value.length) {
-            const char = value[tagEnd];
-            if (char === ' ' || char === '{' || char === '[' || char === '}' || char === ']') {
-                tagEnd++;
-            } else if (char === ',') {
-                // If comma, ensure a space follows it
-                if (value[tagEnd + 1] !== ' ') {
-                    // Insert a space after the comma if missing
-                    tagEnd++;
-                }
-                break;
-            } else if (char === ':' || char === '|') {
-                break;
-            } else {
-                break;
-            }
-        }
-
-        // Get the text around the tag
-        const beforeTag = value.substring(0, tagStart);
-        let afterTag = value.substring(tagEnd);
-        if (/^,/.test(afterTag) && !/^,\\s/.test(afterTag)) {
-            afterTag = ', ' + afterTag.slice(1);
-        }
-
-        let newValue = beforeTag + emphasizedText + afterTag;
-        // Add space after comma if needed
-        newValue = newValue.replace(/,([^\s])/g, ', $1');
-        target.value = newValue;
-        // Set cursor position after the emphasized text
-        const newCursorPosition = newValue.indexOf(emphasizedText) + emphasizedText.length;
-        target.setSelectionRange(newCursorPosition, newCursorPosition);
-    } else {
-        // For other modes, handle spacing as before
-        // Ensure there's a space before the emphasis block if needed (only for new blocks)
-        let prefix = '';
-        if (!isInsideEmphasis && !isInsideBrace && emphasisEditingSelection.start > 0) {
-            const charBefore = value[emphasisEditingSelection.start - 1];
-            if (charBefore && charBefore !== ' ' && charBefore !== '\n') {
-                prefix = ' ';
-            }
-        }
-
-        // Remove any trailing space from beforeText and leading space from afterText
-        // to avoid double spaces
-        const trimmedBefore = beforeText.replace(/\s+$/, '');
-        const trimmedAfter = afterText.replace(/^\s+/, '');
-
-        let newValue = trimmedBefore + prefix + emphasizedText + (trimmedAfter ? ' ' + trimmedAfter : '');
-
-        // Add space after comma if needed
-        newValue = newValue.replace(/,([^\s])/g, ', $1');
-
-        target.value = newValue;
-
-        // Set cursor position after the emphasized text
-        const newCursorPosition = trimmedBefore.length + prefix.length + emphasizedText.length;
-        target.setSelectionRange(newCursorPosition, newCursorPosition);
-    }
-
-    // Hide popup
-    const popup = document.getElementById('emphasisEditingPopup');
-    if (popup) {
-        popup.style.display = 'none';
-    }
-
-    // Reset state
-    emphasisEditingActive = false;
-    emphasisEditingTarget = null;
-    emphasisEditingSelection = null;
-    emphasisEditingMode = 'normal';
-
-    // Trigger input event to update any dependent UI
-    target.dispatchEvent(new Event('input', { bubbles: true }));
-
-    // Update emphasis highlighting
-    autoResizeTextarea(target);
-    updateEmphasisHighlighting(target);
-}
-
-// Emphasis highlighting functions
-function startEmphasisHighlighting(textarea) {
-    if (emphasisHighlightingActive && emphasisHighlightingTarget === textarea) return;
-
-    emphasisHighlightingActive = true;
-    emphasisHighlightingTarget = textarea;
-
-    // Add event listeners for real-time highlighting
-    textarea.addEventListener('input', () => {
-        autoResizeTextarea(textarea);
-        updateEmphasisHighlighting(textarea);
-    });
-
-    // Initial highlighting
-    autoResizeTextarea(textarea);
-    updateEmphasisHighlighting(textarea);
-}
-
-function autoResizeTextarea(textarea) {
-    if (!textarea) return;
-
-    // Reset height to auto to get the correct scrollHeight
-    textarea.style.height = 'auto';
-
-    // Calculate new height based on content, accounting for padding
-    const computedStyle = window.getComputedStyle(textarea);
-    const paddingTop = parseFloat(computedStyle.paddingTop);
-    const paddingBottom = parseFloat(computedStyle.paddingBottom);
-    const borderTop = parseFloat(computedStyle.borderTopWidth);
-    const borderBottom = parseFloat(computedStyle.borderBottomWidth);
-    const totalPadding = paddingTop + paddingBottom + borderTop + borderBottom;
-
-    const minHeight = 80;
-
-    // Ensure scrollHeight is calculated correctly
-    let scrollHeight = textarea.scrollHeight;
-    if (scrollHeight === 0 && textarea.value) {
-        // If scrollHeight is 0 but there's content, try again after a brief delay
-        setTimeout(() => {
-            textarea.style.height = 'auto';
-            const newScrollHeight = textarea.scrollHeight;
-            if (newScrollHeight > 0) {
-                const newHeight = Math.max(newScrollHeight + totalPadding, minHeight);
-                textarea.style.height = newHeight + 'px';
-
-                // Update container height if it exists
-                const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
-                if (container) {
-                    container.style.height = newHeight + 'px';
-                    container.style.minHeight = newHeight + 'px';
-                }
-            }
-        }, 5);
-        return;
-    }
-
-    const newHeight = Math.max(scrollHeight + totalPadding, minHeight);
-
-    // Set the new height
-    textarea.style.height = newHeight + 'px';
-
-    // Update container height if it exists
-    const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
-    if (container) {
-        container.style.height = newHeight + 'px';
-        container.style.minHeight = newHeight + 'px';
-    }
-}
-
-function stopEmphasisHighlighting() {
-    emphasisHighlightingActive = false;
-    emphasisHighlightingTarget = null;
-}
-
-function updateEmphasisHighlighting(textarea) {
-    if (!textarea) return;
-
-    const value = textarea.value;
-    const highlightedValue = highlightEmphasisInText(value);
-
-    // Create or update the highlighting overlay
-    let overlay = textarea.parentElement.querySelector('.emphasis-highlight-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.className = 'emphasis-highlight-overlay';
-        textarea.parentElement.appendChild(overlay);
-    }
-
-    overlay.innerHTML = highlightedValue;
-
-    // Sync scroll position
-    overlay.scrollTop = textarea.scrollTop;
-    overlay.scrollLeft = textarea.scrollLeft;
-}
-
-function initializeEmphasisOverlay(textarea) {
-    if (!textarea) return;
-
-    const value = textarea.value;
-    const highlightedValue = highlightEmphasisInText(value);
-
-    // Create or update the highlighting overlay
-    let overlay = textarea.parentElement.querySelector('.emphasis-highlight-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.className = 'emphasis-highlight-overlay';
-        textarea.parentElement.appendChild(overlay);
-    }
-
-    overlay.innerHTML = highlightedValue;
-
-    // Sync scroll position
-    overlay.scrollTop = textarea.scrollTop;
-    overlay.scrollLeft = textarea.scrollLeft;
-}
-
-function highlightEmphasisInText(text) {
-    if (!text) return '';
-
-    let highlightedText = text;
-
-    // Function to calculate dynamic colors based on weight
-    function getEmphasisColors(weight) {
-        let backgroundR, backgroundG, backgroundB, backgroundA;
-        let borderR, borderG, borderB, borderA;
-
-        if (weight >= 1.0 && weight <= 3.0) {
-            // Positive emphasis: 1-3.0 with stronger 1-3 range and gradual 3-5 range
-            if (weight <= 2.0) {
-                // Stronger changes in 1-3 range
-                const ratio = (weight - 1.0) / 2.0; // 0 to 1 over 1-3 range
-                backgroundR = 255;
-                backgroundG = Math.round(69 - (46 * ratio));
-                backgroundB = Math.round(0 + (23 * ratio));
-                backgroundA = 0.05 + (0.67 * ratio);
-            } else {
-                // More gradual changes in 3-5 range
-                const gradualRatio = (weight - 3.0) / 2.0; // 0 to 1 over 3-5 range
-                backgroundR = 255;
-                backgroundG = 23; // Already at minimum from 1-3 range
-                backgroundB = 23; // Already at maximum from 1-3 range
-                backgroundA = 0.72 + (0.28 * gradualRatio); // Subtle alpha increase
-            }
-
-            // Brighter border for contrast
-            borderR = Math.min(255, backgroundR + 30);
-            borderG = Math.min(255, backgroundG + 30);
-            borderB = Math.min(255, backgroundB + 30);
-            borderA = Math.min(1.0, backgroundA + 0.2);
-        } else if (weight >= -2.0 && weight <= 1.0) {
-            // Negative emphasis: -4-1.0 = rgba(23, 134, 255, 0.69) to rgba(0, 91, 163, 0.25)
-            const ratio = Math.max((weight + 2.0) / 3.0, 0.0); // Adjusted for -4 to 1 range
-            backgroundR = Math.round(23 - (23 * ratio));
-            backgroundG = Math.round(134 - (43 * ratio));
-            backgroundB = 255;
-            backgroundA = 0.69 - (0.44 * ratio);
-
-            // Brighter border for contrast
-            borderR = Math.min(255, backgroundR + 30);
-            borderG = Math.min(255, backgroundG + 30);
-            borderB = Math.min(255, backgroundB + 30);
-            borderA = Math.min(1.0, backgroundA + 0.2);
-        } else {
-            // Default neutral color
-            backgroundR = 76; backgroundG = 175; backgroundB = 80; backgroundA = 0.2;
-            borderR = 106; borderG = 205; borderB = 110; borderA = 0.4;
-        }
-
-        return {
-            background: `rgba(${backgroundR}, ${backgroundG}, ${backgroundB}, ${backgroundA.toFixed(2)})`,
-            border: `rgba(${borderR}, ${borderG}, ${borderB}, ${borderA.toFixed(2)})`
-        };
-    }
-
-    // Function to get group colors based on group index
-    function getGroupColors(groupIndex) {
-        const colors = [
-            { border: 'rgba(255, 99, 132, 0.75)', background: 'rgba(255, 99, 132, 0.1)' },   // Red
-            { border: 'rgba(54, 162, 235, 0.75)', background: 'rgba(54, 162, 235, 0.1)' },   // Blue
-            { border: 'rgba(255, 205, 86, 0.75)', background: 'rgba(255, 205, 86, 0.1)' },   // Yellow
-            { border: 'rgba(75, 192, 192, 0.75)', background: 'rgba(75, 192, 192, 0.1)' },   // Teal
-            { border: 'rgba(153, 102, 255, 0.75)', background: 'rgba(153, 102, 255, 0.1)' }, // Purple
-            { border: 'rgba(255, 159, 64, 0.75)', background: 'rgba(255, 159, 64, 0.1)' },   // Orange
-            { border: 'rgba(199, 199, 199, 0.75)', background: 'rgba(199, 199, 199, 0.1)' }, // Gray
-            { border: 'rgba(83, 102, 255, 0.75)', background: 'rgba(83, 102, 255, 0.1)' }    // Indigo
-        ];
-        return colors[groupIndex % colors.length];
-    }
-
-    // Function to apply NSFW highlighting to content
-    function applyNSFWHighlighting(content) {
-        if (!window.u1) return content;
-
-        // Create a regex pattern from all u1 tags, sorted by length (longest first to avoid partial matches)
-        const sortedTags = [...window.u1].sort((a, b) => b.length - a.length);
-        const tagPattern = new RegExp(`\\b(${sortedTags.map(tag => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
-
-        return content.replace(tagPattern, (match, tag) => {
-            return `<span class="emphasis-highlight" style="background: #ff49dd85; border-color: #ff49ddc9;">${tag}</span>`;
-        });
-    }
-
-    // First, split text into groups by | and apply group highlighting
-    const groups = highlightedText.split('|');
-    if (groups.length > 1) {
-        highlightedText = groups.map((group, index) => {
-            if (group) {
-                const colors = getGroupColors(index);
-                return `<span class="emphasis-group" style="border: 2px dashed ${colors.border}; padding: 0; margin: -4px; border-radius: 4px; display: inline;">${group}</span>`;
-            }
-            return group;
-        }).join('|');
-    }
-
-    // Highlight weight::text:: format
-    highlightedText = highlightedText.replace(/(-?\d+\.?\d*)::([^:]+)::/g, (match, weight, content) => {
-        const weightNum = parseFloat(weight);
-        const colors = getEmphasisColors(weightNum);
-
-        // Apply NSFW highlighting to the content inside emphasis
-        const highlightedContent = applyNSFWHighlighting(content);
-
-        return `<span class="emphasis-highlight" style="background: ${colors.background}; border-color: ${colors.border};">${weight}::${highlightedContent}::</span>`;
-    });
-
-    // Highlight brace emphasis {text} - convert to weight equivalent
-    highlightedText = highlightedText.replace(/(\{+)([^}]+)(\}+)/g, (match, openBraces, content, closeBraces) => {
-        const braceLevel = Math.min(openBraces.length, closeBraces.length);
-        const weight = 1.0 + (braceLevel * 0.1); // Convert brace level to weight (+0.1 per level)
-        const colors = getEmphasisColors(weight);
-
-        // Apply NSFW highlighting to the content inside braces
-        const highlightedContent = applyNSFWHighlighting(content);
-
-        return `<span class="emphasis-highlight" style="background: ${colors.background}; border-color: ${colors.border};">${openBraces}${highlightedContent}${closeBraces}</span>`;
-    });
-
-    // Highlight bracket emphasis [text] - convert to weight equivalent
-    highlightedText = highlightedText.replace(/(\[+)([^\]]+)(\]+)/g, (match, openBrackets, content, closeBrackets) => {
-        const bracketLevel = Math.min(openBrackets.length, closeBrackets.length);
-        const weight = 1.0 - (bracketLevel * 0.1); // Convert bracket level to weight (-0.1 per level)
-        const colors = getEmphasisColors(weight);
-
-        // Apply NSFW highlighting to the content inside brackets
-        const highlightedContent = applyNSFWHighlighting(content);
-
-        return `<span class="emphasis-highlight" style="background: ${colors.background}; border-color: ${colors.border};">${openBrackets}${highlightedContent}${closeBrackets}</span>`;
-    });
-
-    // Highlight text replacements <text> - no emphasis levels, just visual highlighting
-    // Match patterns that look like valid text replacement keys (letters, numbers, underscores) - case insensitive
-    highlightedText = highlightedText.replace(/(<)([a-zA-Z0-9_]+)(>)/g, (match, openBracket, content, closeBracket) => {
-        // Check if content starts with PICK_ (case insensitive)
-        const isPickReplacement = content.toUpperCase().startsWith('PICK_');
-        const backgroundColor = isPickReplacement ? '#628a33' : '#8bc34a8a';
-
-        // Escape the < and > characters for HTML display
-        const escapedMatch = match.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-        return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
-    });
-
-    // Highlight NSFW tags in remaining text (outside of emphasis blocks)
-    // Only process text that's not already inside emphasis-highlight spans
-    highlightedText = highlightedText.replace(/([^<]*?)(?=<span class="emphasis-highlight"|$)/g, (match, text) => {
-        if (!window.u1 || !text.trim()) return match;
-
-        // Create a regex pattern from all u1 tags, sorted by length (longest first)
-        const sortedTags = [...window.u1].sort((a, b) => b.length - a.length);
-        const tagPattern = new RegExp(`\\b(${sortedTags.map(tag => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
-
-        return text.replace(tagPattern, (tagMatch, tag) => {
-            return `<span class="emphasis-highlight" style="background: #ff49dd85; border-color: #ff49ddc9;">${tag}</span>`;
-        });
-    });
-
-    return highlightedText;
-}
-
-// Helper function to clean up emphasis groups and brace blocks, and copy values
-function cleanupEmphasisGroupsAndCopyValue(target, selection, currentValue) {
-    const value = target.value;
-    let cleanedValue = value;
-    let newSelection = { ...selection };
-    let copiedValue = currentValue;
-
-    // First, clean up emphasis groups
-    const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
-    let emphasisMatch;
-
-    while ((emphasisMatch = emphasisPattern.exec(cleanedValue)) !== null) {
-        const emphasisStart = emphasisMatch.index;
-        const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
-
-        // If the current selection overlaps with an emphasis group, clean it up
-        if (selection.start <= emphasisEnd && selection.end >= emphasisStart) {
-            const beforeEmphasis = cleanedValue.substring(0, emphasisStart);
-            const afterEmphasis = cleanedValue.substring(emphasisEnd);
-            const emphasisContent = emphasisMatch[2]; // The text inside the emphasis
-            const emphasisWeight = parseFloat(emphasisMatch[1]);
-
-            // Copy the emphasis value
-            copiedValue = emphasisWeight;
-
-            // Replace the emphasis group with just the content
-            cleanedValue = beforeEmphasis + emphasisContent + afterEmphasis;
-
-            // Update the selection to point to the cleaned content
-            newSelection = {
-                start: emphasisStart,
-                end: emphasisStart + emphasisContent.length
-            };
-            break;
-        }
-    }
-
-    // Then, clean up brace blocks ({} and [])
-    const bracePattern = /\{+([^{}]*)\}+|\[+([^\[\]]*)\]+/g;
-    let braceMatch;
-
-    while ((braceMatch = bracePattern.exec(cleanedValue)) !== null) {
-        const braceStart = braceMatch.index;
-        const braceEnd = braceMatch.index + braceMatch[0].length;
-
-        // If the current selection overlaps with a brace block, clean it up
-        if (selection.start <= braceEnd && selection.end >= braceStart) {
-            const beforeBrace = cleanedValue.substring(0, braceStart);
-            const afterBrace = cleanedValue.substring(braceEnd);
-            const braceContent = braceMatch[1] || braceMatch[2]; // The text inside the braces
-            const isBracket = braceMatch[0].startsWith('[');
-
-            // Calculate brace value
-            if (isBracket) {
-                const bracketLevel = (braceMatch[0].match(/\[/g) || []).length;
-                copiedValue = 1.0 - (bracketLevel * 0.1);
-            } else {
-                const braceLevel = (braceMatch[0].match(/\{/g) || []).length;
-                copiedValue = 1.0 + (braceLevel * 0.1);
-            }
-
-            // Replace the brace block with just the content
-            cleanedValue = beforeBrace + braceContent + afterBrace;
-
-            // Update the selection to point to the cleaned content
-            newSelection = {
-                start: braceStart,
-                end: braceStart + braceContent.length
-            };
-            break;
-        }
-    }
-
-    // Update the target value
-    target.value = cleanedValue;
-
-    return {
-        newSelection,
-        copiedValue,
-        cleanedValue
-    };
-}
-
-function switchEmphasisMode(direction) {
-    if (!emphasisEditingTarget || !emphasisEditingSelection) return;
-
-    const value = emphasisEditingTarget.value;
-    const cursorPosition = emphasisEditingTarget.selectionStart;
-
-    if (direction === 'toggle') {
-        // Toggle between group and brace modes
-        if (emphasisEditingMode === 'group') {
-            // Switch from group to brace mode
-            const emphasisText = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
-            const bracePattern = /\{([^}]*)\}|\[([^\]]*)\]/g;
-            let braceMatch;
-            let foundBrace = false;
-
-            while ((braceMatch = bracePattern.exec(emphasisText)) !== null) {
-                const braceStartInEmphasis = emphasisEditingSelection.start + emphasisText.indexOf(braceMatch[0]);
-                const braceEndInEmphasis = braceStartInEmphasis + braceMatch[0].length;
-
-                if (cursorPosition >= braceStartInEmphasis && cursorPosition <= braceEndInEmphasis) {
-                    emphasisEditingMode = 'brace';
-                    emphasisEditingSelection = {
-                        start: braceStartInEmphasis,
-                        end: braceEndInEmphasis
-                    };
-                    // Calculate brace level from the text
-                    const braceText = braceMatch[0];
-                    const isBracket = braceText.startsWith('[');
-
-                    if (isBracket) {
-                        const openBrackets = (braceText.match(/\[/g) || []).length;
-                        const closeBrackets = (braceText.match(/\]/g) || []).length;
-                        const bracketLevel = openBrackets - closeBrackets;
-                        emphasisEditingValue = 1.0 - (bracketLevel * 0.1);
-                    } else {
-                        const openBraces = (braceText.match(/\{/g) || []).length;
-                        const closeBraces = (braceText.match(/\}/g) || []).length;
-                        const braceLevel = openBraces - closeBraces;
-                        emphasisEditingValue = 1.0 + (braceLevel * 0.1);
-                    }
-                    foundBrace = true;
-                    break;
-                }
-            }
-
-            if (!foundBrace) {
-                // Find the current word/tag within the group
-                const groupText = emphasisText;
-                const tagPattern = /([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)/g;
-                let tagMatch;
-                let foundTag = false;
-
-                while ((tagMatch = tagPattern.exec(groupText)) !== null) {
-                    const tagStartInGroup = emphasisEditingSelection.start + tagMatch.index;
-                    const tagEndInGroup = tagStartInGroup + tagMatch[0].length;
-
-                    if (cursorPosition >= tagStartInGroup && cursorPosition <= tagEndInGroup) {
-                        emphasisEditingMode = 'brace';
-                        emphasisEditingSelection = {
-                            start: tagStartInGroup,
-                            end: tagEndInGroup
-                        };
-                        emphasisEditingValue = 1.0;
-                        foundTag = true;
-                        break;
-                    }
-                }
-
-                if (!foundTag) {
-                    // Use cursor position to find the word
-                    const textBeforeCursor = value.substring(0, cursorPosition);
-                    const textAfterCursor = value.substring(cursorPosition);
-
-                    const wordBefore = textBeforeCursor.match(/\b[a-zA-Z0-9_]+$/);
-                    const wordAfter = textAfterCursor.match(/^[a-zA-Z0-9_]+/);
-
-                    if (wordBefore || wordAfter) {
-                        const start = wordBefore ? cursorPosition - wordBefore[0].length : cursorPosition;
-                        const end = wordAfter ? cursorPosition + wordAfter[0].length : cursorPosition;
-
-                        emphasisEditingMode = 'brace';
-                        emphasisEditingSelection = {
-                            start: start,
-                            end: end
-                        };
-                        emphasisEditingValue = 1.0;
-                    }
-                }
-            }
-        } else if (emphasisEditingMode === 'brace') {
-            // Switch from brace to group mode
-            const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
-            let emphasisMatch;
-            let foundGroup = false;
-
-            // Store the current brace value before switching
-            const currentBraceValue = emphasisEditingValue;
-
-            while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
-                const emphasisStart = emphasisMatch.index;
-                const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
-
-                // Check if we're inside this emphasis group (but not switching between outer/inner)
-                if (emphasisEditingSelection.start >= emphasisStart && emphasisEditingSelection.end <= emphasisEnd) {
-                    // Don't allow switching to a group that contains the current selection
-                    // This prevents switching between outer and inner groups
-                    continue;
-                }
-
-                // Check if this emphasis group is inside our current selection
-                if (emphasisStart >= emphasisEditingSelection.start && emphasisEnd <= emphasisEditingSelection.end) {
-                    emphasisEditingMode = 'group';
-                    emphasisEditingSelection = {
-                        start: emphasisStart,
-                        end: emphasisEnd
-                    };
-                    // Copy the brace value to the group value
-                    emphasisEditingValue = currentBraceValue;
-                    foundGroup = true;
-                    break;
-                }
-            }
-
-            if (!foundGroup) {
-                // If no group found, create a new emphasis block from the brace
-                const braceText = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
-                const innerText = braceText.replace(/^\{+|\[+/, '').replace(/\}+|\]+$/, '');
-
-                // Calculate weight from brace level
-                const braceLevel = (braceText.match(/\{/g) || []).length - (braceText.match(/\}/g) || []).length;
-                const bracketLevel = (braceText.match(/\[/g) || []).length - (braceText.match(/\]/g) || []).length;
-
-                if (braceLevel > 0) {
-                    emphasisEditingValue = 1.0 + (braceLevel * 0.1);
-                } else if (bracketLevel > 0) {
-                    emphasisEditingValue = 1.0 - (bracketLevel * 0.1);
-                } else {
-                    emphasisEditingValue = 1.0;
-                }
-
-                // Create new emphasis block and clean up existing groups
-                const result = cleanupEmphasisGroupsAndCopyValue(emphasisEditingTarget, emphasisEditingSelection, emphasisEditingValue);
-                emphasisEditingMode = 'normal';
-                emphasisEditingSelection = result.newSelection;
-                emphasisEditingValue = result.copiedValue;
-            }
-        }
-    } else if (direction === 'right') {
-        // Right arrow: switch to more specific mode
-        switch (emphasisEditingMode) {
-            case 'normal':
-                // Switch to brace mode - add {} around current selection
-                emphasisEditingMode = 'brace';
-                emphasisEditingValue = 1.0;
-                break;
-            case 'group':
-                // Switch to brace mode - focus on {} or [] block inside the group
-                const emphasisText = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
-                const bracePattern = /\{([^}]*)\}|\[([^\]]*)\]/g;
-                let braceMatch;
-                let foundBrace = false;
-                while ((braceMatch = bracePattern.exec(emphasisText)) !== null) {
-                    const braceStartInEmphasis = emphasisEditingSelection.start + emphasisText.indexOf(braceMatch[0]);
-                    const braceEndInEmphasis = braceStartInEmphasis + braceMatch[0].length;
-
-                    if (cursorPosition >= braceStartInEmphasis && cursorPosition <= braceEndInEmphasis) {
-                        emphasisEditingMode = 'brace';
-                        emphasisEditingSelection = {
-                            start: braceStartInEmphasis,
-                            end: braceEndInEmphasis
-                        };
-                        // Calculate brace level from the text
-                        const braceText = braceMatch[0];
-                        const isBracket = braceText.startsWith('[');
-
-                        if (isBracket) {
-                            const openBrackets = (braceText.match(/\[/g) || []).length;
-                            const closeBrackets = (braceText.match(/\]/g) || []).length;
-                            const bracketLevel = openBrackets - closeBrackets;
-                            emphasisEditingValue = 1.0 - (bracketLevel * 0.1);
-                        } else {
-                            const openBraces = (braceText.match(/\{/g) || []).length;
-                            const closeBraces = (braceText.match(/\}/g) || []).length;
-                            const braceLevel = openBraces - closeBraces;
-                            emphasisEditingValue = 1.0 + (braceLevel * 0.1);
-                        }
-                        foundBrace = true;
-                        break;
-                    }
-                }
-
-                // If no specific brace found, find the current tag/item within the group
-                if (!foundBrace) {
-                    // Find the current tag/item within the group
-                    const groupText = emphasisText;
-                    const tagPattern = /([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)/g;
-                    let tagMatch;
-                    let foundTag = false;
-
-                    while ((tagMatch = tagPattern.exec(groupText)) !== null) {
-                        const tagStartInGroup = emphasisEditingSelection.start + tagMatch.index;
-                        const tagEndInGroup = tagStartInGroup + tagMatch[0].length;
-
-                        if (cursorPosition >= tagStartInGroup && cursorPosition <= tagEndInGroup) {
-                            emphasisEditingMode = 'brace';
-                            emphasisEditingSelection = {
-                                start: tagStartInGroup,
-                                end: tagEndInGroup
-                            };
-                            emphasisEditingValue = 1.0;
-                            foundTag = true;
-                            break;
-                        }
-                    }
-
-                    // If still no tag found, use the cursor position to find the word
-                    if (!foundTag) {
-                        const textBeforeCursor = value.substring(0, cursorPosition);
-                        const textAfterCursor = value.substring(cursorPosition);
-
-                        // Find the word boundaries
-                        const wordBefore = textBeforeCursor.match(/\b[a-zA-Z0-9_]+$/);
-                        const wordAfter = textAfterCursor.match(/^[a-zA-Z0-9_]+/);
-
-                        if (wordBefore || wordAfter) {
-                            const start = wordBefore ? cursorPosition - wordBefore[0].length : cursorPosition;
-                            const end = wordAfter ? cursorPosition + wordAfter[0].length : cursorPosition;
-
-                            emphasisEditingMode = 'brace';
-                            emphasisEditingSelection = {
-                                start: start,
-                                end: end
-                            };
-                            emphasisEditingValue = 1.0;
-                        }
-                    }
-                }
-                break;
-        }
-    } else if (direction === 'left') {
-                        // Left arrow: switch to less specific mode
-        switch (emphasisEditingMode) {
-            case 'brace':
-                // Try to switch back to group mode first
-                const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
-                let emphasisMatch;
-                let foundGroup = false;
-
-                // Store the current brace value before switching
-                const currentBraceValue = emphasisEditingValue;
-
-                while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
-                    const emphasisStart = emphasisMatch.index;
-                    const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
-
-                    // Check if we're inside this emphasis group (but not switching between outer/inner)
-                    if (emphasisEditingSelection.start >= emphasisStart && emphasisEditingSelection.end <= emphasisEnd) {
-                        // Don't allow switching to a group that contains the current selection
-                        // This prevents switching between outer and inner groups
-                        continue;
-                    }
-
-                    // Check if this emphasis group is inside our current selection
-                    if (emphasisStart >= emphasisEditingSelection.start && emphasisEnd <= emphasisEditingSelection.end) {
-                        emphasisEditingMode = 'group';
-                        emphasisEditingSelection = {
-                            start: emphasisStart,
-                            end: emphasisEnd
-                        };
-                        // Copy the brace value to the group value
-                        emphasisEditingValue = currentBraceValue;
-                        foundGroup = true;
-                        break;
-                    }
-                }
-
-                // If no group found, switch back to normal mode
-                if (!foundGroup) {
-                    emphasisEditingMode = 'normal';
-                    // Copy the brace value to normal mode and clean up existing groups
-                    const result = cleanupEmphasisGroupsAndCopyValue(emphasisEditingTarget, emphasisEditingSelection, currentBraceValue);
-                    emphasisEditingSelection = result.newSelection;
-                    emphasisEditingValue = result.copiedValue;
-                }
-                break;
-        }
-    }
-
-    updateEmphasisEditingPopup();
-}
-
-function cancelEmphasisEditing() {
-    // Hide popup
-    const popup = document.getElementById('emphasisEditingPopup');
-    if (popup) {
-        popup.style.display = 'none';
-    }
-
-    // Reset state
-    emphasisEditingActive = false;
-    emphasisEditingTarget = null;
-    emphasisEditingSelection = null;
-    emphasisEditingMode = 'normal';
-}
-
-function updateEmphasisTooltipVisibility() {
-    const tooltip = document.getElementById('emphasisTooltip');
-    if (tooltip) {
-        tooltip.style.display = autocompleteNavigationMode ? 'block' : 'none';
-    }
 }
 
 // Preset autocomplete functions
@@ -7006,7 +6432,7 @@ function updateGenerateButton() {
 }
 
 // Generate image
-async function generateImage() {
+async function generateImage(event = null) {
     const selectedValue = presetSelect.value;
     if (!selectedValue) {
         showError('Please select a preset');
@@ -7018,7 +6444,42 @@ async function generateImage() {
         return;
     }
 
-    showManualLoading(true, 'Generating image...');
+    // Check if this preset requires paid credits and show confirmation dialog
+    const presetName = selectedValue.replace('preset:', '');
+    
+    // For now, we'll check if the preset requires paid credits by looking at the preset data
+    // This is a simplified approach - in a real implementation, you'd want to check the actual preset configuration
+    const requiresPaid = false; // This would be determined by the preset configuration
+
+    const cost = parseInt(document.getElementById('manualPriceList').textContent); // Default cost for preset generation
+    if (requiresPaid && !forcePaidRequest) {
+        const confirmed = await showCreditCostDialog(cost, event);
+        
+        if (!confirmed) {
+            return;
+        }
+    }
+
+    // Check if we're in a modal context
+    const isInModal = document.getElementById('manualModal').style.display === 'block';
+    
+    let toastId;
+    let progressInterval;
+    
+    if (!isInModal) {
+        // Use glass toast with progress when not in modal
+        toastId = showGlassToast('info', 'Generating Image', 'Generating image...', true);
+        
+        // Start progress animation (1% per second)
+        let progress = 0;
+        progressInterval = setInterval(() => {
+            progress += 1;
+            updateGlassToastProgress(toastId, progress);
+        }, 1000);
+    } else {
+        // Use existing modal loading overlay when in modal
+        showManualLoading(true, 'Generating image...');
+    }
 
     try {
         let url;
@@ -7063,10 +6524,12 @@ async function generateImage() {
                 const metadata = await metadataResponse.json();
                 window.lastGeneration = metadata;
                 window.lastGeneration.filename = generatedFilename;
+                manualPreviewOriginalImage.classList.remove('hidden');
             }
         } catch (error) {
             console.warn('Failed to fetch metadata for generated image:', error);
         }
+        
         // Wait for the image to load, then insert into gallery and reindex
         const img = new Image();
         img.onload = async function() {
@@ -7074,8 +6537,8 @@ async function generateImage() {
 
             await loadGallery();
 
-            // Refresh balance after successful generation
-            await loadBalance();
+            // Update balance and show credit deduction toast
+            await updateBalanceAndShowCreditDeduction('image generation', cost);
 
             // Find the image in the gallery by filename
             const found = allImages.find(img => img.original === generatedFilename || img.upscaled === generatedFilename);
@@ -7094,710 +6557,30 @@ async function generateImage() {
         };
         img.src = imageUrl;
 
+        // Show success message
+        if (!isInModal) {
+            clearInterval(progressInterval);
+            updateGlassToastProgress(toastId, 100);
+            updateGlassToast(toastId, 'success', 'Generation Complete', 'Image generated successfully!');
+        } else {
+            showGlassToast('success', 'Generation Complete', 'Image generated successfully!');
+            const imageContainer = document.querySelector('.manual-preview-image-container');
+            imageContainer.classList.remove('swapped');
+        }
+
     } catch (error) {
         console.error('Generation error:', error);
-        showError('Image generation failed. Please try again.');
+        if (!isInModal) {
+            clearInterval(progressInterval);
+            updateGlassToast(toastId, 'error', 'Generation Failed', 'Image generation failed. Please try again.');
+        } else {
+            showError('Image generation failed. Please try again.');
+        }
     } finally {
-        showManualLoading(false);
-    }
-}
-
-// Show lightbox
-async function showLightbox(image) {
-    // Set current lightbox image for navigation
-    currentLightboxImage = image;
-
-    if (image.url) {
-        lightboxImage.src = image.url;
-    } else {
-        lightboxImage.src = `/images/${image.filename}`;
-    }
-
-    openModal(lightboxModal);
-
-    // Store current image for download
-    lightboxImage.dataset.filename = image.filename;
-    lightboxImage.dataset.url = image.url;
-    lightboxImage.dataset.base = image.base;
-    lightboxImage.dataset.upscaled = image.upscaled ? 'true' : '';
-
-    // Reset metadata table first
-    resetMetadataTable();
-
-    // Load and display metadata
-    const metadata = await loadAndDisplayMetadata(image.filename);
-
-    // Store current image and metadata for dialog
-    currentImage = { ...image, metadata };
-
-    // Update lightbox controls with metadata
-    updateLightboxControls({ ...image, metadata });
-
-    // Initialize zoom and pan functionality
-    initializeLightboxZoom();
-}
-
-// Helper: Format resolution name for display
-function formatResolution(resolution) {
-    if (!resolution) return '';
-
-    // Handle custom resolution format: custom_1024x768
-    if (resolution.startsWith('custom_')) {
-        const dimensions = resolution.replace('custom_', '');
-        const [width, height] = dimensions.split('x').map(Number);
-        if (width && height) {
-            return `Custom ${width}×${height}`;
+        if (isInModal) {
+            showManualLoading(false);
         }
     }
-
-    // Try to find the resolution in our global array first
-    const res = RESOLUTIONS.find(r => r.value.toLowerCase() === resolution.toLowerCase());
-    if (res) {
-        return res.display;
-    }
-
-    // Fallback: Convert snake_case to Title Case
-    return resolution
-        .split('_')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
-}
-
-// Load and display metadata
-async function loadAndDisplayMetadata(filename) {
-    try {
-        const response = await fetchWithAuth(`/images/${filename}`, {
-            method: 'OPTIONS'
-        });
-
-        if (response.ok) {
-            const metadata = await response.json();
-
-            if (metadata && Object.keys(metadata).length > 0) {
-                // Populate metadata table
-                populateMetadataTable(metadata);
-
-                // Set up expandable sections
-                setupPromptPanel(metadata);
-
-                return metadata;
-            }
-        }
-        return null;
-    } catch (error) {
-        console.error('Error loading metadata:', error);
-        return null;
-    }
-}
-
-// Populate metadata table
-function populateMetadataTable(metadata) {
-    // Type and Name
-    const typeElement = document.getElementById('metadataType');
-    const nameElement = document.getElementById('metadataName');
-
-    if (typeElement && nameElement) {
-        if (metadata.request_type) {
-            typeElement.textContent = formatRequestType(metadata.request_type);
-
-            // Show/hide name field based on preset_name availability
-            const nameCell = nameElement.closest('.metadata-cell');
-            if (metadata.preset_name) {
-                nameElement.textContent = metadata.preset_name;
-                if (nameCell) nameCell.style.display = 'flex';
-            } else {
-                if (nameCell) nameCell.style.display = 'none';
-            }
-        } else {
-            typeElement.textContent = '-';
-            const nameCell = nameElement.closest('.metadata-cell');
-            if (nameCell) nameCell.style.display = 'none';
-        }
-    }
-
-    // Model
-    const modelElement = document.getElementById('metadataModel');
-    if (modelElement) {
-        modelElement.textContent = metadata.model_display_name || metadata.model || '-';
-    }
-
-    // Resolution
-    const resolutionElement = document.getElementById('metadataResolution');
-    if (resolutionElement) {
-        if (metadata.resolution) {
-            let resolutionText = formatResolution(metadata.resolution);
-            if (metadata.upscaled) {
-                resolutionElement.innerHTML = `${resolutionText} <span class="badge upscaled-badge">Upscaled</span>`;
-            } else {
-                resolutionElement.textContent = resolutionText;
-            }
-        } else if (metadata.width && metadata.height) {
-            let dimensionText = `${metadata.width} × ${metadata.height}`;
-            if (metadata.upscaled) {
-                resolutionElement.innerHTML = `${dimensionText} <span class="badge upscaled-badge">Upscaled</span>`;
-            } else {
-                resolutionElement.textContent = dimensionText;
-            }
-        } else {
-            resolutionElement.textContent = '-';
-        }
-    }
-
-    // Steps
-    const stepsElement = document.getElementById('metadataSteps');
-    if (stepsElement) {
-        const stepsText = metadata.steps || '-';
-        if (metadata.skip_cfg_above_sigma !== null && metadata.skip_cfg_above_sigma !== undefined) {
-            stepsElement.innerHTML = `${stepsText} <i class="fas fa-splotch variety-icon" title="Variety+ enabled"></i>`;
-        } else {
-            stepsElement.textContent = stepsText;
-        }
-    }
-
-    // Seeds - Handle display logic
-    const seed1Element = document.getElementById('metadataSeed1');
-    const seed2Element = document.getElementById('metadataSeed2');
-
-    if (seed1Element && seed2Element) {
-        // Find the label elements more safely
-        const seed1Cell = seed1Element.closest('.metadata-cell');
-        const seed2Cell = seed2Element.closest('.metadata-cell');
-        const seed1Label = seed1Cell ? seed1Cell.querySelector('.metadata-label') : null;
-        const seed2Label = seed2Cell ? seed2Cell.querySelector('.metadata-label') : null;
-
-        if (seed1Label && seed2Label) {
-            // Single seed - hide seed 2 and rename seed 1
-            seed1Label.textContent = 'Seed';
-            seed1Element.textContent = metadata.layer1Seed || metadata.seed || '-';
-            seed1Cell.style.display = 'flex';
-            seed2Cell.style.display = 'none';
-            
-        }
-    }
-
-    // Guidance
-    const guidanceElement = document.getElementById('metadataGuidance');
-    if (guidanceElement) {
-        guidanceElement.textContent = metadata.scale || '-';
-    }
-
-    // Rescale
-    const rescaleElement = document.getElementById('metadataRescale');
-    if (rescaleElement) {
-        rescaleElement.textContent = metadata.cfg_rescale || '-';
-    }
-
-    // Sampler
-    const samplerElement = document.getElementById('metadataSampler');
-    if (samplerElement) {
-        const samplerObj = getSamplerMeta(metadata.sampler);
-        samplerElement.textContent = samplerObj ? samplerObj.display : (metadata.sampler || '-');
-    }
-
-    // Noise Schedule
-    const noiseScheduleElement = document.getElementById('metadataNoiseSchedule');
-    if (noiseScheduleElement) {
-        const noiseObj = getNoiseMeta(metadata.noise_schedule);
-        noiseScheduleElement.textContent = noiseObj ? noiseObj.display : (metadata.noise_schedule || '-');
-    }
-}
-
-// Setup prompt panel
-function setupPromptPanel(metadata) {
-    const promptBtn = document.getElementById('promptBtn');
-    const promptPanel = document.getElementById('promptPanel');
-    const allPromptsContent = document.getElementById('allPromptsContent');
-
-    // Clear previous content
-    if (allPromptsContent) allPromptsContent.innerHTML = '';
-
-    // Setup prompt button
-    if (promptBtn && promptPanel) {
-        promptBtn.style.display = 'inline-block';
-
-        promptBtn.onclick = () => {
-            // Check if panel is currently shown
-            const isPanelShown = promptPanel.classList.contains('show');
-
-            if (isPanelShown) {
-                // Hide panel
-                promptPanel.classList.remove('show');
-                setTimeout(() => {
-                    promptPanel.classList.add('hidden');
-                }, 300);
-
-                // Move close button back to original position
-                if (lightboxCloseBtn) {
-                    lightboxCloseBtn.classList.remove('prompt-panel-open');
-                }
-            } else {
-                // Populate panel content
-                if (allPromptsContent) {
-                    allPromptsContent.innerHTML = '';
-
-                    // Add base prompt if exists
-                    if (metadata.prompt) {
-                        const basePromptItem = createCharacterPromptItem('Base Prompt', metadata.prompt, metadata.uc);
-                        allPromptsContent.appendChild(basePromptItem);
-                    }
-
-                    // Add character prompts if exist
-                    if (metadata.characterPrompts && metadata.characterPrompts.length > 0) {
-                        metadata.characterPrompts.forEach((charPrompt, index) => {
-                            const charName = charPrompt.chara_name || `Character ${index + 1}`;
-                            const charPromptItem = createCharacterPromptItem(charName, charPrompt.prompt || 'No prompt available', charPrompt.uc, charPrompt);
-                            allPromptsContent.appendChild(charPromptItem);
-                        });
-                    }
-
-                    // Show message if no prompts at all
-                    if (!metadata.prompt && (!metadata.characterPrompts || metadata.characterPrompts.length === 0)) {
-                        const noPromptsMsg = document.createElement('div');
-                        noPromptsMsg.className = 'character-prompt-item-panel';
-                        noPromptsMsg.innerHTML = '<div class="character-prompt-text">No prompts available</div>';
-                        allPromptsContent.appendChild(noPromptsMsg);
-                    }
-                }
-
-                // Show panel
-                promptPanel.classList.remove('hidden');
-                setTimeout(() => {
-                    promptPanel.classList.add('show');
-                }, 10);
-
-                // Move close button to accommodate panel
-                if (lightboxCloseBtn) {
-                    lightboxCloseBtn.classList.add('prompt-panel-open');
-                }
-            }
-        };
-    } else if (promptBtn) {
-        promptBtn.style.display = 'none';
-    }
-}
-
-// Helper function to create prompt items with copy functionality
-function createPromptItem(title, content) {
-    const promptItem = document.createElement('div');
-    promptItem.className = 'character-prompt-item-panel';
-
-    const headerDiv = document.createElement('div');
-    headerDiv.className = 'prompt-header';
-
-    const titleDiv = document.createElement('div');
-    titleDiv.className = 'character-name';
-    titleDiv.textContent = title;
-
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'prompt-copy-btn';
-    copyBtn.innerHTML = '<i class="nai-clipboard"></i>';
-    copyBtn.title = 'Copy to clipboard';
-    copyBtn.onclick = () => copyToClipboard(content, title);
-
-    headerDiv.appendChild(titleDiv);
-    headerDiv.appendChild(copyBtn);
-
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'character-prompt-text';
-    contentDiv.textContent = content;
-
-    promptItem.appendChild(headerDiv);
-    promptItem.appendChild(contentDiv);
-
-    return promptItem;
-}
-
-// Helper function to create character prompt items with UC
-function createCharacterPromptItem(title, content, uc, charPrompt = null) {
-    const promptItem = document.createElement('div');
-    promptItem.className = 'character-prompt-item-panel';
-
-    const headerDiv = document.createElement('div');
-    headerDiv.className = 'prompt-header';
-
-    const titleDiv = document.createElement('div');
-    titleDiv.className = 'character-name';
-    titleDiv.textContent = title;
-
-    // Add badges for character prompts
-    if (charPrompt) {
-        const badgesDiv = document.createElement('div');
-        badgesDiv.className = 'prompt-badges';
-
-        // Add coordinate badge if coordinates exist
-        if (charPrompt.center && charPrompt.center.x !== undefined && charPrompt.center.y !== undefined) {
-            const coordBadge = document.createElement('span');
-            coordBadge.className = 'prompt-badge coordinate-badge';
-            coordBadge.textContent = getCellLabelFromCoords(charPrompt.center.x, charPrompt.center.y);
-            badgesDiv.appendChild(coordBadge);
-        }
-
-        // Add disabled badge if character is disabled
-        if (charPrompt.enabled === false) {
-            const disabledBadge = document.createElement('span');
-            disabledBadge.className = 'prompt-badge disabled-badge';
-            disabledBadge.textContent = 'Not Included';
-            badgesDiv.appendChild(disabledBadge);
-        }
-
-        titleDiv.appendChild(badgesDiv);
-    }
-
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'prompt-copy-btn';
-    copyBtn.innerHTML = '<i class="nai-clipboard"></i>';
-    copyBtn.title = 'Copy to clipboard';
-    copyBtn.onclick = () => copyToClipboard(content, title);
-
-    headerDiv.appendChild(titleDiv);
-    headerDiv.appendChild(copyBtn);
-
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'character-prompt-text';
-    contentDiv.textContent = content;
-
-    promptItem.appendChild(headerDiv);
-    promptItem.appendChild(contentDiv);
-
-    // Add UC if it exists
-    if (uc) {
-        const divider = document.createElement('div');
-        divider.className = 'prompt-divider';
-        promptItem.appendChild(divider);
-
-        const ucHeaderDiv = document.createElement('div');
-        ucHeaderDiv.className = 'prompt-header';
-
-        const ucTitleDiv = document.createElement('div');
-        ucTitleDiv.className = 'character-name';
-        ucTitleDiv.textContent = 'Undesired Content';
-
-        const ucCopyBtn = document.createElement('button');
-        ucCopyBtn.className = 'prompt-copy-btn';
-        ucCopyBtn.innerHTML = '<i class="nai-clipboard"></i>';
-        ucCopyBtn.title = 'Copy to clipboard';
-        ucCopyBtn.onclick = () => copyToClipboard(uc, `${title} - Undesired Content`);
-
-        ucHeaderDiv.appendChild(ucTitleDiv);
-        ucHeaderDiv.appendChild(ucCopyBtn);
-
-        const ucContentDiv = document.createElement('div');
-        ucContentDiv.className = 'character-prompt-text';
-        ucContentDiv.textContent = uc;
-
-        promptItem.appendChild(ucHeaderDiv);
-        promptItem.appendChild(ucContentDiv);
-    }
-
-    return promptItem;
-}
-
-// Function to copy text to clipboard and show toast
-async function copyToClipboard(text, title) {
-    try {
-        // Try modern clipboard API first
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(text);
-            showGlassToast('success', null, `Copied ${title} to clipboard`);
-        } else {
-            // Fallback for older browsers
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            textArea.style.top = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-
-            const successful = document.execCommand('copy');
-            document.body.removeChild(textArea);
-
-            if (successful) {
-                showGlassToast('success', null, `Copied ${title} to clipboard`);
-            } else {
-                throw new Error('execCommand copy failed');
-            }
-        }
-    } catch (err) {
-        console.error('Failed to copy text: ', err);
-        showGlassToast('error', null, 'Failed to copy to clipboard');
-    }
-}
-
-
-// Helper: Format request type for display
-function formatRequestType(requestType) {
-    const typeMappings = {
-        'custom': 'Manual Generation',
-        'preset': 'Image Preset'
-    };
-
-    return typeMappings[requestType] || requestType;
-}
-
-// Hide lightbox
-function hideLightbox() {
-    closeModal(lightboxModal);
-
-    // Clear any existing metadata
-    const metadataTable = document.querySelector('.lightbox-metadata-section .metadata-table tbody');
-    if (metadataTable) {
-        metadataTable.innerHTML = '';
-    }
-
-    // Hide expanded sections
-    const expandedSections = document.querySelectorAll('.metadata-expanded');
-    expandedSections.forEach(section => {
-        section.style.display = 'none';
-    });
-
-    // Hide prompt panel
-    const promptPanel = document.getElementById('promptPanel');
-    if (promptPanel) {
-        promptPanel.classList.remove('show');
-        promptPanel.classList.add('hidden');
-    }
-
-    // Reset close button position
-    if (lightboxCloseBtn) {
-        lightboxCloseBtn.classList.remove('prompt-panel-open');
-    }
-
-    // Hide dialog if open
-    hideMetadataDialog();
-
-    // Reset zoom and pan
-    resetLightboxZoom();
-}
-
-// Navigate between images in lightbox
-function navigateLightbox(direction) {
-    // Find current image index by matching the filename
-    const currentImageIndex = allImages.findIndex(img => {
-        const currentFilename = currentLightboxImage?.filename;
-        return img.original === currentFilename || img.upscaled === currentFilename;
-    });
-
-    if (currentImageIndex === -1) return;
-
-    // Calculate new index
-    let newIndex = currentImageIndex + direction;
-
-    // Handle wrapping
-    if (newIndex < 0) {
-        newIndex = allImages.length - 1;
-    } else if (newIndex >= allImages.length) {
-        newIndex = 0;
-    }
-
-    // Get the new image from allImages
-    const newImageObj = allImages[newIndex];
-    if (newImageObj) {
-        // Construct the image object the same way as in createGalleryItem
-        let filenameToShow = newImageObj.original;
-        if (newImageObj.upscaled) {
-            filenameToShow = newImageObj.upscaled;
-        }
-
-        const imageToShow = {
-            filename: filenameToShow,
-            base: newImageObj.base,
-            upscaled: newImageObj.upscaled
-        };
-
-        showLightbox(imageToShow);
-    }
-}
-
-// Lightbox zoom and pan functionality
-let currentLightboxImage = null;
-let lightboxZoom = 1;
-let lightboxPanX = 0;
-let lightboxPanY = 0;
-let isDragging = false;
-let lastMouseX = 0;
-let lastMouseY = 0;
-let lastTouchDistance = 0;
-
-function initializeLightboxZoom() {
-    const imageContainer = document.querySelector('.lightbox-image-container');
-    const image = document.getElementById('lightboxImage');
-
-    if (!imageContainer || !image) return;
-
-    // Reset zoom and pan
-    resetLightboxZoom();
-
-    // Mouse wheel zoom
-    imageContainer.addEventListener('wheel', handleWheelZoom, { passive: false });
-
-    // Mouse drag pan
-    imageContainer.addEventListener('mousedown', handleMouseDown);
-    imageContainer.addEventListener('mousemove', handleMouseMove);
-    imageContainer.addEventListener('mouseup', handleMouseUp);
-    imageContainer.addEventListener('mouseleave', handleMouseUp);
-
-    // Touch zoom and pan
-    imageContainer.addEventListener('touchstart', handleTouchStart, { passive: false });
-    imageContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
-    imageContainer.addEventListener('touchend', handleTouchEnd);
-
-    // Double click to reset zoom
-    imageContainer.addEventListener('dblclick', resetLightboxZoom);
-}
-
-function resetLightboxZoom() {
-    lightboxZoom = 1;
-    lightboxPanX = 0;
-    lightboxPanY = 0;
-    updateImageTransform();
-
-    const imageContainer = document.querySelector('.lightbox-image-container');
-    if (imageContainer) {
-        imageContainer.classList.remove('zoomed');
-    }
-}
-
-function updateImageTransform() {
-    const image = document.getElementById('lightboxImage');
-    if (image) {
-        image.style.transform = `translate(${lightboxPanX}px, ${lightboxPanY}px) scale(${lightboxZoom})`;
-    }
-}
-
-function handleWheelZoom(e) {
-    e.preventDefault();
-
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(1, Math.min(5, lightboxZoom * delta));
-
-    // If zooming out to original size, reset pan to center
-    if (newZoom <= 1 && lightboxZoom > 1) {
-        lightboxPanX = 0;
-        lightboxPanY = 0;
-    } else {
-        // Zoom towards mouse position only when zooming in or when already zoomed
-        const rect = e.currentTarget.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-
-        const zoomChange = newZoom / lightboxZoom;
-        lightboxPanX = mouseX - (mouseX - lightboxPanX) * zoomChange;
-        lightboxPanY = mouseY - (mouseY - lightboxPanY) * zoomChange;
-    }
-
-    lightboxZoom = newZoom;
-    updateImageTransform();
-
-    const imageContainer = document.querySelector('.lightbox-image-container');
-    if (imageContainer) {
-        imageContainer.classList.toggle('zoomed', lightboxZoom > 1);
-    }
-}
-
-function handleMouseDown(e) {
-    if (lightboxZoom > 1) {
-        isDragging = true;
-        lastMouseX = e.clientX;
-        lastMouseY = e.clientY;
-        e.preventDefault();
-    }
-}
-
-function handleMouseMove(e) {
-    if (isDragging && lightboxZoom > 1) {
-        const deltaX = e.clientX - lastMouseX;
-        const deltaY = e.clientY - lastMouseY;
-
-        lightboxPanX += deltaX;
-        lightboxPanY += deltaY;
-
-        lastMouseX = e.clientX;
-        lastMouseY = e.clientY;
-
-        updateImageTransform();
-        e.preventDefault();
-    }
-}
-
-function handleMouseUp() {
-    isDragging = false;
-}
-
-function handleTouchStart(e) {
-    if (e.touches.length === 1) {
-        // Single touch - start pan
-        isDragging = true;
-        lastMouseX = e.touches[0].clientX;
-        lastMouseY = e.touches[0].clientY;
-    } else if (e.touches.length === 2) {
-        // Two touches - start pinch zoom
-        lastTouchDistance = getTouchDistance(e.touches);
-    }
-}
-
-function handleTouchMove(e) {
-    if (e.touches.length === 1 && isDragging && lightboxZoom > 1) {
-        // Single touch pan
-        const deltaX = e.touches[0].clientX - lastMouseX;
-        const deltaY = e.touches[0].clientY - lastMouseY;
-
-        lightboxPanX += deltaX;
-        lightboxPanY += deltaY;
-
-        lastMouseX = e.touches[0].clientX;
-        lastMouseY = e.touches[0].clientY;
-
-        updateImageTransform();
-        e.preventDefault();
-    } else if (e.touches.length === 2) {
-        // Two touch pinch zoom
-        const currentDistance = getTouchDistance(e.touches);
-        const delta = currentDistance / lastTouchDistance;
-
-        const newZoom = Math.max(1, Math.min(5, lightboxZoom * delta));
-
-        // If zooming out to original size, reset pan to center
-        if (newZoom <= 1 && lightboxZoom > 1) {
-            lightboxPanX = 0;
-            lightboxPanY = 0;
-        } else {
-            // Zoom towards center of touches only when zooming in or when already zoomed
-            const rect = e.currentTarget.getBoundingClientRect();
-            const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
-            const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
-
-            const zoomChange = newZoom / lightboxZoom;
-            lightboxPanX = centerX - (centerX - lightboxPanX) * zoomChange;
-            lightboxPanY = centerY - (centerY - lightboxPanY) * zoomChange;
-        }
-
-        lightboxZoom = newZoom;
-        lastTouchDistance = currentDistance;
-
-        updateImageTransform();
-
-        const imageContainer = document.querySelector('.lightbox-image-container');
-        if (imageContainer) {
-            imageContainer.classList.toggle('zoomed', lightboxZoom > 1);
-        }
-
-        e.preventDefault();
-    }
-}
-
-function handleTouchEnd(e) {
-    if (e.touches.length === 0) {
-        isDragging = false;
-        lastTouchDistance = 0;
-    }
-}
-
-function getTouchDistance(touches) {
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.sqrt(dx * dx + dy * dy);
 }
 
 // Manual preview zoom and pan functionality
@@ -7845,6 +6628,12 @@ function resetManualPreviewZoom() {
     const imageContainer = document.querySelector('.manual-preview-image-container');
     if (imageContainer) {
         imageContainer.classList.remove('zoomed');
+        
+        // Restore original image visibility when zoom is reset
+        const originalImage = document.getElementById('manualPreviewOriginalImage');
+        if (originalImage && imageContainer.classList.contains('dual-mode')) {
+            originalImage.style.display = 'block';
+        }
     }
 }
 
@@ -7882,6 +6671,16 @@ function handleManualPreviewWheelZoom(e) {
     const imageContainer = document.querySelector('.manual-preview-image-container');
     if (imageContainer) {
         imageContainer.classList.toggle('zoomed', manualPreviewZoom > 1);
+        
+        // Hide original image when zoomed
+        const originalImage = document.getElementById('manualPreviewOriginalImage');
+        if (originalImage && imageContainer.classList.contains('dual-mode')) {
+            if (manualPreviewZoom > 1) {
+                originalImage.style.display = 'none';
+            } else {
+                originalImage.style.display = 'block';
+            }
+        }
     }
 }
 
@@ -7970,6 +6769,16 @@ function handleManualPreviewTouchMove(e) {
         const imageContainer = document.querySelector('.manual-preview-image-container');
         if (imageContainer) {
             imageContainer.classList.toggle('zoomed', manualPreviewZoom > 1);
+            
+            // Hide original image when zoomed
+            const originalImage = document.getElementById('manualPreviewOriginalImage');
+            if (originalImage && imageContainer.classList.contains('dual-mode')) {
+                if (manualPreviewZoom > 1) {
+                    originalImage.style.display = 'none';
+                } else {
+                    originalImage.style.display = 'block';
+                }
+            }
         }
 
         e.preventDefault();
@@ -8022,10 +6831,15 @@ function downloadImage(image) {
 }
 
 // Delete image
-async function deleteImage(image) {
+async function deleteImage(image, event = null) {
     // Show confirmation dialog
-    const confirmed = confirm('Are you sure you want to delete this image? This will permanently delete both the original and upscaled versions.');
-
+    const confirmed = await showConfirmationDialog(
+        'Are you sure you want to delete this image? This will permanently delete both the original and upscaled versions.',
+        'Delete',
+        'Cancel',
+        event
+    );
+    
     if (!confirmed) {
         return;
     }
@@ -8063,8 +6877,8 @@ async function deleteImage(image) {
             // Close lightbox
             hideLightbox();
 
-            // Refresh gallery to show updated list
-            await loadGallery();
+            // Remove image from gallery and add placeholder
+            removeImageFromGallery(image);
         } else {
             throw new Error(result.error || 'Delete failed');
         }
@@ -8230,58 +7044,62 @@ function createConfetti() {
     }
 }
 
-// Show loading overlay
-function showLoading(show, message = 'Generating Image...') {
-    if (show) {
-        loadingOverlay.classList.remove('hidden');
-        // Update the loading message
-        const loadingText = loadingOverlay.querySelector('p');
-        if (loadingText) {
-            loadingText.textContent = message;
-        }
-    } else {
-        loadingOverlay.classList.add('hidden');
-    }
-}
-
 // Show manual modal loading overlay
 function showManualLoading(show, message = 'Generating Image...') {
-    const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
-
     // Check if manual modal is open and screen is wide enough for preview section
     const isManualModalOpen = manualModal.style.display !== 'none';
 
+    // Use manual loading overlay for wide screens with modal open
     if (isManualModalOpen) {
-        // Use manual loading overlay for wide screens with modal open
-        if (manualLoadingOverlay) {
-            if (show) {
-                manualLoadingOverlay.classList.remove('hidden');
-            } else {
-                manualLoadingOverlay.classList.add('hidden');
-            }
-            // Update the loading message
-            const loadingText = manualLoadingOverlay.querySelector('p');
-            if (loadingText) {
-                loadingText.textContent = message;
-            }
-        }
+        manualLoadingOverlay.classList.remove('hidden');
         if (previewSection && window.innerWidth <= 1400) {
             if (!previewSection.classList.contains('show')) {
                 previewSection.classList.add('show');
                 setTimeout(() => { previewSection.classList.add('active'); }, 1);
             }
         }
+        // Update the loading message
+        const loadingText = manualLoadingOverlay.querySelector('p');
+        if (loadingText) {
+            loadingText.textContent = message;
+        }
+        if (show) {
+            requestAnimationFrame(() => {
+                manualLoadingOverlay.classList.remove('return');
+            });
+        } else {
+            requestAnimationFrame(() => {
+                manualLoadingOverlay.classList.add('return');
+            });
+        }
     } else if (show) {
         previewSection.classList.remove('active', 'show');
         // Fall back to regular loading overlay for narrow screens or when modal is closed
-        showLoading(true, message);
+        loadingOverlay.classList.remove('hidden');
+        // Update the loading message
+        const loadingText = loadingOverlay.querySelector('p');
+        if (loadingText) {
+            loadingText.textContent = message;
+        }
+        requestAnimationFrame(() => {
+            loadingOverlay.classList.remove('return');
+        });
     } else {
         previewSection.classList.remove('active', 'show');
         // Hide both overlays
         if (manualLoadingOverlay) {
-            manualLoadingOverlay.classList.add('hidden');
+            requestAnimationFrame(() => {
+                manualLoadingOverlay.classList.add('hidden', 'return');
+            });
         }
-        showLoading(false);
+        requestAnimationFrame(() => {
+            loadingOverlay.classList.add('return');
+        });
+        setTimeout(() => {
+            requestAnimationFrame(() => {
+                loadingOverlay.classList.add('hidden');
+            });
+        }, 1000);
     }
 }
 
@@ -8290,102 +7108,128 @@ function showError(message) {
     showGlassToast('error', null, message);
 }
 
-// Update lightbox controls based on image type
-function updateLightboxControls(image) {
-    const deleteBtn = document.getElementById('lightboxDeleteBtn');
-    const toggleBaseBtn = document.getElementById('toggleBaseImageBtn');
+// Error Sub-Header Functions
+let errorSubHeaderTimeout = null;
+
+function showErrorSubHeader(message, type = 'error', duration = 0) {
+    const errorSubHeader = document.getElementById('errorSubHeader');
+    const errorIcon = errorSubHeader.querySelector('.error-sub-header-icon');
+    const errorText = errorSubHeader.querySelector('.error-sub-header-text');
+    const closeBtn = errorSubHeader.querySelector('.error-sub-header-close');
     
-    if (image.isMask) {
-        lightboxDownloadBtn.style.display = 'inline-block';
-        lightboxRerollBtn.style.display = 'none';
-        lightboxRerollEditBtn.style.display = 'none';
-        lightboxUpscaleBtn.style.display = 'none';
-        deleteBtn.style.display = 'none';
-
-        // Set up download for mask
-        lightboxDownloadBtn.onclick = (e) => {
-            e.preventDefault();
-            downloadImage(image);
-        };
-        return;
-    }
-
-    // Always show download button for regular images
-    lightboxDownloadBtn.style.display = '';
-    lightboxRerollBtn.style.display = '';
-    lightboxRerollEditBtn.style.display = '';
-    lightboxDeleteBtn.style.display = '';
-    if (image.upscaled) {
-        lightboxUpscaleBtn.style.display = 'none';
-    } else {
-        lightboxUpscaleBtn.style.display = 'inline-block';
-    }
-    lightboxScrapBtn.style.display = 'inline-block';
-    if (isViewingScraps) {
-        lightboxScrapBtn.innerHTML = '<i class="nai-undo"></i>';
-        lightboxScrapBtn.title = 'Remove from scraps';
-    } else {
-        lightboxScrapBtn.innerHTML = '<i class="nai-image-tool-sketch"></i>';
-        lightboxScrapBtn.title = 'Move to scraps';
-    }
-    if (image.metadata && image.metadata.base_image === true && image.metadata.original_filename) {
-        toggleBaseBtn.style.display = 'inline-block';
-        toggleBaseBtn.setAttribute('data-state', 'variation');
-        toggleBaseBtn.innerHTML = '<i class="fas fa-exchange-alt"></i> <span>Show Base</span>';
-    } else {
-        toggleBaseBtn.style.display = 'none';
+    if (!errorSubHeader || !errorIcon || !errorText) return;
+    
+    // Set icon based on type
+    switch (type) {
+        case 'login':
+            errorIcon.className = 'fas fa-user-lock';
+            break;
+        case 'ban':
+            errorIcon.className = 'fas fa-ban';
+            break;
+        case 'auth':
+            errorIcon.className = 'fas fa-shield-alt';
+            break;
+        case 'warning':
+            errorIcon.className = 'fas fa-exclamation-triangle';
+            break;
+        default:
+            errorIcon.className = 'fas fa-exclamation-circle';
     }
     
-    const imageObj = {
-        filename: image.filename,
-        base: image.base,
-        original: image.original || image.filename,
-        upscaled: image.upscaled,
-        metadata: image.metadata
-    };
-    lightboxDownloadBtn.onclick = (e) => {
-        e.preventDefault();
-        downloadImage(imageObj);
-    };
-    lightboxRerollBtn.onclick = () => rerollImage(imageObj);
-    lightboxRerollEditBtn.onclick = () => rerollImageWithEdit(imageObj);
-    lightboxUpscaleBtn.onclick = () => upscaleImage(imageObj);
-    lightboxScrapBtn.onclick = () => {
-        if (isViewingScraps) {
-            removeFromScraps(imageObj);
-        } else {
-            moveToScraps(imageObj);
-        }
-    };
-    deleteBtn.onclick = () => deleteImage(imageObj);
-    if (toggleBaseBtn.style.display !== 'none') {
-        toggleBaseBtn.onclick = () => toggleBaseImage(imageObj);
+    // Set message
+    errorText.textContent = message;
+    
+    // Show the sub-header
+    errorSubHeader.classList.remove('hidden');
+    errorSubHeader.classList.add('show');
+    document.body.classList.add('error-sub-header-active');
+    
+    // Clear existing timeout
+    if (errorSubHeaderTimeout) {
+        clearTimeout(errorSubHeaderTimeout);
+    }
+    
+    // Auto-hide after duration (unless it's 0 for permanent)
+    if (duration > 0) {
+        errorSubHeaderTimeout = setTimeout(() => {
+            hideErrorSubHeader();
+        }, duration);
+    }
+    
+    // Setup close button event listener
+    closeBtn.onclick = hideErrorSubHeader;
+}
+
+function hideErrorSubHeader() {
+    const errorSubHeader = document.getElementById('errorSubHeader');
+    if (!errorSubHeader) return;
+    
+    errorSubHeader.classList.remove('show');
+    document.body.classList.remove('error-sub-header-active');
+    
+    // Hide after animation completes
+    setTimeout(() => {
+        errorSubHeader.classList.add('hidden');
+    }, 300);
+    
+    // Clear timeout
+    if (errorSubHeaderTimeout) {
+        clearTimeout(errorSubHeaderTimeout);
+        errorSubHeaderTimeout = null;
     }
 }
 
-// Toggle between variation and base image
-async function toggleBaseImage(imageObj) {
-    const toggleBaseBtn = document.getElementById('toggleBaseImageBtn');
-    const lightboxImage = document.getElementById('lightboxImage');
-    const currentState = toggleBaseBtn.getAttribute('data-state');
-
-    if (currentState === 'variation') {
-        // Switch to base image
-        try {
-            const baseImageUrl = `/images/${imageObj.metadata.original_filename}`;
-            lightboxImage.src = baseImageUrl;
-            toggleBaseBtn.setAttribute('data-state', 'base');
-            toggleBaseBtn.innerHTML = '<i class="fas fa-exchange-alt"></i> <span>Show Variation</span>';
-        } catch (error) {
-            console.error('Error loading base image:', error);
-            showError('Failed to load base image');
+// Enhanced error handling for authentication issues
+function handleAuthError(error, context = '') {
+    console.error(`Authentication error in ${context}:`, error);
+    
+    let message = 'Authentication error occurred';
+    let type = 'auth';
+    
+    if (error.message) {
+        if (error.message.includes('login') || error.message.includes('PIN')) {
+            message = 'Login failed. Please check your credentials.';
+            type = 'login';
+        } else if (error.message.includes('ban') || error.message.includes('suspended')) {
+            message = 'Account access restricted. Please contact support.';
+            type = 'ban';
+        } else if (error.message.includes('unauthorized') || error.message.includes('forbidden')) {
+            message = 'Access denied. Please log in again.';
+            type = 'auth';
+        } else {
+            message = error.message;
         }
-    } else {
-        // Switch back to variation image
-        const variationImageUrl = `/images/${imageObj.filename}`;
-        lightboxImage.src = variationImageUrl;
-        toggleBaseBtn.setAttribute('data-state', 'variation');
-        toggleBaseBtn.innerHTML = '<i class="fas fa-exchange-alt"></i> <span>Show Base</span>';
+    }
+    
+    showErrorSubHeader(message, type, 15000);
+}
+
+// Enhanced fetchWithAuth with error sub-header support
+async function fetchWithAuth(url, options = {}) {
+    try {
+        const response = await fetch(url, options);
+        
+        // Handle authentication errors
+        if (response.status === 401) {
+            handleAuthError(new Error('Unauthorized access'), 'fetchWithAuth');
+            throw new Error('Authentication required');
+        } else if (response.status === 403) {
+            handleAuthError(new Error('Access forbidden'), 'fetchWithAuth');
+            throw new Error('Access denied');
+        }
+        
+        return response;
+    } catch (error) {
+        // Handle network or other errors
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+            showErrorSubHeader('Network connection error. Please check your internet connection.', 'warning', 8000);
+        } else if (error.message.includes('Authentication required') || error.message.includes('Access denied')) {
+            // Already handled above
+        } else {
+            console.error('Fetch error:', error);
+        }
+        throw error;
     }
 }
 
@@ -8805,7 +7649,7 @@ function showGlassToast(type, title, message, showProgress = false) {
     // If only message is provided (no title), create a simple one-line toast
     if (title && message) {
         // Full toast with title and message
-        const icon = getToastIcon(type);
+        const icon = getToastIcon(type, showProgress);
         const closeBtn = showProgress ? '' : '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
 
         toast.innerHTML = `
@@ -8890,13 +7734,16 @@ function removeGlassToast(toastId) {
     }, 300);
 }
 
-function getToastIcon(type) {
+function getToastIcon(type, showProgress) {
+    if (showProgress && type === 'info') {
+        return '<i class="fas fa-spin fa-spinner-third"></i>';
+    }
     switch (type) {
-        case 'success': return '<i class="nai-check"></i>';
-        case 'error': return '<i class="nai-cross"></i>';
-        case 'warning': return '<i class="nai-help"></i>';
-        case 'info': return '<i class="nai-book-open"></i>';
-        default: return '<i class="nai-book-open"></i>';
+        case 'success': return '<i class="fas fa-check-circle"></i>';
+        case 'error': return '<i class="fas fa-times-circle"></i>';
+        case 'warning': return '<i class="fas fa-exclamation-triangle"></i>';
+        case 'info': return '<i class="fas fa-info-circle"></i>';
+        default: return '<i class="fas fa-sparkles"></i>';
     }
 }
 
@@ -8906,6 +7753,16 @@ function createToastContainer() {
     container.className = 'toast-container';
     document.body.appendChild(container);
     return container;
+}
+
+function updateGlassToastProgress(toastId, progress) {
+    const toast = document.getElementById(toastId);
+    if (!toast) return;
+
+    const progressBar = toast.querySelector('.toast-progress-bar');
+    if (progressBar) {
+        progressBar.style.width = `${Math.min(progress, 100)}%`;
+    }
 }
 
 // Upload multiple images to server
@@ -9042,328 +7899,6 @@ async function handleManualImageUploadInternal(file) {
     }
 }
 
-// Render image bias dropdown
-async function renderImageBiasDropdown(selectedVal) {
-    let imageAR = 1;
-    let targetAR = 1;
-
-    if (!window.uploadedImageData || window.uploadedImageData.isPlaceholder) {
-        if (imageBiasGroup) {
-            imageBiasGroup.style.display = 'none';
-        }
-        return;
-    }
-
-    if (!imageBiasDropdownBtn.hasAttribute('data-setup')) {
-        // Add event listeners
-        imageBiasDropdownBtn.addEventListener('click', () => {
-            if (imageBiasDropdownMenu.style.display === 'none') {
-                imageBiasDropdownMenu.style.display = '';
-            } else {
-                closeImageBiasDropdown();
-            }
-        });
-
-        // Close dropdown when clicking outside
-        document.addEventListener('click', (e) => {
-            if (!imageBiasDropdownBtn.contains(e.target) && !imageBiasDropdownMenu.contains(e.target)) {
-                closeImageBiasDropdown();
-            }
-        });
-
-        // Mark as set up
-        imageBiasDropdownBtn.setAttribute('data-setup', 'true');
-    }
-
-    // Check if we have dynamic bias (object) instead of legacy bias (number)
-    const hasDynamicBias = window.uploadedImageData && window.uploadedImageData.image_bias && typeof window.uploadedImageData.image_bias === 'object';
-    if (hasDynamicBias) {
-        imageBiasGroup.style.display = 'flex';
-        await updateImageBiasDisplay('custom');
-    }
-
-    const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-    if (currentResolution === 'custom' && manualWidth && manualHeight) {
-        const width = parseInt(manualWidth.value);
-        const height = parseInt(manualHeight.value);
-        targetAR = width / height;
-    } else {
-        const resolutionDims = getDimensionsFromResolution(currentResolution);
-        if (resolutionDims) {
-            targetAR = resolutionDims.width / resolutionDims.height;
-        }
-    }
-
-    if (window.uploadedImageData) {
-        if (window.uploadedImageData.width && window.uploadedImageData.height) {
-            imageAR = window.uploadedImageData.width / window.uploadedImageData.height;
-        } else if (window.uploadedImageData.originalDataUrl) {
-            // Fallback to loading image if dimensions not stored
-            imageAR = await new Promise(resolve => {
-                const img = new Image();
-                img.onload = function() {
-                    resolve(img.width / img.height);
-                };
-                img.src = window.uploadedImageData.originalDataUrl;
-            });
-        }
-    }
-
-    // Show image bias group if aspect ratios are different enough OR if both are square (bias still useful for cropping)
-    const aspectRatioDifference = Math.abs(imageAR - targetAR);
-    const isImageSquare = Math.abs(imageAR - 1.0) < 0.05;
-    const isTargetSquare = Math.abs(targetAR - 1.0) < 0.05;
-
-    if (aspectRatioDifference > 0.05 || (isImageSquare && isTargetSquare)) {
-        imageBiasGroup.style.display = 'flex';
-    } else {
-        imageBiasGroup.style.display = 'none';
-        return;
-    }
-
-    const isPortraitImage = imageAR < targetAR;
-    imageBiasDropdownMenu.innerHTML = '';
-
-    // Create bias options based on image orientation (exclude Custom from dropdown)
-    const biasOptions = [
-        { value: '0', display: isPortraitImage ? 'Top' : 'Left' },
-        { value: '1', display: isPortraitImage ? 'Mid-Top' : 'Mid-Left' },
-        { value: '2', display: 'Center' },
-        { value: '3', display: isPortraitImage ? 'Mid-Bottom' : 'Mid-Right' },
-        { value: '4', display: isPortraitImage ? 'Bottom' : 'Right' }
-    ];
-
-    biasOptions.forEach(option => {
-        const optionElement = document.createElement('div');
-        optionElement.className = 'custom-dropdown-option';
-        optionElement.dataset.value = option.value;
-
-        // Create grid based on orientation
-        let gridHTML = '';
-        if (isPortraitImage) {
-            // Portrait: 3 columns, 5 rows (vertical layout)
-            for (let i = 0; i < 15; i++) {
-                gridHTML += '<div class="grid-cell"></div>';
-            }
-        } else {
-            // Landscape: 5 columns, 3 rows (horizontal layout)
-            for (let i = 0; i < 15; i++) {
-                gridHTML += '<div class="grid-cell"></div>';
-            }
-        }
-
-        optionElement.innerHTML = `
-            <div class="mask-bias-option-content">
-                <div class="mask-bias-grid" data-bias="${option.value}" data-orientation="${isPortraitImage ? 'portrait' : 'landscape'}">
-                    ${gridHTML}
-                </div>
-                <span class="mask-bias-label">${option.display}</span>
-            </div>
-        `;
-
-        optionElement.addEventListener('click', () => {
-            selectImageBias(option.value);
-        });
-
-        imageBiasDropdownMenu.appendChild(optionElement);
-    });
-
-    // Update button display
-    if (imageBiasDropdownBtn) {
-        const buttonGrid = imageBiasDropdownBtn.querySelector('.mask-bias-grid');
-        if (buttonGrid) {
-            if (hasDynamicBias) {
-                // Show custom bias with diagonal grid
-                buttonGrid.setAttribute('data-bias', 'custom');
-                buttonGrid.setAttribute('data-orientation', isPortraitImage ? 'portrait' : 'landscape');
-                buttonGrid.classList.add('custom-bias');
-            } else {
-                // Show normal bias
-                buttonGrid.setAttribute('data-bias', selectedVal);
-                buttonGrid.setAttribute('data-orientation', isPortraitImage ? 'portrait' : 'landscape');
-                buttonGrid.classList.remove('custom-bias');
-            }
-        }
-    }
-
-    // Call updateImageBiasDisplay with appropriate value
-    if (hasDynamicBias) {
-        await updateImageBiasDisplay('custom');
-    } else {
-        await updateImageBiasDisplay(selectedVal);
-    }
-}
-
-// Select image bias
-function selectImageBias(value) {
-    // Check if there's an existing mask
-    const hasExistingMask = window.currentMaskData !== null && window.currentMaskData !== undefined;
-
-    if (hasExistingMask) {
-        // Store the pending bias change and show alert modal
-        window.pendingImageBiasChange = {
-            value,
-            callback: () => {
-                // This will be called after the mask is handled
-            }
-        };
-        showImageBiasMaskAlertModal();
-        return;
-    }
-
-    // No mask exists, proceed with bias change
-    applyImageBiasChange(value);
-}
-
-// Update image bias display
-function updateImageBiasDisplay(value) {
-    const buttonGrid = imageBiasDropdownBtn.querySelector('.mask-bias-grid');
-    if (!buttonGrid) return;
-
-    const isPortraitImage = buttonGrid.getAttribute('data-orientation') === 'portrait';
-    const hasDynamicBias = window.uploadedImageData && window.uploadedImageData.image_bias;
-
-    if (hasDynamicBias) {
-        // Show "Custom" for dynamic bias
-        if (imageBiasSelected) {
-            imageBiasSelected.textContent = 'Custom';
-        }
-        buttonGrid.setAttribute('data-bias', 'custom');
-        buttonGrid.classList.add('custom-bias');
-    } else {
-        // Show normal bias options
-        const biasOptions = [
-            { value: '0', display: isPortraitImage ? 'Top' : 'Left' },
-            { value: '1', display: isPortraitImage ? 'Mid-Top' : 'Mid-Left' },
-            { value: '2', display: 'Center' },
-            { value: '3', display: isPortraitImage ? 'Mid-Bottom' : 'Mid-Right' },
-            { value: '4', display: isPortraitImage ? 'Bottom' : 'Right' }
-        ];
-
-        // Fix: Use string comparison to handle '0' value correctly
-        const selectedOption = biasOptions.find(opt => opt.value === value.toString());
-        if (imageBiasSelected && selectedOption) {
-            imageBiasSelected.textContent = selectedOption.display;
-        }
-        buttonGrid.setAttribute('data-bias', value);
-        buttonGrid.classList.remove('custom-bias');
-    }
-
-    handleImageBiasChange();
-
-    closeImageBiasDropdown();
-}
-
-// Close image bias dropdown
-function closeImageBiasDropdown() {
-    imageBiasDropdownMenu.style.display = 'none';
-}
-
-// Hide image bias dropdown
-function hideImageBiasDropdown() {
-    imageBiasGroup.style.display = 'none';
-}
-
-// Handle image bias changes
-async function handleImageBiasChange() {
-    if (!window.uploadedImageData || !window.uploadedImageData.isBiasMode) return;
-
-    const newBias = parseInt(imageBiasHidden.value);
-    // Don't fall back - if it's NaN, don't update
-    if (isNaN(newBias)) return;
-
-    // Update stored data
-    window.uploadedImageData.bias = newBias;
-
-    // Update the image position
-    await cropImageToResolution();
-}
-
-// Internal function to crop image to resolution (existing function, keeping for compatibility)
-function cropImageToResolutionInternal(dataUrl, bias) {
-    const biasFractions = [0, 0.25, 0.5, 0.75, 1];
-    return new Promise((resolve) => {
-        if (!dataUrl) {
-            console.warn('No dataUrl provided to cropImageToResolutionInternal');
-            resolve(dataUrl);
-            return;
-        }
-
-        const img = new Image();
-        img.onload = function() {
-            // Validate image dimensions
-            if (img.width === 0 || img.height === 0) {
-                console.warn('Image has invalid dimensions:', img.width, 'x', img.height);
-                resolve(dataUrl);
-                return;
-            }
-            const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-            const resolutionDims = getDimensionsFromResolution(currentResolution);
-
-            if (!resolutionDims) {
-                resolve(dataUrl);
-                return;
-            }
-
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-
-            canvas.width = resolutionDims.width;
-            canvas.height = resolutionDims.height;
-
-            // Calculate crop dimensions
-            const imageAR = img.width / img.height;
-            const targetAR = resolutionDims.width / resolutionDims.height;
-
-            let cropWidth, cropHeight, cropX, cropY;
-
-            if (imageAR > targetAR) {
-                // Image is wider than target, crop width
-                cropHeight = img.height;
-                cropWidth = img.height * targetAR;
-                const biasFrac = biasFractions[bias] !== undefined ? biasFractions[bias] : 0.5;
-                cropX = (img.width - cropWidth) * biasFrac;
-                cropY = 0;
-            } else {
-                // Image is taller than target, crop height
-                cropWidth = img.width;
-                cropHeight = img.width / targetAR;
-                cropX = 0;
-                const biasFrac = biasFractions[bias] !== undefined ? biasFractions[bias] : 0.5;
-                cropY = (img.height - cropHeight) * biasFrac;
-            }
-
-            // Draw cropped image
-            ctx.drawImage(img, cropX, cropY, cropWidth, cropHeight, 0, 0, resolutionDims.width, resolutionDims.height);
-
-            // Convert to blob instead of data URL to avoid memory issues
-            canvas.toBlob((blob) => {
-                // Create blob URL and store it in window for cleanup
-                const blobUrl = URL.createObjectURL(blob);
-
-                // Store the blob URL for cleanup
-                if (!window.croppedImageBlobUrls) {
-                    window.croppedImageBlobUrls = [];
-                }
-                window.croppedImageBlobUrls.push(blobUrl);
-
-                resolve(blobUrl);
-            }, 'image/png');
-        };
-        img.src = dataUrl;
-    });
-}
-
-// Clean up blob URLs to prevent memory leaks
-function cleanupBlobUrls() {
-    if (window.croppedImageBlobUrls) {
-        window.croppedImageBlobUrls.forEach(blobUrl => {
-            URL.revokeObjectURL(blobUrl);
-        });
-        window.croppedImageBlobUrls = [];
-    }
-}
-
 // Handle deleting uploaded base image
 function handleDeleteBaseImage() {
     // Clean up any existing blob URLs
@@ -9429,43 +7964,49 @@ async function handleImageSelection(image, isSelected, event) {
 
     // ALT+click range selection
     if (event && event.altKey) {
-        // Find all checkboxes in order
-        const checkboxes = Array.from(document.querySelectorAll('.gallery-item-checkbox'));
-        const clickedIndex = checkboxes.findIndex(cb => cb.dataset.filename === filename);
+        // Get all gallery items (both real items and placeholders) in order
+        const allItems = Array.from(document.querySelectorAll('.gallery-item[data-filename], .gallery-placeholder[data-filename]'));
+        const clickedIndex = allItems.findIndex(div => div.dataset.filename === filename);
+        
         if (lastSelectedGalleryIndex !== null && clickedIndex !== -1) {
             const [start, end] = [lastSelectedGalleryIndex, clickedIndex].sort((a, b) => a - b);
-            let i = start;
-            function selectNext() {
-                if (i > end) {
-                    updateBulkActionsBar();
-                    return;
-                }
-                const cb = checkboxes[i];
-                const img = allImages[i];
-                if (cb && img) {
-                    cb.checked = true;
-                    selectedImages.add(cb.dataset.filename);
-                    cb.closest('.gallery-item').classList.add('selected');
-                }
-                i++;
-                requestAnimationFrame(selectNext);
+            
+            // Select all items in range
+            for (let i = start; i <= end; i++) {
+                const div = allItems[i];
+                const itemFilename = div.dataset.filename;
+                
+                // Update data-selected attribute
+                div.dataset.selected = 'true';
+                div.classList.add('selected');
+                selectedImages.add(itemFilename);
+                
+                // Update checkbox if it's a real item
+                const cb = div.querySelector('.gallery-item-checkbox');
+                if (cb) cb.checked = true;
             }
-            selectNext();
+            
+            updateBulkActionsBar();
+            lastSelectedGalleryIndex = clickedIndex;
             return;
         }
     }
-    // Update last selected index
-    const checkboxes = Array.from(document.querySelectorAll('.gallery-item-checkbox'));
-    const thisIndex = checkboxes.findIndex(cb => cb.dataset.filename === filename);
+    
+    // Update last selected index for range selection
+    const allItems = Array.from(document.querySelectorAll('.gallery-item[data-filename], .gallery-placeholder[data-filename]'));
+    const thisIndex = allItems.findIndex(div => div.dataset.filename === filename);
     if (thisIndex !== -1) {
         lastSelectedGalleryIndex = thisIndex;
     }
 
+    // Update selection state using data-selected as single source of truth
     if (isSelected) {
         selectedImages.add(filename);
+        item.dataset.selected = 'true';
         item.classList.add('selected');
     } else {
         selectedImages.delete(filename);
+        item.dataset.selected = 'false';
         item.classList.remove('selected');
     }
 
@@ -9476,6 +8017,8 @@ function updateBulkActionsBar() {
     const bulkActionsBar = document.getElementById('bulkActionsBar');
     const selectedCount = document.getElementById('selectedCount');
     const bulkMoveToScrapsBtn = document.getElementById('bulkMoveToScrapsBtn');
+    const bulkPinBtn = document.getElementById('bulkPinBtn');
+    const bulkUnpinBtn = document.getElementById('bulkUnpinBtn');
 
     if (selectedImages.size > 0) {
         bulkActionsBar.style.display = 'flex';
@@ -9483,14 +8026,39 @@ function updateBulkActionsBar() {
         gallery.classList.add('selection-mode');
         isSelectionMode = true;
 
-        // Show/hide scrap button based on current view
+        // Show/hide buttons based on current view
         if (bulkMoveToScrapsBtn) {
-            if (isViewingScraps) {
+            if (currentGalleryView === 'scraps') {
                 // Hide scrap button when viewing scraps (can't move scraps to scraps)
+                bulkMoveToScrapsBtn.style.display = 'none';
+            } else if (currentGalleryView === 'pinned') {
+                // Hide scrap button when viewing pinned (can't move pinned to scraps)
                 bulkMoveToScrapsBtn.style.display = 'none';
             } else {
                 // Show scrap button when viewing regular images
                 bulkMoveToScrapsBtn.style.display = 'inline-block';
+            }
+        }
+
+        // Show/hide pin button based on current view
+        if (bulkPinBtn) {
+            if (currentGalleryView === 'images') {
+                // Show pin button when viewing regular images
+                bulkPinBtn.style.display = 'inline-block';
+            } else {
+                // Hide pin button for other views
+                bulkPinBtn.style.display = 'none';
+            }
+        }
+
+        // Show/hide unpin button based on current view
+        if (bulkUnpinBtn) {
+            if (currentGalleryView === 'pinned') {
+                // Show unpin button when viewing pinned items
+                bulkUnpinBtn.style.display = 'inline-block';
+            } else {
+                // Hide unpin button for other views
+                bulkUnpinBtn.style.display = 'none';
             }
         }
     } else {
@@ -9502,6 +8070,7 @@ function updateBulkActionsBar() {
 
 function clearSelection() {
     selectedImages.clear();
+    lastSelectedGalleryIndex = null; // Reset range selection tracking
 
     // Uncheck all checkboxes
     const checkboxes = document.querySelectorAll('.gallery-item-checkbox');
@@ -9509,10 +8078,11 @@ function clearSelection() {
         checkbox.checked = false;
     });
 
-    // Remove selected class from all items
-    const selectedItems = document.querySelectorAll('.gallery-item.selected');
-    selectedItems.forEach(item => {
+    // Remove selected class and data-selected attribute from all items (both real items and placeholders)
+    const allItems = document.querySelectorAll('.gallery-item, .gallery-placeholder');
+    allItems.forEach(item => {
         item.classList.remove('selected');
+        item.dataset.selected = 'false';
     });
 
     updateBulkActionsBar();
@@ -9589,7 +8159,8 @@ async function handleBulkMoveToWorkspace() {
 
 async function moveBulkImagesToWorkspace(workspaceId) {
     try {
-        const isScrapsView = isViewingScraps;
+        const isScrapsView = currentGalleryView === 'scraps';
+        const isPinnedView = currentGalleryView === 'pinned';
 
         // Filter out any null/undefined values from selectedImages
         const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
@@ -9599,7 +8170,14 @@ async function moveBulkImagesToWorkspace(workspaceId) {
         }
 
         // Use appropriate endpoint based on current view
-        const endpoint = isScrapsView ? `/workspaces/${workspaceId}/scraps` : `/workspaces/${workspaceId}/files`;
+        let endpoint;
+        if (isScrapsView) {
+            endpoint = `/workspaces/${workspaceId}/scraps`;
+        } else if (isPinnedView) {
+            endpoint = `/workspaces/${workspaceId}/pinned`;
+        } else {
+            endpoint = `/workspaces/${workspaceId}/files`;
+        }
 
         const response = await fetchWithAuth(endpoint, {
             method: 'PUT',
@@ -9618,7 +8196,14 @@ async function moveBulkImagesToWorkspace(workspaceId) {
 
         const result = await response.json();
         const workspace = workspaces.find(w => w.id === workspaceId);
-        const itemType = isScrapsView ? 'scraps' : 'images';
+        let itemType;
+        if (isScrapsView) {
+            itemType = 'scraps';
+        } else if (isPinnedView) {
+            itemType = 'pinned images';
+        } else {
+            itemType = 'images';
+        }
 
         showGlassToast('success', null, `Moved ${result.movedCount} ${itemType} to ${workspace ? workspace.name : 'workspace'}`);
 
@@ -9626,6 +8211,8 @@ async function moveBulkImagesToWorkspace(workspaceId) {
         clearSelection();
         if (isScrapsView) {
             await loadScraps();
+        } else if (isPinnedView) {
+            await loadPinned();
         } else {
             await loadGallery();
         }
@@ -9634,19 +8221,24 @@ async function moveBulkImagesToWorkspace(workspaceId) {
         console.error('Error moving items to workspace:', error);
         showError('Failed to move items: ' + error.message);
     } finally {
-        showLoading(false);
+        showManualLoading(false);
     }
 }
 
-async function handleBulkDelete() {
+async function handleBulkDelete(event = null) {
     if (selectedImages.size === 0) {
-        showError('No images selected');
+        showGlassToast('error', 'No Selection', 'Please select images to delete.');
         return;
     }
 
     // Show confirmation dialog
-    const confirmed = confirm(`Are you sure you want to delete ${selectedImages.size} selected image(s)? This will permanently delete both the original and upscaled versions.`);
-
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to delete ${selectedImages.size} selected image(s)? This will permanently delete both the original and upscaled versions.`,
+        'Delete',
+        'Cancel',
+        event
+    );
+    
     if (!confirmed) {
         return;
     }
@@ -9681,9 +8273,17 @@ async function handleBulkDelete() {
                 showError(`${result.failed} image(s) failed to delete`);
             }
 
-            // Clear selection and refresh gallery
+            // Clear selection and remove images from gallery
             clearSelection();
-            await loadGallery();
+            if (currentGalleryView === 'scraps') {
+                await loadScraps();
+            } else if (currentGalleryView === 'pinned') {
+                await loadPinned();
+            } else {
+                // Convert filenames to image objects for removal
+                const imagesToRemove = validFilenames.map(filename => ({ filename }));
+                removeMultipleImagesFromGallery(imagesToRemove);
+            }
         } else {
             throw new Error(result.error || 'Bulk delete failed');
         }
@@ -9692,25 +8292,30 @@ async function handleBulkDelete() {
         console.error('Bulk delete error:', error);
         showError('Bulk delete failed: ' + error.message);
     } finally {
-        showLoading(false);
+        showManualLoading(false);
     }
 }
 
-async function handleBulkSequenzia() {
+async function handleBulkSequenzia(event = null) {
     if (selectedImages.size === 0) {
         showError('No images selected');
         return;
     }
 
     // Show confirmation dialog
-    const confirmed = confirm(`Are you sure you want to send ${selectedImages.size} selected image(s) to Sequenzia? This will move the images and delete them from the gallery.`);
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to send ${selectedImages.size} selected image(s) to Sequenzia? This will move the images and delete them from the gallery.`,
+        'Send to Sequenzia',
+        'Cancel',
+        event
+    );
 
     if (!confirmed) {
         return;
     }
 
     try {
-        showLoading(true, 'Sending images to Sequenzia...');
+        showManualLoading(true, 'Sending images to Sequenzia...');
 
         // Filter out any null/undefined values from selectedImages
         const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
@@ -9741,9 +8346,15 @@ async function handleBulkSequenzia() {
                 showError(`${result.failed} image(s) failed to send`);
             }
 
-            // Clear selection and refresh gallery
+            // Clear selection and refresh gallery based on current view
             clearSelection();
-            await loadGallery();
+            if (currentGalleryView === 'scraps') {
+                await loadScraps();
+            } else if (currentGalleryView === 'pinned') {
+                await loadPinned();
+            } else {
+                await loadGallery();
+            }
         } else {
             throw new Error(result.error || 'Send to Sequenzia failed');
         }
@@ -9752,31 +8363,30 @@ async function handleBulkSequenzia() {
         console.error('Send to Sequenzia error:', error);
         showError('Send to Sequenzia failed: ' + error.message);
     } finally {
-        showLoading(false);
+        showManualLoading(false);
     }
 }
 
-async function handleBulkMoveToScraps() {
+async function handleBulkMoveToScraps(event = null) {
     if (selectedImages.size === 0) {
-        showError('No images selected');
-        return;
-    }
-
-    // Don't allow moving scraps to scraps
-    if (isViewingScraps) {
-        showError('Cannot move scraps to scraps');
+        showGlassToast('error', 'No Selection', 'Please select images to move to scraps.');
         return;
     }
 
     // Show confirmation dialog
-    const confirmed = confirm(`Are you sure you want to move ${selectedImages.size} selected image(s) to scraps?`);
-
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to move ${selectedImages.size} selected image(s) to scraps?`,
+        'Move to Scraps',
+        'Cancel',
+        event
+    );
+    
     if (!confirmed) {
         return;
     }
 
     try {
-        showLoading(true, 'Moving images to scraps...');
+        showManualLoading(true, 'Moving images to scraps...');
 
         // Filter out any null/undefined values from selectedImages
         const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
@@ -9818,15 +8428,159 @@ async function handleBulkMoveToScraps() {
             showError(`${errorCount} image(s) failed to move to scraps`);
         }
 
-        // Clear selection and refresh gallery
+        // Clear selection and remove images from gallery
         clearSelection();
-        await loadGallery();
+        if (currentGalleryView === 'scraps') {
+            await loadScraps();
+        } else if (currentGalleryView === 'pinned') {
+            await loadPinned();
+        } else {
+            // Convert filenames to image objects for removal
+            const imagesToRemove = validFilenames.map(filename => ({ filename }));
+            removeMultipleImagesFromGallery(imagesToRemove);
+        }
 
     } catch (error) {
         console.error('Bulk move to scraps error:', error);
         showError('Failed to move images to scraps: ' + error.message);
     } finally {
-        showLoading(false);
+        showManualLoading(false);
+    }
+}
+
+async function handleBulkUnpin(event = null) {
+    if (selectedImages.size === 0) {
+        showError('No images selected');
+        return;
+    }
+
+    // Only allow unpinning when viewing pinned items
+    if (currentGalleryView !== 'pinned') {
+        showError('Can only unpin items when viewing pinned items');
+        return;
+    }
+
+    // Show confirmation dialog
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to unpin ${selectedImages.size} selected image(s)?`,
+        'Unpin',
+        'Cancel',
+        event
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        showManualLoading(true, 'Unpinning images...');
+
+        // Filter out any null/undefined values from selectedImages
+        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to unpin');
+        }
+
+        // Unpin all files at once using bulk endpoint
+        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned/bulk`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ filenames: validFilenames })
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            showGlassToast('success', null, `Unpinned ${result.removedCount} image(s)`);
+
+            // Clear selection and refresh gallery
+            clearSelection();
+            await loadPinned();
+            
+            // Update pin buttons for the affected images
+            for (const filename of validFilenames) {
+                await updateSpecificPinButton(filename);
+            }
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to unpin images');
+        }
+
+    } catch (error) {
+        console.error('Bulk unpin error:', error);
+        showError('Failed to unpin images: ' + error.message);
+    } finally {
+        showManualLoading(false);
+    }
+}
+
+async function handleBulkPin(event = null) {
+    if (selectedImages.size === 0) {
+        showError('No images selected');
+        return;
+    }
+
+    // Only allow pinning when viewing regular images
+    if (currentGalleryView !== 'images') {
+        showError('Can only pin items when viewing regular images');
+        return;
+    }
+
+    // Show confirmation dialog
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to pin ${selectedImages.size} selected image(s)?`,
+        'Pin',
+        'Cancel',
+        event
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        showManualLoading(true, 'Pinning images...');
+
+        // Filter out any null/undefined values from selectedImages
+        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to pin');
+        }
+
+        // Pin all files at once using bulk endpoint
+        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned/bulk`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ filenames: validFilenames })
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            showGlassToast('success', null, `Pinned ${result.addedCount} image(s)`);
+
+            // Clear selection and refresh gallery
+            clearSelection();
+            await loadGallery();
+            
+            // Update pin buttons for the affected images
+            for (const filename of validFilenames) {
+                await updateSpecificPinButton(filename);
+            }
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to pin images');
+        }
+
+    } catch (error) {
+        console.error('Bulk pin error:', error);
+        showError('Failed to pin images: ' + error.message);
+    } finally {
+        showManualLoading(false);
     }
 }
 
@@ -9871,7 +8625,7 @@ async function handleBulkChangePresetConfirm() {
     const newPresetName = presetNameInput.value.trim();
 
     try {
-        showLoading(true, 'Updating preset names...');
+        showManualLoading(true, 'Updating preset names...');
 
         // Filter out any null/undefined values from selectedImages
         const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
@@ -9902,9 +8656,15 @@ async function handleBulkChangePresetConfirm() {
             const action = newPresetName ? `Wrote "${newPresetName} to "` : 'Cleared';
             showGlassToast('success', null, `Updated ${result.updatedCount} image(s) (${action})`);
 
-            // Clear selection and refresh gallery
+            // Clear selection and refresh gallery based on current view
             clearSelection();
-            await loadGallery();
+            if (currentGalleryView === 'scraps') {
+                await loadScraps();
+            } else if (currentGalleryView === 'pinned') {
+                await loadPinned();
+            } else {
+                await loadGallery();
+            }
         } else {
             throw new Error(result.error || 'Failed to update preset names');
         }
@@ -9913,7 +8673,7 @@ async function handleBulkChangePresetConfirm() {
         console.error('Bulk change preset error:', error);
         showError('Failed to update preset names: ' + error.message);
     } finally {
-        showLoading(false);
+        showManualLoading(false);
         closeModal(modal);
     }
 }
@@ -9970,7 +8730,7 @@ async function executeRandomPrompt() {
         const characterPrompts = promptData.slice(1).map(p => ({ prompt: p, uc: '', enabled: true }));
         savedRandomPromptState = {
             basePrompt: promptData[0],
-            baseUc: '<NUC_3>',
+            baseUc: '',
             characters: characterPrompts
         };
         loadCharacterPrompts(characterPrompts, false);
@@ -10105,26 +8865,27 @@ async function toggleRandomPrompt() {
 function addCharacterPrompt() {
     const characterId = `character_${characterPromptCounter++}`;
 
+    // Get the current main window tab selection
+    const mainToggleGroup = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-group');
+    const mainActiveTab = mainToggleGroup ? mainToggleGroup.getAttribute('data-active') : 'prompt';
+
     const characterItem = document.createElement('div');
     characterItem.className = 'character-prompt-item';
     characterItem.id = characterId;
 
-            characterItem.innerHTML = `
+    // Determine which tab should be active based on main window selection
+    const promptTabActive = mainActiveTab === 'prompt' ? 'active' : '';
+    const ucTabActive = mainActiveTab === 'uc' ? 'active' : '';
+
+    characterItem.innerHTML = `
             <div class="character-prompt-tabs">
                 <div class="tab-header">
-                    <div class="tab-buttons">
-                        <button type="button" class="tab-btn active" data-tab="prompt">
-                            <i class="nai-penwriting"></i>
-                        </button>
-                        <button type="button" class="tab-btn" data-tab="uc">
-                            <i class="nai-minus"></i>
-                        </button>
-                        <div class="character-name-editable" onclick="editCharacterName('${characterId}')">
-                            <span class="character-name-text">Character ${characterPromptCounter}</span>
-                            <i class="nai-settings"></i>
-                        </div>
+                    <div class="left-controls">
+                    <div class="character-name-editable">
+                        <input type="text" class="character-name-input hover-show" value="Character ${characterPromptCounter}" placeholder="Enter character name...">
+                        <span class="character-name-input-placeholder">Character ${characterPromptCounter}</span>
                     </div>
-                    
+                </div>
                 <div class="character-prompt-preview">
                     <input type="text" id="${characterId}_preview" readonly placeholder="Click to expand and edit prompt..."></input>
                 </div>
@@ -10150,16 +8911,16 @@ function addCharacterPrompt() {
                     </div>
                 </div>
                 <div class="tab-content">
-                    <div class="tab-pane active" id="${characterId}_prompt-tab" data-label="Prompt">
+                    <div class="tab-pane ${promptTabActive}" id="${characterId}_prompt-tab" data-label="Prompt">
                         <div class="character-prompt-textarea-container">
                             <div class="character-prompt-textarea-background"></div>
-                            <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt..."></textarea>
+                            <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
                         </div>
                     </div>
-                    <div class="tab-pane" id="${characterId}_uc-tab" data-label="UC">
+                    <div class="tab-pane ${ucTabActive}" id="${characterId}_uc-tab" data-label="UC">
                         <div class="character-prompt-textarea-container">
                             <div class="character-prompt-textarea-background"></div>
-                            <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content..."></textarea>
+                            <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
                         </div>
                     </div>
                 </div>
@@ -10206,21 +8967,33 @@ function addCharacterPrompt() {
         initializeEmphasisOverlay(ucField);
     }
 
-    // Add tab switching functionality for character prompt tabs
-    const characterTabButtons = characterItem.querySelectorAll('.tab-btn');
-
-    characterTabButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const targetTab = this.getAttribute('data-tab');
-            switchCharacterTab(characterId, targetTab);
-        });
-    });
-
     // Add preview textarea click handler
     const previewTextarea = document.getElementById(`${characterId}_preview`);
     if (previewTextarea) {
         previewTextarea.addEventListener('click', () => {
             toggleCharacterPromptCollapse(characterId);
+        });
+    }
+
+    // Add character name input event listeners
+    const nameInput = characterItem.querySelector('.character-name-input');
+    if (nameInput) {
+        nameInput.addEventListener('blur', function() {
+            const newName = this.value.trim();
+            if (newName) {
+                characterItem.dataset.charaName = newName;
+                characterItem.querySelector('.character-name-input-placeholder').textContent = newName;
+            } else {
+                this.value = `Character ${characterPromptCounter}`;
+                characterItem.dataset.charaName = `Character ${characterPromptCounter}`;
+                characterItem.querySelector('.character-name-input-placeholder').textContent = `Character ${characterPromptCounter}`;
+            }
+        });
+
+        nameInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                this.blur();
+            }
         });
     }
 
@@ -10314,9 +9087,8 @@ function updateAutoPositionToggle() {
         return;
     }
 
-    autoPositionBtn.style.display = 'inline-flex';
-
     if (characterItems.length === 1) {
+        autoPositionBtn.style.display = 'none';
         // Force enable auto position for single character
         autoPositionBtn.setAttribute('data-state', 'on');
         // Hide position buttons and move buttons for single character
@@ -10329,6 +9101,7 @@ function updateAutoPositionToggle() {
             if (moveDownBtn) moveDownBtn.style.display = 'none';
         });
     } else {
+        autoPositionBtn.style.display = 'inline-flex';
         // Show/hide position buttons based on auto position state
         const isAutoPosition = autoPositionBtn.getAttribute('data-state') === 'on';
         characterItems.forEach((item, index) => {
@@ -10462,6 +9235,10 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
         return;
     }
 
+    // Get the current main window tab selection
+    const mainToggleGroup = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-group');
+    const mainActiveTab = mainToggleGroup ? mainToggleGroup.getAttribute('data-active') : 'prompt';
+
     // Update counter to match the number of characters
     characterPromptCounter = characterPrompts.length;
 
@@ -10489,24 +9266,22 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
             }
         }
 
+        // Determine which tab should be active based on main window selection
+        const promptTabActive = mainActiveTab === 'prompt' ? 'active' : '';
+        const ucTabActive = mainActiveTab === 'uc' ? 'active' : '';
+
         characterItem.innerHTML = `
             <div class="character-prompt-tabs">
                 <div class="tab-header">
-                    <div class="tab-buttons">
-                        <button type="button" class="tab-btn active" data-tab="prompt">
-                            <i class="nai-penwriting"></i>
-                        </button>
-                        <button type="button" class="tab-btn" data-tab="uc">
-                            <i class="nai-minus"></i>
-                        </button>
-                        <div class="character-name-editable" onclick="editCharacterName('${characterId}')">
-                            <span class="character-name-text">${character.chara_name || `Character ${index + 1}`}</span>
-                            <i class="nai-settings"></i>
-                        </div>
+                    <div class="left-controls">
+                    <div class="character-name-editable">
+                        <input type="text" class="character-name-input hover-show" value="${character.chara_name || `Character ${index + 1}`}" placeholder="Enter character name...">
+                        <span class="character-name-input-placeholder">${character.chara_name || `Character ${index + 1}`}</span>
                     </div>
-                    <div class="character-prompt-preview">
-                        <input type="text" id="${characterId}_preview" readonly placeholder="Click to expand and edit prompt..." value="${character.prompt || ''}"></input>
                     </div>
+                <div class="character-prompt-preview">
+                    <input type="text" id="${characterId}_preview" readonly placeholder="Click to expand and edit prompt..." value="${character.prompt || ''}"></input>
+                </div>
                     <div class="character-prompt-controls">
                         <button type="button" class="btn-secondary character-prompt-collapse-toggle" onclick="toggleCharacterPromptCollapse('${characterId}')" title="Collapse/Expand">
                             <i class="nai-fold"></i>
@@ -10529,16 +9304,16 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                     </div>
                 </div>
                 <div class="tab-content">
-                    <div class="tab-pane active" id="${characterId}_prompt-tab" data-label="Prompt">
+                    <div class="tab-pane ${promptTabActive}" id="${characterId}_prompt-tab" data-label="Prompt">
                         <div class="character-prompt-textarea-container">
                             <div class="character-prompt-textarea-background"></div>
-                            <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt...">${character.prompt || ''}</textarea>
+                            <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false">${character.prompt || ''}</textarea>
                         </div>
                     </div>
-                    <div class="tab-pane" id="${characterId}_uc-tab" data-label="UC">
+                    <div class="tab-pane ${ucTabActive}" id="${characterId}_uc-tab" data-label="UC">
                         <div class="character-prompt-textarea-container">
                             <div class="character-prompt-textarea-background"></div>
-                            <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content...">${character.uc || ''}</textarea>
+                            <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false">${character.uc || ''}</textarea>
                         </div>
                     </div>
                 </div>
@@ -10601,21 +9376,33 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
             updateEmphasisHighlighting(ucField);
         }
 
-        // Add tab switching functionality for character prompt tabs
-        const characterTabButtons = characterItem.querySelectorAll('.tab-btn');
-
-        characterTabButtons.forEach(button => {
-            button.addEventListener('click', function() {
-                const targetTab = this.getAttribute('data-tab');
-                switchCharacterTab(characterId, targetTab);
-            });
-        });
-
         // Add preview textarea click handler
         const previewTextarea = document.getElementById(`${characterId}_preview`);
         if (previewTextarea) {
             previewTextarea.addEventListener('click', () => {
                 toggleCharacterPromptCollapse(characterId);
+            });
+        }
+
+        // Add character name input event listeners
+        const nameInput = characterItem.querySelector('.character-name-input');
+        if (nameInput) {
+            nameInput.addEventListener('blur', function() {
+                const newName = this.value.trim();
+                if (newName) {
+                    characterItem.dataset.charaName = newName;
+                    characterItem.querySelector('.character-name-input-placeholder').textContent = newName;
+                } else {
+                    this.value = `Character ${characterPromptCounter}`;
+                    characterItem.dataset.charaName = `Character ${characterPromptCounter}`;
+                    characterItem.querySelector('.character-name-input-placeholder').textContent = `Character ${characterPromptCounter}`;
+                }
+            });
+
+            nameInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    this.blur();
+                }
             });
         }
 
@@ -10641,60 +9428,6 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
 
     // Update auto position toggle after loading
     updateAutoPositionToggle();
-}
-
-function editCharacterName(characterId) {
-    const characterItem = document.getElementById(characterId);
-    const nameElement = characterItem.querySelector('.character-name-text');
-    const currentName = nameElement.textContent;
-
-    // Check if there's already an input field and remove it
-    const existingInput = characterItem.querySelector('.character-name-input');
-    if (existingInput) {
-        existingInput.remove();
-        nameElement.style.display = 'inline';
-        return;
-    }
-
-    // Create input field
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'character-name-input';
-    input.value = currentName;
-    input.style.width = '100%';
-    input.style.padding = '4px 8px';
-    input.style.border = '1px solid #444';
-    input.style.borderRadius = '4px';
-    input.style.backgroundColor = '#2a2a2a';
-    input.style.color = '#fff';
-    input.style.fontSize = '14px';
-
-    // Replace text with input
-    nameElement.style.display = 'none';
-    nameElement.parentNode.insertBefore(input, nameElement);
-    input.focus();
-    input.select();
-
-    // Handle save on enter or blur
-    function saveName() {
-        const newName = input.value.trim();
-        if (newName) {
-            nameElement.textContent = newName;
-            characterItem.dataset.charaName = newName;
-        }
-        nameElement.style.display = 'inline';
-        input.remove();
-    }
-
-    input.addEventListener('blur', saveName);
-    input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            saveName();
-        } else if (e.key === 'Escape') {
-            nameElement.style.display = 'inline';
-            input.remove();
-        }
-    });
 }
 
 function getCellLabelFromCoords(x, y) {
@@ -10971,3678 +9704,6 @@ function updateCharacterPromptPreview(characterId) {
     }
 }
 
-// Reference Browser Functions
-let cacheImages = [];
-let cacheCurrentPage = 1;
-let cacheImagesPerPage = 20;
-
-// Vibe References Functions
-let vibeReferences = [];
-let vibeReferencesGallery = null;
-
-async function showCacheBrowser() {
-    // Show as container in preview section
-    const cacheBrowserContainer = document.getElementById('cacheBrowserContainer');
-    const cacheBrowserLoadingContainer = document.getElementById('cacheBrowserLoadingContainer');
-    const cacheGalleryContainer = document.getElementById('cacheGalleryContainer');
-
-    if (!cacheBrowserContainer || !cacheBrowserLoadingContainer || !cacheGalleryContainer || !previewSection) return;
-
-    // Set active panel to cache browser
-    previewSection.setAttribute('data-active-panel', 'cache-browser');
-    cacheBrowserLoadingContainer.style.display = 'flex';
-    cacheGalleryContainer.innerHTML = '';
-
-    if (window.innerWidth <= 1400) {
-        previewSection.classList.add('show');
-        setTimeout(() => { previewSection.classList.add('active'); }, 1);
-    }
-
-    try {
-        await loadCacheImages();
-        await loadVibeReferences();
-        displayCacheImagesContainer();
-        displayVibeReferencesContainer();
-    } catch (error) {
-        console.error('Error loading cache images:', error);
-        showError('Failed to load cache images');
-    } finally {
-        cacheBrowserLoadingContainer.style.display = 'none';
-    }
-}
-
-function hideCacheBrowser() {
-    // Hide both modal and container versions
-    const cacheBrowserContainer = document.getElementById('cacheBrowserContainer');
-
-    if (cacheBrowserContainer) {
-        cacheBrowserContainer.style.display = 'none';
-    }
-
-    // Clear active panel to show manual preview
-    if (previewSection) {
-        if (window.innerWidth <= 1400) {
-            previewSection.classList.remove('show');
-            setTimeout(() => { previewSection.classList.remove('active'); }, 1);
-            setTimeout(() => { previewSection.removeAttribute('data-active-panel'); }, 1000);
-        } else {
-            previewSection.removeAttribute('data-active-panel');
-        }
-    }
-}
-
-async function loadCacheImages() {
-    try {
-        const response = await fetchWithAuth('/references', {
-            method: 'OPTIONS'
-        });
-        if (response.ok) {
-            cacheImages = await response.json();
-            console.log('Loaded cache images:', cacheImages.length, 'items');
-        } else {
-            throw new Error(`Failed to load cache: ${response.statusText}`);
-        }
-    } catch (error) {
-        console.error('Error loading cache images:', error);
-        throw error;
-    }
-}
-
-function displayCacheImages() {
-    // Get the references tab gallery (modal version)
-    const referencesTab = document.getElementById('references-tab');
-    const cacheGallery = referencesTab ? referencesTab.querySelector('#cacheGallery') : null;
-
-    if (!cacheGallery) return;
-
-    cacheGallery.innerHTML = '';
-
-    if (cacheImages.length === 0) {
-        cacheGallery.innerHTML = '<div class="no-images">No cache images found</div>';
-        return;
-    }
-
-    // Separate default workspace items from current workspace items
-    const currentWorkspaceItems = [];
-    const defaultWorkspaceItems = [];
-
-    cacheImages.forEach(cacheImage => {
-        if (cacheImage.workspaceId === 'default') {
-            defaultWorkspaceItems.push(cacheImage);
-        } else {
-            currentWorkspaceItems.push(cacheImage);
-        }
-    });
-
-    console.log('Cache images sorting:', {
-        total: cacheImages.length,
-        currentWorkspace: currentWorkspaceItems.length,
-        defaultWorkspace: defaultWorkspaceItems.length
-    });
-
-    // Display current workspace items first, then default workspace items
-    currentWorkspaceItems.forEach(cacheImage => {
-        const galleryItem = createCacheGalleryItem(cacheImage);
-        cacheGallery.appendChild(galleryItem);
-    });
-
-    defaultWorkspaceItems.forEach(cacheImage => {
-        const galleryItem = createCacheGalleryItem(cacheImage);
-        cacheGallery.appendChild(galleryItem);
-    });
-
-    // Add few-items class if there are 3 or fewer items
-    if (cacheImages.length <= 3) {
-        cacheGallery.classList.add('few-items');
-    } else {
-        cacheGallery.classList.remove('few-items');
-    }
-}
-
-function displayCacheImagesContainer() {
-    const cacheGalleryContainer = document.getElementById('cacheGalleryContainer');
-    if (!cacheGalleryContainer) return;
-
-    cacheGalleryContainer.innerHTML = '';
-
-    if (cacheImages.length === 0) {
-        cacheGalleryContainer.innerHTML = '<div class="no-images">No cache images found</div>';
-        return;
-    }
-
-    // Separate default workspace items from current workspace items
-    const currentWorkspaceItems = [];
-    const defaultWorkspaceItems = [];
-
-    cacheImages.forEach(cacheImage => {
-        if (cacheImage.workspaceId === 'default') {
-            defaultWorkspaceItems.push(cacheImage);
-        } else {
-            currentWorkspaceItems.push(cacheImage);
-        }
-    });
-
-    // Display current workspace items first, then default workspace items
-    currentWorkspaceItems.forEach(cacheImage => {
-        const galleryItem = createCacheGalleryItem(cacheImage);
-        cacheGalleryContainer.appendChild(galleryItem);
-    });
-
-    defaultWorkspaceItems.forEach(cacheImage => {
-        const galleryItem = createCacheGalleryItem(cacheImage);
-        cacheGalleryContainer.appendChild(galleryItem);
-    });
-
-    // Add few-items class if there are 3 or fewer items
-    if (cacheImages.length <= 3) {
-        cacheGalleryContainer.classList.add('few-items');
-    } else {
-        cacheGalleryContainer.classList.remove('few-items');
-    }
-}
-
-function displayVibeReferencesContainer() {
-    const vibeReferencesGalleryContainer = document.getElementById('vibeReferencesGalleryContainer');
-    if (!vibeReferencesGalleryContainer) return;
-
-    vibeReferencesGalleryContainer.innerHTML = '';
-
-    const thisVibeReferences = vibeReferences.filter(vibeRef => vibeRef.workspaceId === 'default' || vibeRef.workspaceId === activeWorkspace);
-
-    if (thisVibeReferences.length === 0) {
-        vibeReferencesGalleryContainer.innerHTML = '<div class="no-images">No vibe references found</div>';
-        return;
-    }
-
-    // Separate default workspace items from current workspace items
-    const currentWorkspaceItems = [];
-    const defaultWorkspaceItems = [];
-
-    thisVibeReferences.forEach(vibeRef => {
-        if (vibeRef.workspaceId === 'default') {
-            defaultWorkspaceItems.push(vibeRef);
-        } else {
-            currentWorkspaceItems.push(vibeRef);
-        }
-    });
-
-    // Display current workspace items first, then default workspace items
-    currentWorkspaceItems.forEach(vibeRef => {
-        const galleryItem = createVibeReferenceGalleryItem(vibeRef);
-        vibeReferencesGalleryContainer.appendChild(galleryItem);
-    });
-
-    defaultWorkspaceItems.forEach(vibeRef => {
-        const galleryItem = createVibeReferenceGalleryItem(vibeRef);
-        vibeReferencesGalleryContainer.appendChild(galleryItem);
-    });
-
-    // Add few-items class if there are 3 or fewer items
-    if (thisVibeReferences.length <= 3) {
-        vibeReferencesGalleryContainer.classList.add('few-items');
-    } else {
-        vibeReferencesGalleryContainer.classList.remove('few-items');
-    }
-}
-
-function createCacheGalleryItem(cacheImage) {
-    const item = document.createElement('div');
-    item.className = 'cache-gallery-item';
-
-    // Create image element
-    const img = document.createElement('img');
-    if (cacheImage.hasPreview) {
-        img.src = `/cache/preview/${cacheImage.hash}.webp`;
-    } else {
-        img.src = `/cache/${cacheImage.hash}`;
-    }
-    img.alt = `Reference image ${cacheImage.hash}`;
-    img.loading = 'lazy';
-
-    // Create overlay
-    const overlay = document.createElement('div');
-    overlay.className = 'cache-gallery-item-overlay';
-
-    // Create info
-    const info = document.createElement('div');
-    info.className = 'cache-gallery-item-info';
-
-    const dateTime = new Date(cacheImage.mtime).toLocaleString();
-    const fileSize = formatFileSize(cacheImage.size);
-
-    info.innerHTML = `
-        <div>${cacheImage.hash.substring(0, 8)}...</div>
-        <div>${dateTime}</div>
-        <div>${fileSize}</div>
-    `;
-
-    // Create buttons container
-    const buttonsContainer = document.createElement('div');
-    buttonsContainer.className = 'cache-gallery-item-buttons';
-
-    // Create delete button
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'cache-delete-btn';
-    deleteBtn.innerHTML = '<i class="nai-trash"></i>';
-    deleteBtn.title = 'Delete image';
-    deleteBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        deleteCacheImage(cacheImage);
-    });
-
-    buttonsContainer.appendChild(deleteBtn);
-
-    overlay.appendChild(info);
-    overlay.appendChild(buttonsContainer);
-
-    item.appendChild(img);
-    item.appendChild(overlay);
-
-    // Add default workspace badge if this is a default workspace item
-    if (cacheImage.workspaceId === 'default') {
-        const badge = document.createElement('div');
-        badge.className = 'default-workspace-badge';
-        badge.textContent = 'Default';
-        badge.style.background = '#444';
-        badge.style.color = '#fff';
-        badge.style.fontWeight = 'bold';
-        badge.style.padding = '2px 8px';
-        badge.style.borderRadius = '6px';
-        badge.style.marginTop = '8px';
-        badge.style.marginBottom = '4px';
-        badge.style.display = 'inline-block';
-        badge.style.fontSize = '0.8rem';
-        item.appendChild(badge);
-    }
-
-    // Click to select image
-    item.addEventListener('click', () => {
-        selectCacheImage(cacheImage);
-    });
-
-    return item;
-}
-
-// Vibe References Functions
-async function loadVibeReferences() {
-    try {
-        const response = await fetchWithAuth('/vibe/images', {
-            method: 'GET'
-        });
-        if (response.ok) {
-            vibeReferences = await response.json();
-        } else {
-            throw new Error(`Failed to load vibe references: ${response.statusText}`);
-        }
-    } catch (error) {
-        console.error('Error loading vibe references:', error);
-        throw error;
-    }
-}
-
-function displayVibeReferences() {
-    // Get the vibe references tab gallery (modal version)
-    const vibeReferencesTab = document.getElementById('vibe-references-tab');
-    const vibeReferencesGallery = vibeReferencesTab ? vibeReferencesTab.querySelector('#vibeReferencesGallery') : null;
-    const thisVibeReferences = vibeReferences.filter(vibeRef => vibeRef.workspaceId === 'default' || vibeRef.workspaceId === activeWorkspace);
-
-    if (!vibeReferencesGallery) return;
-
-    vibeReferencesGallery.innerHTML = '';
-
-    if (thisVibeReferences.length === 0) {
-        vibeReferencesGallery.innerHTML = '<div class="no-images">No vibe references found</div>';
-        return;
-    }
-
-    // Separate default workspace items from current workspace items
-    const currentWorkspaceItems = [];
-    const defaultWorkspaceItems = [];
-
-    thisVibeReferences.forEach(vibeRef => {
-        if (vibeRef.workspaceId === 'default') {
-            defaultWorkspaceItems.push(vibeRef);
-        } else {
-            currentWorkspaceItems.push(vibeRef);
-        }
-    });
-
-    // Display current workspace items first, then default workspace items
-    currentWorkspaceItems.forEach(vibeRef => {
-        const galleryItem = createVibeReferenceGalleryItem(vibeRef);
-        vibeReferencesGallery.appendChild(galleryItem);
-    });
-
-    defaultWorkspaceItems.forEach(vibeRef => {
-        const galleryItem = createVibeReferenceGalleryItem(vibeRef);
-        vibeReferencesGallery.appendChild(galleryItem);
-    });
-
-    // Add few-items class if there are 3 or fewer items
-    if (thisVibeReferences.length <= 3) {
-        vibeReferencesGallery.classList.add('few-items');
-    } else {
-        vibeReferencesGallery.classList.remove('few-items');
-    }
-}
-
-function createVibeReferenceGalleryItem(vibeRef) {
-    const item = document.createElement('div');
-    item.className = 'cache-gallery-item';
-
-    // Get current model
-    const currentModel = manualSelectedModel || manualModelHidden?.value || '';
-
-    // Check if this vibe has encodings for the current model
-    const hasCurrentModelEncodings = vibeRef.encodings && vibeRef.encodings.some(encoding =>
-        encoding.model.toLowerCase() === currentModel.toLowerCase()
-    );
-
-    // Add disabled class if no encodings for current model
-    if (!hasCurrentModelEncodings) {
-        item.classList.add('disabled');
-    }
-
-    // Create image element
-    const img = document.createElement('img');
-    if (vibeRef.preview) {
-        img.src = `/cache/preview/${vibeRef.preview}`;
-    } else if (vibeRef.type === 'base64' && vibeRef.source) {
-        img.src = `data:image/png;base64,${vibeRef.source}`;
-    } else {
-        // Fallback to a placeholder
-        img.src = '/images/placeholder.png';
-    }
-    img.alt = `Vibe reference ${vibeRef.id}`;
-    img.loading = 'lazy';
-
-    // Create overlay
-    const overlay = document.createElement('div');
-    overlay.className = 'cache-gallery-item-overlay';
-
-    // Create info
-    const info = document.createElement('div');
-    info.className = 'cache-gallery-item-info';
-
-    const encodingsCount = vibeRef.encodings ? vibeRef.encodings.length : 0;
-    const currentModelEncodingsCount = vibeRef.encodings ?
-        vibeRef.encodings.filter(encoding => encoding.model.toLowerCase() === currentModel.toLowerCase()).length : 0;
-
-    info.innerHTML = `
-        <div>${vibeRef.id}</div>
-        <div>${currentModelEncodingsCount}/${encodingsCount} encoding(s) for ${currentModel}</div>
-    `;
-
-    // Create buttons container
-    const buttonsContainer = document.createElement('div');
-    buttonsContainer.className = 'cache-gallery-item-buttons';
-
-    // Create select button
-    const selectBtn = document.createElement('button');
-    selectBtn.className = 'cache-delete-btn';
-    selectBtn.innerHTML = '<i class="nai-vibe-transfer"></i>';
-    selectBtn.title = hasCurrentModelEncodings ? 'Select vibe reference' : 'No encodings for current model';
-    selectBtn.disabled = !hasCurrentModelEncodings;
-    selectBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (hasCurrentModelEncodings) {
-            await selectVibeReference(vibeRef);
-        }
-    });
-
-    buttonsContainer.appendChild(selectBtn);
-
-    overlay.appendChild(info);
-    overlay.appendChild(buttonsContainer);
-
-    item.appendChild(img);
-    item.appendChild(overlay);
-
-    // Add default workspace badge if this is a default workspace item
-    if (vibeRef.workspaceId === 'default') {
-        const badge = document.createElement('div');
-        badge.className = 'default-workspace-badge';
-        badge.textContent = 'Default';
-        badge.style.background = '#444';
-        badge.style.color = '#fff';
-        badge.style.fontWeight = 'bold';
-        badge.style.padding = '2px 8px';
-        badge.style.borderRadius = '6px';
-        badge.style.marginTop = '8px';
-        badge.style.marginBottom = '4px';
-        badge.style.display = 'inline-block';
-        badge.style.fontSize = '0.8rem';
-        item.appendChild(badge);
-    }
-
-    // Click to select vibe reference (only if enabled)
-    item.addEventListener('click', async () => {
-        if (hasCurrentModelEncodings) {
-            await selectVibeReference(vibeRef);
-        }
-    });
-
-    return item;
-}
-
-async function selectVibeReference(vibeRef) {
-    // Add to vibe references container
-    await addVibeReferenceToContainer(vibeRef.id);
-
-    // Close cache browser
-    hideCacheBrowser();
-}
-
-function createVibeReferenceItem(vibeRef) {
-    const item = document.createElement('div');
-    item.className = 'vibe-reference-item';
-    item.setAttribute('data-vibe-id', vibeRef.id);
-
-    const previewContainer = document.createElement('div');
-    previewContainer.className = 'variation-image-container';
-
-    // Create preview image
-    const preview = document.createElement('img');
-    preview.className = 'vibe-reference-preview';
-    if (vibeRef.preview) {
-        preview.src = `/cache/preview/${vibeRef.preview}`;
-    } else if (vibeRef.type === 'base64' && vibeRef.source) {
-        preview.src = `data:image/png;base64,${vibeRef.source}`;
-    } else {
-        // Fallback to a placeholder
-        preview.src = '/images/placeholder.png';
-    }
-    preview.alt = `Vibe reference ${vibeRef.id}`;
-
-    previewContainer.appendChild(preview);
-
-    const overlayIconContainer = document.createElement('div');
-    overlayIconContainer.className = 'overlay-icon-container';
-    overlayIconContainer.innerHTML = '<i class="nai-vibe-transfer"></i>';
-    previewContainer.appendChild(overlayIconContainer);
-
-    // Create controls
-    const controls = document.createElement('div');
-    controls.className = 'vibe-reference-controls';
-
-    // Create delete button
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'btn-secondary blur';
-    deleteBtn.innerHTML = '<i class="nai-thin-cross"></i>';
-    deleteBtn.title = 'Remove vibe reference';
-    deleteBtn.addEventListener('click', () => {
-        removeVibeReference(vibeRef.id);
-    });
-
-    controls.appendChild(deleteBtn);
-
-    // Create info section
-    const info = document.createElement('div');
-    info.className = 'vibe-reference-info';
-
-    // IE Control
-    const ieControl = document.createElement('div');
-    ieControl.className = 'vibe-reference-ie-control';
-
-    // Create custom dropdown for IE values
-    const ieDropdown = document.createElement('div');
-    ieDropdown.className = 'custom-dropdown dropup';
-
-    const ieDropdownBtn = document.createElement('button');
-    ieDropdownBtn.type = 'button';
-    ieDropdownBtn.className = 'custom-dropdown-btn hover-show colored';
-
-    const ieText = document.createElement('span');
-
-    // Get current model
-    const currentModel = manualSelectedModel || manualModelHidden?.value || '';
-
-    // Get available encodings for this vibe (filtered by current model)
-    const availableEncodings = vibeRef.encodings ?
-        vibeRef.encodings.filter(encoding => encoding.model.toLowerCase() === currentModel.toLowerCase()) : [];
-
-    if (availableEncodings.length > 0) {
-        // Use the first encoding as default
-        const defaultEncoding = availableEncodings[0];
-        ieText.textContent = `${(parseFloat(defaultEncoding.informationExtraction) * 100).toFixed(0)}%`;
-        ieDropdownBtn.dataset.selectedModel = defaultEncoding.model;
-        ieDropdownBtn.dataset.selectedIe = defaultEncoding.informationExtraction;
-    } else {
-        ieText.textContent = 'No encodings';
-        ieDropdownBtn.disabled = true;
-    }
-    ieDropdownBtn.appendChild(ieText);
-
-    const ieSuffix = document.createElement('span');
-    ieSuffix.style.opacity = '0.5';
-    ieSuffix.textContent = 'IE';
-    ieDropdownBtn.appendChild(ieSuffix);
-
-    const ieDropdownMenu = document.createElement('div');
-    ieDropdownMenu.className = 'custom-dropdown-menu';
-    ieDropdownMenu.style.display = 'none';
-
-    // Add encoding options (only for current model)
-    availableEncodings.forEach(encoding => {
-        const option = document.createElement('div');
-        option.className = 'custom-dropdown-option';
-        option.textContent = `${(parseFloat(encoding.informationExtraction) * 100).toFixed(0)}%`;
-        option.dataset.model = encoding.model;
-        option.dataset.ie = encoding.informationExtraction;
-
-        option.addEventListener('click', () => {
-            const optionText = document.createElement('span');
-            optionText.textContent = `${(parseFloat(encoding.informationExtraction) * 100).toFixed(0)}%`;
-            ieDropdownBtn.innerHTML = '';
-            ieDropdownBtn.appendChild(optionText);
-            ieDropdownBtn.appendChild(ieSuffix);
-            ieDropdownBtn.dataset.selectedModel = encoding.model;
-            ieDropdownBtn.dataset.selectedIe = encoding.informationExtraction;
-            ieDropdownMenu.style.display = 'none';
-        });
-
-        ieDropdownMenu.appendChild(option);
-    });
-
-    // Add dropdown toggle functionality
-    ieDropdownBtn.addEventListener('click', () => {
-        if (ieDropdownMenu.style.display === 'none') {
-            ieDropdownMenu.style.display = 'block';
-        } else {
-            ieDropdownMenu.style.display = 'none';
-        }
-    });
-
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!ieDropdown.contains(e.target)) {
-            ieDropdownMenu.style.display = 'none';
-        }
-    });
-
-    ieDropdown.appendChild(ieDropdownBtn);
-    ieDropdown.appendChild(ieDropdownMenu);
-    ieControl.appendChild(ieDropdown);
-
-    // Ratio Control
-    const ratioControl = document.createElement('div');
-    ratioControl.className = 'vibe-reference-ratio-control';
-
-    const ratioInput = document.createElement('input');
-    ratioInput.type = 'number';
-    ratioInput.className = 'vibe-reference-ratio-input hover-show right colored';
-    ratioInput.min = '0.0';
-    ratioInput.max = '1.0';
-    ratioInput.step = '0.01';
-    ratioInput.value = '0.7';
-
-    // Add wheel event for scrolling
-    ratioInput.addEventListener('wheel', function(e) {
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? -0.01 : 0.01;
-        const newValue = Math.max(0, Math.min(1, parseFloat(this.value) + delta));
-        this.value = newValue.toFixed(2);
-    });
-
-    ratioControl.appendChild(ratioInput);
-
-    info.appendChild(ieControl);
-    info.appendChild(ratioControl);
-
-    item.appendChild(previewContainer);
-    item.appendChild(controls);
-    item.appendChild(info);
-
-    return item;
-}
-
-async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
-    // Check if inpainting is enabled (mask is present)
-    if (window.currentMaskData) {
-        console.warn('Cannot add vibe references during inpainting');
-        showError('Vibe transfers are disabled during inpainting');
-        return;
-    }
-
-    // Find the vibe reference in the global vibeReferences array
-    let vibeRef = vibeReferences.find(ref => ref.id === vibeId);
-    if (!vibeRef) {
-        // Try to load vibe references if not found
-        if (vibeReferences.length === 0) {
-            try {
-                await loadVibeReferences();
-                vibeRef = vibeReferences.find(ref => ref.id === vibeId);
-            } catch (error) {
-                console.error('Failed to load vibe references:', error);
-            }
-        }
-
-        if (!vibeRef) {
-            console.error(`Vibe reference with ID ${vibeId} not found`);
-            return;
-        }
-    }
-
-    if (!vibeReferencesContainer) return;
-
-    // Check if already exists
-    const existingItem = vibeReferencesContainer.querySelector(`[data-vibe-id="${vibeId}"]`);
-    if (existingItem) {
-        console.warn(`Vibe reference ${vibeId} already exists in container`);
-        return;
-    }
-
-    const item = createVibeReferenceItem(vibeRef);
-
-    // Set the specific IE and strength values
-    const ieDropdownBtn = item.querySelector('.custom-dropdown-btn');
-    const ratioInput = item.querySelector('.vibe-reference-ratio-input');
-
-    const ieSuffix = document.createElement('span');
-    ieSuffix.style.opacity = '0.5';
-    ieSuffix.textContent = 'IE';
-    
-    if (ieDropdownBtn && selectedIe) {
-        // Find the encoding with the specified IE
-        const encoding = vibeRef.encodings?.find(enc => enc.informationExtraction === selectedIe);
-        if (encoding) {
-            const optionText = document.createElement('span');
-            optionText.textContent = `${(parseFloat(encoding.informationExtraction) * 100).toFixed(0)}%`;
-            ieDropdownBtn.innerHTML = '';
-            ieDropdownBtn.appendChild(optionText);
-            ieDropdownBtn.appendChild(ieSuffix);
-            ieDropdownBtn.dataset.selectedModel = encoding.model;
-            ieDropdownBtn.dataset.selectedIe = encoding.informationExtraction;
-        }
-    }
-
-    if (ratioInput && strength !== undefined) {
-        ratioInput.value = strength.toString();
-    }
-
-    vibeReferencesContainer.appendChild(item);
-
-    // Show the section
-    if (vibeReferencesContainer) {
-        vibeReferencesContainer.style.display = '';
-        if (vibeNormalizeToggle) {
-            vibeNormalizeToggle.style.display = '';
-        }
-        if (transformationRow) {
-            transformationRow.classList.add('display-vibe');
-        }
-    }
-}
-
-function removeVibeReference(vibeId) {
-    if (!vibeReferencesContainer) return;
-
-    const item = vibeReferencesContainer.querySelector(`[data-vibe-id="${vibeId}"]`);
-    if (item) {
-        item.remove();
-
-        // Hide section if no more items
-        const remainingItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item');
-        if (remainingItems.length === 0) {
-            if (vibeReferencesContainer) {
-                vibeReferencesContainer.style.display = 'none';
-            }
-            if (transformationRow) {
-                transformationRow.classList.remove('display-vibe');
-            }
-            if (vibeNormalizeToggle) {
-                vibeNormalizeToggle.style.display = 'none';
-            }
-        }
-    }
-}
-
-function refreshVibeReferences() {
-    // Refresh vibe references in the gallery (both modal and container versions)
-    if (vibeReferences && vibeReferences.length > 0) {
-        displayVibeReferences();
-        displayVibeReferencesContainer();
-    }
-}
-
-// Cache Browser Tab Functions
-function switchCacheBrowserTab(tabName) {
-    // Update tab buttons (both modal and container versions)
-    const tabButtons = document.querySelectorAll('.cache-browser-tabs .tab-btn');
-    tabButtons.forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.getAttribute('data-tab') === tabName) {
-            btn.classList.add('active');
-        }
-    });
-
-    // Update tab panes (container version)
-    const containerTabPanes = document.querySelectorAll('#cacheBrowserContainer .cache-browser-body .tab-pane');
-    containerTabPanes.forEach(pane => {
-        pane.classList.remove('active');
-        if (pane.id === `${tabName}-tab-container`) {
-            pane.classList.add('active');
-        }
-    });
-}
-
-function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-async function selectCacheImage(cacheImage) {
-    try {
-        // Check if there's an existing mask
-        const hasExistingMask = window.currentMaskData !== null && window.currentMaskData !== undefined;
-
-        if (hasExistingMask) {
-            // Store the pending cache image selection and show alert modal
-            window.pendingCacheImageSelection = { cacheImage };
-            showBaseImageChangeAlertModal();
-            return;
-        }
-
-        // No mask exists, proceed with cache image selection
-        await selectCacheImageInternal(cacheImage);
-
-    } catch (error) {
-        console.error('Error selecting cache image:', error);
-        showError('Failed to select cache image');
-    }
-}
-
-// Internal function to handle the actual cache image selection
-async function selectCacheImageInternal(cacheImage) {
-    try {
-        // Set the uploaded image data
-        window.uploadedImageData = {
-            image_source: `cache:${cacheImage.hash}`,
-            width: 512, // Default, will be updated when image loads
-            height: 512,
-            bias: 2, // Reset bias to center (2)
-            isBiasMode: true,
-            isClientSide: 2
-        };
-
-
-        // Show transformation section content
-        if (transformationRow) {
-            transformationRow.classList.add('display-image');
-        }
-        document.getElementById('manualStrengthGroup').style.display = '';
-        document.getElementById('manualNoiseGroup').style.display = '';
-
-        // Update image bias - reset to center (2)
-        if (imageBiasHidden != null) imageBiasHidden.value = '2';
-        renderImageBiasDropdown('2');
-
-        // Set transformation type to browse (successful)
-        updateTransformationDropdownState('browse', 'Upload');
-
-        // Update mask preview and button visibility
-        updateUploadDeleteButtonVisibility();
-        updateInpaintButtonState();
-
-        // Crop and update preview
-        await cropImageToResolution();
-
-        // Close cache browser
-        hideCacheBrowser();
-
-    } catch (error) {
-        console.error('Error selecting cache image:', error);
-        showError('Failed to select cache image');
-    }
-}
-
-async function deleteCacheImage(cacheImage) {
-    if (!confirm(`Are you sure you want to delete this cache image?`)) {
-        return;
-    }
-
-    try {
-        const response = await fetchWithAuth(`/cache/${cacheImage.hash}`, {
-            method: 'DELETE'
-        });
-
-        if (response.ok) {
-            // Remove from local array
-            cacheImages = cacheImages.filter(img => img.hash !== cacheImage.hash);
-
-            // Refresh both displays
-            displayCacheImages();
-            displayCacheImagesContainer();
-
-            showGlassToast('success', null, 'Reference deleted');
-        } else {
-            throw new Error(`Failed to delete cache image: ${response.statusText}`);
-        }
-    } catch (error) {
-        console.error('Error deleting cache image:', error);
-        showError('Failed to delete cache image');
-    }
-}
-
-// Image Bias Adjustment Modal Functions
-let imageBiasAdjustmentData = {
-    originalImage: null,
-    targetDimensions: null,
-    currentBias: { x: 0, y: 0, scale: 1.0, rotate: 0 },
-    isDragging: false,
-    dragStart: { x: 0, y: 0 },
-    originalTransform: { x: 0, y: 0 },
-    previewMode: 'css' // Default to CSS view
-};
-
-// Show image bias adjustment modal
-async function showImageBiasAdjustmentModal() {
-    if (!window.uploadedImageData) {
-        showError('No base image available for adjustment');
-        return;
-    }
-
-    const modal = document.getElementById('imageBiasAdjustmentModal');
-    if (!modal) return;
-
-    // Get target dimensions
-    const resolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-    const targetDims = getDimensionsFromResolution(resolution);
-    if (!targetDims) {
-        showError('Invalid resolution for bias adjustment');
-        return;
-    }
-
-    // Get original image data
-    let imageDataUrl = window.uploadedImageData.originalDataUrl;
-    if (!imageDataUrl) {
-        // Fetch the image based on the image source
-        const imageSource = window.uploadedImageData.image_source;
-        if (imageSource.startsWith('data:')) {
-            imageDataUrl = imageSource;
-        } else {
-            let imageUrl = null;
-            if (imageSource.startsWith('file:')) {
-                imageUrl = `/images/${imageSource.replace('file:', '')}`;
-            } else if (imageSource.startsWith('cache:')) {
-                imageUrl = `/cache/preview/${imageSource.replace('cache:', '')}.webp`;
-            }
-            if (imageUrl) {
-                const response = await fetch(imageUrl);
-                const blob = await response.blob();
-                imageDataUrl = URL.createObjectURL(blob);
-            }
-        }
-    }
-
-    if (!imageDataUrl) {
-        showError('Could not load image for adjustment');
-        return;
-    }
-
-    // Load original image to get dimensions
-    const originalImage = new Image();
-    originalImage.onload = function() {
-        imageBiasAdjustmentData.originalImage = originalImage;
-        imageBiasAdjustmentData.targetDimensions = targetDims;
-
-        // Initialize bias values from current bias setting
-        // Check if we have existing bias data from the uploaded image data
-        if (window.uploadedImageData.image_bias && typeof window.uploadedImageData.image_bias === 'object') {
-            // Use existing bias values from uploaded image data
-            imageBiasAdjustmentData.currentBias = { ...window.uploadedImageData.image_bias };
-        } else if (imageBiasAdjustmentData.currentBias && typeof imageBiasAdjustmentData.currentBias === 'object' &&
-                   (imageBiasAdjustmentData.currentBias.x !== 0 || imageBiasAdjustmentData.currentBias.y !== 0 ||
-                    imageBiasAdjustmentData.currentBias.scale !== 1.0 || imageBiasAdjustmentData.currentBias.rotate !== 0)) {
-            // Use existing bias values from previous adjustment (only if they're not default values)
-            // currentBias is already set from the uploaded image data
-        } else {
-            // Fall back to legacy bias system or default values
-            const currentBias = window.uploadedImageData.bias || 2;
-            const biasFractions = [0, 0.25, 0.5, 0.75, 1];
-            const biasFrac = biasFractions[currentBias] || 0.5;
-
-            // Calculate initial position based on current bias
-            // For the new system, we'll start with centered position and let user adjust
-            imageBiasAdjustmentData.currentBias = {
-                x: 0,
-                y: 0,
-                scale: 1.0,
-                rotate: 0
-            };
-        }
-
-        // Show modal first
-        openModal(modal);
-
-        // Update UI after modal is visible (so we can get proper container dimensions)
-        setTimeout(() => {
-            updateBiasAdjustmentUI();
-            updateBiasAdjustmentImage();
-        }, 100);
-    };
-    originalImage.src = imageDataUrl;
-}
-
-// Update bias adjustment UI controls
-function updateBiasAdjustmentUI() {
-    const { x, y, scale, rotate } = imageBiasAdjustmentData.currentBias;
-
-    document.getElementById('biasX').value = x;
-    document.getElementById('biasY').value = y;
-    document.getElementById('biasScale').value = scale;
-    document.getElementById('biasRotate').value = rotate;
-}
-
-// Update bias adjustment image display
-function updateBiasAdjustmentImage() {
-    const image = document.getElementById('biasAdjustmentImage');
-    const wrapper = document.getElementById('biasAdjustmentImageWrapper');
-    const targetOverlay = document.getElementById('targetAreaOverlay');
-    const targetBorder = targetOverlay.querySelector('.target-area-border');
-
-    if (!imageBiasAdjustmentData.originalImage || !imageBiasAdjustmentData.targetDimensions) return;
-
-    const { originalImage, targetDimensions, currentBias } = imageBiasAdjustmentData;
-
-    // Set image source
-    image.src = originalImage.src;
-
-    // Calculate display dimensions - use the actual container size with padding accounted for
-    const container = document.getElementById('imagePreviewContainer');
-    const containerRect = container.getBoundingClientRect();
-    const padding = 32; // 2em = 32px (assuming 1em = 16px)
-    const containerWidth = containerRect.width - (padding * 2);
-    const containerHeight = containerRect.height - (padding * 2);
-
-    // Calculate target area size in display units
-    const targetAR = targetDimensions.width / targetDimensions.height;
-    let targetDisplayWidth, targetDisplayHeight;
-
-    if (targetAR > containerWidth / containerHeight) {
-        targetDisplayWidth = containerWidth;
-        targetDisplayHeight = containerWidth / targetAR;
-    } else {
-        targetDisplayHeight = containerHeight;
-        targetDisplayWidth = containerHeight * targetAR;
-    }
-
-    // Set target area border size
-    targetBorder.style.width = `${targetDisplayWidth}px`;
-    targetBorder.style.height = `${targetDisplayHeight}px`;
-
-    // Calculate scale factor to make image fill target area at scale 1.0
-    const imageAR = originalImage.width / originalImage.height;
-    let imageDisplayWidth, imageDisplayHeight;
-
-    if (imageAR > targetAR) {
-        // Image is wider than target, scale to match target height
-        imageDisplayHeight = targetDisplayHeight;
-        imageDisplayWidth = targetDisplayHeight * imageAR;
-    } else {
-        // Image is taller than target, scale to match target width
-        imageDisplayWidth = targetDisplayWidth;
-        imageDisplayHeight = targetDisplayWidth / imageAR;
-    }
-
-    // Set image size to fill target area
-    image.style.width = `${imageDisplayWidth}px`;
-    image.style.height = `${imageDisplayHeight}px`;
-
-    // Calculate scale factor between target dimensions and display dimensions
-    const scaleX = targetDisplayWidth / targetDimensions.width;
-    const scaleY = targetDisplayHeight / targetDimensions.height;
-
-    // Scale the bias position values to match the display dimensions
-    const scaledX = currentBias.x * scaleX;
-    const scaledY = currentBias.y * scaleY;
-
-    // Position the wrapper relative to the target area overlay (top-left is 0,0)
-    // The target area overlay is centered in the container, so we need to calculate its position
-    // The container has 2em padding, so the target area is centered within the padded area
-    const targetAreaX = (containerWidth - targetDisplayWidth) / 2;
-    const targetAreaY = (containerHeight - targetDisplayHeight) / 2;
-
-    // Apply position to wrapper (scaled to match display dimensions, referenced to target area top-left)
-    // The wrapper is positioned relative to the container, and the target area is already centered within the padded area
-    wrapper.style.transform = `translate(${targetAreaX + scaledX}px, ${targetAreaY + scaledY}px)`;
-
-    // Apply rotation and scale to image (from top-left corner)
-    const { scale, rotate } = currentBias;
-    image.style.transform = `rotate(${rotate}deg) scale(${scale})`;
-}
-
-// Handle bias control changes
-function handleBiasControlChange() {
-    const x = parseInt(document.getElementById('biasX').value) || 0;
-    const y = parseInt(document.getElementById('biasY').value) || 0;
-    const scale = parseFloat(document.getElementById('biasScale').value) || 1.0;
-    const rotate = parseInt(document.getElementById('biasRotate').value) || 0;
-
-    imageBiasAdjustmentData.currentBias = { x, y, scale, rotate };
-    updateBiasAdjustmentImage();
-
-    // Update client preview if it's active
-    if (imageBiasAdjustmentData.previewMode === 'client') {
-        updateClientPreview();
-    }
-}
-
-// Image Bias Preset Functions
-function getImageBiasPresetOptions() {
-    // Get current resolution to determine if we're in portrait or landscape mode
-    const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-    let isPortrait = currentResolution.toLowerCase().includes('portrait');
-
-    // For custom resolutions, determine based on width/height
-    if (currentResolution === 'custom' && manualWidth && manualHeight) {
-        const width = parseInt(manualWidth.value);
-        const height = parseInt(manualHeight.value);
-        isPortrait = height > width;
-    }
-
-    if (!isPortrait) {
-        return [
-            { value: '0', display: 'Top' },
-            { value: '1', display: 'Mid-Top' },
-            { value: '2', display: 'Center' },
-            { value: '3', display: 'Mid-Bottom' },
-            { value: '4', display: 'Bottom' }
-        ];
-    } else {
-        // Landscape or square - use same position names
-        return [
-            { value: '0', display: 'Left' },
-            { value: '1', display: 'Mid-Left' },
-            { value: '2', display: 'Center' },
-            { value: '3', display: 'Mid-Right' },
-            { value: '4', display: 'Right' }
-        ];
-    }
-}
-
-function renderImageBiasPresetDropdown(selectedVal) {
-    const menu = document.getElementById('imageBiasPresetMenu');
-    if (!menu) return;
-
-    menu.innerHTML = '';
-
-    const presetOptions = getImageBiasPresetOptions();
-
-    presetOptions.forEach(option => {
-        const optionElement = document.createElement('div');
-        optionElement.className = 'custom-dropdown-option';
-        optionElement.dataset.value = option.value;
-
-        // Determine grid layout based on aspect ratio
-        const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-        const isPortrait = currentResolution.includes('portrait');
-
-        // For custom resolutions, determine based on width/height
-        let isPortraitMode = isPortrait;
-        if (currentResolution === 'custom' && manualWidth && manualHeight) {
-            const width = parseInt(manualWidth.value);
-            const height = parseInt(manualHeight.value);
-            isPortraitMode = height > width;
-        }
-
-        // Create grid based on orientation
-        let gridHTML = '';
-        if (isPortraitMode) {
-            // Portrait: 3 columns, 5 rows (vertical layout)
-            for (let i = 0; i < 15; i++) {
-                gridHTML += '<div class="grid-cell"></div>';
-            }
-        } else {
-            // Landscape: 5 columns, 3 rows (horizontal layout)
-            for (let i = 0; i < 15; i++) {
-                gridHTML += '<div class="grid-cell"></div>';
-            }
-        }
-
-        optionElement.innerHTML = `
-            <div class="mask-bias-option-content">
-                <div class="mask-bias-grid" data-bias="${option.value}" data-orientation="${isPortraitMode ? 'portrait' : 'landscape'}">
-                    ${gridHTML}
-                </div>
-                <span class="mask-bias-label">${option.display}</span>
-            </div>
-        `;
-
-        optionElement.addEventListener('click', () => {
-            applyImageBiasPreset(option.value);
-            closeImageBiasPresetDropdown();
-        });
-
-        menu.appendChild(optionElement);
-    });
-}
-
-function selectImageBiasPreset(value) {
-    const btn = document.getElementById('imageBiasPresetBtn');
-    const grid = btn.querySelector('.mask-bias-grid');
-    const label = btn.querySelector('.mask-bias-label');
-
-    const presetOptions = getImageBiasPresetOptions();
-    const selectedOption = presetOptions.find(option => option.value === value);
-
-    if (selectedOption) {
-        label.textContent = selectedOption.display;
-    } else {
-        label.textContent = 'Center';
-    }
-
-    // Update the button's grid preview
-    if (grid) {
-        grid.setAttribute('data-bias', value);
-
-        // Update orientation based on current resolution
-        const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-        const isPortrait = currentResolution.includes('portrait');
-
-        // For custom resolutions, determine based on width/height
-        let isPortraitMode = isPortrait;
-        if (currentResolution === 'custom' && manualWidth && manualHeight) {
-            const width = parseInt(manualWidth.value);
-            const height = parseInt(manualHeight.value);
-            isPortraitMode = height > width;
-        }
-
-        grid.setAttribute('data-orientation', isPortraitMode ? 'portrait' : 'landscape');
-    }
-
-    // Calculate and apply the preset position
-    applyImageBiasPreset(value);
-}
-
-function applyImageBiasPreset(presetValue) {
-    if (!imageBiasAdjustmentData.targetDimensions) return;
-
-    const { width: targetWidth, height: targetHeight } = imageBiasAdjustmentData.targetDimensions;
-    const { width: imageWidth, height: imageHeight } = imageBiasAdjustmentData.originalImage;
-
-    // Calculate how the image fills the target area
-    const imageAR = imageWidth / imageHeight;
-    const targetAR = targetWidth / targetHeight;
-
-    let imageFillWidth, imageFillHeight;
-
-    if (imageAR > targetAR) {
-        // Image is wider than target, scale to match target height
-        imageFillHeight = targetHeight;
-        imageFillWidth = targetHeight * imageAR;
-    } else {
-        // Image is taller than target, scale to match target width
-        imageFillWidth = targetWidth;
-        imageFillHeight = targetWidth / imageAR;
-    }
-
-    // Calculate position based on preset
-    let x = 0, y = 0;
-
-    switch (presetValue) {
-        case '0': // Top/Left
-            x = 0;
-            y = 0;
-            break;
-        case '1': // Mid-Top/Mid-Left
-            x = (targetWidth - imageFillWidth) / 2;
-            y = 0;
-            break;
-        case '2': // Center
-            x = (targetWidth - imageFillWidth) / 2;
-            y = (targetHeight - imageFillHeight) / 2;
-            break;
-        case '3': // Mid-Bottom/Mid-Right
-            x = (targetWidth - imageFillWidth) / 2;
-            y = targetHeight - imageFillHeight;
-            break;
-        case '4': // Bottom/Right
-            x = targetWidth - imageFillWidth;
-            y = targetHeight - imageFillHeight;
-            break;
-    }
-
-    // Update the bias values
-    imageBiasAdjustmentData.currentBias.x = Math.round(x);
-    imageBiasAdjustmentData.currentBias.y = Math.round(y);
-
-    // Update the UI
-    document.getElementById('biasX').value = Math.round(x);
-    document.getElementById('biasY').value = Math.round(y);
-
-    updateBiasAdjustmentImage();
-
-    // Update client preview if it's active
-    if (imageBiasAdjustmentData.previewMode === 'client') {
-        updateClientPreview();
-    }
-}
-
-function openImageBiasPresetDropdown() {
-    const menu = document.getElementById('imageBiasPresetMenu');
-    const btn = document.getElementById('imageBiasPresetBtn');
-    if (menu && btn) {
-        menu.style.display = 'block';
-        btn.classList.add('active');
-    }
-}
-
-function closeImageBiasPresetDropdown() {
-    const menu = document.getElementById('imageBiasPresetMenu');
-    const btn = document.getElementById('imageBiasPresetBtn');
-    if (menu && btn) {
-        menu.style.display = 'none';
-        btn.classList.remove('active');
-    }
-}
-
-// Reset bias controls
-function resetBiasControls() {
-    imageBiasAdjustmentData.currentBias = { x: 0, y: 0, scale: 1.0, rotate: 0 };
-    updateBiasAdjustmentUI();
-    updateBiasAdjustmentImage();
-}
-
-// Handle image dragging
-function handleBiasImageMouseDown(e) {
-    if (e.target.id !== 'biasAdjustmentImage') return;
-
-    imageBiasAdjustmentData.isDragging = true;
-    imageBiasAdjustmentData.dragStart = { x: e.clientX, y: e.clientY };
-    imageBiasAdjustmentData.originalTransform = { ...imageBiasAdjustmentData.currentBias };
-
-    e.preventDefault();
-}
-
-function handleBiasImageMouseMove(e) {
-    if (!imageBiasAdjustmentData.isDragging) return;
-
-    const deltaX = e.clientX - imageBiasAdjustmentData.dragStart.x;
-    const deltaY = e.clientY - imageBiasAdjustmentData.dragStart.y;
-
-    imageBiasAdjustmentData.currentBias.x = imageBiasAdjustmentData.originalTransform.x + deltaX;
-    imageBiasAdjustmentData.currentBias.y = imageBiasAdjustmentData.originalTransform.y + deltaY;
-
-    updateBiasAdjustmentUI();
-    updateBiasAdjustmentImage();
-}
-
-function handleBiasImageMouseUp() {
-    imageBiasAdjustmentData.isDragging = false;
-}
-
-// Toggle between CSS view and client preview
-function togglePreviewMode() {
-    const toggleBtn = document.getElementById('previewToggleBtn');
-    const cssWrapper = document.getElementById('biasAdjustmentImageWrapper');
-    const clientImage = document.getElementById('clientPreviewImage');
-
-    const currentState = toggleBtn.getAttribute('data-state');
-    const newState = currentState === 'on' ? 'off' : 'on';
-
-    imageBiasAdjustmentData.previewMode = newState === 'on' ? 'client' : 'css';
-
-    if (newState === 'on') {
-        // Show client preview
-        toggleBtn.setAttribute('data-state', 'on');
-        toggleBtn.innerHTML = '<i class="fas fa-mouse-pointer"></i> Interactive';
-        cssWrapper.style.display = 'none';
-        clientImage.style.display = 'block';
-        updateClientPreview();
-    } else {
-        // Show CSS interactive view
-        toggleBtn.setAttribute('data-state', 'off');
-        toggleBtn.innerHTML = '<i class="nai-sparkles"></i> Preview';
-        cssWrapper.style.display = 'block';
-        clientImage.style.display = 'none';
-        updateBiasAdjustmentImage();
-    }
-}
-
-// Update client preview image
-async function updateClientPreview() {
-    if (!imageBiasAdjustmentData.originalImage || !imageBiasAdjustmentData.targetDimensions) return;
-
-    try {
-        const clientPreview = await generateClientBiasPreview();
-        const clientImage = document.getElementById('clientPreviewImage');
-        clientImage.src = clientPreview;
-    } catch (error) {
-        console.error('Failed to update client preview:', error);
-    }
-}
-
-// Test bias adjustment
-async function testBiasAdjustment() {
-    if (!imageBiasAdjustmentData.originalImage || !imageBiasAdjustmentData.targetDimensions) {
-        showError('No image data available for testing');
-        return;
-    }
-
-    const testBtn = document.getElementById('biasTestBtn');
-    const resultsDiv = document.getElementById('biasTestResults');
-
-    testBtn.disabled = true;
-    testBtn.innerHTML = '<i class="spinner"></i> Testing...';
-
-    try {
-        // Generate client-side preview
-        const clientPreview = await generateClientBiasPreview();
-        document.getElementById('clientTestImage').src = clientPreview;
-
-        // Generate server-side preview
-        const serverPreview = await generateServerBiasPreview();
-        document.getElementById('serverTestImage').src = serverPreview;
-
-        resultsDiv.style.display = 'flex';
-
-    } catch (error) {
-        console.error('Bias test error:', error);
-        showError('Failed to test bias adjustment: ' + error.message);
-    } finally {
-        testBtn.disabled = false;
-        testBtn.innerHTML = '<i class="nai-sparkles"></i> Test Adjustment';
-    }
-}
-
-// Generate client-side bias preview
-async function generateClientBiasPreview() {
-    return new Promise((resolve) => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-
-        const { originalImage, targetDimensions, currentBias } = imageBiasAdjustmentData;
-
-        canvas.width = targetDimensions.width;
-        canvas.height = targetDimensions.height;
-
-        // Calculate how to fill the canvas while maintaining aspect ratio
-        const imageAR = originalImage.width / originalImage.height;
-        const targetAR = targetDimensions.width / targetDimensions.height;
-
-        let drawWidth, drawHeight, drawX, drawY;
-
-        if (imageAR > targetAR) {
-            // Image is wider than target, scale to match target height
-            drawHeight = targetDimensions.height;
-            drawWidth = targetDimensions.height * imageAR;
-            // Position at top-left corner, not centered
-            drawX = 0;
-            drawY = 0;
-        } else {
-            // Image is taller than target, scale to match target width
-            drawWidth = targetDimensions.width;
-            drawHeight = targetDimensions.width / imageAR;
-            // Position at top-left corner, not centered
-            drawX = 0;
-            drawY = 0;
-        }
-
-        // Apply bias transformations - all referenced to top-left corner
-        ctx.save();
-
-        // Apply position offset (absolute pixels, not affected by scale)
-        // Client preview should not have padding - it represents the actual target resolution
-        ctx.translate(currentBias.x, currentBias.y);
-
-        // Apply rotation and scale from top-left corner
-        ctx.rotate((currentBias.rotate * Math.PI) / 180);
-        ctx.scale(currentBias.scale, currentBias.scale);
-
-        // Draw the image to fill the canvas (like object-fit: cover)
-        ctx.drawImage(originalImage, drawX, drawY, drawWidth, drawHeight);
-
-        ctx.restore();
-
-        canvas.toBlob((blob) => {
-            const url = URL.createObjectURL(blob);
-            resolve(url);
-        }, 'image/png');
-    });
-}
-
-// Generate server-side bias preview
-async function generateServerBiasPreview() {
-    const { targetDimensions, currentBias } = imageBiasAdjustmentData;
-
-    // Get the image source path from uploaded image data
-    if (!window.uploadedImageData || !window.uploadedImageData.image_source) {
-        throw new Error('No image source available for server test');
-    }
-
-    const imageSource = window.uploadedImageData.image_source;
-
-    // Send to server for processing
-    const response = await fetch('/test-bias-adjustment', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            image_source: imageSource,
-            target_width: targetDimensions.width,
-            target_height: targetDimensions.height,
-            bias: currentBias
-        })
-    });
-
-    if (!response.ok) {
-        throw new Error(`Server test failed: ${response.statusText}`);
-    }
-
-    const blob = await response.blob();
-    return URL.createObjectURL(blob);
-}
-
-// Save bias adjustment
-async function saveBiasAdjustment() {
-    if (!imageBiasAdjustmentData.currentBias) {
-        showError('No bias adjustment to save');
-        return;
-    }
-
-    // Show confirmation dialog with previews
-    await showBiasAdjustmentConfirmDialog();
-}
-
-// Show bias adjustment confirmation dialog
-async function showBiasAdjustmentConfirmDialog() {
-    const dialog = document.getElementById('biasAdjustmentConfirmDialog');
-    if (!dialog) {
-        console.error('Bias adjustment confirmation dialog not found');
-        return;
-    }
-
-    // Generate previews
-    await generateConfirmationPreviews();
-
-    // Show dialog
-    openModal(dialog);
-}
-
-// Generate previews for confirmation dialog
-async function generateConfirmationPreviews() {
-    try {
-        // Generate client preview
-        const clientPreview = await generateClientBiasPreview();
-        const confirmClientPreview = document.getElementById('confirmClientPreview');
-        if (confirmClientPreview && clientPreview) {
-            confirmClientPreview.src = clientPreview;
-        }
-
-        // Generate server preview
-        const serverPreview = await generateServerBiasPreview();
-        const confirmServerPreview = document.getElementById('confirmServerPreview');
-        if (confirmServerPreview && serverPreview) {
-            confirmServerPreview.src = serverPreview;
-        }
-    } catch (error) {
-        console.error('Failed to generate confirmation previews:', error);
-        showError('Failed to generate previews');
-    }
-}
-
-// Accept bias adjustment and save
-function acceptBiasAdjustment() {
-    if (!imageBiasAdjustmentData.currentBias) {
-        showError('No bias adjustment to save');
-        return;
-    }
-
-    // Check if there's an existing mask
-    const hasExistingMask = window.currentMaskData !== null && window.currentMaskData !== undefined;
-
-    if (hasExistingMask) {
-        // Store the pending bias adjustment and show alert modal
-        window.pendingBiasAdjustment = {
-            bias: imageBiasAdjustmentData.currentBias,
-            callback: () => {
-                // This will be called after the mask is handled
-            }
-        };
-        hideBiasAdjustmentConfirmDialog();
-        hideImageBiasAdjustmentModal();
-        showImageBiasMaskAlertModal();
-        return;
-    }
-
-    // No mask exists, proceed with bias adjustment
-    applyBiasAdjustment();
-}
-
-// Apply bias adjustment (helper function)
-function applyBiasAdjustment() {
-    // Store the bias adjustment data
-    if (!window.uploadedImageData) {
-        window.uploadedImageData = {};
-    }
-
-    // Store the previous bias before applying the new one
-    window.uploadedImageData.previousBias = window.uploadedImageData.image_bias || window.uploadedImageData.bias || 2;
-
-    window.uploadedImageData.image_bias = imageBiasAdjustmentData.currentBias;
-
-    // Update the hidden input for form submission
-    const imageBiasHidden = document.getElementById('imageBias');
-    if (imageBiasHidden) {
-        imageBiasHidden.value = JSON.stringify(imageBiasAdjustmentData.currentBias);
-    }
-
-    // Close both dialogs
-    hideBiasAdjustmentConfirmDialog();
-    hideImageBiasAdjustmentModal();
-
-    // Update the main preview
-    cropImageToResolution();
-
-    renderImageBiasDropdown();
-}
-
-// Hide bias adjustment confirmation dialog
-function hideBiasAdjustmentConfirmDialog() {
-    const dialog = document.getElementById('biasAdjustmentConfirmDialog');
-    if (dialog) {
-        closeModal(dialog);
-    }
-}
-
-// Show base image change alert modal
-function showBaseImageChangeAlertModal() {
-    const modal = document.getElementById('baseImageChangeAlertModal');
-    if (modal) {
-        openModal(modal);
-    }
-}
-
-// Hide base image change alert modal
-function hideBaseImageChangeAlertModal() {
-    const modal = document.getElementById('baseImageChangeAlertModal');
-    if (modal) {
-        closeModal(modal);
-    }
-}
-
-// Show image bias mask alert modal
-function showImageBiasMaskAlertModal() {
-    const modal = document.getElementById('imageBiasMaskAlertModal');
-    if (modal) {
-        openModal(modal);
-    }
-}
-
-// Hide image bias mask alert modal
-function hideImageBiasMaskAlertModal() {
-    const modal = document.getElementById('imageBiasMaskAlertModal');
-    if (modal) {
-        closeModal(modal);
-    }
-}
-
-// Confirm base image change and delete mask
-async function confirmBaseImageChange() {
-    // Delete the existing mask
-    await deleteMask();
-
-    // Hide the modal
-    hideBaseImageChangeAlertModal();
-
-    // Continue with the pending image upload
-    if (window.pendingImageUpload) {
-        const { file } = window.pendingImageUpload;
-        window.pendingImageUpload = null;
-        await handleManualImageUploadInternal(file);
-    }
-
-    // Continue with the pending cache image selection
-    if (window.pendingCacheImageSelection) {
-        const { cacheImage } = window.pendingCacheImageSelection;
-        window.pendingCacheImageSelection = null;
-        await selectCacheImageInternal(cacheImage);
-    }
-}
-
-// Apply image bias change (helper function)
-async function applyImageBiasChange(value, callback) {
-    // Clear dynamic bias data when selecting a preset
-    if (window.uploadedImageData && window.uploadedImageData.image_bias && typeof window.uploadedImageData.image_bias === 'object') {
-        delete window.uploadedImageData.image_bias;
-    }
-
-    // Fix: Ensure value is properly set, even if it's 0
-    if (imageBiasHidden != null) {
-        imageBiasHidden.value = value.toString();
-    }
-
-    // Update the uploaded image data with the new bias value
-    if (window.uploadedImageData) {
-        window.uploadedImageData.bias = parseInt(value);
-    }
-
-    updateImageBiasDisplay(value);
-
-    // Reload the preview image with the new bias
-    await cropImageToResolution();
-
-    // Call the original callback if provided
-    if (callback) {
-        callback();
-    }
-}
-
-// Hide image bias adjustment modal
-function hideImageBiasAdjustmentModal() {
-    const modal = document.getElementById('imageBiasAdjustmentModal');
-    if (modal) {
-        closeModal(modal);
-    }
-
-    // Clean up test results
-    const resultsDiv = document.getElementById('biasTestResults');
-    if (resultsDiv) {
-        resultsDiv.style.display = 'none';
-    }
-
-    // Reset dragging state
-    imageBiasAdjustmentData.isDragging = false;
-}
-
-// Enhanced cropImageToResolution function to handle dynamic bias adjustments
-async function cropImageToResolution() {
-    if (!(window.uploadedImageData && (window.uploadedImageData.image_source || window.uploadedImageData.originalDataUrl))) {
-        console.warn('No uploaded image data available for cropping');
-        return;
-    }
-
-    try {
-        // Clean up any existing blob URLs before creating new ones
-        cleanupBlobUrls();
-
-        // Get the image data URL
-        let imageDataUrl = window.uploadedImageData.originalDataUrl;
-
-        if (!imageDataUrl) {
-            const imageSource = window.uploadedImageData.image_source;
-            if (imageSource.startsWith('data:')) {
-                imageDataUrl = imageSource;
-            } else {
-                let imageUrl = null;
-                if (imageSource.startsWith('file:')) {
-                    imageUrl = `/images/${imageSource.replace('file:', '')}`;
-                } else if (imageSource.startsWith('cache:')) {
-                    imageUrl = `/cache/preview/${imageSource.replace('cache:', '')}.webp`;
-                }
-                if (imageUrl) {
-                    const response = await fetch(imageUrl);
-                    const blob = await response.blob();
-                    imageDataUrl = URL.createObjectURL(blob);
-                }
-            }
-            window.uploadedImageData.originalDataUrl = imageDataUrl;
-        }
-
-        if (!imageDataUrl) {
-            console.warn('Could not get image data URL for cropping');
-            return;
-        }
-
-        // Check if we have dynamic bias adjustment data
-        const dynamicBias = window.uploadedImageData.image_bias;
-        let croppedBlobUrl;
-
-        if (dynamicBias && typeof dynamicBias === 'object') {
-            // Use dynamic bias adjustment
-            croppedBlobUrl = await cropImageWithDynamicBias(imageDataUrl, dynamicBias);
-        } else {
-            // Use legacy bias system
-            const bias = (window.uploadedImageData.bias !== undefined && window.uploadedImageData.bias !== null) ? window.uploadedImageData.bias : 2;
-            croppedBlobUrl = await cropImageToResolutionInternal(imageDataUrl, bias);
-        }
-
-        // Update the preview image
-        variationImage.src = croppedBlobUrl;
-        variationImage.style.display = 'block';
-        // Give the image more time to load before updating mask preview
-        setTimeout(updateMaskPreview, 500);
-
-        window.uploadedImageData.croppedBlobUrl = croppedBlobUrl;
-    } catch (error) {
-        console.error('Failed to crop image to resolution:', error);
-        showError('Failed to crop image to resolution');
-    }
-}
-
-// New function to crop image with dynamic bias adjustments
-function cropImageWithDynamicBias(dataUrl, bias) {
-    return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = function() {
-            const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-            const resolutionDims = getDimensionsFromResolution(currentResolution);
-
-            if (!resolutionDims) {
-                resolve(dataUrl);
-                return;
-            }
-
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-
-            canvas.width = resolutionDims.width;
-            canvas.height = resolutionDims.height;
-
-            // Calculate how to fill the canvas while maintaining aspect ratio
-            const imageAR = img.width / img.height;
-            const targetAR = resolutionDims.width / resolutionDims.height;
-
-            let drawWidth, drawHeight, drawX, drawY;
-
-            if (imageAR > targetAR) {
-                // Image is wider than target, scale to match target height
-                drawHeight = resolutionDims.height;
-                drawWidth = resolutionDims.height * imageAR;
-                // Position at top-left corner, not centered
-                drawX = 0;
-                drawY = 0;
-            } else {
-                // Image is taller than target, scale to match target width
-                drawWidth = resolutionDims.width;
-                drawHeight = resolutionDims.width / imageAR;
-                // Position at top-left corner, not centered
-                drawX = 0;
-                drawY = 0;
-            }
-
-            // Apply bias transformations - all referenced to top-left
-            ctx.save();
-
-            // Apply position offset (absolute pixels, not affected by scale)
-            // This function is for actual cropping, not preview - no padding needed
-            ctx.translate(bias.x, bias.y);
-
-            // Apply rotation around top-left corner (0,0)
-            ctx.rotate((bias.rotate * Math.PI) / 180);
-
-            // Apply scale from top-left corner
-            ctx.scale(bias.scale, bias.scale);
-
-            // Draw the image to fill the canvas (like object-fit: cover)
-            ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
-
-            ctx.restore();
-
-            // Convert to blob
-            canvas.toBlob((blob) => {
-                const blobUrl = URL.createObjectURL(blob);
-
-                if (!window.croppedImageBlobUrls) {
-                    window.croppedImageBlobUrls = [];
-                }
-                window.croppedImageBlobUrls.push(blobUrl);
-
-                resolve(blobUrl);
-            }, 'image/png');
-        };
-        img.src = dataUrl;
-    });
-}
-
-// Setup image bias adjustment event listeners
-function setupImageBiasAdjustmentListeners() {
-    // Modal controls
-    const closeBtn = document.getElementById('closeImageBiasAdjustmentBtn');
-    const cancelBtn = document.getElementById('cancelBiasAdjustmentBtn');
-    const saveBtn = document.getElementById('saveBiasAdjustmentBtn');
-    const resetBtn = document.getElementById('biasResetBtn');
-    const testBtn = document.getElementById('biasTestBtn');
-
-    if (closeBtn) closeBtn.addEventListener('click', hideImageBiasAdjustmentModal);
-    if (cancelBtn) cancelBtn.addEventListener('click', hideImageBiasAdjustmentModal);
-    if (saveBtn) saveBtn.addEventListener('click', saveBiasAdjustment);
-    if (resetBtn) resetBtn.addEventListener('click', resetBiasControls);
-    if (testBtn) testBtn.addEventListener('click', testBiasAdjustment);
-
-
-
-    // Bias control inputs
-    const biasInputs = ['biasX', 'biasY', 'biasScale', 'biasRotate'];
-    biasInputs.forEach(id => {
-        const input = document.getElementById(id);
-        if (input) {
-            input.addEventListener('input', handleBiasControlChange);
-            input.addEventListener('wheel', (e) => {
-                e.preventDefault();
-                const delta = e.deltaY > 0 ? -1 : 1;
-                const step = parseFloat(input.step) || 1;
-                input.value = parseFloat(input.value || 0) + (delta * step);
-                handleBiasControlChange();
-            });
-        }
-    });
-
-    // Image dragging
-    const imageContainer = document.getElementById('imagePreviewContainer');
-    if (imageContainer) {
-        imageContainer.addEventListener('mousedown', handleBiasImageMouseDown);
-        imageContainer.addEventListener('mousemove', handleBiasImageMouseMove);
-        imageContainer.addEventListener('mouseup', handleBiasImageMouseUp);
-    }
-
-    // Preview toggle button
-    const previewToggleBtn = document.getElementById('previewToggleBtn');
-
-    if (previewToggleBtn) {
-        previewToggleBtn.addEventListener('click', togglePreviewMode);
-    }
-
-    // Image bias preset dropdown
-    const presetBtn = document.getElementById('imageBiasPresetBtn');
-    if (presetBtn) {
-        presetBtn.addEventListener('click', e => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            const menu = document.getElementById('imageBiasPresetMenu');
-            if (menu.style.display === 'block') {
-                closeImageBiasPresetDropdown();
-            } else {
-                renderImageBiasPresetDropdown(); // Default to center
-                openImageBiasPresetDropdown();
-            }
-        });
-    }
-
-    // Close image bias preset dropdown when clicking outside
-    document.addEventListener('click', e => {
-        const dropdown = document.getElementById('imageBiasPresetDropdown');
-        if (dropdown && !dropdown.contains(e.target)) {
-            closeImageBiasPresetDropdown();
-        }
-    });
-
-    // Close modal when clicking outside
-    const modal = document.getElementById('imageBiasAdjustmentModal');
-    if (modal) {
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                hideImageBiasAdjustmentModal();
-            }
-        });
-    }
-
-    // Close base image change alert modal when clicking outside
-    const baseImageChangeModal = document.getElementById('baseImageChangeAlertModal');
-    if (baseImageChangeModal) {
-        baseImageChangeModal.addEventListener('click', (e) => {
-            if (e.target === baseImageChangeModal) {
-                hideBaseImageChangeAlertModal();
-                // Clear any pending changes
-                window.pendingImageUpload = null;
-                window.pendingCacheImageSelection = null;
-            }
-        });
-    }
-
-    // Close image bias mask alert modal when clicking outside
-    const imageBiasMaskModal = document.getElementById('imageBiasMaskAlertModal');
-    if (imageBiasMaskModal) {
-        imageBiasMaskModal.addEventListener('click', (e) => {
-            if (e.target === imageBiasMaskModal) {
-                hideImageBiasMaskAlertModal();
-                // Clear any pending changes
-                window.pendingImageBiasChange = null;
-                window.pendingBiasAdjustment = null;
-            }
-        });
-    }
-
-    // Confirmation dialog controls
-    const closeConfirmBtn = document.getElementById('closeBiasConfirmBtn');
-    const cancelConfirmBtn = document.getElementById('cancelBiasConfirmBtn');
-
-    // Base image change alert modal controls
-    const closeBaseImageChangeAlertBtn = document.getElementById('closeBaseImageChangeAlertBtn');
-    const confirmBaseImageChangeBtn = document.getElementById('confirmBaseImageChangeBtn');
-    const cancelBaseImageChangeBtn = document.getElementById('cancelBaseImageChangeBtn');
-
-    if (closeBaseImageChangeAlertBtn) closeBaseImageChangeAlertBtn.addEventListener('click', () => {
-        hideBaseImageChangeAlertModal();
-        // Clear any pending changes
-        window.pendingImageUpload = null;
-        window.pendingCacheImageSelection = null;
-    });
-    if (confirmBaseImageChangeBtn) confirmBaseImageChangeBtn.addEventListener('click', confirmBaseImageChange);
-    if (cancelBaseImageChangeBtn) cancelBaseImageChangeBtn.addEventListener('click', () => {
-        hideBaseImageChangeAlertModal();
-        // Clear any pending changes
-        window.pendingImageUpload = null;
-        window.pendingCacheImageSelection = null;
-    });
-
-    // Image bias mask alert modal controls
-    const closeImageBiasMaskAlertBtn = document.getElementById('closeImageBiasMaskAlertBtn');
-    const cancelImageBiasBtn = document.getElementById('cancelImageBiasBtn');
-    const removeMaskBtn = document.getElementById('removeMaskBtn');
-    const createMaskBtn = document.getElementById('createMaskBtn');
-
-    if (closeImageBiasMaskAlertBtn) closeImageBiasMaskAlertBtn.addEventListener('click', () => {
-        hideImageBiasMaskAlertModal();
-        // Clear any pending changes
-        window.pendingImageBiasChange = null;
-        window.pendingBiasAdjustment = null;
-    });
-    if (cancelImageBiasBtn) cancelImageBiasBtn.addEventListener('click', () => {
-        hideImageBiasMaskAlertModal();
-        // Clear any pending changes
-        window.pendingImageBiasChange = null;
-        window.pendingBiasAdjustment = null;
-    });
-    if (removeMaskBtn) removeMaskBtn.addEventListener('click', () => {
-        deleteMask();
-        hideImageBiasMaskAlertModal();
-        // Continue with the pending image bias change
-        if (window.pendingImageBiasChange) {
-            const { value, callback } = window.pendingImageBiasChange;
-            window.pendingImageBiasChange = null;
-            applyImageBiasChange(value, callback);
-        }
-        // Continue with the pending bias adjustment
-        if (window.pendingBiasAdjustment) {
-            const { bias, callback } = window.pendingBiasAdjustment;
-            window.pendingBiasAdjustment = null;
-            imageBiasAdjustmentData.currentBias = bias;
-            applyBiasAdjustment();
-        }
-    });
-    if (createMaskBtn) {
-        console.log('Create mask button found and event listener added');
-                createMaskBtn.addEventListener('click', async () => {
-            console.log('Create mask button clicked');
-            hideImageBiasMaskAlertModal();
-
-        let hadPendingChanges = false;
-
-        // Continue with the pending image bias change first
-        if (window.pendingImageBiasChange) {
-            const { value, callback } = window.pendingImageBiasChange;
-            window.pendingImageBiasChange = null;
-            await applyImageBiasChange(value, callback);
-            hadPendingChanges = true;
-        }
-
-        // Continue with the pending bias adjustment first
-        if (window.pendingBiasAdjustment) {
-            const { bias, callback } = window.pendingBiasAdjustment;
-            window.pendingBiasAdjustment = null;
-            imageBiasAdjustmentData.currentBias = bias;
-            await applyBiasAdjustment();
-            hadPendingChanges = true;
-        }
-
-        if (hadPendingChanges) {
-            console.log('Creating mask from transparent pixels');
-            // Then create mask from transparent pixels
-            await createMaskFromTransparentPixels();
-        } else {
-            console.log('Opening mask editor directly');
-            // No pending changes, just open the mask editor
-            openMaskEditor();
-        }
-    });
-    }
-    const acceptConfirmBtn = document.getElementById('acceptBiasConfirmBtn');
-
-    if (closeConfirmBtn) closeConfirmBtn.addEventListener('click', hideBiasAdjustmentConfirmDialog);
-    if (cancelConfirmBtn) cancelConfirmBtn.addEventListener('click', hideBiasAdjustmentConfirmDialog);
-    if (acceptConfirmBtn) acceptConfirmBtn.addEventListener('click', acceptBiasAdjustment);
-
-    // Close confirmation dialog when clicking outside
-    const confirmDialog = document.getElementById('biasAdjustmentConfirmDialog');
-    if (confirmDialog) {
-        confirmDialog.addEventListener('click', (e) => {
-            if (e.target === confirmDialog) {
-                hideBiasAdjustmentConfirmDialog();
-            }
-        });
-    }
-}
-
-// Add button to open bias adjustment modal
-function addBiasAdjustmentButton() {
-    // Check if button already exists
-    if (document.getElementById('imageBiasAdjustBtn')) return;
-
-    const adjustBtn = document.createElement('button');
-    adjustBtn.id = 'imageBiasAdjustBtn';
-    adjustBtn.type = 'button';
-    adjustBtn.className = 'btn-secondary';
-    adjustBtn.innerHTML = '<i class="nai-settings"></i>';
-    adjustBtn.title = 'Advanced Bias Adjustment';
-
-    adjustBtn.addEventListener('click', showImageBiasAdjustmentModal);
-
-    imageBiasDropdown.parentNode.insertBefore(adjustBtn, imageBiasDropdown.nextSibling);
-}
-
-// Initialize image bias adjustment functionality
-function initializeImageBiasAdjustment() {
-    setupImageBiasAdjustmentListeners();
-
-    // Connect existing bias adjustment button
-    const adjustBtn = document.getElementById('imageBiasAdjustBtn');
-    if (adjustBtn) {
-        adjustBtn.addEventListener('click', showImageBiasAdjustmentModal);
-    }
-
-    // Add bias adjustment button when image bias group is shown (fallback)
-    const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-                if (imageBiasGroup && imageBiasGroup.style.display !== 'none') {
-                    addBiasAdjustmentButton();
-                }
-            }
-        });
-    });
-
-    observer.observe(imageBiasGroup, { attributes: true });
-}
-
-// Reference Manager Variables
-let cacheManagerImages = [];
-let cacheManagerSelectedImages = new Set();
-let cacheManagerCurrentWorkspace = 'default';
-let cacheManagerIsSelectionMode = false;
-
-// Vibe Manager Variables
-let vibeManagerImages = [];
-let vibeManagerSelectedModel = 'v4_5';
-let vibeManagerIeSelectedModel = 'v4_5';
-let vibeManagerFromReferenceSelectedModel = 'v4_5';
-let vibeManagerFromReferenceImage = null;
-let vibeManagerSelectedImages = new Set();
-let vibeManagerIsSelectionMode = false;
-
-// Helper function to get workspace display name
-function getWorkspaceDisplayName(workspaceId) {
-    const workspace = workspaces.find(w => w.id === workspaceId);
-    return workspace ? workspace.name : 'Default';
-}
-
-// Modal management functions
-function disablePageScroll() {
-    document.body.classList.add('modal-open');
-}
-
-function enablePageScroll() {
-    document.body.classList.remove('modal-open');
-}
-
-// Reference Manager Functions
-function showCacheManagerModal() {
-    cacheManagerCurrentWorkspace = activeWorkspace;
-    cacheManagerSelectedImages.clear();
-    cacheManagerIsSelectionMode = false;
-
-    // Setup workspace dropdown
-    setupCacheManagerWorkspaceDropdown();
-
-    // Setup cache manager tab event listeners
-    setupCacheManagerTabs();
-
-    // Load cache images for current workspace
-    loadCacheManagerImages();
-
-    const modal = document.getElementById('cacheManagerModal');
-    if (modal) {
-        openModal(modal);
-    }
-}
-
-function hideCacheManagerModal() {
-    const modal = document.getElementById('cacheManagerModal');
-    if (modal) {
-        closeModal(modal);
-    }
-
-    // Reset state
-    cacheManagerSelectedImages.clear();
-    cacheManagerIsSelectionMode = false;
-}
-
-function setupCacheManagerTabs() {
-    const tabButtons = document.querySelectorAll('.cache-manager-tabs .tab-btn');
-
-    tabButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const targetTab = this.getAttribute('data-tab');
-            switchCacheManagerTab(targetTab);
-        });
-    });
-}
-
-function setupCacheManagerWorkspaceDropdown() {
-    const dropdown = document.getElementById('cacheManagerWorkspaceDropdown');
-    const dropdownBtn = document.getElementById('cacheManagerWorkspaceDropdownBtn');
-    const dropdownMenu = document.getElementById('cacheManagerWorkspaceDropdownMenu');
-    const selectedSpan = document.getElementById('cacheManagerWorkspaceSelected');
-
-    if (!dropdown || !dropdownBtn || !dropdownMenu || !selectedSpan) return;
-
-    // Update selected workspace
-    selectedSpan.textContent = getWorkspaceDisplayName(cacheManagerCurrentWorkspace);
-
-    // Check if dropdown is already set up
-    if (dropdown.dataset.setup === 'true') {
-        return; // Already set up, don't add duplicate event listeners
-    }
-
-    // Setup dropdown functionality
-    setupDropdown(dropdown, dropdownBtn, dropdownMenu, renderCacheManagerWorkspaceDropdown, () => cacheManagerCurrentWorkspace);
-
-    // Mark as set up
-    dropdown.dataset.setup = 'true';
-}
-
-function renderCacheManagerWorkspaceDropdown() {
-    const dropdownMenu = document.getElementById('cacheManagerWorkspaceDropdownMenu');
-    if (!dropdownMenu) return '';
-
-    dropdownMenu.innerHTML = '';
-
-    workspaces.forEach(workspace => {
-        const option = document.createElement('div');
-        option.className = 'custom-dropdown-option' + (workspace.id === cacheManagerCurrentWorkspace ? ' selected' : '');
-        option.tabIndex = 0;
-        option.dataset.value = workspace.id;
-
-        const workspaceColor = workspace.color || '#124';
-
-        option.innerHTML = `
-            <div class="workspace-option-content">
-                <div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
-                <div class="workspace-name">${workspace.name}</div>
-            </div>
-        `;
-
-        const action = () => {
-            if (workspace.id !== cacheManagerCurrentWorkspace) {
-                cacheManagerCurrentWorkspace = workspace.id;
-                cacheManagerSelectedImages.clear();
-                loadCacheManagerImages();
-                loadVibeManagerImages();
-
-                // Update selected workspace display
-                const selectedSpan = document.getElementById('cacheManagerWorkspaceSelected');
-                if (selectedSpan) {
-                    selectedSpan.textContent = workspace.name;
-                }
-            }
-            closeDropdown(dropdownMenu, document.getElementById('cacheManagerWorkspaceDropdownBtn'));
-        };
-
-        option.addEventListener('click', action);
-        option.addEventListener('keydown', e => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                action();
-            }
-        });
-
-        dropdownMenu.appendChild(option);
-    });
-}
-
-async function loadCacheManagerImages() {
-    const loading = document.getElementById('cacheManagerLoading');
-    const gallery = document.getElementById('cacheManagerGallery');
-
-    if (loading) loading.style.display = 'flex';
-    if (gallery) gallery.innerHTML = '';
-
-    try {
-        // Load cache images for the current workspace
-        const response = await fetchWithAuth(`/workspaces/${cacheManagerCurrentWorkspace}/references`, {
-            method: 'OPTIONS'
-        });
-
-        if (response.ok) {
-            cacheManagerImages = await response.json();
-        } else {
-            throw new Error(`Failed to load cache: ${response.statusText}`);
-        }
-
-        displayCacheManagerImages();
-    } catch (error) {
-        console.error('Error loading cache manager images:', error);
-        showError('Failed to load cache images');
-    } finally {
-        if (loading) loading.style.display = 'none';
-    }
-}
-
-function displayCacheManagerImages() {
-    const gallery = document.getElementById('cacheManagerGallery');
-    if (!gallery) return;
-
-    gallery.innerHTML = '';
-
-    if (cacheManagerImages.length === 0) {
-        gallery.innerHTML = '<div class="no-images">No cache images found in this workspace</div>';
-        return;
-    }
-
-    cacheManagerImages.forEach(cacheImage => {
-        const galleryItem = createCacheManagerGalleryItem(cacheImage);
-        gallery.appendChild(galleryItem);
-    });
-
-    updateCacheManagerSelectionMode();
-}
-
-function createCacheManagerGalleryItem(cacheImage) {
-    const item = document.createElement('div');
-    item.className = 'cache-manager-gallery-item';
-    item.dataset.hash = cacheImage.hash;
-
-    // Create image element
-    const img = document.createElement('img');
-    if (cacheImage.hasPreview) {
-        img.src = `/cache/preview/${cacheImage.hash}.webp`;
-    } else {
-        img.src = `/cache/${cacheImage.hash}`;
-    }
-    img.alt = `Reference image ${cacheImage.hash}`;
-    img.loading = 'lazy';
-
-    // Create checkbox for selection mode
-    const checkbox = document.createElement('div');
-    checkbox.className = 'cache-manager-gallery-item-checkbox';
-    checkbox.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleCacheManagerImageSelection(cacheImage.hash);
-    });
-
-    // Create overlay
-    const overlay = document.createElement('div');
-    overlay.className = 'cache-manager-gallery-item-overlay';
-
-
-    // Create buttons container
-    const buttonsContainer = document.createElement('div');
-    buttonsContainer.className = 'cache-manager-gallery-item-buttons';
-
-    // Create vibe encode button
-    const vibeBtn = document.createElement('button');
-    vibeBtn.className = 'btn-secondary btn-small';
-    vibeBtn.innerHTML = '<i class="nai-vibe-transfer"></i>';
-    vibeBtn.title = 'Create Vibe Encoding';
-    vibeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        showVibeManagerFromReferenceModal(cacheImage);
-    });
-
-    // Create delete button
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'btn-danger btn-small';
-    deleteBtn.innerHTML = '<i class="nai-trash"></i>';
-    deleteBtn.title = 'Delete image';
-    deleteBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        deleteCacheManagerImage(cacheImage, cacheManagerCurrentWorkspace);
-    });
-
-    buttonsContainer.appendChild(vibeBtn);
-    buttonsContainer.appendChild(deleteBtn);
-
-    overlay.appendChild(buttonsContainer);
-
-    item.appendChild(img);
-    item.appendChild(checkbox);
-    item.appendChild(overlay);
-
-    // Click to select image
-    item.addEventListener('click', () => {
-        if (cacheManagerIsSelectionMode) {
-            toggleCacheManagerImageSelection(cacheImage.hash);
-        }
-    });
-
-    return item;
-}
-
-function toggleCacheManagerImageSelection(hash) {
-    if (cacheManagerSelectedImages.has(hash)) {
-        cacheManagerSelectedImages.delete(hash);
-    } else {
-        cacheManagerSelectedImages.add(hash);
-    }
-
-    updateCacheManagerSelectionMode();
-    updateCacheManagerGallerySelection();
-}
-
-function updateCacheManagerSelectionMode() {
-    const gallery = document.getElementById('cacheManagerGallery');
-    const moveBtn = document.getElementById('cacheManagerMoveBtn');
-
-    if (!gallery) return;
-
-    if (cacheManagerSelectedImages.size > 0) {
-        cacheManagerIsSelectionMode = true;
-        gallery.classList.add('selection-mode');
-        if (moveBtn) moveBtn.style.display = 'inline-block';
-    } else {
-        cacheManagerIsSelectionMode = false;
-        gallery.classList.remove('selection-mode');
-        if (moveBtn) moveBtn.style.display = 'none';
-    }
-}
-
-function updateCacheManagerGallerySelection() {
-    const gallery = document.getElementById('cacheManagerGallery');
-    if (!gallery) return;
-
-    const items = gallery.querySelectorAll('.cache-manager-gallery-item');
-    items.forEach(item => {
-        const hash = item.dataset.hash;
-        const checkbox = item.querySelector('.cache-manager-gallery-item-checkbox');
-
-        if (cacheManagerSelectedImages.has(hash)) {
-            item.classList.add('selected');
-            checkbox.checked = true;
-        } else {
-            item.classList.remove('selected');
-            checkbox.checked = false;
-        }
-    });
-}
-
-async function deleteCacheManagerImage(cacheImage, workspace) {
-    if (!confirm(`Are you sure you want to delete this cache image?`)) {
-        return;
-    }
-
-    try {
-        const response = await fetchWithAuth(`/workspaces/${workspace || cacheManagerCurrentWorkspace}/references/${cacheImage.hash}`, {
-            method: 'DELETE'
-        });
-
-        if (response.ok) {
-            // Remove from local array
-            cacheManagerImages = cacheManagerImages.filter(img => img.hash !== cacheImage.hash);
-            cacheManagerSelectedImages.delete(cacheImage.hash);
-
-            // Refresh display
-            displayCacheManagerImages();
-
-            showGlassToast('success', null, 'Reference deleted');
-        } else {
-            throw new Error(`Failed to delete cache image: ${response.statusText}`);
-        }
-    } catch (error) {
-        console.error('Error deleting cache manager image:', error);
-        showError('Failed to delete cache image');
-    }
-}
-
-function showCacheManagerUploadModal() {
-    const modal = document.getElementById('cacheManagerUploadModal');
-    if (modal) {
-        openModal(modal);
-    }
-
-    // Reset form
-    const fileInput = document.getElementById('cacheManagerFileInput');
-    const uploadBtn = document.getElementById('cacheManagerUploadConfirmBtn');
-    const progress = document.getElementById('cacheManagerUploadProgress');
-
-    if (fileInput) fileInput.value = '';
-    if (uploadBtn) uploadBtn.disabled = true;
-    if (progress) progress.style.display = 'none';
-}
-
-function hideCacheManagerUploadModal() {
-    const modal = document.getElementById('cacheManagerUploadModal');
-    if (modal) {
-        closeModal(modal);
-    }
-}
-
-async function uploadCacheManagerImages() {
-    const fileInput = document.getElementById('cacheManagerFileInput');
-    const uploadBtn = document.getElementById('cacheManagerUploadConfirmBtn');
-    const progress = document.getElementById('cacheManagerUploadProgress');
-    const progressFill = document.getElementById('cacheManagerProgressFill');
-    const progressText = document.getElementById('cacheManagerProgressText');
-
-    if (!fileInput || !fileInput.files.length) return;
-
-    const files = Array.from(fileInput.files);
-    uploadBtn.disabled = true;
-    progress.style.display = 'flex';
-
-    let uploadedCount = 0;
-
-    try {
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-
-            // Create form data
-            const formData = new FormData();
-            formData.append('image', file);
-
-            // Upload file
-            const response = await fetchWithAuth(`/workspaces/${cacheManagerCurrentWorkspace}/references`, {
-                method: 'POST',
-                body: formData
-            });
-
-            if (response.ok) {
-                uploadedCount++;
-            } else {
-                console.error(`Failed to upload ${file.name}: ${response.statusText}`);
-            }
-
-            // Update progress
-            const percent = Math.round(((i + 1) / files.length) * 100);
-            progressFill.style.width = `${percent}%`;
-            progressText.textContent = `${percent}% (${i + 1}/${files.length})`;
-        }
-
-        if (uploadedCount > 0) {
-            showGlassToast('success', null, `${uploadedCount} image(s) uploaded`);
-            hideCacheManagerUploadModal();
-            loadCacheManagerImages(); // Refresh the gallery
-        } else {
-            showError('No images were uploaded successfully');
-        }
-    } catch (error) {
-        console.error('Error uploading cache images:', error);
-        showError('Failed to upload images');
-    } finally {
-        uploadBtn.disabled = false;
-        progress.style.display = 'none';
-    }
-}
-
-function showCacheManagerMoveModal() {
-    if (cacheManagerSelectedImages.size === 0) {
-        showError('Please select images to move');
-        return;
-    }
-
-    const modal = document.getElementById('cacheManagerMoveModal');
-    const countSpan = document.getElementById('cacheManagerMoveCount');
-    const targetSelect = document.getElementById('cacheManagerMoveTargetSelect');
-
-    if (!modal || !countSpan || !targetSelect) return;
-
-    countSpan.textContent = cacheManagerSelectedImages.size;
-
-    // Populate target workspace options
-    targetSelect.innerHTML = '';
-    workspaces.forEach(workspace => {
-        if (workspace.id !== cacheManagerCurrentWorkspace) {
-            const option = document.createElement('option');
-            option.value = workspace.id;
-            option.textContent = workspace.name;
-            targetSelect.appendChild(option);
-        }
-    });
-
-    openModal(modal);
-}
-
-function hideCacheManagerMoveModal() {
-    const modal = document.getElementById('cacheManagerMoveModal');
-    if (modal) {
-        closeModal(modal);
-    }
-}
-
-async function moveCacheManagerImages() {
-    const targetSelect = document.getElementById('cacheManagerMoveTargetSelect');
-    if (!targetSelect || !targetSelect.value) {
-        showError('Please select a target workspace');
-        return;
-    }
-
-    const targetWorkspace = targetSelect.value;
-    const selectedHashes = Array.from(cacheManagerSelectedImages);
-
-    try {
-        const response = await fetchWithAuth(`/workspaces/${targetWorkspace}/references`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                hashes: selectedHashes
-            })
-        });
-
-        if (response.ok) {
-            showGlassToast('success', null, `${selectedHashes.length} image(s) moved`);
-
-            // Clear selection and exit selection mode
-            cacheManagerSelectedImages.clear();
-            cacheManagerIsSelectionMode = false;
-
-            // Update UI to reflect selection state
-            updateCacheManagerSelectionMode();
-
-            hideCacheManagerMoveModal();
-            loadCacheManagerImages(); // Refresh the gallery
-        } else {
-            throw new Error(`Failed to move images: ${response.statusText}`);
-        }
-    } catch (error) {
-        console.error('Error moving cache images:', error);
-        showError('Failed to move images');
-    }
-}
-
-// Vibe Manager Functions
-function showVibeManagerUploadModal() {
-    const modal = document.getElementById('vibeManagerUploadModal');
-    if (modal) {
-        openModal(modal);
-    }
-
-    // Reset form
-    const fileInput = document.getElementById('vibeManagerFileInput');
-    const uploadBtn = document.getElementById('vibeManagerUploadConfirmBtn');
-    const ieInput = document.getElementById('vibeManagerIeInput');
-
-    if (fileInput) fileInput.value = '';
-    if (uploadBtn) uploadBtn.disabled = true;
-    if (ieInput) ieInput.value = '0.5';
-
-    // Populate model dropdown
-    populateVibeManagerModelDropdown();
-}
-
-function hideVibeManagerUploadModal() {
-    const modal = document.getElementById('vibeManagerUploadModal');
-    if (modal) {
-        closeModal(modal);
-    }
-}
-
-function showVibeManagerIeModal(vibeImage) {
-    const modal = document.getElementById('vibeManagerIeModal');
-    if (modal) openModal(modal);
-
-    // Store the vibe image for later use
-    modal.dataset.vibeImageId = vibeImage.id;
-
-    // Reset form
-    const ieInput = document.getElementById('vibeManagerIeInput2');
-
-    if (ieInput) ieInput.value = '0.5';
-
-    // Populate model dropdown
-    populateVibeManagerIeModelDropdown();
-}
-
-function populateVibeManagerModelDropdown() {
-    const dropdownMenu = document.getElementById('vibeManagerModelDropdownMenu');
-    const selectedSpan = document.getElementById('vibeManagerModelSelected');
-
-    if (!dropdownMenu || !selectedSpan) return;
-
-    dropdownMenu.innerHTML = '';
-
-    // Get V4+ models from optionsData
-    if (window.optionsData?.models) {
-        const v4Models = Object.entries(window.optionsData?.models)
-            .filter(([key, value]) => {
-                // Filter for V4+ models (kayra, v4, v4_5, etc.)
-                const modelKey = key.toLowerCase();
-                return modelKey.includes('v4') || modelKey.includes('kayra') || modelKey.includes('opus');
-            })
-            .sort((a, b) => {
-                // Sort by model version (V4.5 first, then V4, then others)
-                const aKey = a[0].toLowerCase();
-                const bKey = b[0].toLowerCase();
-                if (aKey.includes('v4_5')) return -1;
-                if (bKey.includes('v4_5')) return 1;
-                if (aKey.includes('v4')) return -1;
-                if (bKey.includes('v4')) return 1;
-                return a[1].localeCompare(b[1]);
-            });
-
-        v4Models.forEach(([key, displayName]) => {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option' + (vibeManagerSelectedModel === key ? ' selected' : '');
-            option.dataset.value = key;
-            option.textContent = displayName;
-
-            option.addEventListener('click', () => {
-                vibeManagerSelectedModel = key;
-                selectedSpan.textContent = displayName;
-                closeDropdown(dropdownMenu, document.getElementById('vibeManagerModelDropdownBtn'));
-            });
-
-            dropdownMenu.appendChild(option);
-        });
-    }
-
-    // Update selected display
-    if (window.optionsData?.models[vibeManagerSelectedModel]) {
-        selectedSpan.textContent = window.optionsData?.models[vibeManagerSelectedModel];
-    }
-}
-
-function populateVibeManagerIeModelDropdown() {
-    const dropdownMenu = document.getElementById('vibeManagerIeModelDropdownMenu');
-    const selectedSpan = document.getElementById('vibeManagerIeModelSelected');
-
-    if (!dropdownMenu || !selectedSpan) return;
-
-    dropdownMenu.innerHTML = '';
-
-    // Get V4+ models from optionsData
-    if (window.optionsData?.models) {
-        const v4Models = Object.entries(window.optionsData?.models)
-            .filter(([key, value]) => {
-                // Filter for V4+ models (kayra, v4, v4_5, etc.)
-                const modelKey = key.toLowerCase();
-                return modelKey.includes('v4') || modelKey.includes('kayra') || modelKey.includes('opus');
-            })
-            .sort((a, b) => {
-                // Sort by model version (V4.5 first, then V4, then others)
-                const aKey = a[0].toLowerCase();
-                const bKey = b[0].toLowerCase();
-                if (aKey.includes('v4_5')) return -1;
-                if (bKey.includes('v4_5')) return 1;
-                if (aKey.includes('v4')) return -1;
-                if (bKey.includes('v4')) return 1;
-                return a[1].localeCompare(b[1]);
-            });
-
-        v4Models.forEach(([key, displayName]) => {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option' + (vibeManagerIeSelectedModel === key ? ' selected' : '');
-            option.dataset.value = key;
-            option.textContent = displayName;
-
-            option.addEventListener('click', () => {
-                vibeManagerIeSelectedModel = key;
-                selectedSpan.textContent = displayName;
-                closeDropdown(dropdownMenu, document.getElementById('vibeManagerIeModelDropdownBtn'));
-            });
-
-            dropdownMenu.appendChild(option);
-        });
-    }
-
-    // Update selected display
-    if (window.optionsData?.models[vibeManagerIeSelectedModel]) {
-        selectedSpan.textContent = window.optionsData?.models[vibeManagerIeSelectedModel];
-    }
-}
-
-function showVibeManagerFromReferenceModal(cacheImage) {
-    const modal = document.getElementById('vibeManagerFromReferenceModal');
-    if (modal) openModal(modal);
-
-    // Store the reference image
-    vibeManagerFromReferenceImage = cacheImage;
-
-    // Show preview
-    const preview = document.getElementById('vibeManagerFromReferencePreview');
-    if (preview) {
-        const img = document.createElement('img');
-        if (cacheImage.hasPreview) {
-            img.src = `/cache/preview/${cacheImage.hash}.webp`;
-        } else {
-            img.src = `/cache/${cacheImage.hash}`;
-        }
-        img.alt = `Reference image ${cacheImage.hash}`;
-        preview.innerHTML = '';
-        preview.appendChild(img);
-    }
-
-    // Reset form
-    const ieInput = document.getElementById('vibeManagerFromReferenceIeInput');
-
-    if (ieInput) ieInput.value = '0.5';
-
-    // Populate model dropdown
-    populateVibeManagerFromReferenceModelDropdown();
-}
-
-function hideVibeManagerFromReferenceModal() {
-    const modal = document.getElementById('vibeManagerFromReferenceModal');
-    if (modal) closeModal(modal);
-    vibeManagerFromReferenceImage = null;
-}
-
-function populateVibeManagerFromReferenceModelDropdown() {
-    const dropdownMenu = document.getElementById('vibeManagerFromReferenceModelDropdownMenu');
-    const selectedSpan = document.getElementById('vibeManagerFromReferenceModelSelected');
-
-    if (!dropdownMenu || !selectedSpan) return;
-
-    dropdownMenu.innerHTML = '';
-
-    // Get V4+ models from optionsData
-    if (window.optionsData?.models) {
-        const v4Models = Object.entries(window.optionsData?.models)
-            .filter(([key, value]) => {
-                // Filter for V4+ models (kayra, v4, v4_5, etc.)
-                const modelKey = key.toLowerCase();
-                return modelKey.includes('v4') || modelKey.includes('kayra') || modelKey.includes('opus');
-            })
-            .sort((a, b) => {
-                // Sort by model version (V4.5 first, then V4, then others)
-                const aKey = a[0].toLowerCase();
-                const bKey = b[0].toLowerCase();
-                if (aKey.includes('v4_5')) return -1;
-                if (bKey.includes('v4_5')) return 1;
-                if (aKey.includes('v4')) return -1;
-                if (bKey.includes('v4')) return 1;
-                return a[1].localeCompare(b[1]);
-            });
-
-        v4Models.forEach(([key, displayName]) => {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option' + (vibeManagerFromReferenceSelectedModel === key ? ' selected' : '');
-            option.dataset.value = key;
-            option.textContent = displayName;
-
-            option.addEventListener('click', () => {
-                vibeManagerFromReferenceSelectedModel = key;
-                selectedSpan.textContent = displayName;
-                closeDropdown(dropdownMenu, document.getElementById('vibeManagerFromReferenceModelDropdownBtn'));
-            });
-
-            dropdownMenu.appendChild(option);
-        });
-    }
-
-    // Update selected display
-    if (window.optionsData?.models[vibeManagerFromReferenceSelectedModel]) {
-        selectedSpan.textContent = window.optionsData?.models[vibeManagerFromReferenceSelectedModel];
-    }
-}
-
-async function createVibeManagerFromReference() {
-    if (!vibeManagerFromReferenceImage) {
-        showError('No reference image selected');
-        return;
-    }
-
-    const ieInput = document.getElementById('vibeManagerFromReferenceIeInput');
-    const informationExtraction = ieInput ? parseFloat(ieInput.value) : 0.5;
-
-    // Show glass toast
-    const toastId = showGlassToast('info', 'Creating Vibe Encoding', 'Processing reference image...', true);
-
-    try {
-        // Send to encode endpoint with cache image reference
-        const response = await fetchWithAuth('/vibe/encode', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                cacheFile: vibeManagerFromReferenceImage.hash,
-                informationExtraction: informationExtraction,
-                model: vibeManagerFromReferenceSelectedModel,
-                workspace: cacheManagerCurrentWorkspace
-            })
-        });
-
-        if (response.ok) {
-            updateGlassToast(toastId, 'success', 'Encoding Complete', 'Vibe encoding created successfully from reference image');
-            hideVibeManagerFromReferenceModal();
-            loadVibeManagerImages(); // Refresh the vibe gallery
-        } else {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to create vibe encoding');
-        }
-    } catch (error) {
-        console.error('Error creating vibe encoding from reference:', error);
-        updateGlassToast(toastId, 'error', 'Encoding Failed', 'Failed to create vibe encoding: ' + error.message);
-    } finally {
-        // Toast will auto-remove after 3 seconds
-    }
-}
-
-function hideVibeManagerIeModal() {
-    const modal = document.getElementById('vibeManagerIeModal');
-    if (modal) closeModal(modal);
-}
-
-async function loadVibeManagerImages() {
-    const loading = document.getElementById('vibeManagerLoading');
-    const gallery = document.getElementById('vibeManagerGallery');
-
-    if (loading) loading.style.display = 'flex';
-    if (gallery) gallery.innerHTML = '';
-
-    try {
-        // Load vibe images for the current workspace
-        const response = await fetchWithAuth(`/vibe/images?workspace=${cacheManagerCurrentWorkspace}`);
-
-        if (response.ok) {
-            vibeManagerImages = await response.json();
-        } else {
-            throw new Error(`Failed to load vibe images: ${response.statusText}`);
-        }
-
-        displayVibeManagerImages();
-    } catch (error) {
-        console.error('Error loading vibe manager images:', error);
-        showError('Failed to load vibe images');
-    } finally {
-        if (loading) loading.style.display = 'none';
-    }
-}
-
-function displayVibeManagerImages() {
-    const gallery = document.getElementById('vibeManagerGallery');
-    if (!gallery) return;
-
-    gallery.innerHTML = '';
-
-    if (vibeManagerImages.length === 0) {
-        gallery.innerHTML = '<div class="no-images">No vibe images found in this workspace</div>';
-        return;
-    }
-
-    vibeManagerImages.forEach(vibeImage => {
-        const galleryItem = createVibeManagerGalleryItem(vibeImage);
-        gallery.appendChild(galleryItem);
-    });
-}
-
-function createVibeManagerGalleryItem(vibeImage) {
-    const item = document.createElement('div');
-    item.className = 'vibe-manager-gallery-item';
-    item.dataset.id = vibeImage.id;
-
-    // Create image element
-    const img = document.createElement('img');
-    if (vibeImage.preview) {
-        img.src = `/cache/preview/${vibeImage.preview}`;
-    } else {
-        img.src = '/images/placeholder.png'; // Fallback image
-    }
-    img.alt = `Vibe image ${vibeImage.id}`;
-    img.loading = 'lazy';
-
-    // Create checkbox for selection mode
-    const checkbox = document.createElement('div');
-    checkbox.className = 'vibe-manager-gallery-item-checkbox';
-    checkbox.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleVibeManagerImageSelection(vibeImage.id);
-    });
-
-    // Create encodings badges container
-    const encodingsContainer = document.createElement('div');
-    encodingsContainer.className = 'vibe-manager-gallery-item-encodings';
-
-    if (vibeImage.encodings && vibeImage.encodings.length > 0) {
-        // Create enhanced badges container
-        const badgesContainer = document.createElement('div');
-        badgesContainer.className = 'vibe-image-badges';
-
-        vibeImage.encodings.forEach(encoding => {
-            // Get model display name
-            const modelKey = encoding.model || 'kayra';
-            const modelDisplayName = window.optionsData?.models[modelKey] ? window.optionsData?.models[modelKey] : modelKey;
-
-            // Combined model and IE badge with split colors
-            const combinedBadge = document.createElement('div');
-            combinedBadge.className = 'vibe-badge split';
-            combinedBadge.innerHTML = `
-                <span class="badge-text">${modelDisplayName}</span>
-                <span class="badge-text">${encoding.informationExtraction || '0.5'}</span>
-            `;
-            combinedBadge.title = `Model: ${modelDisplayName}, IE: ${encoding.informationExtraction || '0.5'}`;
-            badgesContainer.appendChild(combinedBadge);
-        });
-
-        encodingsContainer.appendChild(badgesContainer);
-    } else {
-        const noEncodingsBadge = document.createElement('div');
-        noEncodingsBadge.className = 'vibe-manager-encoding-badge no-encodings';
-        noEncodingsBadge.textContent = 'No IE';
-        encodingsContainer.appendChild(noEncodingsBadge);
-    }
-
-    // Create overlay
-    const overlay = document.createElement('div');
-    overlay.className = 'vibe-manager-gallery-item-overlay';
-
-    // Create info section
-    const infoSection = document.createElement('div');
-    infoSection.className = 'vibe-manager-gallery-item-info';
-
-    const date = new Date(vibeImage.mtime).toLocaleDateString();
-    infoSection.innerHTML = `
-        <div>${date}</div>
-        <div>${vibeImage.type}</div>
-    `;
-
-    // Create buttons container
-    const buttonsContainer = document.createElement('div');
-    buttonsContainer.className = 'vibe-manager-gallery-item-buttons';
-
-    // Create IE request button
-    const ieBtn = document.createElement('button');
-    ieBtn.className = 'btn-secondary btn-small';
-    ieBtn.innerHTML = '<i class="nai-plus"></i>';
-    ieBtn.title = 'Request new Information Extraction';
-    ieBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        showVibeManagerIeModal(vibeImage);
-    });
-
-    // Create delete button
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'btn-danger btn-small';
-    deleteBtn.innerHTML = '<i class="nai-trash"></i>';
-    deleteBtn.title = 'Delete vibe image';
-    deleteBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        deleteVibeManagerImage(vibeImage);
-    });
-
-    buttonsContainer.appendChild(ieBtn);
-    buttonsContainer.appendChild(deleteBtn);
-
-    overlay.appendChild(infoSection);
-    overlay.appendChild(buttonsContainer);
-
-    item.appendChild(img);
-    item.appendChild(checkbox);
-    item.appendChild(encodingsContainer);
-    item.appendChild(overlay);
-
-    // Click to select image
-    item.addEventListener('click', () => {
-        if (vibeManagerIsSelectionMode) {
-            toggleVibeManagerImageSelection(vibeImage.id);
-        }
-    });
-
-    return item;
-}
-
-// Vibe Manager Multi-Select Functions
-function toggleVibeManagerImageSelection(vibeImageId) {
-    if (vibeManagerSelectedImages.has(vibeImageId)) {
-        vibeManagerSelectedImages.delete(vibeImageId);
-    } else {
-        vibeManagerSelectedImages.add(vibeImageId);
-    }
-
-    updateVibeManagerSelectionMode();
-    updateVibeManagerGallerySelection();
-}
-
-function updateVibeManagerSelectionMode() {
-    const gallery = document.getElementById('vibeManagerGallery');
-    const moveBtn = document.getElementById('vibeManagerMoveBtn');
-
-    if (!gallery) return;
-
-    if (vibeManagerSelectedImages.size > 0) {
-        vibeManagerIsSelectionMode = true;
-        gallery.classList.add('selection-mode');
-        if (moveBtn) moveBtn.style.display = 'inline-block';
-    } else {
-        vibeManagerIsSelectionMode = false;
-        gallery.classList.remove('selection-mode');
-        if (moveBtn) moveBtn.style.display = 'none';
-    }
-}
-
-function updateVibeManagerGallerySelection() {
-    const gallery = document.getElementById('vibeManagerGallery');
-    if (!gallery) return;
-
-    const items = gallery.querySelectorAll('.vibe-manager-gallery-item');
-    items.forEach(item => {
-        const vibeImageId = item.dataset.id;
-        const checkbox = item.querySelector('.vibe-manager-gallery-item-checkbox');
-
-        if (vibeManagerSelectedImages.has(vibeImageId)) {
-            item.classList.add('selected');
-            checkbox.checked = true;
-        } else {
-            item.classList.remove('selected');
-            checkbox.checked = false;
-        }
-    });
-}
-
-function updateVibeManagerBulkActions() {
-    const moveBtn = document.getElementById('vibeManagerMoveBtn');
-
-    if (vibeManagerSelectedImages.size > 0) {
-        moveBtn.innerHTML = `<i class="fas fa-arrow-right"></i> Move Selected (${vibeManagerSelectedImages.size})`;
-    } else {
-        moveBtn.innerHTML = '<i class="fas fa-arrow-right"></i> Move Selected';
-    }
-}
-
-function showVibeManagerDeleteModal() {
-    if (vibeManagerSelectedImages.size === 0) {
-        showError('No vibe images selected');
-        return;
-    }
-
-    const modal = document.getElementById('vibeManagerDeleteModal');
-    if (modal) {
-        openModal(modal);
-    }
-}
-
-function hideVibeManagerDeleteModal() {
-    const modal = document.getElementById('vibeManagerDeleteModal');
-    if (modal) {
-        closeModal(modal);
-    }
-}
-
-async function deleteSelectedVibeImages() {
-    const checkboxes = document.querySelectorAll('#vibeManagerDeleteItemsList .vibe-delete-items input[type="checkbox"]:checked');
-
-    if (checkboxes.length === 0) {
-        showError('No items selected for deletion');
-        return;
-    }
-
-    const confirmMessage = `Are you sure you want to delete ${checkboxes.length} selected item(s)?`;
-
-    if (!confirm(confirmMessage)) {
-        return;
-    }
-
-    try {
-        const toastId = showGlassToast('info', 'Deleting Items', 'Processing deletion...', true);
-
-        // Process selected items
-        const vibesToDelete = [];
-        const encodingsToDelete = [];
-
-        checkboxes.forEach(checkbox => {
-            const itemId = checkbox.id.replace('delete-', '');
-            const itemElement = checkbox.closest('.vibe-delete-item');
-
-            // Check if this is a vibe or encoding based on the badge type
-            const badge = itemElement.querySelector('.vibe-badge');
-            if (badge.classList.contains('vibe-only')) {
-                // This is an entire vibe
-                vibesToDelete.push(itemId);
-            } else {
-                // This is an encoding - extract vibeId, model, and ie from the badge
-                const badgeTexts = badge.querySelectorAll('.badge-text');
-                if (badgeTexts.length >= 2) {
-                    const model = badgeTexts[0].textContent;
-                    const ie = parseFloat(badgeTexts[1].textContent);
-
-                    // Find the vibe that contains this encoding
-                    const vibe = vibeManagerImages.find(v => v.encodings && v.encodings.some(e =>
-                        e.model === model && e.informationExtraction === ie
-                    ));
-
-                    if (vibe) {
-                        encodingsToDelete.push({
-                            vibeId: vibe.id,
-                            model: model,
-                            informationExtraction: ie
-                        });
-                    }
-                }
-            }
-        });
-
-        // Send deletion request
-        const response = await fetchWithAuth('/vibe/images/bulk-delete', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                vibesToDelete: vibesToDelete,
-                encodingsToDelete: encodingsToDelete,
-                workspace: cacheManagerCurrentWorkspace
-            })
-        });
-
-        if (response.ok) {
-            updateGlassToast(toastId, 'success', 'Delete Complete', 'Items deleted');
-
-            // Remove deleted vibes from local array
-            vibeManagerImages = vibeManagerImages.filter(img => !vibesToDelete.includes(img.id));
-
-            // Update encodings for remaining vibes
-            encodingsToDelete.forEach(encodingData => {
-                vibeManagerImages.forEach(vibe => {
-                    if (vibe.encodings && vibe.id === encodingData.vibeId) {
-                        vibe.encodings = vibe.encodings.filter(encoding =>
-                            !(encoding.model === encodingData.model && encoding.informationExtraction === encodingData.informationExtraction)
-                        );
-                    }
-                });
-            });
-
-            // Clear selection and exit selection mode
-            vibeManagerSelectedImages.clear();
-            vibeManagerIsSelectionMode = false;
-
-            // Refresh display
-            displayVibeManagerImages();
-            updateVibeManagerSelectionMode();
-        } else {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to delete items');
-        }
-    } catch (error) {
-        console.error('Error deleting items:', error);
-        showError('Failed to delete items: ' + error.message);
-    } finally {
-        hideVibeManagerDeleteModal();
-    }
-}
-
-function showVibeManagerMoveModal() {
-    if (vibeManagerSelectedImages.size === 0) {
-        showError('No vibe images selected');
-        return;
-    }
-
-    const modal = document.getElementById('vibeManagerMoveModal');
-    const moveCount = document.getElementById('vibeManagerMoveCount');
-    const targetSelect = document.getElementById('vibeManagerMoveTargetSelect');
-
-    moveCount.textContent = vibeManagerSelectedImages.size;
-
-    // Populate workspace options
-    targetSelect.innerHTML = '';
-    workspaces.forEach(workspace => {
-        if (workspace.id !== cacheManagerCurrentWorkspace) {
-            const option = document.createElement('option');
-            option.value = workspace.id;
-            option.textContent = workspace.name;
-            targetSelect.appendChild(option);
-        }
-    });
-
-    openModal(modal);
-}
-
-function hideVibeManagerMoveModal() {
-    const modal = document.getElementById('vibeManagerMoveModal');
-    if (modal) {
-        closeModal(modal);
-    }
-}
-
-async function moveSelectedVibeImages() {
-    const targetWorkspace = document.getElementById('vibeManagerMoveTargetSelect').value;
-
-    if (!targetWorkspace) {
-        showError('Please select a target workspace');
-        return;
-    }
-
-    try {
-        const toastId = showGlassToast('info', 'Moving Vibe Images', 'Moving to target workspace...', true);
-
-        const response = await fetchWithAuth('/vibe/images/bulk-move', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                imageIds: Array.from(vibeManagerSelectedImages),
-                targetWorkspace: targetWorkspace,
-                sourceWorkspace: cacheManagerCurrentWorkspace
-            })
-        });
-
-        if (response.ok) {
-            updateGlassToast(toastId, 'success', 'Move Complete', 'Vibe images moved');
-
-            // Remove moved images from local array
-            vibeManagerImages = vibeManagerImages.filter(img => !vibeManagerSelectedImages.has(img.id));
-
-            // Clear selection and exit selection mode
-            vibeManagerSelectedImages.clear();
-            vibeManagerIsSelectionMode = false;
-
-            // Refresh display
-            loadVibeManagerImages();
-            updateVibeManagerSelectionMode();
-        } else {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to move vibe images');
-        }
-    } catch (error) {
-        console.error('Error moving vibe images:', error);
-        showError('Failed to move vibe images: ' + error.message);
-    } finally {
-        hideVibeManagerMoveModal();
-    }
-}
-
-async function deleteVibeManagerImage(vibeImage) {
-    // Set up the vibe image for individual deletion
-    vibeManagerSelectedImages.clear();
-    vibeManagerSelectedImages.add(vibeImage.id);
-
-    // Show the existing delete modal with this single image
-    showVibeManagerDeleteModal();
-}
-
-async function uploadVibeManagerImage() {
-    const fileInput = document.getElementById('vibeManagerFileInput');
-    const uploadBtn = document.getElementById('vibeManagerUploadConfirmBtn');
-    const ieInput = document.getElementById('vibeManagerIeInput');
-
-    if (!fileInput || !fileInput.files.length) return;
-
-    const file = fileInput.files[0];
-    const model = vibeManagerSelectedModel;
-    const informationExtraction = ieInput ? parseFloat(ieInput.value) : 0.5;
-
-    uploadBtn.disabled = true;
-
-    // Show glass toast
-    const toastId = showGlassToast('info', 'Uploading Vibe Image', 'Converting image to base64...', true);
-
-    try {
-        // Convert file to base64
-        const base64 = await fileToBase64(file);
-
-        // Update progress
-        updateGlassToast(toastId, 'info', 'Encoding Vibe Image', 'Processing image with AI model...');
-
-        // Send to encode endpoint
-        const response = await fetchWithAuth('/vibe/encode', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                image: base64,
-                informationExtraction: informationExtraction,
-                model: model,
-                workspace: cacheManagerCurrentWorkspace
-            })
-        });
-
-        if (response.ok) {
-            updateGlassToast(toastId, 'success', 'Upload Complete', 'Vibe image uploaded and encoded successfully');
-            hideVibeManagerUploadModal();
-            loadVibeManagerImages(); // Refresh the gallery
-        } else {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to encode vibe image');
-        }
-    } catch (error) {
-        console.error('Error uploading vibe image:', error);
-        updateGlassToast(toastId, 'error', 'Upload Failed', 'Failed to upload vibe image: ' + error.message);
-    } finally {
-        uploadBtn.disabled = false;
-    }
-}
-
-async function requestVibeManagerIe() {
-    const modal = document.getElementById('vibeManagerIeModal');
-    const vibeImageId = modal.dataset.vibeImageId;
-    const ieInput = document.getElementById('vibeManagerIeInput2');
-
-    if (!vibeImageId) {
-        showError('No vibe image selected');
-        return;
-    }
-
-    const model = vibeManagerIeSelectedModel;
-    const informationExtraction = ieInput ? parseFloat(ieInput.value) : 0.5;
-
-    // Show glass toast
-    const toastId = showGlassToast('info', 'Requesting IE', 'Processing new Information Extraction...', true);
-
-    try {
-        // Send to encode endpoint with existing vibe image ID
-        const response = await fetchWithAuth('/vibe/encode', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                id: vibeImageId,
-                informationExtraction: informationExtraction,
-                model: model,
-                workspace: cacheManagerCurrentWorkspace
-            })
-        });
-
-        if (response.ok) {
-            updateGlassToast(toastId, 'success', 'IE Complete', 'New Information Extraction successful');
-            hideVibeManagerIeModal();
-            loadVibeManagerImages(); // Refresh the gallery
-        } else {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to request Information Extraction');
-        }
-    } catch (error) {
-        console.error('Error requesting Information Extraction:', error);
-        updateGlassToast(toastId, 'error', 'IE Failed', 'Failed to request Information Extraction: ' + error.message);
-    } finally {
-        // Toast will auto-remove after 3 seconds
-    }
-}
-
-// Helper function to convert file to base64
-function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => {
-            const base64 = reader.result.split(',')[1]; // Remove data URL prefix
-            resolve(base64);
-        };
-        reader.onerror = error => reject(error);
-    });
-}
-
-// Initialize cache manager functionality
-function initializeCacheManager() {
-    // Reference manager button
-    const cacheManagerBtn = document.getElementById('cacheManagerBtn');
-    if (cacheManagerBtn) {
-        cacheManagerBtn.addEventListener('click', showCacheManagerModal);
-    }
-
-    // Reference manager modal close button
-    const closeCacheManagerBtn = document.getElementById('closeCacheManagerBtn');
-    if (closeCacheManagerBtn) {
-        closeCacheManagerBtn.addEventListener('click', hideCacheManagerModal);
-    }
-
-    // Reference manager refresh button
-    const refreshBtn = document.getElementById('cacheManagerRefreshBtn');
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', () => {
-            const activeTab = document.querySelector('.cache-manager-tabs .tab-btn.active');
-            if (activeTab && activeTab.dataset.tab === 'vibe') {
-                loadVibeManagerImages();
-            } else {
-                loadCacheManagerImages();
-            }
-        });
-    }
-
-    // Reference manager upload dropdown
-    const uploadDropdownBtn = document.getElementById('cacheManagerUploadDropdownBtn');
-    const uploadDropdownMenu = document.getElementById('cacheManagerUploadDropdownMenu');
-    if (uploadDropdownBtn && uploadDropdownMenu) {
-        uploadDropdownBtn.addEventListener('click', () => {
-            toggleDropdown(uploadDropdownMenu, uploadDropdownBtn);
-        });
-
-        // Handle upload type selection
-        const uploadOptions = uploadDropdownMenu.querySelectorAll('.custom-dropdown-option');
-        uploadOptions.forEach(option => {
-            option.addEventListener('click', () => {
-                const uploadType = option.dataset.uploadType;
-                if (uploadType === 'reference') {
-                    showCacheManagerUploadModal();
-                } else if (uploadType === 'vibe') {
-                    showVibeManagerUploadModal();
-                }
-                closeDropdown(uploadDropdownMenu, uploadDropdownBtn);
-            });
-        });
-    }
-
-    // Reference manager move button
-    const moveBtn = document.getElementById('cacheManagerMoveBtn');
-    if (moveBtn) {
-        moveBtn.addEventListener('click', showCacheManagerMoveModal);
-    }
-
-    // Tab switching functionality
-    const tabButtons = document.querySelectorAll('.cache-manager-tabs .tab-btn');
-    tabButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            const tabName = btn.dataset.tab;
-            switchCacheManagerTab(tabName);
-        });
-    });
-
-    // Upload modal controls
-    const closeUploadBtn = document.getElementById('closeCacheManagerUploadBtn');
-    const uploadCancelBtn = document.getElementById('cacheManagerUploadCancelBtn');
-    const uploadConfirmBtn = document.getElementById('cacheManagerUploadConfirmBtn');
-    const fileInput = document.getElementById('cacheManagerFileInput');
-
-    if (closeUploadBtn) closeUploadBtn.addEventListener('click', hideCacheManagerUploadModal);
-    if (uploadCancelBtn) uploadCancelBtn.addEventListener('click', hideCacheManagerUploadModal);
-    if (uploadConfirmBtn) uploadConfirmBtn.addEventListener('click', uploadCacheManagerImages);
-
-    if (fileInput) {
-        fileInput.addEventListener('change', () => {
-            const uploadBtn = document.getElementById('cacheManagerUploadConfirmBtn');
-            if (uploadBtn) {
-                uploadBtn.disabled = !fileInput.files.length;
-            }
-        });
-    }
-
-    // Vibe upload modal controls
-    const closeVibeUploadBtn = document.getElementById('closeVibeManagerUploadBtn');
-    const vibeUploadCancelBtn = document.getElementById('vibeManagerUploadCancelBtn');
-    const vibeUploadConfirmBtn = document.getElementById('vibeManagerUploadConfirmBtn');
-    const vibeFileInput = document.getElementById('vibeManagerFileInput');
-    const vibeIeSlider = document.getElementById('vibeManagerIeSlider');
-    const vibeIeValue = document.getElementById('vibeManagerIeValue');
-
-    if (closeVibeUploadBtn) closeVibeUploadBtn.addEventListener('click', hideVibeManagerUploadModal);
-    if (vibeUploadCancelBtn) vibeUploadCancelBtn.addEventListener('click', hideVibeManagerUploadModal);
-    if (vibeUploadConfirmBtn) vibeUploadConfirmBtn.addEventListener('click', uploadVibeManagerImage);
-
-    if (vibeFileInput) {
-        vibeFileInput.addEventListener('change', () => {
-            const uploadBtn = document.getElementById('vibeManagerUploadConfirmBtn');
-            if (uploadBtn) {
-                uploadBtn.disabled = !vibeFileInput.files.length;
-            }
-        });
-    }
-
-    // Add scroll wheel functionality for IE inputs
-    const vibeIeInput = document.getElementById('vibeManagerIeInput');
-    if (vibeIeInput) {
-        vibeIeInput.addEventListener('wheel', function(e) {
-            e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.01 : 0.01;
-            const currentValue = parseFloat(this.value) || 0.5;
-            const newValue = Math.max(0, Math.min(1, currentValue + delta));
-            this.value = newValue.toFixed(2);
-        });
-    }
-
-    // Vibe model dropdowns
-    const vibeModelDropdownBtn = document.getElementById('vibeManagerModelDropdownBtn');
-    const vibeModelDropdownMenu = document.getElementById('vibeManagerModelDropdownMenu');
-    const vibeIeModelDropdownBtn = document.getElementById('vibeManagerIeModelDropdownBtn');
-    const vibeIeModelDropdownMenu = document.getElementById('vibeManagerIeModelDropdownMenu');
-
-    if (vibeModelDropdownBtn && vibeModelDropdownMenu) {
-        vibeModelDropdownBtn.addEventListener('click', () => {
-            toggleDropdown(vibeModelDropdownMenu, vibeModelDropdownBtn);
-        });
-    }
-
-    if (vibeIeModelDropdownBtn && vibeIeModelDropdownMenu) {
-        vibeIeModelDropdownBtn.addEventListener('click', () => {
-            toggleDropdown(vibeIeModelDropdownMenu, vibeIeModelDropdownBtn);
-        });
-    }
-
-    // Vibe from reference model dropdown
-    const vibeFromReferenceModelDropdownBtn = document.getElementById('vibeManagerFromReferenceModelDropdownBtn');
-    const vibeFromReferenceModelDropdownMenu = document.getElementById('vibeManagerFromReferenceModelDropdownMenu');
-
-    if (vibeFromReferenceModelDropdownBtn && vibeFromReferenceModelDropdownMenu) {
-        vibeFromReferenceModelDropdownBtn.addEventListener('click', () => {
-            toggleDropdown(vibeFromReferenceModelDropdownMenu, vibeFromReferenceModelDropdownBtn);
-        });
-    }
-
-    // Vibe IE modal controls
-    const closeVibeIeBtn = document.getElementById('closeVibeManagerIeBtn');
-    const vibeIeCancelBtn = document.getElementById('vibeManagerIeCancelBtn');
-    const vibeIeConfirmBtn = document.getElementById('vibeManagerIeConfirmBtn');
-    const vibeIeSlider2 = document.getElementById('vibeManagerIeSlider2');
-    const vibeIeValue2 = document.getElementById('vibeManagerIeValue2');
-
-    if (closeVibeIeBtn) closeVibeIeBtn.addEventListener('click', hideVibeManagerIeModal);
-    if (vibeIeCancelBtn) vibeIeCancelBtn.addEventListener('click', hideVibeManagerIeModal);
-    if (vibeIeConfirmBtn) vibeIeConfirmBtn.addEventListener('click', requestVibeManagerIe);
-
-    // Add scroll wheel functionality for IE inputs
-    const vibeIeInput2 = document.getElementById('vibeManagerIeInput2');
-    if (vibeIeInput2) {
-        vibeIeInput2.addEventListener('wheel', function(e) {
-            e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.01 : 0.01;
-            const currentValue = parseFloat(this.value) || 0.5;
-            const newValue = Math.max(0, Math.min(1, currentValue + delta));
-            this.value = newValue.toFixed(2);
-        });
-    }
-
-    // Vibe from reference modal controls
-    const closeVibeFromReferenceBtn = document.getElementById('closeVibeManagerFromReferenceBtn');
-    const vibeFromReferenceCancelBtn = document.getElementById('vibeManagerFromReferenceCancelBtn');
-    const vibeFromReferenceConfirmBtn = document.getElementById('vibeManagerFromReferenceConfirmBtn');
-    const vibeFromReferenceIeInput = document.getElementById('vibeManagerFromReferenceIeInput');
-
-    if (closeVibeFromReferenceBtn) closeVibeFromReferenceBtn.addEventListener('click', hideVibeManagerFromReferenceModal);
-    if (vibeFromReferenceCancelBtn) vibeFromReferenceCancelBtn.addEventListener('click', hideVibeManagerFromReferenceModal);
-    if (vibeFromReferenceConfirmBtn) vibeFromReferenceConfirmBtn.addEventListener('click', createVibeManagerFromReference);
-
-    // Add scroll wheel functionality for IE inputs
-    if (vibeFromReferenceIeInput) {
-        vibeFromReferenceIeInput.addEventListener('wheel', function(e) {
-            e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.01 : 0.01;
-            const currentValue = parseFloat(this.value) || 0.5;
-            const newValue = Math.max(0, Math.min(1, currentValue + delta));
-            this.value = newValue.toFixed(2);
-        });
-    }
-
-    // Move modal controls
-    const closeMoveBtn = document.getElementById('closeCacheManagerMoveBtn');
-    const moveCancelBtn = document.getElementById('cacheManagerMoveCancelBtn');
-    const moveConfirmBtn = document.getElementById('cacheManagerMoveConfirmBtn');
-
-    if (closeMoveBtn) closeMoveBtn.addEventListener('click', hideCacheManagerMoveModal);
-    if (moveCancelBtn) moveCancelBtn.addEventListener('click', hideCacheManagerMoveModal);
-    if (moveConfirmBtn) moveConfirmBtn.addEventListener('click', moveCacheManagerImages);
-
-    // Vibe Manager bulk action controls
-    const vibeManagerMoveBtn = document.getElementById('vibeManagerMoveBtn');
-
-    if (vibeManagerMoveBtn) vibeManagerMoveBtn.addEventListener('click', showVibeManagerMoveModal);
-
-    // Vibe Manager delete modal controls
-    const closeVibeDeleteBtn = document.getElementById('closeVibeManagerDeleteBtn');
-    const vibeDeleteCancelBtn = document.getElementById('vibeManagerDeleteCancelBtn');
-    const vibeDeleteConfirmBtn = document.getElementById('vibeManagerDeleteConfirmBtn');
-
-    if (closeVibeDeleteBtn) closeVibeDeleteBtn.addEventListener('click', hideVibeManagerDeleteModal);
-    if (vibeDeleteCancelBtn) vibeDeleteCancelBtn.addEventListener('click', hideVibeManagerDeleteModal);
-    if (vibeDeleteConfirmBtn) vibeDeleteConfirmBtn.addEventListener('click', deleteSelectedVibeImages);
-
-    // Vibe Manager move modal controls
-    const closeVibeMoveBtn = document.getElementById('closeVibeManagerMoveBtn');
-    const vibeMoveCancelBtn = document.getElementById('vibeManagerMoveCancelBtn');
-    const vibeMoveConfirmBtn = document.getElementById('vibeManagerMoveConfirmBtn');
-
-    if (closeVibeMoveBtn) closeVibeMoveBtn.addEventListener('click', hideVibeManagerMoveModal);
-    if (vibeMoveCancelBtn) vibeMoveCancelBtn.addEventListener('click', hideVibeManagerMoveModal);
-    if (vibeMoveConfirmBtn) vibeMoveConfirmBtn.addEventListener('click', moveSelectedVibeImages);
-
-    // Close modals when clicking outside
-    const modals = ['cacheManagerModal', 'cacheManagerUploadModal', 'cacheManagerMoveModal', 'vibeManagerUploadModal', 'vibeManagerIeModal', 'vibeManagerFromReferenceModal', 'vibeManagerDeleteModal', 'vibeManagerMoveModal'];
-    modals.forEach(modalId => {
-        const modal = document.getElementById(modalId);
-        if (modal) {
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) {
-                    closeModal(modal);
-                }
-            });
-        }
-    });
-
-    // Close dropdowns when clicking outside
-    document.addEventListener('click', (e) => {
-        const vibeModelDropdown = document.getElementById('vibeManagerModelDropdown');
-        const vibeIeModelDropdown = document.getElementById('vibeManagerIeModelDropdown');
-        const vibeFromReferenceModelDropdown = document.getElementById('vibeManagerFromReferenceModelDropdown');
-
-        if (vibeModelDropdown && !vibeModelDropdown.contains(e.target)) {
-            closeDropdown(vibeModelDropdownMenu, vibeModelDropdownBtn);
-        }
-
-        if (vibeIeModelDropdown && !vibeIeModelDropdown.contains(e.target)) {
-            closeDropdown(vibeIeModelDropdownMenu, vibeIeModelDropdownBtn);
-        }
-
-        if (vibeFromReferenceModelDropdown && !vibeFromReferenceModelDropdown.contains(e.target)) {
-            closeDropdown(vibeFromReferenceModelDropdownMenu, vibeFromReferenceModelDropdownBtn);
-        }
-    });
-}
-
-// Tab switching function for cache manager (Reference Model)
-function switchCacheManagerTab(tabName) {
-    // Update tab buttons
-    const tabButtons = document.querySelectorAll('.cache-manager-tabs .tab-btn');
-    tabButtons.forEach(btn => {
-        if (btn.dataset.tab === tabName) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
-    });
-
-    // Update tab panes
-    const tabPanes = document.querySelectorAll('.cache-manager-body .tab-pane');
-    tabPanes.forEach(pane => {
-        if (pane.id === `${tabName}-tab`) {
-            pane.classList.add('active');
-        } else {
-            pane.classList.remove('active');
-        }
-    });
-
-    // Load appropriate data
-    if (tabName === 'references') {
-        loadCacheManagerImages();
-    } else if (tabName === 'vibe') {
-        loadVibeManagerImages();
-    }
-}
-
 async function updateImageGenCounter(counter = 0) {
     try {
         const counterElem = document.getElementById('imageGenCounter');
@@ -14659,21 +9720,21 @@ async function updateImageGenCounter(counter = 0) {
         const statusElem = document.getElementById('queueStatus');
         if (counterElem) counterElem.textContent = '---';
         if (statusElem) statusElem.classList.remove('notice', 'warn', 'bad');
-    }
+    }   
 }
 
 async function updateQueueStatus(data) {
     try {
-        const counterElem = document.getElementById('imageGenCounter');
+        const queueStatus = document.getElementById('queueStatus');
         const statusElem = document.getElementById('queueIcon');
         if (statusElem) {
             let classList = 'fas ';
-            if (data.value === 2) classList += 'fa-octagon-exclamation';
+            if (data.value === 2) classList += 'fa-octagon-exclamation fa-beat-fade';
             else if (data.value === 1) classList += 'fa-ban';
-            else classList += 'fa-check';
+            else classList += 'fa-check hidden';
 
-            if (data.value === 2) counterElem.classList.add('stopped');
-            else counterElem.classList.remove('stopped');
+            if (data.value === 2) queueStatus.classList.add('stopped');
+            else queueStatus.classList.remove('stopped');
             statusElem.setAttribute('data-value', data.value);
             statusElem.classList = classList;
         }
@@ -14685,72 +9746,6 @@ async function updateQueueStatus(data) {
 }
 
 let pinModalPromise = null;
-function showPinModal() {
-    if (pinModalPromise) return pinModalPromise;
-    const modal = document.getElementById('pinModal');
-    const input = document.getElementById('pinModalInput');
-    const form = document.getElementById('pinModalForm');
-    const error = document.getElementById('pinModalError');
-    const submitBtn = document.getElementById('pinModalSubmitBtn');
-    const cancelBtn = document.getElementById('pinModalCancelBtn');
-    const closeBtn = document.getElementById('closePinModalBtn');
-    error.style.display = 'none';
-    input.value = '';
-    modal.style.display = 'flex';
-    input.focus();
-    let resolveFn, rejectFn;
-    pinModalPromise = new Promise((resolve, reject) => {
-        resolveFn = resolve;
-        rejectFn = reject;
-        function cleanup() {
-            closeModal(modal);
-            form.removeEventListener('submit', onSubmit);
-            cancelBtn.removeEventListener('click', onCancel);
-            closeBtn.removeEventListener('click', onCancel);
-            pinModalPromise = null;
-        }
-        function onSubmit(e) {
-            e.preventDefault();
-            const pin = input.value.trim();
-            if (pin.length !== 6 || !/^[0-9]{6}$/.test(pin)) {
-                error.textContent = 'Enter a valid 6-digit PIN.';
-                error.style.display = 'block';
-                return;
-            }
-            submitBtn.disabled = true;
-            error.style.display = 'none';
-            fetch('/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pin })
-            }).then(async resp => {
-                const data = await resp.json().catch(() => ({}));
-                if (resp.ok) {
-                    cleanup();
-                    resolve();
-                } else {
-                    error.textContent = data.error || 'Invalid PIN code.';
-                    error.style.display = 'block';
-                    input.value = '';
-                    input.focus();
-                }
-            }).catch(() => {
-                error.textContent = 'Network error. Try again.';
-                error.style.display = 'block';
-            }).finally(() => {
-                submitBtn.disabled = false;
-            });
-        }
-        function onCancel() {
-            cleanup();
-            reject();
-        }
-        form.addEventListener('submit', onSubmit);
-        cancelBtn.addEventListener('click', onCancel);
-        closeBtn.addEventListener('click', onCancel);
-    });
-    return pinModalPromise;
-}
 
 async function ensureSessionValid() {
     // Try a lightweight authenticated endpoint
@@ -14764,13 +9759,15 @@ async function ensureSessionValid() {
         }
     } catch {}
     try {
-        await showPinModal();
+        if (pinModalPromise) return pinModalPromise;
+        pinModalPromise = await window.showPinModal();
         // Try again after re-auth
         const resp2 = await fetch('/ping');
         if (resp2.status !== 401) {
             const data = await resp2.json();
             updateImageGenCounter(data.image_count);
             updateQueueStatus(data.queue_status);
+            pinModalPromise = null;
             return true;
         }
     } catch {
@@ -14784,3 +9781,52 @@ async function ensureSessionValid() {
     await ensureSessionValid();
     setInterval(ensureSessionValid, 10000);
 })();
+
+// WebSocket Event Handlers
+if (window.wsClient) {
+    // Handle WebSocket connection events
+    wsClient.on('connected', () => {
+        console.log('✅ WebSocket connected successfully');
+        
+        // Subscribe to relevant channels
+        wsClient.send({
+            type: 'subscribe',
+            channels: ['queue_updates', 'image_generated', 'system_messages']
+        });
+    });
+
+    wsClient.on('disconnected', (event) => {
+        console.log('🔌 WebSocket disconnected:', event);
+    });
+
+    // Handle queue updates
+    wsClient.on('queue_update', (data) => {
+        console.log('📊 Queue update received:', data);
+        if (data.data) {
+            updateQueueStatus(data.data);
+        }
+    });
+
+    // Handle system messages
+    wsClient.on('system_message', (data) => {
+        console.log('📢 System message received:', data);
+        if (data.data && data.data.message) {
+            // Show system message as toast
+            wsClient.showToast(data.data.message, data.data.level || 'info');
+        }
+    });
+
+    // Handle notifications
+    wsClient.on('notification', (data) => {
+        console.log('🔔 Notification received:', data);
+        if (data.data && data.data.message) {
+            wsClient.showToast(data.data.message, data.data.type || 'info');
+        }
+    });
+
+    // Handle custom message types
+    wsClient.on('message', (message) => {
+        console.log('📨 WebSocket message received:', message);
+        // Handle any other message types here
+    });
+}

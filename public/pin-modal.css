@@ -1,0 +1,139 @@
+/* PIN Display and PIN Pad Styles for Modal */
+.pin-display {
+    display: flex;
+    justify-content: center;
+}
+
+.pin-dots {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.pin-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    transition: all 0.3s ease;
+}
+
+.pin-dot.filled {
+    background-color: #fff;
+    border-color: #fff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.pin-dot.overflow {
+    background-color: #87CEEB;
+    border-color: #87CEEB;
+    box-shadow: 0 0 10px rgba(135, 206, 235, 0.5);
+}
+
+.pin-dot.error {
+    border-color: #dc3545;
+    animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+    20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+/* PIN Pad */
+.pin-pad {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    overflow: hidden;
+    gap: 15px;
+    margin-top: 30px;
+    max-height: 500px;
+    opacity: 1;
+    transition: max-height 0.4s ease, margin-top 0.4s ease, opacity 0.3s ease;
+}
+
+#pinModal .pin-pad {
+    margin: 2em;
+}
+
+.pin-row {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.pin-button {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: none;
+    background-color: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    font-size: 1.5em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(5px);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.pin-button:hover {
+    color: #6a6a6a;
+    background-color: rgb(255 255 255 / 68%);
+    box-shadow: 0 0 20px rgb(255 255 255 / 66%);
+}
+
+.pin-button:active {
+    background-color: rgb(255 255 255 / 90%);
+}
+
+.pin-button.backspace-btn,
+.pin-button.clear-btn {
+    font-size: 1.2em;
+    background-color: rgba(255, 0, 25, 0.75);
+    border-color: rgba(255, 128, 140, 0.58);
+}
+
+.pin-button.backspace-btn:hover,
+.pin-button.clear-btn:hover {
+    background-color: rgba(220, 53, 69, 0.5);
+}
+
+.pin-button.clear-btn {
+    font-size: 1em;
+}
+
+/* Mobile responsive adjustments for PIN modal */
+@media (max-width: 480px) {
+    .pin-pad {
+        gap: 10px;
+        margin-top: 20px;
+    }
+    
+    .pin-row {
+        gap: 10px;
+    }
+    
+    .pin-button {
+        width: 50px;
+        height: 50px;
+        font-size: 1.2em;
+    }
+    
+    .pin-dots {
+        gap: 10px;
+    }
+    
+    .pin-dot {
+        width: 16px;
+        height: 16px;
+    }
+} 

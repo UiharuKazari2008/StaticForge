@@ -63,11 +63,21 @@ function loadWorkspaces() {
                     workspace.backgroundOpacity = 0.3; // Default opacity
                     needsSave = true;
                 }
+                            // Add groups property if missing
+            if (!workspace.groups) {
+                workspace.groups = {};
+                needsSave = true;
+            }
+            // Add pinned property if missing
+            if (!workspace.pinned) {
+                workspace.pinned = [];
+                needsSave = true;
+            }
             });
             
             if (needsSave) {
                 saveWorkspaces();
-                console.log('🎨 Added colors to existing workspaces');
+                console.log('🎨 Added colors and groups to existing workspaces');
             }
         } else {
             // Initialize with default workspace
@@ -82,7 +92,9 @@ function loadWorkspaces() {
                     vibeImages: [],
                     cacheFiles: [],
                     files: [],
-                    scraps: []
+                    scraps: [],
+                    pinned: [], // Initialize empty pinned array
+                    groups: {} // Initialize empty groups object
                 }
             };
             saveWorkspaces();
@@ -101,7 +113,9 @@ function loadWorkspaces() {
                 vibeImages: [],
                 cacheFiles: [],
                 files: [],
-                scraps: []
+                scraps: [],
+                pinned: [], // Initialize empty pinned array
+                groups: {} // Initialize empty groups object
             }
         };
         saveWorkspaces();
@@ -169,6 +183,13 @@ function syncWorkspaceFiles() {
                 workspace.scraps = workspace.scraps.filter(file => imageFiles.includes(file));
                 removedCount += originalScrapsLength - workspace.scraps.length;
             }
+            
+            // Remove from pinned array
+            if (workspace.pinned) {
+                const originalPinnedLength = workspace.pinned.length;
+                workspace.pinned = workspace.pinned.filter(file => imageFiles.includes(file));
+                removedCount += originalPinnedLength - workspace.pinned.length;
+            }
         });
 
         if (removedCount > 0) {
@@ -233,7 +254,9 @@ function createWorkspace(name, color = null, backgroundColor = null, backgroundI
         vibeImages: [],
         cacheFiles: [],
         files: [],
-        scraps: []
+        scraps: [],
+        pinned: [], // Initialize empty pinned array
+        groups: {} // Initialize empty groups object
     };
 
     saveWorkspaces();
@@ -348,6 +371,7 @@ function deleteWorkspace(id) {
     workspaces.default.cacheFiles.push(...workspace.cacheFiles);
     workspaces.default.files.push(...workspace.files);
     workspaces.default.scraps.push(...workspace.scraps);
+    workspaces.default.pinned.push(...workspace.pinned);
 
     // Remove duplicates
     workspaces.default.presets = [...new Set(workspaces.default.presets)];
@@ -355,6 +379,7 @@ function deleteWorkspace(id) {
     workspaces.default.cacheFiles = [...new Set(workspaces.default.cacheFiles)];
     workspaces.default.files = [...new Set(workspaces.default.files)];
     workspaces.default.scraps = [...new Set(workspaces.default.scraps)];
+    workspaces.default.pinned = [...new Set(workspaces.default.pinned)];
 
     delete workspaces[id];
     saveWorkspaces();
@@ -386,6 +411,7 @@ function dumpWorkspace(sourceId, targetId) {
     targetWorkspace.cacheFiles.push(...sourceWorkspace.cacheFiles);
     targetWorkspace.files.push(...sourceWorkspace.files);
     targetWorkspace.scraps.push(...sourceWorkspace.scraps);
+    targetWorkspace.pinned.push(...sourceWorkspace.pinned);
 
     // Remove duplicates
     targetWorkspace.presets = [...new Set(targetWorkspace.presets)];
@@ -393,6 +419,7 @@ function dumpWorkspace(sourceId, targetId) {
     targetWorkspace.cacheFiles = [...new Set(targetWorkspace.cacheFiles)];
     targetWorkspace.files = [...new Set(targetWorkspace.files)];
     targetWorkspace.scraps = [...new Set(targetWorkspace.scraps)];
+    targetWorkspace.pinned = [...new Set(targetWorkspace.pinned)];
 
     delete workspaces[sourceId];
     saveWorkspaces();
@@ -480,6 +507,11 @@ function findRelatedFiles(filename, allFiles) {
 // Move files between workspaces
 function moveFilesToWorkspace(filenames, targetWorkspaceId) {
     return moveToWorkspaceArray('files', filenames, targetWorkspaceId);
+}
+
+// Move pinned images to workspace
+function movePinnedToWorkspace(filenames, targetWorkspaceId) {
+    return moveToWorkspaceArray('pinned', filenames, targetWorkspaceId);
 }
 
 // Get active workspace
@@ -601,6 +633,23 @@ function getActiveWorkspaceScraps() {
     return [];
 }
 
+// Get pinned images for active workspace (only that workspace)
+function getActiveWorkspacePinned() {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+
+    // Initialize pinned array if it doesn't exist
+    if (workspaces[activeWorkspace] && !workspaces[activeWorkspace].pinned) {
+        workspaces[activeWorkspace].pinned = [];
+    }
+
+    if (workspaces[activeWorkspace]) {
+        return workspaces[activeWorkspace].pinned;
+    }
+    return [];
+}
+
 // Remove files from all workspaces (used when files are deleted)
 function removeFilesFromWorkspaces(filenames) {
     // Filter out null/invalid filenames
@@ -616,6 +665,7 @@ function removeFilesFromWorkspaces(filenames) {
     Object.keys(workspaces).forEach(workspaceId => {
         totalRemoved += removeFromWorkspaceArray('files', validFilenames, workspaceId);
         totalRemoved += removeFromWorkspaceArray('scraps', validFilenames, workspaceId);
+        totalRemoved += removeFromWorkspaceArray('pinned', validFilenames, workspaceId);
     });
 
     if (totalRemoved > 0) {
@@ -708,8 +758,17 @@ function addToWorkspaceArray(type, items, workspaceId = null) {
             });
             break;
             
+        case 'pinned':
+            validItems.forEach(item => {
+                if (!workspaces[targetId].pinned.includes(item)) {
+                    workspaces[targetId].pinned.push(item);
+                    addedCount++;
+                }
+            });
+            break;
+            
         default:
-            throw new Error(`Invalid type: ${type}. Must be one of: files, scraps, presets, cacheFiles, vibeImages`);
+            throw new Error(`Invalid type: ${type}. Must be one of: files, scraps, presets, cacheFiles, vibeImages, pinned`);
     }
 
     if (addedCount > 0) {
@@ -792,8 +851,14 @@ function removeFromWorkspaceArray(type, items, workspaceId = null) {
             removedCount = originalVibeImagesLength - workspaces[targetId].vibeImages.length;
             break;
             
+        case 'pinned':
+            const originalPinnedLength = workspaces[targetId].pinned.length;
+            workspaces[targetId].pinned = workspaces[targetId].pinned.filter(item => !validItems.includes(item));
+            removedCount = originalPinnedLength - workspaces[targetId].pinned.length;
+            break;
+            
         default:
-            throw new Error(`Invalid type: ${type}. Must be one of: files, scraps, presets, cacheFiles, vibeImages`);
+            throw new Error(`Invalid type: ${type}. Must be one of: files, scraps, presets, cacheFiles, vibeImages, pinned`);
     }
 
     if (removedCount > 0) {
@@ -891,6 +956,12 @@ function moveToWorkspaceArray(type, items, targetWorkspaceId, sourceWorkspaceId 
                     workspace.vibeImages = workspace.vibeImages.filter(item => !validItems.includes(item));
                     movedCount += originalVibeImagesLength - workspace.vibeImages.length;
                     break;
+                    
+                case 'pinned':
+                    const originalPinnedLength = workspace.pinned.length;
+                    workspace.pinned = workspace.pinned.filter(item => !validItems.includes(item));
+                    movedCount += originalPinnedLength - workspace.pinned.length;
+                    break;
             }
         });
     }
@@ -925,6 +996,124 @@ function getActiveWorkspaceData() {
     return activeWorkspace;
 }
 
+// Group management functions
+function createGroup(workspaceId, name, imageFilenames = []) {
+    if (!workspaces || !workspaces[workspaceId]) {
+        throw new Error('Workspace not found');
+    }
+    
+    const groupId = generateUUID();
+    const workspace = workspaces[workspaceId];
+    
+    workspace.groups[groupId] = {
+        id: groupId,
+        name: name,
+        images: imageFilenames,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+    };
+    
+    saveWorkspaces();
+    return groupId;
+}
+
+function getGroup(workspaceId, groupId) {
+    if (!workspaces || !workspaces[workspaceId]) {
+        return null;
+    }
+    
+    return workspaces[workspaceId].groups[groupId] || null;
+}
+
+function getWorkspaceGroups(workspaceId) {
+    if (!workspaces || !workspaces[workspaceId]) {
+        return [];
+    }
+    
+    const groups = Object.values(workspaces[workspaceId].groups || {});
+    return groups.sort((a, b) => b.updatedAt - a.updatedAt); // Sort by newest first
+}
+
+function addImagesToGroup(workspaceId, groupId, imageFilenames) {
+    if (!workspaces || !workspaces[workspaceId]) {
+        throw new Error('Workspace not found');
+    }
+    
+    const group = workspaces[workspaceId].groups[groupId];
+    if (!group) {
+        throw new Error('Group not found');
+    }
+    
+    // Add new images (avoid duplicates)
+    const newImages = imageFilenames.filter(filename => !group.images.includes(filename));
+    group.images.push(...newImages);
+    group.updatedAt = Date.now();
+    
+    saveWorkspaces();
+    return newImages.length;
+}
+
+function removeImagesFromGroup(workspaceId, groupId, imageFilenames) {
+    if (!workspaces || !workspaces[workspaceId]) {
+        throw new Error('Workspace not found');
+    }
+    
+    const group = workspaces[workspaceId].groups[groupId];
+    if (!group) {
+        throw new Error('Group not found');
+    }
+    
+    const originalCount = group.images.length;
+    group.images = group.images.filter(filename => !imageFilenames.includes(filename));
+    group.updatedAt = Date.now();
+    
+    saveWorkspaces();
+    return originalCount - group.images.length;
+}
+
+function renameGroup(workspaceId, groupId, newName) {
+    if (!workspaces || !workspaces[workspaceId]) {
+        throw new Error('Workspace not found');
+    }
+    
+    const group = workspaces[workspaceId].groups[groupId];
+    if (!group) {
+        throw new Error('Group not found');
+    }
+    
+    group.name = newName;
+    group.updatedAt = Date.now();
+    
+    saveWorkspaces();
+}
+
+function deleteGroup(workspaceId, groupId) {
+    if (!workspaces || !workspaces[workspaceId]) {
+        throw new Error('Workspace not found');
+    }
+    
+    if (!workspaces[workspaceId].groups[groupId]) {
+        throw new Error('Group not found');
+    }
+    
+    delete workspaces[workspaceId].groups[groupId];
+    saveWorkspaces();
+}
+
+function getGroupsForImage(workspaceId, imageFilename) {
+    if (!workspaces || !workspaces[workspaceId]) {
+        return [];
+    }
+    
+    const groups = Object.values(workspaces[workspaceId].groups || {});
+    return groups.filter(group => group.images.includes(imageFilename));
+}
+
+function getActiveWorkspaceGroups() {
+    const workspaceId = getActiveWorkspace();
+    return getWorkspaceGroups(workspaceId);
+}
+
 module.exports = {
     initializeWorkspaces,
     loadWorkspaces,
@@ -945,12 +1134,24 @@ module.exports = {
     removeFromWorkspaceArray,
     moveToWorkspaceArray,
     moveFilesToWorkspace,
+    movePinnedToWorkspace,
     getActiveWorkspace,
     setActiveWorkspace,
     getActiveWorkspaceFiles,
     getActiveWorkspaceCacheFiles,
     getActiveWorkspaceScraps,
+    getActiveWorkspacePinned,
     removeFilesFromWorkspaces,
     getWorkspacesData,
-    getActiveWorkspaceData
+    getActiveWorkspaceData,
+    // Group management functions
+    createGroup,
+    getGroup,
+    getWorkspaceGroups,
+    addImagesToGroup,
+    removeImagesFromGroup,
+    renameGroup,
+    deleteGroup,
+    getGroupsForImage,
+    getActiveWorkspaceGroups
 };

@@ -1,0 +1,307 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    background-color: #000; /* Dark background like Neverthink */
+    color: #fff;
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.login-product-name {
+    position: absolute;
+    left: 0;
+    top: 0;
+    padding: 25px;
+    font-size: 2em;
+    text-shadow: 0 0 10px #000000;
+}
+
+/* Blocky background container */
+.background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: -1;
+    overflow: hidden;
+}
+
+.block-container {
+    position: relative;
+    width: max(100vh, 100vw);
+    height: max(100vh, 100vw);
+    display: grid;
+    grid-template-columns: repeat(20, 1fr);
+    grid-template-rows: repeat(20, 1fr);
+    z-index: -1;
+    aspect-ratio: 1;
+    object-fit: cover;
+}
+
+.block {
+    animation: colorChange 10s infinite ease-in-out;
+    aspect-ratio: 1;
+}
+
+@keyframes colorChange {
+    0%, 9% {
+        background-color: #e75480; /* Darker Pink */
+    }
+    10%, 19% {
+        background-color: #ff914d; /* Darker Peach/Orange */
+    }
+    20%, 29% {
+        background-color: #ffe156; /* Darker Yellow */
+    }
+    30%, 39% {
+        background-color: #43e8d8; /* Darker Mint */
+    }
+    40%, 49% {
+        background-color: #43b97f; /* Darker Green */
+    }
+    50%, 59% {
+        background-color: #3a6ea5;
+    }
+    60%, 69% {
+        background-color: #6c4fbb;
+    }
+    70%, 79% {
+        background-color: #a259c6;
+    }
+    80%, 89% {
+        background-color: #e754a6;
+    }
+    90%, 99% {
+        background-color: #c94f7c;
+    }
+    100% {
+        background-color: #e75480; /* Darker Pink */
+    }
+}
+
+/* Login form */
+.login-container {
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid #ffffff75;
+    backdrop-filter: blur(40px);
+    padding: 40px 35px;
+    border-radius: 10px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    text-align: center;
+    max-width: 90vw;
+    margin: 25px;
+    transition: padding 0.75s ease;
+}
+
+.login-dialog {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+}
+
+/* PIN Display */
+.pin-display {
+    display: flex;
+    justify-content: center;
+}
+
+.pin-dots {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+.pin-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    transition: all 0.3s ease;
+}
+
+.pin-dot.filled {
+    background-color: #fff;
+    border-color: #fff;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.pin-dot.overflow {
+    background-color: #87CEEB;
+    border-color: #87CEEB;
+    box-shadow: 0 0 10px rgba(135, 206, 235, 0.5);
+}
+
+.pin-dot.error {
+    border-color: #dc3545;
+    animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+    20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+/* PIN Pad */
+.pin-pad {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    overflow: hidden;
+    gap: 15px;
+    margin-top: 30px;
+    max-height: 500px;
+    opacity: 1;
+    transition: max-height 0.4s ease, margin-top 0.4s ease, opacity 0.3s ease;
+}
+
+.minimize .pin-pad {
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
+}
+
+.login-container.minimize {
+    padding: 20px 35px;
+}
+
+.pin-row {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+}
+
+.pin-button {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: none;
+    background-color: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    font-size: 1.5em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(5px);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.pin-button:hover {
+    color: #6a6a6a;
+    background-color: rgb(255 255 255 / 68%);
+    box-shadow: 0 0 20px rgb(255 255 255 / 66%);
+}
+
+.pin-button:active {
+    background-color: rgb(255 255 255 / 90%);
+}
+
+.pin-button.backspace-btn,
+.pin-button.clear-btn {
+    font-size: 1.2em;
+    background-color: rgba(255, 0, 25, 0.75);
+    border-color: rgba(255, 128, 140, 0.58);
+}
+
+.pin-button.backspace-btn:hover,
+.pin-button.clear-btn:hover {
+    background-color: rgba(220, 53, 69, 0.5);
+}
+
+.pin-button.clear-btn {
+    font-size: 1em;
+}
+/* Error message */
+.error-message {
+    margin-top: 20px;
+    padding: 10px;
+    background-color: rgba(220, 53, 69, 0.3);
+    border: 1px solid rgba(220, 53, 69, 0.5);
+    border-radius: 5px;
+    color: #fff;
+    font-size: 0.9em;
+}
+
+.error-message.hidden {
+    display: none;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    body {
+        justify-content: center;
+        align-items: center;
+    }
+    .login-container {
+        margin: 0px;
+    }
+}
+@media (max-width: 480px) {    
+    .minimize .pin-pad {
+        max-height: 500px;
+        margin-top: 25px;
+        opacity: 1;
+    }
+
+    .login-container,
+    .login-container.minimize {
+        padding: 30px 30px;
+        margin: 0px;
+    }
+
+    .pin-pad {
+        margin-top: 25px;
+    }
+    
+    .pin-button {
+        width: 55px;
+        height: 55px;
+        font-size: 1.3em;
+    }
+    
+    .pin-row, .pin-pad {
+        gap: 12px;
+    }
+    
+    .pin-dots {
+        gap: 12px;
+    }
+    
+    .pin-dot {
+        width: 18px;
+        height: 18px;
+    }
+}
+
+@media (max-width: 360px) {
+    .login-container,
+    .login-container.minimize {
+        padding: 25px 20px;
+    }
+    
+    .pin-button {
+        width: 50px;
+        height: 50px;
+        font-size: 1.2em;
+    }
+    
+    .pin-row, .pin-pad {
+        gap: 10px;
+    }
+}
