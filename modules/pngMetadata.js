@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const { getImageDimensions, getResolutionFromDimensions } = require('./imageTools');
-const { loadPromptConfig } = require('./textReplacements');
 
 // Helper: Read PNG metadata
 function readMetadata(buffer) {
@@ -290,10 +289,47 @@ function extractNovelAIMetadata(filePath) {
                 software: metadata.tEXt.Software ? `${metadata.tEXt.Software} (${metadata.tEXt.Source})` : metadata.tEXt.Source
             };
             
-            // Extract forge_data if it exists
+            // Extract forge_data if it exists, filtering to known fields
             if (_metadata.forge_data) {
-                result.forge_data = _metadata.forge_data;
+                const knownForgeDataFields = [
+                    'date_generated',
+                    'request_type',
+                    'generation_type',
+                    'upscale_ratio',
+                    'upscaled_at',
+                    'preset_name',
+                    'layer1_seed',
+                    'image_source',
+                    'image_bias',
+                    'mask_compressed',
+                    'mask_bias',
+                    'img2img_strength',
+                    'img2img_noise',
+                    'input_prompt',
+                    'input_uc',
+                    'dataset_config',
+                    'append_quality',
+                    'append_uc',
+                    'vibe_transfer',
+                    'normalize_vibes',
+                    'allCharacters',
+                    'use_coords',
+                    'disabledCharacters',
+                    'characterNames',
+                    'software',
+                    'history'
+                ];
+                
+                const filteredForgeData = {};
+                for (const [key, value] of Object.entries(_metadata.forge_data)) {
+                    if (knownForgeDataFields.includes(key)) {
+                        filteredForgeData[key] = value;
+                    }
+                }
+                result.forge_data = filteredForgeData;
             }
+
+            delete result.reference_image_multiple;
             
             return result;
         }
@@ -302,6 +338,35 @@ function extractNovelAIMetadata(filePath) {
         console.error('Error extracting metadata:', error.message);
         return null;
     }
+}
+
+// Dynamic prompt config loading
+let promptConfig = null;
+let promptConfigLastModified = 0;
+
+function loadPromptConfig() {
+    const promptConfigPath = './prompt.config.json';
+    
+    if (!fs.existsSync(promptConfigPath)) {
+        console.error('prompt.config.json not found');
+        process.exit(1);
+    }
+    
+    const stats = fs.statSync(promptConfigPath);
+    if (stats.mtime.getTime() > promptConfigLastModified) {
+        try {
+            const configData = fs.readFileSync(promptConfigPath, 'utf8');
+            promptConfig = JSON.parse(configData);
+            promptConfigLastModified = stats.mtime.getTime();
+        } catch (error) {
+            console.error('❌ Error reloading prompt config:', error.message);
+            if (!promptConfig) {
+                process.exit(1);
+            }
+        }
+    }
+    
+    return promptConfig;
 }
 
 // Helper: Extract relevant fields from metadata

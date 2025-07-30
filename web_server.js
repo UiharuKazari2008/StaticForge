@@ -15,9 +15,9 @@ const { authMiddleware } = require('./modules/auth');
 const { loadPromptConfig, applyTextReplacements, getUsedReplacements } = require('./modules/textReplacements');
 const { getPresetCacheKey, getCachedPreset, setCachedPreset, getCacheStatus } = require('./modules/cache');
 const { queueMiddleware, getStatus: getQueueStatus } = require('./modules/queue');
-const { WebSocketServer, setGlobalWsServer } = require('./modules/websocket');
+const { WebSocketServer, setGlobalWsServer, getGlobalWsServer } = require('./modules/websocket');
+const { WebSocketMessageHandlers } = require('./modules/websocketHandlers');
 const { 
-    extractNovelAIMetadata, 
     readMetadata,
     updateMetadata, 
     stripPngTextChunks, 
@@ -31,7 +31,7 @@ const {
     matchOriginalResolution, 
     processDynamicImage, 
     resizeMaskWithCanvas, 
-    generateAndPadMask,
+    isImageLarge
 } = require('./modules/imageTools');
 const { 
     initializeWorkspaces,
@@ -71,8 +71,21 @@ const {
     getGroupsForImage,
     getActiveWorkspaceGroups
 } = require('./modules/workspace');
+const { 
+    loadMetadataCache,
+    saveMetadataCache,
+    getImageMetadata,
+    scanAndUpdateMetadata,
+    addReceipt,
+    removeImageMetadata,
+    getCachedMetadata,
+    getAllMetadata,
+    getMultipleMetadata,
+    updateImageMetadata,
+    addUnattributedReceipt,
+    broadcastReceiptNotification
+} = require('./modules/metadataCache.js');
 const imageCounter = require('./modules/imageCounter');
-const SpellChecker = require('./spellChecker');
 
 console.log(config);
 
@@ -83,8 +96,127 @@ const client = new NovelAI({
     verbose: true
  });
 
-// Initialize spell checker
-const spellChecker = new SpellChecker();
+
+// Account data management
+let accountData = { ok: false };
+let accountBalance = { fixedTrainingStepsLeft: -1, purchasedTrainingSteps: -1, totalCredits: -1 };
+let lastBalanceCheck = 0;
+let lastAccountDataCheck = 0;
+const BALANCE_REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
+const ACCOUNT_DATA_REFRESH_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours
+
+// Initialize account data on startup
+async function initializeAccountData(force = false) {
+    try {
+        const now = Date.now();
+        if (now - lastAccountDataCheck >= ACCOUNT_DATA_REFRESH_INTERVAL || force) {
+            console.log('🔄 Initializing account data...');
+            const userData = await getUserData();
+            if (userData.ok) {
+                accountData = userData;
+                
+                // Extract balance information from user data
+                const fixedTrainingStepsLeft = userData?.subscription?.trainingStepsLeft?.fixedTrainingStepsLeft || -1;
+                const purchasedTrainingSteps = userData?.subscription?.trainingStepsLeft?.purchasedTrainingSteps || -1;
+                const totalCredits = fixedTrainingStepsLeft !== -1 && purchasedTrainingSteps !== -1 ? fixedTrainingStepsLeft + purchasedTrainingSteps : -1;
+                
+                accountBalance = {
+                    fixedTrainingStepsLeft,
+                    purchasedTrainingSteps,
+                    totalCredits
+                };
+            }
+
+            lastAccountDataCheck = Date.now();
+            
+            if (accountBalance.totalCredits !== -1) {
+                console.log('✅ Account data loaded successfully');
+                console.log(`💰 Balance: ${accountBalance.totalCredits} credits (${accountBalance.fixedTrainingStepsLeft} fixed, ${accountBalance.purchasedTrainingSteps} paid)`);
+            } else {
+                console.error('❌ Failed to load account data');
+            }
+        }
+    } catch (error) {
+        console.error('❌ Error initializing account data:', error.message);
+    }
+}
+
+// Refresh account data periodically
+async function refreshBalance(force = false) {
+    try {
+        const now = Date.now();
+        if (now - lastBalanceCheck >= (BALANCE_REFRESH_INTERVAL / 2) || force) {
+            console.log('🔄 Refreshing account balance...');
+            const newBalanceData = await getBalance();
+            
+            if (newBalanceData && newBalanceData.ok) {
+                // Check for deposits (balance increase)
+                const oldTotalBalance = accountBalance.totalCredits;
+                const newTotalBalance = newBalanceData.totalCredits;
+                
+                if (newTotalBalance > oldTotalBalance) {
+                    const depositAmount = newTotalBalance - oldTotalBalance;
+                    console.log(`💰 Deposit detected: +${depositAmount} credits`);
+                    
+                    // Determine which type of credits were deposited
+                    const oldFixed = accountBalance.fixedTrainingStepsLeft;
+                    const newFixed = newBalanceData.fixedTrainingStepsLeft;
+                    const oldPurchased = accountBalance.purchasedTrainingSteps;
+                    const newPurchased = newBalanceData.purchasedTrainingSteps;
+                    
+                    if (newPurchased > oldPurchased) {
+                        // Add deposit receipt
+                        addUnattributedReceipt({
+                            type: 'deposit',
+                            cost: newPurchased - oldPurchased,
+                            creditType: 'paid',
+                            date: now.valueOf()
+                        });
+                    }
+                    if (newFixed > oldFixed) {
+                        // Add deposit receipt
+                        addUnattributedReceipt({
+                            type: 'deposit',
+                            cost: newFixed - oldFixed,
+                            creditType: 'fixed',
+                            date: now.valueOf()
+                        });
+                    }
+                }
+                
+                // Update account balance with fresh balance data
+                accountBalance = {
+                    fixedTrainingStepsLeft: newBalanceData.fixedTrainingStepsLeft,
+                    purchasedTrainingSteps: newBalanceData.purchasedTrainingSteps,
+                    totalCredits: newBalanceData.totalCredits
+                };
+                
+                // Update account data subscription info with fresh balance data
+                if (accountData.ok) {
+                    accountData.subscription = newBalanceData.subscription;
+                }
+                
+                lastBalanceCheck = now;
+                console.log(`✅ Account Balance: ${newTotalBalance} credits (${newBalanceData.fixedTrainingStepsLeft} fixed, ${newBalanceData.purchasedTrainingSteps} paid)`);
+            }
+        }
+    } catch (error) {
+        console.error('❌ Error refreshing account data:', error.message);
+    }
+}
+
+// Calculate credit usage and determine which type was used
+async function calculateCreditUsage(oldBalance) {
+    await refreshBalance(true);
+    if (oldBalance.totalCredits === -1 || accountBalance.totalCredits === -1) return { totalUsage: 0, freeUsage: 0, paidUsage: 0 };
+    
+    const totalUsage = Math.max(0, oldBalance.totalCredits - accountBalance.totalCredits);
+    const freeUsage = Math.max(0, oldBalance.fixedTrainingStepsLeft - accountBalance.fixedTrainingStepsLeft);
+    const paidUsage = Math.max(0, oldBalance.purchasedTrainingSteps - accountBalance.purchasedTrainingSteps);
+    const usageType = totalUsage > 0 ? (paidUsage > 0 ? 'paid' : 'fixed') : 'free';
+    
+    return { totalUsage, freeUsage, paidUsage, usageType };
+}
 
 // Create Express app
 const app = express();
@@ -92,11 +224,15 @@ const server = require('http').createServer(app);
 app.use(express.json({limit: '100mb'}));
 app.use(cookieParser());
 
+// Create session store
+const sessionStore = new session.MemoryStore();
+
 // Create session middleware
 const sessionMiddleware = session({
     secret: config.sessionSecret || 'staticforge-very-secret-key',
     resave: false,
     saveUninitialized: false,
+    store: sessionStore, // Use the shared session store
     cookie: {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
@@ -162,7 +298,6 @@ app.options('/app', authMiddleware, async (req, res) => {
 
         const queueStatus = getQueueStatus();
         const imageCount = imageCounter.getCount();
-        const userData = await getUserData();
 
         // Helper to extract relevant preset info
         const extractPresetInfo = (name, preset) => ({
@@ -190,21 +325,10 @@ app.options('/app', authMiddleware, async (req, res) => {
         const detailedPresets = Object.entries(currentPromptConfig.presets || {}).map(
             ([name, preset]) => extractPresetInfo(name, preset)
         );
-        // Extract training steps information
-        const fixedTrainingStepsLeft = userData?.subscription?.trainingStepsLeft?.fixedTrainingStepsLeft || 0;
-        const purchasedTrainingSteps = userData?.subscription?.trainingStepsLeft?.purchasedTrainingSteps || 0;
-        const totalCredits = fixedTrainingStepsLeft + purchasedTrainingSteps;
-
-        const userBalance = {
-            fixedTrainingStepsLeft,
-            purchasedTrainingSteps,
-            totalCredits
-        };
-
         const options = {
             ok: true,
-            user: userData || {},
-            balance: userBalance || {},
+            user: accountData,
+            balance: accountBalance,
             presets: detailedPresets,
             queue_status: queueStatus,
             image_count: imageCount,
@@ -226,9 +350,13 @@ app.options('/app', authMiddleware, async (req, res) => {
         }
         res.json(options);
     } catch(e) {
-        console.log('❌ Error occurred:', e);
+        console.error('❌ Error occurred:', e);
         res.status(500).json({ ok: false, error: e.message });
     }
+});
+
+app.options('/ping', authMiddleware, (req, res) => {
+    res.json({ ok: true, date: Date.now().valueOf() });
 });
 
 // Login endpoint
@@ -257,7 +385,6 @@ app.post('/logout', (req, res) => {
 app.use(express.static('public'));
 app.use('/cache', express.static(cacheDir));
 
-
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -272,7 +399,6 @@ const storage = multer.diskStorage({
         cb(null, filename);
     }
 });
-
 const upload = multer({ 
     storage: storage,
     fileFilter: function (req, file, cb) {
@@ -287,9 +413,9 @@ const upload = multer({
         fileSize: 100 * 1024 * 1024 // 10MB limit
     }
 });
-
-// Multer for base image uploads (to memory)
-const cacheUpload = multer({ storage: multer.memoryStorage() });
+const cacheUpload = multer({
+    storage: multer.memoryStorage()
+});
 
 // Helper: get preview filename
 function getPreviewFilename(baseName) {
@@ -473,7 +599,7 @@ async function getBalance() {
             });
             
             req.on('error', error => {
-                console.log('❌ Balance API request error:', error.message);
+                console.error('❌ Balance API request error:', error.message);
                 reject(error);
             });
             
@@ -549,7 +675,7 @@ async function getUserData() {
                     } else {
                         try {
                             const errorResponse = JSON.parse(buffer.toString());
-                            console.log('❌ User data API error:', errorResponse);
+                            console.error('❌ User data API error:', errorResponse);
                             resolve({
                                 ok: false,
                                 statusCode: res.statusCode,
@@ -562,7 +688,7 @@ async function getUserData() {
                 });
             });
             req.on('error', error => {
-                console.log('❌ User data API request error:', error.message);
+                console.error('❌ User data API request error:', error.message);
                 reject(error);
             });
             req.end();
@@ -598,6 +724,27 @@ app.get('/images', async (req, res) => {
             // Get files for active workspace (includes default + active workspace)
             const workspaceFiles = getActiveWorkspaceFiles();
             files = workspaceFiles;
+            
+            // Also include wallpaper and large resolution images from metadata cache
+            const allMetadata = getAllMetadata();
+            
+            // Find large resolution images (area > 1024x1024)
+            const specialImages = [];
+            for (const [filename, metadata] of Object.entries(allMetadata)) {
+                if (metadata.width && metadata.height) {
+                    if (isImageLarge(metadata.width, metadata.height)) {
+                        // Check if this image is in the current workspace
+                        const workspace = getActiveWorkspace();
+                        const workspaceData = getWorkspace(workspace);
+                        if (workspaceData && workspaceData.files && workspaceData.files.includes(filename)) {
+                            specialImages.push(filename);
+                        }
+                    }
+                }
+            }
+            
+            // Add special images to the files list
+            files = [...new Set([...files, ...specialImages])];
         } else {
             // Get files for active workspace (includes default + active workspace)
             const workspaceFiles = getActiveWorkspaceFiles();
@@ -616,22 +763,35 @@ app.get('/images', async (req, res) => {
             const { original, upscaled} = baseMap[base];
             
             if (isUpscaled) {
-                // For upscaled view, only include images that have upscaled versions
-                if (!upscaled) continue;
-                const file = upscaled;
+                // For upscaled view, include images that have upscaled versions OR are wallpaper/large
+                const file = upscaled || original;
+                if (!file) continue;
+                
                 const filePath = path.join(imagesDir, file);
                 // Check if file exists before trying to get stats
                 try {
                     const stats = fs.statSync(filePath);
                     const preview = getPreviewFilename(base);
-                    gallery.push({
-                        base,
-                        original,
-                        upscaled,
-                        preview,
-                        mtime: stats.mtime.valueOf(),
-                        size: stats.size
-                    });
+                    
+                    // Get metadata to determine if image is large
+                    const metadata = getCachedMetadata(file);
+                    const isLarge = metadata?.width && metadata?.height ? 
+                        isImageLarge(metadata.width, metadata.height) : false;
+                    
+                    // Include if it's upscaled OR if it's large resolution
+                    const shouldInclude = upscaled || isLarge;
+                    
+                    if (shouldInclude) {
+                        gallery.push({
+                            base,
+                            original,
+                            upscaled,
+                            preview,
+                            mtime: stats.mtime.valueOf(),
+                            size: stats.size,
+                            isLarge: isLarge
+                        });
+                    }
                 } catch (error) {
                     // File doesn't exist, skip it (it will be cleaned up by syncWorkspaceFiles)
                     console.warn(`Skipping non-existent file: ${file}`);
@@ -646,13 +806,20 @@ app.get('/images', async (req, res) => {
                 try {
                     const stats = fs.statSync(filePath);
                     const preview = getPreviewFilename(base);
+                    
+                    // Get metadata to determine if image is large
+                    const metadata = getCachedMetadata(file);
+                    const isLarge = metadata?.width && metadata?.height ? 
+                        isImageLarge(metadata.width, metadata.height) : false;
+                    
                     gallery.push({
                         base,
                         original,
                         upscaled,
                         preview,
                         mtime: stats.mtime.valueOf(),
-                        size: stats.size
+                        size: stats.size,
+                        isLarge: isLarge
                     });
                 } catch (error) {
                     // File doesn't exist, skip it (it will be cleaned up by syncWorkspaceFiles)
@@ -776,6 +943,9 @@ app.delete('/images/bulk', authMiddleware, async (req, res) => {
                 if (filenamesToRemoveFromWorkspaces.length > 0) {
                     removeFilesFromWorkspaces(filenamesToRemoveFromWorkspaces);
                 }
+
+                // Remove metadata from cache
+                removeImageMetadata(filenamesToRemoveFromWorkspaces);
 
                 // Delete all related files
                 const deletedFiles = [];
@@ -1126,6 +1296,49 @@ app.get('/images/:filename', (req, res) => {
     res.sendFile(filePath);
 });
 
+// GET /images/:filename/metadata (get image metadata)
+app.get('/images/:filename/metadata', authMiddleware, async (req, res) => {
+    try {
+        const filename = req.params.filename;
+        const metadata = getCachedMetadata(filename);
+        
+        if (!metadata) {
+            return res.status(404).json({ error: 'Metadata not found for image' });
+        }
+        
+        res.json(metadata);
+    } catch (error) {
+        console.error('Error getting image metadata:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET /metadata (get all metadata)
+app.get('/metadata', authMiddleware, async (req, res) => {
+    try {
+        const metadata = getAllMetadata();
+        res.json({ images: metadata });
+    } catch (error) {
+        console.error('Error getting all metadata:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST /metadata/scan (force metadata scan)
+app.post('/metadata/scan', authMiddleware, async (req, res) => {
+    try {
+        const result = await scanAndUpdateMetadata(imagesDir);
+        res.json({
+            success: true,
+            message: 'Metadata scan completed',
+            ...result
+        });
+    } catch (error) {
+        console.error('Error scanning metadata:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // POST /vibe/encode (encode image for vibe transfer)
 app.post('/vibe/encode', authMiddleware, async (req, res) => {
     try {
@@ -1270,9 +1483,18 @@ app.post('/vibe/encode', authMiddleware, async (req, res) => {
             
             console.log(`📏 Resized image to longest edge 1024px and converted to PNG`);
             
+            // Get balance before vibe encoding
+            const previousBalance = { ...accountBalance };
             // Encode vibe using direct NovelAI API call
             const base64Image = resizedImageBuffer.toString('base64');
             const vibeToken = await encodeVibeDirect(base64Image, informationExtraction, Model[model.toUpperCase()]);
+            
+            // Get new balance and calculate credit usage
+            const vibeCreditUsage = await calculateCreditUsage(previousBalance);
+            
+            if (vibeCreditUsage.totalUsage > 0) {
+                console.log(`💰 Vibe encoding credits used: ${vibeCreditUsage.totalUsage} ${vibeCreditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
+            }
             
             // Initialize model encodings if it doesn't exist
             if (!vibeData.encodings[model]) {
@@ -1291,6 +1513,16 @@ app.post('/vibe/encode', authMiddleware, async (req, res) => {
             // Add to workspace if provided
             if (workspace) {
                 addToWorkspaceArray('vibeImages', saveFilename, workspace);
+            }
+            
+            // Add unattributed receipt for vibe encoding
+            if (vibeCreditUsage.totalUsage > 0) {
+                addUnattributedReceipt({
+                    type: 'vibe_encoding',
+                    cost: vibeCreditUsage.totalUsage,
+                    creditType: vibeCreditUsage.usageType,
+                    date: Date.now().valueOf()
+                });
             }
             
             res.json({
@@ -1851,29 +2083,55 @@ app.options('/images/:filename', authMiddleware, async (req, res) => {
     try {
         const filename = req.params.filename;
         const filePath = path.join(imagesDir, filename);
+        
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: 'Image not found' });
         }
-        const meta = extractNovelAIMetadata(filePath);
-        if (!meta) {
+        
+        // Get metadata from cache first
+        let cachedMetadata = getCachedMetadata(filename);
+        
+        // If not in cache, extract and update cache
+        if (!cachedMetadata) {
+            console.log(`🔄 Metadata not found in cache for ${filename}, extracting...`);
+            cachedMetadata = await getImageMetadata(filename, imagesDir);
+            if (!cachedMetadata) {
+                return res.status(404).json({ error: 'Failed to extract metadata' });
+            }
+        }
+        
+        // Get the metadata object (PNG embedded metadata)
+        let metadata = cachedMetadata.metadata;
+        
+        // If this is an upscaled image and has a parent, get the parent's metadata
+        if (cachedMetadata.upscaled && cachedMetadata.parent) {
+            const parentMetadata = getCachedMetadata(cachedMetadata.parent);
+            if (parentMetadata) {
+                metadata = parentMetadata.metadata;
+                console.log(`📋 Using parent metadata for upscaled image: ${cachedMetadata.parent}`);
+            } else {
+                console.log(`⚠️ Parent metadata not found for: ${cachedMetadata.parent}`);
+            }
+        }
+        
+        if (!metadata) {
             return res.status(404).json({ error: 'No NovelAI metadata found' });
         }
         
         // If upscaled, try to match preset using metadata dimensions
         let matchedPreset = null;
-        const isUpscaled = meta.forge_data?.upscale_ratio !== null && meta.forge_data?.upscale_ratio !== undefined;
+        const isUpscaled = metadata.forge_data?.upscale_ratio !== null && metadata.forge_data?.upscale_ratio !== undefined;
         if (isUpscaled) {
             const currentPromptConfig = loadPromptConfig();
-            matchedPreset = matchOriginalResolution(meta, currentPromptConfig.resolutions || {});
+            matchedPreset = matchOriginalResolution(metadata, currentPromptConfig.resolutions || {});
         }
         
-        const result = await extractRelevantFields(meta, filename);
+        const result = await extractRelevantFields(metadata, filename);
         if (matchedPreset) result.matchedPreset = matchedPreset;
-        
-        // Debug: Log the metadata values
         
         res.json(result);
     } catch (error) {
+        console.error('Error in options endpoint:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -1931,6 +2189,9 @@ app.delete('/images/:filename', authMiddleware, async (req, res) => {
             removeFilesFromWorkspaces(filenamesToRemoveFromWorkspaces);
         }
 
+        // Remove metadata from cache
+        removeImageMetadata(filenamesToRemoveFromWorkspaces);
+
         // Delete all related files
         const deletedFiles = [];
         for (const file of filesToDelete) {
@@ -1960,10 +2221,10 @@ app.delete('/images/:filename', authMiddleware, async (req, res) => {
 });
 
 // Common request logging middleware
-const requestLogger = (req, res, next) => {
+app.use((req, res, next) => {
     const skippedPaths = [
-        '/images',
         '/ping',
+        '/images',
         '/spellcheck',
         '/vibe',
         '/vibe/images',
@@ -2015,9 +2276,7 @@ const requestLogger = (req, res, next) => {
     };
     
     next();
-};
-
-app.use(requestLogger);
+});
 
 // Build options for image generation
 const buildOptions = async (model, body, preset = null, queryParams = {}) => {
@@ -2522,10 +2781,22 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         }
     }
     
+    // Get balance before generation
+    const previousBalance = { ...accountBalance };
+    let creditUsage;
+    
     try {
         imageCounter.logGeneration();
         [img] = await client.generateImage(apiOpts, false, true, true);
         console.log('✅ Image generation completed');
+        
+        // Get new balance and calculate credit usage
+        creditUsage = await calculateCreditUsage(previousBalance);
+        
+        if (creditUsage.totalUsage > 0) {
+            console.log(`💰 Image Generation Cost: ${creditUsage.totalUsage} ${creditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
+        }
+        
     } catch (error) {
         throw new Error(`❌ Image generation failed: ${error.message}`);
     }
@@ -2660,6 +2931,18 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             // Add file to workspace
             addToWorkspaceArray('files', name, targetWorkspaceId);
             
+            // Update metadata cache
+            const receiptData = {
+                type: 'generation',
+                cost: creditUsage.totalUsage,
+                creditType: creditUsage.usageType,
+                date: Date.now().valueOf()
+            };
+            await updateImageMetadata(name, imagesDir, receiptData);
+            
+            // Broadcast receipt notification
+            broadcastReceiptNotification(receiptData);
+            
             // Generate preview
             const baseName = getBaseName(name);
             const previewFile = getPreviewFilename(baseName);
@@ -2672,8 +2955,18 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             const scale = opts.upscale === true ? 4 : opts.upscale;
             await new Promise(resolve => setTimeout(resolve, 2000));
             
+            // Get balance before upscaling
+            const previousBalance = { ...accountBalance };
+            
             const { width: upscaleWidth, height: upscaleHeight } = await getImageDimensions(buffer);
             const scaledBuffer = await upscaleImage(buffer, scale, upscaleWidth, upscaleHeight);
+            
+            // Get new balance and calculate credit usage for upscaling
+            const upscaleCreditUsage = await calculateCreditUsage(previousBalance);
+            
+            if (upscaleCreditUsage.totalUsage > 0) {
+                console.log(`💰 Upscaling Cost: ${upscaleCreditUsage.totalUsage} ${upscaleCreditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
+            }
             
             // Update upscaled buffer with additional forge metadata
             const upscaledForgeData = {
@@ -2690,6 +2983,19 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                 
                 // Add upscaled file to workspace
                 addToWorkspaceArray('files', upscaledName, targetWorkspaceId);
+                
+                // Update metadata cache for upscaled image
+                const upscaledReceiptData = {
+                    type: 'upscaling',
+                    cost: upscaleCreditUsage.totalUsage,
+                    creditType: upscaleCreditUsage.usageType,
+                    date: Date.now().valueOf()
+                };
+                // Attach receipt to parent image instead of upscaled image
+                await updateImageMetadata(name, imagesDir, upscaledReceiptData);
+                
+                // Broadcast receipt notification
+                broadcastReceiptNotification(upscaledReceiptData);
                 
                 // Update preview with upscaled version
                 const baseName = getBaseName(name);
@@ -2796,7 +3102,7 @@ const upscaleImage = async (imageBuffer, scale = 4, width, height) => {
                 });
                 
                 req.on('error', error => {
-                    console.log('❌ Upscale API request error:', error.message);
+                    console.error('❌ Upscale API request error:', error.message);
                     reject(error);
                 });
                 
@@ -2819,7 +3125,7 @@ const upscaleImage = async (imageBuffer, scale = 4, width, height) => {
             const upscaledBuffer = firstEntry.getData();
         return upscaledBuffer;
     } catch (error) {
-        console.log('❌ Upscaling failed:', error.message);
+        console.error('❌ Upscaling failed:', error.message);
         return imageBuffer;
     }
 };
@@ -2842,7 +3148,7 @@ const handleImageRequest = async (req, res, opts, presetName = null) => {
                 .toBuffer();
             contentType = 'image/jpeg';
         } catch (error) {
-            console.log('❌ Image optimization failed:', error.message);
+            console.error('❌ Image optimization failed:', error.message);
         }
     }
     
@@ -2852,7 +3158,7 @@ const handleImageRequest = async (req, res, opts, presetName = null) => {
     if (result && result.filename) {
         res.setHeader('X-Generated-Filename', result.filename);
     } else {
-        console.log('❌ No filename available in result:', result);
+        console.error('❌ No filename available in result:', result);
     }
     
     // Add seed to response header
@@ -2866,16 +3172,6 @@ const handleImageRequest = async (req, res, opts, presetName = null) => {
     }
     res.send(finalBuffer);
 }; 
-
-
-// Helper functions for cache management
-function generateTagKey(tagName) {
-    return tagName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-}
-
-function generateQueryHash(query, model) {
-    return crypto.createHash('md5').update(`${query}_${model}`).digest('hex');
-}
 
 // Enhanced preset handling functions
 function selectPresetItem(presetConfig, modelKey, combinedPrompt, providedId = null) {
@@ -2926,375 +3222,6 @@ function selectPresetItem(presetConfig, modelKey, combinedPrompt, providedId = n
     return null;
 }
 
-// Auto-complete endpoint - search characters and tags
-app.get('/search/prompt', authMiddleware, async (req, res) => {
-    try {
-        const query = req.query.q;
-        const model = req.query.m;
-        if (!query || query.trim().length < 2) {
-            return res.json([]);
-        }
-        if (!model || model.trim().length < 2) {
-            return res.json([]);
-        }
-
-        if (!Model[model.toUpperCase()]) {
-            return res.json([]);
-        }
-        
-        // Check for spelling errors
-        const spellCheckResult = spellChecker.checkText(query);
-        const hasSpellingErrors = spellCheckResult.misspelled.length > 0;
-        
-        const searchTerm = query.trim().toLowerCase();
-        const queryHash = generateQueryHash(searchTerm, model);
-        
-        // Initialize model in cache if not exists
-        if (!tagSuggestionsCache.queries[model]) {
-            tagSuggestionsCache.queries[model] = {};
-        }
-        
-        // Check cache for this query
-        let tagSuggestions = [];
-        let cacheHit = false;
-        
-        if (tagSuggestionsCache.queries[model][queryHash]) {
-            // Get tags from cache using stored objects (key, model, confidence)
-            const tagObjs = tagSuggestionsCache.queries[model][queryHash];
-            tagSuggestions = tagObjs.map(obj => {
-                const tag = tagSuggestionsCache.tags[obj.key];
-                if (tag) {
-                    return {
-                        ...tag,
-                        model: obj.model,
-                        confidence: obj.confidence
-                    };
-                }
-                return null;
-            }).filter(Boolean);
-            cacheHit = true;
-        } else {
-            // Check for startsWith matches in queries
-            const startsWithHashes = Object.keys(tagSuggestionsCache.queries[model]).filter(hash => {
-                // We need to check if the original query starts with our search term
-                // For now, we'll skip this optimization and rely on exact matches
-                return false;
-            });
-            
-            if (startsWithHashes.length > 0) {
-                const allTagObjs = [];
-                startsWithHashes.forEach(hash => {
-                    tagSuggestionsCache.queries[model][hash].forEach(obj => allTagObjs.push(obj));
-                });
-                tagSuggestions = allTagObjs.map(obj => {
-                    const tag = tagSuggestionsCache.tags[obj.key];
-                    if (tag) {
-                        return {
-                            ...tag,
-                            model: obj.model,
-                            confidence: obj.confidence
-                        };
-                    }
-                    return null;
-                }).filter(Boolean);
-                cacheHit = true;
-            }
-        }
-        
-        // If no cache hit, make API calls
-        if (!cacheHit) {
-            const makeTagRequest = async (apiModel) => {
-                const url = `https://image.novelai.net/ai/generate-image/suggest-tags?model=${apiModel}&prompt=${encodeURIComponent(query)}`;
-                const options = {
-                    method: 'GET',
-                    headers: {
-                        'accept': '*/*',
-                        'accept-language': 'en-US,en;q=0.9',
-                        'authorization': `Bearer ${config.apiKey}`,
-                        'cache-control': 'no-cache',
-                        'content-type': 'application/json',
-                        'dnt': '1',
-                        'sec-gpc': '1',
-                        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0',
-                        'referer': 'https://novelai.net/',
-                        'origin': 'https://novelai.net',
-                        'pragma': 'no-cache',
-                        'priority': 'u=1, i',
-                        'sec-ch-ua': '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
-                        'sec-ch-ua-mobile': '?0',
-                        'sec-ch-ua-platform': '"Windows"',
-                        'sec-fetch-dest': 'empty',
-                        'sec-fetch-mode': 'cors',
-                        'sec-fetch-site': 'same-site'
-                    }
-                };
-
-                return new Promise((resolve, reject) => {
-                    const urlObj = new URL(url);
-                    const req = https.request({
-                        hostname: urlObj.hostname,
-                        port: 443,
-                        path: urlObj.pathname + urlObj.search,
-                        method: 'GET',
-                        headers: options.headers
-                    }, (res) => {
-                        let data = [];
-                        res.on('data', chunk => data.push(chunk));
-                        res.on('end', () => {
-                            const buffer = Buffer.concat(data);
-                            if (res.statusCode === 200) {
-                                try {
-                                    const response = JSON.parse(buffer.toString());
-                                    resolve(response);
-                                } catch (e) {
-                                    reject(new Error('Invalid JSON response from NovelAI API'));
-                                }
-                            } else {
-                                reject(new Error(`Tag suggestion API error: HTTP ${res.statusCode}`));
-                            }
-                        });
-                    });
-
-                    // Timeout after 5 seconds
-                    const timeout = setTimeout(() => {
-                        req.destroy();
-                        reject(new Error('Tag suggestion API request timed out after 5 seconds'));
-                    }, 5000);
-
-                    req.on('error', error => {
-                        clearTimeout(timeout);
-                        reject(error);
-                    });
-
-                    req.on('close', () => {
-                        clearTimeout(timeout);
-                    });
-
-                    req.end();
-                });
-            };
-            
-            try {
-                // Determine models to query
-                const currentModel = Model[model.toUpperCase()] || 'nai-diffusion-4-5-full';
-                const models = [currentModel];
-                
-                // Add furry model if not already included
-                if (currentModel !== 'nai-diffusion-furry-3') {
-                    models.push('nai-diffusion-furry-3');
-                }
-                
-                // Make parallel API calls
-                const apiResults = await Promise.all(models.map(m => makeTagRequest(m)));
-                
-                // Process and normalize tags
-                const queryTagObjs = [];
-                const allTags = [];
-                
-                apiResults.forEach((response, index) => {
-                    const apiModel = models[index];
-                    if (response && response.tags) {
-                        response.tags.forEach(tag => {
-                            const tagKey = generateTagKey(tag.tag);
-                            
-                            // Update or create tag in cache
-                            if (!tagSuggestionsCache.tags[tagKey]) {
-                                tagSuggestionsCache.tags[tagKey] = {
-                                    tag: tag.tag,
-                                    models: [],
-                                    count: tag.count
-                                };
-                            }
-                            
-                            // Add model if not already present
-                            if (!tagSuggestionsCache.tags[tagKey].models.some(m => m.model === apiModel)) {
-                                tagSuggestionsCache.tags[tagKey].models.push({
-                                    model: apiModel,
-                                    count: tag.count,
-                                    confidence: tag.confidence
-                                });
-                            }
-                            
-                            // Update count to highest
-                            tagSuggestionsCache.tags[tagKey].count = Math.max(tagSuggestionsCache.tags[tagKey].count, tag.count);
-                            
-                            // Store object with key, model, and confidence
-                            queryTagObjs.push({ key: tagKey, model: apiModel, confidence: tag.confidence });
-                            allTags.push({
-                                ...tag,
-                                model: apiModel,
-                                tagKey: tagKey
-                            });
-                        });
-                    }
-                });
-                
-                // Store query in cache as array of objects
-                tagSuggestionsCache.queries[model][queryHash] = [...queryTagObjs];
-                tagSuggestions = allTags;
-                
-                // Mark cache as dirty and schedule save
-                cacheDirty = true;
-                scheduleCacheSave();
-                
-                console.log(`💾 Cached tag suggestions for "${searchTerm}" with model "${model}"`);
-                
-            } catch (error) {
-                console.log('❌ Tag suggestion API error:', error.message);
-                // Continue without tag suggestions
-            }
-        }
-        
-        // Sort tag suggestions: by confidence (lower is higher), then by count (highest)
-        tagSuggestions.sort((a, b) => {
-            if (a.confidence !== b.confidence) {
-                return a.confidence - b.confidence; // Lower confidence first
-            }
-            return b.count - a.count; // Higher count first
-        });
-        
-        // Search through character data array directly
-        const characterResults = [];
-        characterDataArray.forEach((character) => {
-            if (character.name && character.name.toLowerCase().includes(searchTerm)) {
-                characterResults.push({
-                    type: 'character',
-                    name: character.name,
-                    character: character, // Include full character data
-                    count: 5000 // Characters get medium priority
-                });
-            }
-        });
-        
-        // Convert tag suggestions to consistent format
-        const tagResults = tagSuggestions.map(tag => ({
-            type: 'tag',
-            name: tag.tag,
-            count: tag.count,
-            confidence: tag.confidence,
-            model: tag.model
-        }));
-        
-        // Deduplicate tag names, prioritizing requested model over nai-diffusion-furry-3
-        const dedupedTagMap = new Map();
-        for (const tag of tagResults) {
-            if (!dedupedTagMap.has(tag.name)) {
-                dedupedTagMap.set(tag.name, tag);
-            } else {
-                // If duplicate, prefer the requested model over nai-diffusion-furry-3
-                const existing = dedupedTagMap.get(tag.name);
-                if (
-                    tag.model === model ||
-                    (existing.model === 'nai-diffusion-furry-3' && tag.model !== 'nai-diffusion-furry-3')
-                ) {
-                    dedupedTagMap.set(tag.name, tag);
-                }
-            }
-        }
-        const dedupedTagResults = Array.from(dedupedTagMap.values());
-        
-        // Combine results: high count tags (>5000) go to top, characters in middle, low count tags at bottom
-        const highCountTags = dedupedTagResults.filter(item => item.count > 5000);
-        const lowCountTags = dedupedTagResults.filter(item => item.count <= 5000);
-        
-        // Sort high count tags by confidence, then count
-        highCountTags.sort((a, b) => {
-            if (a.confidence !== b.confidence) {
-                return a.confidence - b.confidence;
-            }
-            return b.count - a.count;
-        });
-        
-        // Sort low count tags by confidence, then count
-        lowCountTags.sort((a, b) => {
-            if (a.confidence !== b.confidence) {
-                return a.confidence - b.confidence;
-            }
-            return b.count - a.count;
-        });
-        
-        // Final result order: high count tags, characters (limited), low count tags
-        const finalResults = [...highCountTags, ...characterResults.slice(0, 25), ...lowCountTags];
-        
-        // Add spell checking information to response
-        const response = {
-            results: finalResults,
-            spellCheck: {
-                hasErrors: hasSpellingErrors,
-                misspelled: spellCheckResult.misspelled,
-                suggestions: spellCheckResult.suggestions
-            }
-        };
-        
-        res.json(response);
-        
-    } catch (error) {
-        console.log('❌ Auto-complete search error:', error.message);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Add custom word to spell checker
-app.post('/spellcheck/add-word', authMiddleware, async (req, res) => {
-    try {
-        const { word } = req.body;
-        
-        if (!word || typeof word !== 'string') {
-            return res.status(400).json({ error: 'Word is required' });
-        }
-        
-        const success = spellChecker.addCustomWord(word);
-        
-        if (success) {
-            res.json({ success: true, message: `Added "${word}" to custom words` });
-        } else {
-            res.status(400).json({ error: 'Invalid word' });
-        }
-    } catch (error) {
-        console.log('❌ Add custom word error:', error.message);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.get('/preset/search', authMiddleware, async (req, res) => {
-    try {
-        const query = req.query.q;
-        if (!query || query.trim().length < 2) {
-            return res.json([]);
-        }
-        
-        const searchTerm = query.trim().toLowerCase();
-        const currentPromptConfig = loadPromptConfig();
-        const results = [];
-        
-        // Search through presets
-        Object.keys(currentPromptConfig.presets).forEach(presetName => {
-            if (presetName.toLowerCase().includes(searchTerm)) {
-                const preset = currentPromptConfig.presets[presetName];
-                results.push({
-                    name: presetName,
-                    model: preset.model || 'v4_5',
-                    resolution: preset.resolution || '',
-                    upscale: preset.upscale || false,
-                    allow_paid: preset.allow_paid || false,
-                    variety: preset.variety || false,
-                    character_prompts: preset.characterPrompts && preset.characterPrompts.length > 0,
-                    base_image: preset.image || preset.image_source
-                });
-            }
-        });
-        
-        // Limit results to 10 items
-        const limitedResults = results.slice(0, 10);
-        
-        res.json(limitedResults);
-        
-    } catch (error) {
-        console.log('❌ Preset auto-complete search error:', error.message);
-        res.status(500).json({ error: error.message });
-    }
-});
-
 app.get('/preset/:name', authMiddleware, async (req, res) => {
     try {
     const currentPromptConfig = loadPromptConfig();
@@ -3330,7 +3257,7 @@ app.get('/preset/:name', authMiddleware, async (req, res) => {
                         .toBuffer();
                     contentType = 'image/jpeg';
                 } catch (error) {
-                    console.log('❌ Image optimization failed:', error.message);
+                    console.error('❌ Image optimization failed:', error.message);
                 }
             }
             
@@ -3369,7 +3296,7 @@ app.get('/preset/:name', authMiddleware, async (req, res) => {
                 .toBuffer();
             contentType = 'image/jpeg';
         } catch (error) {
-            console.log('❌ Image optimization failed:', error.message);
+            console.error('❌ Image optimization failed:', error.message);
             // Fall back to original PNG if optimization fails
         }
     }
@@ -3385,7 +3312,7 @@ app.get('/preset/:name', authMiddleware, async (req, res) => {
     }
     res.send(finalBuffer);
     } catch(e) {
-        console.log('❌ Error occurred:', e);
+        console.error('❌ Error occurred:', e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -3429,7 +3356,7 @@ app.options('/preset/:name', authMiddleware, async (req, res) => {
             image_source: (p.image_source !== undefined ? p.image_source : undefined)
         });
     } catch(e) {
-        console.log('❌ Error occurred:', e);
+        console.error('❌ Error occurred:', e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -3484,7 +3411,7 @@ app.put('/preset/:name', authMiddleware, async (req, res) => {
         res.json({ success: true, message: `Preset "${presetName}" saved successfully` });
 
     } catch(e) {
-        console.log('❌ Error occurred in preset save:', e.message);
+        console.error('❌ Error occurred in preset save:', e.message);
         res.status(500).json({ error: e.message });
     }
 });
@@ -3529,7 +3456,7 @@ app.get('/preset/:name/:resolution', authMiddleware, async (req, res) => {
                         .toBuffer();
                     contentType = 'image/jpeg';
                 } catch (error) {
-                    console.log('❌ Image optimization failed:', error.message);
+                    console.error('❌ Image optimization failed:', error.message);
                 }
             }
             
@@ -3569,7 +3496,7 @@ app.get('/preset/:name/:resolution', authMiddleware, async (req, res) => {
                 .toBuffer();
             contentType = 'image/jpeg';
         } catch (error) {
-            console.log('❌ Image optimization failed:', error.message);
+            console.error('❌ Image optimization failed:', error.message);
             // Fall back to original PNG if optimization fails
         }
     }
@@ -3585,7 +3512,7 @@ app.get('/preset/:name/:resolution', authMiddleware, async (req, res) => {
     }
     res.send(finalBuffer);
     } catch(e) {
-        console.log('❌ Error occurred:', e);
+        console.error('❌ Error occurred:', e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -3597,7 +3524,7 @@ app.get('/balance', authMiddleware, async (req, res) => {
         const balance = await getBalance();
         res.json(balance);
     } catch(e) {
-        console.log('❌ Error getting balance:', e);
+        console.error('❌ Error getting balance:', e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -3611,7 +3538,7 @@ app.post('/:model/prompt', authMiddleware, async (req, res) => {
     const opts = await buildOptions(key, req.body, null, req.query);
     res.json({ prompt: opts.prompt, uc: opts.negative_prompt });
     } catch(e) {
-        console.log('❌ Error occurred:', e);
+        console.error('❌ Error occurred:', e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -3636,13 +3563,12 @@ app.post('/:model/generate', authMiddleware, queueMiddleware, async (req, res) =
         const presetName = req.body.preset || null;
         await handleImageRequest(req, res, opts, presetName);
     } catch(e) {
-        console.log('❌ Error occurred:', e);
+        console.error('❌ Error occurred:', e);
         res.status(500).json({ error: e.message });
     }
 });
 
 // Load character data for auto-complete
-let characterDataArray = [];
 
 // Tag suggestions cache management
 let tagSuggestionsCache = { tags: {}, queries: {} };
@@ -3650,20 +3576,7 @@ let cacheDirty = false;
 let saveTimer = null;
 
 // Initialize cache at startup
-function initializeCache() {
-    try {
-        const characterDataPath = path.join(__dirname, 'characters.json');
-        if (fs.existsSync(characterDataPath)) {
-            const data = JSON.parse(fs.readFileSync(characterDataPath, 'utf8'));
-            characterDataArray = data.data || [];
-            console.log(`✅ Loaded ${characterDataArray.length} characters for auto-complete`);
-        } else {
-            console.log('⚠️  Character data file not found, auto-complete disabled');
-        }
-    } catch (error) {
-        console.error('❌ Error loading character data:', error.message);
-    }
-
+async function initializeCache() {
     try {
         if (fs.existsSync(cacheFile)) {
             const loadedCache = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
@@ -3679,9 +3592,16 @@ function initializeCache() {
             console.log('📝 Creating new tag suggestions cache');
         }
     } catch (error) {
-        console.log('❌ Error loading tag suggestions cache:', error.message);
-        tagSuggestionsCache = { tags: {}, queries: {} };
+        console.error('❌ Error loading tag suggestions cache:', error.message);
+        process.exit(1);
     }
+
+    // Initialize account data
+    await initializeAccountData();
+    
+    // Set up periodic refreshes
+    setInterval(() => initializeAccountData(), ACCOUNT_DATA_REFRESH_INTERVAL); // Check every 4 hours
+    setInterval(() => refreshBalance(), BALANCE_REFRESH_INTERVAL); // Check every 15 minutes
 }
 
 // Delayed save function with atomic file operations
@@ -3719,21 +3639,18 @@ function saveCacheAtomic() {
         cacheDirty = false;
         console.log(`💾 Tag suggestions cache saved atomically (${Object.keys(tagSuggestionsCache.tags).length} tags)`);
     } catch (error) {
-        console.log('❌ Error saving tag suggestions cache:', error.message);
+        console.error('❌ Error saving tag suggestions cache:', error.message);
         
         // Clean up temp file if it exists
         if (fs.existsSync(tempFile)) {
             try {
                 fs.unlinkSync(tempFile);
             } catch (cleanupError) {
-                console.log('❌ Error cleaning up temp cache file:', cleanupError.message);
+                console.error('❌ Error cleaning up temp cache file:', cleanupError.message);
             }
         }
     }
 }
-
-// Initialize cache at startup
-initializeCache();
 
 // Test bias adjustment endpoint
 app.post('/test-bias-adjustment', async (req, res) => {
@@ -3801,7 +3718,7 @@ app.get('/workspaces', authMiddleware, (req, res) => {
             cacheFileCount: workspace.cacheFiles.length
         });
     } catch (error) {
-        console.log('❌ Error getting active workspace:', error);
+        console.error('❌ Error getting active workspace:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -3831,7 +3748,7 @@ app.options('/workspaces', authMiddleware, (req, res) => {
             activeWorkspace: activeWorkspaceId
         });
     } catch (error) {
-        console.log('❌ Error listing workspaces:', error);
+        console.error('❌ Error listing workspaces:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -3854,7 +3771,7 @@ app.post('/workspaces', authMiddleware, (req, res) => {
         const workspaceId = createWorkspace(name.trim(), color ? color.trim() : null);
         res.json({ success: true, id: workspaceId, name: name.trim() });
     } catch (error) {
-        console.log('❌ Error creating workspace:', error);
+        console.error('❌ Error creating workspace:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -3871,7 +3788,7 @@ app.put('/workspaces/:id', authMiddleware, (req, res) => {
         renameWorkspace(id, name.trim());
         res.json({ success: true, message: `Workspace renamed to "${name.trim()}"` });
     } catch (error) {
-        console.log('❌ Error renaming workspace:', error);
+        console.error('❌ Error renaming workspace:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -3882,7 +3799,7 @@ app.delete('/workspaces/:id', authMiddleware, (req, res) => {
         deleteWorkspace(id);
         res.json({ success: true, message: 'Workspace deleted and items moved to default' });
     } catch (error) {
-        console.log('❌ Error deleting workspace:', error);
+        console.error('❌ Error deleting workspace:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -3932,7 +3849,7 @@ app.post('/workspaces/:id/images', authMiddleware, upload.array('images', 10), a
                 });
                 
             } catch (error) {
-                console.log(`❌ Upload error for ${file.originalname}:`, error.message);
+                console.error(`❌ Upload error for ${file.originalname}:`, error.message);
                 errors.push({
                     filename: file.originalname,
                     error: error.message
@@ -3953,7 +3870,7 @@ app.post('/workspaces/:id/images', authMiddleware, upload.array('images', 10), a
         });
         
     } catch(e) {
-        console.log('❌ Upload error:', e.message);
+        console.error('❌ Upload error:', e.message);
         res.status(500).json({ error: e.message });
     }
 });
@@ -3964,7 +3881,7 @@ app.put('/workspaces/:id/activate', authMiddleware, (req, res) => {
         setActiveWorkspace(id);
         res.json({ success: true, activeWorkspace: id });
     } catch (error) {
-        console.log('❌ Error setting active workspace:', error);
+        console.error('❌ Error setting active workspace:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -3981,7 +3898,7 @@ app.post('/workspaces/:sourceId/dump', authMiddleware, (req, res) => {
         dumpWorkspace(sourceId, targetId);
         res.json({ success: true, message: 'Workspace dumped successfully' });
     } catch (error) {
-        console.log('❌ Error dumping workspace:', error);
+        console.error('❌ Error dumping workspace:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4016,7 +3933,7 @@ app.get('/workspaces/:id/files', authMiddleware, (req, res) => {
             files: Array.from(workspaceFiles)
         });
     } catch (error) {
-        console.log('❌ Error getting workspace files:', error);
+        console.error('❌ Error getting workspace files:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4033,7 +3950,7 @@ app.put('/workspaces/:id/files', authMiddleware, (req, res) => {
         const movedCount = moveFilesToWorkspace(filenames, id);
         res.json({ success: true, message: `Moved ${movedCount} files to workspace`, movedCount });
     } catch (error) {
-        console.log('❌ Error moving files to workspace:', error);
+        console.error('❌ Error moving files to workspace:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4057,7 +3974,7 @@ app.get('/workspaces/:id/scraps', authMiddleware, (req, res) => {
             scraps: scraps
         });
     } catch (error) {
-        console.log('❌ Error getting workspace scraps:', error);
+        console.error('❌ Error getting workspace scraps:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4081,7 +3998,7 @@ app.get('/workspaces/:id/pinned', authMiddleware, (req, res) => {
             pinned: pinned
         });
     } catch (error) {
-        console.log('❌ Error getting workspace pinned images:', error);
+        console.error('❌ Error getting workspace pinned images:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4098,7 +4015,7 @@ app.put('/workspaces/:id/scraps', authMiddleware, (req, res) => {
         addToWorkspaceArray('scraps', filename, id);
         res.json({ success: true, message: 'File added to scraps' });
     } catch (error) {
-        console.log('❌ Error adding file to scraps:', error);
+        console.error('❌ Error adding file to scraps:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4115,7 +4032,7 @@ app.delete('/workspaces/:id/scraps', authMiddleware, (req, res) => {
         removeFromWorkspaceArray('scraps', filename, id);
         res.json({ success: true, message: 'File removed from scraps' });
     } catch (error) {
-        console.log('❌ Error removing file from scraps:', error);
+        console.error('❌ Error removing file from scraps:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4133,7 +4050,7 @@ app.put('/workspaces/:id/pinned', authMiddleware, (req, res) => {
         addToWorkspaceArray('pinned', filename, id);
         res.json({ success: true, message: 'File added to pinned' });
     } catch (error) {
-        console.log('❌ Error adding file to pinned:', error);
+        console.error('❌ Error adding file to pinned:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4151,7 +4068,7 @@ app.delete('/workspaces/:id/pinned', authMiddleware, (req, res) => {
         removeFromWorkspaceArray('pinned', filename, id);
         res.json({ success: true, message: 'File removed from pinned' });
     } catch (error) {
-        console.log('❌ Error removing file from pinned:', error);
+        console.error('❌ Error removing file from pinned:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4169,7 +4086,7 @@ app.put('/workspaces/:id/pinned/bulk', authMiddleware, (req, res) => {
         const addedCount = addToWorkspaceArray('pinned', filenames, id);
         res.json({ success: true, addedCount, message: `${addedCount} files added to pinned` });
     } catch (error) {
-        console.log('❌ Error adding files to pinned:', error);
+        console.error('❌ Error adding files to pinned:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4187,7 +4104,7 @@ app.delete('/workspaces/:id/pinned/bulk', authMiddleware, (req, res) => {
         const removedCount = removeFromWorkspaceArray('pinned', filenames, id);
         res.json({ success: true, removedCount, message: `${removedCount} files removed from pinned` });
     } catch (error) {
-        console.log('❌ Error removing files from pinned:', error);
+        console.error('❌ Error removing files from pinned:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4201,7 +4118,7 @@ app.get('/workspaces/:id/groups', authMiddleware, (req, res) => {
         const groups = getWorkspaceGroups(id);
         res.json({ groups });
     } catch (error) {
-        console.log('❌ Error getting workspace groups:', error);
+        console.error('❌ Error getting workspace groups:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4221,7 +4138,7 @@ app.post('/workspaces/:id/groups', authMiddleware, (req, res) => {
         
         res.json({ success: true, group });
     } catch (error) {
-        console.log('❌ Error creating group:', error);
+        console.error('❌ Error creating group:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4238,7 +4155,7 @@ app.get('/workspaces/:id/groups/:groupId', authMiddleware, (req, res) => {
         
         res.json({ group });
     } catch (error) {
-        console.log('❌ Error getting group:', error);
+        console.error('❌ Error getting group:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4260,7 +4177,7 @@ app.put('/workspaces/:id/groups/:groupId', authMiddleware, (req, res) => {
         const group = getGroup(id, groupId);
         res.json({ success: true, group });
     } catch (error) {
-        console.log('❌ Error updating group:', error);
+        console.error('❌ Error updating group:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4280,7 +4197,7 @@ app.post('/workspaces/:id/groups/:groupId/images', authMiddleware, (req, res) =>
         
         res.json({ success: true, addedCount, group });
     } catch (error) {
-        console.log('❌ Error adding images to group:', error);
+        console.error('❌ Error adding images to group:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4300,7 +4217,7 @@ app.delete('/workspaces/:id/groups/:groupId/images', authMiddleware, (req, res) 
         
         res.json({ success: true, removedCount, group });
     } catch (error) {
-        console.log('❌ Error removing images from group:', error);
+        console.error('❌ Error removing images from group:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4312,7 +4229,7 @@ app.delete('/workspaces/:id/groups/:groupId', authMiddleware, (req, res) => {
         deleteGroup(id, groupId);
         res.json({ success: true, message: 'Group deleted' });
     } catch (error) {
-        console.log('❌ Error deleting group:', error);
+        console.error('❌ Error deleting group:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4324,7 +4241,7 @@ app.get('/workspaces/:id/images/:filename/groups', authMiddleware, (req, res) =>
         const groups = getGroupsForImage(id, filename);
         res.json({ groups });
     } catch (error) {
-        console.log('❌ Error getting groups for image:', error);
+        console.error('❌ Error getting groups for image:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4435,7 +4352,7 @@ app.delete('/workspaces/:id/references/:hash', authMiddleware, (req, res) => {
         res.json({ success: true });
         console.log(`✅ Cache file deleted: ${hash}\n`);
     } catch(e) {
-        console.log('❌ Error occurred:', e);
+        console.error('❌ Error occurred:', e);
         res.status(500).json({ error: e.message });
     }
 });
@@ -4452,7 +4369,7 @@ app.put('/workspaces/:id/references', authMiddleware, (req, res) => {
         const movedCount = moveToWorkspaceArray('cacheFiles', hashes, id);
         res.json({ success: true, message: `Moved ${movedCount} cache files to workspace`, movedCount });
     } catch (error) {
-        console.log('❌ Error moving cache files to workspace:', error);
+        console.error('❌ Error moving cache files to workspace:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4492,7 +4409,7 @@ app.post('/workspaces/:id/references', authMiddleware, cacheUpload.single('image
         res.json({ success: true, hash: hash });
 
     } catch (e) {
-        console.log('❌ Base image upload error:', e.message);
+        console.error('❌ Base image upload error:', e.message);
         res.status(500).json({ error: e.message });
     }
 });
@@ -4553,7 +4470,7 @@ app.post('/workspaces/:id/references/copy', authMiddleware, async (req, res) => 
         res.json({ success: true, hash: hash });
 
     } catch (e) {
-        console.log('❌ Base image copy error:', e.message);
+        console.error('❌ Base image copy error:', e.message);
         res.status(500).json({ error: e.message });
     }
 });
@@ -4577,7 +4494,7 @@ app.get('/workspaces/active/color', authMiddleware, (req, res) => {
             workspaceName: workspace.name
         });
     } catch (error) {
-        console.log('❌ Error getting active workspace color:', error);
+        console.error('❌ Error getting active workspace color:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4600,7 +4517,7 @@ app.put('/workspaces/:id/color', authMiddleware, (req, res) => {
         updateWorkspaceColor(id, color.trim());
         res.json({ success: true, message: `Workspace color updated to "${color.trim()}"` });
     } catch (error) {
-        console.log('❌ Error updating workspace color:', error);
+        console.error('❌ Error updating workspace color:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4626,7 +4543,7 @@ app.put('/workspaces/:id/background-color', authMiddleware, (req, res) => {
         updateWorkspaceBackgroundColor(id, backgroundColor ? backgroundColor.trim() : null);
         res.json({ success: true, message: `Workspace background color updated` });
     } catch (error) {
-        console.log('❌ Error updating workspace background color:', error);
+        console.error('❌ Error updating workspace background color:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4646,7 +4563,7 @@ app.put('/workspaces/:id/background-image', authMiddleware, (req, res) => {
         updateWorkspaceBackgroundImage(id, backgroundImage ? backgroundImage.trim() : null);
         res.json({ success: true, message: `Workspace background image updated` });
     } catch (error) {
-        console.log('❌ Error updating workspace background image:', error);
+        console.error('❌ Error updating workspace background image:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -4668,14 +4585,55 @@ app.put('/workspaces/:id/background-opacity', authMiddleware, (req, res) => {
         updateWorkspaceBackgroundOpacity(id, opacity);
         res.json({ success: true, message: `Workspace background opacity updated` });
     } catch (error) {
-        console.log('❌ Error updating workspace background opacity:', error);
+        console.error('❌ Error updating workspace background opacity:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
+// Create context object for search functionality
+const searchContext = {
+    Model: Model,
+    config: config,
+    tagSuggestionsCache: tagSuggestionsCache,
+    cacheDirty: cacheDirty,
+    scheduleCacheSave
+};
+
+// Initialize WebSocket message handlers
+const wsMessageHandlers = new WebSocketMessageHandlers(searchContext);
+
+// Initialize WebSocket server with session store and message handler
+const wsServer = new WebSocketServer(server, sessionStore, async (ws, message, clientInfo, wsServer) => {
+    await wsMessageHandlers.handleMessage(ws, message, clientInfo, wsServer);
+});
+setGlobalWsServer(wsServer);
+
+// Start ping interval with server data callback
+wsServer.startPingInterval(() => {
+    return {
+        balance: accountBalance,
+        queue_status: getQueueStatus(),
+        image_count: imageCounter.getCount(),
+        server_time: Date.now().valueOf()
+    };
+});
+
+// Start server
+(async () => {
+    console.log('🚀 Initializing cache... (Server unavalible until cache is initialized)');
+    await initializeCache();
+    server.listen(config.port, () => console.log(`Server running on port ${config.port}`));
+})();
+
 // Graceful shutdown handling
 function gracefulShutdown() {
     console.log('🛑 Graceful shutdown initiated...');
+    
+    // Stop WebSocket ping interval
+    if (wsServer) {
+        console.log('🛑 Stopping WebSocket ping interval...');
+        wsServer.stopPingInterval();
+    }
     
     // Save cache immediately if dirty
     if (cacheDirty) {
@@ -4683,54 +4641,13 @@ function gracefulShutdown() {
         saveCacheAtomic();
     }
     
+    // Save metadata cache
+    console.log('💾 Saving metadata cache before shutdown...');
+    saveMetadataCache();
+    
     process.exit(0);
 }
 
 // Register shutdown handlers
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
-
-
-// WebSocket message handler function
-async function handleWebSocketMessage(ws, message, clientInfo, wsServer) {
-    //console.log(`📨 WebSocket message from ${clientInfo.username}:`, message.type);
-
-    switch (message.type) {
-        case 'ping':
-            wsServer.sendToClient(ws, {
-                type: 'pong',
-                timestamp: new Date().toISOString()
-            });
-            break;
-
-        case 'subscribe':
-            // Handle subscription to specific events
-            wsServer.sendToClient(ws, {
-                type: 'subscribed',
-                channels: message.channels || [],
-                timestamp: new Date().toISOString()
-            });
-            break;
-
-        default:
-            wsServer.sendToClient(ws, {
-                type: 'error',
-                message: 'Unknown message type',
-                timestamp: new Date().toISOString()
-            });
-    }
-}
-
-
-// Initialize WebSocket server with session store and message handler
-const wsServer = new WebSocketServer(server, sessionMiddleware.store, handleWebSocketMessage);
-setGlobalWsServer(wsServer);
-
-// Start server
-server.listen(config.port, () => console.log(`Server running on port ${config.port}`));
-
-app.get('/ping', authMiddleware, (req, res) => {
-    const queueStatus = getQueueStatus();
-    const imageCount = imageCounter.getCount();
-    res.json({ success: true, queue_status: queueStatus, image_count: imageCount });
-});

@@ -9,7 +9,6 @@ const manualBtn = document.getElementById('manualBtn');
 const generateBtn = document.getElementById('generateBtn');
 const presetSelect = document.getElementById('presetSelect');
 const gallery = document.getElementById('gallery');
-const galleryColumnsInput = document.getElementById('galleryColumnsInput');
 const bulkSelectAllBtn = document.getElementById('bulkSelectAllBtn');
 const cacheGallery = document.getElementById('cacheGallery');
 const loadingOverlay = document.getElementById('loadingOverlay');
@@ -117,62 +116,55 @@ let selectedUcPreset = 3;
 let presetAutocompleteTimeout = null;
 let currentPresetAutocompleteTarget = null;
 let selectedPresetAutocompleteIndex = -1;
-let presetSearchResults = [];
 const logoutButton = document.getElementById('logoutButton');
-let infiniteScrollLoading = document.getElementById('infiniteScrollLoading');
 const addCharacterBtn = document.getElementById('addCharacterBtn');
 const characterPromptsContainer = document.getElementById('characterPromptsContainer');
 const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
 const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
 const transformationRow = document.getElementById('transformationRow');
 const manualPreviewOriginalImage = document.getElementById('manualPreviewOriginalImage');
+let sproutSeedBtn = document.getElementById('sproutSeedBtn');;
+
+// Manual preview zoom and pan functionality
+let manualPreviewZoom = 1;
+let manualPreviewPanX = 0;
+let manualPreviewPanY = 0;
+let isManualPreviewDragging = false;
+let lastManualPreviewMouseX = 0;
+let lastManualPreviewMouseY = 0;
+let lastManualPreviewTouchDistance = 0;
+
+// Error Sub-Header Functions
+let errorSubHeaderTimeout = null;
+
+// Add event listener for sproutSeedBtn to toggle seed value filling
+let lastLoadedSeed = null;
+
+// Add event listener for varietyBtn to toggle a global flag for variety and toggle the active class
+let varietyEnabled = false;
+
+// Glass Toast Notification System
+let toastCounter = 0;
+const activeToasts = new Map();
+
+// Character Prompts Functions
+let characterPromptCounter = 0;
+let currentPositionCharacterId = null;
+let selectedPositionCell = null;
+let lastPromptState = null;
+let savedRandomPromptState = null;
+
+let pinModalPromise = null;
+
+let resizeTimeout = null;
 
 // Global variables
 let forcePaidRequest = false;
-let allImages = [];
 
 // Make u1 array available globally for tag highlighting
 if (typeof u1 !== 'undefined') {
     window.u1 = u1;
 }
-// Infinite scroll variables
-let imagesPerPage = 12;
-let isLoadingMore = false;
-let hasMoreImages = true;
-let hasMoreImagesBefore = false; // Track if there are images before current page
-let visibleItems = new Set(); // Track visible items
-let virtualScrollEnabled = true; // Enable virtual scrolling
-let currentImage = null;
-let currentManualPreviewImage = null;
-
-// Bidirectional infinite scroll tracking
-let displayedStartIndex = 0; // First displayed image index in allImages array
-let displayedEndIndex = 0;   // Last displayed image index in allImages array
-
-// Improved infinite scroll configuration
-let infiniteScrollConfig = {
-    // Percentage-based triggers (more responsive to different screen sizes)
-    bottomTriggerPercent: 0.15, // 15% from bottom
-    topTriggerPercent: 0.15,    // 15% from top
-    placeholderTriggerPercent: 0.25, // 25% for placeholder scheduling
-    
-    // Dynamic batch sizing based on viewport
-    minBatchSize: 6,
-    maxBatchSize: 24,
-    
-    // Performance optimization
-    throttleDelay: 100, // ms between scroll checks
-    debounceDelay: 300, // ms after scroll stops
-    
-    // Responsive adjustments
-    smallScreenThreshold: 768, // px
-    smallScreenMultiplier: 0.5, // Reduce triggers on small screens
-};
-
-// Selection state
-let selectedImages = new Set();
-let isSelectionMode = false;
-let lastSelectedGalleryIndex = null; // Track last selected index for range selection
 
 // Global options data
 let optionsData = null;
@@ -271,15 +263,6 @@ const modelGroups = [
         ]
     }
 ];
-
-const modelKeys = {
-    "nai-diffusion-3": { type: "Anime", version: "v3" },
-    "nai-diffusion-4-full": { type: "Anime", version: "v4" },
-    "nai-diffusion-4-curated-preview": { type: "Anime", version: "v4C" },
-    "nai-diffusion-4-5-full": { type: "Anime", version: "v4.5" },
-    "nai-diffusion-4-5-curated": { type: "Anime", version: "v4.5C" },
-    "nai-diffusion-furry-3": { type: "Furry", version: "v3" }
-}
 
 // Helper function to check if a model is V3
 function isV3Model(modelValue) {
@@ -1528,126 +1511,6 @@ function updateTransformationDropdownState(type, text) {
 setupDropdown(transformationDropdown, transformationDropdownBtn, transformationDropdownMenu, renderTransformationDropdown, () => document.getElementById('transformationType').value);
 setupTransformationDropdownListeners();
 
-// Gallery view functionality
-let currentGalleryView = 'images'; // 'images', 'scraps', 'pinned'
-
-
-// Switch between gallery views
-function switchGalleryView(view) {
-    if (currentGalleryView === view) return;
-    
-    currentGalleryView = view;
-    const toggleGroup = document.getElementById('galleryToggleGroup');
-    
-    // Update button states
-    toggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    toggleGroup.querySelector(`[data-view="${view}"]`).classList.add('active');
-    
-    // Update slider position
-    toggleGroup.setAttribute('data-active', view);
-    
-    // Handle view-specific logic
-    switch (view) {
-        case 'scraps':
-            document.querySelector('.bokeh-background.current-bg')?.classList.add('scraps-grayscale');
-            document.querySelector('.bokeh')?.classList.add('scraps-grayscale');
-            loadScraps();
-            break;
-        case 'images':
-            document.querySelector('.bokeh')?.classList.remove('scraps-grayscale');
-            document.querySelectorAll('.bokeh-background').forEach(el => el.classList.remove('scraps-grayscale'));
-            loadGallery();
-            break;
-        case 'pinned':
-            document.querySelector('.bokeh')?.classList.remove('scraps-grayscale');
-            document.querySelectorAll('.bokeh-background').forEach(el => el.classList.remove('scraps-grayscale'));
-            loadPinned();
-            break;
-        case 'upscaled':
-            document.querySelector('.bokeh')?.classList.remove('scraps-grayscale');
-            document.querySelectorAll('.bokeh-background').forEach(el => el.classList.remove('scraps-grayscale'));
-            loadUpscaled();
-            break;
-    }
-}
-
-// Load scraps for current workspace
-async function loadScraps() {
-    try {
-        // Use the new /images endpoint with scraps query parameter
-        const response = await fetchWithAuth('/images?scraps=true');
-        if (response.ok) {
-            const scrapsImageData = await response.json();
-            // Update display
-            allImages = scrapsImageData;
-            displayCurrentPageOptimized();
-        } else {
-            console.error('Failed to load scraps:', response.statusText);
-            allImages = [];
-            resetInfiniteScroll();
-            displayCurrentPageOptimized();
-        }
-        updateGalleryPlaceholders();
-    } catch (error) {
-        console.error('Error loading scraps:', error);
-        allImages = [];
-        resetInfiniteScroll();
-        displayCurrentPageOptimized();
-    }
-}
-
-// Load pinned images for current workspace
-async function loadPinned() {
-    try {
-        // Use the new /images endpoint with pinned query parameter
-        const response = await fetchWithAuth('/images?pinned=true');
-        if (response.ok) {
-            const pinnedImageData = await response.json();
-            // Update display
-            allImages = pinnedImageData;
-            displayCurrentPageOptimized();
-        } else {
-            console.error('Failed to load pinned images:', response.statusText);
-            allImages = [];
-            resetInfiniteScroll();
-            displayCurrentPageOptimized();
-        }
-        updateGalleryPlaceholders();
-    } catch (error) {
-        console.error('Error loading pinned images:', error);
-        allImages = [];
-        resetInfiniteScroll();
-        displayCurrentPageOptimized();
-    }
-}
-
-// Load upscaled images for current workspace
-async function loadUpscaled() {
-    try {
-        // Use the new /images endpoint with upscaled query parameter
-        const response = await fetchWithAuth('/images?upscaled=true');
-        if (response.ok) {
-            const upscaledImageData = await response.json();
-            // Update display
-            allImages = upscaledImageData;
-            displayCurrentPageOptimized();
-        } else {
-            console.error('Failed to load upscaled images:', response.statusText);
-            allImages = [];
-            resetInfiniteScroll();
-            displayCurrentPageOptimized();
-        }
-        updateGalleryPlaceholders();
-    } catch (error) {
-        console.error('Error loading upscaled images:', error);
-        allImages = [];
-        resetInfiniteScroll();
-        displayCurrentPageOptimized();
-    }
-}
-
 // Move image to scraps
 async function moveToScraps(image) {
     try {
@@ -1925,209 +1788,6 @@ async function updateSpecificPinButton(filename) {
     }
 }
 
-// Remove image from gallery and add placeholder at the end
-function removeImageFromGallery(image) {
-    try {
-        const filename = image.filename || image.original || image.upscaled;
-        if (!filename) {
-            console.error('No filename available for image removal');
-            return;
-        }
-
-        // Find the gallery item to remove
-        const galleryItems = document.querySelectorAll('.gallery-item');
-        let itemToRemove = null;
-        let itemIndex = -1;
-
-        // Try to find by exact filename match first
-        for (const item of galleryItems) {
-            const img = item.querySelector('img');
-            if (img) {
-                const itemFilename = img.getAttribute('data-filename') || img.src.split('/').pop();
-                if (itemFilename === filename) {
-                    itemToRemove = item;
-                    itemIndex = parseInt(item.dataset.index);
-                    break;
-                }
-            }
-        }
-
-        // If not found by exact match, try to find by base name (for variations/upscaled)
-        if (!itemToRemove) {
-            const baseName = filename.split('_')[0]; // Get the timestamp part
-            for (const item of galleryItems) {
-                const img = item.querySelector('img');
-                if (img) {
-                    const itemFilename = img.getAttribute('data-filename') || img.src.split('/').pop();
-                    const itemBaseName = itemFilename.split('_')[0];
-                    if (itemBaseName === baseName) {
-                        itemToRemove = item;
-                        itemIndex = parseInt(item.dataset.index);
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (!itemToRemove) {
-            console.warn('Gallery item not found for removal:', filename);
-            // Don't return, just log the warning and continue with the operation
-            // The image will still be removed from allImages array and workspace
-        }
-
-        // Remove the item from the gallery if found
-        if (itemToRemove) {
-            itemToRemove.remove();
-        }
-
-        // Remove from allImages array
-        const allImagesIndex = allImages.findIndex(img => 
-            img.original === image.original || 
-            img.upscaled === image.upscaled ||
-            img.filename === filename
-        );
-        
-        if (allImagesIndex !== -1) {
-            allImages.splice(allImagesIndex, 1);
-        }
-
-        // Add placeholder at the index after the last item on the page
-        // Re-query gallery items since we may have removed one
-        const remainingGalleryItems = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-        const lastItemIndex = remainingGalleryItems.length > 0 ? 
-            Math.min(Math.max(...Array.from(remainingGalleryItems).map(item => parseInt(item.dataset.index))), allImages.length) : -1;
-        const placeholderIndex = lastItemIndex + 1;
-        
-        const placeholder = document.createElement('div');
-        placeholder.className = 'gallery-placeholder';
-        placeholder.style.height = '256px';
-        placeholder.style.width = '100%';
-        placeholder.dataset.index = placeholderIndex.toString();
-        gallery.appendChild(placeholder);
-
-        // Reindex all gallery items after the removed one (only if we found and removed an item)
-        if (itemToRemove && itemIndex !== -1) {
-            const remainingItems = gallery.querySelectorAll('.gallery-item');
-            for (const item of remainingItems) {
-                const currentIndex = parseInt(item.dataset.index);
-                if (currentIndex > itemIndex) {
-                    item.dataset.index = (currentIndex - 1).toString();
-                }
-            }
-
-            // Update placeholder indices
-            const placeholders = gallery.querySelectorAll('.gallery-placeholder');
-            for (const placeholder of placeholders) {
-                const currentIndex = parseInt(placeholder.dataset.index);
-                if (currentIndex > itemIndex) {
-                    placeholder.dataset.index = (currentIndex - 1).toString();
-                }
-            }
-        }
-
-        console.log(`Removed image ${filename} from gallery and added placeholder`);
-    } catch (error) {
-        console.error('Error removing image from gallery:', error);
-    }
-}
-
-// Remove multiple images from gallery and add placeholders at the end
-function removeMultipleImagesFromGallery(images) {
-    try {
-        if (!Array.isArray(images) || images.length === 0) {
-            console.warn('No images provided for bulk removal');
-            return;
-        }
-
-        const galleryItems = document.querySelectorAll('.gallery-item');
-        const itemsToRemove = [];
-        const indicesToRemove = [];
-
-        // Find all items to remove
-        for (const image of images) {
-            const filename = image.filename || image.original || image.upscaled;
-            if (!filename) continue;
-
-            for (const item of galleryItems) {
-                const img = item.querySelector('img');
-                if (img) {
-                    const itemFilename = img.getAttribute('data-filename') || img.src.split('/').pop();
-                    if (itemFilename === filename) {
-                        itemsToRemove.push(item);
-                        indicesToRemove.push(parseInt(item.dataset.index));
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Sort indices in descending order to remove from end to beginning
-        indicesToRemove.sort((a, b) => b - a);
-
-        // Remove items from gallery
-        itemsToRemove.forEach(item => item.remove());
-
-        // Remove from allImages array
-        for (const image of images) {
-            const allImagesIndex = allImages.findIndex(img => 
-                img.original === image.original || 
-                img.upscaled === image.upscaled ||
-                img.filename === (image.filename || image.original || image.upscaled)
-            );
-            
-            if (allImagesIndex !== -1) {
-                allImages.splice(allImagesIndex, 1);
-            }
-        }
-
-        // Add placeholders at the end
-        for (let i = 0; i < images.length; i++) {
-            const placeholder = document.createElement('div');
-            placeholder.className = 'gallery-placeholder';
-            placeholder.style.height = '256px';
-            placeholder.style.width = '100%';
-            placeholder.dataset.index = allImages.length + i;
-            gallery.appendChild(placeholder);
-        }
-
-        // Reindex all remaining gallery items
-        const remainingItems = gallery.querySelectorAll('.gallery-item');
-        for (const item of remainingItems) {
-            const currentIndex = parseInt(item.dataset.index);
-            let newIndex = currentIndex;
-            
-            // Count how many items were removed before this one
-            for (const removedIndex of indicesToRemove) {
-                if (currentIndex > removedIndex) {
-                    newIndex--;
-                }
-            }
-            
-            item.dataset.index = newIndex.toString();
-        }
-
-        // Update placeholder indices
-        const placeholders = gallery.querySelectorAll('.gallery-placeholder');
-        for (const placeholder of placeholders) {
-            const currentIndex = parseInt(placeholder.dataset.index);
-            let newIndex = currentIndex;
-            
-            // Count how many items were removed before this one
-            for (const removedIndex of indicesToRemove) {
-                if (currentIndex > removedIndex) {
-                    newIndex--;
-                }
-            }
-            
-            placeholder.dataset.index = newIndex.toString();
-        }
-
-        console.log(`Removed ${images.length} images from gallery and added placeholders`);
-    } catch (error) {
-        console.error('Error removing multiple images from gallery:', error);
-    }
-}
-
 function setSeedInputGroupState(open) {
     const manualSeed = document.getElementById('manualSeed');
     const sproutSeedBtn = document.getElementById('sproutSeedBtn');
@@ -2149,7 +1809,7 @@ function setSeedInputGroupState(open) {
 // Load options from server
 async function loadOptions() {
     try {
-        const response = await fetchWithAuth('/app', { method: 'OPTIONS' });
+        const response = await fetchWithAuth('/app', { method: 'OPTIONS', timeout: 4000 });
         if (!response.ok) throw new Error('Failed to load options');
 
         const options = await response.json();
@@ -2161,25 +1821,12 @@ async function loadOptions() {
             showErrorSubHeader(window.optionsData.user.error, 'error', 0);
         }
 
+        updateQueueStatus(window.optionsData?.queue_status);
+
         updateBalanceDisplay(window.optionsData?.balance);
     } catch (error) {
         console.error('Error loading options:', error);
         throw error;
-    }
-}
-
-// Load balance from server
-async function loadBalance() {
-    try {
-        const response = await fetchWithAuth('/balance');
-        if (!response.ok) throw new Error('Failed to load balance');
-
-        const balance = await response.json();
-        updateBalanceDisplay(balance);
-    } catch (error) {
-        console.error('Error loading balance:', error);
-        // Don't throw error for balance loading failure
-        updateBalanceDisplay({ totalCredits: 0, fixedTrainingStepsLeft: 0, purchasedTrainingSteps: 0 });
     }
 }
 
@@ -2193,14 +1840,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         await loadOptions(); // TODO: Check functionality
         await loadWorkspaces(); // Load workspace data
         loadActiveWorkspaceColor(); // Load workspace color for bokeh
-        await loadBalance();
         await loadVibeReferences(); // Load vibe references for immediate use
         
         // Initialize gallery toggle group
-        const galleryToggleGroup = document.getElementById('galleryToggleGroup');
-        if (galleryToggleGroup) {
-            galleryToggleGroup.setAttribute('data-active', currentGalleryView);
-        }
+        galleryToggleGroup.setAttribute('data-active', currentGalleryView);
 
         generateSamplerOptions();
         renderManualSamplerDropdown(manualSelectedSampler);
@@ -2242,6 +1885,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         // Initialize keyboard shortcuts for manual modal
         initializeManualModalShortcuts();
+        
+        // Initialize dataset tag toolbar
+        initializeDatasetTagToolbar();
     
         // Initialize emphasis highlighting for manual fields
         initializeEmphasisOverlay(manualPrompt);
@@ -3219,15 +2865,12 @@ function setupEventListeners() {
     });
 
     // Gallery toggle group
-    const galleryToggleGroup = document.getElementById('galleryToggleGroup');
-    if (galleryToggleGroup) {
-        galleryToggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const view = e.currentTarget.getAttribute('data-view');
-                switchGalleryView(view);
-            });
+    galleryToggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const view = e.currentTarget.getAttribute('data-view');
+            switchGalleryView(view);
         });
-    }
+    });
 
     // === Select All functionality ===
     if (bulkSelectAllBtn) {
@@ -3238,26 +2881,6 @@ function setupEventListeners() {
             });
         });
     }
-
-    // Improved infinite scroll with percentage-based triggers
-    let lastScrollTime = 0;
-    let scrollTimeout;
-    
-    function throttledInfiniteScroll() {
-        const now = Date.now();
-        if (now - lastScrollTime > infiniteScrollConfig.throttleDelay) {
-            handleInfiniteScroll();
-            lastScrollTime = now;
-        }
-    }
-    
-    window.addEventListener('scroll', () => {
-        throttledInfiniteScroll();
-        if (scrollTimeout) clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-            handleInfiniteScroll();
-        }, infiniteScrollConfig.debounceDelay);
-    });
     
     // Handle window resize to update infinite scroll configuration
     let resizeTimeout;
@@ -3501,464 +3124,6 @@ function updateBalanceDisplay(balance) {
     } else {
         // Normal credits - show coin icon
         balanceIcon.className = 'nai-anla';
-    }
-}
-
-// Load gallery images with optimized rendering to prevent flickering
-async function loadGallery(addLatest) {
-    try {
-        const response = await fetchWithAuth('/images');
-        if (response.ok) {
-            const newImages = await response.json();
-
-            // Check if images have actually changed to avoid unnecessary updates
-            if (JSON.stringify(allImages) === JSON.stringify(newImages)) {
-                return; // No changes, skip update
-            }
-
-            allImages = newImages;
-
-            // Reset infinite scroll state and display initial batch
-            if (!addLatest) {
-                resetInfiniteScroll();
-                displayCurrentPageOptimized();
-            } else {
-                await addNewGalleryItemAfterGeneration(newImages[0]);
-            }
-        } else {
-            console.error('Failed to load gallery:', response.statusText);
-        }
-    } catch (error) {
-        console.error('Error loading gallery:', error);
-        // Don't throw error for gallery loading failure
-        allImages = [];
-        displayCurrentPageOptimized();
-    }
-}
-
-// Add a new gallery item after generation with fade-in and slide-in animations
-async function addNewGalleryItemAfterGeneration(newImage) {
-    // Add placeholder with fade-in
-    const placeholder = document.createElement('div');
-    placeholder.className = 'gallery-placeholder fade-in';
-    placeholder.style.height = '256px';
-    placeholder.style.width = '100%';
-    placeholder.dataset.filename = newImage.filename || newImage.original || newImage.upscaled;
-    placeholder.dataset.time = newImage.mtime;
-    placeholder.dataset.index = 0;
-    gallery.insertBefore(placeholder, gallery.children[0]);
-    // Wait for fade-in animation to finish
-    await new Promise(resolve => {
-        placeholder.addEventListener('animationend', function handler() {
-            placeholder.classList.remove('fade-in');
-            placeholder.removeEventListener('animationend', handler);
-            resolve();
-        });
-    });
-    // Replace placeholder with real item, slide in
-    const newItem = createGalleryItem(newImage, 0);
-    newItem.classList.add('slide-in');
-    gallery.replaceChild(newItem, placeholder);
-    newItem.addEventListener('animationend', function handler() {
-        newItem.classList.remove('slide-in');
-        newItem.removeEventListener('animationend', handler);
-    });
-    reindexGallery();
-}
-
-let galleryColumns = parseInt(galleryColumnsInput?.value) || 5;
-let realGalleryColumns = galleryColumns;
-let galleryRows = 5;
-let debounceGalleryTimeout = null;
-
-// Calculate optimal number of rows based on viewport height
-function calculateGalleryRows() {
-    if (!gallery) return 5; // Fallback to 5 if gallery not found
-
-    // Get gallery container dimensions
-    const galleryRect = gallery.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-
-    // Estimate gallery item height (including gap and margins)
-    // Gallery items are square (aspect-ratio: 1) with gap and padding
-    const itemSize = galleryRect.width / realGalleryColumns; // Width of each item
-    const gap = 24; // var(--spacing-xl) from CSS
-    const itemHeight = itemSize + gap; // Item height plus gap
-
-    // Calculate available height for gallery
-    // Account for header, controls, and margins (no pagination)
-    const headerHeight = 80; // Approximate header height
-    const controlsHeight = 60; // Approximate controls height
-    const margins = 40; // Top and bottom margins
-
-    const availableHeight = viewportHeight - headerHeight - controlsHeight - margins;
-
-    // Calculate how many rows can fit
-    const calculatedRows = Math.floor(availableHeight / itemHeight);
-
-    // Ensure minimum of 3 rows and maximum of 8 rows for usability
-    return Math.max(3, Math.min(8, calculatedRows));
-}
-
-function setGalleryColumns(cols) {
-    galleryColumns = Math.max(3, Math.min(10, parseInt(cols) || 5));
-    gallery.style.gridTemplateColumns = `repeat(${galleryColumns}, 1fr)`;
-    galleryColumnsInput.value = galleryColumns;
-
-    // Recalculate rows based on new column count
-    galleryRows = calculateGalleryRows();
-    
-    if (debounceGalleryTimeout) clearTimeout(debounceGalleryTimeout);
-    debounceGalleryTimeout = setTimeout(() => {
-        updateGalleryColumnsFromLayout();
-        displayCurrentPageOptimized();
-        resetInfiniteScroll();
-    }, 500);
-    updateGalleryPlaceholders();
-}
-
-function updateGalleryPlaceholders() {
-    if (!gallery) return;
-    // Remove old placeholders
-    Array.from(gallery.querySelectorAll('.gallery-placeholder')).forEach(el => el.remove());
-
-    // For infinite scroll, we don't need to add placeholders for the current page
-    // Placeholders will be added when loading more images
-}
-
-function updateGalleryItemToolbars() {
-    const items = document.querySelectorAll('.gallery-item');
-    let i = 0;
-    function updateNext() {
-        if (i >= items.length) return;
-        const item = items[i];
-        const overlay = item.querySelector('.gallery-item-overlay');
-        if (!overlay) return;
-        // Check if item is too small (e.g., width < 120px or height < 120px)
-        const rect = item.getBoundingClientRect();
-        let miniToolbar = overlay.querySelector('.mini-toolbar');
-        if (rect.width < 208 || rect.height < 208) {
-            item.classList.add('mini-toolbar-active');
-            if (!miniToolbar) {
-                miniToolbar = document.createElement('div');
-                miniToolbar.className = 'mini-toolbar';
-                miniToolbar.innerHTML = `
-                    <button class="btn-small" title="Edit"><i class="nai-settings"></i></button>
-                    <button class="btn-small" title="Download"><i class="nai-save"></i></button>
-                    <button class="btn-small" title="Delete"><i class="nai-trash"></i></button>
-                `;
-                overlay.appendChild(miniToolbar);
-            }
-            miniToolbar.style.display = 'flex';
-        } else {
-            item.classList.remove('mini-toolbar-active');
-            if (miniToolbar) {
-                miniToolbar.style.display = 'none';
-            }
-        }
-        i++;
-        requestAnimationFrame(updateNext);
-    }
-    updateNext();
-}
-
-// Optimized display function for infinite scroll using document fragment
-function displayCurrentPageOptimized() {
-    if (!gallery) return;
-
-    // Clear gallery
-    gallery.innerHTML = '';
-
-    // If no images, show empty state
-    if (allImages.length === 0) {
-        return;
-    }
-
-    displayedStartIndex = 0;
-    const itemHeight = 256;
-    const itemsPerCol = Math.floor(window.innerHeight / itemHeight);
-    const buffer = Math.ceil(itemsPerCol * 0.15);
-    const totalItems = Math.min((itemsPerCol + buffer) * realGalleryColumns, allImages.length);
-    displayedEndIndex = totalItems;
-
-    const fragment = document.createDocumentFragment();
-    for (let i = displayedStartIndex; i < displayedEndIndex; i++) {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'gallery-placeholder initial-placeholder';
-        placeholder.style.height = '256px';
-        placeholder.style.width = '100%';
-        placeholder.dataset.index = i;
-        placeholder.dataset.filename = allImages[i]?.filename || allImages[i]?.original || allImages[i]?.upscaled || '';
-        placeholder.dataset.time = allImages[i]?.mtime || 0;
-        fragment.appendChild(placeholder);
-    }
-    gallery.appendChild(fragment);
-
-    // Fade in placeholders one by one
-    const placeholders = gallery.querySelectorAll('.gallery-placeholder.initial-placeholder');
-    placeholders.forEach((el, idx) => {
-        setTimeout(() => {
-            el.classList.add('fade-in');
-            el.addEventListener('animationend', function handler() {
-                el.classList.remove('fade-in');
-                el.removeEventListener('animationend', handler);
-            });
-        }, idx * 60);
-    });
-
-    hasMoreImages = displayedEndIndex < allImages.length;
-    hasMoreImagesBefore = displayedStartIndex > 0;
-    updateVirtualScroll();
-    updateGalleryItemToolbars();
-    updateGalleryPlaceholders();
-}
-
-function resetInfiniteScroll() {
-    window.scrollTo({ top: 0, behavior: 'instant' });
-    displayedStartIndex = 0;
-    displayedEndIndex = 0;
-    isLoadingMore = false;
-    hasMoreImages = true;
-    hasMoreImagesBefore = false;
-    
-    // Update batch size based on current viewport
-    imagesPerPage = calculateDynamicBatchSize();
-    
-    if (infiniteScrollLoading) {
-        infiniteScrollLoading.style.display = 'none';
-    }
-}
-
-// Create gallery item element
-function createGalleryItem(image, index) {
-    const item = document.createElement('div');
-    item.className = 'gallery-item fade-in';
-    const filename = image.filename || image.original || image.upscaled;
-    item.dataset.filename = filename;
-    item.dataset.time = image.mtime || 0;
-    item.dataset.index = index;
-    
-    // Use data-selected as single source of truth for selection state
-    const isSelected = selectedImages.has(filename);
-    item.dataset.selected = isSelected ? 'true' : 'false';
-    if (isSelected) {
-        item.classList.add('selected');
-    } else {
-        item.classList.remove('selected');
-    }
-    
-    // Add selection checkbox
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.className = 'gallery-item-checkbox';
-    checkbox.dataset.filename = filename;
-    checkbox.checked = isSelected;
-    
-    // ALT+click range selection on click event
-    checkbox.addEventListener('click', (e) => {
-        if (e.altKey) {
-            e.preventDefault();
-            // Get all gallery items (both real items and placeholders) in order
-            const allItems = Array.from(document.querySelectorAll('.gallery-item[data-filename], .gallery-placeholder[data-filename]'));
-            const clickedIndex = allItems.findIndex(div => div.dataset.filename === filename);
-            
-            if (lastSelectedGalleryIndex !== null && clickedIndex !== -1) {
-                const [start, end] = [lastSelectedGalleryIndex, clickedIndex].sort((a, b) => a - b);
-                
-                // Select all items in range
-                for (let i = start; i <= end; i++) {
-                    const div = allItems[i];
-                    const itemFilename = div.dataset.filename;
-                    
-                    // Update data-selected attribute
-                    div.dataset.selected = 'true';
-                    div.classList.add('selected');
-                    selectedImages.add(itemFilename);
-                    
-                    // Update checkbox if it's a real item
-                    const cb = div.querySelector('.gallery-item-checkbox');
-                    if (cb) cb.checked = true;
-                }
-                
-                updateBulkActionsBar();
-                lastSelectedGalleryIndex = clickedIndex;
-                return;
-            }
-        }
-    });
-    
-    // Normal selection on change event
-    checkbox.addEventListener('change', (e) => {
-        if (!e.altKey) {
-            e.stopPropagation();
-            handleImageSelection(image, e.target.checked, e);
-        }
-    });
-
-    // Use preview image
-    const img = document.createElement('img');
-    img.src = `/previews/${image.preview}`;
-    img.alt = image.base;
-    img.loading = 'lazy';
-
-    const overlay = document.createElement('div');
-    overlay.className = 'gallery-item-overlay';
-
-    // Create info container for preset, seed, and date
-    const infoContainer = document.createElement('div');
-    infoContainer.className = 'gallery-item-info-container';
-
-    // Extract preset name and seeds from filename
-    let presetName = 'generated';
-    let seed = '';
-    let layer1Seed = '';
-
-    // Regular filename format: timestamp_preset_seed.png
-    const parts = image.base.split('_');
-    if (parts.length >= 3) {
-        presetName = parts.slice(1, -1).join('_') || 'generated';
-        seed = parts[parts.length - 1] || '';
-    }
-
-    const dateTime = new Date(image.mtime).toLocaleString();
-
-    // Create info rows
-    const presetRow = document.createElement('div');
-    presetRow.className = 'gallery-info-row';
-    presetRow.textContent = presetName;
-
-    const seedRow = document.createElement('div');
-    seedRow.className = 'gallery-info-row';
-    seedRow.textContent = `Seed: ${seed}`;
-
-    const dateRow = document.createElement('div');
-    dateRow.className = 'gallery-info-row';
-    dateRow.textContent = dateTime;
-
-    infoContainer.appendChild(presetRow);
-    infoContainer.appendChild(seedRow);
-    infoContainer.appendChild(dateRow);
-
-    overlay.appendChild(infoContainer);
-
-    // Create action buttons
-    const actionsDiv = document.createElement('div');
-    actionsDiv.className = 'gallery-actions';
-
-    // Download button
-    const downloadBtn = document.createElement('button');
-    downloadBtn.className = 'btn-secondary round-button';
-    downloadBtn.innerHTML = '<i class="nai-save"></i>';
-    downloadBtn.title = 'Download';
-    downloadBtn.onclick = (e) => {
-        e.stopPropagation();
-        downloadImage(image);
-    };
-
-    // Direct reroll button (left side)
-    const rerollBtn = document.createElement('button');
-    rerollBtn.className = 'btn-secondary round-button';
-    rerollBtn.innerHTML = '<i class="nai-dice"></i>';
-    rerollBtn.title = 'Reroll with same settings';
-    rerollBtn.onclick = (e) => {
-        e.stopPropagation();
-        rerollImage(image);
-    };
-
-    // Reroll with edit button (right side with cog)
-    const rerollEditBtn = document.createElement('button');
-    rerollEditBtn.className = 'btn-secondary round-button';
-    rerollEditBtn.innerHTML = '<i class="nai-penwriting"></i>';
-    rerollEditBtn.title = 'Reroll with Edit';
-    rerollEditBtn.onclick = (e) => {
-        e.stopPropagation();
-        rerollImageWithEdit(image);
-    };
-
-    // Upscale button (only for non-upscaled images)
-    const upscaleBtn = document.createElement('button');
-    upscaleBtn.className = 'btn-secondary round-button';
-    upscaleBtn.innerHTML = '<i class="nai-upscale"></i>';
-    upscaleBtn.title = 'Upscale';
-    upscaleBtn.onclick = (e) => {
-        e.stopPropagation();
-        upscaleImage(image, e);
-    };
-
-    // Only show upscale button for non-upscaled images
-    if (!image.upscaled) {
-        upscaleBtn.style.display = 'inline-block';
-    } else {
-        upscaleBtn.style.display = 'none';
-    }
-
-    // Pin button
-    const pinBtn = document.createElement('button');
-    pinBtn.className = 'btn-secondary round-button';
-    pinBtn.innerHTML = '<i class="nai-heart-disabled"></i>';
-    pinBtn.title = 'Pin/Unpin image';
-    pinBtn.onclick = (e) => {
-        e.stopPropagation();
-        togglePinImage(image, pinBtn);
-    };
-    
-    // Update pin button appearance based on pin status
-    updatePinButtonAppearance(pinBtn, filename);
-
-    // Toolbar trigger button (combines scrap and delete)
-    const toolbarBtn = document.createElement('button');
-    toolbarBtn.className = 'btn-secondary round-button';
-    toolbarBtn.innerHTML = '<i class="nai-dotdotdot"></i>';
-    toolbarBtn.title = 'More actions';
-    toolbarBtn.onclick = (e) => {
-        e.stopPropagation();
-        showGalleryToolbar(image, e);
-    };
-
-    actionsDiv.appendChild(downloadBtn);
-    actionsDiv.appendChild(upscaleBtn);
-    actionsDiv.appendChild(rerollBtn);
-    actionsDiv.appendChild(rerollEditBtn);
-    actionsDiv.appendChild(pinBtn);
-    actionsDiv.appendChild(toolbarBtn);
-
-    overlay.appendChild(actionsDiv);
-
-    item.appendChild(checkbox);
-    item.appendChild(img);
-    item.appendChild(overlay);
-
-    
-    item.addEventListener('click', (e) => {
-        // Don't open lightbox if clicking on checkbox
-        if (e.target.type === 'checkbox') {
-            return;
-        }
-
-        let filenameToShow = image.original;
-        if (image.upscaled) {
-            filenameToShow = image.upscaled;
-        }
-
-        const imageToShow = {
-            filename: filenameToShow,
-            base: image.base,
-            upscaled: image.upscaled
-        };
-        showLightbox(imageToShow);
-    });
-
-    return item;
-}
-
-// Reindex gallery items and placeholders
-function reindexGallery() {
-    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-    if (items.length === 0) return;
-    if (parseInt(items[items.length - 1]?.dataset?.index || '0') !== (items.length - 1)) {
-        items.forEach((el, i) => {
-            el.dataset.index = i.toString();
-        });
     }
 }
 
@@ -4431,9 +3596,6 @@ async function upscaleImage(image, event = null) {
         // Reload gallery to show new upscaled image
         await loadGallery();
 
-        // Update balance and show credit deduction toast
-        await updateBalanceAndShowCreditDeduction('image upscaling', cost);
-
         // Find the upscaled image in the gallery and show it in lightbox
         let upscaledFilename = image.original.replace('.png', '_upscaled.png');
         let upscaledImage = allImages.find(img =>
@@ -4468,578 +3630,6 @@ async function upscaleImage(image, event = null) {
         if (isInModal) {
             showManualLoading(false);
         }
-    }
-}
-
-// Deferred placeholder addition for rapid scrolling
-let deferredPlaceholderTimeout = null;
-let pendingPlaceholderAdditions = {
-    above: false,
-    below: false
-};
-
-function scheduleDeferredPlaceholderAddition(direction) {
-    pendingPlaceholderAdditions[direction] = true;
-    
-    if (deferredPlaceholderTimeout) {
-        clearTimeout(deferredPlaceholderTimeout);
-    }
-    
-    deferredPlaceholderTimeout = setTimeout(() => {
-        if (pendingPlaceholderAdditions.above) {
-            addPlaceholdersAbove();
-            pendingPlaceholderAdditions.above = false;
-        }
-        if (pendingPlaceholderAdditions.below) {
-            addPlaceholdersBelow();
-            pendingPlaceholderAdditions.below = false;
-        }
-    }, 50); // 50ms delay to batch rapid scroll events
-}
-
-function addPlaceholdersAbove() {
-    if (!gallery || isLoadingMore) return;
-    
-    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-    const bufferRows = 8;
-    const itemsPerRow = realGalleryColumns;
-    const bufferSize = bufferRows * itemsPerRow;
-    
-    // Count placeholders above
-    let placeholdersAbove = 0;
-    let firstRealIndex = -1;
-    
-    for (let i = 0; i < items.length; i++) {
-        if (items[i].classList.contains('gallery-placeholder')) {
-            placeholdersAbove++;
-        } else {
-            firstRealIndex = parseInt(items[i].dataset.index);
-            break;
-        }
-    }
-    
-    // Add placeholders in row batches until buffer is filled
-    while (placeholdersAbove < bufferSize && firstRealIndex > 0) {
-        const needed = Math.min(bufferSize - placeholdersAbove, itemsPerRow);
-        for (let i = 0; i < needed; i++) {
-            const idx = firstRealIndex - i - 1;
-            if (idx < 0) break;
-            
-            // Check if placeholder already exists
-            const existingPlaceholder = gallery.querySelector(`[data-index="${idx}"].gallery-placeholder`);
-            if (!existingPlaceholder) {
-                const placeholder = document.createElement('div');
-                placeholder.className = 'gallery-placeholder';
-                placeholder.style.height = '256px';
-                placeholder.style.width = '100%';
-                placeholder.dataset.index = idx;
-                gallery.insertBefore(placeholder, gallery.firstChild);
-                placeholdersAbove++;
-            }
-        }
-        firstRealIndex = Math.max(0, firstRealIndex - needed);
-    }
-}
-
-function addPlaceholdersBelow() {
-    if (!gallery || isLoadingMore) return;
-    
-    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-    const bufferRows = 8;
-    const itemsPerRow = realGalleryColumns;
-    const bufferSize = bufferRows * itemsPerRow;
-    
-    // Count placeholders below
-    let placeholdersBelow = 0;
-    let lastRealIndex = -1;
-    
-    for (let i = items.length - 1; i >= 0; i--) {
-        if (items[i].classList.contains('gallery-placeholder')) {
-            placeholdersBelow++;
-        } else {
-            lastRealIndex = parseInt(items[i].dataset.index);
-            break;
-        }
-    }
-    
-    // Add placeholders in row batches until buffer is filled
-    while (placeholdersBelow < bufferSize && lastRealIndex < allImages.length - 1) {
-        const needed = Math.min(bufferSize - placeholdersBelow, itemsPerRow);
-        for (let i = 0; i < needed; i++) {
-            const idx = lastRealIndex + i + 1;
-            if (idx >= allImages.length) break;
-            
-            // Check if placeholder already exists
-            const existingPlaceholder = gallery.querySelector(`[data-index="${idx}"].gallery-placeholder`);
-            if (!existingPlaceholder) {
-                const placeholder = document.createElement('div');
-                placeholder.className = 'gallery-placeholder';
-                placeholder.style.height = '256px';
-                placeholder.style.width = '100%';
-                placeholder.dataset.index = idx;
-                gallery.appendChild(placeholder);
-                placeholdersBelow++;
-            }
-        }
-        lastRealIndex = Math.min(allImages.length - 1, lastRealIndex + needed);
-    }
-}
-
-// Improved infinite scroll handler with percentage-based triggers
-function handleInfiniteScroll() {
-    if (isLoadingMore) return;
-
-    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-    const windowHeight = window.innerHeight;
-    const documentHeight = document.documentElement.scrollHeight;
-    
-    // Calculate responsive trigger distances
-    const isSmallScreen = window.innerWidth <= infiniteScrollConfig.smallScreenThreshold;
-    const multiplier = isSmallScreen ? infiniteScrollConfig.smallScreenMultiplier : 1;
-    
-    // Use percentage-based triggers that adapt to page height
-    const bottomTriggerDistance = Math.max(
-        windowHeight * infiniteScrollConfig.bottomTriggerPercent * multiplier,
-        windowHeight * 0.1 // Minimum 10% of viewport height
-    );
-    
-    const topTriggerDistance = Math.max(
-        windowHeight * infiniteScrollConfig.topTriggerPercent * multiplier,
-        windowHeight * 0.1 // Minimum 10% of viewport height
-    );
-    
-    const placeholderTriggerDistance = Math.max(
-        windowHeight * infiniteScrollConfig.placeholderTriggerPercent * multiplier,
-        windowHeight * 0.15 // Minimum 15% of viewport height
-    );
-
-    // Load more when user is near the bottom (percentage-based)
-    if (scrollTop + windowHeight >= documentHeight - bottomTriggerDistance && hasMoreImages) {
-        loadMoreImages();
-    }
-    
-    // Load more when user is near the top (percentage-based)
-    if (scrollTop <= topTriggerDistance && hasMoreImagesBefore) {
-        loadMoreImagesBefore();
-    }
-    
-    // Schedule deferred placeholder additions for rapid scrolling
-    if (scrollTop <= placeholderTriggerDistance) {
-        scheduleDeferredPlaceholderAddition('above');
-    }
-    if (scrollTop + windowHeight >= documentHeight - placeholderTriggerDistance) {
-        scheduleDeferredPlaceholderAddition('below');
-    }
-    
-    // Virtual scrolling: remove items that are too far from viewport
-    if (virtualScrollEnabled) {
-        updateVirtualScroll();
-    }
-}
-
-// Load more images for infinite scroll (scroll down) with dynamic batch sizing
-async function loadMoreImages() {
-    if (isLoadingMore || !hasMoreImages) return;
-    isLoadingMore = true;
-    if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'flex';
-    
-    try {
-        // Calculate dynamic batch size based on viewport
-        const dynamicBatchSize = calculateDynamicBatchSize();
-        
-        // Calculate next batch of images
-        const startIndex = displayedEndIndex;
-        const endIndex = Math.min(startIndex + dynamicBatchSize, allImages.length);
-        const nextBatch = allImages.slice(startIndex, endIndex);
-        
-        if (nextBatch.length === 0) {
-            hasMoreImages = false;
-            return;
-        }
-        
-        // Add placeholders for new items with responsive height
-        for (let i = startIndex; i < endIndex; i++) {
-            const placeholder = document.createElement('div');
-            placeholder.className = 'gallery-placeholder';
-            placeholder.style.height = calculatePlaceholderHeight() + 'px';
-            placeholder.style.width = '100%';
-            placeholder.dataset.index = i;
-            gallery.appendChild(placeholder);
-        }
-        
-        // Update displayed range
-        displayedEndIndex = endIndex;
-        hasMoreImages = endIndex < allImages.length;
-        
-    } catch (error) {
-        console.error('Error loading more images:', error);
-    } finally {
-        isLoadingMore = false;
-        if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'none';
-    }
-}
-
-// Load more images before for infinite scroll (scroll up) with dynamic batch sizing
-async function loadMoreImagesBefore() {
-    if (isLoadingMore || !hasMoreImagesBefore) return;
-    isLoadingMore = true;
-    if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'flex';
-    
-    try {
-        // Calculate dynamic batch size based on viewport
-        const dynamicBatchSize = calculateDynamicBatchSize();
-        
-        // Calculate previous batch of images
-        const endIndex = displayedStartIndex;
-        const startIndex = Math.max(0, endIndex - dynamicBatchSize);
-        const prevBatch = allImages.slice(startIndex, endIndex);
-        
-        if (prevBatch.length === 0) {
-            hasMoreImagesBefore = false;
-            return;
-        }
-        
-        // Add placeholders for new items at the top with responsive height
-        for (let i = endIndex - 1; i >= startIndex; i--) {
-            const placeholder = document.createElement('div');
-            placeholder.className = 'gallery-placeholder';
-            placeholder.style.height = calculatePlaceholderHeight() + 'px';
-            placeholder.style.width = '100%';
-            placeholder.dataset.index = i;
-            gallery.insertBefore(placeholder, gallery.firstChild);
-        }
-        
-        // Update displayed range
-        displayedStartIndex = startIndex;
-        hasMoreImagesBefore = startIndex > 0;
-        
-    } catch (error) {
-        console.error('Error loading more images before:', error);
-    } finally {
-        isLoadingMore = false;
-        if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'none';
-    }
-}
-
-// Helper functions for improved infinite scroll
-function calculateDynamicBatchSize() {
-    const windowWidth = window.innerWidth;
-    const windowHeight = window.innerHeight;
-    
-    // Base batch size on viewport size
-    let baseSize = Math.ceil((windowWidth * windowHeight) / (300 * 300)); // Rough calculation
-    
-    // Adjust for small screens
-    if (windowWidth <= infiniteScrollConfig.smallScreenThreshold) {
-        baseSize = Math.ceil(baseSize * 0.7);
-    }
-    
-    // Ensure batch size is within configured bounds
-    return Math.max(
-        infiniteScrollConfig.minBatchSize,
-        Math.min(infiniteScrollConfig.maxBatchSize, baseSize)
-    );
-}
-
-function calculatePlaceholderHeight() {
-    // Calculate responsive placeholder height based on viewport
-    const windowWidth = window.innerWidth;
-    const windowHeight = window.innerHeight;
-    
-    // Base height calculation
-    let baseHeight = Math.min(windowWidth, windowHeight) * 0.3; // 30% of smaller viewport dimension
-    
-    // Adjust for different screen sizes
-    if (windowWidth <= 480) {
-        baseHeight = Math.min(baseHeight, 200); // Mobile: max 200px
-    } else if (windowWidth <= 768) {
-        baseHeight = Math.min(baseHeight, 250); // Tablet: max 250px
-    } else {
-        baseHeight = Math.min(baseHeight, 300); // Desktop: max 300px
-    }
-    
-    // Ensure minimum height
-    return Math.max(baseHeight, 150);
-}
-
-function calculateTrueItemsPerRow() {
-    if (!gallery) return 5; // Fallback
-    
-    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-    if (items.length < 2) return 5; // Need at least 2 items
-    
-    const firstItem = items[0];
-    const firstRect = firstItem.getBoundingClientRect();
-    const firstY = firstRect.top;
-    
-    // Find the next item that's at the same Y position (same row)
-    let itemsInRow = 1;
-    for (let i = 1; i < items.length; i++) {
-        const item = items[i];
-        const rect = item.getBoundingClientRect();
-        // Check if this item is at the same Y position (within 5px tolerance)
-        if (Math.abs(rect.top - firstY) < 5) {
-            itemsInRow++;
-        } else {
-            break; // Found the end of the first row
-        }
-    }
-    
-    return Math.max(1, itemsInRow);
-}
-// Update gallery columns based on true layout
-function updateGalleryColumnsFromLayout() {
-    const trueColumns = calculateTrueItemsPerRow();
-    if (trueColumns !== realGalleryColumns) {
-        realGalleryColumns = trueColumns;
-        galleryRows = calculateGalleryRows();
-        imagesPerPage = realGalleryColumns * galleryRows;
-    }
-}
-
-
-// Update visible items tracking for virtual scrolling
-function updateVisibleItems() {
-    if (!gallery) return;
-
-    visibleItems.clear();
-    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-    const viewportTop = window.pageYOffset;
-    const viewportBottom = viewportTop + window.innerHeight;
-
-    items.forEach((item, index) => {
-        const rect = item.getBoundingClientRect();
-        const itemTop = rect.top + window.pageYOffset;
-        const itemBottom = rect.bottom + window.pageYOffset;
-
-        // Check if item is visible in viewport
-        if (itemBottom > viewportTop && itemTop < viewportBottom) {
-            visibleItems.add(index);
-        }
-    });
-}
-
-// Virtual scroll: replace far-away items with placeholders
-function updateVirtualScroll() {
-    if (!gallery) return;
-
-    // First, update visible items tracking
-    updateVisibleItems();
-
-    const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-    const total = items.length;
-    const bufferRows = 8; // Number of rows to keep above and below viewport
-    const itemsPerRow = realGalleryColumns;
-    const visibleIndices = Array.from(visibleItems);
-
-    if (visibleIndices.length === 0) return;
-
-    const minVisible = Math.min(...visibleIndices);
-    const maxVisible = Math.max(...visibleIndices);
-    const minKeep = Math.max(0, minVisible - itemsPerRow); // 1 screen above
-    const maxKeep = Math.min(total - 1, maxVisible + itemsPerRow); // 1 screen below
-    const bufferSize = bufferRows * itemsPerRow;
-
-    // Replace far-away items with placeholders, restore real items near viewport
-    for (let i = 0; i < total; i++) {
-        const el = items[i];
-        if (i < minKeep || i > maxKeep) {
-            if (!el.classList.contains('gallery-placeholder')) {
-                const placeholder = document.createElement('div');
-                placeholder.className = 'gallery-placeholder';
-                placeholder.style.height = el.offsetHeight + 'px';
-                placeholder.style.width = el.offsetWidth + 'px';
-                placeholder.dataset.filename = el.dataset.filename;
-                placeholder.dataset.index = el.dataset.index || i;
-                placeholder.dataset.time = el.dataset.time || 0;
-                placeholder.dataset.selected = el.dataset.selected;
-                gallery.replaceChild(placeholder, el);
-            }
-        } else {
-            if (el.classList.contains('gallery-placeholder')) {
-                const imageIndex = parseInt(el.dataset.index || i);
-                const image = allImages[imageIndex];
-                if (image) {
-                    const realItem = createGalleryItem(image, imageIndex);
-                    // The createGalleryItem function already handles selection state based on selectedImages Set
-                    // No need to manually manage selectedImages here
-                    gallery.replaceChild(realItem, el);
-                }
-            }
-        }
-    }
-
-    // --- Dynamic placeholder management above and below buffer, in full row batches ---
-    const allPlaceholders = Array.from(gallery.querySelectorAll('.gallery-placeholder'));
-    // Find checked placeholders
-    const checkedIndices = allPlaceholders
-        .map((el, idx) => el.dataset.selected === 'true' ? idx : -1)
-        .filter(idx => idx !== -1);
-    const firstChecked = checkedIndices.length > 0 ? checkedIndices[0] : null;
-    const lastChecked = checkedIndices.length > 0 ? checkedIndices[checkedIndices.length - 1] : null;
-
-    // Build a set of all indices currently present in the DOM
-    const presentIndices = new Set();
-    Array.from(gallery.children).forEach(el => {
-        if (el.dataset && el.dataset.index !== undefined) {
-            presentIndices.add(parseInt(el.dataset.index));
-        }
-    });
-
-    // Count placeholders above and below buffer
-    let placeholdersAbove = 0, placeholdersBelow = 0;
-    for (let i = 0; i < allPlaceholders.length; i++) {
-        const idx = Array.prototype.indexOf.call(gallery.children, allPlaceholders[i]);
-        if (idx < minKeep) placeholdersAbove++;
-        if (idx > maxKeep) placeholdersBelow++;
-    }
-    // Remove excess placeholders above (in full row batches, not checked or after first checked)
-    let toRemoveAbove = placeholdersAbove - bufferSize;
-    if (toRemoveAbove >= itemsPerRow) {
-        toRemoveAbove = Math.floor(toRemoveAbove / itemsPerRow) * itemsPerRow;
-        let removed = 0;
-        for (let i = 0; i < allPlaceholders.length && removed < toRemoveAbove; i++) {
-            const el = allPlaceholders[i];
-            const idx = Array.prototype.indexOf.call(gallery.children, el);
-            if (idx < minKeep) {
-                if (el.dataset.selected === 'true' || (firstChecked !== null && i >= firstChecked)) break;
-                presentIndices.delete(parseInt(el.dataset.index));
-                el.remove();
-                removed++;
-            }
-        }
-    }
-    // Remove excess placeholders below (in full row batches, not checked or before last checked)
-    let toRemoveBelow = placeholdersBelow - bufferSize;
-    if (toRemoveBelow >= itemsPerRow) {
-        toRemoveBelow = Math.floor(toRemoveBelow / itemsPerRow) * itemsPerRow;
-        let removed = 0;
-        for (let i = allPlaceholders.length - 1; i >= 0 && removed < toRemoveBelow; i--) {
-            const el = allPlaceholders[i];
-            const idx = Array.prototype.indexOf.call(gallery.children, el);
-            if (idx > maxKeep) {
-                if (el.dataset.selected === 'true' || (lastChecked !== null && i <= lastChecked)) break;
-                presentIndices.delete(parseInt(el.dataset.index));
-                el.remove();
-                removed++;
-            }
-        }
-    }
-    // Add missing placeholders above (in full row batches, only for missing indices)
-    while (placeholdersAbove < bufferSize) {
-        let firstChild = gallery.firstChild;
-        let firstIndex = firstChild && firstChild.dataset && firstChild.dataset.index !== undefined ? parseInt(firstChild.dataset.index) : displayedStartIndex;
-        if (firstIndex <= 0) break;
-        let needed = Math.min(bufferSize - placeholdersAbove, itemsPerRow);
-        let actuallyAdded = 0;
-        for (let i = 0; i < needed; i++) {
-            const idx = firstIndex - i - 1;
-            if (idx < 0) break;
-            if (!presentIndices.has(idx)) {
-                const placeholder = document.createElement('div');
-                placeholder.className = 'gallery-placeholder';
-                placeholder.style.height = '256px';
-                placeholder.style.width = '100%';
-                placeholder.dataset.index = idx;
-                gallery.insertBefore(placeholder, gallery.firstChild);
-                presentIndices.add(idx);
-                actuallyAdded++;
-            }
-        }
-        placeholdersAbove += actuallyAdded;
-        if (actuallyAdded === 0 || needed < itemsPerRow) break;
-    }
-    // Add missing placeholders below (in full row batches, only for missing indices)
-    while (placeholdersBelow < bufferSize && displayedEndIndex < allImages.length) {
-        // Find the current last index in the gallery
-        let lastChild = gallery.lastChild;
-        let lastIndex = lastChild && lastChild.dataset && lastChild.dataset.index !== undefined ? parseInt(lastChild.dataset.index) : displayedEndIndex;
-        let needed = Math.min(bufferSize - placeholdersBelow, itemsPerRow);
-        let actuallyAdded = 0;
-        for (let i = 0; i < needed; i++) {
-            const idx = lastIndex + i + 1;
-            if (idx >= allImages.length) break;
-            if (!presentIndices.has(idx)) {
-                const placeholder = document.createElement('div');
-                placeholder.className = 'gallery-placeholder';
-                placeholder.style.height = '256px';
-                placeholder.style.width = '100%';
-                placeholder.dataset.index = idx;
-                gallery.appendChild(placeholder);
-                presentIndices.add(idx);
-                actuallyAdded++;
-            }
-        }
-        placeholdersBelow += actuallyAdded;
-        if (actuallyAdded === 0 || needed < itemsPerRow) break;
-    }
-    // After all changes, update displayedStartIndex and displayedEndIndex to match the DOM
-    let newFirst = gallery.firstChild && gallery.firstChild.dataset && gallery.firstChild.dataset.index !== undefined ? parseInt(gallery.firstChild.dataset.index) : 0;
-    let newLast = gallery.lastChild && gallery.lastChild.dataset && gallery.lastChild.dataset.index !== undefined ? parseInt(gallery.lastChild.dataset.index) : 0;
-    displayedStartIndex = Math.max(0, newFirst);
-    displayedEndIndex = Math.max(displayedStartIndex, newLast + 1);
-
-    // --- Force resolve all placeholders in the visible/buffered range to real items ---
-    // Recompute visible/buffered range after any placeholder changes
-    const updatedItems = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-    const updatedTotal = updatedItems.length;
-    // Recompute visible indices
-    const viewportTop = window.pageYOffset;
-    const viewportBottom = viewportTop + window.innerHeight;
-    let updatedVisible = new Set();
-    updatedItems.forEach((item, index) => {
-        const rect = item.getBoundingClientRect();
-        const itemTop = rect.top + window.pageYOffset;
-        const itemBottom = rect.bottom + window.pageYOffset;
-        if (itemBottom > viewportTop && itemTop < viewportBottom) {
-            updatedVisible.add(index);
-        }
-    });
-    const updatedVisibleIndices = Array.from(updatedVisible);
-    if (updatedVisibleIndices.length > 0) {
-        const minVisible = Math.min(...updatedVisibleIndices);
-        const maxVisible = Math.max(...updatedVisibleIndices);
-        const minKeep = Math.max(0, minVisible - itemsPerRow); // 1 screen above
-        const maxKeep = Math.min(updatedTotal - 1, maxVisible + itemsPerRow); // 1 screen below
-        for (let i = minKeep; i <= maxKeep; i++) {
-            const el = updatedItems[i];
-            if (el && el.classList.contains('gallery-placeholder')) {
-                const imageIndex = parseInt(el.dataset.index || i);
-                const image = allImages[imageIndex];
-                if (image) {
-                    const realItem = createGalleryItem(image, imageIndex);
-                    // The createGalleryItem function already handles selection state based on selectedImages Set
-                    // No need to manually manage selectedImages here
-                    gallery.replaceChild(realItem, el);
-                }
-            }
-        }
-    }
-
-    // --- If still at bottom or top, keep updating until filled or no more can be loaded ---
-    let safetyCounter = 0;
-    while (safetyCounter < 10) { // Prevent infinite loops
-        safetyCounter++;
-        // Re-calculate after DOM updates
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const windowHeight = window.innerHeight;
-        const documentHeight = document.documentElement.scrollHeight;
-        const atBottom = (windowHeight + scrollTop) >= (documentHeight - 10); // 10px threshold
-        const atTop = scrollTop <= 10;
-        let didWork = false;
-        // If at bottom, try to add/resolve more below
-        if (atBottom && hasMoreImages) {
-            loadMoreImages();
-            didWork = true;
-        }
-        // If at top, try to add/resolve more above
-        if (atTop && hasMoreImagesBefore) {
-            loadMoreImagesBefore();
-            didWork = true;
-        }
-        // If no more work, break
-        if (!didWork) break;
-        // After loading, placeholders will be resolved in the next loop iteration
     }
 }
 
@@ -5111,7 +3701,7 @@ async function showManualModal() {
     }
 
     // Initialize keyboard shortcuts
-    initializeKeyboardShortcuts();
+//    initializeKeyboardShortcuts();
 }
 
 // Hide manual modal
@@ -5565,10 +4155,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
             imageContainer.classList.remove('swapped');
 
             await loadGallery(true);
-            await updateManualPreview(imageUrl, blob, response);
-            
-            // Update balance and show credit deduction toast for manual generation
-            await updateBalanceAndShowCreditDeduction('image generation', cost);
+            await updateManualPreview(imageUrl, response);
         } else {
             // Clear context only when modal is not open or not in wide viewport mode
             if (typeof clearContextFn === "function") clearContextFn();
@@ -5576,9 +4163,6 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
             // Normal behavior - open lightbox
             setTimeout(async () => {
                 await loadGallery();
-                
-                // Update balance and show credit deduction toast
-                await updateBalanceAndShowCreditDeduction('image generation', cost);
                 
                 if (allImages.length > 0) {
                     const newImage = allImages[0];
@@ -5596,50 +4180,8 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
     img.src = imageUrl;
 }
 
-// Helper function to get current balance
-async function getCurrentBalance() {
-    try {
-        const balanceResponse = await fetchWithAuth('/balance');
-        if (balanceResponse.ok) {
-            const balanceData = await balanceResponse.json();
-            return balanceData;
-        }
-    } catch (error) {
-        console.warn('Failed to get current balance:', error);
-    }
-    return null;
-}
-
-// Helper function to update balance and show credit deduction toast with true cost calculation
-async function updateBalanceAndShowCreditDeduction(operationType, estimatedCost) {
-    try {
-        // Get current balance
-        const balanceAfter = await getCurrentBalance();
-        
-        if (balanceAfter !== null && currentBalance !== null) {
-            const actualCost = currentBalance - balanceAfter.totalCredits;
-            
-            // Show credit deduction toast with actual cost
-            if (actualCost > 0) {
-                showGlassToast('warning', 'Transaction', `<i class="nai-anla"></i> ${actualCost} deducted for ${operationType}. New balance: <i class="nai-anla"></i> ${balanceAfter.totalCredits}`);
-            }
-            // Update balance display
-            updateBalanceDisplay(balanceAfter);
-        } else if (actualCost < 0) {
-            // Fallback to estimated cost if we can't get actual cost
-            showGlassToast('warning', 'Transaction', `<i class="nai-anla"></i> ${estimatedCost} deducted for ${operationType}.`);
-        }
-    } catch (error) {
-        console.warn('Failed to update balance after operation:', error);
-        // Still show the deduction toast even if balance update fails
-        if (actualCost > 0) {
-            showGlassToast('warning', 'Transaction', `<i class="nai-anla"></i> ${actualCost} deducted for ${operationType}.`);
-        }
-    }
-}
-
 // Function to update manual modal preview
-async function updateManualPreview(imageUrl, blob, response = null, metadata = null) {
+async function updateManualPreview(imageUrl, response = null, metadata = null) {
     const previewImage = document.getElementById('manualPreviewImage');
     const originalImage = document.getElementById('manualPreviewOriginalImage');
     const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
@@ -5945,7 +4487,7 @@ async function navigateManualPreview(event) {
 
     // Update the preview with the new image and metadata
     const imageUrl = `/images/${newImage.original}`;
-    updateManualPreview(imageUrl, null, null, newImage.metadata);
+    updateManualPreview(imageUrl, null, newImage.metadata);
     
     const imageContainer = document.querySelector('.manual-preview-image-container');
     imageContainer.classList.add('swapped');
@@ -6316,14 +4858,19 @@ function handlePresetAutocompleteKeydown(e) {
 
 async function searchPresets(query, target) {
     try {
-        const response = await fetchWithAuth(`/preset/search?q=${encodeURIComponent(query)}`);
-
-        if (!response.ok) {
-            throw new Error('Failed to search presets');
+        let presetResults = [];
+        
+        // Use WebSocket for preset search
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                presetResults = await window.wsClient.searchPresets(query);
+            } catch (wsError) {
+                console.error('WebSocket preset search failed:', wsError);
+                throw new Error('Preset search service unavailable');
+            }
+        } else {
+            throw new Error('WebSocket not connected');
         }
-
-        const presetResults = await response.json();
-        presetSearchResults = presetResults;
 
         if (presetResults.length > 0) {
             showPresetAutocompleteSuggestions(presetResults, target);
@@ -6537,9 +5084,6 @@ async function generateImage(event = null) {
 
             await loadGallery();
 
-            // Update balance and show credit deduction toast
-            await updateBalanceAndShowCreditDeduction('image generation', cost);
-
             // Find the image in the gallery by filename
             const found = allImages.find(img => img.original === generatedFilename || img.upscaled === generatedFilename);
             if (found) {
@@ -6582,15 +5126,6 @@ async function generateImage(event = null) {
         }
     }
 }
-
-// Manual preview zoom and pan functionality
-let manualPreviewZoom = 1;
-let manualPreviewPanX = 0;
-let manualPreviewPanY = 0;
-let isManualPreviewDragging = false;
-let lastManualPreviewMouseX = 0;
-let lastManualPreviewMouseY = 0;
-let lastManualPreviewTouchDistance = 0;
 
 function initializeManualPreviewZoom() {
     const imageContainer = document.querySelector('.manual-preview-image-container');
@@ -7108,9 +5643,6 @@ function showError(message) {
     showGlassToast('error', null, message);
 }
 
-// Error Sub-Header Functions
-let errorSubHeaderTimeout = null;
-
 function showErrorSubHeader(message, type = 'error', duration = 0) {
     const errorSubHeader = document.getElementById('errorSubHeader');
     const errorIcon = errorSubHeader.querySelector('.error-sub-header-icon');
@@ -7233,7 +5765,6 @@ async function fetchWithAuth(url, options = {}) {
     }
 }
 
-let resizeTimeout = null;
 // Debounced resize handler
 async function handleResize() {
     if (resizeTimeout) {
@@ -7517,12 +6048,7 @@ function getResolutionFromDisplay(displayText) {
     return res ? res.value : null;
 }
 
-// Add event listener for sproutSeedBtn to toggle seed value filling
-let lastLoadedSeed = null;
-let sproutSeedBtn = null;
-
 function updateSproutSeedButton() {
-    sproutSeedBtn = document.getElementById('sproutSeedBtn');
     if (sproutSeedBtn) {
         if (lastLoadedSeed) {
             sproutSeedBtn.style.display = 'inline-block';
@@ -7571,8 +6097,6 @@ if (manualSeed && document.getElementById('sproutSeedBtn')) {
     updateSproutSeedButton();
 }
 
-// Add event listener for varietyBtn to toggle a global flag for variety and toggle the active class
-let varietyEnabled = false;
 if (document.getElementById('varietyBtn')) {
     document.getElementById('varietyBtn').addEventListener('click', function() {
         varietyEnabled = !varietyEnabled;
@@ -7633,10 +6157,6 @@ async function handleClipboardPaste(event) {
     }
 }
 
-// Glass Toast Notification System
-let toastCounter = 0;
-const activeToasts = new Map();
-
 function showGlassToast(type, title, message, showProgress = false) {
     const toastId = `toast-${++toastCounter}`;
     const toastContainer = document.getElementById('toastContainer') || createToastContainer();
@@ -7662,11 +6182,13 @@ function showGlassToast(type, title, message, showProgress = false) {
             ${closeBtn}
         `;
     } else {
-        // Simple one-line toast (message only)
+        // Simple one-line toast (message only) - now with icon
         const messageText = title || message;
+        const icon = getToastIcon(type, showProgress);
         const closeBtn = showProgress ? '' : '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
 
         toast.innerHTML = `
+            <div class="toast-icon">${icon}</div>
             <div class="toast-content">
                 <div class="toast-message">${messageText}</div>
                 ${showProgress ? '<div class="toast-progress"><div class="toast-progress-bar"></div></div>' : ''}
@@ -7698,12 +6220,35 @@ function updateGlassToast(toastId, type, title, message) {
     if (!toast) return;
 
     const icon = getToastIcon(type);
-    const toastContent = toast.querySelector('.toast-content');
+    const isSimple = !title || !message;
+    const messageText = title || message;
 
-    toast.className = `glass-toast show`;
-    toast.querySelector('.toast-icon').innerHTML = icon;
-    toast.querySelector('.toast-title').textContent = title;
-    toast.querySelector('.toast-message').textContent = message;
+    toast.className = `glass-toast show ${isSimple ? 'simple' : ''}`;
+    
+    // Update icon
+    const iconElement = toast.querySelector('.toast-icon');
+    if (iconElement) {
+        iconElement.innerHTML = icon;
+    }
+
+    if (isSimple) {
+        // Simple toast - only update message
+        const messageElement = toast.querySelector('.toast-message');
+        if (messageElement) {
+            messageElement.textContent = messageText;
+        }
+    } else {
+        // Full toast - update both title and message
+        const titleElement = toast.querySelector('.toast-title');
+        const messageElement = toast.querySelector('.toast-message');
+        
+        if (titleElement) {
+            titleElement.textContent = title;
+        }
+        if (messageElement) {
+            messageElement.textContent = message;
+        }
+    }
 
     // Update stored data
     const stored = activeToasts.get(toastId);
@@ -7948,144 +6493,6 @@ function updateUploadDeleteButtonVisibility() {
             deleteImageBaseBtn.style.display = 'none';
         }
     }
-}
-
-// Selection handling functions
-async function handleImageSelection(image, isSelected, event) {
-    const filename = image.filename || image.original || image.upscaled;
-
-    // Skip if no valid filename found
-    if (!filename) {
-        console.warn('No valid filename found for image:', image);
-        return;
-    }
-
-    const item = event.target.closest('.gallery-item');
-
-    // ALT+click range selection
-    if (event && event.altKey) {
-        // Get all gallery items (both real items and placeholders) in order
-        const allItems = Array.from(document.querySelectorAll('.gallery-item[data-filename], .gallery-placeholder[data-filename]'));
-        const clickedIndex = allItems.findIndex(div => div.dataset.filename === filename);
-        
-        if (lastSelectedGalleryIndex !== null && clickedIndex !== -1) {
-            const [start, end] = [lastSelectedGalleryIndex, clickedIndex].sort((a, b) => a - b);
-            
-            // Select all items in range
-            for (let i = start; i <= end; i++) {
-                const div = allItems[i];
-                const itemFilename = div.dataset.filename;
-                
-                // Update data-selected attribute
-                div.dataset.selected = 'true';
-                div.classList.add('selected');
-                selectedImages.add(itemFilename);
-                
-                // Update checkbox if it's a real item
-                const cb = div.querySelector('.gallery-item-checkbox');
-                if (cb) cb.checked = true;
-            }
-            
-            updateBulkActionsBar();
-            lastSelectedGalleryIndex = clickedIndex;
-            return;
-        }
-    }
-    
-    // Update last selected index for range selection
-    const allItems = Array.from(document.querySelectorAll('.gallery-item[data-filename], .gallery-placeholder[data-filename]'));
-    const thisIndex = allItems.findIndex(div => div.dataset.filename === filename);
-    if (thisIndex !== -1) {
-        lastSelectedGalleryIndex = thisIndex;
-    }
-
-    // Update selection state using data-selected as single source of truth
-    if (isSelected) {
-        selectedImages.add(filename);
-        item.dataset.selected = 'true';
-        item.classList.add('selected');
-    } else {
-        selectedImages.delete(filename);
-        item.dataset.selected = 'false';
-        item.classList.remove('selected');
-    }
-
-    updateBulkActionsBar();
-}
-
-function updateBulkActionsBar() {
-    const bulkActionsBar = document.getElementById('bulkActionsBar');
-    const selectedCount = document.getElementById('selectedCount');
-    const bulkMoveToScrapsBtn = document.getElementById('bulkMoveToScrapsBtn');
-    const bulkPinBtn = document.getElementById('bulkPinBtn');
-    const bulkUnpinBtn = document.getElementById('bulkUnpinBtn');
-
-    if (selectedImages.size > 0) {
-        bulkActionsBar.style.display = 'flex';
-        selectedCount.textContent = selectedImages.size;
-        gallery.classList.add('selection-mode');
-        isSelectionMode = true;
-
-        // Show/hide buttons based on current view
-        if (bulkMoveToScrapsBtn) {
-            if (currentGalleryView === 'scraps') {
-                // Hide scrap button when viewing scraps (can't move scraps to scraps)
-                bulkMoveToScrapsBtn.style.display = 'none';
-            } else if (currentGalleryView === 'pinned') {
-                // Hide scrap button when viewing pinned (can't move pinned to scraps)
-                bulkMoveToScrapsBtn.style.display = 'none';
-            } else {
-                // Show scrap button when viewing regular images
-                bulkMoveToScrapsBtn.style.display = 'inline-block';
-            }
-        }
-
-        // Show/hide pin button based on current view
-        if (bulkPinBtn) {
-            if (currentGalleryView === 'images') {
-                // Show pin button when viewing regular images
-                bulkPinBtn.style.display = 'inline-block';
-            } else {
-                // Hide pin button for other views
-                bulkPinBtn.style.display = 'none';
-            }
-        }
-
-        // Show/hide unpin button based on current view
-        if (bulkUnpinBtn) {
-            if (currentGalleryView === 'pinned') {
-                // Show unpin button when viewing pinned items
-                bulkUnpinBtn.style.display = 'inline-block';
-            } else {
-                // Hide unpin button for other views
-                bulkUnpinBtn.style.display = 'none';
-            }
-        }
-    } else {
-        bulkActionsBar.style.display = 'none';
-        gallery.classList.remove('selection-mode');
-        isSelectionMode = false;
-    }
-}
-
-function clearSelection() {
-    selectedImages.clear();
-    lastSelectedGalleryIndex = null; // Reset range selection tracking
-
-    // Uncheck all checkboxes
-    const checkboxes = document.querySelectorAll('.gallery-item-checkbox');
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = false;
-    });
-
-    // Remove selected class and data-selected attribute from all items (both real items and placeholders)
-    const allItems = document.querySelectorAll('.gallery-item, .gallery-placeholder');
-    allItems.forEach(item => {
-        item.classList.remove('selected');
-        item.dataset.selected = 'false';
-    });
-
-    updateBulkActionsBar();
 }
 
 async function handleBulkMoveToWorkspace() {
@@ -8678,13 +7085,6 @@ async function handleBulkChangePresetConfirm() {
     }
 }
 
-// Character Prompts Functions
-let characterPromptCounter = 0;
-let currentPositionCharacterId = null;
-let selectedPositionCell = null;
-let lastPromptState = null;
-let savedRandomPromptState = null;
-
 /**
  * Determines the request type for random prompt generation based on the selected model.
  * @returns {number} - The request type (0, 1, or 2).
@@ -8693,7 +7093,7 @@ function getRequestTypeForRandomPrompt() {
     const modelValue = document.getElementById('manualModel').value || '';
     const modelLower = modelValue.toLowerCase();
 
-    if (modelLower.includes('v4.5') || modelLower.includes('v4')) {
+    if (modelLower.includes('v4')) {
         return 2;
     } else if (modelLower.includes('furry')) {
         return 1;
@@ -9745,16 +8145,56 @@ async function updateQueueStatus(data) {
     }   
 }
 
-let pinModalPromise = null;
+// Ping management
+let lastPingTime = null;
+let pingTimeoutId = null;
+let connectionToastId = null;
+// websocketToastId is now global (window.websocketToastId)
+
+function handleServerPing(data) {
+    lastPingTime = Date.now();
+    
+    // Update UI with server data
+    if (data.image_count !== undefined) {
+        updateImageGenCounter(data.image_count);
+    }
+    if (data.queue_status !== undefined) {
+        updateQueueStatus(data.queue_status);
+    }
+    if (data.balance !== undefined) {
+        updateBalanceDisplay(data.balance);
+    }
+    
+    // Clear connection warning toast if it exists
+    if (connectionToastId) {
+        removeGlassToast(connectionToastId);
+        connectionToastId = null;
+    }
+    
+    // Clear WebSocket connection toast if it exists
+    if (window.websocketToastId) {
+        removeGlassToast(window.websocketToastId);
+        window.websocketToastId = null;
+    }
+    
+    // Reset ping timeout
+    if (pingTimeoutId) {
+        clearTimeout(pingTimeoutId);
+    }
+    
+    // Set timeout for next ping (15 seconds)
+    pingTimeoutId = setTimeout(() => {
+        if (!connectionToastId) {
+            connectionToastId = showGlassToast('warning', 'Connection Warning', 'No server response detected. Check your connection.', false);
+        }
+    }, 15000);
+}
 
 async function ensureSessionValid() {
     // Try a lightweight authenticated endpoint
     try {
-        const resp = await fetch('/ping');
+        const resp = await fetch('/ping', { method: 'OPTIONS', timeout: 4000 });
         if (resp.status !== 401) {
-            const data = await resp.json();
-            updateImageGenCounter(data.image_count);
-            updateQueueStatus(data.queue_status);
             return true;
         }
     } catch {}
@@ -9762,11 +8202,8 @@ async function ensureSessionValid() {
         if (pinModalPromise) return pinModalPromise;
         pinModalPromise = await window.showPinModal();
         // Try again after re-auth
-        const resp2 = await fetch('/ping');
+        const resp2 = await fetch('/ping', { method: 'OPTIONS', timeout: 4000 });
         if (resp2.status !== 401) {
-            const data = await resp2.json();
-            updateImageGenCounter(data.image_count);
-            updateQueueStatus(data.queue_status);
             pinModalPromise = null;
             return true;
         }
@@ -9779,7 +8216,10 @@ async function ensureSessionValid() {
 
 (async () => {
     await ensureSessionValid();
-    setInterval(ensureSessionValid, 10000);
+    // Initial ping timeout check
+    pingTimeoutId = setTimeout(() => {
+        ensureSessionValid();
+    }, 15000);
 })();
 
 // WebSocket Event Handlers
@@ -9797,11 +8237,20 @@ if (window.wsClient) {
 
     wsClient.on('disconnected', (event) => {
         console.log('🔌 WebSocket disconnected:', event);
+        
+        // Note: WebSocket connection toasts are now handled in websocket.js
+        // This prevents duplicate toasts
+    });
+
+    // Handle server pings
+    wsClient.on('ping', (data) => {
+        if (data.data) {
+            handleServerPing(data.data);
+        }
     });
 
     // Handle queue updates
     wsClient.on('queue_update', (data) => {
-        console.log('📊 Queue update received:', data);
         if (data.data) {
             updateQueueStatus(data.data);
         }
@@ -9812,7 +8261,9 @@ if (window.wsClient) {
         console.log('📢 System message received:', data);
         if (data.data && data.data.message) {
             // Show system message as toast
-            wsClient.showToast(data.data.message, data.data.level || 'info');
+            if (typeof showGlassToast === 'function') {
+                showGlassToast(data.data.level || 'info', null, data.data.message);
+            }
         }
     });
 
@@ -9820,13 +8271,51 @@ if (window.wsClient) {
     wsClient.on('notification', (data) => {
         console.log('🔔 Notification received:', data);
         if (data.data && data.data.message) {
-            wsClient.showToast(data.data.message, data.data.type || 'info');
+            if (typeof showGlassToast === 'function') {
+                showGlassToast(data.data.type || 'info', null, data.data.message);
+            }
         }
     });
 
-    // Handle custom message types
-    wsClient.on('message', (message) => {
-        console.log('📨 WebSocket message received:', message);
-        // Handle any other message types here
+    // Handle receipt notifications
+    wsClient.on('receipt_notification', (data) => {
+        if (data.receipt) {
+            const receipt = data.receipt;
+            let message = '';
+            let type = 'info';
+            
+            switch (receipt.type) {
+                case 'generation':
+                    header = 'Generation Receipt';
+                    message = `<i class="nai-anla"></i> ${receipt.cost || 0} (${(receipt.creditType || 'unknown').toLocaleUpperCase()} Request)`;
+                    type = 'success';
+                    break;
+                case 'upscaling':
+                    header = 'Upscaling Receipt';
+                    message = `<i class="nai-anla"></i> ${receipt.cost || 0} (${(receipt.creditType || 'unknown').toLocaleUpperCase()} Request)`;
+                    type = 'success';
+                    break;
+                case 'vibe_encoding':
+                    header = 'Vibe Encoding Receipt';
+                    message = ` <i class="nai-anla"></i> ${receipt.cost || 0} (${(receipt.creditType || 'unknown').toLocaleUpperCase()} Request)`;
+                    type = 'info';
+                    break;
+                case 'deposit':
+                    header = 'Deposit Receipt';
+                    message = `<i class="nai-anla"></i> +${receipt.cost || 0} (${(receipt.creditType || 'unknown').toLocaleUpperCase()} Request)`;
+                    type = 'success';
+                    break;
+                default:
+                    header = 'Operation Receipt';
+                    message = `<i class="nai-anla"></i> ${receipt.cost || 0} (${(receipt.creditType || 'unknown').toLocaleUpperCase()} Request)`;
+                    type = 'info';
+            }
+            
+            if (message) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast(type, header, message);
+                }
+            }
+        }
     });
 }

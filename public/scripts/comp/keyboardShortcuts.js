@@ -32,6 +32,10 @@ function createShortcutsOverlay() {
                     <span class="shortcut-desc">Switch to UC Tab</span>
                 </div>
                 <div class="shortcut-item">
+                    <span class="shortcut-key">Alt + A</span>
+                    <span class="shortcut-desc">Dataset Tag Search</span>
+                </div>
+                <div class="shortcut-item">
                     <span class="shortcut-key">Alt + E</span>
                     <span class="shortcut-desc">Emphasis Editor</span>
                 </div>
@@ -94,6 +98,10 @@ function handleKeyDown(event) {
                 break;
             case '2':
                 switchManualTab('uc');
+                break;
+            case 'a':
+            case 'A':
+                showDatasetTagToolbar();
                 break;
             case 'c':
             case 'C':

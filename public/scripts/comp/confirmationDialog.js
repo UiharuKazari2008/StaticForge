@@ -120,8 +120,8 @@ function positionConfirmationDialog(event) {
     }
 
     // Apply position
-    confirmationDialog.style.left = left + 'px';
-    confirmationDialog.style.top = top + 'px';
+    confirmationDialog.style.left = `min(${left}px, calc(100vw - 525px))`;
+    confirmationDialog.style.top = `min(${top}px, calc(100vh - 200px))`;
 }
 
 // Hide confirmation dialog

@@ -478,7 +478,7 @@ async function createWorkspace(name) {
         }
 
         await loadWorkspaces();
-        await loadGallery(); // Refresh gallery to show new workspace filtering
+        switchGalleryView(currentGalleryView, true);
         await loadCacheImages(); // Refresh cache browser to show new workspace filtering
         showGlassToast('success', null, `Workspace "${name}" created!`);
     } catch (error) {
@@ -518,7 +518,7 @@ async function deleteWorkspace(id) {
         }
 
         await loadWorkspaces();
-        await loadGallery(); // Refresh gallery to show updated filtering
+        switchGalleryView(currentGalleryView, true);
         await loadCacheImages(); // Refresh cache browser to show updated filtering
         showGlassToast('success', null, 'Workspace deleted');
     } catch (error) {
@@ -541,7 +541,7 @@ async function dumpWorkspace(sourceId, targetId) {
         }
 
         await loadWorkspaces();
-        await loadGallery(); // Refresh gallery
+        switchGalleryView(currentGalleryView, true);
         await loadCacheImages(); // Refresh cache browser
         showGlassToast('success', null, 'Workspace Dumped');
     } catch (error) {
@@ -586,7 +586,7 @@ async function setActiveWorkspace(id) {
 
         loadWorkspaces();
         updateActiveWorkspaceDisplay();
-        await loadGallery(); // Refresh gallery with new workspace filter
+        switchGalleryView(currentGalleryView, true);
         await loadCacheImages(); // Refresh cache browser with new workspace filter
         await loadVibeReferences(); // Refresh vibe references
         
@@ -620,7 +620,7 @@ async function moveFilesToWorkspace(filenames, targetWorkspaceId) {
         }
 
         const result = await response.json();
-        await loadGallery(); // Refresh gallery
+        switchGalleryView(currentGalleryView, true);
         showGlassToast('success', null, `Moved ${result.movedCount} files to workspace`);
     } catch (error) {
         console.error('Error moving files to workspace:', error);

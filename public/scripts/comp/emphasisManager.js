@@ -1410,9 +1410,9 @@ function showTextSearchPopup() {
                 </div>
                 <div class="text-search-match-count" id="textSearchMatchCount">0</div>
                 <div class="text-search-controls">
-                    <button class="text-search-btn text-search-prev" onclick="navigateSearchResult(-1)" title="Previous">↑</button>
-                    <button class="text-search-btn text-search-next" onclick="navigateSearchResult(1)" title="Next">↓</button>
-                    <button class="text-search-btn text-search-close" onclick="closeTextSearch()" title="Close">×</button>
+                    <button class="btn-secondary text-search-prev" onclick="navigateSearchResult(-1)" title="Previous">↑</button>
+                    <button class="btn-secondary text-search-next" onclick="navigateSearchResult(1)" title="Next">↓</button>
+                    <button class="btn-secondary text-search-close" onclick="closeTextSearch()" title="Close">×</button>
                 </div>
             </div>
         `;

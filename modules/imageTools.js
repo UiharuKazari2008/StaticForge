@@ -379,6 +379,20 @@ async function generateAndPadMask(maskInput, targetDims, maskBias = 2) {
     return maskBuffer;
 }
 
+// Helper: Determine if image is wallpaper or large resolution based on dimensions
+function isImageLarge(width, height) {
+    // Calculate area
+    const area = width * height;
+    const standardArea = 1024 * 1024; // 1024x1024 area
+    
+    // If area is larger than 1024x1024, classify based on aspect ratio
+    if (area > standardArea) {
+        return true;
+    }
+    
+    return null;
+}
+
 module.exports = {
     getImageDimensions,
     getResolutionFromDimensions,
@@ -387,5 +401,5 @@ module.exports = {
     processDynamicImage,
     getImageDimensionsWithCanvas,
     resizeMaskWithCanvas,
-    generateAndPadMask
+    isImageLarge
 };

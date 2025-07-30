@@ -153,14 +153,77 @@ class LoginPage {
     // Animate bokeh background (reuse from app, but static color for login)
     startBokehBackground() {
         const background = document.querySelector('.block-container');
+        const blocks = [];
+        
         for (let i = 0; i < 400; i++) { // 20x20 = 400 blocks, doubling the number (quadrupling count by doubling grid size)
             const block = document.createElement('div');
             block.classList.add('block');
             // Start each block at a random point in the animation cycle for variety
             const randomDelay = Math.random() * 10; // Match reduced duration
             block.style.animationDelay = `-${randomDelay}s`;
+            
+            // Add random opacity adjustment
+            const randomOpacity = 0.3 + Math.random() * 0.5; // Random opacity between 0.3 and 1.0
+            block.style.opacity = randomOpacity;
+            
+            // Store block reference and position for wave effect
+            const row = Math.floor(i / 20);
+            const col = i % 20;
+            blocks.push({ element: block, row, col });
+            
             background.appendChild(block);
         }
+        
+        // Create opacity wave effect after 5 seconds
+        setTimeout(() => {
+            this.createOpacityWave(blocks);
+        }, 2000);
+        
+        // Start random opacity adjustments
+        this.startRandomOpacityAdjustments(blocks);
+    }
+    
+    // Create opacity wave from top-left to bottom-right
+    createOpacityWave(blocks) {
+        const waveDelay = 60; // 50ms delay between each block activation
+        
+        blocks.forEach((block, index) => {
+            const delay = (block.row + block.col) * waveDelay;
+            const element = block.element;
+            
+            setTimeout(() => {
+                // Create wave effect by temporarily increasing opacity
+                element.style.transition = 'opacity 0.5s ease-in-out';
+                element.style.opacity = '1';
+                
+                // Return to random opacity after wave passes
+                setTimeout(() => {
+                    const randomOpacity = 0.3 + Math.random() * 0.7;
+                    element.style.opacity = randomOpacity;
+                }, 500);
+            }, delay);
+        });
+        
+        // Repeat the wave effect every 15 seconds
+        setTimeout(() => {
+            this.createOpacityWave(blocks);
+        }, 8000);
+    }
+    
+    // Start random opacity adjustments
+    startRandomOpacityAdjustments(blocks) {
+        setInterval(() => {
+            // Randomly select 5-10 blocks to adjust opacity
+            const numBlocks = 5 + Math.floor(Math.random() * 6);
+            const shuffled = [...blocks].sort(() => 0.5 - Math.random());
+            
+            for (let i = 0; i < numBlocks; i++) {
+                const block = shuffled[i];
+                const randomOpacity = 0.2 + Math.random() * 0.8; // Random opacity between 0.2 and 1.0
+                block.element.style.transition = 'opacity 0.8s ease-in-out';
+                block.element.style.opacity = randomOpacity;
+            }
+        }, 2000); // Adjust every 2 seconds
     }
 }
 

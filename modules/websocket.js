@@ -7,6 +7,7 @@ class WebSocketServer {
         this.clients = new Map(); // Map to store client connections with user info
         this.sessionStore = sessionStore;
         this.messageHandler = messageHandler; // Store message handler from web server
+        this.pingInterval = null;
         this.setupWebSocket();
     }
 
@@ -15,22 +16,24 @@ class WebSocketServer {
             console.log('🔌 New WebSocket connection attempt');
             
             // Extract session from request
-            const session = await this.extractSession(req);
+            const sessionResult = await this.extractSession(req);
             
-            if (!session || !session.user) {
-                console.log('❌ WebSocket connection rejected: No valid session');
+            if (!sessionResult || !sessionResult.session) {
+                console.error('❌ WebSocket connection rejected: No valid session');
                 ws.close(1008, 'Authentication required');
                 return;
             }
 
-            // Store client with user info
+            const { session, sessionId } = sessionResult;
+
+            // Store client with session info (no user object needed)
             this.clients.set(ws, {
-                userId: session.user.id,
-                username: session.user.username,
+                sessionId: sessionId, // Use the decoded session ID we already have
+                authenticated: true,
                 connectedAt: new Date()
             });
 
-            console.log(`✅ WebSocket connected: ${session.user.username} (${session.user.id})`);
+            console.log(`✅ WebSocket connected: Session ${sessionId}`);
 
             // Send welcome message
             this.sendToClient(ws, {
@@ -46,7 +49,7 @@ class WebSocketServer {
                     const message = JSON.parse(data);
                     this.handleMessage(ws, message);
                 } catch (error) {
-                    console.log('❌ Invalid WebSocket message format:', error);
+                    console.error('❌ Invalid WebSocket message format:', error);
                     this.sendToClient(ws, {
                         type: 'error',
                         message: 'Invalid message format',
@@ -59,7 +62,7 @@ class WebSocketServer {
             ws.on('close', (code, reason) => {
                 const clientInfo = this.clients.get(ws);
                 if (clientInfo) {
-                    console.log(`🔌 WebSocket disconnected: ${clientInfo.username} (${clientInfo.userId}) - Code: ${code}, Reason: ${reason}`);
+                    console.log(`🔌 WebSocket disconnected: Session ${clientInfo.sessionId} - Code: ${code}, Reason: ${reason}`);
                     this.clients.delete(ws);
                 }
             });
@@ -67,7 +70,7 @@ class WebSocketServer {
             // Handle errors
             ws.on('error', (error) => {
                 const clientInfo = this.clients.get(ws);
-                console.log(`❌ WebSocket error for ${clientInfo?.username || 'unknown'}:`, error);
+                console.error(`❌ WebSocket error for session ${clientInfo?.sessionId || 'unknown'}:`, error);
                 this.clients.delete(ws);
             });
         });
@@ -80,10 +83,29 @@ class WebSocketServer {
         const cookies = req.headers.cookie;
         if (!cookies) return null;
 
-        const sessionId = cookies
+        const sessionCookie = cookies
             .split(';')
-            .find(cookie => cookie.trim().startsWith('connect.sid='))
-            ?.split('=')[1];
+            .find(cookie => cookie.trim().startsWith('connect.sid='));
+
+        if (!sessionCookie) return null;
+
+        // Extract and decode the session ID
+        const encodedSessionId = sessionCookie.split('=')[1];
+        if (!encodedSessionId) return null;
+
+        // Decode the session ID (remove URL encoding and session prefix)
+        let sessionId;
+        try {
+            // URL decode the session ID
+            const decoded = decodeURIComponent(encodedSessionId);
+            // Remove the session prefix (e.g., "s:" from "s:sessionId.signature")
+            sessionId = decoded.replace(/^s:/, '');
+            // Remove the signature part (everything after the dot)
+            sessionId = sessionId.split('.')[0];
+        } catch (error) {
+            console.error('❌ Failed to decode session ID:', error);
+            return null;
+        }
 
         if (!sessionId) return null;
 
@@ -93,17 +115,17 @@ class WebSocketServer {
                 return new Promise((resolve) => {
                     this.sessionStore.get(sessionId, (err, session) => {
                         if (err || !session) {
-                            console.log('❌ WebSocket session verification failed:', err);
+                            console.error('❌ WebSocket session verification failed:', err);
                             resolve(null);
                             return;
                         }
                         
-                        // Check if session has user data
-                        if (session.user) {
-                            console.log('✅ WebSocket session verified for user:', session.user.username);
-                            resolve(session);
+                        // Check if session is authenticated (this is the key check)
+                        if (session.authenticated === true) {
+                            console.log('✅ WebSocket session verified for authenticated session:', sessionId);
+                            resolve({ session, sessionId });
                         } else {
-                            console.log('❌ WebSocket session has no user data');
+                            console.error('❌ WebSocket session not authenticated:', sessionId);
                             resolve(null);
                         }
                     });
@@ -112,17 +134,38 @@ class WebSocketServer {
                 // Fallback: simple cookie-based verification
                 // This is less secure but works without session store
                 console.log('⚠️ Using fallback session verification (less secure)');
-                return { user: { id: 'user', username: 'user' } };
+                // For fallback, we can't verify the session content, so we reject all connections
+                // This ensures security when no session store is available
+                console.error('❌ Fallback session verification: rejecting connection (no session store)');
+                return null;
             }
         } catch (error) {
-            console.log('❌ WebSocket session extraction error:', error);
+            console.error('❌ WebSocket session extraction error:', error);
             return null;
         }
     }
 
     handleMessage(ws, message) {
         const clientInfo = this.clients.get(ws);
-        if (!clientInfo) return;
+        if (!clientInfo) {
+            this.sendToClient(ws, {
+                type: 'error',
+                message: 'Client not found',
+                timestamp: new Date().toISOString()
+            });
+            return;
+        }
+
+        // Check if client is authenticated
+        if (!clientInfo.authenticated) {
+            this.sendToClient(ws, {
+                type: 'auth_error',
+                message: 'Authentication required',
+                code: 'AUTH_REQUIRED',
+                timestamp: new Date().toISOString()
+            });
+            return;
+        }
 
         // Use the message handler passed from web server if available
         if (this.messageHandler) {
@@ -175,23 +218,23 @@ class WebSocketServer {
         });
     }
 
-    sendToUser(userId, message) {
+    sendToUser(sessionId, message) {
         this.wss.clients.forEach(client => {
             const clientInfo = this.clients.get(client);
-            if (clientInfo && clientInfo.userId === userId && client.readyState === WebSocket.OPEN) {
+            if (clientInfo && clientInfo.sessionId === sessionId && client.readyState === WebSocket.OPEN) {
                 this.sendToClient(client, message);
             }
         });
     }
 
     getConnectedUsers() {
-        const users = new Map();
+        const sessions = new Map();
         this.clients.forEach((clientInfo, ws) => {
             if (ws.readyState === WebSocket.OPEN) {
-                users.set(clientInfo.userId, clientInfo);
+                sessions.set(clientInfo.sessionId, clientInfo);
             }
         });
-        return Array.from(users.values());
+        return Array.from(sessions.values());
     }
 
     getConnectionCount() {
@@ -234,10 +277,38 @@ class WebSocketServer {
         });
     }
 
-    broadcastUserNotification(userId, message, type = 'info') {
-        this.sendToUser(userId, {
+    broadcastUserNotification(sessionId, message, type = 'info') {
+        this.sendToUser(sessionId, {
             type: 'notification',
             data: { message, type },
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    startPingInterval(pingCallback = null) {
+        // Clear any existing interval
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+        }
+
+        // Send ping every 10 seconds
+        this.pingInterval = setInterval(() => {
+            const serverData = pingCallback ? pingCallback() : null;
+            this.broadcastPing(serverData);
+        }, 10000);
+    }
+
+    stopPingInterval() {
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+        }
+    }
+
+    broadcastPing(serverData = null) {
+        this.broadcast({
+            type: 'ping',
+            data: serverData,
             timestamp: new Date().toISOString()
         });
     }

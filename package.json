@@ -13,6 +13,7 @@
     "nai-js-tokenizer": "^1.1.0",
     "nan": "^2.22.2",
     "nekoai-js": "file:../NekoAI-JS",
+    "predictionary": "^1.0.0",
     "sharp": "^0.32.6",
     "spellchecker": "^3.7.1",
     "tokenizers": "^0.13.3",

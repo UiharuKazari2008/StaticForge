@@ -66,10 +66,19 @@ function toggleDropdown(menu, button) {
 }
 
 /**
- * Sets up a dropdown menu with open/close logic.
+ * Sets up a dropdown menu with open/close logic and optional keyboard navigation.
  */
-function setupDropdown(container, button, menu, render, getSelectedValue) {
+function setupDropdown(container, button, menu, render, getSelectedValue, options = {}) {
     if (!container || !button || !menu) return;
+    
+    const enableKeyboardNav = options.enableKeyboardNav || false;
+    const enableRightKey = options.enableRightKey || false;
+    const onNavigateRight = options.onNavigateRight || null;
+    const onNavigateLeft = options.onNavigateLeft || null;
+    const onSelectOption = options.onSelectOption || null;
+    
+    let selectedOptionIndex = -1;
+    
     button.addEventListener('click', async e => {
         e.stopPropagation();
         if (menu.style.display === 'block') {
@@ -77,11 +86,132 @@ function setupDropdown(container, button, menu, render, getSelectedValue) {
         } else {
             await render(getSelectedValue());
             openDropdown(menu, button);
+            if (enableKeyboardNav) {
+                // Focus the menu for keyboard navigation
+                setTimeout(() => {
+                    menu.focus();
+                    selectedOptionIndex = -1;
+                    updateSelectedOption(menu, selectedOptionIndex);
+                }, 10);
+            }
         }
     });
+    
+    if (enableKeyboardNav) {
+        // Add keyboard navigation
+        menu.addEventListener('keydown', e => {
+            // Stop propagation to prevent conflicts with other keyboard handlers
+            e.stopPropagation();
+            
+            const options = menu.querySelectorAll('.custom-dropdown-option');
+            
+            switch (e.key) {
+                case 'ArrowDown':
+                    e.preventDefault();
+                    selectedOptionIndex = Math.min(selectedOptionIndex + 1, options.length - 1);
+                    updateSelectedOption(menu, selectedOptionIndex);
+                    break;
+                    
+                case 'ArrowUp':
+                    e.preventDefault();
+                    selectedOptionIndex = Math.max(selectedOptionIndex - 1, -1);
+                    updateSelectedOption(menu, selectedOptionIndex);
+                    break;
+                    
+                case 'PageDown':
+                    e.preventDefault();
+                    if (selectedOptionIndex === -1) {
+                        selectedOptionIndex = 0;
+                    } else {
+                        selectedOptionIndex = Math.min(selectedOptionIndex + 10, options.length - 1);
+                    }
+                    updateSelectedOption(menu, selectedOptionIndex);
+                    break;
+                    
+                case 'PageUp':
+                    e.preventDefault();
+                    if (selectedOptionIndex === -1) {
+                        selectedOptionIndex = 0;
+                    } else {
+                        selectedOptionIndex = Math.max(selectedOptionIndex - 10, 0);
+                    }
+                    updateSelectedOption(menu, selectedOptionIndex);
+                    break;
+                    
+                case 'Home':
+                    e.preventDefault();
+                    selectedOptionIndex = 0;
+                    updateSelectedOption(menu, selectedOptionIndex);
+                    break;
+                    
+                case 'End':
+                    e.preventDefault();
+                    selectedOptionIndex = options.length - 1;
+                    updateSelectedOption(menu, selectedOptionIndex);
+                    break;
+                    
+                case 'Enter':
+                    e.preventDefault();
+                    if (selectedOptionIndex >= 0 && options[selectedOptionIndex]) {
+                        const option = options[selectedOptionIndex];
+                        const value = option.dataset.value;
+                        const group = option.dataset.group;
+                        if (onSelectOption) {
+                            onSelectOption(value, group, 'enter');
+                        } else {
+                            option.click();
+                        }
+                    }
+                    break;
+                    
+                case 'ArrowRight':
+                    if (enableRightKey) {
+                        e.preventDefault();
+                        if (selectedOptionIndex >= 0 && options[selectedOptionIndex] && onNavigateRight) {
+                            const option = options[selectedOptionIndex];
+                            const value = option.dataset.value;
+                            const group = option.dataset.group;
+                            onNavigateRight(value, group);
+                        }
+                    }
+                    break;
+                    
+                case 'ArrowLeft':
+                    if (onNavigateLeft) {
+                        e.preventDefault();
+                        onNavigateLeft();
+                    }
+                    break;
+                    
+                case 'Escape':
+                    e.preventDefault();
+                    closeDropdown(menu, button);
+                    break;
+            }
+        });
+        
+        // Ensure menu can receive focus
+        menu.tabIndex = 0;
+    }
+    
     document.addEventListener('click', e => {
         if (!container.contains(e.target)) {
             closeDropdown(menu, button);
+        }
+    });
+}
+
+/**
+ * Updates the visual selection of options for keyboard navigation.
+ */
+function updateSelectedOption(menu, selectedIndex) {
+    const options = menu.querySelectorAll('.custom-dropdown-option');
+    options.forEach((option, index) => {
+        if (index === selectedIndex) {
+            option.classList.add('keyboard-selected');
+            option.scrollIntoView({ block: 'nearest' });
+        } else {
+            option.classList.remove('keyboard-selected');
         }
     });
 }
