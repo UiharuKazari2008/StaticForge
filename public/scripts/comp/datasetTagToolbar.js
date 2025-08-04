@@ -10,11 +10,13 @@ let allCategories = [];
 let globalKeyboardHandler = null;
 let currentActiveDropdown = 0; // Track which dropdown is currently active for keyboard nav
 let lastSelectedPath = []; // Track the path we came from for Left navigation
-let tagToPathIndex = new Map(); // Fast lookup: tag name -> array of paths
+// Tag-to-path index is now queried from server on demand
 let isSearchMode = false; // Track if we're in search mode
 let searchResults = []; // Current search results
 let selectedDatasetSearchIndex = -1; // Currently selected search result
 let isNavigating = false; // Track if we're in the middle of navigation
+let loadingDropdowns = new Set(); // Track which dropdowns are loading
+let isInitializing = false; // Track if we're in initial loading state
 
 // Helper function to remove active state from all dropdown buttons except the specified one
 function removeActiveStateFromOtherDropdowns(exceptLevel = -1) {
@@ -23,6 +25,45 @@ function removeActiveStateFromOtherDropdowns(exceptLevel = -1) {
             dropdown.button.classList.remove('active');
         }
     });
+}
+
+// Helper function to update dropdown button states based on loading
+function updateDropdownButtonStates() {
+    dropdowns.forEach((dropdown, index) => {
+        if (dropdown && dropdown.button) {
+            // Disable buttons if we're loading or initializing
+            if (isInitializing || isNavigating) {
+                dropdown.button.disabled = true;
+            } else {
+                dropdown.button.disabled = false;
+            }
+        }
+    });
+}
+
+// Helper function to scroll to an option and center it in the view
+function scrollToOption(optionElement) {
+    if (!optionElement) return;
+    
+    const menu = optionElement.closest('.custom-dropdown-menu');
+    if (!menu) return;
+    
+    const menuRect = menu.getBoundingClientRect();
+    const optionRect = optionElement.getBoundingClientRect();
+    
+    // Calculate the scroll position to center the option
+    const menuHeight = menuRect.height;
+    const optionTop = optionElement.offsetTop;
+    const optionHeight = optionElement.offsetHeight;
+    
+    // Center the option in the menu
+    const scrollTop = optionTop - (menuHeight / 2) + (optionHeight / 2);
+    
+    // Ensure scroll position is within bounds
+    const maxScroll = menu.scrollHeight - menuHeight;
+    const finalScrollTop = Math.max(0, Math.min(scrollTop, maxScroll));
+    
+    menu.scrollTop = finalScrollTop;
 }
 
 // Initialize the dataset tag toolbar
@@ -71,8 +112,11 @@ function createDatasetTagToolbar() {
                 <!-- Hierarchical dropdowns will be created here -->
             </div>
             <div class="dataset-tag-controls">
-                <input type="text" id="datasetTagSearchInput" class="dataset-tag-search-input" placeholder="Search tags..." style="display: none;" />
-                <button class="btn-secondary dataset-tag-reset-btn" title="Reset"><i class="fas fa-undo"></i></button>
+                <input type="text" id="datasetTagSearchInput" class="dataset-tag-search-input" placeholder="Find Tag" style="display: none;" />
+                <div class="dataset-tag-loading-spinner">
+                    <i class="fas fa-spinner fa-spin"></i>
+                </div>
+                <button class="btn-secondary dataset-tag-reset-btn" title="Reset"><i class="nai-undo"></i></button>
                 <button class="btn-secondary dataset-tag-close" title="Close"><i class="fas fa-times"></i></button>
             </div>
         </div>
@@ -94,6 +138,12 @@ function createDatasetTagToolbar() {
 
 // Load dataset tag groups from server via WebSocket
 async function loadDatasetTagGroups() {
+    if (isInitializing) return; // Prevent multiple simultaneous initializations
+    
+    isInitializing = true;
+    showLoadingSpinner();
+    updateDropdownButtonStates();
+    
     try {
         // Check if WebSocket client is available and connected
         if (window.wsClient && window.wsClient.isConnected()) {
@@ -103,9 +153,6 @@ async function loadDatasetTagGroups() {
                 // Store the results for initial display
                 allCategories = result.results;
                 
-                // Build tag-to-path index for fast lookups
-                await buildTagToPathIndex();
-                
                 createDropdowns();
             }
         } else {
@@ -113,61 +160,10 @@ async function loadDatasetTagGroups() {
         }
     } catch (error) {
         console.error('Error loading dataset tag groups:', error);
-    }
-}
-
-// Build index mapping tag names to their paths for fast lookup
-async function buildTagToPathIndex() {
-    tagToPathIndex.clear();
-    console.log('Building tag-to-path index...');
-    
-    try {
-        if (window.wsClient && window.wsClient.isConnected()) {
-            await buildIndexRecursive([]);
-        }
-        console.log(`Tag index built with ${tagToPathIndex.size} entries`);
-    } catch (error) {
-        console.error('Error building tag index:', error);
-    }
-}
-
-// Recursively build the tag index
-async function buildIndexRecursive(path) {
-    try {
-        const result = await window.wsClient.searchDatasetTags('*', path);
-        if (result && result.results) {
-            for (const item of result.results) {
-                if (item.isTagArray) {
-                    // This is a tag array, get the actual tags
-                    const tags = await window.wsClient.getTagsForPath(item.path);
-                    if (tags && tags.tags) {
-                        for (const tag of tags.tags) {
-                            if (!tagToPathIndex.has(tag)) {
-                                tagToPathIndex.set(tag, []);
-                            }
-                            tagToPathIndex.get(tag).push(item.path);
-                        }
-                    }
-                } else if (item.hasChildren) {
-                    // Recursively index children
-                    await buildIndexRecursive(item.path);
-                } else {
-                    // This is a group with only "main" array
-                    const mainPath = [...item.path, 'main'];
-                    const tags = await window.wsClient.getTagsForPath(mainPath);
-                    if (tags && tags.tags) {
-                        for (const tag of tags.tags) {
-                            if (!tagToPathIndex.has(tag)) {
-                                tagToPathIndex.set(tag, []);
-                            }
-                            tagToPathIndex.get(tag).push(mainPath);
-                        }
-                    }
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Error in buildIndexRecursive:', error);
+    } finally {
+        isInitializing = false;
+        hideLoadingSpinner();
+        updateDropdownButtonStates();
     }
 }
 
@@ -195,14 +191,10 @@ function showDatasetTagToolbar() {
     currentPath = [];
     selectedTags = [];
     dropdowns = [];
+    isInitializing = false;
     
-    // Load categories and create dropdowns
-    loadDatasetTagGroups();
-    
-    // Try to auto-navigate based on cursor position
-    setTimeout(() => {
-        autoNavigateFromCursor();
-    }, 1000); // Increased delay to ensure initial dropdowns are fully created
+    // Show loading spinner immediately
+    showLoadingSpinner();
     
     // Position the toolbar
     positionToolbar();
@@ -212,6 +204,14 @@ function showDatasetTagToolbar() {
     
     // Add global keyboard navigation
     addGlobalKeyboardHandler();
+    
+    // Load categories and create dropdowns
+    loadDatasetTagGroups().then(() => {
+        // Try to auto-navigate based on cursor position after initial load
+        setTimeout(() => {
+            autoNavigateFromCursor();
+        }, 100);
+    });
 }
 
 // Hide the dataset tag toolbar
@@ -228,6 +228,8 @@ function hideDatasetTagToolbar() {
     selectedTags = [];
     dropdowns = [];
     currentActiveDropdown = 0;
+    isInitializing = false;
+    hideLoadingSpinner();
 }
 
 // Create hierarchical dropdowns
@@ -241,18 +243,8 @@ function createDropdowns() {
     // For the initial dropdown, we don't have main tags yet since we're at the root level
     createDropdown(container, 0, allCategories, []);
     
-    // Only auto-open if we don't have a specific path to navigate to
-    if (currentPath.length === 0) {
-        // Auto-open the first dropdown and set up keyboard navigation
-        currentActiveDropdown = 0;
-        setTimeout(() => {
-            if (dropdowns[0] && dropdowns[0].menu && dropdowns[0].button) {
-                openDropdown(dropdowns[0].menu, dropdowns[0].button);
-                updateSelectedOption(dropdowns[0].menu, -1); // Start with no selection
-            }
-        }, 100);
-    }
-    
+    // Don't auto-open the first dropdown - wait for auto-navigation or user interaction
+    // The dropdown will be disabled until data is ready
 }
 
 // Create a dropdown for a specific level using existing dropdown system
@@ -267,6 +259,12 @@ function createDropdown(container, level, options, mainTags = []) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'custom-dropdown-btn hover-show';
+    
+    // Disable button initially if this is the first dropdown and we're still initializing
+    if (level === 0 && isInitializing) {
+        button.disabled = true;
+    }
+    
     button.innerHTML = `
         <span class="dataset-button-text">
             <i class="fas fa-folder-grid"></i>
@@ -300,14 +298,30 @@ function createDropdown(container, level, options, mainTags = []) {
     }, () => currentPath[level] || '', {
         enableKeyboardNav: true,
         enableRightKey: true,
-        onNavigateRight: (value, group) => handleNavigateRight(level, value),
-        onNavigateLeft: () => handleNavigateLeft(level),
-        onSelectOption: (value, group, trigger) => handleSelectOption(level, value, trigger)
+        onNavigateRight: (value, group) => {
+            // Prevent navigation if loading
+            if (isInitializing || isNavigating) return;
+            handleNavigateRight(level, value);
+        },
+        onNavigateLeft: () => {
+            // Prevent navigation if loading
+            if (isInitializing || isNavigating) return;
+            handleNavigateLeft(level);
+        },
+        onSelectOption: (value, group, trigger) => {
+            // Prevent selection if loading
+            if (isInitializing || isNavigating) return;
+            handleSelectOption(level, value, trigger);
+        }
     });
     
     // Initial render of dropdown options
     renderDropdownOptions(level, options, mainTags);
     
+    // Enable the button if it was disabled
+    if (level === 0 && button.disabled) {
+        button.disabled = false;
+    }
 }
 
 // Render dropdown options using existing system
@@ -422,9 +436,6 @@ function renderDropdownOptions(level, options, mainTags = []) {
     );
 }
 
-
-
-
 // Select a dropdown option
 async function selectDropdownOption(option, level) {
     // Update current path
@@ -477,29 +488,45 @@ async function selectDropdownOption(option, level) {
 
 // Create next dropdown in hierarchy
 async function createNextDropdown(level, path) {
+    // Show loading spinner
+    showLoadingSpinner();
+    updateDropdownButtonStates();
+    
     try {
         if (window.wsClient && window.wsClient.isConnected()) {
+            const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
+            
+            // Remove any existing dropdowns at this level and beyond
+            const existingDropdowns = container.querySelectorAll(`[data-level]`);
+            existingDropdowns.forEach(d => {
+                const dropdownLevel = parseInt(d.dataset.level);
+                if (dropdownLevel >= level) {
+                    d.remove();
+                }
+            });
+            
+            // Remove dropdowns from array
+            dropdowns.splice(level);
+            
+            // Create loading dropdown first
+            createLoadingDropdown(container, level);
+            
+            // Remove active state from all previous dropdown buttons
+            removeActiveStateFromOtherDropdowns(level);
+            
+            // Fetch data from server
             const result = await window.wsClient.searchDatasetTags('*', path);
+            
+            // Remove loading dropdown
+            const loadingDropdown = container.querySelector(`[data-level="${level}"]`);
+            if (loadingDropdown) {
+                loadingDropdown.remove();
+            }
+            loadingDropdowns.delete(level);
+            
             if (result && result.results) {
-                const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
-                
-                // Remove any existing dropdowns at this level and beyond
-                const existingDropdowns = container.querySelectorAll(`[data-level]`);
-                existingDropdowns.forEach(d => {
-                    const dropdownLevel = parseInt(d.dataset.level);
-                    if (dropdownLevel >= level) {
-                        d.remove();
-                    }
-                });
-                
-                // Remove dropdowns from array
-                dropdowns.splice(level);
-                
                 // Create new dropdown with main tags
                 createDropdown(container, level, result.results, result.mainTags || []);
-                
-                // Remove active state from all previous dropdown buttons
-                removeActiveStateFromOtherDropdowns(level);
                 
                 // Auto-focus the new dropdown if it was created via keyboard navigation
                 currentActiveDropdown = level;
@@ -513,34 +540,60 @@ async function createNextDropdown(level, path) {
         }
     } catch (error) {
         console.error('Error creating next dropdown:', error);
+        // Remove loading state on error
+        const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
+        const loadingDropdown = container.querySelector(`[data-level="${level}"]`);
+        if (loadingDropdown) {
+            loadingDropdown.remove();
+        }
+        loadingDropdowns.delete(level);
+    } finally {
+        hideLoadingSpinner();
+        updateDropdownButtonStates();
     }
 }
 
 // Create final dropdown for tag selection
 async function createTagSelectionDropdown(level, path) {
+    // Show loading spinner
+    showLoadingSpinner();
+    updateDropdownButtonStates();
+    
     try {
         if (window.wsClient && window.wsClient.isConnected()) {
+            const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
+            
+            // Remove any existing dropdowns at this level and beyond
+            const existingDropdowns = container.querySelectorAll(`[data-level]`);
+            existingDropdowns.forEach(d => {
+                const dropdownLevel = parseInt(d.dataset.level);
+                if (dropdownLevel >= level) {
+                    d.remove();
+                }
+            });
+            
+            // Remove dropdowns from array
+            dropdowns.splice(level);
+            
+            // Create loading dropdown first
+            createLoadingDropdown(container, level);
+            
+            // Remove active state from all previous dropdown buttons
+            removeActiveStateFromOtherDropdowns(level);
+            
+            // Fetch data from server
             const result = await window.wsClient.getTagsForPath(path);
+            
+            // Remove loading dropdown
+            const loadingDropdown = container.querySelector(`[data-level="${level}"]`);
+            if (loadingDropdown) {
+                loadingDropdown.remove();
+            }
+            loadingDropdowns.delete(level);
+            
             if (result && result.tags) {
-                const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
-                
-                // Remove any existing dropdowns at this level and beyond
-                const existingDropdowns = container.querySelectorAll(`[data-level]`);
-                existingDropdowns.forEach(d => {
-                    const dropdownLevel = parseInt(d.dataset.level);
-                    if (dropdownLevel >= level) {
-                        d.remove();
-                    }
-                });
-                
-                // Remove dropdowns from array
-                dropdowns.splice(level);
-                
                 // Create tag selection dropdown
                 createTagDropdown(container, level, result.tags, path);
-                
-                // Remove active state from all previous dropdown buttons
-                removeActiveStateFromOtherDropdowns(level);
                 
                 // Auto-focus the new tag dropdown if it was created via keyboard navigation
                 currentActiveDropdown = level;
@@ -554,7 +607,61 @@ async function createTagSelectionDropdown(level, path) {
         }
     } catch (error) {
         console.error('Error creating tag selection dropdown:', error);
+        // Remove loading state on error
+        const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
+        const loadingDropdown = container.querySelector(`[data-level="${level}"]`);
+        if (loadingDropdown) {
+            loadingDropdown.remove();
+        }
+        loadingDropdowns.delete(level);
+    } finally {
+        hideLoadingSpinner();
+        updateDropdownButtonStates();
     }
+}
+
+// Create a loading dropdown placeholder
+function createLoadingDropdown(container, level) {
+    const dropdownWrapper = document.createElement('div');
+    dropdownWrapper.className = 'dataset-tag-dropdown-wrapper loading';
+    dropdownWrapper.dataset.level = level;
+    
+    const dropdown = document.createElement('div');
+    dropdown.className = 'custom-dropdown';
+    
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'custom-dropdown-btn hover-show';
+    button.disabled = true;
+    button.innerHTML = `
+        <span class="dataset-button-text">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span class="dataset-tag-dropdown-text">Loading...</span>
+        </span>
+    `;
+    
+    const menu = document.createElement('div');
+    menu.className = 'custom-dropdown-menu';
+    menu.style.display = 'none';
+    
+    dropdown.appendChild(button);
+    dropdown.appendChild(menu);
+    dropdownWrapper.appendChild(dropdown);
+    container.appendChild(dropdownWrapper);
+    
+    // Store dropdown reference
+    dropdowns[level] = {
+        wrapper: dropdownWrapper,
+        dropdown: dropdown,
+        button: button,
+        menu: menu,
+        options: [],
+        mainTags: [],
+        isLoading: true
+    };
+    
+    // Mark as loading
+    loadingDropdowns.add(level);
 }
 
 // Create a dropdown specifically for tag selection
@@ -601,9 +708,21 @@ function createTagDropdown(container, level, tags, path) {
     }, () => selectedTags[0] || '', {
         enableKeyboardNav: true,
         enableRightKey: true,
-        onNavigateRight: (value, group) => handleTagNavigateRight(level, value),
-        onNavigateLeft: () => handleNavigateLeft(level),
-        onSelectOption: (value, group, trigger) => handleTagSelectOption(level, value, trigger)
+        onNavigateRight: (value, group) => {
+            // Prevent navigation if loading
+            if (isInitializing || isNavigating) return;
+            handleTagNavigateRight(level, value);
+        },
+        onNavigateLeft: () => {
+            // Prevent navigation if loading
+            if (isInitializing || isNavigating) return;
+            handleNavigateLeft(level);
+        },
+        onSelectOption: (value, group, trigger) => {
+            // Prevent selection if loading
+            if (isInitializing || isNavigating) return;
+            handleTagSelectOption(level, value, trigger);
+        }
     });
     
     // Render the tag options
@@ -678,10 +797,12 @@ function selectDatasetTag(tag, level) {
     hideDatasetTagToolbar();
 }
 
-
-
 // Handle reset button click
 function handleReset() {
+    // Show loading spinner
+    showLoadingSpinner();
+    updateDropdownButtonStates();
+    
     currentPath = [];
     selectedTags = [];
     
@@ -691,10 +812,13 @@ function handleReset() {
     
     // Recreate first dropdown
     createDropdown(container, 0, allCategories, []);
-
+    
+    // Hide loading spinner after a short delay to ensure UI updates
+    setTimeout(() => {
+        hideLoadingSpinner();
+        updateDropdownButtonStates();
+    }, 100);
 }
-
-
 
 // Handle toolbar keydown events
 function handleDatasetTagToolbarKeydown(event) {
@@ -863,15 +987,18 @@ function isAtEndOfEmphasisGroupBefore(text, cursorPosition) {
     return textAfterCursor.trim().startsWith('::');
 }
 
-// Auto-navigate to the tag before cursor if it exists in our index
+// Auto-navigate to the tag before cursor if it exists on the server
 async function autoNavigateFromCursor() {
-    if (!currentTarget || tagToPathIndex.size === 0) return;
+    if (!currentTarget) return;
     
     // Only auto-navigate if we haven't already navigated somewhere
     if (currentPath.length > 0) {
         console.log('Already navigated to a path, skipping auto-navigation');
         return;
     }
+    
+    // Show loading spinner
+    showLoadingSpinner();
     
     const cursorPosition = currentTarget.selectionStart;
     const text = currentTarget.value;
@@ -882,36 +1009,60 @@ async function autoNavigateFromCursor() {
     if (tagMatch) {
         const potentialTag = tagMatch[1].trim();
         
-        // Check if this tag exists in our index
-        if (tagToPathIndex.has(potentialTag)) {
-            const paths = tagToPathIndex.get(potentialTag);
-            if (paths.length > 0) {
-                // Use the first path found
-                const targetPath = paths[0];
-                console.log(`Auto-navigating to tag "${potentialTag}" at path:`, targetPath);
+        // Query server for this tag's paths
+        try {
+            if (window.wsClient && window.wsClient.isConnected()) {
                 
-                // Navigate to this path
-                await navigateToPath(targetPath, potentialTag);
+                const result = await window.wsClient.searchTags(potentialTag, true);
+                
+                if (result && result.results && result.results.length > 0) {
+                    // Since we're using single_match: true, the first result should be the exact match
+                    const exactMatch = result.results[0];
+                    
+                    if (exactMatch && exactMatch.paths && exactMatch.paths.length > 0) {
+                        // Use the first path found
+                        const targetPath = exactMatch.paths[0];
+                        console.log(`Auto-navigating to tag "${potentialTag}" at path:`, targetPath);
+                        
+                        // Navigate to this path
+                        await navigateToPath(targetPath, potentialTag);
+                    }
+                }
             }
+        } catch (error) {
+            console.error('Error querying server for tag paths:', error);
+        } finally {
+            // Hide loading spinner
+            hideLoadingSpinner();
         }
+    } else {
+        hideLoadingSpinner();
     }
 }
 
 // Navigate to a specific path and select a tag
 async function navigateToPath(targetPath, selectTag = null) {
-    if (isNavigating) return; // Prevent multiple simultaneous navigations
-    
+    if (isNavigating) {
+        return; // Prevent multiple simultaneous navigations
+    }
     isNavigating = true;
+    
+    // Show loading spinner
+    showLoadingSpinner();
+    updateDropdownButtonStates();
+    
     try {
         // Reset current state
         currentPath = [];
         const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
+        
         container.innerHTML = '';
         dropdowns = [];
         
         // Build path step by step
         for (let i = 0; i < targetPath.length; i++) {
             const partialPath = targetPath.slice(0, i);
+            
             const result = await window.wsClient.searchDatasetTags('*', partialPath);
             
             if (result && result.results) {
@@ -920,6 +1071,7 @@ async function navigateToPath(targetPath, selectTag = null) {
                 
                 // Find and select the next item in the path
                 const nextItem = targetPath[i];
+                
                 const option = result.results.find(opt => opt.name === nextItem);
                 
                 if (option) {
@@ -931,6 +1083,16 @@ async function navigateToPath(targetPath, selectTag = null) {
                         const textElement = dropdown.button.querySelector('.dataset-tag-dropdown-text');
                         if (textElement) {
                             textElement.textContent = option.prettyName || option.name;
+                        }
+                        
+                        // Scroll to the selected option in the dropdown menu
+                        if (dropdown.menu) {
+                            const options = dropdown.menu.querySelectorAll('.custom-dropdown-option');
+                            options.forEach((opt, index) => {
+                                if (opt.dataset.value === option.name) {
+                                    scrollToOption(opt);
+                                }
+                            });
                         }
                     }
                     
@@ -956,6 +1118,8 @@ async function navigateToPath(targetPath, selectTag = null) {
                                                     updateSelectedOption(tagDropdown.menu, index);
                                                     currentActiveDropdown = i + 1;
                                                     openDropdown(tagDropdown.menu, tagDropdown.button);
+                                                    // Scroll to the selected option
+                                                    scrollToOption(opt);
                                                 }
                                             });
                                         }
@@ -975,6 +1139,8 @@ async function navigateToPath(targetPath, selectTag = null) {
         console.error('Error navigating to path:', error);
     } finally {
         isNavigating = false;
+        hideLoadingSpinner();
+        updateDropdownButtonStates();
     }
 }
 
@@ -1017,9 +1183,19 @@ function handleGlobalKeyboardNav(event) {
         return;
     }
     
+    // Don't handle navigation if we're loading or initializing
+    if (isInitializing || isNavigating) {
+        return;
+    }
+    
     // Stop propagation to prevent conflicts
     const currentDropdown = dropdowns[currentActiveDropdown];
     if (!currentDropdown) return;
+    
+    // Don't interact if dropdown is disabled
+    if (currentDropdown.button && currentDropdown.button.disabled) {
+        return;
+    }
     
     // Ensure the current dropdown is open
     if (currentDropdown.menu.style.display === 'none') {
@@ -1045,6 +1221,10 @@ function handleGlobalKeyboardNav(event) {
             event.stopPropagation();
             selectedIndex = Math.min(selectedIndex + 1, options.length - 1);
             updateSelectedOption(currentDropdown.menu, selectedIndex);
+            // Scroll to the selected option
+            if (selectedIndex >= 0 && options[selectedIndex]) {
+                scrollToOption(options[selectedIndex]);
+            }
             handled = true;
             break;
             
@@ -1053,6 +1233,10 @@ function handleGlobalKeyboardNav(event) {
             event.stopPropagation();
             selectedIndex = Math.max(selectedIndex - 1, -1);
             updateSelectedOption(currentDropdown.menu, selectedIndex);
+            // Scroll to the selected option
+            if (selectedIndex >= 0 && options[selectedIndex]) {
+                scrollToOption(options[selectedIndex]);
+            }
             handled = true;
             break;
             
@@ -1065,6 +1249,10 @@ function handleGlobalKeyboardNav(event) {
                 selectedIndex = Math.min(selectedIndex + 10, options.length - 1);
             }
             updateSelectedOption(currentDropdown.menu, selectedIndex);
+            // Scroll to the selected option
+            if (selectedIndex >= 0 && options[selectedIndex]) {
+                scrollToOption(options[selectedIndex]);
+            }
             handled = true;
             break;
             
@@ -1077,6 +1265,10 @@ function handleGlobalKeyboardNav(event) {
                 selectedIndex = Math.max(selectedIndex - 10, 0);
             }
             updateSelectedOption(currentDropdown.menu, selectedIndex);
+            // Scroll to the selected option
+            if (selectedIndex >= 0 && options[selectedIndex]) {
+                scrollToOption(options[selectedIndex]);
+            }
             handled = true;
             break;
             
@@ -1085,6 +1277,10 @@ function handleGlobalKeyboardNav(event) {
             event.stopPropagation();
             selectedIndex = 0;
             updateSelectedOption(currentDropdown.menu, selectedIndex);
+            // Scroll to the selected option
+            if (selectedIndex >= 0 && options[selectedIndex]) {
+                scrollToOption(options[selectedIndex]);
+            }
             handled = true;
             break;
             
@@ -1093,6 +1289,10 @@ function handleGlobalKeyboardNav(event) {
             event.stopPropagation();
             selectedIndex = options.length - 1;
             updateSelectedOption(currentDropdown.menu, selectedIndex);
+            // Scroll to the selected option
+            if (selectedIndex >= 0 && options[selectedIndex]) {
+                scrollToOption(options[selectedIndex]);
+            }
             handled = true;
             break;
             
@@ -1192,16 +1392,39 @@ function positionToolbar() {
     const rect = currentTarget.getBoundingClientRect();
     const toolbar = datasetTagToolbar.querySelector('.dataset-tag-toolbar-content');
     
-    // Position below the textarea
-    datasetTagToolbar.style.left = rect.left + 'px';
-    datasetTagToolbar.style.top = (rect.bottom + 5) + 'px';
+    // Position below the textarea, accounting for page scroll
+    datasetTagToolbar.style.left = (rect.left + window.scrollX) + 'px';
+    datasetTagToolbar.style.top = (rect.bottom + window.scrollY + 5) + 'px';
 }
 
 // Global function to show toolbar (called from keyboard shortcuts)
 window.showDatasetTagToolbar = showDatasetTagToolbar;
 
 // Global function to hide toolbar
-window.hideDatasetTagToolbar = hideDatasetTagToolbar; 
+window.hideDatasetTagToolbar = hideDatasetTagToolbar;
+
+// Test spinner functions (for debugging)
+window.testShowSpinner = showLoadingSpinner;
+window.testHideSpinner = hideLoadingSpinner;
+
+// Loading spinner functions
+function showLoadingSpinner() {
+    if (!datasetTagToolbar) return;
+    
+    const spinner = datasetTagToolbar.querySelector('.dataset-tag-loading-spinner');
+    if (spinner) {
+        spinner.style.display = 'flex';
+    }
+}
+
+function hideLoadingSpinner() {
+    if (!datasetTagToolbar) return;
+    
+    const spinner = datasetTagToolbar.querySelector('.dataset-tag-loading-spinner');
+    if (spinner) {
+        spinner.style.display = 'none';
+    }
+} 
 
 // Search mode functions
 function enterSearchMode() {
@@ -1256,7 +1479,7 @@ function exitSearchMode() {
     }
 }
 
-function handleSearchInput(event) {
+async function handleSearchInput(event) {
     const query = event.target.value.toLowerCase().trim();
     
     if (query.length < 2) {
@@ -1265,35 +1488,33 @@ function handleSearchInput(event) {
         return;
     }
     
-    // Search through our tag index
-    searchResults = [];
-    for (const [tag, paths] of tagToPathIndex.entries()) {
-        if (tag.toLowerCase().includes(query)) {
-            searchResults.push({
-                tag: tag,
-                paths: paths
-            });
+    console.log('Search: Querying for:', query);
+    
+    // Query server for matching tags
+    try {
+        if (window.wsClient && window.wsClient.isConnected()) {
+            // Show loading spinner
+            showLoadingSpinner();
+            
+            const result = await window.wsClient.searchTags(query, false); // Use false for regular search
+            
+            if (result && result.results) {
+                searchResults = result.results;
+                selectedDatasetSearchIndex = -1; // Don't auto-select, wait for arrow keys
+                showSearchResults();
+            } else {
+                searchResults = [];
+                hideSearchResults();
+            }
         }
+    } catch (error) {
+        console.error('Error searching tags on server:', error);
+        searchResults = [];
+        hideSearchResults();
+    } finally {
+        // Hide loading spinner
+        hideLoadingSpinner();
     }
-    
-    // Sort by relevance (exact match first, then starts with, then contains)
-    searchResults.sort((a, b) => {
-        const aTag = a.tag.toLowerCase();
-        const bTag = b.tag.toLowerCase();
-        
-        if (aTag === query) return -1;
-        if (bTag === query) return 1;
-        if (aTag.startsWith(query) && !bTag.startsWith(query)) return -1;
-        if (bTag.startsWith(query) && !aTag.startsWith(query)) return 1;
-        
-        return aTag.localeCompare(bTag);
-    });
-    
-    // Limit results
-    searchResults = searchResults.slice(0, 20);
-    selectedDatasetSearchIndex = -1; // Don't auto-select, wait for arrow keys
-    
-    showSearchResults();
 }
 
 function handleSearchKeydown(event) {
@@ -1536,7 +1757,8 @@ function updateSearchSelection() {
     options.forEach((option, index) => {
         if (index === selectedDatasetSearchIndex) {
             option.classList.add('keyboard-selected');
-            option.scrollIntoView({ block: 'nearest' });
+            // Use our custom scroll function to center the option
+            scrollToOption(option);
         } else {
             option.classList.remove('keyboard-selected');
         }
@@ -1544,10 +1766,10 @@ function updateSearchSelection() {
 }
 
 async function selectSearchResult(result) {
+    showLoadingSpinner();
     exitSearchMode();
-    
-    // Navigate to the tag's path
     await navigateToPath(result.paths[0], result.tag);
+    // Note: hideLoadingSpinner() is called in navigateToPath() finally block
 }
 
 // Keyboard navigation handlers
@@ -1604,6 +1826,14 @@ function handleNavigateLeft(level) {
                 });
                 
                 updateSelectedOption(dropdowns[currentActiveDropdown].menu, foundIndex);
+                
+                // Scroll to the selected option
+                if (foundIndex >= 0) {
+                    const options = dropdowns[currentActiveDropdown].menu.querySelectorAll('.custom-dropdown-option');
+                    if (options[foundIndex]) {
+                        scrollToOption(options[foundIndex]);
+                    }
+                }
             }, 50);
         }
     }
@@ -1617,8 +1847,21 @@ function handleSelectOption(level, value, trigger) {
 }
 
 function handleTagNavigateRight(level, value) {
+    // Temporarily disable autofill to prevent triggering during tag insertion
+    const wasAutofillEnabled = window.isAutofillEnabled ? window.isAutofillEnabled() : true;
+    if (window.setAutofillEnabled) {
+        window.setAutofillEnabled(false);
+    }
+    
     // Insert tag but keep dropdown open
     insertTagIntoTextarea(value);
+    
+    // Re-enable autofill after a short delay
+    setTimeout(() => {
+        if (window.setAutofillEnabled) {
+            window.setAutofillEnabled(wasAutofillEnabled);
+        }
+    }, 100);
 }
 
 function handleTagSelectOption(level, value, trigger) {

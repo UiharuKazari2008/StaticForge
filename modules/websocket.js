@@ -277,6 +277,14 @@ class WebSocketServer {
         });
     }
 
+    broadcastGalleryUpdate(galleryData, viewType = 'images') {
+        this.broadcast({
+            type: 'gallery_updated',
+            data: { gallery: galleryData, viewType },
+            timestamp: new Date().toISOString()
+        });
+    }
+
     broadcastUserNotification(sessionId, message, type = 'info') {
         this.sendToUser(sessionId, {
             type: 'notification',

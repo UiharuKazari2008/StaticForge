@@ -264,16 +264,6 @@ function handleSearchStatusUpdate(message) {
 function handleSearchResultsUpdate(message) {
     if (!message.service) return;
     
-    console.log('📥 Received results from service:', message.service, 'count:', message.results?.length || 0);
-    
-    // Debug: Log model information for tags
-    if (message.results && Array.isArray(message.results)) {
-        const tagResults = message.results.filter(r => r.type === 'tag');
-        if (tagResults.length > 0) {
-            console.log(`🔍 Tag models in ${message.service}:`, tagResults.map(t => `${t.name} (${t.model})`));
-        }
-    }
-    
     // Store results by service
     const results = message.results || [];
     searchResultsByService.set(message.service, results);
@@ -610,8 +600,36 @@ function getStatusClass(status) {
     }
 }
 
+// Global autofill state
+let autofillEnabled = true;
+
+// Autofill toggle functions
+function toggleAutofill() {
+    autofillEnabled = !autofillEnabled;
+    return autofillEnabled;
+}
+
+function setAutofillEnabled(enabled) {
+    autofillEnabled = enabled;
+}
+
+function isAutofillEnabled() {
+    return autofillEnabled;
+}
+
+// Expose functions globally
+window.toggleAutofill = toggleAutofill;
+window.setAutofillEnabled = setAutofillEnabled;
+window.isAutofillEnabled = isAutofillEnabled;
+
 // Character autocomplete functions
 function handleCharacterAutocompleteInput(e) {
+    // Don't trigger autocomplete if autofill is disabled
+    if (!autofillEnabled) {
+        return;
+    }
+    
+    // Don't trigger autocomplete if we're in navigation mode and user is actively navigating
     // Don't trigger autocomplete if we're in navigation mode and user is actively navigating
     if (autocompleteNavigationMode && selectedCharacterAutocompleteIndex >= 0) {
         // Only clear navigation mode if user is typing (not just moving cursor)
@@ -750,42 +768,21 @@ function handleCharacterAutocompleteInput(e) {
 }
 
 function handleCharacterAutocompleteKeydown(e) {
-    // Handle emphasis editing popup
-    if (emphasisEditingActive) {
-        switch (e.key) {
-            case 'ArrowUp':
+            // Handle emphasis editing popup (but not when toolbar is in emphasis mode)
+        if (window.emphasisEditingActive && !e.target.closest('.prompt-textarea-toolbar.emphasis-mode')) {
+            // Handle integer inputs (0-9 keys)
+            if (e.key >= '0' && e.key <= '9') {
                 e.preventDefault();
-                emphasisEditingValue = Math.min(emphasisEditingValue + 0.1, 5.0);
-                updateEmphasisEditingPopup();
-                break;
-            case 'ArrowDown':
-                e.preventDefault();
-                emphasisEditingValue = Math.max(emphasisEditingValue - 0.1, -3.0);
-                updateEmphasisEditingPopup();
-                break;
-            case 'ArrowLeft':
-                e.preventDefault();
-                switchEmphasisMode('left');
-                break;
-            case 'ArrowRight':
-                e.preventDefault();
-                switchEmphasisMode('right');
-                break;
-            case 'Enter':
-                e.preventDefault();
-                applyEmphasisEditing();
+                const integerValue = parseInt(e.key);
+                window.emphasisEditingValue = integerValue.toFixed(1);
+                // Update selection highlight to show the new emphasis value
+                if (window.emphasisEditingTarget && window.emphasisEditingSelection) {
+                    window.addEmphasisSelectionHighlight(window.emphasisEditingTarget, window.emphasisEditingSelection);
+                }
                 return;
-            case 'Escape':
-                e.preventDefault();
-                cancelEmphasisEditing();
-                return;
-            default:
-                // Any other key applies the emphasis
-                applyEmphasisEditing();
-                return;
+            }
+            return;
         }
-        return;
-    }
 
     // Handle autocomplete navigation - only when autocomplete is visible
     if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
@@ -1087,12 +1084,8 @@ function handleCharacterAutocompleteKeydown(e) {
                 // If no spell check or no spell check suggestions, apply first main list item
                 if (items && items.length > 0) {
                     const firstItem = items[0];
-                    console.log('Right arrow: Found first item:', firstItem);
-                    console.log('First item dataset:', firstItem.dataset);
-                    
                     if (firstItem) {
                         const type = firstItem.dataset.type;
-                        console.log('First item type:', type);
                         
                         if (type === 'character') {
                             const characterData = JSON.parse(firstItem.dataset.characterData);
@@ -1102,13 +1095,9 @@ function handleCharacterAutocompleteKeydown(e) {
                         } else if (type === 'textReplacement') {
                             selectTextReplacement(firstItem.dataset.placeholder);
                         } else {
-                            console.log('Unknown item type:', type);
+                            console.error('Unknown item type:', type);
                         }
                     }
-                } else {
-                    console.log('Right arrow: No items found or items array is empty');
-                    console.log('Items:', items);
-                    console.log('Items length:', items ? items.length : 'undefined');
                 }
                 break;
                 
@@ -1169,15 +1158,11 @@ async function searchCharacters(query, target) {
     try {
         // Only clear results if this is a completely new search query
         if (lastSearchQuery !== query) {
-            console.log('New search query detected, clearing previous results');
-            console.log('Previous query:', lastSearchQuery, 'New query:', query);
             searchServices.clear();
             searchResultsByService.clear();
             clearDynamicResults();
             allSearchResults = [];
             lastSearchQuery = query;
-        } else {
-            console.log('Same search query, keeping existing results');
         }
         
         isSearching = true;
@@ -1360,7 +1345,10 @@ function createAutocompleteItem(result) {
             </div>
         `;
 
-        item.addEventListener('click', () => selectTextReplacement(result.placeholder));
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            selectTextReplacement(result.placeholder);
+        });
     } else if (result.type === 'tag') {
         // Handle tag results
         item.dataset.type = 'tag';
@@ -1433,7 +1421,10 @@ function createAutocompleteItem(result) {
             </div>
         `;
 
-        item.addEventListener('click', () => selectTag(result.name));
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            selectTag(result.name);
+        });
     } else {
         // Handle character results
         item.dataset.type = 'character';
@@ -1451,7 +1442,10 @@ function createAutocompleteItem(result) {
             </div>
         `;
 
-        item.addEventListener('click', () => selectCharacterItem(result.character));
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            selectCharacterItem(result.character);
+        });
     }
 
     return item;
@@ -1561,8 +1555,6 @@ function updateAutocompleteDisplay(results, target) {
         return;
     }
 
-    console.log('updateAutocompleteDisplay called with', results.length, 'results');
-
     // Store results for potential expansion
     window.allAutocompleteResults = results;
 
@@ -1573,8 +1565,6 @@ function updateAutocompleteDisplay(results, target) {
     // Show all results if expanded, otherwise show only first 5 items
     const limitedResults = autocompleteExpanded ? displayResults : displayResults.slice(0, 5);
     
-    console.log('Display results:', displayResults.length, 'Limited results:', limitedResults.length);
-
     // Always rebuild the display when we have new results
     // This ensures we show the latest results from all services
     rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckResult, target);
@@ -1597,9 +1587,7 @@ function updateAutocompleteDisplay(results, target) {
 }
 
 // New function to rebuild the autocomplete display
-function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckResult, target) {
-    console.log('rebuildAutocompleteDisplay called with', displayResults.length, 'display results,', limitedResults.length, 'limited results');
-    
+function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckResult, target) {    
     // Clear the current display
     characterAutocompleteList.innerHTML = '';
     
@@ -1706,13 +1694,15 @@ function showSpellCheckSuggestions(spellCheckData, target) {
 
         // Add event listeners for suggestions
         wordSection.querySelectorAll('.suggestion-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
                 applySpellCorrection(target, btn.dataset.original, btn.dataset.suggestion);
             });
         });
 
         // Add event listener for adding word to dictionary
-        wordSection.querySelector('.add-word-btn').addEventListener('click', () => {
+        wordSection.querySelector('.add-word-btn').addEventListener('click', (e) => {
+            e.preventDefault();
             addWordToDictionary(word);
         });
 
@@ -2521,7 +2511,6 @@ function applyFormattedText(textarea, lostFocus) {
     if (lostFocus) {
         // When losing focus, clean up the text
         text = text
-            .split('\n').map(item => item.trim()).join(' ')
             .split('|').map(item => item.trim()).filter(Boolean).join(' | ');
 
         // Handle comma splitting more carefully to preserve :: groups
@@ -2549,7 +2538,6 @@ function applyFormattedText(textarea, lostFocus) {
     } else {
         // When focused, just clean up basic formatting
         text = text
-            .split('\n').map(item => item.trim()).join(' ')
             .split('|').map(item => item.trim()).join(' | ');
 
         // Handle comma splitting more carefully to preserve :: groups
@@ -2968,18 +2956,14 @@ function getMatchType(mergedModels) {
     const apiModels = mergedModels.filter(m => m !== 'furry-local' && m !== 'anime-local');
     const hasFurryLocal = mergedModels.includes('furry-local');
     const hasAnimeLocal = mergedModels.includes('anime-local');
-    
-    console.log(`🔍 getMatchType: models=${mergedModels.join(', ')}, apiModels=${apiModels.join(', ')}, furryLocal=${hasFurryLocal}, animeLocal=${hasAnimeLocal}`);
-    
+        
     // Global: exists in multiple API models (cross-model compatibility)
     if (apiModels.length >= 2) {
-        console.log(`✅ Global match: Multiple API models (${apiModels.length})`);
         return { type: 'Global', version: '' };
     }
     
     // Global: exists in both API models and matches a local search result
     if (apiModels.length >= 2 && (hasFurryLocal || hasAnimeLocal)) {
-        console.log(`✅ Global match: Multiple API models + local`);
         return { type: 'Global', version: '' };
     }
     
@@ -2987,7 +2971,6 @@ function getMatchType(mergedModels) {
     if (apiModels.length === 1 && hasAnimeLocal) {
         const apiModel = apiModels[0];
         if (isAnimeModel(apiModel)) {
-            console.log(`🎌 Anime match: ${apiModel} + anime-local`);
             return { 
                 type: 'NovelAI',
                 dataType: 'anime',
@@ -3000,7 +2983,6 @@ function getMatchType(mergedModels) {
     if (apiModels.length === 1 && hasFurryLocal) {
         const apiModel = apiModels[0];
         if (isFurryModel(apiModel)) {
-            console.log(`🦊 Furry match: ${apiModel} + furry-local`);
             return { 
                 type: 'NovelAI', 
                 dataType: 'furry',
@@ -3011,11 +2993,9 @@ function getMatchType(mergedModels) {
     
     // Fallback for other combinations
     if (apiModels.length >= 2) {
-        console.log(`✅ Global match: Fallback multiple API`);
         return { type: 'Global', version: '' };
     } else if (apiModels.length === 1) {
         const apiModel = apiModels[0];
-        console.log(`🔍 Single API match: ${apiModel}`);
         return { 
             type: modelKeys[apiModel]?.type || 'Search', 
             version: modelKeys[apiModel]?.version || '' 
@@ -3024,17 +3004,13 @@ function getMatchType(mergedModels) {
     
     // Local-only results
     if (hasFurryLocal && hasAnimeLocal) {
-        console.log(`✅ Global match: Both local models`);
         return { type: 'Global', version: '' };
     } else if (hasFurryLocal) {
-        console.log(`🦊 Furry local only`);
         return { type: 'NovelAI', dataType: 'furry', version: 'Local' };
     } else if (hasAnimeLocal) {
-        console.log(`🎌 Anime local only`);
         return { type: 'NovelAI', dataType: 'anime', version: 'Local' };
     }
     
-    console.log(`🔍 Default: Search`);
     return { type: 'Search', version: '' };
 }
 
@@ -3234,17 +3210,10 @@ function enhanceCharacterResultsWithStringSimilarity(results, query) {
 // Debug function to log ranking information
 function logRankingDebug(results, query) {
     if (!results || results.length === 0) return;
-    
-    console.log('=== RANKING DEBUG ===');
-    console.log('Query:', query);
-    console.log('Total results:', results.length);
-    console.log('Predictionary available:', predictionaryInstance !== null);
-    
     const typeCounts = {};
     results.forEach(result => {
         typeCounts[result.type] = (typeCounts[result.type] || 0) + 1;
     });
-    console.log('Result types:', typeCounts);
     
     // Log top 5 results with their scores
     const topResults = results.slice(0, 5);
@@ -3263,9 +3232,7 @@ function logRankingDebug(results, query) {
             const predictionaryScore = result.predictionaryScore || 'N/A';
             score = `matchScore: ${result.matchScore || 0}, predictionary: ${predictionaryScore}`;
         }
-        console.log(`${index + 1}. ${result.type}: ${result.name || result.placeholder} (${score})`);
     });
-    console.log('=== END RANKING DEBUG ===');
 }
 
 // Deduplicate results from different services
@@ -3277,8 +3244,6 @@ function deduplicateResults(results) {
     const textReplacementMap = new Map(); // Map of text replacement key to best result
     const finalResults = [];
     
-    console.log(`🔄 Starting deduplication of ${results.length} results`);
-    
     for (const result of results) {
         if (result.type === 'tag') {
             const tagName = result.name;
@@ -3286,12 +3251,10 @@ function deduplicateResults(results) {
             if (tagMap.has(tagName)) {
                 // We have a duplicate tag - merge them intelligently
                 const existingResult = tagMap.get(tagName);
-                console.log(`🔄 Found duplicate tag: "${tagName}"`);
                 const mergedResult = mergeTagResults(existingResult, result);
                 tagMap.set(tagName, mergedResult);
             } else {
                 // First occurrence of this tag
-                console.log(`📝 First occurrence of tag: "${tagName}" (${result.model})`);
                 tagMap.set(tagName, result);
             }
         } else if (result.type === 'character') {
@@ -3343,27 +3306,19 @@ function deduplicateResults(results) {
         finalResults.push(result);
     }
     
-    console.log(`✅ Deduplication complete: ${results.length} → ${finalResults.length} results`);
-    console.log(`📊 Tag breakdown: ${tagMap.size} unique tags`);
-    
     // Log dual matches
     let dualMatchCount = 0;
     for (const result of tagMap.values()) {
         if (result.isDualMatch) {
             dualMatchCount++;
-            console.log(`🌐 Dual match: "${result.name}" with models:`, result.mergedModels);
         }
     }
-    console.log(`🌐 Total dual matches: ${dualMatchCount}`);
     
     return finalResults;
 }
 
 // Merge two tag results intelligently
 function mergeTagResults(result1, result2) {
-    // Debug logging
-    console.log(`🔍 Merging tags: "${result1.name}" (${result1.model}) and "${result2.name}" (${result2.model})`);
-    
     // Check if one is API and one is local
     const isResult1API = result1.model !== 'furry-local' && result1.model !== 'anime-local';
     const isResult2API = result2.model !== 'furry-local' && result2.model !== 'anime-local';
@@ -3377,8 +3332,6 @@ function mergeTagResults(result1, result2) {
         const mergedModels = new Set();
         mergedModels.add(apiResult.model);
         mergedModels.add(localResult.model);
-        
-        console.log(`✅ Created dual match for "${apiResult.name}" with models:`, Array.from(mergedModels));
         
         // Create combined result with API priority
         const dualMatch = {
@@ -3410,8 +3363,6 @@ function mergeTagResults(result1, result2) {
         // Both are same type - keep the one with higher confidence
         const result1Confidence = result1.enhancedConfidence || result1.confidence || 0;
         const result2Confidence = result2.enhancedConfidence || result2.confidence || 0;
-        
-        console.log(`📊 Same type comparison: ${result1Confidence} vs ${result2Confidence}`);
         
         if (result2Confidence > result1Confidence) {
             return result2;

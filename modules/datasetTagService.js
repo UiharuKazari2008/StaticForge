@@ -13,6 +13,8 @@ class DatasetTagService {
     constructor() {
         this.datasetTagGroups = null;
         this.datasetTagGroupsPath = path.join(__dirname, '../dataset_tag_groups.json');
+        this.tagToPathIndex = null;
+        this.tagToPathIndexPath = path.join(__dirname, '../.cache/tag_to_path_index.json');
     }
 
     /**
@@ -139,8 +141,8 @@ class DatasetTagService {
             }
 
             return { 
-                results: results.slice(0, 20), 
-                mainTags: mainTags.slice(0, 50) // Limit main tags to prevent overwhelming the UI
+                results: results, 
+                mainTags: mainTags // Limit main tags to prevent overwhelming the UI
             };
         } catch (error) {
             console.error('Dataset tag search error:', error);
@@ -245,6 +247,202 @@ class DatasetTagService {
         } catch (error) {
             console.error('Error validating path:', error);
             return false;
+        }
+    }
+
+    /**
+     * Build tag-to-path index for fast lookups
+     * @returns {Object} Map of tag names to arrays of paths
+     */
+    async buildTagToPathIndex() {
+        try {
+            if (!this.datasetTagGroups) {
+                const loaded = await this.loadDatasetTagGroups();
+                if (!loaded) {
+                    return {};
+                }
+            }
+
+            const tagToPathIndex = {};
+            
+            // Recursively build the index
+            const buildIndexRecursive = (currentLevel, currentPath) => {
+                if (typeof currentLevel === 'object' && !Array.isArray(currentLevel)) {
+                    // Check if this level has a "main" key with tags
+                    if (currentLevel.main && Array.isArray(currentLevel.main)) {
+                        for (const tag of currentLevel.main) {
+                            if (!tagToPathIndex[tag]) {
+                                tagToPathIndex[tag] = [];
+                            }
+                            tagToPathIndex[tag].push([...currentPath, 'main']);
+                        }
+                    }
+                    
+                    // Recursively process all other keys
+                    for (const [key, value] of Object.entries(currentLevel)) {
+                        if (key !== '_metadata' && key !== 'main') {
+                            if (Array.isArray(value)) {
+                                // This is an array of tags
+                                for (const tag of value) {
+                                    if (!tagToPathIndex[tag]) {
+                                        tagToPathIndex[tag] = [];
+                                    }
+                                    tagToPathIndex[tag].push([...currentPath, key]);
+                                }
+                            } else {
+                                // This is a nested object, recurse into it
+                                buildIndexRecursive(value, [...currentPath, key]);
+                            }
+                        }
+                    }
+                }
+            };
+
+            buildIndexRecursive(this.datasetTagGroups, []);
+            return tagToPathIndex;
+        } catch (error) {
+            console.error('Error building tag-to-path index:', error);
+            return {};
+        }
+    }
+
+    /**
+     * Load tag-to-path index from file
+     * @returns {Object} Map of tag names to arrays of paths
+     */
+    async loadTagToPathIndex() {
+        try {
+            if (!fs.existsSync(this.tagToPathIndexPath)) {
+                console.log('Tag-to-path index file not found, building new index...');
+                return null;
+            }
+
+            const data = fs.readFileSync(this.tagToPathIndexPath, 'utf8');
+            return JSON.parse(data);
+        } catch (error) {
+            console.error('Error loading tag-to-path index:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Save tag-to-path index to file
+     * @param {Object} index - The index to save
+     */
+    async saveTagToPathIndex(index) {
+        try {
+            const data = JSON.stringify(index, null, 2);
+            fs.writeFileSync(this.tagToPathIndexPath, data, 'utf8');
+            console.log('Tag-to-path index saved successfully');
+        } catch (error) {
+            console.error('Error saving tag-to-path index:', error);
+        }
+    }
+
+    /**
+     * Get tag-to-path index (loads from file or builds if missing)
+     * @returns {Object} Map of tag names to arrays of paths
+     */
+    async getTagToPathIndex() {
+        if (!this.tagToPathIndex) {
+            // Try to load from file first
+            this.tagToPathIndex = await this.loadTagToPathIndex();
+            
+            // If file doesn't exist, build and save it
+            if (!this.tagToPathIndex) {
+                this.tagToPathIndex = await this.buildTagToPathIndex();
+                await this.saveTagToPathIndex(this.tagToPathIndex);
+            }
+        }
+        return this.tagToPathIndex;
+    }
+
+    /**
+     * Refresh the tag-to-path index (useful after dataset updates)
+     */
+    async refreshTagToPathIndex() {
+        this.tagToPathIndex = null;
+        const newIndex = await this.buildTagToPathIndex();
+        await this.saveTagToPathIndex(newIndex);
+        this.tagToPathIndex = newIndex;
+        return this.tagToPathIndex;
+    }
+
+    /**
+     * Initialize the service (load dataset and build index if needed)
+     */
+    async initialize() {
+        console.log('Initializing DatasetTagService...');
+        
+        // Load dataset tag groups
+        const loaded = await this.loadDatasetTagGroups();
+        if (!loaded) {
+            console.error('Failed to load dataset tag groups');
+            return false;
+        }
+        
+        // Initialize tag-to-path index
+        await this.getTagToPathIndex();
+        
+        console.log('DatasetTagService initialized successfully');
+        return true;
+    }
+
+    /**
+     * Search for tags matching a query and return their paths
+     * @param {string} query - Search query
+     * @param {boolean} singleMatch - If true, return only exact matches
+     * @returns {Array} Array of matching tags with their paths
+     */
+    async searchTags(query, singleMatch = false) {
+        try {
+            // Get the tag-to-path index
+            const tagToPathIndex = await this.getTagToPathIndex();
+            const results = [];
+            const searchQuery = query.toLowerCase();
+            
+            for (const [tag, paths] of Object.entries(tagToPathIndex)) {
+                if (singleMatch) {
+                    // For single match, only return exact matches
+                    if (tag.toLowerCase() === searchQuery) {
+                        return [{
+                            tag: tag,
+                            paths: paths
+                        }];
+                    }
+                } else {
+                    // For regular search, include partial matches
+                    if (tag.toLowerCase().includes(searchQuery)) {
+                        results.push({
+                            tag: tag,
+                            paths: paths
+                        });
+                    }
+                }
+            }
+            
+            if (singleMatch) {
+                return []; // No exact match found
+            }
+            
+            // Sort by relevance (exact match first, then starts with, then contains)
+            results.sort((a, b) => {
+                const aTag = a.tag.toLowerCase();
+                const bTag = b.tag.toLowerCase();
+                
+                if (aTag === searchQuery) return -1;
+                if (bTag === searchQuery) return 1;
+                if (aTag.startsWith(searchQuery) && !bTag.startsWith(searchQuery)) return -1;
+                if (bTag.startsWith(searchQuery) && !aTag.startsWith(searchQuery)) return 1;
+                
+                return aTag.localeCompare(bTag);
+            });
+            
+            // Limit results
+            return results.slice(0, 50);
+        } catch (error) {
+            console.error('Error searching tags:', error);
+            return [];
         }
     }
 }

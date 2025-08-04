@@ -46,7 +46,7 @@ function loadWorkspaces() {
             
             // Add color, backgroundColor, and backgroundImage properties to existing workspaces if missing
             let needsSave = false;
-            Object.values(workspaces).forEach(workspace => {
+            Object.values(workspaces).forEach((workspace, index) => {
                 if (!workspace.color) {
                     workspace.color = getRandomWorkspaceColor();
                     needsSave = true;
@@ -63,21 +63,26 @@ function loadWorkspaces() {
                     workspace.backgroundOpacity = 0.3; // Default opacity
                     needsSave = true;
                 }
-                            // Add groups property if missing
-            if (!workspace.groups) {
-                workspace.groups = {};
-                needsSave = true;
-            }
-            // Add pinned property if missing
-            if (!workspace.pinned) {
-                workspace.pinned = [];
-                needsSave = true;
-            }
+                // Add groups property if missing
+                if (!workspace.groups) {
+                    workspace.groups = {};
+                    needsSave = true;
+                }
+                // Add pinned property if missing
+                if (!workspace.pinned) {
+                    workspace.pinned = [];
+                    needsSave = true;
+                }
+                // Add sort property if missing
+                if (typeof workspace.sort === 'undefined') {
+                    workspace.sort = index;
+                    needsSave = true;
+                }
             });
             
             if (needsSave) {
                 saveWorkspaces();
-                console.log('🎨 Added colors and groups to existing workspaces');
+                console.log('🎨 Added colors, groups, and sort order to existing workspaces');
             }
         } else {
             // Initialize with default workspace
@@ -88,6 +93,7 @@ function loadWorkspaces() {
                     backgroundColor: null, // Will be auto-generated from color
                     backgroundImage: null, // No background image by default
                     backgroundOpacity: 0.3, // Default opacity
+                    sort: 0, // Default sort order
                     presets: [],
                     vibeImages: [],
                     cacheFiles: [],
@@ -101,21 +107,22 @@ function loadWorkspaces() {
         }
     } catch (error) {
         console.error('Error loading workspaces:', error);
-        // Fallback to default workspace
+        // Initialize with default workspace on error
         workspaces = {
             default: {
                 name: 'Default',
-                color: '#124', // Default blue
-                backgroundColor: null, // Will be auto-generated from color
-                backgroundImage: null, // No background image by default
-                backgroundOpacity: 0.3, // Default opacity
+                color: '#124',
+                backgroundColor: null,
+                backgroundImage: null,
+                backgroundOpacity: 0.3,
+                sort: 0,
                 presets: [],
                 vibeImages: [],
                 cacheFiles: [],
                 files: [],
                 scraps: [],
-                pinned: [], // Initialize empty pinned array
-                groups: {} // Initialize empty groups object
+                pinned: [],
+                groups: {}
             }
         };
         saveWorkspaces();
@@ -126,13 +133,26 @@ function loadWorkspaces() {
 // Save workspaces to file
 function saveWorkspaces() {
     try {
+        console.log('💾 Saving workspaces to file...');
         const cacheDir = path.dirname(WORKSPACE_FILE);
         if (!fs.existsSync(cacheDir)) {
             fs.mkdirSync(cacheDir, { recursive: true });
+            console.log('📁 Created cache directory:', cacheDir);
         }
-        fs.writeFileSync(WORKSPACE_FILE, JSON.stringify(workspaces, null, 2));
+        
+        const workspaceData = JSON.stringify(workspaces, null, 2);
+        fs.writeFileSync(WORKSPACE_FILE, workspaceData);
+        
+        console.log('✅ Workspaces saved successfully');
+        console.log('📁 File size:', fs.statSync(WORKSPACE_FILE).size, 'bytes');
+        
+        // Verify the file was written correctly
+        const savedData = fs.readFileSync(WORKSPACE_FILE, 'utf8');
+        const parsedData = JSON.parse(savedData);
+        console.log('✅ File verification successful -', Object.keys(parsedData).length, 'workspaces');
+        
     } catch (error) {
-        console.error('Error saving workspaces:', error);
+        console.error('❌ Error saving workspaces:', error);
         throw error;
     }
 }
@@ -244,12 +264,17 @@ function createWorkspace(name, color = null, backgroundColor = null, backgroundI
     }
 
     const id = generateUUID();
+    
+    // Find the highest sort value and add 1 for the new workspace
+    const maxSort = Math.max(...Object.values(workspaces).map(w => w.sort || 0), -1);
+    
     workspaces[id] = {
         name: name,
         color: color || getRandomWorkspaceColor(),
         backgroundColor: backgroundColor, // Can be null for auto-generation
         backgroundImage: backgroundImage, // Can be null for no background image
         backgroundOpacity: backgroundOpacity, // Default opacity
+        sort: maxSort + 1, // Add to the end of the list
         presets: [],
         vibeImages: [],
         cacheFiles: [],
@@ -260,7 +285,7 @@ function createWorkspace(name, color = null, backgroundColor = null, backgroundI
     };
 
     saveWorkspaces();
-    console.log(`✅ Created workspace: ${name} (${id}) with color: ${workspaces[id].color}`);
+    console.log(`✅ Created workspace: ${name} (${id}) with color: ${workspaces[id].color} and sort: ${workspaces[id].sort}`);
     return id;
 }
 
@@ -505,8 +530,8 @@ function findRelatedFiles(filename, allFiles) {
 }
 
 // Move files between workspaces
-function moveFilesToWorkspace(filenames, targetWorkspaceId) {
-    return moveToWorkspaceArray('files', filenames, targetWorkspaceId);
+function moveFilesToWorkspace(filenames, targetWorkspaceId, sourceWorkspaceId = null) {
+    return moveToWorkspaceArray('files', filenames, targetWorkspaceId, sourceWorkspaceId);
 }
 
 // Move pinned images to workspace
@@ -1114,6 +1139,152 @@ function getActiveWorkspaceGroups() {
     return getWorkspaceGroups(workspaceId);
 }
 
+// Bulk operations for workspace arrays
+function bulkAddToWorkspaceArray(type, items, workspaceId = null) {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+
+    const targetWorkspaceId = workspaceId || getActiveWorkspace();
+    if (!workspaces[targetWorkspaceId]) {
+        throw new Error(`Workspace ${targetWorkspaceId} not found`);
+    }
+
+    // Ensure items is an array
+    const itemArray = Array.isArray(items) ? items : [items];
+    
+    // Filter out null/invalid items
+    const validItems = itemArray.filter(item => item && typeof item === 'string');
+    
+    if (validItems.length === 0) {
+        console.log(`⚠️ No valid ${type} provided for bulk add`);
+        return { success: true, addedCount: 0 };
+    }
+
+    let addedCount = 0;
+    const workspace = workspaces[targetWorkspaceId];
+
+    switch (type) {
+        case 'pinned':
+            if (!workspace.pinned) {
+                workspace.pinned = [];
+            }
+            for (const item of validItems) {
+                if (!workspace.pinned.includes(item)) {
+                    workspace.pinned.push(item);
+                    addedCount++;
+                }
+            }
+            break;
+        case 'scraps':
+            if (!workspace.scraps) {
+                workspace.scraps = [];
+            }
+            for (const item of validItems) {
+                if (!workspace.scraps.includes(item)) {
+                    workspace.scraps.push(item);
+                    addedCount++;
+                }
+            }
+            break;
+        default:
+            throw new Error(`Unsupported type for bulk add: ${type}`);
+    }
+
+    saveWorkspaces();
+    return { success: true, addedCount };
+}
+
+function bulkRemoveFromWorkspaceArray(type, items, workspaceId = null) {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+
+    const targetWorkspaceId = workspaceId || getActiveWorkspace();
+    if (!workspaces[targetWorkspaceId]) {
+        throw new Error(`Workspace ${targetWorkspaceId} not found`);
+    }
+
+    // Ensure items is an array
+    const itemArray = Array.isArray(items) ? items : [items];
+    
+    // Filter out null/invalid items
+    const validItems = itemArray.filter(item => item && typeof item === 'string');
+    
+    if (validItems.length === 0) {
+        console.log(`⚠️ No valid ${type} provided for bulk remove`);
+        return { success: true, removedCount: 0 };
+    }
+
+    let removedCount = 0;
+    const workspace = workspaces[targetWorkspaceId];
+
+    switch (type) {
+        case 'pinned':
+            if (workspace.pinned) {
+                const originalLength = workspace.pinned.length;
+                workspace.pinned = workspace.pinned.filter(item => !validItems.includes(item));
+                removedCount = originalLength - workspace.pinned.length;
+            }
+            break;
+        case 'scraps':
+            if (workspace.scraps) {
+                const originalLength = workspace.scraps.length;
+                workspace.scraps = workspace.scraps.filter(item => !validItems.includes(item));
+                removedCount = originalLength - workspace.scraps.length;
+            }
+            break;
+        default:
+            throw new Error(`Unsupported type for bulk remove: ${type}`);
+    }
+
+    saveWorkspaces();
+    return { success: true, removedCount };
+}
+
+// Reorder workspaces based on provided order
+function reorderWorkspaces(workspaceOrder) {
+    try {
+        console.log('🔄 Starting workspace reorder with order:', workspaceOrder);
+        
+        // Validate input
+        if (!Array.isArray(workspaceOrder)) {
+            throw new Error('Workspace order must be an array');
+        }
+
+        // Check if all workspace IDs exist
+        const existingWorkspaceIds = Object.keys(workspaces);
+        const invalidIds = workspaceOrder.filter(id => !existingWorkspaceIds.includes(id));
+        if (invalidIds.length > 0) {
+            throw new Error(`Invalid workspace IDs: ${invalidIds.join(', ')}`);
+        }
+
+        console.log('✅ Validating workspace order...');
+        
+        // Update sort values based on the provided order
+        workspaceOrder.forEach((workspaceId, index) => {
+            if (workspaces[workspaceId]) {
+                const oldSort = workspaces[workspaceId].sort;
+                workspaces[workspaceId].sort = index;
+                console.log(`📝 Updated ${workspaceId} sort from ${oldSort} to ${index}`);
+            }
+        });
+
+        console.log('💾 Saving workspaces...');
+        
+        // Save the updated workspaces
+        saveWorkspaces();
+        
+        console.log(`✅ Successfully reordered ${workspaceOrder.length} workspaces`);
+        console.log('📁 Workspace file saved to:', WORKSPACE_FILE);
+        
+        return { success: true, message: 'Workspaces reordered successfully' };
+    } catch (error) {
+        console.error('❌ Error reordering workspaces:', error);
+        throw error;
+    }
+}
+
 module.exports = {
     initializeWorkspaces,
     loadWorkspaces,
@@ -1153,5 +1324,6 @@ module.exports = {
     renameGroup,
     deleteGroup,
     getGroupsForImage,
-    getActiveWorkspaceGroups
+    getActiveWorkspaceGroups,
+    reorderWorkspaces
 };

@@ -108,35 +108,59 @@ function initializeMaskEditor() {
     const brushSizeInput = document.getElementById('brushSize');
 
     if (brushBtn) {
-        brushBtn.addEventListener('click', () => setTool('brush'));
+        brushBtn.addEventListener('click', (e) => {
+            
+            setTool('brush');
+        });
     }
 
     if (eraserBtn) {
-        eraserBtn.addEventListener('click', () => setTool('eraser'));
+        eraserBtn.addEventListener('click', (e) => {
+            
+            setTool('eraser');
+        });
     }
 
     if (brushShapeBtn) {
-        brushShapeBtn.addEventListener('click', toggleBrushShape);
+        brushShapeBtn.addEventListener('click', (e) => {
+            
+            toggleBrushShape();
+        });
     }
 
     if (clearBtn) {
-        clearBtn.addEventListener('click', clearMask);
+        clearBtn.addEventListener('click', (e) => {
+            
+            clearMask();
+        });
     }
 
     if (saveBtn) {
-        saveBtn.addEventListener('click', saveMask);
+        saveBtn.addEventListener('click', (e) => {
+            
+            saveMask();
+        });
     }
 
     if (deleteBtn) {
-        deleteBtn.addEventListener('click', () => deleteMask());
+        deleteBtn.addEventListener('click', (e) => {
+            
+            deleteMask();
+        });
     }
 
     if (cancelBtn) {
-        cancelBtn.addEventListener('click', closeMaskEditor);
+        cancelBtn.addEventListener('click', (e) => {
+            
+            closeMaskEditor();
+        });
     }
 
     if (closeBtn) {
-        closeBtn.addEventListener('click', closeMaskEditor);
+        closeBtn.addEventListener('click', (e) => {
+            
+            closeMaskEditor();
+        });
     }
 
     if (brushSizeInput) {
@@ -1404,8 +1428,8 @@ async function updateMaskPreview() {
         // Position the canvas to overlay the image exactly
         maskPreviewCanvas.style.width = drawWidth + 'px';
         maskPreviewCanvas.style.height = drawHeight + 'px';
-        maskPreviewCanvas.style.left = ((containerWidth - drawWidth) / 2) + 'px';
-        maskPreviewCanvas.style.top = ((containerHeight - drawHeight) / 2) + 'px';
+        //maskPreviewCanvas.style.left = ((containerWidth - drawWidth) / 2) + 'px';
+        //maskPreviewCanvas.style.top = ((containerHeight - drawHeight) / 2) + 'px';
         maskPreviewCanvas.style.position = 'absolute';
 
         const ctx = maskPreviewCanvas.getContext('2d');

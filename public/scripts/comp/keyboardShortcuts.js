@@ -6,12 +6,14 @@ let shortcutsOverlay = null;
 
 // Initialize keyboard shortcuts
 function initializeManualModalShortcuts() {
+    console.log('Initializing manual modal keyboard shortcuts');
     // Create shortcuts overlay
     createShortcutsOverlay();
     
     // Add event listeners
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
+    console.log('Keyboard shortcuts initialized');
 }
 
 // Create the shortcuts overlay
@@ -59,6 +61,14 @@ function createShortcutsOverlay() {
                     <span class="shortcut-key">Alt + .</span>
                     <span class="shortcut-desc">Next Image</span>
                 </div>
+                <div class="shortcut-item">
+                    <span class="shortcut-key">Alt + X</span>
+                    <span class="shortcut-desc">Start Generation</span>
+                </div>
+                <div class="shortcut-item">
+                    <span class="shortcut-key">Alt + O</span>
+                    <span class="shortcut-desc">Toggle Autofill</span>
+                </div>
             </div>
         </div>
     `;
@@ -73,6 +83,11 @@ function handleKeyDown(event) {
     
     // Only handle shortcuts when manual modal is open
     if (!isManualModalOpen) return;
+    
+    // Debug logging for key events
+    if (event.altKey) {
+        console.log('ALT key combination detected:', event.key);
+    }
     
     // Handle Alt key press
     if (event.key === 'Alt') {
@@ -94,10 +109,10 @@ function handleKeyDown(event) {
         
         switch (event.key) {
             case '1':
-                switchManualTab('prompt');
+                switchManualTab('prompt', document.activeElement);
                 break;
             case '2':
-                switchManualTab('uc');
+                switchManualTab('uc', document.activeElement);
                 break;
             case 'a':
             case 'A':
@@ -111,11 +126,69 @@ function handleKeyDown(event) {
             case 'V':
                 showCacheBrowser();
                 break;
+            case 'e':
+            case 'E':
+                // Trigger emphasis mode in the active prompt toolbar
+                const activeTextarea = document.activeElement;
+                if (activeTextarea && (activeTextarea.matches('.prompt-textarea, .character-prompt-textarea'))) {
+                    const toolbar = activeTextarea.closest('.prompt-textarea-container, .character-prompt-textarea-container')?.querySelector('.prompt-textarea-toolbar');
+                    if (toolbar && window.promptTextareaToolbar) {
+                        window.promptTextareaToolbar.openEmphasisMode(activeTextarea, toolbar);
+                    }
+                }
+                break;
+            case 'w':
+            case 'W':
+                // Trigger inline search in the active prompt toolbar
+                const searchTextarea = document.activeElement;
+                if (searchTextarea && (searchTextarea.matches('.prompt-textarea, .character-prompt-textarea'))) {
+                    const searchToolbar = searchTextarea.closest('.prompt-textarea-container, .character-prompt-textarea-container')?.querySelector('.prompt-textarea-toolbar');
+                    if (searchToolbar) {
+                        const searchBtn = searchToolbar.querySelector('[data-action="search"]');
+                        if (searchBtn) {
+                            searchBtn.click();
+                        }
+                    }
+                }
+                break;
             case ',':
                 navigateManualPreview({ currentTarget: { id: 'manualPreviewPrevBtn' } });
                 break;
             case '.':
                 navigateManualPreview({ currentTarget: { id: 'manualPreviewNextBtn' } });
+                break;
+            case 'x':
+            case 'X':
+                // Start generation
+                const manualGenerateBtn = document.getElementById('manualGenerateBtn');
+                if (manualGenerateBtn && !manualGenerateBtn.disabled) {
+                    manualGenerateBtn.click();
+                }
+                break;
+            case 'o':
+            case 'O':
+                // Toggle autofill
+                if (window.toggleAutofill) {
+                    const newState = window.toggleAutofill();
+                    
+                    // Update all autofill toggle buttons
+                    const allToolbars = document.querySelectorAll('.prompt-textarea-toolbar');
+                    allToolbars.forEach((toolbarElement, index) => {
+                        const autofillBtn = toolbarElement.querySelector('[data-action="autofill"]');
+                        if (autofillBtn) {
+                            const isEnabled = window.isAutofillEnabled ? window.isAutofillEnabled() : true;
+                            autofillBtn.setAttribute('data-state', isEnabled ? 'on' : 'off');
+                            const icon = autofillBtn.querySelector('i');
+                            if (icon) {
+                                icon.className = isEnabled ? 'fas fa-lightbulb' : 'fas fa-lightbulb-slash';
+                            }
+                        } else {
+                            console.log(`No autofill button found in toolbar ${index}`);
+                        }
+                    });
+                } else {
+                    console.log('toggleAutofill function not found on window object');
+                }
                 break;
         }
     }

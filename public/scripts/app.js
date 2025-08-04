@@ -98,6 +98,14 @@ const manualPreviewPinBtn = document.getElementById('manualPreviewPinBtn');
 const manualPreviewScrapBtn = document.getElementById('manualPreviewScrapBtn');
 const datasetDropdown = document.getElementById('datasetDropdown');
 const datasetDropdownBtn = document.getElementById('datasetDropdownBtn');
+
+// Helper function to safely add event listeners without duplicates
+function addSafeEventListener(element, eventType, handler) {
+    // Remove existing listener first to prevent duplicates
+    element.removeEventListener(eventType, handler);
+    // Add the new listener
+    element.addEventListener(eventType, handler);
+}
 const datasetDropdownMenu = document.getElementById('datasetDropdownMenu');
 const datasetSelected = document.getElementById('datasetSelected');
 const datasetIcon = document.getElementById('datasetIcon');
@@ -250,19 +258,30 @@ const modelGroups = [
         group: 'Current Model',
         options: [
             { value: 'v4_5', name: 'NovelAI v4.5', display: 'v4.5' },
-            { value: 'v4_5_cur', name: 'NovelAI v4.5 Curated', display: 'v4.5', badge: 'C', badge_class: 'curated-badge' },
+            { value: 'v4_5_cur', name: 'NovelAI v4.5 (Curated)', display: 'v4.5', badge: 'C', badge_class: 'curated-badge' },
             { value: 'v4', name: 'NovelAI v4', display: 'v4' },
-            { value: 'v4_cur', name: 'NovelAI v4 Curated', display: 'v4', badge: 'C', badge_class: 'curated-badge' }
+            { value: 'v4_cur', name: 'NovelAI v4 (Curated)', display: 'v4', badge: 'C', badge_class: 'curated-badge' }
         ]
     },
     {
         group: 'Legacy Model',
         options: [
-            { value: 'v3', name: 'NovelAI v3 Anime', display: 'v3', badge: 'L', badge_class: 'legacy-badge' },
-            { value: 'v3_furry', name: 'NovelAI v3 Furry', display: 'v3', badge: 'LF', badge_class: 'legacy-furry-badge' }
+            { value: 'v3', name: 'NovelAI v3 (Anime)', display: 'v3', badge: 'L', badge_class: 'legacy-badge' },
+            { value: 'v3_furry', name: 'NovelAI v3 (Furry)', display: 'v3', badge: 'LF', badge_class: 'legacy-furry-badge' }
         ]
     }
 ];
+
+// Create a mapping of model values to their full model names
+const modelNames = {};
+const modelBadges = {};
+modelGroups.forEach(group => {
+    group.options.forEach(opt => {
+        modelNames[opt.value] = opt.name;
+        modelBadges[opt.value] = { display: opt.display, badge: opt.badge, badge_class: opt.badge_class };
+    });
+});
+
 
 // Helper function to check if a model is V3
 function isV3Model(modelValue) {
@@ -367,6 +386,9 @@ async function loadPresetIntoForm(presetName) {
         await loadIntoManualForm(presetData);
 
         showGlassToast('success', null, `${presetName} Loaded`);
+        
+        // Update prompt status icons after loading preset
+        updatePromptStatusIcons();
     } catch (error) {
         console.error('Load preset error:', error);
         showError(`Failed to load preset "${presetName}": ${error.message}`);
@@ -417,12 +439,14 @@ async function renderCustomPresetDropdown(selectedVal) {
                     </div>
                 </div>
             `;
-            option.addEventListener('click', () => {
+            option.addEventListener('click', (e) => {
+                e.preventDefault();
                 selectCustomPreset(`preset:${preset.name}`);
                 closeCustomPresetDropdown();
             });
-            option.addEventListener('keydown', e => {
+            option.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
                     selectCustomPreset(`preset:${preset.name}`);
                     closeCustomPresetDropdown();
                 }
@@ -558,7 +582,6 @@ setupDropdown(
     renderManualResolutionDropdown,
     () => manualSelectedResolution
 );
-
 // Replace the three function definitions with the new combined function
 async function loadIntoManualForm(source, image = null) {
     try {
@@ -811,15 +834,6 @@ async function loadIntoManualForm(source, image = null) {
                     vibeNormalizeToggle.style.display = 'none';
                 }
             } else {
-                // Load vibe references if not already loaded
-                if (vibeReferences.length === 0) {
-                    try {
-                        await loadVibeReferences();
-                    } catch (error) {
-                        console.error('Failed to load vibe references for forge data:', error);
-                    }
-                }
-
                 // Clear existing vibe references
                 if (vibeReferencesContainer) {
                     vibeReferencesContainer.innerHTML = '';
@@ -1026,6 +1040,9 @@ async function loadIntoManualForm(source, image = null) {
         if (manualPresetName && currentPresetName) {
             manualPresetName.value = currentPresetName;
         }
+        
+        // Update prompt status icons after loading form data
+        updatePromptStatusIcons();
     } catch (error) {
         console.error('Error loading into form:', error);
         showError('Failed to load data');
@@ -1173,9 +1190,13 @@ function renderSimpleDropdown(menu, items, value_key, display_key, selectHandler
             selectHandler(value);
             closeHandler();
         };
-        option.addEventListener('click', action);
-        option.addEventListener('keydown', e => {
+        option.addEventListener('click', (e) => {
+            e.preventDefault();
+            action();
+        });
+        option.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
                 action();
             }
         });
@@ -1307,16 +1328,14 @@ function selectManualModel(value, group) {
   if (typeof updateGenerateButton === 'function') updateGenerateButton();
   // Update price display
   updateManualPriceDisplay();
-
-  // Refresh vibe references to update model-specific filtering
-  refreshVibeReferences();
+  
+  loadCacheImages();
 }
 
 function closeManualModelDropdown() {
     closeDropdown(manualModelDropdownMenu, manualModelDropdownBtn);
 }
 setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel);
-
 // Transformation Dropdown Functions
 function renderTransformationDropdown(selectedVal) {
     const hasValidImage = window.currentEditImage && window.currentEditMetadata;
@@ -1356,7 +1375,6 @@ function renderTransformationDropdown(selectedVal) {
         uploadOption.classList.toggle('selected', selectedVal === 'upload');
     }
 }
-
 function selectTransformation(value) {
     // Handle specific actions
     switch(value) {
@@ -1473,14 +1491,16 @@ function setupTransformationDropdownListeners() {
     options.forEach(option => {
         option.tabIndex = 0;
 
-        option.addEventListener('click', () => {
+        option.addEventListener('click', (e) => {
+            e.preventDefault();
             const value = option.dataset.value;
             selectTransformation(value);
             closeTransformationDropdown();
         });
 
-        option.addEventListener('keydown', e => {
+        option.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
                 const value = option.dataset.value;
                 selectTransformation(value);
                 closeTransformationDropdown();
@@ -1520,32 +1540,36 @@ async function moveToScraps(image) {
             return;
         }
 
-        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ filename })
-        });
-
-        if (response.ok) {
-            const result = await response.json();
-            showGlassToast('success', null, 'Image Scraped');
-
-                    // If currently viewing scraps, reload them
-            if (currentGalleryView === 'scraps') {
-                await loadScraps();
-            } else if (currentGalleryView === 'pinned') {
-                await loadPinned();
-            } else {
-                // If viewing images, remove from gallery and add placeholder
-                removeImageFromGallery(image);
+        // Use WebSocket API if available, otherwise fall back to HTTP
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                await window.wsClient.addScrap(activeWorkspace, filename);
+            } catch (wsError) {
+                showError('Failed to move to scraps: ' + wsError.message);
+                throw new Error('Failed to move to scraps');
             }
         } else {
-            const error = await response.json();
-            console.error('Move to scraps failed:', error);
-            showError(`Failed to move to scraps: ${error.error}`);
+            // Fallback to HTTP
+            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filename })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                console.error('Move to scraps failed:', error);
+                showError(`Failed to move to scraps: ${error.error}`);
+                return;
+            }
         }
+
+        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-trash-alt"></i>');
+
+        // If currently viewing scraps, reload them
+        switchGalleryView(currentGalleryView, true);
     } catch (error) {
         console.error('Error moving to scraps:', error);
         showError('Failed to move image to scraps');
@@ -1566,70 +1590,77 @@ async function moveManualPreviewToScraps() {
             return;
         }
 
-        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ filename })
-        });
-
-        if (response.ok) {
-            // Find the current image index in the manual preview image list
-            const currentIndex = allImages.findIndex(img =>
-                img.original === currentManualPreviewImage.original ||
-                img.upscaled === currentManualPreviewImage.upscaled
-            );
-
-            // Remove the current image from the manual preview list
-            if (currentIndex !== -1) {
-                allImages.splice(currentIndex, 1);
-            }
-
-            // Find the next (previous) image in the manual preview list
-            let nextImage = null;
-            const nextIndex = currentIndex >= allImages.length ? allImages.length - 1 : currentIndex;
-
-            if (nextIndex >= 0 && nextIndex < allImages.length) {
-                nextImage = allImages[nextIndex];
-            }
-
-            if (nextImage) {
-                // Load the next image and its metadata
-                try {
-                    const metadataResponse = await fetchWithAuth(`/images/${nextImage.original}`, {
-                        method: 'OPTIONS',
-                    });
-                    if (metadataResponse.ok) {
-                        const metadata = await metadataResponse.json();
-                        nextImage.metadata = metadata;
-                    }
-                } catch (error) {
-                    console.warn('Failed to load metadata for next image:', error);
-                }
-
-                // Update the preview with the next image
-                const imageUrl = `/images/${nextImage.original}`;
-                updateManualPreview(imageUrl);
-
-                showGlassToast('success', null, 'Image scrapped');
-            } else {
-                // No next image, reset the preview
-                resetManualPreview();
-                showGlassToast('success', null, 'Image scrapped!');
+        // Use WebSocket API if available, otherwise fall back to HTTP
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                await window.wsClient.addScrap(activeWorkspace, filename);
+            } catch (wsError) {
+                showError('Failed to move to scraps: ' + wsError.message);
+                throw new Error('Failed to move to scraps');
             }
         } else {
-            const error = await response.json();
-            console.error('Move to scraps failed:', error);
-            showError(`Failed to move to scraps: ${error.error}`);
+            // Fallback to HTTP
+            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filename })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                console.error('Move to scraps failed:', error);
+                showError(`Failed to move to scraps: ${error.error}`);
+                return;
+            }
         }
+
+        // Find the current image index in the manual preview image list
+        const currentIndex = allImages.findIndex(img =>
+            img.original === currentManualPreviewImage.original ||
+            img.upscaled === currentManualPreviewImage.upscaled
+        );
+
+        // Remove the current image from the manual preview list
+        if (currentIndex !== -1) {
+            allImages.splice(currentIndex, 1);
+        }
+
+        // Find the next (previous) image in the manual preview list
+        let nextImage = null;
+        const nextIndex = currentIndex >= allImages.length ? allImages.length - 1 : currentIndex;
+
+        if (nextIndex >= 0 && nextIndex < allImages.length) {
+            nextImage = allImages[nextIndex];
+        }
+
+        if (nextImage) {
+            // Load the next image and its metadata
+            try {
+                const metadata = await getImageMetadata(nextImage.original);
+                nextImage.metadata = metadata;
+            } catch (error) {
+                showGlassToast('error', 'Failed to load metadata for next image', error.message, false);
+            }
+
+            // Update the preview with the next image
+            const imageUrl = `/images/${nextImage.original}`;
+            updateManualPreview(imageUrl);
+
+            showGlassToast('success', null, 'Image scrapped');
+        } else {
+            // No next image, reset the preview
+            resetManualPreview();
+            showGlassToast('success', null, 'Image scrapped!');
+        }
+
+        // Refresh gallery after processing is complete
+        loadGallery(true);
     } catch (error) {
         console.error('Error moving to scraps:', error);
         showError('Failed to move image to scraps');
     }
-
-    // Refresh gallery after processing is complete
-    loadGallery(true);
 }
 
 // Remove image from scraps
@@ -1641,30 +1672,35 @@ async function removeFromScraps(image) {
             return;
         }
 
-        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ filename })
-        });
-
-        if (response.ok) {
-            showGlassToast('success', null, 'Image restored');
-
-            // If currently viewing scraps, reload them
-            if (currentGalleryView === 'scraps') {
-                await loadScraps();
-            } else if (currentGalleryView === 'pinned') {
-                await loadPinned();
-            } else {
-                // If viewing images, reload the gallery to show the restored image
-                await loadGallery();
+        // Use WebSocket API if available, otherwise fall back to HTTP
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                await window.wsClient.removeScrap(activeWorkspace, filename);
+            } catch (wsError) {
+                showError('Failed to remove from scraps: ' + wsError.message);
+                throw new Error('Failed to remove from scraps');
             }
         } else {
-            const error = await response.json();
-            showError(`Failed to remove from scraps: ${error.error}`);
+            // Fallback to HTTP
+            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filename })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                showError(`Failed to remove from scraps: ${error.error}`);
+                return;
+            }
         }
+
+        showGlassToast('success', null, 'Image removed from scraps', false, 3000, '<i class="nai-undo"></i>');
+
+        // If currently viewing scraps, reload them
+        switchGalleryView(currentGalleryView, true);
     } catch (error) {
         console.error('Error removing from scraps:', error);
         showError('Failed to remove image from scraps');
@@ -1685,38 +1721,56 @@ async function togglePinImage(image, pinBtn = null) {
         
         if (isPinned) {
             // Remove from pinned
-            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ filename })
-            });
-
-            if (response.ok) {
-                showGlassToast('success', null, 'Image unpinned');
+            if (window.wsClient && window.wsClient.isConnected()) {
+                try {
+                    await window.wsClient.removePinned(activeWorkspace, filename);
+                } catch (wsError) {
+                    showError('Failed to unpin image: ' + wsError.message);
+                    return;
+                }
             } else {
-                const error = await response.json();
-                showError(`Failed to unpin image: ${error.error}`);
-                return;
+                // Fallback to HTTP
+                const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ filename })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    showError(`Failed to unpin image: ${error.error}`);
+                    return;
+                }
             }
+            showGlassToast('success', null, 'Image unpinned', false, 5000, '<i class="nai-heart-disabled"></i>');
         } else {
             // Add to pinned
-            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ filename })
-            });
-
-            if (response.ok) {
-                showGlassToast('success', null, 'Image pinned');
+            if (window.wsClient && window.wsClient.isConnected()) {
+                try {
+                    await window.wsClient.addPinned(activeWorkspace, filename);
+                } catch (wsError) {
+                    showError('Failed to pin image: ' + wsError.message);
+                    return;
+                }
             } else {
-                const error = await response.json();
-                showError(`Failed to pin image: ${error.error}`);
-                return;
+                // Fallback to HTTP
+                const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ filename })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    showError(`Failed to pin image: ${error.error}`);
+                    return;
+                }
             }
+            showGlassToast('success', null, 'Image pinned', false, 5000, '<i class="nai-heart-enabled"></i>');
         }
 
         // Update the specific pin button that was clicked
@@ -1730,6 +1784,20 @@ async function togglePinImage(image, pinBtn = null) {
         if (window.lightboxPinBtn && window.lightboxPinBtn.style.display !== 'none') {
             await updateLightboxPinButtonAppearance(filename);
         }
+        
+        // Update the local gallery data to reflect the pin status change
+        if (window.allImages && Array.isArray(window.allImages)) {
+            const imageIndex = window.allImages.findIndex(img => {
+                const imgFilename = img.filename || img.original || img.upscaled;
+                return imgFilename === filename;
+            });
+            if (imageIndex !== -1) {
+                window.allImages[imageIndex].isPinned = !isPinned;
+            }
+        }
+        
+        // Update all pin buttons in the gallery for this image
+        updateGalleryPinButtons(filename, !isPinned);
     } catch (error) {
         console.error('Error toggling pin status:', error);
         showError('Failed to toggle pin status');
@@ -1739,6 +1807,28 @@ async function togglePinImage(image, pinBtn = null) {
 // Check if an image is pinned
 async function checkIfImageIsPinned(filename) {
     try {
+        // First try to get pin status from current gallery data if available
+        if (window.allImages && Array.isArray(window.allImages)) {
+            const image = window.allImages.find(img => {
+                const imgFilename = img.filename || img.original || img.upscaled;
+                return imgFilename === filename;
+            });
+            if (image && image.isPinned !== undefined) {
+                return image.isPinned;
+            }
+        }
+        
+        // Fallback to API call if WebSocket data not available
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                const pinnedData = await window.wsClient.getWorkspacePinned(activeWorkspace);
+                return pinnedData.pinned && pinnedData.pinned.includes(filename);
+            } catch (wsError) {
+                console.warn('WebSocket pinned check failed, falling back to HTTP:', wsError);
+            }
+        }
+        
+        // Final fallback to HTTP
         const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned`);
         if (response.ok) {
             const data = await response.json();
@@ -1748,6 +1838,32 @@ async function checkIfImageIsPinned(filename) {
     } catch (error) {
         console.error('Error checking pin status:', error);
         return false;
+    }
+}
+
+// Get image metadata via WebSocket with fallback to HTTP
+async function getImageMetadata(filename) {
+    try {
+        // Try WebSocket first
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                const metadata = await window.wsClient.requestImageMetadata(filename);
+                return metadata;
+            } catch (wsError) {
+                console.warn('WebSocket metadata request failed, falling back to HTTP:', wsError);
+            }
+        }
+        
+        // Fallback to HTTP
+        const response = await fetchWithAuth(`/metadata/${filename}`);
+        if (!response.ok) {
+            throw new Error(`Failed to load metadata: ${response.statusText}`);
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Error getting image metadata:', error);
+        showGlassToast('error', 'Image metadata request error', error.message, false);
+        throw error;
     }
 }
 
@@ -1788,6 +1904,29 @@ async function updateSpecificPinButton(filename) {
     }
 }
 
+// Update all pin buttons in the gallery for a specific image
+function updateGalleryPinButtons(filename, isPinned) {
+    try {
+        // Find all gallery items with this filename
+        const galleryItems = document.querySelectorAll(`.gallery-item[data-filename="${filename}"]`);
+        
+        galleryItems.forEach(item => {
+            const pinBtn = item.querySelector('.btn-secondary[title*="Pin"], .btn-secondary[title*="Unpin"]');
+            if (pinBtn) {
+                if (isPinned) {
+                    pinBtn.innerHTML = '<i class="nai-heart-enabled"></i>';
+                    pinBtn.title = 'Unpin image';
+                } else {
+                    pinBtn.innerHTML = '<i class="nai-heart-disabled"></i>';
+                    pinBtn.title = 'Pin image';
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error updating gallery pin buttons:', error);
+    }
+}
+
 function setSeedInputGroupState(open) {
     const manualSeed = document.getElementById('manualSeed');
     const sproutSeedBtn = document.getElementById('sproutSeedBtn');
@@ -1824,15 +1963,20 @@ async function loadOptions() {
         updateQueueStatus(window.optionsData?.queue_status);
 
         updateBalanceDisplay(window.optionsData?.balance);
+        
+        // Check for subscription notifications after page load
+        updateSubscriptionNotifications().catch(error => {
+            console.error('Error checking subscription notifications:', error);
+        });
     } catch (error) {
         console.error('Error loading options:', error);
         throw error;
     }
 }
-
-document.addEventListener('DOMContentLoaded', async function() {
-
-    try {
+// Register main app initialization steps with WebSocket client
+if (window.wsClient) {
+    // Priority 5: Initialize main app components
+    window.wsClient.registerInitStep(5, 'Loading application data', async () => {
         // Calculate initial images per page based on current window size
         galleryRows = calculateGalleryRows();
         imagesPerPage = galleryColumnsInput.value * galleryRows;
@@ -1840,11 +1984,14 @@ document.addEventListener('DOMContentLoaded', async function() {
         await loadOptions(); // TODO: Check functionality
         await loadWorkspaces(); // Load workspace data
         loadActiveWorkspaceColor(); // Load workspace color for bokeh
-        await loadVibeReferences(); // Load vibe references for immediate use
+        await loadCacheImages(); // Load vibe references for immediate use
         
         // Initialize gallery toggle group
         galleryToggleGroup.setAttribute('data-active', currentGalleryView);
+    });
 
+    // Priority 6: Initialize dropdowns and options
+    window.wsClient.registerInitStep(6, 'Setting up dropdowns and options', async () => {
         generateSamplerOptions();
         renderManualSamplerDropdown(manualSelectedSampler);
         selectManualSampler('k_euler_ancestral');
@@ -1869,7 +2016,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         renderDatasetBiasControls();
         renderUcPresetsDropdown();
         selectUcPreset(0);
+    });
 
+    // Priority 7: Load gallery and finalize UI
+    window.wsClient.registerInitStep(7, 'Loading gallery and finalizing UI', async () => {
         await loadGallery();
         await updateGalleryColumnsFromLayout();
         updateGenerateButton();
@@ -1892,19 +2042,23 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Initialize emphasis highlighting for manual fields
         initializeEmphasisOverlay(manualPrompt);
         initializeEmphasisOverlay(manualUc);
-    
-    
+    });
+
+    // Priority 8: Setup final event listeners
+    window.wsClient.registerInitStep(8, 'Setting up final event listeners', async () => {
         const manualSeed = document.getElementById('manualSeed');
         const clearSeedBtn = document.getElementById('clearSeedBtn');
         const editSeedBtn = document.getElementById('editSeedBtn');
         // Start closed
         setSeedInputGroupState(false);
     
-        editSeedBtn.addEventListener('click', function() {
+        editSeedBtn.addEventListener('click', (e) => {
+            e.preventDefault();
             setSeedInputGroupState(true);
             manualSeed?.focus();
         });
-        clearSeedBtn.addEventListener('click', function() {
+        clearSeedBtn.addEventListener('click', (e) => {
+            e.preventDefault();
             if (manualSeed && manualSeed.value) {
                 manualSeed.value = '';
                 manualSeed.focus();
@@ -1912,17 +2066,102 @@ document.addEventListener('DOMContentLoaded', async function() {
                 setSeedInputGroupState(false);
             }
         });
-    } catch (error) {
-        console.error('Failed to initialize app:', error);
-        showError('Failed to load application data');
-    }
-});
+    });
+} else {
+    // Fallback initialization if WebSocket client isn't available yet
+    document.addEventListener('DOMContentLoaded', async function() {
+        try {
+            // Calculate initial images per page based on current window size
+            galleryRows = calculateGalleryRows();
+            imagesPerPage = galleryColumnsInput.value * galleryRows;
+
+            await loadOptions(); // TODO: Check functionality
+            await loadWorkspaces(); // Load workspace data
+            loadActiveWorkspaceColor(); // Load workspace color for bokeh
+            await loadCacheImages(); // Load vibe references for immediate use
+            
+            // Initialize gallery toggle group
+            galleryToggleGroup.setAttribute('data-active', currentGalleryView);
+
+            generateSamplerOptions();
+            renderManualSamplerDropdown(manualSelectedSampler);
+            selectManualSampler('k_euler_ancestral');
+
+            generateResolutionOptions();
+            renderManualResolutionDropdown(manualSelectedResolution);
+            selectManualResolution('normal_square', 'Normal');
+
+            generateNoiseSchedulerOptions();
+            renderManualNoiseSchedulerDropdown(manualSelectedNoiseScheduler);
+            selectManualNoiseScheduler('karras');
+
+            generateModelOptions();
+            renderManualModelDropdown(manualSelectedModel);
+            selectManualModel('v4_5', '');
+
+            await renderCustomPresetDropdown(selectedPreset);
+
+            // Initialize new dropdowns
+            renderDatasetDropdown();
+            updateDatasetDisplay();
+            renderDatasetBiasControls();
+            renderUcPresetsDropdown();
+            selectUcPreset(0);
+
+            await loadGallery();
+            await updateGalleryColumnsFromLayout();
+            updateGenerateButton();
+
+            // Initialize image bias adjustment functionality
+            initializeImageBiasAdjustment();
+
+            // Initialize background gradient
+            setupEventListeners();
+        
+            // Initialize cache manager
+            initializeCacheManager();
+            
+            // Initialize keyboard shortcuts for manual modal
+            initializeManualModalShortcuts();
+            
+            // Initialize dataset tag toolbar
+            initializeDatasetTagToolbar();
+        
+            // Initialize emphasis highlighting for manual fields
+            initializeEmphasisOverlay(manualPrompt);
+            initializeEmphasisOverlay(manualUc);
+        
+            const manualSeed = document.getElementById('manualSeed');
+            const clearSeedBtn = document.getElementById('clearSeedBtn');
+            const editSeedBtn = document.getElementById('editSeedBtn');
+            // Start closed
+            setSeedInputGroupState(false);
+        
+            editSeedBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                setSeedInputGroupState(true);
+                manualSeed?.focus();
+            });
+            clearSeedBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (manualSeed && manualSeed.value) {
+                    manualSeed.value = '';
+                    manualSeed.focus();
+                } else {
+                    setSeedInputGroupState(false);
+                }
+            });
+        } catch (error) {
+            console.error('Failed to initialize app:', error);
+            showError('Failed to load application data');
+        }
+    });
+}
 
 // Dataset Dropdown Functions
 function renderDatasetDropdown() {
     datasetDropdownMenu.innerHTML = '';
-
-    // Use loaded options data or fallback to default
+    
     const datasets = optionsData?.datasets || [
         { value: 'anime', display: 'Anime', sub_toggles: [] },
         { value: 'furry', display: 'Furry', sub_toggles: [] },
@@ -1945,7 +2184,7 @@ function renderDatasetDropdown() {
         `;
 
         option.addEventListener('click', (e) => {
-            e.stopPropagation();
+            e.preventDefault();
             toggleDataset(dataset.value);
         });
 
@@ -1965,6 +2204,9 @@ function toggleDataset(value) {
     updateDatasetDisplay();
     renderDatasetDropdown();
     renderDatasetBiasControls();
+    
+    // Update prompt status icons to reflect dataset changes
+    updatePromptStatusIcons();
 }
 
 function updateDatasetDisplay() {
@@ -1995,6 +2237,7 @@ function updateDatasetDisplay() {
     if (datasetBtn) {
         datasetBtn.setAttribute('data-state', selectedDatasets.length > 0 ? 'on' : 'off');
     }
+    updatePromptStatusIcons();
 }
 
 function openDatasetDropdown() {
@@ -2004,7 +2247,6 @@ function openDatasetDropdown() {
 function closeDatasetDropdown() {
     closeDropdown(datasetDropdownMenu, datasetDropdownBtn);
 }
-
 // Dataset Bias Functions
 function renderDatasetBiasControls() {
     const container = document.getElementById('datasetBiasControls');
@@ -2054,7 +2296,7 @@ function renderDatasetBiasControls() {
             window.optionsData?.datasets[dataset]?.sub_toggles.forEach(subToggle => {
                 const toggleBtn = document.createElement('button');
                 toggleBtn.type = 'button';
-                toggleBtn.className = 'btn-secondary toggle-btn';
+                toggleBtn.className = 'btn-secondary indicator';
                 toggleBtn.setAttribute('data-state', 'off');
                 toggleBtn.textContent = subToggle.name;
                 toggleBtn.title = subToggle.description || `Toggle ${subToggle.name}`;
@@ -2065,7 +2307,8 @@ function renderDatasetBiasControls() {
                     toggleBtn.setAttribute('data-state', setting.enabled ? 'on' : 'off');
                 }
 
-                toggleBtn.addEventListener('click', () => {
+                toggleBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
                     const currentState = toggleBtn.getAttribute('data-state') === 'on';
                     const newState = !currentState;
                     toggleBtn.setAttribute('data-state', newState ? 'on' : 'off');
@@ -2183,6 +2426,7 @@ function toggleQuality() {
 
     qualityToggleBtn.setAttribute('data-state', newState);
     appendQuality = newState === 'on';
+    updatePromptStatusIcons();
 }
 
 // UC Presets Dropdown Functions
@@ -2205,7 +2449,8 @@ function renderUcPresetsDropdown() {
 
         option.innerHTML = `<span>${preset.display}</span>`;
 
-        option.addEventListener('click', () => {
+        option.addEventListener('click', (e) => {
+            e.preventDefault();
             selectUcPreset(preset.value);
             closeUcPresetsDropdown();
         });
@@ -2228,6 +2473,7 @@ function selectUcPreset(value) {
     if (ucPresetsBtn) {
         ucPresetsBtn.setAttribute('data-state', value > 0 ? 'on' : 'off');
     }
+    updatePromptStatusIcons();
 }
 
 function openUcPresetsDropdown() {
@@ -2238,16 +2484,140 @@ function closeUcPresetsDropdown() {
     closeDropdown(ucPresetsDropdownMenu, ucPresetsDropdownBtn);
 }
 
+// Update prompt status icons based on current state
+function updatePromptStatusIcons() {
+    const promptTabs = document.querySelector('#manualModal .prompt-tabs');
+    const isShowingBoth = promptTabs && promptTabs.classList.contains('show-both');
+    
+    // Update main prompt status icons
+    const mainPromptContainer = document.querySelector('#prompt-tab .prompt-textarea-container');
+    if (mainPromptContainer) {
+        const qualityIcon = mainPromptContainer.querySelector('.prompt-status-icon.quality-enabled');
+        const datasetIcon = mainPromptContainer.querySelector('.prompt-status-icon.dataset-enabled');
+        const ucIcon = mainPromptContainer.querySelector('.prompt-status-icon.uc-enabled');
+        
+        // Quality icon
+        if (qualityIcon) {
+            const qualityState = qualityToggleBtn.getAttribute('data-state');
+            qualityIcon.style.display = qualityState === 'on' ? 'flex' : 'none';
+        }
+        
+        // Dataset icon - always show, use default sakura when none selected
+        if (datasetIcon) {
+            datasetIcon.style.display = 'flex';
+            
+            // Find the icon element inside the dataset icon container
+            const iconElement = datasetIcon.querySelector('i');
+            if (iconElement) {
+                // Priority: furry > backgrounds > anime (default)
+                let iconClass = 'nai-sakura'; // default (anime)
+                if (selectedDatasets.includes('furry')) {
+                    iconClass = 'nai-paw';
+                } else if (selectedDatasets.includes('backgrounds')) {
+                    iconClass = 'fas fa-tree';
+                } else {
+                    iconClass = 'nai-sakura';
+                }
+                iconElement.className = iconClass;
+            }
+        }
+        
+        // UC icon (only show when not in show both mode)
+        if (ucIcon && !isShowingBoth) {
+            const ucState = ucPresetsDropdownBtn.getAttribute('data-state');
+            ucIcon.style.display = ucState === 'on' ? 'flex' : 'none';
+            
+            // Update UC level dots
+            if (ucState === 'on') {
+                ucIcon.setAttribute('data-uc-level', selectedUcPreset.toString());
+            }
+        }
+    }
+    
+    // Update UC prompt status icons
+    const ucPromptContainer = document.querySelector('#uc-tab .prompt-textarea-container');
+    if (ucPromptContainer) {
+        const qualityIcon = ucPromptContainer.querySelector('.prompt-status-icon.quality-enabled');
+        const datasetIcon = ucPromptContainer.querySelector('.prompt-status-icon.dataset-enabled');
+        const ucIcon = ucPromptContainer.querySelector('.prompt-status-icon.uc-enabled');
+        
+        // Quality icon
+        if (qualityIcon) {
+            const qualityState = qualityToggleBtn.getAttribute('data-state');
+            qualityIcon.style.display = qualityState === 'on' ? 'flex' : 'none';
+        }
+        
+        // Dataset icon - always show, use default sakura when none selected
+        if (datasetIcon) {
+            datasetIcon.style.display = 'flex';
+            
+            // Find the icon element inside the dataset icon container
+            const iconElement = datasetIcon.querySelector('i');
+            if (iconElement) {
+                // Priority: furry > backgrounds > anime (default)
+                let iconClass = 'nai-sakura'; // default (anime)
+                if (selectedDatasets.includes('furry')) {
+                    iconClass = 'nai-paw';
+                } else if (selectedDatasets.includes('backgrounds')) {
+                    iconClass = 'fas fa-tree';
+                } else {
+                    iconClass = 'nai-sakura';
+                }
+                iconElement.className = iconClass;
+            }
+        }
+        
+        // UC icon
+        if (ucIcon) {
+            const ucState = ucPresetsDropdownBtn.getAttribute('data-state');
+            ucIcon.style.display = ucState === 'on' ? 'flex' : 'none';
+            
+            // Update UC level dots
+            if (ucState === 'on') {
+                ucIcon.setAttribute('data-uc-level', selectedUcPreset.toString());
+            }
+        }
+    }
+    
+    // In show both mode, ensure proper icon visibility
+    if (isShowingBoth) {
+        // Hide UC icon on main prompt
+        const mainUcIcon = mainPromptContainer?.querySelector('.prompt-status-icon.uc-enabled');
+        if (mainUcIcon) {
+            mainUcIcon.style.display = 'none';
+        }
+        
+        // Hide quality and dataset icons on UC prompt
+        const ucQualityIcon = ucPromptContainer?.querySelector('.prompt-status-icon.quality-enabled');
+        const ucDatasetIcon = ucPromptContainer?.querySelector('.prompt-status-icon.dataset-enabled');
+        if (ucQualityIcon) {
+            ucQualityIcon.style.display = 'none';
+        }
+        if (ucDatasetIcon) {
+            ucDatasetIcon.style.display = 'none';
+        }
+    }
+}
 // Setup event listeners
 function setupEventListeners() {
     // Logout button
-    logoutButton.addEventListener('click', handleLogout);
+    logoutButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleLogout();
+    });
 
     // Manual modal events
-    manualBtn.addEventListener('click', showManualModal);
-    closeManualBtn.addEventListener('click', hideManualModal);
+    manualBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        showManualModal();
+    });
+    closeManualBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        hideManualModal();
+    });
     manualPreviewCloseBtn.addEventListener('click', (e) => {
         e.preventDefault();
+        
         if (window.innerWidth > 1400) {
             hideManualModal(e, false);
         } else {
@@ -2274,17 +2644,22 @@ function setupEventListeners() {
     });
 
     // Add load button click handler
-    manualLoadBtn.addEventListener('click', () => {
+    manualLoadBtn.addEventListener('click', (e) => {
+        e.preventDefault();
         const presetName = manualPresetName.value.trim();
         if (presetName) {
             loadPresetIntoForm(presetName);
         }
     });
     manualForm.addEventListener('submit', handleManualGeneration);
-    manualSaveBtn.addEventListener('click', handleManualSave);
+    manualSaveBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleManualSave();
+    });
 
     // Manual preview control events
-    manualPreviewDownloadBtn.addEventListener('click', () => {
+    manualPreviewDownloadBtn.addEventListener('click', (e) => {
+        e.preventDefault();
         const previewImage = document.getElementById('manualPreviewImage');
         if (previewImage && previewImage.dataset.blobUrl) {
             const blobUrl = previewImage.dataset.blobUrl;
@@ -2298,6 +2673,7 @@ function setupEventListeners() {
     });
 
     manualPreviewUpscaleBtn.addEventListener('click', (e) => {
+        e.preventDefault();
         if (currentManualPreviewImage) {
             upscaleImage(currentManualPreviewImage, e);
         } else {
@@ -2305,7 +2681,8 @@ function setupEventListeners() {
         }
     });
 
-    manualPreviewLoadBtn.addEventListener('click', () => {
+    manualPreviewLoadBtn.addEventListener('click', (e) => {
+        e.preventDefault();
         if (currentManualPreviewImage) {
             if (window.innerWidth <= 1400 && previewSection.classList.contains('show')) {
                 previewSection.classList.remove('active');
@@ -2317,7 +2694,8 @@ function setupEventListeners() {
         }
     });
 
-    manualPreviewVariationBtn.addEventListener('click', () => {
+    manualPreviewVariationBtn.addEventListener('click', (e) => {
+        e.preventDefault();
         if (currentManualPreviewImage) {
             // For preview, only set the base image without replacing dialog contents
             const filename = currentManualPreviewImage.original;
@@ -2363,7 +2741,8 @@ function setupEventListeners() {
         }
     });
 
-    manualPreviewSeedBtn.addEventListener('click', () => {
+    manualPreviewSeedBtn.addEventListener('click', (e) => {
+        e.preventDefault();
         if (window.lastGeneratedSeed) {
             manualSeed.value = window.lastGeneratedSeed; 
             setSeedInputGroupState(true);
@@ -2372,13 +2751,17 @@ function setupEventListeners() {
                 setTimeout(() => { previewSection.classList.remove('show'); }, 500);
             }
         } else {
-            showGlassToast('error', null, 'No seed available');
+            showGlassToast('error', null, 'No seed available', false, 5000, '<i class="fas fa-seedling"></i>');
         }
     });
 
-    manualPreviewDeleteBtn.addEventListener('click', deleteManualPreviewImage);
+    manualPreviewDeleteBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        deleteManualPreviewImage();
+    });
 
-    manualPreviewPinBtn.addEventListener('click', () => {
+    manualPreviewPinBtn.addEventListener('click', (e) => {
+        e.preventDefault();
         if (currentManualPreviewImage) {
             togglePinImage(currentManualPreviewImage, manualPreviewPinBtn);
         } else {
@@ -2386,7 +2769,8 @@ function setupEventListeners() {
         }
     });
 
-    manualPreviewScrapBtn.addEventListener('click', () => {
+    manualPreviewScrapBtn.addEventListener('click', (e) => {
+        e.preventDefault();
         if (currentManualPreviewImage) {
             if (currentGalleryView === 'scraps') {
                 removeFromScraps(currentManualPreviewImage);
@@ -2399,10 +2783,14 @@ function setupEventListeners() {
     });
 
     // Clear seed button
-    clearSeedBtn.addEventListener('click', clearSeed);
+    clearSeedBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        clearSeed();
+    });
 
     // Paid request toggle
-    paidRequestToggle.addEventListener('click', () => {
+    paidRequestToggle.addEventListener('click', (e) => {
+        e.preventDefault();
         forcePaidRequest = !forcePaidRequest;
         paidRequestToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
     });
@@ -2411,11 +2799,15 @@ function setupEventListeners() {
     setupDropdown(datasetDropdown, datasetDropdownBtn, datasetDropdownMenu, renderDatasetDropdown, () => selectedDatasets);
 
     // Quality toggle
-    qualityToggleBtn.addEventListener('click', toggleQuality);
+    qualityToggleBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggleQuality();
+    });
 
 
     // Vibe normalize toggle
-    vibeNormalizeToggle.addEventListener('click', () => {
+    vibeNormalizeToggle.addEventListener('click', (e) => {
+        e.preventDefault();
         const currentState = vibeNormalizeToggle.getAttribute('data-state') === 'on';
         const newState = !currentState;
         vibeNormalizeToggle.setAttribute('data-state', newState ? 'on' : 'off');
@@ -2456,16 +2848,28 @@ function setupEventListeners() {
 
     // Metadata dialog events
     if (metadataBtn) {
-        metadataBtn.addEventListener('click', showMetadataDialog);
+        metadataBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            showMetadataDialog();
+        });
     }
     if (closeMetadataDialog) {
-        closeMetadataDialog.addEventListener('click', hideMetadataDialog);
+        closeMetadataDialog.addEventListener('click', (e) => {
+            e.preventDefault();
+            hideMetadataDialog();
+        });
     }
     if (dialogPromptBtn) {
-        dialogPromptBtn.addEventListener('click', () => toggleDialogExpanded('prompt'));
+        dialogPromptBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleDialogExpanded('prompt');
+        });
     }
     if (dialogUcBtn) {
-        dialogUcBtn.addEventListener('click', () => toggleDialogExpanded('uc'));
+        dialogUcBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleDialogExpanded('uc');
+        });
     }
 
     // Close dialog expanded sections
@@ -2507,14 +2911,14 @@ function setupEventListeners() {
             if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
                 const autocompleteList = document.querySelector('.character-autocomplete-list');
                 if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
-                    e.preventDefault();
+                    
                     handleCharacterDetailArrowKeys(e.key);
                 }
             }
         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
             // Handle arrow key navigation for lightbox
             if (lightboxModal.style.display === 'flex') {
-                e.preventDefault();
+                
                 navigateLightbox(e.key === 'ArrowLeft' ? -1 : 1);
             }
         } else if (e.key === 'Enter') {
@@ -2522,26 +2926,9 @@ function setupEventListeners() {
             if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
                 const autocompleteList = document.querySelector('.character-autocomplete-list');
                 if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
-                    e.preventDefault();
+                    
                     handleCharacterDetailEnter();
                 }
-            }
-        } else if (e.key === 'e' && e.altKey) {
-            // Alt+E: Show emphasis adjustment popup
-            console.log('Alt+E detected!', e.key, e.altKey, e.ctrlKey, e.shiftKey);
-            e.preventDefault();
-            const activeElement = document.activeElement;
-            console.log('Active element:', activeElement);
-            if (activeElement && (activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'INPUT')) {
-                console.log('Starting emphasis editing...');
-                startEmphasisEditing(activeElement);
-            }
-        } else if (e.key === 'w' && e.altKey) {
-            // Alt+W: Show text search popup
-            e.preventDefault();
-            const activeElement = document.activeElement;
-            if (activeElement && (activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'INPUT')) {
-                startTextSearch(activeElement);
             }
         }
     });
@@ -2549,14 +2936,18 @@ function setupEventListeners() {
 
     // Generation controls
     presetSelect.addEventListener('change', updateGenerateButton);
-    generateBtn.addEventListener('click', (e) => generateImage(e));
+    generateBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        generateImage(e);
+    });
 
     // Upload functionality
     const uploadBtn = document.getElementById('uploadBtn');
     const imageUploadInput = document.getElementById('imageUploadInput');
 
     if (uploadBtn) {
-        uploadBtn.addEventListener('click', () => {
+        uploadBtn.addEventListener('click', (e) => {
+            e.preventDefault();
             imageUploadInput.click();
         });
     }
@@ -2569,11 +2960,15 @@ function setupEventListeners() {
     document.addEventListener('paste', handleClipboardPaste);
 
     // Toggle button functionality
-    manualUpscale.addEventListener('click', toggleManualUpscale);
+    manualUpscale.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggleManualUpscale();
+    });
 
     // Custom resolution event listeners
     if (manualCustomResolutionBtn) {
-        manualCustomResolutionBtn.addEventListener('click', () => {
+        manualCustomResolutionBtn.addEventListener('click', (e) => {
+            e.preventDefault();
             if (manualSelectedResolution === 'custom') {
                 // Switch back to dropdown mode
                 selectManualResolution('normal_portrait', 'Normal');
@@ -2594,18 +2989,27 @@ function setupEventListeners() {
     }
 
     if (deleteImageBaseBtn) {
-        deleteImageBaseBtn.addEventListener('click', handleDeleteBaseImage);
+        deleteImageBaseBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleDeleteBaseImage();
+        });
     }
 
     const closeCacheBrowserBtn = document.getElementById('closeCacheBrowserBtn');
     const closeCacheBrowserContainerBtn = document.getElementById('closeCacheBrowserContainerBtn');
 
     if (closeCacheBrowserBtn) {
-        closeCacheBrowserBtn.addEventListener('click', hideCacheBrowser);
+        closeCacheBrowserBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            hideCacheBrowser();
+        });
     }
 
     if (closeCacheBrowserContainerBtn) {
-        closeCacheBrowserContainerBtn.addEventListener('click', hideCacheBrowser);
+        closeCacheBrowserContainerBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            hideCacheBrowser();
+        });
     }
 
     // Cache browser tab event listeners
@@ -2641,10 +3045,30 @@ function setupEventListeners() {
 
     if (manualStrengthValue) {
         manualStrengthValue.addEventListener('input', updateManualPriceDisplay);
+        
+        // Add scroll wheel functionality for strength input
+        manualStrengthValue.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            const currentValue = parseFloat(this.value) || 0.00;
+            const newValue = Math.max(0, Math.min(1, currentValue + delta));
+            this.value = newValue.toFixed(2);
+            updateManualPriceDisplay();
+        });
     }
 
     if (manualNoiseValue) {
         manualNoiseValue.addEventListener('input', updateManualPriceDisplay);
+        
+        // Add scroll wheel functionality for noise input
+        manualNoiseValue.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            const currentValue = parseFloat(this.value) || 0.00;
+            const newValue = Math.max(0, Math.min(1, currentValue + delta));
+            this.value = newValue.toFixed(2);
+            updateManualPriceDisplay();
+        });
     }
 
     // Add event listener for image bias changes
@@ -2744,7 +3168,7 @@ function setupEventListeners() {
     // Mouse wheel functionality for numeric inputs
     if (manualSteps) {
         manualSteps.addEventListener('wheel', function(e) {
-            e.preventDefault();
+            
             const delta = e.deltaY > 0 ? -1 : 1;
             const currentValue = parseInt(this.value) || 25;
             const newValue = Math.max(1, Math.min(28, currentValue + delta));
@@ -2754,7 +3178,7 @@ function setupEventListeners() {
 
     if (manualGuidance) {
         manualGuidance.addEventListener('wheel', function(e) {
-            e.preventDefault();
+            
             const delta = e.deltaY > 0 ? -0.1 : 0.1;
             const currentValue = parseFloat(this.value) || 5.0;
             const newValue = Math.max(0.0, Math.min(10.0, currentValue + delta));
@@ -2764,7 +3188,7 @@ function setupEventListeners() {
 
     if (manualRescale) {
         manualRescale.addEventListener('wheel', function(e) {
-            e.preventDefault();
+            
             const delta = e.deltaY > 0 ? -0.01 : 0.01;
             const currentValue = parseFloat(this.value) || 0.0;
             const newValue = Math.max(0.0, Math.min(1.0, currentValue + delta));
@@ -2777,26 +3201,48 @@ function setupEventListeners() {
     const showBothBtn = document.getElementById('showBothBtn');
     const promptTabs = document.querySelector('#manualModal .prompt-tabs');
 
+    // Track the last focused textarea globally
+    let lastFocusedTextarea = null;
+    
+    // Add focus event listeners to all textareas to track the last focused one
+    document.addEventListener('focusin', (e) => {
+        if (e.target.matches('.prompt-textarea, .character-prompt-textarea')) {
+            lastFocusedTextarea = e.target;
+        }
+    });
+    
     manualTabButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const targetTab = this.getAttribute('data-tab');
-            switchManualTab(targetTab);
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            const targetTab = button.getAttribute('data-tab');
+            switchManualTab(targetTab, lastFocusedTextarea);
         });
     });
 
     // Show both panes functionality
     if (showBothBtn) {
-        showBothBtn.addEventListener('click', function() {
+        showBothBtn.addEventListener('click', (e) => {
+            e.preventDefault();
             toggleManualShowBoth();
         });
     }
 
 
 
-    document.getElementById('randomPromptToggleBtn').addEventListener('click', toggleRandomPrompt);
-    document.getElementById('randomPromptRefreshBtn').addEventListener('click', executeRandomPrompt);
-    document.getElementById('randomPromptTransferBtn').addEventListener('click', transferRandomPrompt);
+    document.getElementById('randomPromptToggleBtn').addEventListener('click', (e) => {
+        e.preventDefault();
+        toggleRandomPrompt();
+    });
+    document.getElementById('randomPromptRefreshBtn').addEventListener('click', (e) => {
+        e.preventDefault();
+        executeRandomPrompt();
+    });
+    document.getElementById('randomPromptTransferBtn').addEventListener('click', (e) => {
+        e.preventDefault();
+        transferRandomPrompt();
+    });
     document.getElementById('randomPromptNsfwBtn').addEventListener('click', (e) => {
+        e.preventDefault();
         const btn = e.currentTarget;
         const state = btn.dataset.state === 'on' ? 'off' : 'on';
         btn.dataset.state = state;
@@ -2806,15 +3252,16 @@ function setupEventListeners() {
 
     document.getElementById('manualPreviewHandle').addEventListener('click', (e) => {
         e.preventDefault();
+        
         e.stopPropagation();
         if (!previewSection.classList.contains('show')) {
             previewSection.classList.add('show');
             setTimeout(() => { previewSection.classList.add('active'); }, 1);
         }
     });
-
     // Update the click event for manualPresetToggleBtn to toggle the group and button state
-    manualPresetToggleBtn.addEventListener('click', function() {
+    manualPresetToggleBtn.addEventListener('click', (e) => {
+        e.preventDefault();
         const presetName = manualPresetName.value.trim();
         const valid = isValidPresetName(presetName);
         if (presetName === "" && !valid) {
@@ -2854,8 +3301,11 @@ function setupEventListeners() {
         // If there is a valid preset name, do nothing (button is not a toggle)
     });
 
-    galleryColumnsInput?.addEventListener('input', e => setGalleryColumns(e.target.value));
-    galleryColumnsInput?.addEventListener('wheel', function(e) {
+    galleryColumnsInput?.addEventListener('input', (e) => {
+        e.preventDefault();
+        setGalleryColumns(e.target.value);
+    });
+    galleryColumnsInput?.addEventListener('wheel', (e) => {
         e.preventDefault();
         const delta = e.deltaY > 0 ? -1 : 1;
         const currentValue = parseInt(this.value) || 3;
@@ -2864,9 +3314,21 @@ function setupEventListeners() {
         setGalleryColumns(newValue);
     });
 
+    // Sort order toggle button
+    const sortOrderToggleBtn = document.getElementById('sortOrderToggleBtn');
+    if (sortOrderToggleBtn) {
+        sortOrderToggleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (window.toggleGallerySortOrder) {
+                window.toggleGallerySortOrder();
+            }
+        });
+    }
+
     // Gallery toggle group
     galleryToggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
+            e.preventDefault();
             const view = e.currentTarget.getAttribute('data-view');
             switchGalleryView(view);
         });
@@ -2874,14 +3336,19 @@ function setupEventListeners() {
 
     // === Select All functionality ===
     if (bulkSelectAllBtn) {
-        bulkSelectAllBtn.addEventListener('click', () => {
+        bulkSelectAllBtn.addEventListener('click', (e) => {
+            e.preventDefault();
             const checkboxes = document.querySelectorAll('.gallery-item-checkbox');
             checkboxes.forEach(cb => {
                 if (!cb.checked) cb.click();
             });
         });
     }
-    
+    document.getElementById('cacheBrowserOptionsBtn').addEventListener('click', (e) => {
+        e.preventDefault();
+        showCacheManagerModal();
+    });
+
     // Handle window resize to update infinite scroll configuration
     let resizeTimeout;
     window.addEventListener('resize', () => {
@@ -2897,9 +3364,8 @@ function setupEventListeners() {
         }, 250); // Debounce resize events
     });
 }
-
 // Tab switching functionality for prompt/UC tabs (Manual Generation Model)
-function switchManualTab(targetTab) {
+function switchManualTab(targetTab, previouslyFocused = null) {
     // Target ONLY the tab buttons within the manual modal's prompt-tabs section
     const tabButtons = document.querySelectorAll('#manualModal .prompt-tabs .gallery-toggle-group .gallery-toggle-btn');
     // Target ONLY the tab panes within the manual modal's prompt-tabs section
@@ -2907,6 +3373,10 @@ function switchManualTab(targetTab) {
     const showBothBtn = document.getElementById('showBothBtn');
     const promptTabs = document.querySelector('#manualModal .prompt-tabs');
     const toggleGroup = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-group');
+
+    // Use the previously focused element if provided, otherwise fall back to current active element
+    const currentlyFocused = previouslyFocused || document.activeElement;
+    let focusTarget = null;
 
     // Remove show-both state
     promptTabs.classList.remove('show-both');
@@ -2928,10 +3398,47 @@ function switchManualTab(targetTab) {
         toggleGroup.setAttribute('data-active', targetTab);
     }
 
-    // Update emphasis highlighting for the active main textarea
-    const activeTextarea = document.getElementById(targetTab);
-    if (activeTextarea) {
-        updateEmphasisHighlighting(activeTextarea);
+    // Determine which textarea to focus based on what was previously focused
+    if (currentlyFocused && currentlyFocused.matches('.prompt-textarea, .character-prompt-textarea')) {
+        // If a textarea was focused, focus the corresponding textarea in the new tab
+        if (currentlyFocused.matches('.character-prompt-textarea')) {
+            // Character textarea was focused, find the corresponding character textarea in the new tab
+            const characterItem = currentlyFocused.closest('.character-prompt-item');
+            if (characterItem) {
+                const characterId = characterItem.id;
+                const targetId = `${characterId}_${targetTab}`;
+                focusTarget = document.getElementById(targetId);
+
+            }
+        } else if (currentlyFocused.matches('.prompt-textarea') && !currentlyFocused.matches('.character-prompt-textarea')) {
+            // Main prompt textarea was focused (not character), focus main target tab textarea
+            if (targetTab === 'prompt') {
+                focusTarget = document.getElementById('manualPrompt');
+            } else if (targetTab === 'uc') {
+                focusTarget = document.getElementById('manualUc');
+            }
+
+        }
+    } else {
+        // If nothing was focused or something else was focused, default to main textarea
+        if (targetTab === 'prompt') {
+            focusTarget = document.getElementById('manualPrompt');
+        } else if (targetTab === 'uc') {
+            focusTarget = document.getElementById('manualUc');
+        }
+
+    }
+
+    // Only focus if there was a previously focused textarea
+    if (focusTarget) {
+        // Use setTimeout to ensure the tab switch is complete before focusing
+        setTimeout(() => {
+            if (focusTarget && focusTarget.focus) {
+                focusTarget.focus();
+                // Update emphasis highlighting for the focused textarea
+                updateEmphasisHighlighting(focusTarget);
+            }
+        }, 10);
     }
 
     // Sync the selection to all character prompts
@@ -2970,14 +3477,13 @@ function syncCharacterPromptTabs(mainTab) {
             toggleGroup.setAttribute('data-active', mainTab);
         }
 
-        // Update emphasis highlighting for the active textarea
+        // Update emphasis highlighting for the active textarea (but don't change focus)
         const activeTextarea = characterItem.querySelector(`#${characterId}_${mainTab}`);
         if (activeTextarea) {
             updateEmphasisHighlighting(activeTextarea);
         }
     });
 }
-
 // New function to sync character prompts to show both tabs
 function syncCharacterPromptTabsShowBoth() {
     const characterItems = document.querySelectorAll('.character-prompt-item');
@@ -3027,6 +3533,7 @@ function toggleManualShowBoth() {
     if (isShowingBoth) {
         // Return to single tab mode
         promptTabs.classList.remove('show-both');
+        showBothBtn.dataset.state = 'off';
         showBothBtn.classList.remove('active');
 
         // Set Base Prompt as default when returning from show both mode
@@ -3034,11 +3541,15 @@ function toggleManualShowBoth() {
     } else {
         // Show both panes
         promptTabs.classList.add('show-both');
+        showBothBtn.dataset.state = 'on';
         showBothBtn.classList.add('active');
 
         // Sync character prompts to show both tabs
         syncCharacterPromptTabsShowBoth();
     }
+    
+    // Update prompt status icons after toggling show both
+    updatePromptStatusIcons();
 }
 
 // New function to sync character prompts to show both tabs
@@ -3108,7 +3619,7 @@ function updateBalanceDisplay(balance) {
 
     if (totalCredits === -1) {
         balanceIcon.className = 'nai-anla';
-        balanceAmount.textContent = 'Account Error';
+        balanceAmount.textContent = 'Error';
         balanceDisplay.classList.add('low-credits');
     } else if (totalCredits === 0) {
         // No credits - show dollar sign and warning styling
@@ -3136,7 +3647,7 @@ async function rerollImage(image) {
     
     if (!isInModal) {
         // Use glass toast with progress when not in modal
-        toastId = showGlassToast('info', 'Rerolling Image', 'Generating new image...', true);
+        toastId = showGlassToast('info', 'Rerolling Image', 'Generating new image...', true, false, '<i class="fas fa-dice"></i>');
         
         // Start progress animation (1% per second)
         let progress = 0;
@@ -3169,15 +3680,7 @@ async function rerollImage(image) {
 
 
         // Get metadata from the image
-        const response = await fetchWithAuth(`/images/${filenameForMetadata}`, {
-            method: 'OPTIONS'
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to load image metadata: ${response.status} ${response.statusText}`);
-        }
-
-        const metadata = await response.json();
+        const metadata = await getImageMetadata(filenameForMetadata);
 
         if (!metadata) {
             throw new Error('No metadata found for this image');
@@ -3365,15 +3868,10 @@ async function rerollImage(image) {
         const generatedFilename = generateResponse.headers.get('X-Generated-Filename');
         if (generatedFilename) {
             try {
-                const metadataResponse = await fetchWithAuth(`/images/${generatedFilename}`, {
-                    method: 'OPTIONS'
-                });
-                if (metadataResponse.ok) {
-                    const metadata = await metadataResponse.json();
-                    window.lastGeneration = metadata;
-                    window.lastGeneration.filename = generatedFilename;
-                    manualPreviewOriginalImage.classList.remove('hidden');
-                }
+                const metadata = await getImageMetadata(generatedFilename);
+                window.lastGeneration = metadata;
+                window.lastGeneration.filename = generatedFilename;
+                manualPreviewOriginalImage.classList.remove('hidden');
             } catch (error) {
                 console.warn('Failed to fetch metadata for generated image:', error);
             }
@@ -3386,7 +3884,7 @@ async function rerollImage(image) {
 
             // Refresh gallery and show the new image in lightbox
             setTimeout(async () => {
-                await loadGallery();
+                await loadGallery(true);
 
                 // Find the newly generated image (should be the first one)
                 if (allImages.length > 0) {
@@ -3443,13 +3941,7 @@ async function rerollImageWithEdit(image) {
         }
 
         // Get metadata
-        const response = await fetchWithAuth(`/images/${filenameForMetadata}`, {
-            method: 'OPTIONS'
-        });
-        if (!response.ok) {
-            throw new Error(`Failed to load image metadata: ${response.status} ${response.statusText}`);
-        }
-        const metadata = await response.json();
+        const metadata = await getImageMetadata(filenameForMetadata);
         if (!metadata) {
             throw new Error('No metadata found for this image');
         }
@@ -3535,7 +4027,6 @@ async function rerollImageWithEdit(image) {
         showError('Failed to load image metadata: ' + error.message);
     }
 }
-
 // Upscale an image
 async function upscaleImage(image, event = null) {
     // Check if user has already allowed paid requests
@@ -3556,7 +4047,7 @@ async function upscaleImage(image, event = null) {
     
     if (!isInModal) {
         // Use glass toast with progress when not in modal
-        toastId = showGlassToast('info', 'Upscaling Image', 'Upscaling image...', true);
+        toastId = showGlassToast('info', 'Upscaling Image', 'Upscaling image...', true, false, '<i class="nai-upscale"></i>');
         
         // Start progress animation (1% per second)
         let progress = 0;
@@ -3651,13 +4142,29 @@ async function handleLogout() {
         // Already redirected on 401
     }
 }
-
 // Show manual modal
 async function showManualModal() {
+    // Show loading overlay for manual modal opening
+    const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
+    if (manualLoadingOverlay) {
+        const loadingText = manualLoadingOverlay.querySelector('p');
+        if (loadingText) {
+            loadingText.textContent = 'Opening manual generation...';
+        }
+        manualLoadingOverlay.classList.remove('hidden');
+        manualLoadingOverlay.classList.remove('return');
+    }
+
     // Close editor if open
     if (!document.body.classList.contains('editor-open')) {
         document.body.classList.add('editor-open');
     }
+
+    manualLoadingOverlay.classList.remove('hidden');
+    manualLoadingOverlay.classList.add('return');
+    manualPreviewOriginalImage.classList.add('hidden');
+    openModal(manualModal);
+    manualPrompt.focus();
 
     // Check if a preset is selected for editing
     const selectedValue = presetSelect.value;
@@ -3668,12 +4175,6 @@ async function showManualModal() {
         // Clear form for new generation
         clearManualForm();
     }
-
-    manualLoadingOverlay.classList.remove('hidden');
-    manualLoadingOverlay.classList.add('return');
-    manualPreviewOriginalImage.classList.add('hidden');
-    openModal(manualModal);
-    manualPrompt.focus();
     await cropImageToResolution();
 
     // Auto-resize textareas after modal is shown
@@ -3681,6 +4182,9 @@ async function showManualModal() {
 
     // Update save button state
     updateSaveButtonState();
+    
+    // Update prompt status icons
+    updatePromptStatusIcons();
 
     // Update load button state
     updateLoadButtonState();
@@ -3699,9 +4203,14 @@ async function showManualModal() {
             tabButtonsContainer.style.display = 'none';
         }
     }
-
-    // Initialize keyboard shortcuts
-//    initializeKeyboardShortcuts();
+    
+    // Hide loading overlay after modal is fully loaded
+    if (manualLoadingOverlay) {
+        manualLoadingOverlay.classList.add('return');
+        setTimeout(() => {
+            manualLoadingOverlay.classList.add('hidden');
+        }, 300); // Match the transition duration
+    }
 }
 
 // Hide manual modal
@@ -3753,6 +4262,7 @@ function hideManualModal(e, preventModalReset = false) {
         const refreshBtn = document.getElementById('randomPromptRefreshBtn');
         const transferBtn = document.getElementById('randomPromptTransferBtn');
         const nsfwBtn = document.getElementById('randomPromptNsfwBtn');
+        const divider = document.getElementById('randomPromptDivider');
 
         if (toggleBtn) {
             toggleBtn.dataset.state = 'off';
@@ -3769,12 +4279,13 @@ function hideManualModal(e, preventModalReset = false) {
             nsfwBtn.classList.remove('active');
             nsfwBtn.style.display = 'none';
         }
-
+        if (divider) {
+            divider.style.display = 'none';
+        }
         // Hide keyboard shortcuts overlay
         hideShortcutsOverlay();
     }
 }
-
 // Auto-resize textareas after modal is shown
 function autoResizeTextareasAfterModalShow() {
     // Auto-resize main prompt and UC textareas
@@ -3852,6 +4363,9 @@ function clearManualForm() {
     selectedUcPreset = 3; // Default to "Heavy"
     selectUcPreset(3);
     renderUcPresetsDropdown();
+    
+    // Update prompt status icons after clearing form
+    updatePromptStatusIcons();
 
     // Reset preset name field
     manualPresetName.disabled = false;
@@ -4123,15 +4637,10 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
         const filename = response.headers.get('X-Generated-Filename');
         if (filename) {
             try {
-                const metadataResponse = await fetchWithAuth(`/images/${filename}`, {
-                    method: 'OPTIONS'
-                });
-                if (metadataResponse.ok) {
-                    const metadata = await metadataResponse.json();
-                    window.lastGeneration = metadata;
-                    window.lastGeneration.filename = filename;
-                    manualPreviewOriginalImage.classList.remove('hidden');
-                }
+                const metadata = await getImageMetadata(filename);
+                window.lastGeneration = metadata;
+                window.lastGeneration.filename = filename;
+                manualPreviewOriginalImage.classList.remove('hidden');
             } catch (error) {
                 console.warn('Failed to fetch metadata for generated image:', error);
             }
@@ -4254,13 +4763,8 @@ async function updateManualPreview(imageUrl, response = null, metadata = null) {
                 found.metadata = metadata;
             } else if (!found.metadata && generatedFilename) {
                 try {
-                    const metadataResponse = await fetchWithAuth(`/images/${generatedFilename}`, {
-                        method: 'OPTIONS'
-                    });
-                    if (metadataResponse.ok) {
-                        const metadata = await metadataResponse.json();
-                        found.metadata = metadata;
-                    }
+                    const metadata = await getImageMetadata(generatedFilename);
+                    found.metadata = metadata;
                 } catch (error) {
                     console.warn('Failed to load metadata for image:', error);
                 }
@@ -4329,7 +4833,6 @@ async function updateManualPreview(imageUrl, response = null, metadata = null) {
         updateManualPreviewNavigation();
     }
 }
-
 // Function to handle image swapping in manual preview
 function swapManualPreviewImages() {
     const previewImage = document.getElementById('manualPreviewImage');
@@ -4447,7 +4950,6 @@ function updateManualPreviewNavigation() {
     prevBtn.disabled = currentIndex === 0; // Disable if first image
     nextBtn.disabled = currentIndex === allImages.length - 1; // Disable if last image
 }
-
 // Function to navigate manual preview
 async function navigateManualPreview(event) {
     const direction = event.currentTarget.id === 'manualPreviewPrevBtn' ? -1 : 1;
@@ -4492,7 +4994,6 @@ async function navigateManualPreview(event) {
     const imageContainer = document.querySelector('.manual-preview-image-container');
     imageContainer.classList.add('swapped');
 }
-
 async function handleManualGeneration(e) {
     e.preventDefault();
 
@@ -4834,17 +5335,17 @@ function handlePresetAutocompleteKeydown(e) {
 
         switch (e.key) {
             case 'ArrowDown':
-                e.preventDefault();
+                
                 selectedPresetAutocompleteIndex = Math.min(selectedPresetAutocompleteIndex + 1, items.length - 1);
                 updatePresetAutocompleteSelection();
                 break;
             case 'ArrowUp':
-                e.preventDefault();
+                
                 selectedPresetAutocompleteIndex = Math.max(selectedPresetAutocompleteIndex - 1, -1);
                 updatePresetAutocompleteSelection();
                 break;
             case 'Enter':
-                e.preventDefault();
+                
                 if (selectedPresetAutocompleteIndex >= 0 && items[selectedPresetAutocompleteIndex]) {
                     selectPresetItem(items[selectedPresetAutocompleteIndex].dataset.name);
                 }
@@ -5015,7 +5516,7 @@ async function generateImage(event = null) {
     
     if (!isInModal) {
         // Use glass toast with progress when not in modal
-        toastId = showGlassToast('info', 'Generating Image', 'Generating image...', true);
+        toastId = showGlassToast('info', 'Generating Image', 'Generating image...', true, false, '<i class="nai-sparkles"></i>');
         
         // Start progress animation (1% per second)
         let progress = 0;
@@ -5064,15 +5565,10 @@ async function generateImage(event = null) {
 
         // Fetch metadata for the generated image
         try {
-            const metadataResponse = await fetchWithAuth(`/images/${generatedFilename}`, {
-                method: 'OPTIONS'
-            });
-            if (metadataResponse.ok) {
-                const metadata = await metadataResponse.json();
-                window.lastGeneration = metadata;
-                window.lastGeneration.filename = generatedFilename;
-                manualPreviewOriginalImage.classList.remove('hidden');
-            }
+            const metadata = await getImageMetadata(generatedFilename);
+            window.lastGeneration = metadata;
+            window.lastGeneration.filename = generatedFilename;
+            manualPreviewOriginalImage.classList.remove('hidden');
         } catch (error) {
             console.warn('Failed to fetch metadata for generated image:', error);
         }
@@ -5082,7 +5578,7 @@ async function generateImage(event = null) {
         img.onload = async function() {
             createConfetti();
 
-            await loadGallery();
+            await loadGallery(true);
 
             // Find the image in the gallery by filename
             const found = allImages.find(img => img.original === generatedFilename || img.upscaled === generatedFilename);
@@ -5126,7 +5622,6 @@ async function generateImage(event = null) {
         }
     }
 }
-
 function initializeManualPreviewZoom() {
     const imageContainer = document.querySelector('.manual-preview-image-container');
     const image = document.getElementById('manualPreviewImage');
@@ -5180,7 +5675,7 @@ function updateManualPreviewImageTransform() {
 }
 
 function handleManualPreviewWheelZoom(e) {
-    e.preventDefault();
+    
 
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     const newZoom = Math.max(1, Math.min(5, manualPreviewZoom * delta));
@@ -5224,7 +5719,7 @@ function handleManualPreviewMouseDown(e) {
         isManualPreviewDragging = true;
         lastManualPreviewMouseX = e.clientX;
         lastManualPreviewMouseY = e.clientY;
-        e.preventDefault();
+        
     }
 }
 
@@ -5240,14 +5735,13 @@ function handleManualPreviewMouseMove(e) {
         lastManualPreviewMouseY = e.clientY;
 
         updateManualPreviewImageTransform();
-        e.preventDefault();
+        
     }
 }
 
 function handleManualPreviewMouseUp() {
     isManualPreviewDragging = false;
 }
-
 function handleManualPreviewTouchStart(e) {
     if (e.touches.length === 1) {
         // Single touch - start pan
@@ -5259,7 +5753,6 @@ function handleManualPreviewTouchStart(e) {
         lastManualPreviewTouchDistance = getTouchDistance(e.touches);
     }
 }
-
 function handleManualPreviewTouchMove(e) {
     if (e.touches.length === 1 && isManualPreviewDragging && manualPreviewZoom > 1) {
         // Single touch pan
@@ -5273,7 +5766,7 @@ function handleManualPreviewTouchMove(e) {
         lastManualPreviewMouseY = e.touches[0].clientY;
 
         updateManualPreviewImageTransform();
-        e.preventDefault();
+        
     } else if (e.touches.length === 2) {
         // Two touch pinch zoom
         const currentDistance = getTouchDistance(e.touches);
@@ -5316,7 +5809,7 @@ function handleManualPreviewTouchMove(e) {
             }
         }
 
-        e.preventDefault();
+        
     }
 }
 
@@ -5370,8 +5863,10 @@ async function deleteImage(image, event = null) {
     // Show confirmation dialog
     const confirmed = await showConfirmationDialog(
         'Are you sure you want to delete this image? This will permanently delete both the original and upscaled versions.',
-        'Delete',
-        'Cancel',
+        [
+            { text: 'Delete', value: true, className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
         event
     );
     
@@ -5407,7 +5902,7 @@ async function deleteImage(image, event = null) {
         const result = await response.json();
 
         if (result.success) {
-            showGlassToast('success', null, 'Image deleted!');
+            showGlassToast('success', null, 'Image deleted!', false, 5000, '<i class="fas fa-trash"></i>');
 
             // Close lightbox
             hideLightbox();
@@ -5480,13 +5975,8 @@ async function deleteManualPreviewImage() {
             if (nextImage) {
                 // Load the next image and its metadata
                 try {
-                    const metadataResponse = await fetchWithAuth(`/images/${nextImage.original}`, {
-                        method: 'OPTIONS',
-                    });
-                    if (metadataResponse.ok) {
-                        const metadata = await metadataResponse.json();
-                        nextImage.metadata = metadata;
-                    }
+                    const metadata = await getImageMetadata(nextImage.original);
+                    nextImage.metadata = metadata;
                 } catch (error) {
                     console.warn('Failed to load metadata for next image:', error);
                 }
@@ -5814,7 +6304,6 @@ function hideMetadataDialog() {
     if (dialogPromptExpanded) dialogPromptExpanded.style.display = 'none';
     if (dialogUcExpanded) dialogUcExpanded.style.display = 'none';
 }
-
 function populateDialogMetadataTable(metadata) {
     // Type and Name
     const typeElement = document.getElementById('dialogMetadataType');
@@ -6047,7 +6536,6 @@ function getResolutionFromDisplay(displayText) {
     const res = RESOLUTIONS.find(r => normalizedText.includes(r.display.toLowerCase()));
     return res ? res.value : null;
 }
-
 function updateSproutSeedButton() {
     if (sproutSeedBtn) {
         if (lastLoadedSeed) {
@@ -6059,7 +6547,6 @@ function updateSproutSeedButton() {
         }
     }
 }
-
 function toggleSproutSeed() {
     if (!sproutSeedBtn || !lastLoadedSeed) return;
 
@@ -6157,19 +6644,21 @@ async function handleClipboardPaste(event) {
     }
 }
 
-function showGlassToast(type, title, message, showProgress = false) {
+function showGlassToast(type, title, message, showProgress = false, timeout = 5000, customIcon = null) {
     const toastId = `toast-${++toastCounter}`;
     const toastContainer = document.getElementById('toastContainer') || createToastContainer();
 
     const toast = document.createElement('div');
     const isSimple = !title || !message;
-    toast.className = `glass-toast ${showProgress ? 'upload-progress' : ''} ${isSimple ? 'simple' : ''}`;
+    toast.className = `glass-toast glass-toast-${type} ${showProgress ? 'upload-progress' : ''} ${isSimple ? 'simple' : ''}`;
     toast.id = toastId;
+
+    // Use custom icon if provided, otherwise use default icon
+    const icon = customIcon || getToastIcon(type, showProgress);
 
     // If only message is provided (no title), create a simple one-line toast
     if (title && message) {
         // Full toast with title and message
-        const icon = getToastIcon(type, showProgress);
         const closeBtn = showProgress ? '' : '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
 
         toast.innerHTML = `
@@ -6184,7 +6673,6 @@ function showGlassToast(type, title, message, showProgress = false) {
     } else {
         // Simple one-line toast (message only) - now with icon
         const messageText = title || message;
-        const icon = getToastIcon(type, showProgress);
         const closeBtn = showProgress ? '' : '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
 
         toast.innerHTML = `
@@ -6204,22 +6692,22 @@ function showGlassToast(type, title, message, showProgress = false) {
         toast.classList.add('show');
     }, 10);
 
-    // Auto-remove after 5 seconds (unless it's a progress toast)
-    if (!showProgress) {
+    // Auto-remove after timeout (unless it's a progress toast or timeout is false) 
+    if (timeout !== false && !showProgress) {
         setTimeout(() => {
             removeGlassToast(toastId);
-        }, 5000);
+        }, timeout);
     }
 
-    activeToasts.set(toastId, { type, title, message, showProgress });
+    activeToasts.set(toastId, { type, title, message, showProgress, customIcon });
     return toastId;
 }
 
-function updateGlassToast(toastId, type, title, message) {
+function updateGlassToast(toastId, type, title, message, customIcon = null) {
     const toast = document.getElementById(toastId);
     if (!toast) return;
 
-    const icon = getToastIcon(type);
+    const icon = customIcon || getToastIcon(type);
     const isSimple = !title || !message;
     const messageText = title || message;
 
@@ -6256,6 +6744,7 @@ function updateGlassToast(toastId, type, title, message) {
         stored.type = type;
         stored.title = title;
         stored.message = message;
+        stored.customIcon = customIcon;
         activeToasts.set(toastId, stored);
     }
 
@@ -6308,6 +6797,229 @@ function updateGlassToastProgress(toastId, progress) {
     if (progressBar) {
         progressBar.style.width = `${Math.min(progress, 100)}%`;
     }
+}
+
+// Test functions for toast system
+let testProgressIntervals = new Map();
+
+function testToastSuccess() {
+    return showGlassToast('success', 'Success Test', 'This is a success toast test message', false, false);
+}
+
+function testToastError() {
+    return showGlassToast('error', 'Error Test', 'This is an error toast test message', false, false);
+}
+
+function testToastWarning() {
+    return showGlassToast('warning', 'Warning Test', 'This is a warning toast test message', false, false);
+}
+
+function testToastInfo() {
+    return showGlassToast('info', 'Info Test', 'This is an info toast test message', false, false);
+}
+
+function testToastSuccessWithIcon() {
+    return showGlassToast('success', 'Success with Custom Icon', 'This toast has a custom icon', false, false, '<i class="fas fa-star"></i>');
+}
+
+function testToastErrorWithIcon() {
+    return showGlassToast('error', 'Error with Custom Icon', 'This toast has a custom icon', false, false, '<i class="fas fa-skull"></i>');
+}
+
+function testToastWarningWithIcon() {
+    return showGlassToast('warning', 'Warning with Custom Icon', 'This toast has a custom icon', false, false, '<i class="fas fa-fire"></i>');
+}
+
+function testToastInfoWithIcon() {
+    return showGlassToast('info', 'Info with Custom Icon', 'This toast has a custom icon', false, false, '<i class="fas fa-lightbulb"></i>');
+}
+
+function testToastSuccessWithProgress() {
+    const toastId = showGlassToast('success', 'Success with Progress', 'This toast has a progress bar', true, false);
+    
+    let progress = 0;
+    const interval = setInterval(() => {
+        progress += 2;
+        updateGlassToastProgress(toastId, progress);
+        
+        if (progress >= 50) {
+            clearInterval(interval);
+            testProgressIntervals.set(toastId, interval);
+        }
+    }, 100);
+    
+    return toastId;
+}
+
+function testToastErrorWithProgress() {
+    const toastId = showGlassToast('error', 'Error with Progress', 'This toast has a progress bar', true, false);
+    
+    let progress = 0;
+    const interval = setInterval(() => {
+        progress += 2;
+        updateGlassToastProgress(toastId, progress);
+        
+        if (progress >= 50) {
+            clearInterval(interval);
+            testProgressIntervals.set(toastId, interval);
+        }
+    }, 100);
+    
+    return toastId;
+}
+
+function testToastWarningWithProgress() {
+    const toastId = showGlassToast('warning', 'Warning with Progress', 'This toast has a progress bar', true, false);
+    
+    let progress = 0;
+    const interval = setInterval(() => {
+        progress += 2;
+        updateGlassToastProgress(toastId, progress);
+        
+        if (progress >= 50) {
+            clearInterval(interval);
+            testProgressIntervals.set(toastId, interval);
+        }
+    }, 100);
+    
+    return toastId;
+}
+
+function testToastInfoWithProgress() {
+    const toastId = showGlassToast('info', 'Info with Progress', 'This toast has a progress bar', true, false);
+    
+    let progress = 0;
+    const interval = setInterval(() => {
+        progress += 2;
+        updateGlassToastProgress(toastId, progress);
+        
+        if (progress >= 50) {
+            clearInterval(interval);
+            testProgressIntervals.set(toastId, interval);
+        }
+    }, 100);
+    
+    return toastId;
+}
+
+function completeTestProgress(toastId) {
+    const interval = testProgressIntervals.get(toastId);
+    if (interval) {
+        clearInterval(interval);
+        testProgressIntervals.delete(toastId);
+    }
+    
+    // Complete the progress to 100%
+    updateGlassToastProgress(toastId, 100);
+    
+    // Update the toast to show completion
+    const toast = document.getElementById(toastId);
+    if (toast) {
+        const messageElement = toast.querySelector('.toast-message');
+        if (messageElement) {
+            messageElement.textContent = 'Progress completed!';
+        }
+        
+        // Add close button after completion
+        const closeBtn = '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
+        toast.insertAdjacentHTML('beforeend', closeBtn);
+    }
+}
+
+function completeAllTestProgress() {
+    testProgressIntervals.forEach((interval, toastId) => {
+        completeTestProgress(toastId);
+    });
+}
+
+let showSubscriptionExpirationToast = false;
+async function checkSubscriptionExpiration() {
+    // Try to get user data if not available
+    if (!window.optionsData?.user?.subscription?.expiresAt) {
+        try {
+            const response = await fetchWithAuth('/user');
+            if (response.ok) {
+                const userData = await response.json();
+                if (userData.ok && userData.subscription?.expiresAt) {
+                    window.optionsData = window.optionsData || {};
+                    window.optionsData.user = userData;
+                } else {
+                    return; // No expiration data available
+                }
+            } else {
+                return; // Failed to fetch user data
+            }
+        } catch (error) {
+            console.error('Error fetching user data for subscription check:', error);
+            return;
+        }
+    }
+
+    const expiresAt = new Date(window.optionsData.user.subscription.expiresAt * 1000);
+    const subTier = window.optionsData.user.subscription.tier;
+    const subName = subTier === 3 ? 'Opus' : subTier === 2 ? 'Scroll' : subTier === 1 ? 'Tablet' : 'Enterprise';
+    const now = new Date();
+    const daysUntilExpiration = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
+    const renewalDateStr = expiresAt.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+
+    if (daysUntilExpiration <= 7 && daysUntilExpiration > 0) {
+        if (!showSubscriptionExpirationToast) {
+            let message = daysUntilExpiration === 1 
+                ? `Your NovelAI ${subName} subscription renews tomorrow!` 
+                : `Your NovelAI ${subName} subscription will renew in ${daysUntilExpiration} days! (${renewalDateStr})`;
+            showGlassToast('warning', 'NovelAI Subscription Status', message, false, 15000);
+            showSubscriptionExpirationToast = true;
+        }
+    }
+}
+
+let showFixedTrainingStepsToast = false;
+async function checkFixedTrainingSteps() {
+    if (!window.optionsData?.balance?.fixedTrainingStepsLeft) {
+        console.error('No balance data available');
+        return;
+    }
+
+    const fixedSteps = window.optionsData.balance.fixedTrainingStepsLeft;
+    if (!window.optionsData?.user?.subscription?.expiresAt) {
+        try {
+            const response = await fetchWithAuth('/user');
+            if (response.ok) {
+                const userData = await response.json();
+                if (userData.ok && userData.subscription?.expiresAt) {
+                    window.optionsData = window.optionsData || {};
+                    window.optionsData.user = userData;
+                } else {
+                    console.error('No subscription expiration data available');
+                    return;
+                }
+            } else {
+                console.error('Failed to fetch user data');
+                return;
+            }
+        } catch (error) {
+            console.error('Error fetching user data for fixed steps check:', error);
+            return;
+        }
+    }
+
+    const expiresAt = new Date(window.optionsData.user.subscription.expiresAt * 1000);
+    const now = new Date();
+    const daysUntilRenewal = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
+    const usePerDay = parseInt((fixedSteps / daysUntilRenewal).toFixed(0));    
+    if (fixedSteps > 500 && daysUntilRenewal <= 15 && daysUntilRenewal > 0) {
+        if (!showFixedTrainingStepsToast) {
+            showGlassToast('info', 'Account Fixed Anlas Expiring', 
+                `You have <i class="nai-anla"></i> ${fixedSteps} Fixed Anlas remaining.<br/>
+                Consider using <i class="nai-anla"></i> ${usePerDay} Anlas per day in the next ${daysUntilRenewal} days.`, false, 60000, '<i class="nai-anla"></i>');
+            showFixedTrainingStepsToast = true;
+        }
+    }
+}
+
+async function updateSubscriptionNotifications() {
+    await checkSubscriptionExpiration();
+    await checkFixedTrainingSteps();
 }
 
 // Upload multiple images to server
@@ -6434,7 +7146,7 @@ async function handleManualImageUploadInternal(file) {
         // Crop and update preview
         await cropImageToResolution();
 
-        showGlassToast('success', null, 'Referance Image Added');
+        showGlassToast('success', null, 'Reference Image Added');
 
     } catch (error) {
         console.error('Manual upload error:', error);
@@ -6495,366 +7207,6 @@ function updateUploadDeleteButtonVisibility() {
     }
 }
 
-async function handleBulkMoveToWorkspace() {
-    if (selectedImages.size === 0) {
-        showError('No images selected');
-        return;
-    }
-
-    // Create workspace selection modal
-    let modal = document.getElementById('bulkMoveToWorkspaceModal');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'bulkMoveToWorkspaceModal';
-        modal.className = 'modal';
-        modal.innerHTML = `
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Move to Workspace</h3>
-                    <button id="closeBulkMoveToWorkspaceBtn" class="close-dialog">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <p>Select workspace to move <span id="bulkMoveSelectedCount">${selectedImages.size}</span> selected image(s):</p>
-                    <div class="workspace-move-list" id="bulkMoveWorkspaceList">
-                        <!-- Workspace list will be populated here -->
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(modal);
-
-        // Close modal handlers
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                closeModal(modal);
-            }
-        });
-
-        document.getElementById('closeBulkMoveToWorkspaceBtn').addEventListener('click', () => {
-            closeModal(modal);
-        });
-    }
-
-    // Update selected count
-    document.getElementById('bulkMoveSelectedCount').textContent = selectedImages.size;
-
-    // Populate workspace list
-    const workspaceList = document.getElementById('bulkMoveWorkspaceList');
-    workspaceList.innerHTML = '';
-
-    workspaces.forEach(workspace => {
-        const item = document.createElement('div');
-        item.className = 'workspace-move-item';
-        item.innerHTML = `
-            <div class="workspace-move-info">
-                <span class="workspace-name">${workspace.name}</span>
-                ${workspace.isActive ? '<span class="badge-active">Active</span>' : ''}
-                <span class="workspace-counts">${workspace.fileCount} files</span>
-            </div>
-        `;
-
-        item.addEventListener('click', async () => {
-            closeModal(modal);
-            await moveBulkImagesToWorkspace(workspace.id);
-        });
-
-        workspaceList.appendChild(item);
-    });
-
-    openModal(modal);
-}
-
-async function moveBulkImagesToWorkspace(workspaceId) {
-    try {
-        const isScrapsView = currentGalleryView === 'scraps';
-        const isPinnedView = currentGalleryView === 'pinned';
-
-        // Filter out any null/undefined values from selectedImages
-        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
-
-        if (validFilenames.length === 0) {
-            throw new Error('No valid filenames to move');
-        }
-
-        // Use appropriate endpoint based on current view
-        let endpoint;
-        if (isScrapsView) {
-            endpoint = `/workspaces/${workspaceId}/scraps`;
-        } else if (isPinnedView) {
-            endpoint = `/workspaces/${workspaceId}/pinned`;
-        } else {
-            endpoint = `/workspaces/${workspaceId}/files`;
-        }
-
-        const response = await fetchWithAuth(endpoint, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                filenames: validFilenames
-            })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to move items');
-        }
-
-        const result = await response.json();
-        const workspace = workspaces.find(w => w.id === workspaceId);
-        let itemType;
-        if (isScrapsView) {
-            itemType = 'scraps';
-        } else if (isPinnedView) {
-            itemType = 'pinned images';
-        } else {
-            itemType = 'images';
-        }
-
-        showGlassToast('success', null, `Moved ${result.movedCount} ${itemType} to ${workspace ? workspace.name : 'workspace'}`);
-
-        // Clear selection and reload gallery
-        clearSelection();
-        if (isScrapsView) {
-            await loadScraps();
-        } else if (isPinnedView) {
-            await loadPinned();
-        } else {
-            await loadGallery();
-        }
-
-    } catch (error) {
-        console.error('Error moving items to workspace:', error);
-        showError('Failed to move items: ' + error.message);
-    } finally {
-        showManualLoading(false);
-    }
-}
-
-async function handleBulkDelete(event = null) {
-    if (selectedImages.size === 0) {
-        showGlassToast('error', 'No Selection', 'Please select images to delete.');
-        return;
-    }
-
-    // Show confirmation dialog
-    const confirmed = await showConfirmationDialog(
-        `Are you sure you want to delete ${selectedImages.size} selected image(s)? This will permanently delete both the original and upscaled versions.`,
-        'Delete',
-        'Cancel',
-        event
-    );
-    
-    if (!confirmed) {
-        return;
-    }
-
-    try {
-        // Filter out any null/undefined values from selectedImages
-        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
-
-        if (validFilenames.length === 0) {
-            throw new Error('No valid filenames to delete');
-        }
-
-        const response = await fetchWithAuth('/images/bulk', {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                filenames: validFilenames
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Bulk delete failed: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-
-        if (result.success) {
-            showGlassToast('success', null, `Successfully removed ${result.successful} image(s)`);
-            if (result.failed > 0) {
-                showError(`${result.failed} image(s) failed to delete`);
-            }
-
-            // Clear selection and remove images from gallery
-            clearSelection();
-            if (currentGalleryView === 'scraps') {
-                await loadScraps();
-            } else if (currentGalleryView === 'pinned') {
-                await loadPinned();
-            } else {
-                // Convert filenames to image objects for removal
-                const imagesToRemove = validFilenames.map(filename => ({ filename }));
-                removeMultipleImagesFromGallery(imagesToRemove);
-            }
-        } else {
-            throw new Error(result.error || 'Bulk delete failed');
-        }
-
-    } catch (error) {
-        console.error('Bulk delete error:', error);
-        showError('Bulk delete failed: ' + error.message);
-    } finally {
-        showManualLoading(false);
-    }
-}
-
-async function handleBulkSequenzia(event = null) {
-    if (selectedImages.size === 0) {
-        showError('No images selected');
-        return;
-    }
-
-    // Show confirmation dialog
-    const confirmed = await showConfirmationDialog(
-        `Are you sure you want to send ${selectedImages.size} selected image(s) to Sequenzia? This will move the images and delete them from the gallery.`,
-        'Send to Sequenzia',
-        'Cancel',
-        event
-    );
-
-    if (!confirmed) {
-        return;
-    }
-
-    try {
-        showManualLoading(true, 'Sending images to Sequenzia...');
-
-        // Filter out any null/undefined values from selectedImages
-        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
-
-        if (validFilenames.length === 0) {
-            throw new Error('No valid filenames to send to Sequenzia');
-        }
-
-        const response = await fetchWithAuth('/images/send-to-sequenzia', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                filenames: validFilenames
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`Send to Sequenzia failed: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-
-        if (result.success) {
-            showGlassToast('success', null, `Successfully bounced ${result.successful} image(s) to Sequenzia`);
-            if (result.failed > 0) {
-                showError(`${result.failed} image(s) failed to send`);
-            }
-
-            // Clear selection and refresh gallery based on current view
-            clearSelection();
-            if (currentGalleryView === 'scraps') {
-                await loadScraps();
-            } else if (currentGalleryView === 'pinned') {
-                await loadPinned();
-            } else {
-                await loadGallery();
-            }
-        } else {
-            throw new Error(result.error || 'Send to Sequenzia failed');
-        }
-
-    } catch (error) {
-        console.error('Send to Sequenzia error:', error);
-        showError('Send to Sequenzia failed: ' + error.message);
-    } finally {
-        showManualLoading(false);
-    }
-}
-
-async function handleBulkMoveToScraps(event = null) {
-    if (selectedImages.size === 0) {
-        showGlassToast('error', 'No Selection', 'Please select images to move to scraps.');
-        return;
-    }
-
-    // Show confirmation dialog
-    const confirmed = await showConfirmationDialog(
-        `Are you sure you want to move ${selectedImages.size} selected image(s) to scraps?`,
-        'Move to Scraps',
-        'Cancel',
-        event
-    );
-    
-    if (!confirmed) {
-        return;
-    }
-
-    try {
-        showManualLoading(true, 'Moving images to scraps...');
-
-        // Filter out any null/undefined values from selectedImages
-        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
-
-        if (validFilenames.length === 0) {
-            throw new Error('No valid filenames to move to scraps');
-        }
-
-        // Move each file to scraps
-        let successCount = 0;
-        let errorCount = 0;
-
-        for (const filename of validFilenames) {
-            try {
-                const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ filename })
-                });
-
-                if (response.ok) {
-                    successCount++;
-                } else {
-                    errorCount++;
-                }
-            } catch (error) {
-                errorCount++;
-                console.error(`Failed to move ${filename} to scraps:`, error);
-            }
-        }
-
-        if (successCount > 0) {
-            showGlassToast('success', null, `Successfully scrapped ${successCount} image(s)`);
-        }
-
-        if (errorCount > 0) {
-            showError(`${errorCount} image(s) failed to move to scraps`);
-        }
-
-        // Clear selection and remove images from gallery
-        clearSelection();
-        if (currentGalleryView === 'scraps') {
-            await loadScraps();
-        } else if (currentGalleryView === 'pinned') {
-            await loadPinned();
-        } else {
-            // Convert filenames to image objects for removal
-            const imagesToRemove = validFilenames.map(filename => ({ filename }));
-            removeMultipleImagesFromGallery(imagesToRemove);
-        }
-
-    } catch (error) {
-        console.error('Bulk move to scraps error:', error);
-        showError('Failed to move images to scraps: ' + error.message);
-    } finally {
-        showManualLoading(false);
-    }
-}
-
 async function handleBulkUnpin(event = null) {
     if (selectedImages.size === 0) {
         showError('No images selected');
@@ -6870,8 +7222,10 @@ async function handleBulkUnpin(event = null) {
     // Show confirmation dialog
     const confirmed = await showConfirmationDialog(
         `Are you sure you want to unpin ${selectedImages.size} selected image(s)?`,
-        'Unpin',
-        'Cancel',
+        [
+            { text: 'Unpin', value: true, className: 'btn-secondary' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
         event
     );
 
@@ -6889,30 +7243,55 @@ async function handleBulkUnpin(event = null) {
             throw new Error('No valid filenames to unpin');
         }
 
+        let responseData = null;
+        
         // Unpin all files at once using bulk endpoint
-        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned/bulk`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ filenames: validFilenames })
-        });
-
-        if (response.ok) {
-            const result = await response.json();
-            showGlassToast('success', null, `Unpinned ${result.removedCount} image(s)`);
-
-            // Clear selection and refresh gallery
-            clearSelection();
-            await loadPinned();
-            
-            // Update pin buttons for the affected images
-            for (const filename of validFilenames) {
-                await updateSpecificPinButton(filename);
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                responseData = await window.wsClient.removePinnedBulk(activeWorkspace, validFilenames);
+            } catch (wsError) {
+                showError('Failed to unpin images: ' + wsError.message);
+                throw new Error('Failed to unpin images');
             }
         } else {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to unpin images');
+            // Fallback to HTTP
+            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned/bulk`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filenames: validFilenames })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to unpin images');
+            }
+            
+            responseData = await response.json();
+        }
+
+        // Use server response data for accurate toast message
+        if (responseData) {
+            const { removedCount, failed } = responseData;
+            let toastMessage = `Unpinned ${removedCount} image(s)`;
+            
+            if (failed > 0) {
+                toastMessage += ` (${failed} failed)`;
+            }
+            
+            showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-thumbtack"></i>');
+        } else {
+            showGlassToast('success', null, `Unpinned ${validFilenames.length} image(s)`, false, 5000, '<i class="fas fa-thumbtack"></i>');
+        }
+
+        // Clear selection and refresh gallery
+        clearSelection();
+        switchGalleryView(currentGalleryView, true);
+        
+        // Update pin buttons for the affected images
+        for (const filename of validFilenames) {
+            await updateSpecificPinButton(filename);
         }
 
     } catch (error) {
@@ -6922,7 +7301,6 @@ async function handleBulkUnpin(event = null) {
         showManualLoading(false);
     }
 }
-
 async function handleBulkPin(event = null) {
     if (selectedImages.size === 0) {
         showError('No images selected');
@@ -6938,8 +7316,10 @@ async function handleBulkPin(event = null) {
     // Show confirmation dialog
     const confirmed = await showConfirmationDialog(
         `Are you sure you want to pin ${selectedImages.size} selected image(s)?`,
-        'Pin',
-        'Cancel',
+        [
+            { text: 'Pin', value: true, className: 'btn-primary' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
         event
     );
 
@@ -6957,30 +7337,54 @@ async function handleBulkPin(event = null) {
             throw new Error('No valid filenames to pin');
         }
 
+        let responseData = null;
+        
         // Pin all files at once using bulk endpoint
-        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned/bulk`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ filenames: validFilenames })
-        });
-
-        if (response.ok) {
-            const result = await response.json();
-            showGlassToast('success', null, `Pinned ${result.addedCount} image(s)`);
-
-            // Clear selection and refresh gallery
-            clearSelection();
-            await loadGallery();
-            
-            // Update pin buttons for the affected images
-            for (const filename of validFilenames) {
-                await updateSpecificPinButton(filename);
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                responseData = await window.wsClient.addPinnedBulk(activeWorkspace, validFilenames);
+            } catch (wsError) {
+                showError('Failed to pin images: ' + wsError.message);
+                throw new Error('Failed to pin images');
             }
         } else {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to pin images');
+            // Fallback to HTTP
+            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned/bulk`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filenames: validFilenames })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to pin images');
+            }
+            
+            responseData = await response.json();
+        }
+
+        // Use server response data for accurate toast message
+        if (responseData) {
+            const { addedCount, failed } = responseData;
+            let toastMessage = `Pinned ${addedCount} image(s)`;
+            
+            if (failed > 0) {
+                toastMessage += ` (${failed} failed)`;
+            }
+            
+            showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-thumbtack"></i>');
+        } else {
+            showGlassToast('success', null, `Pinned ${validFilenames.length} image(s)`, false, 5000, '<i class="fas fa-thumbtack"></i>');
+        }
+
+        // Clear selection and update pin buttons for the affected images
+        clearSelection();
+        
+        // Update pin buttons for the affected images (images stay in gallery)
+        for (const filename of validFilenames) {
+            await updateSpecificPinButton(filename);
         }
 
     } catch (error) {
@@ -7041,40 +7445,60 @@ async function handleBulkChangePresetConfirm() {
             throw new Error('No valid filenames to update');
         }
 
-        const response = await fetchWithAuth('/images/bulk/preset', {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                filenames: validFilenames,
-                presetName: newPresetName || null // Send null if empty to remove preset name
-            })
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to update preset names');
-        }
-
-        const result = await response.json();
-
-        if (result.success) {
-            const action = newPresetName ? `Wrote "${newPresetName} to "` : 'Cleared';
-            showGlassToast('success', null, `Updated ${result.updatedCount} image(s) (${action})`);
-
-            // Clear selection and refresh gallery based on current view
-            clearSelection();
-            if (currentGalleryView === 'scraps') {
-                await loadScraps();
-            } else if (currentGalleryView === 'pinned') {
-                await loadPinned();
-            } else {
-                await loadGallery();
+        let responseData = null;
+        
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                responseData = await window.wsClient.updateImagePresetBulk(validFilenames, newPresetName || null);
+            } catch (wsError) {
+                showError('Failed to update preset names: ' + wsError.message);
+                throw new Error('Failed to update preset names');
             }
         } else {
-            throw new Error(result.error || 'Failed to update preset names');
+            // Fallback to HTTP
+            const response = await fetchWithAuth('/images/bulk/preset', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    filenames: validFilenames,
+                    presetName: newPresetName || null // Send null if empty to remove preset name
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to update preset names');
+            }
+            
+            responseData = await response.json();
         }
+
+        // Use server response data for accurate toast message
+        if (responseData) {
+            const { updatedCount, failed, message } = responseData;
+            let toastMessage = message || `Updated ${updatedCount} image(s)`;
+            
+            if (newPresetName) {
+                toastMessage += ` with preset "${newPresetName}"`;
+            } else {
+                toastMessage += ' (preset cleared)';
+            }
+            
+            if (failed > 0) {
+                toastMessage += ` (${failed} failed)`;
+            }
+            
+            showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-edit"></i>');
+        } else {
+            const action = newPresetName ? `with preset "${newPresetName}"` : '(preset cleared)';
+            showGlassToast('success', null, `Updated ${validFilenames.length} image(s) ${action}`, false, 5000, '<i class="fas fa-edit"></i>');
+        }
+
+        // Clear selection and refresh gallery based on current view
+        clearSelection();
+        switchGalleryView(currentGalleryView, true);
 
     } catch (error) {
         console.error('Bulk change preset error:', error);
@@ -7145,6 +7569,7 @@ function transferRandomPrompt() {
     const refreshBtn = document.getElementById('randomPromptRefreshBtn');
     const transferBtn = document.getElementById('randomPromptTransferBtn');
     const nsfwBtn = document.getElementById('randomPromptNsfwBtn');
+    const divider = document.getElementById('randomPromptDivider');
 
     // Check if random mode is active
     if (toggleBtn.dataset.state !== 'on') {
@@ -7174,13 +7599,13 @@ function transferRandomPrompt() {
     refreshBtn.style.display = 'none';
     transferBtn.style.display = 'none';
     nsfwBtn.style.display = 'none';
-
+    divider.style.display = 'none';
     // Clear saved states
     savedRandomPromptState = null;
     lastPromptState = null;
 
     // Show success message
-    showGlassToast('success', null, 'Transferred to editor');
+            showGlassToast('success', null, 'Transferred to editor', false, 5000, '<i class="fas fa-edit"></i>');
 }
 
 /**
@@ -7191,6 +7616,7 @@ async function toggleRandomPrompt() {
     const refreshBtn = document.getElementById('randomPromptRefreshBtn');
     const transferBtn = document.getElementById('randomPromptTransferBtn');
     const nsfwBtn = document.getElementById('randomPromptNsfwBtn');
+    const divider = document.getElementById('randomPromptDivider');
     const isEnabled = toggleBtn.dataset.state === 'on';
 
     if (isEnabled) {
@@ -7206,6 +7632,7 @@ async function toggleRandomPrompt() {
         refreshBtn.style.display = 'none';
         transferBtn.style.display = 'none';
         nsfwBtn.style.display = 'none';
+        divider.style.display = 'none';
 
         if (lastPromptState) {
             const manualPrompt = document.getElementById('manualPrompt');
@@ -7238,6 +7665,7 @@ async function toggleRandomPrompt() {
         refreshBtn.style.display = '';
         transferBtn.style.display = '';
         nsfwBtn.style.display = '';
+        divider.style.display = '';
 
         // Check if we have a saved random prompt state
         if (savedRandomPromptState) {
@@ -7261,7 +7689,6 @@ async function toggleRandomPrompt() {
         }
     }
 }
-
 function addCharacterPrompt() {
     const characterId = `character_${characterPromptCounter++}`;
 
@@ -7305,7 +7732,7 @@ function addCharacterPrompt() {
                         <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${characterId}')">
                             <i class="nai-trash"></i>
                         </button>
-                        <button type="button" class="btn-secondary toggle-btn" id="${characterId}_enabled" data-state="on" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
+                        <button type="button" class="btn-secondary indicator" id="${characterId}_enabled" data-state="on" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
                             <i class="fas fa-power-off"></i>
                         </button>
                     </div>
@@ -7315,12 +7742,86 @@ function addCharacterPrompt() {
                         <div class="character-prompt-textarea-container">
                             <div class="character-prompt-textarea-background"></div>
                             <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
+                            <div class="prompt-textarea-toolbar hidden">
+                                <div class="toolbar-left">
+                                    <span class="token-count">0 tokens</span>
+                                    <!-- Search Mode Elements (Hidden by default) -->
+                                    <div class="toolbar-search-elements">
+                                        <div class="text-search-label">Search</div>
+                                        <div class="text-search-input-container">
+                                            <input type="text" class="text-search-input" placeholder="Find Tag" />
+                                        </div>
+                                        <div class="text-search-match-count">0</div>
+                                    </div>
+                                </div>
+                                <div class="toolbar-right">
+                                    <!-- Regular Toolbar Buttons -->
+                                    <div class="toolbar-regular-buttons">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                            <i class="fas fa-lightbulb"></i>
+                                        </button>
+                                        <div class="divider"></div>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
+                                            <i class="fas fa-plus-minus"></i>
+                                        </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
+                                            <i class="fas fa-highlighter-line"></i>
+                                        </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
+                                            <i class="fas fa-book-skull"></i>
+                                        </button>
+                                    </div>
+                                    <!-- Search Mode Buttons (Hidden by default) -->
+                                    <div class="toolbar-search-buttons">
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-prev" data-action="search-prev" title="Previous"><i class="fas fa-chevron-up"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-next" data-action="search-next" title="Next"><i class="fas fa-chevron-down"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-close" data-action="search-close" title="Close"><i class="fas fa-times"></i></button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="tab-pane ${ucTabActive}" id="${characterId}_uc-tab" data-label="UC">
                         <div class="character-prompt-textarea-container">
                             <div class="character-prompt-textarea-background"></div>
                             <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
+                            <div class="prompt-textarea-toolbar hidden">
+                                <div class="toolbar-left">
+                                    <span class="token-count">0 tokens</span>
+                                    <!-- Search Mode Elements (Hidden by default) -->
+                                    <div class="toolbar-search-elements">
+                                        <div class="text-search-label">Search</div>
+                                        <div class="text-search-input-container">
+                                            <input type="text" class="text-search-input" placeholder="Find Tag" />
+                                        </div>
+                                        <div class="text-search-match-count">0</div>
+                                    </div>
+                                </div>
+                                <div class="toolbar-right">
+                                    <!-- Regular Toolbar Buttons -->
+                                    <div class="toolbar-regular-buttons">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                            <i class="fas fa-lightbulb"></i>
+                                        </button>
+                                        <div class="divider"></div>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
+                                            <i class="fas fa-plus-minus"></i>
+                                        </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
+                                            <i class="fas fa-highlighter-line"></i>
+                                        </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
+                                            <i class="fas fa-book-skull"></i>
+                                        </button>
+                                    </div>
+                                    <!-- Search Mode Buttons (Hidden by default) -->
+                                    <div class="toolbar-search-buttons">
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-prev" data-action="search-prev" title="Previous"><i class="fas fa-chevron-up"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-next" data-action="search-next" title="Next"><i class="fas fa-chevron-down"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-close" data-action="search-close" title="Close"><i class="fas fa-times"></i></button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -7338,34 +7839,42 @@ function addCharacterPrompt() {
     const promptField = document.getElementById(`${characterId}_prompt`);
     const ucField = document.getElementById(`${characterId}_uc`);
 
-    if (promptField) {
-        promptField.addEventListener('input', handleCharacterAutocompleteInput);
-        promptField.addEventListener('keydown', handleCharacterAutocompleteKeydown);
-        promptField.addEventListener('focus', () => startEmphasisHighlighting(promptField));
-        promptField.addEventListener('blur', () => {
-            applyFormattedText(promptField, true);
-            updateEmphasisHighlighting(promptField);
-            stopEmphasisHighlighting();
-        });
-        // Add auto-resize functionality
-        promptField.addEventListener('input', () => autoResizeTextarea(promptField));
-        // Initialize emphasis highlighting overlay
-        initializeEmphasisOverlay(promptField);
-    }
+            if (promptField) {
+            addSafeEventListener(promptField, 'input', handleCharacterAutocompleteInput);
+            addSafeEventListener(promptField, 'keydown', handleCharacterAutocompleteKeydown);
+            addSafeEventListener(promptField, 'focus', () => startEmphasisHighlighting(promptField));
+            addSafeEventListener(promptField, 'blur', () => {
+                applyFormattedText(promptField, true);
+                updateEmphasisHighlighting(promptField);
+                stopEmphasisHighlighting();
+            });
+            // Add auto-resize functionality
+            addSafeEventListener(promptField, 'input', () => autoResizeTextarea(promptField));
+            // Initialize emphasis highlighting overlay
+            initializeEmphasisOverlay(promptField);
+            // Initialize toolbar for dynamic textarea
+            if (window.handleDynamicTextarea) {
+                window.handleDynamicTextarea(promptField);
+            }
+        }
 
-    if (ucField) {
-        ucField.addEventListener('input', handleCharacterAutocompleteInput);
-        ucField.addEventListener('keydown', handleCharacterAutocompleteKeydown);
-        ucField.addEventListener('focus', () => startEmphasisHighlighting(ucField));
-        ucField.addEventListener('blur', () => {
-            applyFormattedText(ucField, true);
-            updateEmphasisHighlighting(ucField);
-            stopEmphasisHighlighting();
-        });
-        // Add auto-resize functionality
-        ucField.addEventListener('input', () => autoResizeTextarea(ucField));
-        initializeEmphasisOverlay(ucField);
-    }
+            if (ucField) {
+            addSafeEventListener(ucField, 'input', handleCharacterAutocompleteInput);
+            addSafeEventListener(ucField, 'keydown', handleCharacterAutocompleteKeydown);
+            addSafeEventListener(ucField, 'focus', () => startEmphasisHighlighting(ucField));
+            addSafeEventListener(ucField, 'blur', () => {
+                applyFormattedText(ucField, true);
+                updateEmphasisHighlighting(ucField);
+                stopEmphasisHighlighting();
+            });
+            // Add auto-resize functionality
+            addSafeEventListener(ucField, 'input', () => autoResizeTextarea(ucField));
+            initializeEmphasisOverlay(ucField);
+            // Initialize toolbar for dynamic textarea
+            if (window.handleDynamicTextarea) {
+                window.handleDynamicTextarea(ucField);
+            }
+        }
 
     // Add preview textarea click handler
     const previewTextarea = document.getElementById(`${characterId}_preview`);
@@ -7585,7 +8094,6 @@ function confirmPosition() {
         hidePositionDialog();
     }
 }
-
 function getCharacterPrompts() {
     const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
     const characterPrompts = [];
@@ -7698,7 +8206,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                         <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${characterId}')">
                             <i class="nai-trash"></i>
                         </button>
-                        <button type="button" class="btn-secondary toggle-btn" id="${characterId}_enabled" data-state="${character.enabled ? 'on' : 'off'}" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
+                        <button type="button" class="btn-secondary indicator" id="${characterId}_enabled" data-state="${character.enabled ? 'on' : 'off'}" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
                             <i class="fas fa-power-off"></i>
                         </button>
                     </div>
@@ -7708,12 +8216,86 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                         <div class="character-prompt-textarea-container">
                             <div class="character-prompt-textarea-background"></div>
                             <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false">${character.prompt || ''}</textarea>
+                            <div class="prompt-textarea-toolbar hidden">
+                                <div class="toolbar-left">
+                                    <span class="token-count">0 tokens</span>
+                                    <!-- Search Mode Elements (Hidden by default) -->
+                                    <div class="toolbar-search-elements">
+                                        <div class="text-search-label">Search</div>
+                                        <div class="text-search-input-container">
+                                            <input type="text" class="text-search-input" placeholder="Find Tag" />
+                                        </div>
+                                        <div class="text-search-match-count">0</div>
+                                    </div>
+                                </div>
+                                <div class="toolbar-right">
+                                    <!-- Regular Toolbar Buttons -->
+                                    <div class="toolbar-regular-buttons">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                            <i class="fas fa-lightbulb"></i>
+                                        </button>
+                                        <div class="divider"></div>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
+                                            <i class="fas fa-plus-minus"></i>
+                                        </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
+                                            <i class="fas fa-highlighter-line"></i>
+                                        </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
+                                            <i class="fas fa-book-skull"></i>
+                                        </button>
+                                    </div>
+                                    <!-- Search Mode Buttons (Hidden by default) -->
+                                    <div class="toolbar-search-buttons">
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-prev" data-action="search-prev" title="Previous"><i class="fas fa-chevron-up"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-next" data-action="search-next" title="Next"><i class="fas fa-chevron-down"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-close" data-action="search-close" title="Close"><i class="fas fa-times"></i></button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div class="tab-pane ${ucTabActive}" id="${characterId}_uc-tab" data-label="UC">
                         <div class="character-prompt-textarea-container">
                             <div class="character-prompt-textarea-background"></div>
                             <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false">${character.uc || ''}</textarea>
+                            <div class="prompt-textarea-toolbar hidden">
+                                <div class="toolbar-left">
+                                    <span class="token-count">0 tokens</span>
+                                    <!-- Search Mode Elements (Hidden by default) -->
+                                    <div class="toolbar-search-elements">
+                                        <div class="text-search-label">Search</div>
+                                        <div class="text-search-input-container">
+                                            <input type="text" class="text-search-input" placeholder="Find Tag" />
+                                        </div>
+                                        <div class="text-search-match-count">0</div>
+                                    </div>
+                                </div>
+                                <div class="toolbar-right">
+                                    <!-- Regular Toolbar Buttons -->
+                                    <div class="toolbar-regular-buttons">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                            <i class="fas fa-lightbulb"></i>
+                                        </button>
+                                        <div class="divider"></div>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
+                                            <i class="fas fa-plus-minus"></i>
+                                        </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
+                                            <i class="fas fa-highlighter-line"></i>
+                                        </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
+                                            <i class="fas fa-book-skull"></i>
+                                        </button>
+                                    </div>
+                                    <!-- Search Mode Buttons (Hidden by default) -->
+                                    <div class="toolbar-search-buttons">
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-prev" data-action="search-prev" title="Previous"><i class="fas fa-chevron-up"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-next" data-action="search-next" title="Next"><i class="fas fa-chevron-down"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-close" data-action="search-close" title="Close"><i class="fas fa-times"></i></button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -7741,39 +8323,47 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
         const ucField = document.getElementById(`${characterId}_uc`);
 
         if (promptField) {
-            promptField.addEventListener('input', handleCharacterAutocompleteInput);
-            promptField.addEventListener('keydown', handleCharacterAutocompleteKeydown);
-            promptField.addEventListener('focus', () => startEmphasisHighlighting(promptField));
-            promptField.addEventListener('blur', () => {
+            addSafeEventListener(promptField, 'input', handleCharacterAutocompleteInput);
+            addSafeEventListener(promptField, 'keydown', handleCharacterAutocompleteKeydown);
+            addSafeEventListener(promptField, 'focus', () => startEmphasisHighlighting(promptField));
+            addSafeEventListener(promptField, 'blur', () => {
                 applyFormattedText(promptField, true);
                 updateEmphasisHighlighting(promptField);
                 stopEmphasisHighlighting();
             });
             // Add auto-resize functionality
-            promptField.addEventListener('input', () => autoResizeTextarea(promptField));
+            addSafeEventListener(promptField, 'input', () => autoResizeTextarea(promptField));
             // Initialize emphasis highlighting overlay
             initializeEmphasisOverlay(promptField);
             // Apply initial resizing and highlighting after content is set
             autoResizeTextarea(promptField);
             updateEmphasisHighlighting(promptField);
+            // Initialize toolbar for dynamic textarea
+            if (window.handleDynamicTextarea) {
+                window.handleDynamicTextarea(promptField);
+            }
         }
 
         if (ucField) {
-            ucField.addEventListener('input', handleCharacterAutocompleteInput);
-            ucField.addEventListener('keydown', handleCharacterAutocompleteKeydown);
-            ucField.addEventListener('focus', () => startEmphasisHighlighting(ucField));
-            ucField.addEventListener('blur', () => {
+            addSafeEventListener(ucField, 'input', handleCharacterAutocompleteInput);
+            addSafeEventListener(ucField, 'keydown', handleCharacterAutocompleteKeydown);
+            addSafeEventListener(ucField, 'focus', () => startEmphasisHighlighting(ucField));
+            addSafeEventListener(ucField, 'blur', () => {
                 applyFormattedText(ucField, true);
                 updateEmphasisHighlighting(ucField);
                 stopEmphasisHighlighting();
             });
             // Add auto-resize functionality
-            ucField.addEventListener('input', () => autoResizeTextarea(ucField));
+            addSafeEventListener(ucField, 'input', () => autoResizeTextarea(ucField));
             // Initialize emphasis highlighting overlay
             initializeEmphasisOverlay(ucField);
             // Apply initial resizing and highlighting after content is set
             autoResizeTextarea(ucField);
             updateEmphasisHighlighting(ucField);
+            // Initialize toolbar for dynamic textarea
+            if (window.handleDynamicTextarea) {
+                window.handleDynamicTextarea(ucField);
+            }
         }
 
         // Add preview textarea click handler
@@ -8163,6 +8753,10 @@ function handleServerPing(data) {
     }
     if (data.balance !== undefined) {
         updateBalanceDisplay(data.balance);
+        // Check for subscription notifications when balance updates
+        updateSubscriptionNotifications().catch(error => {
+            console.error('Error checking subscription notifications:', error);
+        });
     }
     
     // Clear connection warning toast if it exists
@@ -8222,6 +8816,360 @@ async function ensureSessionValid() {
     }, 15000);
 })();
 
+// Bulk operations with WebSocket support
+async function handleBulkMoveToWorkspace() {
+    if (selectedImages.size === 0) {
+        showError('No images selected');
+        return;
+    }
+
+    // Use the new gallery move modal with cross-fade functionality
+    if (typeof triggerGalleryMoveWithSelection === 'function') {
+        triggerGalleryMoveWithSelection();
+    } else {
+        // Fallback to old modal if function not available
+        showError('Gallery move functionality not available');
+    }
+}
+async function moveBulkImagesToWorkspace(workspaceId) {
+    try {
+        const isScrapsView = currentGalleryView === 'scraps';
+        const isPinnedView = currentGalleryView === 'pinned';
+
+        // Filter out any null/undefined values from selectedImages
+        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to move');
+        }
+
+        // Use WebSocket API if available, otherwise fall back to HTTP
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                await window.wsClient.moveFilesToWorkspace(validFilenames, workspaceId);
+            } catch (wsError) {
+                showError('Failed to move files: ' + wsError.message);
+                throw new Error('Failed to move files');
+            }
+        } else {
+            // Fallback to HTTP
+            // Use appropriate endpoint based on current view
+            let endpoint;
+            if (isScrapsView) {
+                endpoint = `/workspaces/${workspaceId}/scraps`;
+            } else if (isPinnedView) {
+                endpoint = `/workspaces/${workspaceId}/pinned`;
+            } else {
+                endpoint = `/workspaces/${workspaceId}/files`;
+            }
+
+            const response = await fetchWithAuth(endpoint, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    filenames: validFilenames
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to move items');
+            }
+        }
+
+        const workspace = workspaces[workspaceId];
+        let itemType;
+        if (isScrapsView) {
+            itemType = 'scraps';
+        } else if (isPinnedView) {
+            itemType = 'pinned images';
+        } else {
+            itemType = 'images';
+        }
+
+        showGlassToast('success', null, `Moved ${validFilenames.length} ${itemType} to ${workspace.name}`, false, 5000, '<i class="fas fa-copy"></i>');
+
+        // Clear selection and reload gallery
+        clearSelection();
+        switchGalleryView(currentGalleryView, true);
+
+    } catch (error) {
+        console.error('Error moving items to workspace:', error);
+        showError('Failed to move items: ' + error.message);
+    } finally {
+        showManualLoading(false);
+    }
+}
+
+async function handleBulkDelete(event = null) {
+    if (selectedImages.size === 0) {
+        showGlassToast('error', 'No Selection', 'Please select images to delete.');
+        return;
+    }
+
+    // Show confirmation dialog
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to delete ${selectedImages.size} selected image(s)? This will permanently delete both the original and upscaled versions.`,
+        [
+            { text: 'Delete', value: true, className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        event
+    );
+    
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        // Filter out any null/undefined values from selectedImages
+        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to delete');
+        }
+
+        let responseData = null;
+        
+        // Use WebSocket API if available, otherwise fall back to HTTP
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                responseData = await window.wsClient.deleteImagesBulk(validFilenames);
+            } catch (wsError) {
+                showError('Failed to delete images: ' + wsError.message);
+                throw new Error('Failed to delete images');
+            }
+        } else {
+            // Fallback to HTTP
+            const response = await fetchWithAuth('/images/bulk', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    filenames: validFilenames
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Bulk delete failed: ${response.statusText}`);
+            }
+            
+            responseData = await response.json();
+        }
+
+        // Use server response data for accurate toast message
+        if (responseData) {
+            const { successful, failed, message } = responseData;
+            let toastMessage = message || `Successfully removed ${successful} image(s)`;
+            
+            if (failed > 0) {
+                toastMessage += ` (${failed} failed)`;
+            }
+            
+            showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-trash"></i>');
+        } else {
+            showGlassToast('success', null, `Successfully removed ${validFilenames.length} image(s)`, false, 5000, '<i class="fas fa-trash"></i>');
+        }
+
+        // Clear selection and remove images from gallery
+        clearSelection();
+        switchGalleryView(currentGalleryView, true);
+
+    } catch (error) {
+        console.error('Bulk delete error:', error);
+        showError('Bulk delete failed: ' + error.message);
+    } finally {
+        showManualLoading(false);
+    }
+}
+
+async function handleBulkSequenzia(event = null) {
+    if (selectedImages.size === 0) {
+        showError('No images selected');
+        return;
+    }
+
+    // Show confirmation dialog
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to send ${selectedImages.size} selected image(s) to Sequenzia? This will move the images and delete them from the gallery.`,
+        [
+            { text: 'Send to Sequenzia', value: true, className: 'btn-primary' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        event
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        showManualLoading(true, 'Sending images to Sequenzia...');
+
+        // Filter out any null/undefined values from selectedImages
+        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to send to Sequenzia');
+        }
+
+        let responseData = null;
+        
+        // Use WebSocket API if available, otherwise fall back to HTTP
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                responseData = await window.wsClient.sendToSequenziaBulk(validFilenames);
+            } catch (wsError) {
+                showError('Failed to send to Sequenzia: ' + wsError.message);
+                throw new Error('Failed to send to Sequenzia');
+            }
+        } else {
+            // Fallback to HTTP
+            const response = await fetchWithAuth('/images/send-to-sequenzia', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    filenames: validFilenames
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Send to Sequenzia failed: ${response.statusText}`);
+            }
+            
+            responseData = await response.json();
+        }
+
+        // Use server response data for accurate toast message
+        if (responseData) {
+            const { successful, failed, message } = responseData;
+            let toastMessage = message || `Successfully sent ${successful} image(s) to Sequenzia`;
+            
+            if (failed > 0) {
+                toastMessage += ` (${failed} failed)`;
+            }
+            
+            showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-share"></i>');
+        } else {
+            showGlassToast('success', null, `Successfully sent ${validFilenames.length} image(s) to Sequenzia`, false, 5000, '<i class="fas fa-share"></i>');
+        }
+
+        // Clear selection and remove images from gallery
+        clearSelection();
+        switchGalleryView(currentGalleryView, true);
+
+    } catch (error) {
+        console.error('Send to Sequenzia error:', error);
+        showError('Send to Sequenzia failed: ' + error.message);
+    } finally {
+        showManualLoading(false);
+    }
+}
+
+async function handleBulkMoveToScraps(event = null) {
+    if (selectedImages.size === 0) {
+        showGlassToast('error', 'No Selection', 'Please select images to move to scraps.');
+        return;
+    }
+
+    // Show confirmation dialog
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to move ${selectedImages.size} selected image(s) to scraps?`,
+        [
+            { text: 'Move', value: true, className: 'btn-primary' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        event
+    );
+    
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        showManualLoading(true, 'Moving images to scraps...');
+
+        // Filter out any null/undefined values from selectedImages
+        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+
+        if (validFilenames.length === 0) {
+            throw new Error('No valid filenames to move to scraps');
+        }
+
+        let responseData = null;
+        
+        // Use WebSocket API if available, otherwise fall back to HTTP
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                responseData = await window.wsClient.addScrapBulk(activeWorkspace, validFilenames);
+            } catch (wsError) {
+                showError('Failed to move to scraps: ' + wsError.message);
+                throw new Error('Failed to move to scraps');
+            }
+        } else {
+            // Fallback to HTTP - move each file to scraps
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (const filename of validFilenames) {
+                try {
+                    const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ filename })
+                    });
+
+                    if (response.ok) {
+                        successCount++;
+                    } else {
+                        errorCount++;
+                    }
+                } catch (error) {
+                    errorCount++;
+                    console.error(`Failed to move ${filename} to scraps:`, error);
+                }
+            }
+
+            responseData = { addedCount: successCount, failed: errorCount };
+            
+            if (errorCount > 0) {
+                showError(`${errorCount} image(s) failed to move to scraps`);
+            }
+        }
+
+        // Use server response data for accurate toast message
+        if (responseData) {
+            const { addedCount, failed } = responseData;
+            let toastMessage = `Successfully moved ${addedCount} image(s) to scraps`;
+            
+            if (failed > 0) {
+                toastMessage += ` (${failed} failed)`;
+            }
+            
+            showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-trash-alt"></i>');
+        } else {
+            showGlassToast('success', null, `Successfully moved ${validFilenames.length} image(s) to scraps`, false, 5000, '<i class="fas fa-trash-alt"></i>');
+        }
+
+        // Clear selection and remove images from gallery
+        clearSelection();
+        switchGalleryView(currentGalleryView, true);
+
+    } catch (error) {
+        console.error('Bulk move to scraps error:', error);
+        showError('Failed to move images to scraps: ' + error.message);
+    } finally {
+        showManualLoading(false);
+    }
+}
+
 // WebSocket Event Handlers
 if (window.wsClient) {
     // Handle WebSocket connection events
@@ -8278,8 +9226,44 @@ if (window.wsClient) {
     });
 
     // Handle receipt notifications
+    wsClient.on('receipt', (data) => {
+        console.log('🧾 Receipt received:', data);
+        if (data.data && data.data.message) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast(data.data.type || 'info', null, data.data.message, false);
+            }
+        }
+    });
+
+    // Handle gallery responses
+    wsClient.on('galleryResponse', (data) => {
+        console.log('🖼️ Gallery response received:', data);
+        // The gallery view functions will handle this data
+    });
+
+    // Handle gallery updates
+    wsClient.on('galleryUpdated', (data) => {
+        console.log('🖼️ Gallery updated:', data);
+        // Refresh the current gallery view if it matches the updated view type
+        if (data.data && data.data.viewType) {
+            window.allImages = data.data.gallery;
+            
+            // Apply current sort order to the updated gallery data
+            if (window.sortGalleryData && typeof window.sortGalleryData === 'function') {
+                window.sortGalleryData();
+            }
+            
+            const currentView = window.currentGalleryView || 'images';
+            if (data.data.viewType === currentView) {
+                // Refresh the current gallery view
+                switchGalleryView(currentView, true);
+            }
+        }
+    });
+
+    // Handle receipt notifications
     wsClient.on('receipt_notification', (data) => {
-        if (data.receipt) {
+        if (data.receipt && data.receipt?.cost > 0) {
             const receipt = data.receipt;
             let message = '';
             let type = 'info';
@@ -8287,33 +9271,33 @@ if (window.wsClient) {
             switch (receipt.type) {
                 case 'generation':
                     header = 'Generation Receipt';
-                    message = `<i class="nai-anla"></i> ${receipt.cost || 0} (${(receipt.creditType || 'unknown').toLocaleUpperCase()} Request)`;
+                    message = `<i class="nai-anla"></i> ${receipt.cost || 0} (using ${receipt.creditType || 'unknown'})`;
                     type = 'success';
                     break;
                 case 'upscaling':
                     header = 'Upscaling Receipt';
-                    message = `<i class="nai-anla"></i> ${receipt.cost || 0} (${(receipt.creditType || 'unknown').toLocaleUpperCase()} Request)`;
+                    message = `<i class="nai-anla"></i> ${receipt.cost || 0} (using ${receipt.creditType || 'unknown'})`;
                     type = 'success';
                     break;
                 case 'vibe_encoding':
                     header = 'Vibe Encoding Receipt';
-                    message = ` <i class="nai-anla"></i> ${receipt.cost || 0} (${(receipt.creditType || 'unknown').toLocaleUpperCase()} Request)`;
+                    message = ` <i class="nai-anla"></i> ${receipt.cost || 0} (using ${receipt.creditType || 'unknown'})`;
                     type = 'info';
                     break;
                 case 'deposit':
                     header = 'Deposit Receipt';
-                    message = `<i class="nai-anla"></i> +${receipt.cost || 0} (${(receipt.creditType || 'unknown').toLocaleUpperCase()} Request)`;
+                    message = `<i class="nai-anla"></i> +${receipt.cost || 0} (using ${receipt.creditType || 'unknown'})`;
                     type = 'success';
                     break;
                 default:
                     header = 'Operation Receipt';
-                    message = `<i class="nai-anla"></i> ${receipt.cost || 0} (${(receipt.creditType || 'unknown').toLocaleUpperCase()} Request)`;
+                    message = `<i class="nai-anla"></i> ${receipt.cost || 0} (using ${receipt.creditType || 'unknown'})`;
                     type = 'info';
             }
             
             if (message) {
                 if (typeof showGlassToast === 'function') {
-                    showGlassToast(type, header, message);
+                    showGlassToast(type, header, message, false, 10000, '<i class="fas fa-file-invoice-dollar"></i>');
                 }
             }
         }

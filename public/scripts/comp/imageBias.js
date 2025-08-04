@@ -34,7 +34,8 @@ async function renderImageBiasDropdown(selectedVal) {
 
     if (!imageBiasDropdownBtn.hasAttribute('data-setup')) {
         // Add event listeners
-        imageBiasDropdownBtn.addEventListener('click', () => {
+        imageBiasDropdownBtn.addEventListener('click', (e) => {
+            
             if (imageBiasDropdownMenu.style.display === 'none') {
                 imageBiasDropdownMenu.style.display = '';
             } else {
@@ -139,7 +140,8 @@ async function renderImageBiasDropdown(selectedVal) {
             </div>
         `;
 
-        optionElement.addEventListener('click', () => {
+        optionElement.addEventListener('click', (e) => {
+            
             selectImageBias(option.value);
         });
 
@@ -616,7 +618,8 @@ function renderImageBiasPresetDropdown(selectedVal) {
             </div>
         `;
 
-        optionElement.addEventListener('click', () => {
+        optionElement.addEventListener('click', (e) => {
+            
             applyImageBiasPreset(option.value);
             closeImageBiasPresetDropdown();
         });
@@ -759,7 +762,7 @@ function handleBiasImageMouseDown(e) {
     imageBiasAdjustmentData.dragStart = { x: e.clientX, y: e.clientY };
     imageBiasAdjustmentData.originalTransform = { ...imageBiasAdjustmentData.currentBias };
 
-    e.preventDefault();
+    
 }
 
 function handleBiasImageMouseMove(e) {
@@ -1318,7 +1321,7 @@ function setupImageBiasAdjustmentListeners() {
         if (input) {
             input.addEventListener('input', handleBiasControlChange);
             input.addEventListener('wheel', (e) => {
-                e.preventDefault();
+                
                 const delta = e.deltaY > 0 ? -1 : 1;
                 const step = parseFloat(input.step) || 1;
                 input.value = parseFloat(input.value || 0) + (delta * step);
@@ -1346,7 +1349,7 @@ function setupImageBiasAdjustmentListeners() {
     const presetBtn = document.getElementById('imageBiasPresetBtn');
     if (presetBtn) {
         presetBtn.addEventListener('click', e => {
-            e.preventDefault();
+            
             e.stopPropagation();
 
             const menu = document.getElementById('imageBiasPresetMenu');
@@ -1412,14 +1415,19 @@ function setupImageBiasAdjustmentListeners() {
     const confirmBaseImageChangeBtn = document.getElementById('confirmBaseImageChangeBtn');
     const cancelBaseImageChangeBtn = document.getElementById('cancelBaseImageChangeBtn');
 
-    if (closeBaseImageChangeAlertBtn) closeBaseImageChangeAlertBtn.addEventListener('click', () => {
+    if (closeBaseImageChangeAlertBtn) closeBaseImageChangeAlertBtn.addEventListener('click', (e) => {
+        
         hideBaseImageChangeAlertModal();
         // Clear any pending changes
         window.pendingImageUpload = null;
         window.pendingCacheImageSelection = null;
     });
-    if (confirmBaseImageChangeBtn) confirmBaseImageChangeBtn.addEventListener('click', confirmBaseImageChange);
-    if (cancelBaseImageChangeBtn) cancelBaseImageChangeBtn.addEventListener('click', () => {
+    if (confirmBaseImageChangeBtn) confirmBaseImageChangeBtn.addEventListener('click', (e) => {
+        
+        confirmBaseImageChange();
+    });
+    if (cancelBaseImageChangeBtn) cancelBaseImageChangeBtn.addEventListener('click', (e) => {
+        
         hideBaseImageChangeAlertModal();
         // Clear any pending changes
         window.pendingImageUpload = null;
@@ -1432,19 +1440,22 @@ function setupImageBiasAdjustmentListeners() {
     const removeMaskBtn = document.getElementById('removeMaskBtn');
     const createMaskBtn = document.getElementById('createMaskBtn');
 
-    if (closeImageBiasMaskAlertBtn) closeImageBiasMaskAlertBtn.addEventListener('click', () => {
+    if (closeImageBiasMaskAlertBtn) closeImageBiasMaskAlertBtn.addEventListener('click', (e) => {
+        
         hideImageBiasMaskAlertModal();
         // Clear any pending changes
         window.pendingImageBiasChange = null;
         window.pendingBiasAdjustment = null;
     });
-    if (cancelImageBiasBtn) cancelImageBiasBtn.addEventListener('click', () => {
+    if (cancelImageBiasBtn) cancelImageBiasBtn.addEventListener('click', (e) => {
+        
         hideImageBiasMaskAlertModal();
         // Clear any pending changes
         window.pendingImageBiasChange = null;
         window.pendingBiasAdjustment = null;
     });
-    if (removeMaskBtn) removeMaskBtn.addEventListener('click', () => {
+    if (removeMaskBtn) removeMaskBtn.addEventListener('click', (e) => {
+        
         deleteMask();
         hideImageBiasMaskAlertModal();
         // Continue with the pending image bias change
@@ -1463,7 +1474,8 @@ function setupImageBiasAdjustmentListeners() {
     });
     if (createMaskBtn) {
         console.log('Create mask button found and event listener added');
-                createMaskBtn.addEventListener('click', async () => {
+        createMaskBtn.addEventListener('click', async (e) => {
+            
             console.log('Create mask button clicked');
             hideImageBiasMaskAlertModal();
 
@@ -1499,9 +1511,18 @@ function setupImageBiasAdjustmentListeners() {
     }
     const acceptConfirmBtn = document.getElementById('acceptBiasConfirmBtn');
 
-    if (closeConfirmBtn) closeConfirmBtn.addEventListener('click', hideBiasAdjustmentConfirmDialog);
-    if (cancelConfirmBtn) cancelConfirmBtn.addEventListener('click', hideBiasAdjustmentConfirmDialog);
-    if (acceptConfirmBtn) acceptConfirmBtn.addEventListener('click', acceptBiasAdjustment);
+    if (closeConfirmBtn) closeConfirmBtn.addEventListener('click', (e) => {
+        
+        hideBiasAdjustmentConfirmDialog();
+    });
+    if (cancelConfirmBtn) cancelConfirmBtn.addEventListener('click', (e) => {
+        
+        hideBiasAdjustmentConfirmDialog();
+    });
+    if (acceptConfirmBtn) acceptConfirmBtn.addEventListener('click', (e) => {
+        
+        acceptBiasAdjustment();
+    });
 
     // Close confirmation dialog when clicking outside
     const confirmDialog = document.getElementById('biasAdjustmentConfirmDialog');

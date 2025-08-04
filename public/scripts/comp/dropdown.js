@@ -1,5 +1,3 @@
-// Dropdown menu utilities (moved from script.js)
-
 /**
  * Renders a grouped dropdown menu.
  * @param {HTMLElement} menu - The dropdown menu element.
@@ -80,6 +78,7 @@ function setupDropdown(container, button, menu, render, getSelectedValue, option
     let selectedOptionIndex = -1;
     
     button.addEventListener('click', async e => {
+        e.preventDefault();
         e.stopPropagation();
         if (menu.style.display === 'block') {
             closeDropdown(menu, button);
@@ -100,6 +99,7 @@ function setupDropdown(container, button, menu, render, getSelectedValue, option
     if (enableKeyboardNav) {
         // Add keyboard navigation
         menu.addEventListener('keydown', e => {
+            e.preventDefault();
             // Stop propagation to prevent conflicts with other keyboard handlers
             e.stopPropagation();
             
@@ -209,7 +209,12 @@ function updateSelectedOption(menu, selectedIndex) {
     options.forEach((option, index) => {
         if (index === selectedIndex) {
             option.classList.add('keyboard-selected');
-            option.scrollIntoView({ block: 'nearest' });
+            // Use custom scroll function if available, otherwise fall back to scrollIntoView
+            if (typeof scrollToOption === 'function') {
+                scrollToOption(option);
+            } else {
+                option.scrollIntoView({ block: 'nearest' });
+            }
         } else {
             option.classList.remove('keyboard-selected');
         }

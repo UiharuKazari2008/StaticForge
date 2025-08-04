@@ -541,8 +541,10 @@ async function showDeleteGroupModal() {
     
     const confirmed = await showConfirmationDialog(
         `Are you sure you want to delete the group "${activeGroup.name}"? This will not delete the images, only remove them from the group.`,
-        'Delete Group',
-        'Cancel'
+        [
+            { text: 'Delete', value: true, className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ]
     );
     
     if (!confirmed) return;

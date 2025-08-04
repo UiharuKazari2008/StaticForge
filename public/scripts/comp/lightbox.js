@@ -205,15 +205,16 @@ function handleWheelZoom(e) {
 }
 
 function handleMouseDown(e) {
+        e.preventDefault();
     if (lightboxZoom > 1) {
         isDragging = true;
         lastMouseX = e.clientX;
         lastMouseY = e.clientY;
-        e.preventDefault();
     }
 }
 
 function handleMouseMove(e) {
+    e.preventDefault();
     if (isDragging && lightboxZoom > 1) {
         const deltaX = e.clientX - lastMouseX;
         const deltaY = e.clientY - lastMouseY;
@@ -225,7 +226,6 @@ function handleMouseMove(e) {
         lastMouseY = e.clientY;
 
         updateImageTransform();
-        e.preventDefault();
     }
 }
 
@@ -630,7 +630,7 @@ async function copyToClipboard(text, title) {
         // Try modern clipboard API first
         if (navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(text);
-            showGlassToast('success', null, `Copied ${title} to clipboard`);
+            showGlassToast('success', null, `Copied ${title} to clipboard`, false, 3000, '<i class="fas fa-clipboard"></i>');
         } else {
             // Fallback for older browsers
             const textArea = document.createElement('textarea');
@@ -646,14 +646,14 @@ async function copyToClipboard(text, title) {
             document.body.removeChild(textArea);
 
             if (successful) {
-                showGlassToast('success', null, `Copied ${title} to clipboard`);
+                showGlassToast('success', null, `Copied ${title} to clipboard`, false, 3000, '<i class="fas fa-clipboard"></i>');
             } else {
                 throw new Error('execCommand copy failed');
             }
         }
     } catch (err) {
         console.error('Failed to copy text: ', err);
-        showGlassToast('error', null, 'Failed to copy to clipboard');
+        showGlassToast('error', null, 'Failed to copy to clipboard', false);
     }
 }
 
@@ -686,22 +686,16 @@ function formatResolution(resolution) {
 // Load and display metadata
 async function loadAndDisplayMetadata(filename) {
     try {
-        const response = await fetchWithAuth(`/images/${filename}`, {
-            method: 'OPTIONS'
-        });
+        const metadata = await getImageMetadata(filename);
 
-        if (response.ok) {
-            const metadata = await response.json();
+        if (metadata && Object.keys(metadata).length > 0) {
+            // Populate metadata table
+            populateMetadataTable(metadata);
 
-            if (metadata && Object.keys(metadata).length > 0) {
-                // Populate metadata table
-                populateMetadataTable(metadata);
+            // Set up expandable sections
+            setupPromptPanel(metadata);
 
-                // Set up expandable sections
-                setupPromptPanel(metadata);
-
-                return metadata;
-            }
+            return metadata;
         }
         return null;
     } catch (error) {

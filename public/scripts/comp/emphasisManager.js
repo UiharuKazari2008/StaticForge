@@ -1,10 +1,4 @@
-let emphasisPopup = document.getElementById('emphasisPopup');
-
-// Global variables for emphasis popup
-let emphasisPopupActive = false;
-let emphasisPopupValue = 1.0;
-let emphasisPopupTarget = null;
-let emphasisPopupSelection = null;
+// Global variables for emphasis editing (toolbar mode only)
 
 // Global variables for emphasis editing
 let emphasisEditingActive = false;
@@ -62,79 +56,7 @@ function checkCanAddEmphasis(target) {
     return searchText.length >= 2 && /^[a-zA-Z0-9_]+$/.test(searchText);
 }
 
-// Emphasis popup functions
-function showEmphasisPopup() {
-    // Create popup if it doesn't exist
-    if (!emphasisPopup) {
-        emphasisPopup = document.createElement('div');
-        emphasisPopup.id = 'emphasisPopup';
-        emphasisPopup.className = 'emphasis-popup';
-        emphasisPopup.innerHTML = `
-            <div class="emphasis-popup-content">
-                <div class="emphasis-label">Emphasis Weight</div>
-                <div class="emphasis-value">${emphasisPopupValue.toFixed(1)}</div>
-                <div class="emphasis-controls">
-                    <button class="emphasis-btn" onclick="adjustEmphasis(-0.1)">-</button>
-                    <input type="range" min="0.1" max="2.0" step="0.1" value="${emphasisPopupValue}" 
-                           oninput="updateEmphasisFromSlider(this.value)" 
-                           onwheel="adjustEmphasisFromWheel(event)">
-                    <button class="emphasis-btn" onclick="adjustEmphasis(0.1)">+</button>
-                </div>
-                <div class="emphasis-help">Use ↑↓ arrows or scroll to adjust</div>
-            </div>
-        `;
-        document.body.appendChild(emphasisPopup);
-    }
-
-    // Position popup near cursor
-    const rect = emphasisPopupTarget.getBoundingClientRect();
-    const cursorPosition = emphasisPopupTarget.selectionStart;
-    const textBeforeCursor = emphasisPopupTarget.value.substring(0, cursorPosition);
-
-    // Calculate approximate cursor position
-    const tempSpan = document.createElement('span');
-    tempSpan.style.font = window.getComputedStyle(emphasisPopupTarget).font;
-    tempSpan.style.visibility = 'hidden';
-    tempSpan.style.position = 'absolute';
-    tempSpan.style.whiteSpace = 'pre';
-    tempSpan.textContent = textBeforeCursor;
-    document.body.appendChild(tempSpan);
-
-    const textWidth = tempSpan.offsetWidth;
-    document.body.removeChild(tempSpan);
-
-    emphasisPopup.style.left = (rect.left + textWidth) + 'px';
-    emphasisPopup.style.top = (rect.top - emphasisPopup.offsetHeight - 10) + 'px';
-    emphasisPopup.style.display = 'block';
-
-    updateEmphasisPopup();
-}
-
-function updateEmphasisPopup() {
-    if (!emphasisPopup) return;
-
-    const valueElement = emphasisPopup.querySelector('.emphasis-value');
-    const slider = emphasisPopup.querySelector('input[type="range"]');
-
-    if (valueElement) valueElement.textContent = emphasisPopupValue.toFixed(1);
-    if (slider) slider.value = emphasisPopupValue;
-}
-
-function adjustEmphasis(delta) {
-    emphasisPopupValue = Math.max(0.1, Math.min(2.0, emphasisPopupValue + delta));
-    updateEmphasisPopup();
-}
-
-function updateEmphasisFromSlider(value) {
-    emphasisPopupValue = parseFloat(value);
-    updateEmphasisPopup();
-}
-
-function adjustEmphasisFromWheel(event) {
-    event.preventDefault();
-    const delta = event.deltaY > 0 ? -0.1 : 0.1;
-    adjustEmphasis(delta);
-}
+// Emphasis editing functions (toolbar mode only)
 
 function startEmphasisEditing(target) {
     if (!target) return;
@@ -145,7 +67,7 @@ function startEmphasisEditing(target) {
     const textBeforeCursor = value.substring(0, cursorPosition);
 
     // First, check if cursor is inside an existing emphasis block
-    const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
+    const emphasisPattern = /(-?\d+\.\d+)::([^:]+)::/g;
     let emphasisMatch;
     let insideEmphasis = false;
     let emphasisMode = 'normal'; // 'normal', 'brace', 'group'
@@ -231,7 +153,7 @@ function startEmphasisEditing(target) {
 
         // If not inside a brace, check if we're at the start/end of a brace block within an emphasis group
         if (!insideBrace) {
-            const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
+            const emphasisPattern = /(-?\d+\.\d+)::([^:]+)::/g;
             let emphasisMatch;
 
             while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
@@ -284,12 +206,12 @@ function startEmphasisEditing(target) {
             const hasSelection = selectionStart !== selectionEnd;
 
             if (hasSelection) {
-                // Use the selected text for emphasis
+                // Use the selected text for emphasis - start with "---" value
                 emphasisEditingSelection = {
                     start: selectionStart,
                     end: selectionEnd
                 };
-                emphasisEditingValue = 1.0;
+                emphasisEditingValue = "---";
                 emphasisMode = 'normal';
             } else {
                 // For new blocks, search back to find the block boundary
@@ -323,7 +245,7 @@ function startEmphasisEditing(target) {
                 if (blockText.length < 2) return;
 
                 // Check if the current tag is already emphasized
-                const currentTagEmphasisPattern = new RegExp(`(\\d+\\.\\d+)::${blockText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}::`);
+                const currentTagEmphasisPattern = new RegExp(`(-?\\d+\\.\\d+)::${blockText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}::`);
                 const currentTagMatch = value.match(currentTagEmphasisPattern);
 
                 if (currentTagMatch) {
@@ -335,8 +257,8 @@ function startEmphasisEditing(target) {
                     };
                     emphasisMode = 'group';
                 } else {
-                    // Create new emphasis block
-                    emphasisEditingValue = 1.0;
+                    // Create new emphasis block - start with "---" value
+                    emphasisEditingValue = "---";
                     emphasisEditingSelection = {
                         start: blockStart,
                         end: blockEnd
@@ -354,159 +276,134 @@ function startEmphasisEditing(target) {
     // Hide autocomplete
     hideCharacterAutocomplete();
 
-    // Show emphasis editing emphasisPopup
-    showEmphasisEditingPopup();
+    // Add a border highlight around the selected text
+    addEmphasisSelectionHighlight(emphasisEditingTarget, emphasisEditingSelection);
+    
+    // Add blur event listener to cancel editing when textarea loses focus
+    const blurHandler = () => {
+        if (emphasisEditingActive) {
+            cancelEmphasisEditing();
+        }
+        // Remove the listener after it's used (with null check)
+        if (emphasisEditingTarget && emphasisEditingTarget.removeEventListener) {
+            emphasisEditingTarget.removeEventListener('blur', blurHandler);
+        }
+    };
+    emphasisEditingTarget.addEventListener('blur', blurHandler);
 }
 
-function showEmphasisEditingPopup() {
-    // Create popup if it doesn't exist
-    if (!emphasisPopup) {
-        emphasisPopup = document.createElement('div');
-        emphasisPopup.id = 'emphasisEditingPopup';
-        emphasisPopup.className = 'emphasis-popup';
-        emphasisPopup.innerHTML = `
-            <div class="emphasis-popup-content">
-                <div class="emphasis-header">
-                    <div class="emphasis-text" id="emphasisText">Select text...</div>
-                </div>
-                <div class="emphasis-toolbar">
-                    <div class="emphasis-value" id="emphasisValue">1.0</div>
-                    <div class="emphasis-type" id="emphasisType">New Group</div>
-                    <div class="emphasis-controls">
-                        <button class="btn-secondary emphasis-btn emphasis-up" onclick="adjustEmphasisEditing(0.1)" title="Increase">
-                        <i class="nai-plus"></i>
-                        </button>
-                        <button class="btn-secondary emphasis-btn emphasis-down" onclick="adjustEmphasisEditing(-0.1)" title="Decrease">
-                        <i class="nai-minus"></i>
-                        </button>
-                        <button class="btn-secondary emphasis-btn emphasis-toggle" id="emphasisToggleBtn" onclick="switchEmphasisMode('toggle')" title="Toggle Mode" style="display: none;">
-                        <i class="nai-arrow-left"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>
+// Add border highlight around selected text for emphasis editing
+function addEmphasisSelectionHighlight(textarea, selection) {
+    if (!textarea || !selection) return;
+    
+    // Create or get the emphasis overlay
+    let overlay = textarea.parentElement.querySelector('.emphasis-highlight-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'emphasis-highlight-overlay';
+        overlay.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            z-index: 1;
+            font-family: inherit;
+            font-size: inherit;
+            line-height: inherit;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            overflow: hidden;
+            background: transparent;
         `;
-        document.body.appendChild(emphasisPopup);
+        
+        // Ensure textarea container has relative positioning
+        const container = textarea.parentElement;
+        const containerStyle = window.getComputedStyle(container);
+        if (containerStyle.position === 'static') {
+            container.style.position = 'relative';
+        }
+        
+        container.appendChild(overlay);
     }
-
-    // Position popup near text cursor
-    const rect = emphasisEditingTarget.getBoundingClientRect();
-    const cursorPosition = emphasisEditingTarget.selectionStart;
-    const textBeforeCursor = emphasisEditingTarget.value.substring(0, cursorPosition);
-
-    // Position popup relative to the input field
-    const inputPadding = parseInt(window.getComputedStyle(emphasisEditingTarget).paddingLeft) || 0;
-
-    // Position popup near the center-right of the input field
-    const cursorX = rect.left + (rect.width * 0.7); // 70% from the left
-    const cursorY = rect.top;
-
-    // Position popup above the cursor
-    emphasisPopup.style.left = cursorX + 'px';
-    emphasisPopup.style.top = (cursorY - emphasisPopup.offsetHeight - 10) + 'px';
-    emphasisPopup.style.display = 'block';
-    emphasisPopup.style.zIndex = '9999'; // Ensure it's on top
-
-    updateEmphasisEditingPopup();
+    
+    // Create a simple text-based highlight by wrapping the selected text
+    const text = textarea.value;
+    const beforeSelection = text.substring(0, selection.start);
+    const selectedText = text.substring(selection.start, selection.end);
+    const afterSelection = text.substring(selection.end);
+    
+    // Create highlighted text with golden background for selected portion
+    const highlightedText = beforeSelection + 
+        `<span style="background: rgba(255, 215, 0, 0.3); border: 2px solid rgba(255, 215, 0, 0.8); border-radius: 3px; padding: 1px;">${selectedText}</span>` + 
+        afterSelection;
+    
+    overlay.innerHTML = highlightedText;
+    
+    // Sync scroll position
+    overlay.scrollTop = textarea.scrollTop;
+    overlay.scrollLeft = textarea.scrollLeft;
+    
+    // Store reference for cleanup
+    textarea.emphasisSelectionHighlight = overlay;
 }
 
-function updateEmphasisEditingPopup() {
-    if (!emphasisPopup) return;
-
-    const valueElement = emphasisPopup.querySelector('#emphasisValue');
-    const typeElement = emphasisPopup.querySelector('#emphasisType');
-    const textElement = emphasisPopup.querySelector('#emphasisText');
-    const toggleBtn = emphasisPopup.querySelector('#emphasisToggleBtn');
-
-    if (valueElement) {
-        valueElement.textContent = emphasisEditingValue.toFixed(1);
-
-        // Color code the emphasis value
-        if (emphasisEditingValue > 1.0) {
-            valueElement.style.color = '#ff8c00'; // Orange for > 1
-        } else if (emphasisEditingValue < 1.0) {
-            valueElement.style.color = '#87ceeb'; // Light blue for < 1
-        } else {
-            valueElement.style.color = '#ffffff'; // White for = 1
-        }
+// Remove emphasis selection highlight
+function removeEmphasisSelectionHighlight(textarea) {
+    if (textarea && textarea.emphasisSelectionHighlight) {
+        textarea.emphasisSelectionHighlight.remove();
+        delete textarea.emphasisSelectionHighlight;
     }
-
-    // Update type indicator
-    if (typeElement) {
-        let typeText = '';
-        let modeClass = '';
-        switch (emphasisEditingMode) {
-            case 'normal':
-                typeText = 'New Group';
-                modeClass = 'mode-normal';
-                break;
-            case 'brace':
-                typeText = 'Brace Block';
-                modeClass = 'mode-brace';
-                break;
-            case 'group':
-                typeText = 'Modify Group';
-                modeClass = 'mode-group';
-                break;
-        }
-        typeElement.textContent = typeText;
-        typeElement.className = `emphasis-type ${modeClass}`;
-    }
-
-    // Update text content
-    if (textElement && emphasisEditingTarget && emphasisEditingSelection) {
-        const target = emphasisEditingTarget;
-        const text = target.value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
-
-        // Remove :: wrapper if it's an emphasis block, or {}/[] if it's a brace block
-        let displayText = text;
-        if (emphasisEditingMode === 'group') {
-            const emphasisMatch = text.match(/\d+\.\d+::(.+?)::/);
-            if (emphasisMatch) {
-                displayText = emphasisMatch[1];
-            }
-        } else if (emphasisEditingMode === 'brace') {
-            // Remove all { and } or [ and ] from the beginning and end
-            displayText = text.replace(/^\{+|\[+/, '').replace(/\}+|\]+$/, '');
-        }
-
-        textElement.textContent = displayText;
-    }
-
-    // Update toggle button visibility and direction
-    if (toggleBtn) {
-        let arrowDirection = '';
-        let tooltipText = '';
-
-        console.log('Current emphasis mode:', emphasisEditingMode);
-
-        // Always show toggle button, determine direction based on current mode
-        if (emphasisEditingMode === 'group') {
-            arrowDirection = '<i class="fas fa-brackets-curly"></i>';
-            tooltipText = 'Switch to Brace Block';
-        } else if (emphasisEditingMode === 'brace') {
-            arrowDirection = '<i class="fas fa-colon"></i>';
-            tooltipText = 'Switch to Group';
-        } else if (emphasisEditingMode === 'normal') {
-            arrowDirection = '<i class="fas fa-brackets-curly"></i>';
-            tooltipText = 'Switch to Brace Block';
-        }
-
-        // Always show the button
-        toggleBtn.style.display = '';
-        toggleBtn.innerHTML = arrowDirection;
-        toggleBtn.title = tooltipText;
+    
+    // Also remove any selection highlight overlay
+    const overlay = textarea.parentElement.querySelector('.emphasis-highlight-overlay');
+    if (overlay) {
+        overlay.remove();
     }
 }
 
 function adjustEmphasisEditing(delta) {
-    emphasisEditingValue = Math.max(-1.0, Math.min(2.5, emphasisEditingValue + delta));
-    updateEmphasisEditingPopup();
+    // Handle special "---" value (remove emphasis)
+    if (emphasisEditingValue === "---") {
+        if (delta > 0) {
+            emphasisEditingValue = 1.0;
+        } else {
+            emphasisEditingValue = 0.9;
+        }
+    } else {
+        // Convert to number if it's a string (for integer inputs)
+        let currentValue = typeof emphasisEditingValue === 'string' ? parseFloat(emphasisEditingValue) : emphasisEditingValue;
+        
+        // Check if we're crossing the "---" threshold
+        if (currentValue <= 0.9 && currentValue + delta > 0.9) {
+            emphasisEditingValue = "---";
+        } else if (currentValue >= 1.0 && currentValue + delta < 1.0) {
+            emphasisEditingValue = "---";
+        } else {
+            emphasisEditingValue = Math.max(-1.0, Math.min(5.0, currentValue + delta));
+        }
+    }
+    
+    // Update selection highlight to show the new emphasis value
+    if (emphasisEditingTarget && emphasisEditingSelection) {
+        addEmphasisSelectionHighlight(emphasisEditingTarget, emphasisEditingSelection);
+    }
 }
 
 function updateEmphasisEditingFromSlider(value) {
+    // Handle special "---" value
+    if (value === "---") {
+        emphasisEditingValue = "---";
+    } else {
+        // Convert to number if it's a string (for integer inputs)
     emphasisEditingValue = parseFloat(value);
-    updateEmphasisEditingPopup();
+    }
+    
+    // Update selection highlight to show the new emphasis value
+    if (emphasisEditingTarget && emphasisEditingSelection) {
+        addEmphasisSelectionHighlight(emphasisEditingTarget, emphasisEditingSelection);
+    }
 }
 
 function adjustEmphasisEditingFromWheel(event) {
@@ -520,13 +417,88 @@ function applyEmphasisEditing() {
 
     const target = emphasisEditingTarget;
     const value = target.value;
+    
+    // Check if we're in toolbar mode (needed for both "---" and normal cases)
+    const container = target.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+    const toolbar = container ? container.querySelector('.prompt-textarea-toolbar') : null;
+    const isToolbarMode = toolbar && toolbar.classList.contains('emphasis-mode');
+    
+    // Handle special "---" value (remove emphasis)
+    if (emphasisEditingValue === "---") {
+        // Get the text to emphasize (trim any leading/trailing spaces)
+        const textToEmphasize = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end).trim();
+        
+        // Check if we're inside an existing emphasis block
+        const emphasisPattern = /(-?\d+\.\d+)::([^:]+)::/;
+        const isInsideEmphasis = emphasisPattern.test(textToEmphasize);
+        
+        // Check if we're inside a {} or [] block
+        const isInsideBrace = (textToEmphasize.startsWith('{') && textToEmphasize.endsWith('}')) ||
+                              (textToEmphasize.startsWith('[') && textToEmphasize.endsWith(']'));
+        
+        let emphasizedText;
+        if (isInsideEmphasis) {
+            // Extract the text content from emphasis block
+            const match = textToEmphasize.match(emphasisPattern);
+            emphasizedText = match ? match[2] : textToEmphasize;
+        } else if (isInsideBrace) {
+            // Extract the text content from brace block
+            if (textToEmphasize.startsWith('{') && textToEmphasize.endsWith('}')) {
+                emphasizedText = textToEmphasize.replace(/^\{+/, '').replace(/\}+$/, '');
+            } else if (textToEmphasize.startsWith('[') && textToEmphasize.endsWith(']')) {
+                emphasizedText = textToEmphasize.replace(/^\[+/, '').replace(/\]+$/, '');
+            } else {
+                emphasizedText = textToEmphasize;
+            }
+        } else {
+            // No emphasis to remove, just use the text as is
+            emphasizedText = textToEmphasize;
+        }
+        
+        // Replace the text with the cleaned version
+        const beforeText = value.substring(0, emphasisEditingSelection.start);
+        const afterText = value.substring(emphasisEditingSelection.end);
+        const newValue = beforeText + emphasizedText + afterText;
+        
+        target.value = newValue;
+        
+        // Set cursor position after the cleaned text
+        const newCursorPosition = emphasisEditingSelection.start + emphasizedText.length;
+        target.setSelectionRange(newCursorPosition, newCursorPosition);
+        
+        // Reset state and cleanup
+        emphasisEditingActive = false;
+        emphasisEditingTarget = null;
+        emphasisEditingSelection = null;
+        emphasisEditingMode = 'normal';
+        
+        // Trigger input event to update any dependent UI
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+        
+        // Remove selection highlight
+        removeEmphasisSelectionHighlight(target);
+        
+        // Update emphasis highlighting
+        autoResizeTextarea(target);
+        updateEmphasisHighlighting(target);
+        
+        // Close toolbar mode if in toolbar mode
+        if (isToolbarMode && toolbar) {
+            if (window.promptTextareaToolbar && window.promptTextareaToolbar.closeEmphasisMode) {
+                window.promptTextareaToolbar.closeEmphasisMode(toolbar);
+            }
+        }
+        
+        return;
+    }
+    
     const weight = emphasisEditingValue.toFixed(1);
 
     // Get the text to emphasize (trim any leading/trailing spaces)
     const textToEmphasize = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end).trim();
 
     // Check if we're inside an existing emphasis block
-    const emphasisPattern = /(\d+\.\d+)::([^:]+)::/;
+    const emphasisPattern = /(-?\d+\.\d+)::([^:]+)::/;
     const isInsideEmphasis = emphasisPattern.test(textToEmphasize);
 
     // Check if we're inside a {} or [] block
@@ -685,11 +657,6 @@ function applyEmphasisEditing() {
         target.setSelectionRange(newCursorPosition, newCursorPosition);
     }
 
-    // Hide popup
-    if (emphasisPopup) {
-        emphasisPopup.style.display = 'none';
-    }
-
     // Reset state
     emphasisEditingActive = false;
     emphasisEditingTarget = null;
@@ -699,9 +666,19 @@ function applyEmphasisEditing() {
     // Trigger input event to update any dependent UI
     target.dispatchEvent(new Event('input', { bubbles: true }));
 
+    // Remove selection highlight
+    removeEmphasisSelectionHighlight(target);
+
     // Update emphasis highlighting
     autoResizeTextarea(target);
     updateEmphasisHighlighting(target);
+
+    // Close toolbar mode if in toolbar mode
+    if (isToolbarMode && toolbar) {
+        if (window.promptTextareaToolbar && window.promptTextareaToolbar.closeEmphasisMode) {
+            window.promptTextareaToolbar.closeEmphasisMode(toolbar);
+        }
+    }
 }
 
 // Emphasis highlighting functions
@@ -768,8 +745,11 @@ function autoResizeTextarea(textarea) {
     // Update container height if it exists
     const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
     if (container) {
-        container.style.height = newHeight + 'px';
-        container.style.minHeight = newHeight + 'px';
+        const toolbar = container.querySelector('.prompt-textarea-toolbar');
+        const toolbarHeight = toolbar && !toolbar.classList.contains('hidden') ? toolbar.offsetHeight + 10 : 0; // 10px for margin-top
+        const totalHeight = newHeight + toolbarHeight;
+        container.style.height = totalHeight + 'px';
+        container.style.minHeight = totalHeight + 'px';
     }
 }
 
@@ -991,7 +971,7 @@ function cleanupEmphasisGroupsAndCopyValue(target, selection, currentValue) {
     let copiedValue = currentValue;
 
     // First, clean up emphasis groups
-    const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
+    const emphasisPattern = /(-?\d+\.\d+)::([^:]+)::/g;
     let emphasisMatch;
 
     while ((emphasisMatch = emphasisPattern.exec(cleanedValue)) !== null) {
@@ -1157,7 +1137,7 @@ function switchEmphasisMode(direction) {
             }
         } else if (emphasisEditingMode === 'brace') {
             // Switch from brace to group mode
-            const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
+            const emphasisPattern = /(-?\d+\.\d+)::([^:]+)::/g;
             let emphasisMatch;
             let foundGroup = false;
 
@@ -1310,7 +1290,7 @@ function switchEmphasisMode(direction) {
         switch (emphasisEditingMode) {
             case 'brace':
                 // Try to switch back to group mode first
-                const emphasisPattern = /(\d+\.\d+)::([^:]+)::/g;
+                const emphasisPattern = /(-?\d+\.\d+)::([^:]+)::/g;
                 let emphasisMatch;
                 let foundGroup = false;
 
@@ -1354,13 +1334,29 @@ function switchEmphasisMode(direction) {
         }
     }
 
-    updateEmphasisEditingPopup();
+    // Update selection highlight to show the new emphasis mode
+    if (emphasisEditingTarget && emphasisEditingSelection) {
+        addEmphasisSelectionHighlight(emphasisEditingTarget, emphasisEditingSelection);
+    }
 }
 
 function cancelEmphasisEditing() {
-    // Hide popup
-    if (emphasisPopup) {
-        emphasisPopup.style.display = 'none';
+    // Check if we're in toolbar mode
+    const target = emphasisEditingTarget;
+    const container = target ? target.closest('.prompt-textarea-container, .character-prompt-textarea-container') : null;
+    const toolbar = container ? container.querySelector('.prompt-textarea-toolbar') : null;
+    const isToolbarMode = toolbar && toolbar.classList.contains('emphasis-mode');
+
+    // Remove selection highlight
+    if (target) {
+        removeEmphasisSelectionHighlight(target);
+    }
+    
+    // Close toolbar mode if in toolbar mode
+    if (isToolbarMode && toolbar) {
+        if (window.promptTextareaToolbar && window.promptTextareaToolbar.closeEmphasisMode) {
+            window.promptTextareaToolbar.closeEmphasisMode(toolbar);
+        }
     }
 
     // Reset state
@@ -1368,6 +1364,11 @@ function cancelEmphasisEditing() {
     emphasisEditingTarget = null;
     emphasisEditingSelection = null;
     emphasisEditingMode = 'normal';
+    
+    // Refresh emphasis highlighting on the target
+    if (target) {
+        updateEmphasisHighlighting(target);
+    }
 }
 
 function updateEmphasisTooltipVisibility() {
@@ -1387,10 +1388,7 @@ function startTextSearch(target) {
     textSearchResults = [];
     selectedSearchIndex = -1;
 
-    // Hide any existing emphasis popup
-    if (emphasisPopup) {
-        emphasisPopup.style.display = 'none';
-    }
+    // No need to hide emphasis popup since it's removed
 
     // Show text search popup
     showTextSearchPopup();
@@ -1653,3 +1651,41 @@ function closeTextSearch() {
         textSearchTarget.focus();
     }
 }
+
+// Expose functions globally for use by other modules
+window.startEmphasisEditing = startEmphasisEditing;
+window.startTextSearch = startTextSearch;
+window.autoResizeTextarea = autoResizeTextarea;
+window.adjustEmphasisEditing = adjustEmphasisEditing;
+window.switchEmphasisMode = switchEmphasisMode;
+window.applyEmphasisEditing = applyEmphasisEditing;
+window.cancelEmphasisEditing = cancelEmphasisEditing;
+window.updateEmphasisHighlighting = updateEmphasisHighlighting;
+window.addEmphasisSelectionHighlight = addEmphasisSelectionHighlight;
+window.removeEmphasisSelectionHighlight = removeEmphasisSelectionHighlight;
+
+// Expose global variables for toolbar access
+Object.defineProperty(window, 'emphasisEditingValue', {
+    get: () => emphasisEditingValue,
+    set: (value) => { emphasisEditingValue = value; }
+});
+
+Object.defineProperty(window, 'emphasisEditingMode', {
+    get: () => emphasisEditingMode,
+    set: (value) => { emphasisEditingMode = value; }
+});
+
+Object.defineProperty(window, 'emphasisEditingTarget', {
+    get: () => emphasisEditingTarget,
+    set: (value) => { emphasisEditingTarget = value; }
+});
+
+Object.defineProperty(window, 'emphasisEditingSelection', {
+    get: () => emphasisEditingSelection,
+    set: (value) => { emphasisEditingSelection = value; }
+});
+
+Object.defineProperty(window, 'emphasisEditingActive', {
+    get: () => emphasisEditingActive,
+    set: (value) => { emphasisEditingActive = value; }
+});

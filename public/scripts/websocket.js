@@ -12,6 +12,12 @@ class WebSocketClient {
         this.pingTimeout = null;
         this.messageHandlers = new Map();
         
+        // Loading overlay properties
+        this.loadingOverlay = null;
+        this.initSteps = [];
+        this.currentInitStep = 0;
+        this.totalInitSteps = 0;
+        
         // Bind methods
         this.connect = this.connect.bind(this);
         this.disconnect = this.disconnect.bind(this);
@@ -22,7 +28,92 @@ class WebSocketClient {
         this.init();
     }
 
+    // Loading overlay methods
+    showLoadingOverlay(message = 'Connecting...', progress = 0) {
+        if (!this.loadingOverlay) {
+            this.createLoadingOverlay();
+        }
+        
+        this.loadingOverlay.style.display = 'flex';
+        this.updateLoadingProgress(message, progress);
+    }
+
+    hideLoadingOverlay() {
+        if (this.loadingOverlay) {
+            this.loadingOverlay.style.display = 'none';
+        }
+    }
+
+    updateLoadingProgress(message, progress) {
+        if (!this.loadingOverlay) return;
+        
+        const messageEl = this.loadingOverlay.querySelector('.loading-message');
+        const progressBar = this.loadingOverlay.querySelector('.loading-progress-bar');
+        const progressText = this.loadingOverlay.querySelector('.loading-progress-text');
+        
+        if (messageEl) messageEl.textContent = message;
+        if (progressBar) progressBar.style.width = `${progress}%`;
+        if (progressText) progressText.textContent = `${Math.round(progress)}%`;
+    }
+
+    createLoadingOverlay() {
+        this.loadingOverlay = document.createElement('div');
+        this.loadingOverlay.className = 'loading-overlay';
+        this.loadingOverlay.innerHTML = `
+            <div class="loading-content">
+                <div class="loading-spinner">
+                    <i class="fas fa-spinner fa-spin"></i>
+                </div>
+                <div class="loading-message">Connecting...</div>
+                <div class="loading-progress">
+                    <div class="loading-progress-bar"></div>
+                </div>
+                <div class="loading-progress-text">0%</div>
+            </div>
+        `;
+        document.body.appendChild(this.loadingOverlay);
+    }
+
+    registerInitStep(priority, message, stepFunction) {
+        this.initSteps.push({ priority, message, stepFunction });
+        this.initSteps.sort((a, b) => a.priority - b.priority);
+        this.totalInitSteps = this.initSteps.length;
+    }
+
+    async executeInitSteps() {
+        this.currentInitStep = 0;
+        
+        try {
+            for (const step of this.initSteps) {
+                this.currentInitStep++;
+                const progress = (this.currentInitStep / this.totalInitSteps) * 100;
+                this.updateLoadingProgress(step.message, progress);
+                
+                try {
+                    await step.stepFunction();
+                } catch (error) {
+                    console.error(`Error in init step "${step.message}":`, error);
+                    // Continue with next step even if one fails
+                }
+            }
+            
+            // Hide overlay after all steps complete
+            setTimeout(() => {
+                this.hideLoadingOverlay();
+            }, 500);
+        } catch (error) {
+            console.error('Error during initialization:', error);
+            this.updateLoadingProgress('Initialization failed', 100);
+            setTimeout(() => {
+                this.hideLoadingOverlay();
+            }, 2000);
+        }
+    }
+
     init() {
+        // Show loading overlay immediately
+        this.showLoadingOverlay('Initializing...', 0);
+        
         // Start connection when page loads
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', this.connect);
@@ -50,10 +141,11 @@ class WebSocketClient {
         }
 
         this.isConnecting = true;
+        this.updateLoadingProgress('Connecting to server...', 10);
         
         // Show connecting toast - use global websocket toast ID
         if (typeof showGlassToast === 'function' && typeof window.websocketToastId === 'undefined') {
-            window.websocketToastId = showGlassToast('info', null, 'Connecting to server...');
+            window.websocketToastId = showGlassToast('info', null, 'Connecting to server...', false, 5000, '<i class="fas fa-plug"></i>');
         }
 
         try {
@@ -69,6 +161,8 @@ class WebSocketClient {
                 this.reconnectAttempts = 0;
                 this.reconnectDelay = 1000;
                 
+                this.updateLoadingProgress('Connected! Loading page...', 25);
+                
                 // Show connected toast - update existing toast
                 if (typeof showGlassToast === 'function' && typeof updateGlassToast === 'function') {
                     try {
@@ -82,7 +176,7 @@ class WebSocketClient {
                                 }
                             }, 3000);
                         } else {
-                            window.websocketToastId = showGlassToast('success', null, 'Connected to server');
+                            window.websocketToastId = showGlassToast('success', null, 'Connected to server', false, 5000, '<i class="fas fa-plug"></i>');
                             setTimeout(() => {
                                 if (typeof removeGlassToast === 'function' && window.websocketToastId) {
                                     removeGlassToast(window.websocketToastId);
@@ -102,6 +196,9 @@ class WebSocketClient {
                 
                 // Trigger connection event
                 this.triggerEvent('connected');
+                
+                // Execute initialization steps
+                this.executeInitSteps();
             };
 
             this.ws.onmessage = (event) => {
@@ -135,7 +232,7 @@ class WebSocketClient {
                             if (window.websocketToastId) {
                                 window.websocketToastId = updateGlassToast(window.websocketToastId, 'warning', null, 'Connection lost. Reconnecting...');
                             } else {
-                                window.websocketToastId = showGlassToast('warning', null, 'Connection lost. Reconnecting...');
+                                window.websocketToastId = showGlassToast('warning', null, 'Connection lost. Reconnecting...', false, 5000, '<i class="fas fa-sync-alt"></i>');
                             }
                         } catch (error) {
                             console.error('Error updating WebSocket toast:', error);
@@ -159,7 +256,7 @@ class WebSocketClient {
                             if (window.websocketToastId) {
                                 window.websocketToastId = updateGlassToast(window.websocketToastId, 'error', null, 'Connection error. Retrying...');
                             } else {
-                                window.websocketToastId = showGlassToast('error', null, 'Connection error. Retrying...');
+                                window.websocketToastId = showGlassToast('error', null, 'Connection error. Retrying...', false);
                             }
                         } catch (error) {
                             console.error('Error updating WebSocket toast:', error);
@@ -177,7 +274,7 @@ class WebSocketClient {
                     if (window.websocketToastId) {
                         window.websocketToastId = updateGlassToast(window.websocketToastId, 'error', null, 'Failed to connect');
                     } else {
-                        window.websocketToastId = showGlassToast('error', null, 'Failed to connect');
+                        window.websocketToastId = showGlassToast('error', null, 'Failed to connect', false, 5000, '<i class="fas fa-times-circle"></i>');
                     }
                 } catch (error) {
                     console.error('Error updating WebSocket toast:', error);
@@ -205,7 +302,7 @@ class WebSocketClient {
                         if (window.websocketToastId) {
                             window.websocketToastId = updateGlassToast(window.websocketToastId, 'error', null, 'Max reconnection attempts reached');
                         } else {
-                            window.websocketToastId = showGlassToast('error', null, 'Max reconnection attempts reached');
+                            window.websocketToastId = showGlassToast('error', null, 'Max reconnection attempts reached', false, 5000, '<i class="fas fa-ban"></i>');
                         }
                     } catch (error) {
                         console.error('Error updating WebSocket toast:', error);
@@ -293,14 +390,15 @@ class WebSocketClient {
             return;
         }
         
-        // Handle search responses
-        if (message.type === 'search_characters_response' || 
-            message.type === 'search_presets_response' || 
-            message.type === 'search_dataset_tags_response' ||
-            message.type === 'get_dataset_tags_for_path_response' ||
-            message.type === 'spellcheck_add_word_response' ||
-            message.type === 'search_characters_complete') {
+        // Handle all response messages that should trigger resolveRequest
+        if (message.type.endsWith('_response') || message.type === 'search_characters_complete') {
             this.resolveRequest(message.requestId, message.data, message.error);
+            
+            // Special handling for gallery responses
+            if (message.type === 'request_gallery_response') {
+                this.handleGalleryResponse(message.data, message.requestId);
+            }
+            
             return;
         }
         
@@ -322,43 +420,27 @@ class WebSocketClient {
                 break;
                 
             case 'error':
-                console.error('❌ WebSocket server error:', message.message);
-                // Don't show toast for server errors to avoid spam
+                showGlassToast('error', null, 'WebSocket server error: ' + message.message, false);
                 break;
                 
             case 'subscribed':
                 console.log('✅ Subscribed to channels:', message.channels);
                 break;
 
-            case 'generation_started':
-                console.log('🎨 Image generation started:', message.requestId);
-                // Don't show toast for generation start to avoid spam
-                break;
-
             case 'image_generated':
-                console.log('✅ Image generated:', message.requestId);
-                // Don't show toast here - let the main app handle it
                 this.handleGeneratedImage(message.data);
                 break;
 
-            case 'generation_error':
-                console.error('❌ Image generation failed:', message.error);
-                // Don't show toast here - let the main app handle it
-                break;
-
-            case 'preview_ready':
-                console.log('🖼️ Preview ready:', message.requestId);
-                // Don't show toast here - let the main app handle it
-                break;
-
-            case 'preview_error':
-                console.error('❌ Preview processing failed:', message.error);
-                // Don't show toast here - let the main app handle it
-                break;
-
             case 'gallery_updated':
-                console.log('🖼️ Gallery updated:', message.data);
                 this.handleGalleryUpdate(message.data);
+                break;
+
+            case 'workspace_updated':
+                this.handleWorkspaceUpdate(message.data);
+                break;
+
+            case 'workspace_activated':
+                this.handleWorkspaceActivation(message.data);
                 break;
                 
             default:
@@ -370,7 +452,7 @@ class WebSocketClient {
     handleAuthError(message) {
         // Show authentication error toast
         if (typeof showGlassToast === 'function') {
-            showGlassToast('error', null, 'Authentication required. Please log in.');
+            showGlassToast('error', null, 'Authentication required. Please log in.', false, 5000, '<i class="fas fa-lock"></i>');
         }
         
         // Show PIN modal for authentication
@@ -390,24 +472,31 @@ class WebSocketClient {
     }
 
     handleGeneratedImage(data) {
-        // Handle the generated image data
-        // This can be customized based on your needs
-        console.log('📸 Generated image data:', {
-            filename: data.filename,
-            hasImage: !!data.image,
-            hasMetadata: !!data.metadata
-        });
-
-        // Trigger custom event for image generation
         this.triggerEvent('imageGenerated', data);
     }
 
     handleGalleryUpdate(data) {
-        // Handle gallery update
-        console.log('🖼️ Gallery update:', data);
-
-        // Trigger custom event for gallery update
         this.triggerEvent('galleryUpdated', data);
+    }
+
+    handleGalleryResponse(data, requestId) {
+        this.triggerEvent('galleryResponse', { data, requestId });
+    }
+
+    handleWorkspaceUpdate(data) {
+        // Dispatch custom event for workspace updates
+        const event = new CustomEvent('workspaceUpdated', {
+            detail: data
+        });
+        document.dispatchEvent(event);
+    }
+
+    handleWorkspaceActivation(data) {
+        // Dispatch custom event for workspace activation
+        const event = new CustomEvent('workspaceActivated', {
+            detail: data
+        });
+        document.dispatchEvent(event);
     }
 
     // Method to request image generation via WebSocket
@@ -429,13 +518,48 @@ class WebSocketClient {
         return id;
     }
 
+    // Method to request gallery data via WebSocket
+    async requestGallery(viewType = 'images', includePinnedStatus = true) {
+        try {
+            const result = await this.sendMessage('request_gallery', { 
+                viewType, 
+                includePinnedStatus 
+            });
+            return result;
+        } catch (error) {
+            console.error('Gallery request error:', error);
+            throw error;
+        }
+    }
+
+    // Method to request specific gallery view (scraps, pinned, upscaled)
+    async requestGalleryView(viewType) {
+        return this.requestGallery(viewType, true);
+    }
+
+    // Method to request all images with pinned status
+    async requestAllImages() {
+        return this.requestGallery('images', true);
+    }
+
+    // Method to request image metadata via WebSocket
+    async requestImageMetadata(filename) {
+        try {
+            const result = await this.sendMessage('request_image_metadata', { filename });
+            return result;
+        } catch (error) {
+            showGlassToast('error', 'Image metadata request error', error.message, false);
+            throw error;
+        }
+    }
+
     // Search methods
     async searchCharacters(query, model) {
         try {
             const result = await this.sendMessage('search_characters', { query, model });
             return result;
         } catch (error) {
-            console.error('Character search error:', error);
+            showGlassToast('error', 'Character search error', error.message, false);
             throw error;
         }
     }
@@ -445,7 +569,7 @@ class WebSocketClient {
             const result = await this.sendMessage('search_presets', { query });
             return result;
         } catch (error) {
-            console.error('Preset search error:', error);
+            showGlassToast('error', 'Preset search error', error.message, false);
             throw error;
         }
     }
@@ -455,7 +579,7 @@ class WebSocketClient {
             const result = await this.sendMessage('search_dataset_tags', { query, path });
             return result;
         } catch (error) {
-            console.error('Dataset tag search error:', error);
+            showGlassToast('error', 'Dataset tag search error', error.message, false);
             throw error;
         }
     }
@@ -465,7 +589,17 @@ class WebSocketClient {
             const result = await this.sendMessage('get_dataset_tags_for_path', { path });
             return result;
         } catch (error) {
-            console.error('Get tags for path error:', error);
+            showGlassToast('error', 'Get Tags For Path', error.message, false);
+            throw error;
+        }
+    }
+
+    async searchTags(query, singleMatch = false) {
+        try {
+            const result = await this.sendMessage('search_tags', { query, single_match: singleMatch });
+            return result;
+        } catch (error) {
+            showGlassToast('error', 'Search tags error', error.message, false);
             throw error;
         }
     }
@@ -475,9 +609,204 @@ class WebSocketClient {
             const result = await this.sendMessage('spellcheck_add_word', { word });
             return result;
         } catch (error) {
-            console.error('Add word to dictionary error:', error);
+            showGlassToast('error', 'Add word to dictionary error', error.message, false);
             throw error;
         }
+    }
+
+    // Workspace methods
+    async getWorkspaces() {
+        return this.sendMessage('workspace_list');
+    }
+
+    async getWorkspace() {
+        return this.sendMessage('workspace_get');
+    }
+
+    async createWorkspace(name, color = null) {
+        return this.sendMessage('workspace_create', { name, color });
+    }
+
+    async renameWorkspace(id, name) {
+        return this.sendMessage('workspace_rename', { id, name });
+    }
+
+    async deleteWorkspace(id) {
+        return this.sendMessage('workspace_delete', { id });
+    }
+
+    async setActiveWorkspace(id) {
+        return this.sendMessage('workspace_activate', { id });
+    }
+
+    async dumpWorkspace(sourceId, targetId) {
+        return this.sendMessage('workspace_dump', { sourceId, targetId });
+    }
+
+    async getWorkspaceFiles(id) {
+        return this.sendMessage('workspace_get_files', { id });
+    }
+
+    async moveFilesToWorkspace(filenames, targetWorkspaceId, sourceWorkspaceId = null) {
+        return this.sendMessage('workspace_move_files', { id: targetWorkspaceId, filenames, sourceWorkspaceId });
+    }
+
+    async getWorkspaceScraps(id) {
+        return this.sendMessage('workspace_get_scraps', { id });
+    }
+
+    async getWorkspacePinned(id) {
+        return this.sendMessage('workspace_get_pinned', { id });
+    }
+
+    async addScrap(id, filename) {
+        return this.sendMessage('workspace_add_scrap', { id, filename });
+    }
+
+    async removeScrap(id, filename) {
+        return this.sendMessage('workspace_remove_scrap', { id, filename });
+    }
+
+    async addPinned(id, filename) {
+        return this.sendMessage('workspace_add_pinned', { id, filename });
+    }
+
+    async removePinned(id, filename) {
+        return this.sendMessage('workspace_remove_pinned', { id, filename });
+    }
+
+    async bulkAddPinned(id, filenames) {
+        return this.sendMessage('workspace_bulk_add_pinned', { id, filenames });
+    }
+
+    async bulkRemovePinned(id, filenames) {
+        return this.sendMessage('workspace_bulk_remove_pinned', { id, filenames });
+    }
+
+    async getWorkspaceGroups(id) {
+        return this.sendMessage('workspace_get_groups', { id });
+    }
+
+    async createGroup(id, name) {
+        return this.sendMessage('workspace_create_group', { id, name });
+    }
+
+    async getGroup(id, groupId) {
+        return this.sendMessage('workspace_get_group', { id, groupId });
+    }
+
+    async renameGroup(id, groupId, name) {
+        return this.sendMessage('workspace_rename_group', { id, groupId, name });
+    }
+
+    async addImagesToGroup(id, groupId, filenames) {
+        return this.sendMessage('workspace_add_images_to_group', { id, groupId, filenames });
+    }
+
+    async removeImagesFromGroup(id, groupId, filenames) {
+        return this.sendMessage('workspace_remove_images_from_group', { id, groupId, filenames });
+    }
+
+    async deleteGroup(id, groupId) {
+        return this.sendMessage('workspace_delete_group', { id, groupId });
+    }
+
+    async getImageGroups(id, filename) {
+        return this.sendMessage('workspace_get_image_groups', { id, filename });
+    }
+
+    async updateWorkspaceColor(id, color) {
+        return this.sendMessage('workspace_update_color', { id, color });
+    }
+
+    async updateWorkspaceBackgroundColor(id, backgroundColor) {
+        return this.sendMessage('workspace_update_background_color', { id, backgroundColor });
+    }
+
+    async updateWorkspaceBackgroundImage(id, backgroundImage) {
+        return this.sendMessage('workspace_update_background_image', { id, backgroundImage });
+    }
+
+    async updateWorkspaceBackgroundOpacity(id, backgroundOpacity) {
+        return this.sendMessage('workspace_update_background_opacity', { id, backgroundOpacity });
+    }
+
+    async reorderWorkspaces(workspaceIds) {
+        return this.sendMessage('workspace_reorder', { workspaceIds });
+    }
+
+    // Bulk operations
+    async addScrapBulk(id, filenames) {
+        return this.sendMessage('workspace_bulk_add_scrap', { id, filenames });
+    }
+
+    async removePinnedBulk(id, filenames) {
+        return this.sendMessage('workspace_bulk_remove_pinned', { id, filenames });
+    }
+
+    async addPinnedBulk(id, filenames) {
+        return this.sendMessage('workspace_bulk_add_pinned', { id, filenames });
+    }
+
+    async deleteImagesBulk(filenames) {
+        return this.sendMessage('delete_images_bulk', { filenames });
+    }
+
+    async sendToSequenziaBulk(filenames) {
+        return this.sendMessage('send_to_sequenzia_bulk', { filenames });
+    }
+
+    async updateImagePresetBulk(filenames, presetName) {
+        return this.sendMessage('update_image_preset_bulk', { filenames, presetName });
+    }
+
+    // References WebSocket Methods
+    async getReferences() {
+        return this.sendMessage('get_references');
+    }
+
+    async getWorkspaceReferences(workspaceId) {
+        return this.sendMessage('get_workspace_references', { workspaceId });
+    }
+
+    async deleteReference(hash, workspaceId) {
+        return this.sendMessage('delete_reference', { hash, workspaceId });
+    }
+
+    async uploadReference(imageData, workspaceId) {
+        return this.sendMessage('upload_reference', { imageData, workspaceId });
+    }
+
+    async moveReferences(hashes, targetWorkspaceId, sourceWorkspaceId) {
+        return this.sendMessage('move_references', { hashes, targetWorkspaceId, sourceWorkspaceId });
+    }
+
+    async getVibeImage(filename) {
+        return this.sendMessage('get_vibe_image', { filename });
+    }
+
+    async deleteVibeImage(vibeId, workspaceId) {
+        return this.sendMessage('delete_vibe_image', { vibeId, workspaceId });
+    }
+
+    async deleteVibeEncodings(vibeId, encodings, workspaceId) {
+        return this.sendMessage('delete_vibe_encodings', { vibeId, encodings, workspaceId });
+    }
+
+    async bulkDeleteVibeImages(vibesToDelete, encodingsToDelete, workspaceId) {
+        return this.sendMessage('bulk_delete_vibe_images', { vibesToDelete, encodingsToDelete, workspaceId });
+    }
+
+    async moveVibeImage(vibeId, targetWorkspaceId, sourceWorkspaceId) {
+        return this.sendMessage('move_vibe_image', { vibeId, targetWorkspaceId, sourceWorkspaceId });
+    }
+
+    async bulkMoveVibeImages(imageIds, targetWorkspaceId, sourceWorkspaceId) {
+        return this.sendMessage('bulk_move_vibe_images', { imageIds, targetWorkspaceId, sourceWorkspaceId });
+    }
+
+    async encodeVibe(params) {
+        return this.sendMessage('encode_vibe', params);
     }
 
     // Send message with request/response handling

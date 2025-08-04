@@ -6,9 +6,22 @@ let confirmationDialogActive = false;
 let confirmationDialogCallback = null;
 let confirmationDialogCancelCallback = null;
 
-// Create and show confirmation dialog
-function showConfirmationDialog(message, confirmText = 'Confirm', cancelText = 'Cancel', event = null) {
+// Create and show confirmation dialog with multiple options
+function showConfirmationDialog(message, options = [], event = null) {
     return new Promise((resolve, reject) => {
+        // Handle legacy format: (message, confirmText, cancelText, event)
+        if (typeof options === 'string') {
+            const confirmText = options;
+            const cancelText = arguments[2] || 'Cancel';
+            const eventArg = arguments[3];
+            
+            options = [
+                { text: confirmText, value: true, className: 'btn-primary' },
+                { text: cancelText, value: false, className: 'btn-secondary' }
+            ];
+            event = eventArg;
+        }
+
         // Create dialog if it doesn't exist
         if (!confirmationDialog) {
             confirmationDialog = document.createElement('div');
@@ -17,33 +30,17 @@ function showConfirmationDialog(message, confirmText = 'Confirm', cancelText = '
             confirmationDialog.innerHTML = `
                 <div class="confirmation-dialog-content">
                     <div class="confirmation-message" id="confirmationMessage"></div>
-                    <div class="confirmation-controls">
-                        <button class="btn-secondary confirmation-cancel" id="confirmationCancelBtn"></button>
-                        <button class="btn-primary confirmation-confirm" id="confirmationConfirmBtn"></button>
+                    <div class="confirmation-controls" id="confirmationControls">
                     </div>
                 </div>
             `;
             document.body.appendChild(confirmationDialog);
 
-            // Add event listeners
-            const confirmBtn = confirmationDialog.querySelector('#confirmationConfirmBtn');
-            const cancelBtn = confirmationDialog.querySelector('#confirmationCancelBtn');
-
-            confirmBtn.addEventListener('click', () => {
-                hideConfirmationDialog();
-                resolve(true);
-            });
-
-            cancelBtn.addEventListener('click', () => {
-                hideConfirmationDialog();
-                resolve(false);
-            });
-
             // Close on escape key
             const handleEscape = (e) => {
                 if (e.key === 'Escape') {
                     hideConfirmationDialog();
-                    resolve(false);
+                    resolve(null);
                 }
             };
             document.addEventListener('keydown', handleEscape);
@@ -52,12 +49,31 @@ function showConfirmationDialog(message, confirmText = 'Confirm', cancelText = '
 
         // Update dialog content
         const messageEl = confirmationDialog.querySelector('#confirmationMessage');
-        const confirmBtn = confirmationDialog.querySelector('#confirmationConfirmBtn');
-        const cancelBtn = confirmationDialog.querySelector('#confirmationCancelBtn');
+        const controlsEl = confirmationDialog.querySelector('#confirmationControls');
 
         messageEl.textContent = message;
-        confirmBtn.textContent = confirmText;
-        cancelBtn.textContent = cancelText;
+        
+        // Clear and recreate controls
+        controlsEl.innerHTML = '';
+        
+        options.forEach((option, index) => {
+            const button = document.createElement('button');
+            button.className = `btn ${option.className || 'btn-secondary'}`;
+            button.textContent = option.text;
+            button.id = `confirmationBtn${index}`;
+            
+            button.addEventListener('click', (e) => {
+                hideConfirmationDialog();
+                resolve(option.value);
+            });
+            
+            controlsEl.appendChild(button);
+            
+            // Focus the last button (usually cancel) by default
+            if (index === options.length - 1) {
+                button.focus();
+            }
+        });
 
         // Position dialog
         positionConfirmationDialog(event);
@@ -65,9 +81,6 @@ function showConfirmationDialog(message, confirmText = 'Confirm', cancelText = '
         // Show dialog
         confirmationDialog.style.display = 'block';
         confirmationDialogActive = true;
-
-        // Focus cancel button (as requested)
-        cancelBtn.focus();
     });
 }
 

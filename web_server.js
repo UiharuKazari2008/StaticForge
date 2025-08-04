@@ -422,6 +422,70 @@ function getPreviewFilename(baseName) {
     return `${baseName}.jpg`;
 }
 
+// Helper function to broadcast gallery updates via WebSocket
+function broadcastGalleryUpdate() {
+    const wsServer = getGlobalWsServer();
+    if (!wsServer) return;
+    
+    try {
+        // Helper function to get base name
+        const getBaseName = (filename) => {
+            const base = filename.replace(/\.(png|jpg|jpeg)$/i, '');
+            return base.replace(/_upscaled$/, '');
+        };
+        
+        // Get all images with pinned status
+        const allFiles = getActiveWorkspaceFiles();
+        const pinnedFiles = getActiveWorkspacePinned();
+        
+        const baseMap = {};
+        for (const file of allFiles) {
+            const base = getBaseName(file);
+            if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
+            if (file.includes('_upscaled')) baseMap[base].upscaled = file;
+            else baseMap[base].original = file;
+        }
+        
+        const gallery = [];
+        for (const base in baseMap) {
+            const { original, upscaled } = baseMap[base];
+            const file = upscaled || original;
+            if (!file) continue;
+            
+            try {
+                const metadata = getCachedMetadata(file);
+                if (!metadata) {
+                    console.warn(`No metadata found for file: ${file}`);
+                    continue;
+                }
+                
+                const preview = getPreviewFilename(base);
+                const isLarge = metadata.width && metadata.height ? 
+                    isImageLarge(metadata.width, metadata.height) : false;
+                
+                gallery.push({
+                    base,
+                    original,
+                    upscaled,
+                    preview,
+                    mtime: metadata.mtime,
+                    size: metadata.size,
+                    isLarge: isLarge,
+                    isPinned: pinnedFiles.includes(file)
+                });
+            } catch (error) {
+                console.warn(`Error processing file ${file}:`, error);
+                continue;
+            }
+        }
+        
+        gallery.sort((a, b) => b.mtime - a.mtime);
+        wsServer.broadcastGalleryUpdate(gallery, 'images');
+    } catch (error) {
+        console.error('Error broadcasting gallery update:', error);
+    }
+}
+
 // Generate a preview for an image
 async function generatePreview(imagePath, previewPath) {
     try {
@@ -3696,114 +3760,6 @@ app.post('/test-bias-adjustment', async (req, res) => {
     }
 });
 
-// GET /workspaces (get active workspace info)
-app.get('/workspaces', authMiddleware, (req, res) => {
-    try {
-        const activeId = getActiveWorkspace();
-        const workspace = getWorkspace(activeId);
-        
-        if (!workspace) {
-            return res.status(404).json({ error: 'Active workspace not found' });
-        }
-        
-        res.json({
-            id: activeId,
-            name: workspace.name,
-            color: workspace.color || '#124', // Default color if missing
-            backgroundColor: workspace.backgroundColor, // Can be null for auto-generation
-            backgroundImage: workspace.backgroundImage, // Can be null for no background image
-            backgroundOpacity: workspace.backgroundOpacity || 0.3, // Default opacity
-            fileCount: workspace.files.length,
-            presetCount: workspace.presets.length,
-            cacheFileCount: workspace.cacheFiles.length
-        });
-    } catch (error) {
-        console.error('❌ Error getting active workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// OPTIONS /workspaces (list all workspaces)
-app.options('/workspaces', authMiddleware, (req, res) => {
-    try {
-        const workspaces = getWorkspaces();
-        const activeWorkspaceId = getActiveWorkspace();
-        
-        // Transform to include workspace metadata
-        const workspaceList = Object.entries(workspaces).map(([id, workspace]) => ({
-            id,
-            name: workspace.name,
-            color: workspace.color || '#124', // Default color if missing
-            backgroundColor: workspace.backgroundColor, // Can be null for auto-generation
-            backgroundImage: workspace.backgroundImage, // Can be null for no background image
-            backgroundOpacity: workspace.backgroundOpacity || 0.3, // Default opacity
-            fileCount: workspace.files.length,
-            presetCount: workspace.presets.length,
-            cacheFileCount: workspace.cacheFiles.length,
-            isActive: id === activeWorkspaceId,
-            isDefault: id === 'default'
-        }));
-        
-        res.json({
-            workspaces: workspaceList,
-            activeWorkspace: activeWorkspaceId
-        });
-    } catch (error) {
-        console.error('❌ Error listing workspaces:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// POST /workspaces (create new workspace)
-app.post('/workspaces', authMiddleware, (req, res) => {
-    try {
-        const { name, color } = req.body;
-        if (!name || !name.trim()) {
-            return res.status(400).json({ error: 'Workspace name is required' });
-        }
-        
-        // Validate color format if provided
-        if (color && color.trim()) {
-            const colorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
-            if (!colorRegex.test(color.trim())) {
-                return res.status(400).json({ error: 'Invalid color format. Use hex format (e.g., #ff4500)' });
-            }
-        }
-        
-        const workspaceId = createWorkspace(name.trim(), color ? color.trim() : null);
-        res.json({ success: true, id: workspaceId, name: name.trim() });
-    } catch (error) {
-        console.error('❌ Error creating workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// PUT /workspaces/:id (rename workspace)
-app.put('/workspaces/:id', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { name } = req.body;
-        
-        if (!name || !name.trim()) {
-            return res.status(400).json({ error: 'New name is required' });
-        }
-        
-        renameWorkspace(id, name.trim());
-        res.json({ success: true, message: `Workspace renamed to "${name.trim()}"` });
-    } catch (error) {
-        console.error('❌ Error renaming workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// DELETE /workspaces/:id (delete workspace)
-app.delete('/workspaces/:id', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        deleteWorkspace(id);
-        res.json({ success: true, message: 'Workspace deleted and items moved to default' });
-    } catch (error) {
-        console.error('❌ Error deleting workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
 // Upload endpoint
 app.post('/workspaces/:id/images', authMiddleware, upload.array('images', 10), async (req, res) => {
     try {
@@ -3872,377 +3828,6 @@ app.post('/workspaces/:id/images', authMiddleware, upload.array('images', 10), a
     } catch(e) {
         console.error('❌ Upload error:', e.message);
         res.status(500).json({ error: e.message });
-    }
-});
-// PUT /workspaces/:id/activate (set active workspace)
-app.put('/workspaces/:id/activate', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        setActiveWorkspace(id);
-        res.json({ success: true, activeWorkspace: id });
-    } catch (error) {
-        console.error('❌ Error setting active workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// POST /workspaces/:sourceId/dump (dump workspace into another)
-app.post('/workspaces/:sourceId/dump', authMiddleware, (req, res) => {
-    try {
-        const { sourceId } = req.params;
-        const { targetId } = req.body;
-        
-        if (!targetId) {
-            return res.status(400).json({ error: 'Target workspace ID is required' });
-        }
-        
-        dumpWorkspace(sourceId, targetId);
-        res.json({ success: true, message: 'Workspace dumped successfully' });
-    } catch (error) {
-        console.error('❌ Error dumping workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// GET /workspaces/:id/files (get workspace files)
-app.get('/workspaces/:id/files', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const workspace = getWorkspace(id);
-        
-        if (!workspace) {
-            return res.status(404).json({ error: 'Workspace not found' });
-        }
-        
-        // Get workspace files (including default workspace files)
-        const workspaceFiles = new Set();
-        
-        // Always include default workspace files
-        const defaultWorkspace = getWorkspace('default');
-        if (defaultWorkspace && defaultWorkspace.files) {
-            defaultWorkspace.files.forEach(file => workspaceFiles.add(file));
-        }
-        
-        // Include current workspace files if not default
-        if (id !== 'default' && workspace.files) {
-            workspace.files.forEach(file => workspaceFiles.add(file));
-        }
-        
-        res.json({
-            workspaceId: id,
-            workspaceName: workspace.name,
-            files: Array.from(workspaceFiles)
-        });
-    } catch (error) {
-        console.error('❌ Error getting workspace files:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// PUT /workspaces/:id/files (move files to workspace)
-app.put('/workspaces/:id/files', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { filenames } = req.body;
-        
-        if (!Array.isArray(filenames) || filenames.length === 0) {
-            return res.status(400).json({ error: 'Filenames array is required' });
-        }
-        
-        const movedCount = moveFilesToWorkspace(filenames, id);
-        res.json({ success: true, message: `Moved ${movedCount} files to workspace`, movedCount });
-    } catch (error) {
-        console.error('❌ Error moving files to workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// GET /workspaces/:id/scraps (get workspace scraps)
-app.get('/workspaces/:id/scraps', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const workspace = getWorkspace(id);
-        
-        if (!workspace) {
-            return res.status(404).json({ error: 'Workspace not found' });
-        }
-        
-        // Get scraps for the requested workspace (scraps are shared across workspaces)
-        const scraps = getActiveWorkspaceScraps();
-        
-        res.json({
-            workspaceId: id,
-            workspaceName: workspace.name,
-            scraps: scraps
-        });
-    } catch (error) {
-        console.error('❌ Error getting workspace scraps:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// GET /workspaces/:id/pinned (get workspace pinned images)
-app.get('/workspaces/:id/pinned', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const workspace = getWorkspace(id);
-        
-        if (!workspace) {
-            return res.status(404).json({ error: 'Workspace not found' });
-        }
-        
-        // Get pinned images for the requested workspace
-        const pinned = getActiveWorkspacePinned();
-        
-        res.json({
-            workspaceId: id,
-            workspaceName: workspace.name,
-            pinned: pinned
-        });
-    } catch (error) {
-        console.error('❌ Error getting workspace pinned images:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// PUT /workspaces/:id/scraps (add file to scraps)
-app.put('/workspaces/:id/scraps', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { filename } = req.body;
-        
-        if (!filename) {
-            return res.status(400).json({ error: 'Filename is required' });
-        }
-        
-        addToWorkspaceArray('scraps', filename, id);
-        res.json({ success: true, message: 'File added to scraps' });
-    } catch (error) {
-        console.error('❌ Error adding file to scraps:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// DELETE /workspaces/:id/scraps (remove file from scraps)
-app.delete('/workspaces/:id/scraps', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { filename } = req.body;
-        
-        if (!filename) {
-            return res.status(400).json({ error: 'Filename is required' });
-        }
-        
-        removeFromWorkspaceArray('scraps', filename, id);
-        res.json({ success: true, message: 'File removed from scraps' });
-    } catch (error) {
-        console.error('❌ Error removing file from scraps:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// PUT /workspaces/:id/pinned (add file to pinned)
-app.put('/workspaces/:id/pinned', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { filename } = req.body;
-        
-        if (!filename) {
-            return res.status(400).json({ error: 'Filename is required' });
-        }
-        
-        addToWorkspaceArray('pinned', filename, id);
-        res.json({ success: true, message: 'File added to pinned' });
-    } catch (error) {
-        console.error('❌ Error adding file to pinned:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// DELETE /workspaces/:id/pinned (remove file from pinned)
-app.delete('/workspaces/:id/pinned', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { filename } = req.body;
-        
-        if (!filename) {
-            return res.status(400).json({ error: 'Filename is required' });
-        }
-        
-        removeFromWorkspaceArray('pinned', filename, id);
-        res.json({ success: true, message: 'File removed from pinned' });
-    } catch (error) {
-        console.error('❌ Error removing file from pinned:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// PUT /workspaces/:id/pinned/bulk (add multiple files to pinned)
-app.put('/workspaces/:id/pinned/bulk', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { filenames } = req.body;
-        
-        if (!filenames || !Array.isArray(filenames) || filenames.length === 0) {
-            return res.status(400).json({ error: 'Filenames array is required' });
-        }
-        
-        const addedCount = addToWorkspaceArray('pinned', filenames, id);
-        res.json({ success: true, addedCount, message: `${addedCount} files added to pinned` });
-    } catch (error) {
-        console.error('❌ Error adding files to pinned:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// DELETE /workspaces/:id/pinned/bulk (remove multiple files from pinned)
-app.delete('/workspaces/:id/pinned/bulk', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { filenames } = req.body;
-        
-        if (!filenames || !Array.isArray(filenames) || filenames.length === 0) {
-            return res.status(400).json({ error: 'Filenames array is required' });
-        }
-        
-        const removedCount = removeFromWorkspaceArray('pinned', filenames, id);
-        res.json({ success: true, removedCount, message: `${removedCount} files removed from pinned` });
-    } catch (error) {
-        console.error('❌ Error removing files from pinned:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Group management endpoints
-
-// GET /workspaces/:id/groups (get workspace groups)
-app.get('/workspaces/:id/groups', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const groups = getWorkspaceGroups(id);
-        res.json({ groups });
-    } catch (error) {
-        console.error('❌ Error getting workspace groups:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /workspaces/:id/groups (create new group)
-app.post('/workspaces/:id/groups', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { name, imageFilenames = [] } = req.body;
-        
-        if (!name || !name.trim()) {
-            return res.status(400).json({ error: 'Group name is required' });
-        }
-        
-        const groupId = createGroup(id, name.trim(), imageFilenames);
-        const group = getGroup(id, groupId);
-        
-        res.json({ success: true, group });
-    } catch (error) {
-        console.error('❌ Error creating group:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// GET /workspaces/:id/groups/:groupId (get specific group)
-app.get('/workspaces/:id/groups/:groupId', authMiddleware, (req, res) => {
-    try {
-        const { id, groupId } = req.params;
-        const group = getGroup(id, groupId);
-        
-        if (!group) {
-            return res.status(404).json({ error: 'Group not found' });
-        }
-        
-        res.json({ group });
-    } catch (error) {
-        console.error('❌ Error getting group:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// PUT /workspaces/:id/groups/:groupId (update group)
-app.put('/workspaces/:id/groups/:groupId', authMiddleware, (req, res) => {
-    try {
-        const { id, groupId } = req.params;
-        const { name, imageFilenames } = req.body;
-        
-        if (name !== undefined) {
-            renameGroup(id, groupId, name.trim());
-        }
-        
-        if (imageFilenames && Array.isArray(imageFilenames)) {
-            addImagesToGroup(id, groupId, imageFilenames);
-        }
-        
-        const group = getGroup(id, groupId);
-        res.json({ success: true, group });
-    } catch (error) {
-        console.error('❌ Error updating group:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /workspaces/:id/groups/:groupId/images (add images to group)
-app.post('/workspaces/:id/groups/:groupId/images', authMiddleware, (req, res) => {
-    try {
-        const { id, groupId } = req.params;
-        const { imageFilenames } = req.body;
-        
-        if (!Array.isArray(imageFilenames) || imageFilenames.length === 0) {
-            return res.status(400).json({ error: 'Image filenames array is required' });
-        }
-        
-        const addedCount = addImagesToGroup(id, groupId, imageFilenames);
-        const group = getGroup(id, groupId);
-        
-        res.json({ success: true, addedCount, group });
-    } catch (error) {
-        console.error('❌ Error adding images to group:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// DELETE /workspaces/:id/groups/:groupId/images (remove images from group)
-app.delete('/workspaces/:id/groups/:groupId/images', authMiddleware, (req, res) => {
-    try {
-        const { id, groupId } = req.params;
-        const { imageFilenames } = req.body;
-        
-        if (!Array.isArray(imageFilenames) || imageFilenames.length === 0) {
-            return res.status(400).json({ error: 'Image filenames array is required' });
-        }
-        
-        const removedCount = removeImagesFromGroup(id, groupId, imageFilenames);
-        const group = getGroup(id, groupId);
-        
-        res.json({ success: true, removedCount, group });
-    } catch (error) {
-        console.error('❌ Error removing images from group:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// DELETE /workspaces/:id/groups/:groupId (delete group)
-app.delete('/workspaces/:id/groups/:groupId', authMiddleware, (req, res) => {
-    try {
-        const { id, groupId } = req.params;
-        deleteGroup(id, groupId);
-        res.json({ success: true, message: 'Group deleted' });
-    } catch (error) {
-        console.error('❌ Error deleting group:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// GET /workspaces/:id/images/:filename/groups (get groups for specific image)
-app.get('/workspaces/:id/images/:filename/groups', authMiddleware, (req, res) => {
-    try {
-        const { id, filename } = req.params;
-        const groups = getGroupsForImage(id, filename);
-        res.json({ groups });
-    } catch (error) {
-        console.error('❌ Error getting groups for image:', error);
-        res.status(500).json({ error: error.message });
     }
 });
 
@@ -4472,121 +4057,6 @@ app.post('/workspaces/:id/references/copy', authMiddleware, async (req, res) => 
     } catch (e) {
         console.error('❌ Base image copy error:', e.message);
         res.status(500).json({ error: e.message });
-    }
-});
-
-// GET /workspaces/active/color (get active workspace color for bokeh)
-app.get('/workspaces/active/color', authMiddleware, (req, res) => {
-    try {
-        const activeId = getActiveWorkspace();
-        const workspace = getWorkspace(activeId);
-        
-        if (!workspace) {
-            return res.status(404).json({ error: 'Active workspace not found' });
-        }
-        
-        res.json({ 
-            color: workspace.color || '#124', // Default color if missing
-            backgroundColor: workspace.backgroundColor, // Can be null for auto-generation
-            backgroundImage: workspace.backgroundImage, // Can be null for no background image
-            backgroundOpacity: workspace.backgroundOpacity || 0.3, // Default opacity
-            workspaceId: activeId,
-            workspaceName: workspace.name
-        });
-    } catch (error) {
-        console.error('❌ Error getting active workspace color:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// PUT /workspaces/:id/color (update workspace color)
-app.put('/workspaces/:id/color', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { color } = req.body;
-        
-        if (!color || !color.trim()) {
-            return res.status(400).json({ error: 'Color is required' });
-        }
-        
-        // Validate color format (simple hex validation)
-        const colorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
-        if (!colorRegex.test(color.trim())) {
-            return res.status(400).json({ error: 'Invalid color format. Use hex format (e.g., #ff4500)' });
-        }
-        
-        updateWorkspaceColor(id, color.trim());
-        res.json({ success: true, message: `Workspace color updated to "${color.trim()}"` });
-    } catch (error) {
-        console.error('❌ Error updating workspace color:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// PUT /workspaces/:id/background-color (update workspace background color)
-app.put('/workspaces/:id/background-color', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { backgroundColor } = req.body;
-        
-        // Background color can be null for auto-generation
-        if (backgroundColor !== null && backgroundColor !== undefined) {
-            if (!backgroundColor.trim()) {
-                return res.status(400).json({ error: 'Background color cannot be empty' });
-            }
-            
-            // Validate color format (simple hex validation)
-            const colorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
-            if (!colorRegex.test(backgroundColor.trim())) {
-                return res.status(400).json({ error: 'Invalid color format. Use hex format (e.g., #ff4500)' });
-            }
-        }
-        
-        updateWorkspaceBackgroundColor(id, backgroundColor ? backgroundColor.trim() : null);
-        res.json({ success: true, message: `Workspace background color updated` });
-    } catch (error) {
-        console.error('❌ Error updating workspace background color:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// PUT /workspaces/:id/background-image (update workspace background image)
-app.put('/workspaces/:id/background-image', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { backgroundImage } = req.body;
-        
-        // Background image can be null for no background image
-        if (backgroundImage !== null && backgroundImage !== undefined) {
-            if (!backgroundImage.trim()) {
-                return res.status(400).json({ error: 'Background image cannot be empty' });
-            }
-        }
-        
-        updateWorkspaceBackgroundImage(id, backgroundImage ? backgroundImage.trim() : null);
-        res.json({ success: true, message: `Workspace background image updated` });
-    } catch (error) {
-        console.error('❌ Error updating workspace background image:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// PUT /workspaces/:id/background-opacity (update workspace background opacity)
-app.put('/workspaces/:id/background-opacity', authMiddleware, (req, res) => {
-    try {
-        const { id } = req.params;
-        const { backgroundOpacity } = req.body;
-        
-        if (backgroundOpacity === null || backgroundOpacity === undefined) {
-            return res.status(400).json({ error: 'Background opacity is required' });
-        }
-        
-        const opacity = parseFloat(backgroundOpacity);
-        if (isNaN(opacity) || opacity < 0 || opacity > 1) {
-            return res.status(400).json({ error: 'Background opacity must be a number between 0 and 1' });
-        }
-        
-        updateWorkspaceBackgroundOpacity(id, opacity);
-        res.json({ success: true, message: `Workspace background opacity updated` });
-    } catch (error) {
-        console.error('❌ Error updating workspace background opacity:', error);
-        res.status(500).json({ error: error.message });
     }
 });
 

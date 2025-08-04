@@ -18,10 +18,10 @@ function showCreditCostDialog(cost, event = null) {
                 <div class="credit-cost-content">
                     <div class="credit-cost-header">
                         <i class="nai-anla"></i>
-                        <span>Credit Cost</span>
+                        <span>Payment Required</span>
                     </div>
                     <div class="credit-cost-message">
-                        This will cost <strong>${cost} credits</strong> to generate.
+                        This will cost <i class="nai-anla"></i><strong>${cost}</strong> to generate.
                     </div>
                     <div class="credit-cost-buttons">
                         <button class="credit-cost-cancel-btn" type="button">Cancel</button>
@@ -35,12 +35,14 @@ function showCreditCostDialog(cost, event = null) {
             const confirmBtn = creditCostDialog.querySelector('.credit-cost-confirm-btn');
             const cancelBtn = creditCostDialog.querySelector('.credit-cost-cancel-btn');
             
-            confirmBtn.addEventListener('click', () => {
+            confirmBtn.addEventListener('click', (e) => {
+                
                 hideCreditCostDialog();
                 resolve(true);
             });
             
-            cancelBtn.addEventListener('click', () => {
+            cancelBtn.addEventListener('click', (e) => {
+                
                 hideCreditCostDialog();
                 resolve(false);
             });

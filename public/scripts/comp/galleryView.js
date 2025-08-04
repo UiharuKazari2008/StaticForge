@@ -46,6 +46,12 @@ const galleryToggleGroup = document.getElementById('galleryToggleGroup');
 
 // Gallery view state
 let currentGalleryView = 'images'; // 'images', 'scraps', 'pinned', 'upscaled'
+// Make it globally accessible for WebSocket event handlers
+window.currentGalleryView = currentGalleryView;
+
+// Gallery sort order state
+let gallerySortOrder = 'desc'; // 'desc' for newest first, 'asc' for oldest first
+window.gallerySortOrder = gallerySortOrder;
 
 // Gallery layout variables
 let galleryColumns = parseInt(galleryColumnsInput?.value) || 5;
@@ -62,12 +68,22 @@ let pendingPlaceholderAdditions = {
 
 // Global images array (shared with main app)
 let allImages = [];
+// Make it globally accessible for pin status checking
+window.allImages = allImages;
 
 // Switch between gallery views
 function switchGalleryView(view, force = false) {
     if (currentGalleryView === view && !force) return;
     
+    // Check if we're in the middle of workspace switching to avoid duplicate calls
+    if (window.isWorkspaceSwitching && !force) {
+        console.log('🔄 Skipping gallery view switch during workspace transition');
+        return;
+    }
+    
     currentGalleryView = view;
+    // Update global variable for WebSocket event handlers
+    window.currentGalleryView = currentGalleryView;
     
     // Update button states
     galleryToggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
@@ -106,23 +122,41 @@ function switchGalleryView(view, force = false) {
 // Load scraps for current workspace
 async function loadScraps() {
     try {
-        // Use the new /images endpoint with scraps query parameter
-        const response = await fetchWithAuth('/images?scraps=true');
-        if (response.ok) {
-            const scrapsImageData = await response.json();
+        // Use WebSocket to request scraps data
+        if (window.wsClient && window.wsClient.isConnected()) {
+            const scrapsImageData = await window.wsClient.requestGalleryView('scraps');
             // Update display
-            allImages = scrapsImageData;
+            allImages = scrapsImageData.gallery || scrapsImageData;
+            window.allImages = allImages;
+            
+            // Apply current sort order to the loaded data
+            sortGalleryData();
+            
             displayCurrentPageOptimized();
         } else {
+            // Fallback to API if WebSocket not available
+            const response = await fetchWithAuth('/images?scraps=true');
+            if (response.ok) {
+                const scrapsImageData = await response.json();
+                allImages = scrapsImageData;
+                
+                // Apply current sort order to the loaded data
+                sortGalleryData();
+                
+                displayCurrentPageOptimized();
+                    } else {
             console.error('Failed to load scraps:', response.statusText);
             allImages = [];
+            window.allImages = allImages;
             resetInfiniteScroll();
             displayCurrentPageOptimized();
+        }
         }
         updateGalleryPlaceholders();
     } catch (error) {
         console.error('Error loading scraps:', error);
         allImages = [];
+        window.allImages = allImages;
         resetInfiniteScroll();
         displayCurrentPageOptimized();
     }
@@ -131,23 +165,41 @@ async function loadScraps() {
 // Load pinned images for current workspace
 async function loadPinned() {
     try {
-        // Use the new /images endpoint with pinned query parameter
-        const response = await fetchWithAuth('/images?pinned=true');
-        if (response.ok) {
-            const pinnedImageData = await response.json();
+        // Use WebSocket to request pinned data
+        if (window.wsClient && window.wsClient.isConnected()) {
+            const pinnedImageData = await window.wsClient.requestGalleryView('pinned');
             // Update display
-            allImages = pinnedImageData;
+            allImages = pinnedImageData.gallery || pinnedImageData;
+            window.allImages = allImages;
+            
+            // Apply current sort order to the loaded data
+            sortGalleryData();
+            
             displayCurrentPageOptimized();
         } else {
+            // Fallback to API if WebSocket not available
+            const response = await fetchWithAuth('/images?pinned=true');
+            if (response.ok) {
+                const pinnedImageData = await response.json();
+                allImages = pinnedImageData;
+                
+                // Apply current sort order to the loaded data
+                sortGalleryData();
+                
+                displayCurrentPageOptimized();
+                    } else {
             console.error('Failed to load pinned images:', response.statusText);
             allImages = [];
+            window.allImages = allImages;
             resetInfiniteScroll();
             displayCurrentPageOptimized();
+        }
         }
         updateGalleryPlaceholders();
     } catch (error) {
         console.error('Error loading pinned images:', error);
         allImages = [];
+        window.allImages = allImages;
         resetInfiniteScroll();
         displayCurrentPageOptimized();
     }
@@ -156,23 +208,41 @@ async function loadPinned() {
 // Load upscaled images for current workspace
 async function loadUpscaled() {
     try {
-        // Use the new /images endpoint with upscaled query parameter
-        const response = await fetchWithAuth('/images?upscaled=true');
-        if (response.ok) {
-            const upscaledImageData = await response.json();
+        // Use WebSocket to request upscaled data
+        if (window.wsClient && window.wsClient.isConnected()) {
+            const upscaledImageData = await window.wsClient.requestGalleryView('upscaled');
             // Update display
-            allImages = upscaledImageData;
+            allImages = upscaledImageData.gallery || upscaledImageData;
+            window.allImages = allImages;
+            
+            // Apply current sort order to the loaded data
+            sortGalleryData();
+            
             displayCurrentPageOptimized();
         } else {
-            console.error('Failed to load upscaled images:', response.statusText);
-            allImages = [];
-            resetInfiniteScroll();
-            displayCurrentPageOptimized();
+            // Fallback to API if WebSocket not available
+            const response = await fetchWithAuth('/images?upscaled=true');
+            if (response.ok) {
+                const upscaledImageData = await response.json();
+                allImages = upscaledImageData;
+                
+                // Apply current sort order to the loaded data
+                sortGalleryData();
+                
+                displayCurrentPageOptimized();
+            } else {
+                console.error('Failed to load upscaled images:', response.statusText);
+                allImages = [];
+                window.allImages = allImages;
+                resetInfiniteScroll();
+                displayCurrentPageOptimized();
+            }
         }
         updateGalleryPlaceholders();
     } catch (error) {
         console.error('Error loading upscaled images:', error);
         allImages = [];
+        window.allImages = allImages;
         resetInfiniteScroll();
         displayCurrentPageOptimized();
     }
@@ -181,31 +251,62 @@ async function loadUpscaled() {
 // Load gallery images with optimized rendering to prevent flickering
 async function loadGallery(addLatest) {
     try {
-        const response = await fetchWithAuth('/images');
-        if (response.ok) {
-            const newImages = await response.json();
+        // Use WebSocket to request gallery data
+        if (window.wsClient && window.wsClient.isConnected()) {
+            const newImages = await window.wsClient.requestAllImages();
+            const galleryData = newImages.gallery || newImages;
 
             // Check if images have actually changed to avoid unnecessary updates
-            if (JSON.stringify(allImages) === JSON.stringify(newImages)) {
+            if (JSON.stringify(allImages) === JSON.stringify(galleryData)) {
                 return; // No changes, skip update
             }
 
-            allImages = newImages;
+            allImages = galleryData;
+            window.allImages = allImages;
+
+            // Apply current sort order to the loaded data
+            sortGalleryData();
 
             // Reset infinite scroll state and display initial batch
             if (!addLatest) {
                 resetInfiniteScroll();
                 displayCurrentPageOptimized();
             } else {
-                await addNewGalleryItemAfterGeneration(newImages[0]);
+                await addNewGalleryItemAfterGeneration(galleryData[0]);
             }
         } else {
-            console.error('Failed to load gallery:', response.statusText);
+            // Fallback to API if WebSocket not available
+            const response = await fetchWithAuth('/images');
+            if (response.ok) {
+                const newImages = await response.json();
+
+                // Check if images have actually changed to avoid unnecessary updates
+                if (JSON.stringify(allImages) === JSON.stringify(newImages)) {
+                    return; // No changes, skip update
+                }
+
+                allImages = newImages;
+                window.allImages = allImages;
+
+                // Apply current sort order to the loaded data
+                sortGalleryData();
+
+                // Reset infinite scroll state and display initial batch
+                if (!addLatest) {
+                    resetInfiniteScroll();
+                    displayCurrentPageOptimized();
+                } else {
+                    await addNewGalleryItemAfterGeneration(newImages[0]);
+                }
+            } else {
+                console.error('Failed to load gallery:', response.statusText);
+            }
         }
     } catch (error) {
         console.error('Error loading gallery:', error);
         // Don't throw error for gallery loading failure
         allImages = [];
+        window.allImages = allImages;
         displayCurrentPageOptimized();
     }
 }
@@ -564,15 +665,27 @@ function createGalleryItem(image, index) {
     // Pin button
     const pinBtn = document.createElement('button');
     pinBtn.className = 'btn-secondary round-button';
-    pinBtn.innerHTML = '<i class="nai-heart-disabled"></i>';
-    pinBtn.title = 'Pin/Unpin image';
+    
+    // Set initial pin button state from WebSocket data if available
+    if (image.isPinned !== undefined) {
+        if (image.isPinned) {
+            pinBtn.innerHTML = '<i class="nai-heart-enabled"></i>';
+            pinBtn.title = 'Unpin image';
+        } else {
+            pinBtn.innerHTML = '<i class="nai-heart-disabled"></i>';
+            pinBtn.title = 'Pin image';
+        }
+    } else {
+        pinBtn.innerHTML = '<i class="nai-heart-disabled"></i>';
+        pinBtn.title = 'Pin/Unpin image';
+        // Update pin button appearance based on pin status (fallback to API)
+        updatePinButtonAppearance(pinBtn, filename);
+    }
+    
     pinBtn.onclick = (e) => {
         e.stopPropagation();
         togglePinImage(image, pinBtn);
     };
-    
-    // Update pin button appearance based on pin status
-    updatePinButtonAppearance(pinBtn, filename);
 
     // Toolbar trigger button (combines scrap and delete)
     const toolbarBtn = document.createElement('button');
@@ -1557,3 +1670,86 @@ document.addEventListener('DOMContentLoaded', () => {
         }, infiniteScrollConfig.debounceDelay);
     });
 });
+
+// Gallery sort order functions
+function toggleGallerySortOrder() {
+    // Toggle between desc (newest first) and asc (oldest first)
+    gallerySortOrder = gallerySortOrder === 'desc' ? 'asc' : 'desc';
+    window.gallerySortOrder = gallerySortOrder;
+    
+    // Update the button state and icon
+    const sortOrderBtn = document.getElementById('sortOrderToggleBtn');
+    if (sortOrderBtn) {
+        sortOrderBtn.dataset.state = gallerySortOrder;
+        const icon = sortOrderBtn.querySelector('i');
+        if (icon) {
+            if (gallerySortOrder === 'desc') {
+                icon.className = 'fas fa-sort-amount-down';
+                sortOrderBtn.title = 'Sort Order: Newest First';
+            } else {
+                icon.className = 'fas fa-sort-amount-up';
+                sortOrderBtn.title = 'Sort Order: Oldest First';
+            }
+        }
+    }
+    
+    // Sort the current gallery data
+    sortGalleryData();
+    
+    // Re-render the gallery with new sort order
+    resetInfiniteScroll();
+    displayCurrentPageOptimized();
+}
+
+function sortGalleryData() {
+    if (!allImages || allImages.length === 0) return;
+    
+    // Sort by modification time (mtime)
+    allImages.sort((a, b) => {
+        const timeA = a.mtime || 0;
+        const timeB = b.mtime || 0;
+        
+        if (gallerySortOrder === 'desc') {
+            return timeB - timeA; // Newest first
+        } else {
+            return timeA - timeB; // Oldest first
+        }
+    });
+    
+    // Update the global reference
+    window.allImages = allImages;
+}
+
+// Export functions for use in other modules
+window.switchGalleryView = switchGalleryView;
+window.loadGallery = loadGallery;
+window.loadScraps = loadScraps;
+window.loadPinned = loadPinned;
+window.loadUpscaled = loadUpscaled;
+window.currentGalleryView = currentGalleryView;
+window.toggleGallerySortOrder = toggleGallerySortOrder;
+window.sortGalleryData = sortGalleryData;
+
+// Function to trigger gallery move modal with selected images
+function triggerGalleryMoveWithSelection() {
+    if (selectedImages.size === 0) {
+        showError('No images selected for move');
+        return;
+    }
+    
+    // Set the selected images in the gallery toolbar module
+    if (window.galleryMoveSelectedImages) {
+        window.galleryMoveSelectedImages.clear();
+        selectedImages.forEach(filename => {
+            window.galleryMoveSelectedImages.add(filename);
+        });
+    }
+    
+    // Show the gallery move modal with null filename to indicate multi-select mode
+    if (typeof showGalleryMoveModal === 'function') {
+        showGalleryMoveModal(null);
+    }
+}
+
+// Export the function for use in other modules
+window.triggerGalleryMoveWithSelection = triggerGalleryMoveWithSelection;
