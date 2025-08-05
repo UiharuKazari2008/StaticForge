@@ -1541,10 +1541,26 @@ async function uploadUnifiedReferenceImages(files) {
     let toastId = showGlassToast('info', 'Uploading Images', 'Uploading reference images...', true, false, '<i class="nai-import"></i>');
     
     try {
+        // Get the current workspace from the cache manager dropdown
+        let targetWorkspace = cacheManagerCurrentWorkspace;
+        
+        // If cache manager modal is open, get the workspace from the dropdown
+        if (cacheManagerModal && cacheManagerModal.classList.contains('modal-open')) {
+            const selectedWorkspaceElement = cacheManagerWorkspaceSelected;
+            if (selectedWorkspaceElement && selectedWorkspaceElement.textContent) {
+                // Find the workspace by display name
+                const workspaceName = selectedWorkspaceElement.textContent.trim();
+                const workspace = Object.values(workspaces).find(w => w.name === workspaceName);
+                if (workspace) {
+                    targetWorkspace = workspace.id;
+                }
+            }
+        }
+        
         const uploadPromises = files.map(async (file, index) => {
             const base64 = await fileToBase64(file);
             
-            const response = await wsClient.uploadReference(base64, cacheManagerCurrentWorkspace);
+            const response = await wsClient.uploadReference(base64, targetWorkspace);
 
             if (!response.success) {
                 throw new Error(response.message || 'Upload failed');
@@ -1586,8 +1602,24 @@ async function uploadUnifiedVibeImage(file) {
         return;
     }
     
+    // Get the current workspace from the cache manager dropdown
+    let targetWorkspace = cacheManagerCurrentWorkspace;
+    
+    // If cache manager modal is open, get the workspace from the dropdown
+    if (cacheManagerModal && cacheManagerModal.classList.contains('modal-open')) {
+        const selectedWorkspaceElement = cacheManagerWorkspaceSelected;
+        if (selectedWorkspaceElement && selectedWorkspaceElement.textContent) {
+            // Find the workspace by display name
+            const workspaceName = selectedWorkspaceElement.textContent.trim();
+            const workspace = Object.values(workspaces).find(w => w.name === workspaceName);
+            if (workspace) {
+                targetWorkspace = workspace.id;
+            }
+        }
+    }
+    
     // Validate workspace
-    if (!cacheManagerCurrentWorkspace) {
+    if (!targetWorkspace) {
         showError('No workspace selected. Please select a workspace first.');
         return;
     }
@@ -1609,7 +1641,7 @@ async function uploadUnifiedVibeImage(file) {
             image: base64,
             informationExtraction: informationExtraction,
             model: model,
-            workspace: cacheManagerCurrentWorkspace
+            workspace: targetWorkspace
         });
         
         if (!response.success) {

@@ -775,6 +775,10 @@ function addToWorkspaceArray(type, items, workspaceId = null) {
             break;
             
         case 'vibeImages':
+            // Initialize vibeImages array if it doesn't exist
+            if (!workspaces[targetId].vibeImages) {
+                workspaces[targetId].vibeImages = [];
+            }
             validItems.forEach(item => {
                 if (!workspaces[targetId].vibeImages.includes(item)) {
                     workspaces[targetId].vibeImages.push(item);
@@ -871,6 +875,10 @@ function removeFromWorkspaceArray(type, items, workspaceId = null) {
             break;
             
         case 'vibeImages':
+            // Initialize vibeImages array if it doesn't exist
+            if (!workspaces[targetId].vibeImages) {
+                workspaces[targetId].vibeImages = [];
+            }
             const originalVibeImagesLength = workspaces[targetId].vibeImages.length;
             workspaces[targetId].vibeImages = workspaces[targetId].vibeImages.filter(item => !validItems.includes(item));
             removedCount = originalVibeImagesLength - workspaces[targetId].vibeImages.length;

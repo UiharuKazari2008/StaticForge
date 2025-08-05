@@ -2382,6 +2382,19 @@ class WebSocketMessageHandlers {
         try {
             const { imageData, workspaceId } = message;
             
+            // Validate workspace parameter
+            if (!workspaceId) {
+                this.sendError(ws, 'Missing workspace parameter', 'Workspace parameter is required', message.requestId);
+                return;
+            }
+            
+            // Validate that the workspace exists
+            const workspaces = getWorkspaces();
+            if (!workspaces[workspaceId]) {
+                this.sendError(ws, 'Invalid workspace', `Workspace '${workspaceId}' not found`, message.requestId);
+                return;
+            }
+            
             // Convert base64 to buffer
             const imageBuffer = Buffer.from(imageData, 'base64');
             
@@ -2811,6 +2824,19 @@ class WebSocketMessageHandlers {
     async handleEncodeVibe(ws, message, clientInfo, wsServer) {
         try {
             const { image, informationExtraction, model, workspace, cacheFile, id } = message;
+            
+            // Validate workspace parameter
+            if (!workspace) {
+                this.sendError(ws, 'Missing workspace parameter', 'Workspace parameter is required', message.requestId);
+                return;
+            }
+            
+            // Validate that the workspace exists
+            const workspaces = getWorkspaces();
+            if (!workspaces[workspace]) {
+                this.sendError(ws, 'Invalid workspace', `Workspace '${workspace}' not found`, message.requestId);
+                return;
+            }
             
             let vibeData;
             

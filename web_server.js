@@ -93,7 +93,7 @@ console.log(config);
 const client = new NovelAI({ 
     token: config.apiKey,
     timeout: 100000,
-    verbose: true
+    verbose: false
  });
 
 

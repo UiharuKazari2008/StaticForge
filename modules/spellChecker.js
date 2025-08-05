@@ -48,13 +48,28 @@ class SpellChecker {
 
     checkText(text) {
         if (!text || typeof text !== 'string') {
-            return { misspelled: [], suggestions: {} };
+            return { misspelled: [], suggestions: {}, originalText: text };
         }
 
         // Split text into words, preserving punctuation and spacing
         const words = text.match(/\b\w+\b/g) || [];
         const misspelled = [];
         const suggestions = {};
+        const wordPositions = [];
+
+        // Find positions of each word in the original text
+        let currentPos = 0;
+        for (const word of words) {
+            const wordIndex = text.indexOf(word, currentPos);
+            if (wordIndex !== -1) {
+                wordPositions.push({
+                    word: word,
+                    start: wordIndex,
+                    end: wordIndex + word.length
+                });
+                currentPos = wordIndex + word.length;
+            }
+        }
 
         for (const word of words) {
             if (!this.isCorrect(word)) {
@@ -63,7 +78,13 @@ class SpellChecker {
             }
         }
 
-        return { misspelled, suggestions };
+        return { 
+            misspelled, 
+            suggestions, 
+            originalText: text,
+            wordPositions: wordPositions,
+            hasErrors: misspelled.length > 0
+        };
     }
 
     addCustomWord(word) {
@@ -82,6 +103,10 @@ class SpellChecker {
 
     saveCustomWords() {
         try {
+            const cacheDir = path.join(__dirname, '/../.cache');
+            if (!fs.existsSync(cacheDir)) {
+                fs.mkdirSync(cacheDir, { recursive: true });
+            }
             const customWordsPath = path.join(__dirname, '/../.cache/customWords.json');
             const data = {
                 words: Array.from(this.customWords).sort(),

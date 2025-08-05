@@ -231,7 +231,7 @@ class SearchService {
                         spellCheckData = this.performSpellCheck(textAfterPrefix);
                         
                         // Send spell check results separately if WebSocket is available
-                        if (ws && spellCheckData && spellCheckData.hasErrors) {
+                        if (ws && spellCheckData) {
                             ws.send(JSON.stringify({
                                 type: 'search_results_update',
                                 service: 'spellcheck',
@@ -1079,9 +1079,11 @@ class SearchService {
             const spellCheckResult = this.spellChecker.checkText(query);
             
             return {
-                hasErrors: spellCheckResult.misspelled.length > 0,
+                hasErrors: spellCheckResult.hasErrors,
                 misspelled: spellCheckResult.misspelled,
-                suggestions: spellCheckResult.suggestions
+                suggestions: spellCheckResult.suggestions,
+                originalText: spellCheckResult.originalText,
+                wordPositions: spellCheckResult.wordPositions
             };
         } catch (error) {
             console.error('Error performing spell check:', error);

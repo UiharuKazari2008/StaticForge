@@ -88,6 +88,11 @@
                 <input type="number" id="galleryColumnsInput" class="form-control hover-show colored" min="3" max="10" value="5" style="width: 42px;">
             </div>
             <div class="header-controls">
+                <!-- Pending Requests Spinner -->
+                <div id="pendingRequestsSpinner" class="pending-requests-spinner hidden">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span id="pendingRequestsBadge" class="pending-requests-badge">0</span>
+                </div>
                 <div id="customPresetDropdown" class="custom-dropdown">
                     <div class="button-group">
                     <button type="button" id="customPresetDropdownBtn" class="btn-secondary">
@@ -240,7 +245,7 @@
                                                                     <i class="nai-reload"></i>
                                                                 </button>
                                                                 <button type="button" id="randomPromptNsfwBtn" class="btn-secondary btn-small indicator" data-state="off" title="Toggle NSFW content" style="display: none;">
-                                                                    NSFW
+                                                                    <i class="fas fa-ban"></i>
                                                                 </button>
                                                                 <button type="button" id="randomPromptTransferBtn" class="btn-secondary btn-small" title="Transfer random prompt to main prompt and exit random mode" style="display: none;">
                                                                     <i class="fas fa-floppy-disk-circle-arrow-right"></i>

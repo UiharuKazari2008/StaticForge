@@ -1326,10 +1326,7 @@ function selectManualModel(value, group) {
 
   // Trigger any listeners (e.g., updateGenerateButton or manual form update)
   if (typeof updateGenerateButton === 'function') updateGenerateButton();
-  // Update price display
   updateManualPriceDisplay();
-  
-  loadCacheImages();
 }
 
 function closeManualModelDropdown() {
@@ -2170,7 +2167,7 @@ function renderDatasetDropdown() {
 
     datasets.forEach(dataset => {
         const option = document.createElement('div');
-        option.className = 'custom-dropdown-option';
+        option.className = 'custom-dropdown-option dataset-dropdown-option';
         option.dataset.value = dataset.value;
 
         const isSelected = selectedDatasets.includes(dataset.value);
@@ -2178,15 +2175,78 @@ function renderDatasetDropdown() {
             option.classList.add('selected');
         }
 
+        const biasValue = datasetBias[dataset.value] || 1.0;
+        const biasDisplay = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
+
         option.innerHTML = `
-            <span>${dataset.display}</span>
-            ${isSelected ? '<i class="fas fa-check" style="margin-left: auto;"></i>' : ''}
+            <div class="dataset-option-content">
+                <div class="dataset-option-left">
+                    <span class="dataset-name">${dataset.display}</span>
+                    ${isSelected ? '<i class="fas fa-check dataset-check-icon"></i>' : ''}
+                </div>
+                <div class="dataset-option-right">
+                    ${isSelected ? `
+                        <div class="dataset-bias-controls">
+                            <button type="button" class="dataset-bias-decrease" title="Decrease bias" data-dataset="${dataset.value}">
+                                <i class="fas fa-minus"></i>
+                            </button>
+                            <span class="dataset-bias-value" data-dataset="${dataset.value}">${biasDisplay}</span>
+                            <button type="button" class="dataset-bias-increase" title="Increase bias" data-dataset="${dataset.value}">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
         `;
 
-        option.addEventListener('click', (e) => {
+        // Add click handler for the main option (toggle selection)
+        const optionLeft = option.querySelector('.dataset-option-left');
+        optionLeft.addEventListener('click', (e) => {
             e.preventDefault();
+            e.stopPropagation();
             toggleDataset(dataset.value);
         });
+
+        // Add click handlers for bias controls (only if dataset is selected)
+        if (isSelected) {
+            const decreaseBtn = option.querySelector('.dataset-bias-decrease');
+            const increaseBtn = option.querySelector('.dataset-bias-increase');
+            const biasValueSpan = option.querySelector('.dataset-bias-value');
+
+            decreaseBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                adjustDatasetBias(dataset.value, -0.1);
+            });
+
+            increaseBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                adjustDatasetBias(dataset.value, 0.1);
+            });
+
+            // Add wheel event for bias value span
+            biasValueSpan.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                adjustDatasetBias(dataset.value, delta);
+                
+                // Add visual feedback
+                biasValueSpan.classList.add('scrolling');
+                setTimeout(() => {
+                    biasValueSpan.classList.remove('scrolling');
+                }, 200);
+            });
+
+            // Add click event for bias value span to make it more interactive
+            biasValueSpan.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Optional: could add a visual feedback here
+            });
+        }
 
         datasetDropdownMenu.appendChild(option);
     });
@@ -2237,6 +2297,17 @@ function updateDatasetDisplay() {
     if (datasetBtn) {
         datasetBtn.setAttribute('data-state', selectedDatasets.length > 0 ? 'on' : 'off');
     }
+    
+    // Update bias value displays in the dropdown if it's open
+    selectedDatasets.forEach(dataset => {
+        const biasValueSpan = document.querySelector(`.dataset-bias-value[data-dataset="${dataset}"]`);
+        if (biasValueSpan) {
+            const biasValue = datasetBias[dataset] || 1.0;
+            const displayValue = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
+            biasValueSpan.textContent = displayValue;
+        }
+    });
+    
     updatePromptStatusIcons();
 }
 
@@ -2247,53 +2318,51 @@ function openDatasetDropdown() {
 function closeDatasetDropdown() {
     closeDropdown(datasetDropdownMenu, datasetDropdownBtn);
 }
-// Dataset Bias Functions
+
+// Function to adjust dataset bias from dropdown controls
+function adjustDatasetBias(dataset, delta) {
+    const currentValue = datasetBias[dataset] || 1.0;
+    const newValue = Math.max(-3, Math.min(5, currentValue + delta));
+    datasetBias[dataset] = Math.round(newValue * 10) / 10; // Round to 1 decimal place
+    
+    // Update the bias value display in the dropdown
+    const biasValueSpan = document.querySelector(`.dataset-bias-value[data-dataset="${dataset}"]`);
+    if (biasValueSpan) {
+        const displayValue = datasetBias[dataset] !== 1.0 ? datasetBias[dataset].toFixed(1) : '1.0';
+        biasValueSpan.textContent = displayValue;
+    }
+    
+    // Update dataset display to ensure dropdown stays in sync
+    updateDatasetDisplay();
+}
+// Dataset Bias Functions - Simplified since bias controls are now in dropdown
 function renderDatasetBiasControls() {
     const container = document.getElementById('datasetBiasControls');
     if (!container) return;
 
     container.innerHTML = '';
 
-    // Render datasets in specific order: anime, furry, backgrounds
+    // Only render sub-toggles if they exist, since main bias controls are now in dropdown
     const orderedDatasets = ['anime', 'furry', 'backgrounds'];
     const datasetsToRender = orderedDatasets.filter(dataset => selectedDatasets.includes(dataset));
 
+    let hasSubToggles = false;
+
     datasetsToRender.forEach(dataset => {
-        const biasGroup = document.createElement('div');
-        biasGroup.className = 'form-group dataset-bias-group';
-
-        const label = document.createElement('label');
-        label.textContent = dataset.charAt(0).toUpperCase() + dataset.slice(1);
-
-        const inputGroup = document.createElement('div');
-        inputGroup.className = 'form-row';
-
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.className = 'form-control hover-show colored';
-        input.min = '-3';
-        input.max = '5';
-        input.step = '0.1';
-        input.value = datasetBias[dataset];
-        input.addEventListener('input', (e) => {
-            datasetBias[dataset] = parseFloat(e.target.value);
-        });
-
-        // Add wheel scroll functionality
-        input.addEventListener('wheel', function(e) {
-            e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.1 : 0.1;
-            const currentValue = parseFloat(this.value) || 1.0;
-            const newValue = Math.max(-3, Math.min(5, currentValue + delta));
-            this.value = newValue.toFixed(1);
-            datasetBias[dataset] = newValue;
-        });
-
-        inputGroup.appendChild(input);
-
         // Add sub-toggles for datasets that have them
         if (window.optionsData?.datasets[dataset]?.sub_toggles) {
-            window.optionsData?.datasets[dataset]?.sub_toggles.forEach(subToggle => {
+            hasSubToggles = true;
+            
+            const biasGroup = document.createElement('div');
+            biasGroup.className = 'form-group dataset-bias-group';
+
+            const label = document.createElement('label');
+            label.textContent = `${dataset.charAt(0).toUpperCase() + dataset.slice(1)} Options`;
+
+            const inputGroup = document.createElement('div');
+            inputGroup.className = 'form-row';
+
+            window.optionsData.datasets[dataset].sub_toggles.forEach(subToggle => {
                 const toggleBtn = document.createElement('button');
                 toggleBtn.type = 'button';
                 toggleBtn.className = 'btn-secondary indicator';
@@ -2375,18 +2444,19 @@ function renderDatasetBiasControls() {
 
                 inputGroup.appendChild(biasInput);
             });
-        }
 
-        biasGroup.appendChild(label);
-        biasGroup.appendChild(inputGroup);
-        container.appendChild(biasGroup);
+            biasGroup.appendChild(label);
+            biasGroup.appendChild(inputGroup);
+            container.appendChild(biasGroup);
+        }
     });
-    // Toggle the settings button based on whether there are any items in the container
+
+    // Toggle the settings button based on whether there are any sub-toggles
     const settingsBtn = document.querySelector('#manualModal .prompt-tabs .tab-buttons button[data-tab="settings"]');
     const promptBtn = document.querySelector('#manualModal .prompt-tabs .tab-buttons button[data-tab="prompt"]');
     if (settingsBtn) {
-        // If container has no children, disable settings button and switch to prompt tab if active
-        if (!container.hasChildNodes() || container.children.length === 0) {
+        // Only show settings button if there are sub-toggles to configure
+        if (!hasSubToggles) {
             settingsBtn.style.display = 'none';
             if (document.getElementById('settings-tab').classList.contains('active')) {
                 document.getElementById('prompt-tab').classList.add('active');
@@ -3166,13 +3236,43 @@ function setupEventListeners() {
     }
 
     // Mouse wheel functionality for numeric inputs
+    let manualStepsWheelTimeout = false;
     if (manualSteps) {
         manualSteps.addEventListener('wheel', function(e) {
-            
-            const delta = e.deltaY > 0 ? -1 : 1;
             const currentValue = parseInt(this.value) || 25;
-            const newValue = Math.max(1, Math.min(28, currentValue + delta));
-            this.value = newValue;
+            const delta = e.deltaY > 0 ? -1 : 1;
+
+            if (currentValue < 28) {
+                if (!manualStepsWheelTimeout) {
+                    const nextValue = currentValue + delta;
+                    if (nextValue >= 28) {
+                        this.value = 28;
+                        manualStepsWheelTimeout = true;
+                        setTimeout(() => {
+                            manualStepsWheelTimeout = false;
+                        }, 1000);
+                    } else {
+                        this.value = Math.max(1, nextValue);
+                    }
+                }
+                // If timeout is active, ignore further scrolls under 28
+            } else if (currentValue === 28) {
+                // Require a pause before allowing to go above 28
+                if (!manualStepsWheelTimeout && delta > 0) {
+                    this.value = 29;
+                    manualStepsWheelTimeout = true;
+                    setTimeout(() => {
+                        manualStepsWheelTimeout = false;
+                    }, 1000);
+                } else if (delta < 0) {
+                    this.value = 27;
+                }
+                // If timeout is active, ignore further scrolls above 28
+            } else {
+                // At or above 29, allow normal scrolling up to 50
+                const newValue = Math.max(1, Math.min(50, currentValue + delta));
+                this.value = newValue;
+            }
         });
     }
 
@@ -9238,7 +9338,11 @@ if (window.wsClient) {
     // Handle gallery responses
     wsClient.on('galleryResponse', (data) => {
         console.log('🖼️ Gallery response received:', data);
-        // The gallery view functions will handle this data
+        if (data.data && (data.data.gallery || Array.isArray(data.data))) {
+            if (window.workspaceLoadingCompleteCallback) {
+                window.workspaceLoadingCompleteCallback();
+            }
+        }
     });
 
     // Handle gallery updates
@@ -9302,4 +9406,27 @@ if (window.wsClient) {
             }
         }
     });
+
+    // Example of using the new request ID-based callback system:
+    // 
+    // Method 1: Using sendWithCallback (recommended)
+    // wsClient.sendWithCallback('custom_action', { data: 'example' }, (response, error) => {
+    //     if (error) {
+    //         console.error('Custom action failed:', error);
+    //     } else {
+    //         console.log('Custom action response:', response);
+    //     }
+    // });
+    //
+    // Method 2: Using setRequestCallback with custom request ID
+    // const requestId = wsClient.generateRequestId();
+    // wsClient.setRequestCallback(requestId, (response, error) => {
+    //     console.log('Response for custom request:', response);
+    // });
+    // wsClient.sendMessageWithRequestId('custom_action', requestId, { data: 'example' });
+    //
+    // Method 3: Using sendMessageWithCallback
+    // wsClient.sendMessageWithCallback('custom_action', { data: 'example' }, (response, error) => {
+    //     console.log('Response received:', response);
+    // });
 }

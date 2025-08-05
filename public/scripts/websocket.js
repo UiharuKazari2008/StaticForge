@@ -18,6 +18,11 @@ class WebSocketClient {
         this.currentInitStep = 0;
         this.totalInitSteps = 0;
         
+        // Pending requests tracking
+        this.pendingRequestsCount = 0;
+        this.pendingRequestsSpinner = null;
+        this.pendingRequestsBadge = null;
+        
         // Bind methods
         this.connect = this.connect.bind(this);
         this.disconnect = this.disconnect.bind(this);
@@ -113,6 +118,9 @@ class WebSocketClient {
     init() {
         // Show loading overlay immediately
         this.showLoadingOverlay('Initializing...', 0);
+        
+        // Initialize pending requests spinner
+        this.updatePendingRequestsSpinner();
         
         // Start connection when page loads
         if (document.readyState === 'loading') {
@@ -288,6 +296,10 @@ class WebSocketClient {
         this.isManualClose = true;
         this.stopPingInterval();
         
+        // Reset pending requests count when disconnecting
+        this.pendingRequestsCount = 0;
+        this.updatePendingRequestsSpinner();
+        
         if (this.ws) {
             this.ws.close(1000, 'Manual disconnect');
             this.ws = null;
@@ -392,13 +404,27 @@ class WebSocketClient {
         
         // Handle all response messages that should trigger resolveRequest
         if (message.type.endsWith('_response') || message.type === 'search_characters_complete') {
-            this.resolveRequest(message.requestId, message.data, message.error);
+            if (message.requestId) {
+                this.resolveRequest(message.requestId, message.data, message.error);
+            }
             
             // Special handling for gallery responses
             if (message.type === 'request_gallery_response') {
                 this.handleGalleryResponse(message.data, message.requestId);
             }
             
+            return;
+        }
+        
+        // Handle any message with requestId for custom callbacks
+        if (message.requestId && this.requestCallbacks && this.requestCallbacks.has(message.requestId)) {
+            const callback = this.requestCallbacks.get(message.requestId);
+            this.requestCallbacks.delete(message.requestId);
+            try {
+                callback(message.data, message.error);
+            } catch (callbackError) {
+                console.error(`❌ Error in custom callback for ${message.requestId}:`, callbackError);
+            }
             return;
         }
         
@@ -521,9 +547,15 @@ class WebSocketClient {
     // Method to request gallery data via WebSocket
     async requestGallery(viewType = 'images', includePinnedStatus = true) {
         try {
-            const result = await this.sendMessage('request_gallery', { 
+            const result = await this.sendWithCallback('request_gallery', { 
                 viewType, 
                 includePinnedStatus 
+            }, (response, error) => {
+                if (error) {
+                    console.error('Gallery request callback error:', error);
+                } else {
+                    console.log('Gallery request completed:', viewType, response);
+                }
             });
             return result;
         } catch (error) {
@@ -545,7 +577,13 @@ class WebSocketClient {
     // Method to request image metadata via WebSocket
     async requestImageMetadata(filename) {
         try {
-            const result = await this.sendMessage('request_image_metadata', { filename });
+            const result = await this.sendWithCallback('request_image_metadata', { filename }, (response, error) => {
+                if (error) {
+                    console.error('Image metadata request callback error:', error);
+                } else {
+                    console.log('Image metadata request completed:', filename, response);
+                }
+            });
             return result;
         } catch (error) {
             showGlassToast('error', 'Image metadata request error', error.message, false);
@@ -828,13 +866,126 @@ class WebSocketClient {
             this.pendingRequests = this.pendingRequests || new Map();
             this.pendingRequests.set(requestId, { resolve, reject });
 
+            // Increment pending requests count
+            this.incrementPendingRequests();
+
             try {
                 this.send(message);
             } catch (error) {
                 this.pendingRequests.delete(requestId);
+                this.decrementPendingRequests();
                 reject(error);
             }
         });
+    }
+
+    // Send message with custom request ID and callback
+    sendMessageWithCallback(type, data = {}, callback = null) {
+        return new Promise((resolve, reject) => {
+            if (!this.isConnected()) {
+                reject(new Error('WebSocket not connected'));
+                return;
+            }
+
+            const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const message = {
+                type,
+                requestId,
+                ...data
+            };
+
+            // Store pending request with callback
+            this.pendingRequests = this.pendingRequests || new Map();
+            this.pendingRequests.set(requestId, { 
+                resolve, 
+                reject, 
+                callback: callback || null 
+            });
+
+            // Increment pending requests count
+            this.incrementPendingRequests();
+
+            try {
+                this.send(message);
+            } catch (error) {
+                this.pendingRequests.delete(requestId);
+                this.decrementPendingRequests();
+                reject(error);
+            }
+        });
+    }
+
+    // Send message with existing request ID (for responses to specific requests)
+    sendMessageWithRequestId(type, requestId, data = {}) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        const message = {
+            type,
+            requestId,
+            ...data
+        };
+
+        this.send(message);
+    }
+
+    // Set callback for a specific request ID
+    setRequestCallback(requestId, callback) {
+        this.requestCallbacks = this.requestCallbacks || new Map();
+        this.requestCallbacks.set(requestId, callback);
+    }
+
+    // Remove callback for a specific request ID
+    removeRequestCallback(requestId) {
+        if (this.requestCallbacks) {
+            this.requestCallbacks.delete(requestId);
+        }
+    }
+
+    // Convenience method to send a message and set up a callback for the response
+    sendWithCallback(type, data = {}, callback = null) {
+        if (!callback) {
+            return this.sendMessage(type, data);
+        }
+        
+        return this.sendMessageWithCallback(type, data, callback);
+    }
+
+    // Generate a unique request ID for custom use
+    generateRequestId() {
+        return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+
+    // Update pending requests spinner
+    updatePendingRequestsSpinner() {
+        if (!this.pendingRequestsSpinner) {
+            this.pendingRequestsSpinner = document.getElementById('pendingRequestsSpinner');
+            this.pendingRequestsBadge = document.getElementById('pendingRequestsBadge');
+        }
+        
+        if (this.pendingRequestsSpinner && this.pendingRequestsBadge) {
+            if (this.pendingRequestsCount > 0) {
+                this.pendingRequestsSpinner.classList.remove('hidden');
+                this.pendingRequestsBadge.textContent = this.pendingRequestsCount;
+            } else {
+                this.pendingRequestsSpinner.classList.add('hidden');
+            }
+        }
+    }
+
+    // Increment pending requests count
+    incrementPendingRequests() {
+        this.pendingRequestsCount++;
+        this.updatePendingRequestsSpinner();
+    }
+
+    // Decrement pending requests count
+    decrementPendingRequests() {
+        if (this.pendingRequestsCount > 0) {
+            this.pendingRequestsCount--;
+            this.updatePendingRequestsSpinner();
+        }
     }
 
     // Resolve pending request
@@ -842,6 +993,30 @@ class WebSocketClient {
         if (this.pendingRequests && this.pendingRequests.has(requestId)) {
             const request = this.pendingRequests.get(requestId);
             this.pendingRequests.delete(requestId);
+            
+            // Decrement pending requests count
+            this.decrementPendingRequests();
+            
+            // Execute callback if provided
+            if (request.callback && typeof request.callback === 'function') {
+                try {
+                    request.callback(data, error);
+                } catch (callbackError) {
+                    console.error(`❌ Error in request callback for ${requestId}:`, callbackError);
+                }
+            }
+            
+            // Also check for registered callbacks
+            if (this.requestCallbacks && this.requestCallbacks.has(requestId)) {
+                const callback = this.requestCallbacks.get(requestId);
+                this.requestCallbacks.delete(requestId);
+                try {
+                    callback(data, error);
+                } catch (callbackError) {
+                    console.error(`❌ Error in registered callback for ${requestId}:`, callbackError);
+                }
+            }
+            
             if (error) {
                 request.reject(error);
             } else {

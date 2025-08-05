@@ -109,13 +109,16 @@ function handleKeyDown(event) {
         
         switch (event.key) {
             case '1':
+            case '¡':
                 switchManualTab('prompt', document.activeElement);
                 break;
             case '2':
+            case '™':
                 switchManualTab('uc', document.activeElement);
                 break;
             case 'a':
             case 'A':
+            case 'å':
                 showDatasetTagToolbar();
                 break;
             case 'c':
@@ -124,10 +127,12 @@ function handleKeyDown(event) {
                 break;
             case 'v':
             case 'V':
+            case '√':
                 showCacheBrowser();
                 break;
             case 'e':
             case 'E':
+            case 'Dead':
                 // Trigger emphasis mode in the active prompt toolbar
                 const activeTextarea = document.activeElement;
                 if (activeTextarea && (activeTextarea.matches('.prompt-textarea, .character-prompt-textarea'))) {
@@ -139,6 +144,7 @@ function handleKeyDown(event) {
                 break;
             case 'w':
             case 'W':
+            case '∑':
                 // Trigger inline search in the active prompt toolbar
                 const searchTextarea = document.activeElement;
                 if (searchTextarea && (searchTextarea.matches('.prompt-textarea, .character-prompt-textarea'))) {
@@ -152,13 +158,16 @@ function handleKeyDown(event) {
                 }
                 break;
             case ',':
+            case '≤':
                 navigateManualPreview({ currentTarget: { id: 'manualPreviewPrevBtn' } });
                 break;
             case '.':
+            case '≥':
                 navigateManualPreview({ currentTarget: { id: 'manualPreviewNextBtn' } });
                 break;
             case 'x':
             case 'X':
+            case '≈':
                 // Start generation
                 const manualGenerateBtn = document.getElementById('manualGenerateBtn');
                 if (manualGenerateBtn && !manualGenerateBtn.disabled) {
@@ -167,10 +176,10 @@ function handleKeyDown(event) {
                 break;
             case 'o':
             case 'O':
+            case 'ø':
                 // Toggle autofill
                 if (window.toggleAutofill) {
                     const newState = window.toggleAutofill();
-                    
                     // Update all autofill toggle buttons
                     const allToolbars = document.querySelectorAll('.prompt-textarea-toolbar');
                     allToolbars.forEach((toolbarElement, index) => {

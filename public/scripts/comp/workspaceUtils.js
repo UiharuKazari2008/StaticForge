@@ -34,7 +34,6 @@ async function moveCacheToDefaultWorkspace(cacheImage) {
         displayCacheImages();
         displayCacheImagesContainer();
     } catch (error) {
-        console.error('Error moving cache file to default:', error);
         showError('Failed to move cache file: ' + error.message);
     }
 }
@@ -120,7 +119,6 @@ async function moveCacheToWorkspace(cacheImage, workspaceId) {
         displayCacheImages();
         displayCacheImagesContainer();
     } catch (error) {
-        console.error('Error moving cache file to workspace:', error);
         showError('Failed to move cache file: ' + error.message);
     }
 }
@@ -128,7 +126,6 @@ async function moveCacheToWorkspace(cacheImage, workspaceId) {
 // Workspace API functions
 async function loadWorkspaces() {
     try {
-        console.log('🔄 Loading workspaces...');
         
         // Use WebSocket API if available, otherwise fall back to HTTP
         if (window.wsClient && window.wsClient.isConnected()) {
@@ -156,7 +153,6 @@ async function loadWorkspaces() {
         renderWorkspaceDropdown();
         updateActiveWorkspaceDisplay();
     } catch (error) {
-        console.error('Error loading workspaces:', error);
         showError('Failed to load workspaces: ' + error.message);
     }
 }
@@ -192,7 +188,6 @@ async function loadActiveWorkspaceColor() {
                     activeWorkspaceBackgroundOpacity = data.backgroundOpacity || 0.3;
                 }
             } catch (wsError) {
-                console.warn('WebSocket workspace load failed, using fallback:', wsError);
                 // Fall back to using the workspace data we already have
                 const activeWorkspaceData = workspaces[activeWorkspace];
                 if (activeWorkspaceData) {
@@ -220,15 +215,7 @@ async function loadActiveWorkspaceColor() {
         updateBokehBackground();
         updateHeaderTint();
         updateWorkspaceTheme();
-
-        console.log('🎨 Loaded workspace settings:', {
-            color: activeWorkspaceColor,
-            backgroundColor: activeWorkspaceBackgroundColor,
-            backgroundImage: activeWorkspaceBackgroundImage,
-            backgroundOpacity: activeWorkspaceBackgroundOpacity
-        });
     } catch (error) {
-        console.error('Error loading workspace color:', error);
         showError('Failed to load workspace settings: ' + error.message);
         // Use default values on error
         activeWorkspaceColor = '#124';
@@ -875,14 +862,25 @@ async function setActiveWorkspace(id) {
         isWorkspaceSwitching = true;
         window.isWorkspaceSwitching = true;
 
-        // Show loading overlay for workspace switching
-        const loadingOverlay = document.getElementById('loadingOverlay');
-        if (loadingOverlay) {
-            const loadingText = loadingOverlay.querySelector('p');
-            if (loadingText) {
-                loadingText.textContent = 'Switching workspace...';
+        // Create workspace-specific loading overlay in the center of the gallery
+        const gallery = document.getElementById('gallery');
+        if (gallery) {
+            // Create workspace loading overlay
+            const workspaceLoadingOverlay = document.createElement('div');
+            workspaceLoadingOverlay.id = 'workspaceLoadingOverlay';
+            workspaceLoadingOverlay.className = 'workspace-loading-overlay';
+            workspaceLoadingOverlay.innerHTML = `
+                <div class="workspace-loading-content">
+                    <img src="/azuspin.gif" alt="Loading">
+                    <p>Switching Workspace...</p>
+                </div>
+            `;
+            
+            // Insert the overlay into the gallery container
+            const galleryContainer = gallery.parentElement;
+            if (galleryContainer) {
+                galleryContainer.appendChild(workspaceLoadingOverlay);
             }
-            loadingOverlay.classList.remove('hidden');
         }
 
         // Fade out gallery
@@ -916,14 +914,6 @@ async function setActiveWorkspace(id) {
             updateHeaderTint();
             updateWorkspaceTheme();
         }
-
-        // Note: UI updates will be handled by WebSocket event handlers
-        // to avoid duplicate API calls
-        
-        // Hide loading overlay after successful workspace switch
-        if (loadingOverlay) {
-            loadingOverlay.classList.add('hidden');
-        }
     } catch (error) {
         console.error('Error setting active workspace:', error);
         showError('Failed to set active workspace: ' + error.message);
@@ -933,15 +923,16 @@ async function setActiveWorkspace(id) {
             gallery.style.opacity = 1;
         }
         
+        // Remove workspace loading overlay on error
+        const workspaceLoadingOverlay = document.getElementById('workspaceLoadingOverlay');
+        if (workspaceLoadingOverlay) {
+            workspaceLoadingOverlay.remove();
+        }
+        
         // Clear the workspace switching flag on error
         isWorkspaceSwitching = false;
         window.isWorkspaceSwitching = false;
         workspaceTabs.classList.add('inactive');
-        
-        // Hide loading overlay on error
-        if (loadingOverlay) {
-            loadingOverlay.classList.add('hidden');
-        }
     }
 }
 
@@ -1781,7 +1772,6 @@ function initializeWebSocketWorkspaceEvents() {
     // Listen for workspace updates from WebSocket
     document.addEventListener('workspaceUpdated', (event) => {
         const data = event.detail;
-        console.log('🔄 WebSocket workspace update received:', data);
         
         // Handle different types of workspace updates
         switch (data.action) {
@@ -1797,7 +1787,6 @@ function initializeWebSocketWorkspaceEvents() {
                 // If workspace management modal is open, refresh it
                 const workspaceManageModal = document.getElementById('workspaceManageModal');
                 if (workspaceManageModal && workspaceManageModal.style.display !== 'none') {
-                    console.log('🔄 Refreshing workspace management modal...');
                     renderWorkspaceManagementList();
                 }
                 break;
@@ -1824,7 +1813,6 @@ function initializeWebSocketWorkspaceEvents() {
                 // If workspace management modal is open, refresh it
                 const workspaceManageModalAfterReorder = document.getElementById('workspaceManageModal');
                 if (workspaceManageModalAfterReorder && workspaceManageModalAfterReorder.style.display !== 'none') {
-                    console.log('🔄 Refreshing workspace management modal after reorder...');
                     renderWorkspaceManagementList();
                 }
                 break;
@@ -1865,7 +1853,6 @@ function initializeWebSocketWorkspaceEvents() {
     // Listen for workspace activation from WebSocket
     document.addEventListener('workspaceActivated', async (event) => {
         const data = event.detail;
-        console.log('🔄 WebSocket workspace activation received:', data);
         
         // Update active workspace and refresh UI
         activeWorkspace = data.workspaceId;
@@ -1886,13 +1873,22 @@ function initializeWebSocketWorkspaceEvents() {
         // Refresh all UI components
         await loadWorkspaces();
         updateActiveWorkspaceDisplay();
+        
+        // Set up the completion callback and load gallery
+        window.workspaceLoadingCompleteCallback = completeWorkspaceSwitch;
         switchGalleryView(currentGalleryView, true);
-        await loadCacheImages();
+        loadCacheImages();
         
         // Fade in gallery
         if (gallery) {
             gallery.style.transition = 'opacity 0.3s ease-in';
             gallery.style.opacity = '1';
+        }
+        
+        // Remove workspace loading overlay after gallery is loaded
+        const workspaceLoadingOverlay = document.getElementById('workspaceLoadingOverlay');
+        if (workspaceLoadingOverlay) {
+            workspaceLoadingOverlay.remove();
         }
         
         // Clear the workspace switching flag
@@ -1904,25 +1900,48 @@ function initializeWebSocketWorkspaceEvents() {
     });
 }
 
+// Function to complete workspace switching after gallery data is received
+function completeWorkspaceSwitch() {
+    window.workspaceLoadingCompleteCallback = null;
+    
+    // Fade in gallery
+    const gallery = document.getElementById('gallery');
+    if (gallery) {
+        gallery.style.transition = 'opacity 0.3s ease-in';
+        gallery.style.opacity = '1';
+    }
+    
+    // Remove workspace loading overlay
+    const workspaceLoadingOverlay = document.getElementById('workspaceLoadingOverlay');
+    if (workspaceLoadingOverlay) {
+        workspaceLoadingOverlay.remove();
+    }
+    
+    // Clear the workspace switching flag
+    isWorkspaceSwitching = false;
+    window.isWorkspaceSwitching = false;
+
+    // Remove 'inactive' class from all workspace tabs
+    const workspaceTabs = document.querySelector('.workspace-tabs');
+    if (workspaceTabs) {
+        workspaceTabs.classList.remove('inactive');
+    }
+}
+
 // Initialize drag and drop functionality for workspace reordering
 function initializeWorkspaceDragAndDrop() {
     const list = document.getElementById('workspaceManageList');
     if (!list) {
-        console.log('No workspace manage list found');
         return;
     }
-
-    console.log('Initializing drag and drop for workspace list');
 
     let draggedItem = null;
     let draggedIndex = null;
 
     // Add event listeners to drag handles
     const dragHandles = list.querySelectorAll('.workspace-drag-handle');
-    console.log('Found drag handles:', dragHandles.length);
     
     dragHandles.forEach((handle, index) => {
-        console.log('Adding event listeners to drag handle', index);
         handle.addEventListener('mousedown', startDrag);
         handle.addEventListener('touchstart', startDrag, { passive: false });
     });
@@ -1931,15 +1950,10 @@ function initializeWorkspaceDragAndDrop() {
         e.preventDefault();
         e.stopPropagation();
 
-        console.log('Drag started on:', e.target);
-
         const item = e.target.closest('.workspace-manage-item');
         if (!item) {
-            console.log('No workspace item found');
             return;
         }
-
-        console.log('Found workspace item:', item);
 
         draggedItem = item;
         draggedIndex = Array.from(list.children).indexOf(item);
@@ -1956,12 +1970,10 @@ function initializeWorkspaceDragAndDrop() {
         // Prevent text selection during drag
         document.body.style.userSelect = 'none';
 
-        console.log('Drag setup complete');
     }
 
     function onDrag(e) {
         if (!draggedItem) {
-            console.log('No dragged item');
             return;
         }
 
@@ -1989,7 +2001,6 @@ function initializeWorkspaceDragAndDrop() {
 
         // Move the dragged item to new position
         if (targetIndex !== draggedIndex) {
-            console.log('Moving item from', draggedIndex, 'to', targetIndex);
             
             // Remove drag-over class from all items
             items.forEach(item => item.classList.remove('drag-over'));
@@ -2014,7 +2025,6 @@ function initializeWorkspaceDragAndDrop() {
 
     function endDrag(e) {
         if (!draggedItem) {
-            console.log('No dragged item to end');
             return;
         }
 
@@ -2036,7 +2046,6 @@ function initializeWorkspaceDragAndDrop() {
 
         // Get new order based on current DOM position
         const newOrder = Array.from(list.children).map(item => item.dataset.workspaceId);
-        console.log('New order:', newOrder);
         
         // Show loading state on the dragged item
         draggedItem.style.opacity = '0.6';
@@ -2058,10 +2067,8 @@ function initializeWorkspaceDragAndDrop() {
         
         // Update the backend and wait for response
         reorderWorkspaces(newOrder).then(() => {
-            console.log('✅ Reorder request sent successfully');
             // The UI will be updated when we receive the 'reordered' WebSocket event
         }).catch((error) => {
-            console.error('❌ Failed to reorder workspaces:', error);
             // Remove loading state on error
             draggedItem.style.opacity = '';
             draggedItem.style.pointerEvents = '';
@@ -2089,57 +2096,17 @@ async function reorderWorkspaces(workspaceIds) {
             throw new Error('Failed to reorder workspaces');
         }
     } catch (error) {
-        console.error('Error reordering workspaces:', error);
         showError('Failed to reorder workspaces: ' + error.message);
     }
 }
 
-// Test function for drag and drop (can be called from browser console)
-function testWorkspaceDragAndDrop() {
-    console.log('Testing workspace drag and drop...');
-    
-    const list = document.getElementById('workspaceManageList');
-    if (!list) {
-        console.log('❌ No workspace manage list found');
-        return false;
-    }
-    
-    const dragHandles = list.querySelectorAll('.workspace-drag-handle');
-    console.log('✅ Found', dragHandles.length, 'drag handles');
-    
-    const items = list.querySelectorAll('.workspace-manage-item');
-    console.log('✅ Found', items.length, 'workspace items');
-    
-    if (dragHandles.length === 0) {
-        console.log('❌ No drag handles found');
-        return false;
-    }
-    
-    if (items.length === 0) {
-        console.log('❌ No workspace items found');
-        return false;
-    }
-    
-    console.log('✅ Drag and drop should be working. Try dragging the grip icons.');
-    console.log('📊 Current workspace order:', Object.values(workspaces).map(w => ({ id: w.id, name: w.name, sort: w.sort })));
-    return true;
-}
-
-// Make the test function globally available
-window.testWorkspaceDragAndDrop = testWorkspaceDragAndDrop;
-
-// Manual refresh function for testing (can be called from browser console)
 function refreshWorkspaceManager() {
-    console.log('🔄 Manually refreshing workspace manager...');
     loadWorkspaces().then(() => {
         const workspaceManageModal = document.getElementById('workspaceManageModal');
         if (workspaceManageModal && workspaceManageModal.style.display !== 'none') {
-            console.log('🔄 Refreshing workspace management modal...');
             renderWorkspaceManagementList();
         }
-        console.log('✅ Workspace manager refreshed');
     });
 }
 
-// Make the refresh function globally available
 window.refreshWorkspaceManager = refreshWorkspaceManager;

@@ -882,6 +882,19 @@ function highlightEmphasisInText(text) {
         const tagPattern = new RegExp(`\\b(${sortedTags.map(tag => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
 
         return content.replace(tagPattern, (match, tag) => {
+            // Check if this tag is part of a single colon pattern (like "tag:value")
+            const tagIndex = content.indexOf(match);
+            const beforeTag = content.substring(0, tagIndex);
+            const afterTag = content.substring(tagIndex + match.length);
+            
+            // If there's a single colon before or after the tag, it's likely part of a tag:value pattern
+            const hasSingleColonBefore = beforeTag.endsWith(':') && !beforeTag.endsWith('::');
+            const hasSingleColonAfter = afterTag.startsWith(':') && !afterTag.startsWith('::');
+            
+            if (hasSingleColonBefore || hasSingleColonAfter) {
+                return match; // Don't highlight, return as-is
+            }
+            
             return `<span class="emphasis-highlight" style="background: #ff49dd85; border-color: #ff49ddc9;">${tag}</span>`;
         });
     }
@@ -898,7 +911,7 @@ function highlightEmphasisInText(text) {
         }).join('|');
     }
 
-    // Highlight weight::text:: format
+    // Highlight weight::text:: format (ensure it's exactly two colons)
     highlightedText = highlightedText.replace(/(-?\d+\.?\d*)::([^:]+)::/g, (match, weight, content) => {
         const weightNum = parseFloat(weight);
         const colors = getEmphasisColors(weightNum);
@@ -956,6 +969,20 @@ function highlightEmphasisInText(text) {
         const tagPattern = new RegExp(`\\b(${sortedTags.map(tag => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
 
         return text.replace(tagPattern, (tagMatch, tag) => {
+            // Check if this tag is part of a single colon pattern (like "tag:value")
+            // If so, don't highlight it as NSFW
+            const tagIndex = text.indexOf(tagMatch);
+            const beforeTag = text.substring(0, tagIndex);
+            const afterTag = text.substring(tagIndex + tagMatch.length);
+            
+            // If there's a single colon before or after the tag, it's likely part of a tag:value pattern
+            const hasSingleColonBefore = beforeTag.endsWith(':') && !beforeTag.endsWith('::');
+            const hasSingleColonAfter = afterTag.startsWith(':') && !afterTag.startsWith('::');
+            
+            if (hasSingleColonBefore || hasSingleColonAfter) {
+                return tagMatch; // Don't highlight, return as-is
+            }
+            
             return `<span class="emphasis-highlight" style="background: #ff49dd85; border-color: #ff49ddc9;">${tag}</span>`;
         });
     });
