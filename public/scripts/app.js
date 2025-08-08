@@ -75,6 +75,7 @@ const dialogUcExpanded = document.getElementById('dialogUcExpanded');
 const dialogPromptContent = document.getElementById('dialogPromptContent');
 const dialogUcContent = document.getElementById('dialogUcContent');
 const deleteImageBaseBtn = document.getElementById('deleteImageBaseBtn');
+const previewBaseImageBtn = document.getElementById('previewBaseImageBtn');
 const transformationDropdown = document.getElementById('transformationDropdown');
 const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
 const transformationDropdownMenu = document.getElementById('transformationDropdownMenu');
@@ -109,12 +110,11 @@ function addSafeEventListener(element, eventType, handler) {
 const datasetDropdownMenu = document.getElementById('datasetDropdownMenu');
 const datasetSelected = document.getElementById('datasetSelected');
 const datasetIcon = document.getElementById('datasetIcon');
+const subTogglesBtn = document.getElementById('subTogglesBtn');
+const subTogglesDropdown = document.getElementById('subTogglesDropdown');
+const subTogglesDropdownMenu = document.getElementById('subTogglesDropdownMenu');
 let selectedDatasets = [];  
-let datasetBias = {
-    anime: 1.0,
-    furry: 1.0,
-    backgrounds: 1.0
-};
+let datasetBias = {};
 const qualityToggleBtn = document.getElementById('qualityToggleBtn');
 let appendQuality = true;
 const ucPresetsDropdown = document.getElementById('ucPresetsDropdown');
@@ -282,7 +282,6 @@ modelGroups.forEach(group => {
     });
 });
 
-
 // Helper function to check if a model is V3
 function isV3Model(modelValue) {
     if (!modelValue) return false;
@@ -299,14 +298,8 @@ function getCurrentSelectedModel() {
 function updateV3ModelVisibility() {
     const isV3Selected = isV3Model(getCurrentSelectedModel());
 
-    // Hide/show dataset controls for V3 models
-    const datasetBiasControls = document.querySelector('#manualModal .prompt-tabs .tab-buttons button[data-tab="settings"]')
-
     if (datasetDropdown) {
         datasetDropdown.style.display = isV3Selected ? 'none' : '';
-    }
-    if (datasetBiasControls) {
-        datasetBiasControls.style.display = isV3Selected ? 'none' : '';
     }
 
     // Hide/show character prompts for V3 models
@@ -371,18 +364,12 @@ function validatePresetWithTimeout() {
 // Load preset into manual form
 async function loadPresetIntoForm(presetName) {
     try {
-        const response = await fetch(`/preset/${presetName}`, {
-            method: 'OPTIONS',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to load preset: ${response.statusText}`);
+        // Use WebSocket for preset loading
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
 
-        const presetData = await response.json();
+        const presetData = await window.wsClient.loadPreset(presetName);
         await loadIntoManualForm(presetData);
 
         showGlassToast('success', null, `${presetName} Loaded`);
@@ -483,7 +470,8 @@ setupDropdown(
     customPresetDropdownBtn,
     customPresetDropdownMenu,
     renderCustomPresetDropdown,
-    () => selectedPreset
+    () => selectedPreset,
+    { preventFocusTransfer: true }
 );
 
 function generateResolutionOptions() {
@@ -504,7 +492,8 @@ function renderManualResolutionDropdown(selectedVal) {
         selectManualResolution,
         () => closeDropdown(manualResolutionDropdownMenu, manualResolutionDropdownBtn),
         selectedVal,
-        (opt, group) => `<span>${opt.name}${opt.dims ? ' <span style="opacity:0.7;font-size:0.95em;">(' + opt.dims + ')</span>' : ''}</span>`
+        (opt, group) => `<span>${opt.name}${opt.dims ? ' <span style="opacity:0.7;font-size:0.95em;">(' + opt.dims + ')</span>' : ''}</span>`,
+        { preventFocusTransfer: true }
     );
 }
 
@@ -559,7 +548,7 @@ async function selectManualResolution(value, group) {
     updateManualPriceDisplay();
 
     // --- ADDED: Refresh preview image if in bias mode ---
-    if (window.uploadedImageData && window.uploadedImageData.isBiasMode && manualModal && manualModal.style.display === 'flex') {
+    if (window.uploadedImageData && window.uploadedImageData.isBiasMode && manualModal && manualModal.style.display !== 'none') {
         // Reset bias to center (2) when resolution changes
         const resetBias = 2;
         if (imageBiasHidden != null) {
@@ -580,7 +569,8 @@ setupDropdown(
     manualResolutionDropdownBtn,
     manualResolutionDropdownMenu,
     renderManualResolutionDropdown,
-    () => manualSelectedResolution
+    () => manualSelectedResolution,
+    { preventFocusTransfer: true }
 );
 // Replace the three function definitions with the new combined function
 async function loadIntoManualForm(source, image = null) {
@@ -608,21 +598,18 @@ async function loadIntoManualForm(source, image = null) {
             }
             name = presetName;
 
-            let endpoint = '';
             if (presetType === 'preset') {
                 type = 'preset';
-                endpoint = `/preset/${presetName}`;
+                
+                // Use WebSocket for preset loading
+                if (!window.wsClient || !window.wsClient.isConnected()) {
+                    throw new Error('WebSocket not connected');
+                }
+                
+                data = await window.wsClient.loadPreset(presetName);
             } else {
                 throw new Error('Invalid type');
             }
-
-            const response = await fetchWithAuth(endpoint, {
-                method: 'OPTIONS',
-            });
-            if (!response.ok) {
-                throw new Error(`Failed to load ${presetType} data`);
-            }
-            data = await response.json();
 
             // Preprocess sampler and noiseScheduler
             if (data.sampler) {
@@ -770,16 +757,17 @@ async function loadIntoManualForm(source, image = null) {
             }
         } else {
             selectedDatasets = []; // Default
-            // Reset bias values to defaults
-            datasetBias = {
-                anime: 1.0,
-                furry: 1.0,
-                backgrounds: 1.0
-            };
+            // Reset bias values to defaults for all datasets from config
+            datasetBias = {};
+            if (window.optionsData?.datasets) {
+                window.optionsData.datasets.forEach(dataset => {
+                    datasetBias[dataset.value] = 1.0;
+                });
+            }
         }
         updateDatasetDisplay();
         renderDatasetDropdown();
-        renderDatasetBiasControls();
+        updateSubTogglesButtonState();
 
         if (data.append_quality !== undefined) {
             appendQuality = data.append_quality;
@@ -933,8 +921,6 @@ async function loadIntoManualForm(source, image = null) {
 
                 try {
                     window.currentMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
-                    console.log('✅ Successfully processed compressed mask for regular image');
-                    // Update vibe transfer UI state after mask is loaded
                     updateInpaintButtonState();
                 } catch (error) {
                     console.error('❌ Failed to process compressed mask for regular image:', error);
@@ -945,14 +931,10 @@ async function loadIntoManualForm(source, image = null) {
                 }
             } else if (data.mask !== undefined && data.mask !== null) {
                 window.currentMaskData = "data:image/png;base64," + data.mask;
-                console.log('✅ Loaded regular mask for regular image');
-
-                // Auto-convert standard mask to compressed format for consistency
                 try {
                     const compressedMask = await convertStandardMaskToCompressed(data.mask, data.width || 1024, data.height || 1024);
                     if (compressedMask) {
                         window.currentMaskCompressed = compressedMask;
-                        console.log('🔄 Auto-converted standard mask to compressed format');
                     }
                 } catch (error) {
                     console.warn('⚠️ Failed to auto-convert standard mask to compressed:', error);
@@ -1024,13 +1006,22 @@ async function loadIntoManualForm(source, image = null) {
                     imageToShow = image.original;
                 }
                 if (imageToShow) {
-                    updateManualPreview("/images/" + imageToShow);
+                    // Find the index of this image using WebSocket
+                    try {
+                        const viewType = currentGalleryView || 'images';
+                        const result = await window.wsClient.findImageIndex(imageToShow, viewType);
+                        const index = result.index >= 0 ? result.index : 0;
+                        await updateManualPreview(index);
+                    } catch (error) {
+                        console.warn('Failed to find image index, using 0:', error);
+                        await updateManualPreview(0);
+                    }
                 }
             }
         }
 
         updateInpaintButtonState();
-        updateManualPriceDisplay();
+        updateManualPriceDisplay(true);
         updateUploadDeleteButtonVisibility();
         updateSaveButtonState();
         updateLoadButtonState();
@@ -1176,7 +1167,10 @@ function sanitizeCustomDimensions() {
   }
 }
 
-function renderSimpleDropdown(menu, items, value_key, display_key, selectHandler, closeHandler, selectedVal) {
+function renderSimpleDropdown(menu, items, value_key, display_key, selectHandler, closeHandler, selectedVal, options = {}) {
+    const preventFocusTransfer = options.preventFocusTransfer || false;
+    let lastActiveElement = null;
+    
     menu.innerHTML = '';
     items.forEach(item => {
         const option = document.createElement('div');
@@ -1187,8 +1181,20 @@ function renderSimpleDropdown(menu, items, value_key, display_key, selectHandler
         option.dataset.value = value;
         option.innerHTML = `<span>${display}</span>`;
         const action = () => {
+            // Store the currently active element before selecting
+            if (preventFocusTransfer) {
+                lastActiveElement = document.activeElement;
+            }
+            
             selectHandler(value);
             closeHandler();
+            
+            // Restore focus to the last active element if we prevented focus transfer
+            if (preventFocusTransfer && lastActiveElement) {
+                setTimeout(() => {
+                    lastActiveElement.focus();
+                }, 10);
+            }
         };
         option.addEventListener('click', (e) => {
             e.preventDefault();
@@ -1216,7 +1222,7 @@ function generateSamplerOptions() {
 }
 
 function renderManualSamplerDropdown(selectedVal) {
-  renderSimpleDropdown(manualSamplerDropdownMenu, SAMPLER_MAP, 'meta', 'display', selectManualSampler, closeManualSamplerDropdown, selectedVal);
+  renderSimpleDropdown(manualSamplerDropdownMenu, SAMPLER_MAP, 'meta', 'display', selectManualSampler, closeManualSamplerDropdown, selectedVal, { preventFocusTransfer: true });
 }
 
 function selectManualSampler(value) {
@@ -1243,7 +1249,7 @@ function closeManualSamplerDropdown() {
     closeDropdown(manualSamplerDropdownMenu, manualSamplerDropdownBtn);
 }
 
-setupDropdown(manualSamplerDropdown, manualSamplerDropdownBtn, manualSamplerDropdownMenu, renderManualSamplerDropdown, () => manualSelectedSampler);
+setupDropdown(manualSamplerDropdown, manualSamplerDropdownBtn, manualSamplerDropdownMenu, renderManualSamplerDropdown, () => manualSelectedSampler, { preventFocusTransfer: true });
 
 function generateNoiseSchedulerOptions() {
     // Populate noise scheduler dropdown with display names, value=meta name
@@ -1257,7 +1263,7 @@ function generateNoiseSchedulerOptions() {
 }
 
 function renderManualNoiseSchedulerDropdown(selectedVal) {
-  renderSimpleDropdown(manualNoiseSchedulerDropdownMenu, NOISE_MAP, 'meta', 'display', selectManualNoiseScheduler, closeManualNoiseSchedulerDropdown, selectedVal);
+  renderSimpleDropdown(manualNoiseSchedulerDropdownMenu, NOISE_MAP, 'meta', 'display', selectManualNoiseScheduler, closeManualNoiseSchedulerDropdown, selectedVal, { preventFocusTransfer: true });
 }
 
 function selectManualNoiseScheduler(value) {
@@ -1278,7 +1284,7 @@ function closeManualNoiseSchedulerDropdown() {
     closeDropdown(manualNoiseSchedulerDropdownMenu, manualNoiseSchedulerDropdownBtn);
 }
 
-setupDropdown(manualNoiseSchedulerDropdown, manualNoiseSchedulerDropdownBtn, manualNoiseSchedulerDropdownMenu, renderManualNoiseSchedulerDropdown, () => manualSelectedNoiseScheduler);
+setupDropdown(manualNoiseSchedulerDropdown, manualNoiseSchedulerDropdownBtn, manualNoiseSchedulerDropdownMenu, renderManualNoiseSchedulerDropdown, () => manualSelectedNoiseScheduler, { preventFocusTransfer: true });
 
 function generateModelOptions() {
     // Populate models for manual form
@@ -1292,7 +1298,7 @@ function generateModelOptions() {
 }
 
 function renderManualModelDropdown(selectedVal) {
-    renderGroupedDropdown(manualModelDropdownMenu, modelGroups, selectManualModel, closeManualModelDropdown, selectedVal, (opt, group) => `<span>${opt.name}</span>`);
+    renderGroupedDropdown(manualModelDropdownMenu, modelGroups, selectManualModel, closeManualModelDropdown, selectedVal, (opt, group) => `<span>${opt.name}</span>`, { preventFocusTransfer: true });
 }
 
 function selectManualModel(value, group) {
@@ -1327,12 +1333,15 @@ function selectManualModel(value, group) {
   // Trigger any listeners (e.g., updateGenerateButton or manual form update)
   if (typeof updateGenerateButton === 'function') updateGenerateButton();
   updateManualPriceDisplay();
+  
+  // Refresh reference browser for model changes
+  refreshReferenceBrowserForModelChange();
 }
 
 function closeManualModelDropdown() {
     closeDropdown(manualModelDropdownMenu, manualModelDropdownBtn);
 }
-setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel);
+setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel, { preventFocusTransfer: true });
 // Transformation Dropdown Functions
 function renderTransformationDropdown(selectedVal) {
     const hasValidImage = window.currentEditImage && window.currentEditMetadata;
@@ -1379,31 +1388,37 @@ function selectTransformation(value) {
             showCacheBrowser();
             break;
         case 'upload':
-            const fileInput = document.createElement('input');
-            fileInput.type = 'file';
-            fileInput.accept = 'image/*';
-            fileInput.style.display = 'none';
-
-            fileInput.addEventListener('change', async (event) => {
-                const file = event.target.files[0];
-                if (file) {
-                    await handleManualImageUpload(file);
+            // Determine upload type based on current state
+            const hasValidImage = window.currentEditImage && window.currentEditMetadata;
+            const hasBaseImage = hasValidImage && (
+                window.currentEditMetadata.original_filename ||
+                (window.currentEditImage.filename || window.currentEditImage.original)
+            );
+            
+            if (window.showUnifiedUploadModal) {
+                // Set the appropriate mode before opening the modal
+                if (hasBaseImage) {
+                    // If there's already a base image, upload as vibe reference
+                    window.unifiedUploadCurrentMode = 'vibe';
+                } else {
+                    // If no base image, upload as base image
+                    window.unifiedUploadCurrentMode = 'reference';
                 }
-                // Clean up
-                document.body.removeChild(fileInput);
-            });
-
-            document.body.appendChild(fileInput);
-            fileInput.click();
+                window.showUnifiedUploadModal();
+            } else {
+                showError('Upload modal not available');
+            }
+            // Close the transformation dropdown
+            closeTransformationDropdown();
             break;
         case 'reroll':
         case 'variation':
             // Update button display for immediate actions
             const options = {
-                'reroll': 'Referance',
-                'variation': 'Current'
+                'reroll': undefined,
+                'variation': undefined
             };
-            const displayText = options[value] || 'References';
+            const displayText = options[value] || 'Reference';
             updateTransformationDropdownState(value, displayText);
 
             // Handle reroll/variation logic
@@ -1513,7 +1528,7 @@ function updateTransformationDropdownState(type, text) {
     const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
 
     if (transformationType) transformationType.value = type || '';
-    if (transformationSelected) transformationSelected.textContent = text || 'References';
+    if (transformationSelected) transformationSelected.textContent = text || 'Reference';
 
     // Update toggle button state
     if (transformationDropdownBtn) {
@@ -1525,7 +1540,7 @@ function updateTransformationDropdownState(type, text) {
     }
 }
 
-setupDropdown(transformationDropdown, transformationDropdownBtn, transformationDropdownMenu, renderTransformationDropdown, () => document.getElementById('transformationType').value);
+setupDropdown(transformationDropdown, transformationDropdownBtn, transformationDropdownMenu, renderTransformationDropdown, () => document.getElementById('transformationType').value, { preventFocusTransfer: true });
 setupTransformationDropdownListeners();
 
 // Move image to scraps
@@ -1546,21 +1561,9 @@ async function moveToScraps(image) {
                 throw new Error('Failed to move to scraps');
             }
         } else {
-            // Fallback to HTTP
-            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ filename })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
                 console.error('Move to scraps failed:', error);
                 showError(`Failed to move to scraps: ${error.error}`);
                 return;
-            }
         }
 
         showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-trash-alt"></i>');
@@ -1581,73 +1584,53 @@ async function moveManualPreviewToScraps() {
     }
 
     try {
+        // Show navigation loading overlay
+        showManualPreviewNavigationLoading(true);
+        
         const filename = currentManualPreviewImage.filename || currentManualPreviewImage.original || currentManualPreviewImage.upscaled;
         if (!filename) {
             showError('No filename available for this image');
+            showManualPreviewNavigationLoading(false);
             return;
         }
 
-        // Use WebSocket API if available, otherwise fall back to HTTP
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                await window.wsClient.addScrap(activeWorkspace, filename);
-            } catch (wsError) {
-                showError('Failed to move to scraps: ' + wsError.message);
-                throw new Error('Failed to move to scraps');
-            }
-        } else {
-            // Fallback to HTTP
-            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ filename })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                console.error('Move to scraps failed:', error);
-                showError(`Failed to move to scraps: ${error.error}`);
-                return;
-            }
+        // Use WebSocket API
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
+        
+        await window.wsClient.addScrap(activeWorkspace, filename);
 
-        // Find the current image index in the manual preview image list
-        const currentIndex = allImages.findIndex(img =>
-            img.original === currentManualPreviewImage.original ||
-            img.upscaled === currentManualPreviewImage.upscaled
-        );
+        // Get the current index and view type
+        const currentIndex = window.currentManualPreviewIndex ?? 0;
+        const viewType = currentGalleryView || 'images';
 
-        // Remove the current image from the manual preview list
-        if (currentIndex !== -1) {
-            allImages.splice(currentIndex, 1);
-        }
-
-        // Find the next (previous) image in the manual preview list
-        let nextImage = null;
-        const nextIndex = currentIndex >= allImages.length ? allImages.length - 1 : currentIndex;
-
-        if (nextIndex >= 0 && nextIndex < allImages.length) {
-            nextImage = allImages[nextIndex];
-        }
-
-        if (nextImage) {
-            // Load the next image and its metadata
-            try {
-                const metadata = await getImageMetadata(nextImage.original);
-                nextImage.metadata = metadata;
-            } catch (error) {
-                showGlassToast('error', 'Failed to load metadata for next image', error.message, false);
+        // Request the same image at the current index (which will now be a different image)
+        try {
+            const newImage = await window.wsClient.requestImageByIndex(currentIndex, viewType);
+            
+            if (newImage) {
+                // Update the preview with the new image at the same index
+                await updateManualPreview(currentIndex, null, newImage.metadata);
+                showGlassToast('success', null, 'Image scrapped');
+            } else {
+                // No image at this index anymore, try the previous index
+                if (currentIndex > 0) {
+                    const prevImage = await window.wsClient.requestImageByIndex(currentIndex - 1, viewType);
+                    if (prevImage) {
+                        await updateManualPreview(currentIndex - 1, null, prevImage.metadata);
+                        showGlassToast('success', null, 'Image scrapped');
+                    } else {
+                        resetManualPreview();
+                        showGlassToast('success', null, 'Image scrapped!');
+                    }
+                } else {
+                    resetManualPreview();
+                    showGlassToast('success', null, 'Image scrapped!');
+                }
             }
-
-            // Update the preview with the next image
-            const imageUrl = `/images/${nextImage.original}`;
-            updateManualPreview(imageUrl);
-
-            showGlassToast('success', null, 'Image scrapped');
-        } else {
-            // No next image, reset the preview
+        } catch (error) {
+            console.warn('Failed to load new image after scrap:', error);
             resetManualPreview();
             showGlassToast('success', null, 'Image scrapped!');
         }
@@ -1657,6 +1640,9 @@ async function moveManualPreviewToScraps() {
     } catch (error) {
         console.error('Error moving to scraps:', error);
         showError('Failed to move image to scraps');
+    } finally {
+        // Hide navigation loading overlay
+        showManualPreviewNavigationLoading(false);
     }
 }
 
@@ -1669,30 +1655,12 @@ async function removeFromScraps(image) {
             return;
         }
 
-        // Use WebSocket API if available, otherwise fall back to HTTP
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                await window.wsClient.removeScrap(activeWorkspace, filename);
-            } catch (wsError) {
-                showError('Failed to remove from scraps: ' + wsError.message);
-                throw new Error('Failed to remove from scraps');
-            }
-        } else {
-            // Fallback to HTTP
-            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ filename })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                showError(`Failed to remove from scraps: ${error.error}`);
-                return;
-            }
+        // Use WebSocket API
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
+        
+        await window.wsClient.removeScrap(activeWorkspace, filename);
 
         showGlassToast('success', null, 'Image removed from scraps', false, 3000, '<i class="nai-undo"></i>');
 
@@ -1718,55 +1686,19 @@ async function togglePinImage(image, pinBtn = null) {
         
         if (isPinned) {
             // Remove from pinned
-            if (window.wsClient && window.wsClient.isConnected()) {
-                try {
-                    await window.wsClient.removePinned(activeWorkspace, filename);
-                } catch (wsError) {
-                    showError('Failed to unpin image: ' + wsError.message);
-                    return;
-                }
-            } else {
-                // Fallback to HTTP
-                const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ filename })
-                });
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    showError(`Failed to unpin image: ${error.error}`);
-                    return;
-                }
+            if (!window.wsClient || !window.wsClient.isConnected()) {
+                throw new Error('WebSocket not connected');
             }
+            
+            await window.wsClient.removePinned(activeWorkspace, filename);
             showGlassToast('success', null, 'Image unpinned', false, 5000, '<i class="nai-heart-disabled"></i>');
         } else {
             // Add to pinned
-            if (window.wsClient && window.wsClient.isConnected()) {
-                try {
-                    await window.wsClient.addPinned(activeWorkspace, filename);
-                } catch (wsError) {
-                    showError('Failed to pin image: ' + wsError.message);
-                    return;
-                }
-            } else {
-                // Fallback to HTTP
-                const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ filename })
-                });
-
-                if (!response.ok) {
-                    const error = await response.json();
-                    showError(`Failed to pin image: ${error.error}`);
-                    return;
-                }
+            if (!window.wsClient || !window.wsClient.isConnected()) {
+                throw new Error('WebSocket not connected');
             }
+            
+            await window.wsClient.addPinned(activeWorkspace, filename);
             showGlassToast('success', null, 'Image pinned', false, 5000, '<i class="nai-heart-enabled"></i>');
         }
 
@@ -1815,23 +1747,13 @@ async function checkIfImageIsPinned(filename) {
             }
         }
         
-        // Fallback to API call if WebSocket data not available
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                const pinnedData = await window.wsClient.getWorkspacePinned(activeWorkspace);
-                return pinnedData.pinned && pinnedData.pinned.includes(filename);
-            } catch (wsError) {
-                console.warn('WebSocket pinned check failed, falling back to HTTP:', wsError);
-            }
+        // Use WebSocket API
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
         
-        // Final fallback to HTTP
-        const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned`);
-        if (response.ok) {
-            const data = await response.json();
-            return data.pinned && data.pinned.includes(filename);
-        }
-        return false;
+        const pinnedData = await window.wsClient.getWorkspacePinned(activeWorkspace);
+        return pinnedData.pinned && pinnedData.pinned.includes(filename);
     } catch (error) {
         console.error('Error checking pin status:', error);
         return false;
@@ -1841,22 +1763,13 @@ async function checkIfImageIsPinned(filename) {
 // Get image metadata via WebSocket with fallback to HTTP
 async function getImageMetadata(filename) {
     try {
-        // Try WebSocket first
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                const metadata = await window.wsClient.requestImageMetadata(filename);
-                return metadata;
-            } catch (wsError) {
-                console.warn('WebSocket metadata request failed, falling back to HTTP:', wsError);
-            }
+        // Use WebSocket API
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
         
-        // Fallback to HTTP
-        const response = await fetchWithAuth(`/metadata/${filename}`);
-        if (!response.ok) {
-            throw new Error(`Failed to load metadata: ${response.statusText}`);
-        }
-        return await response.json();
+                const metadata = await window.wsClient.requestImageMetadata(filename);
+                return metadata;
     } catch (error) {
         console.error('Error getting image metadata:', error);
         showGlassToast('error', 'Image metadata request error', error.message, false);
@@ -1945,13 +1858,25 @@ function setSeedInputGroupState(open) {
 // Load options from server
 async function loadOptions() {
     try {
-        const response = await fetchWithAuth('/app', { method: 'OPTIONS', timeout: 4000 });
-        if (!response.ok) throw new Error('Failed to load options');
-
-        const options = await response.json();
+        let options;
+        
+        // Use WebSocket API
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        options = await window.wsClient.getAppOptions();
+        
         if (!options.ok) throw new Error("Failed to load application configuration: " + options.error);
 
         window.optionsData = options;
+
+        // Initialize datasetBias dynamically from config
+        if (window.optionsData?.datasets) {
+            window.optionsData.datasets.forEach(dataset => {
+                datasetBias[dataset.value] = 1.0;
+            });
+        }
 
         if (window.optionsData?.user?.ok !== true) {
             showErrorSubHeader(window.optionsData.user.error, 'error', 0);
@@ -1973,22 +1898,21 @@ async function loadOptions() {
 // Register main app initialization steps with WebSocket client
 if (window.wsClient) {
     // Priority 5: Initialize main app components
-    window.wsClient.registerInitStep(5, 'Loading application data', async () => {
-        // Calculate initial images per page based on current window size
+    window.wsClient.registerInitStep(5, 'Loading Application Data', async () => {
         galleryRows = calculateGalleryRows();
         imagesPerPage = galleryColumnsInput.value * galleryRows;
-
-        await loadOptions(); // TODO: Check functionality
-        await loadWorkspaces(); // Load workspace data
-        loadActiveWorkspaceColor(); // Load workspace color for bokeh
-        await loadCacheImages(); // Load vibe references for immediate use
-        
-        // Initialize gallery toggle group
         galleryToggleGroup.setAttribute('data-active', currentGalleryView);
+        await loadOptions();
+    });
+    // Priority 5: Initialize main app components
+    window.wsClient.registerInitStep(6, 'Loading Workspaces', async () => {
+        await loadWorkspaces();
+        loadActiveWorkspaceColor();
+        await loadCacheImages();
     });
 
     // Priority 6: Initialize dropdowns and options
-    window.wsClient.registerInitStep(6, 'Setting up dropdowns and options', async () => {
+    window.wsClient.registerInitStep(7, 'Setup Application', async () => {
         generateSamplerOptions();
         renderManualSamplerDropdown(manualSelectedSampler);
         selectManualSampler('k_euler_ancestral');
@@ -2010,124 +1934,36 @@ if (window.wsClient) {
         // Initialize new dropdowns
         renderDatasetDropdown();
         updateDatasetDisplay();
-        renderDatasetBiasControls();
+        updateSubTogglesButtonState();
         renderUcPresetsDropdown();
         selectUcPreset(0);
     });
 
     // Priority 7: Load gallery and finalize UI
-    window.wsClient.registerInitStep(7, 'Loading gallery and finalizing UI', async () => {
+    window.wsClient.registerInitStep(8, 'Loading Gallery', async () => {
         await loadGallery();
         await updateGalleryColumnsFromLayout();
-        updateGenerateButton();
-
-        // Initialize image bias adjustment functionality
-        initializeImageBiasAdjustment();
-
-        // Initialize background gradient
-        setupEventListeners();
-    
-        // Initialize cache manager
-        initializeCacheManager();
-        
-        // Initialize keyboard shortcuts for manual modal
-        initializeManualModalShortcuts();
-        
-        // Initialize dataset tag toolbar
-        initializeDatasetTagToolbar();
-    
-        // Initialize emphasis highlighting for manual fields
-        initializeEmphasisOverlay(manualPrompt);
-        initializeEmphasisOverlay(manualUc);
     });
 
-    // Priority 8: Setup final event listeners
-    window.wsClient.registerInitStep(8, 'Setting up final event listeners', async () => {
-        const manualSeed = document.getElementById('manualSeed');
-        const clearSeedBtn = document.getElementById('clearSeedBtn');
-        const editSeedBtn = document.getElementById('editSeedBtn');
-        // Start closed
-        setSeedInputGroupState(false);
-    
-        editSeedBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            setSeedInputGroupState(true);
-            manualSeed?.focus();
-        });
-        clearSeedBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            if (manualSeed && manualSeed.value) {
-                manualSeed.value = '';
-                manualSeed.focus();
-            } else {
-                setSeedInputGroupState(false);
-            }
-        });
-    });
-} else {
-    // Fallback initialization if WebSocket client isn't available yet
-    document.addEventListener('DOMContentLoaded', async function() {
-        try {
-            // Calculate initial images per page based on current window size
-            galleryRows = calculateGalleryRows();
-            imagesPerPage = galleryColumnsInput.value * galleryRows;
-
-            await loadOptions(); // TODO: Check functionality
-            await loadWorkspaces(); // Load workspace data
-            loadActiveWorkspaceColor(); // Load workspace color for bokeh
-            await loadCacheImages(); // Load vibe references for immediate use
-            
-            // Initialize gallery toggle group
-            galleryToggleGroup.setAttribute('data-active', currentGalleryView);
-
-            generateSamplerOptions();
-            renderManualSamplerDropdown(manualSelectedSampler);
-            selectManualSampler('k_euler_ancestral');
-
-            generateResolutionOptions();
-            renderManualResolutionDropdown(manualSelectedResolution);
-            selectManualResolution('normal_square', 'Normal');
-
-            generateNoiseSchedulerOptions();
-            renderManualNoiseSchedulerDropdown(manualSelectedNoiseScheduler);
-            selectManualNoiseScheduler('karras');
-
-            generateModelOptions();
-            renderManualModelDropdown(manualSelectedModel);
-            selectManualModel('v4_5', '');
-
-            await renderCustomPresetDropdown(selectedPreset);
-
-            // Initialize new dropdowns
-            renderDatasetDropdown();
-            updateDatasetDisplay();
-            renderDatasetBiasControls();
-            renderUcPresetsDropdown();
-            selectUcPreset(0);
-
-            await loadGallery();
-            await updateGalleryColumnsFromLayout();
+    // Priority 7: Load gallery and finalize UI
+    window.wsClient.registerInitStep(9, 'Finalizing', async () => {
             updateGenerateButton();
 
             // Initialize image bias adjustment functionality
-            initializeImageBiasAdjustment();
+        await initializeImageBiasAdjustment();
 
             // Initialize background gradient
-            setupEventListeners();
+        await setupEventListeners();
         
             // Initialize cache manager
-            initializeCacheManager();
+        await initializeCacheManager();
             
             // Initialize keyboard shortcuts for manual modal
-            initializeManualModalShortcuts();
-            
-            // Initialize dataset tag toolbar
-            initializeDatasetTagToolbar();
+        await initializeManualModalShortcuts();
         
             // Initialize emphasis highlighting for manual fields
-            initializeEmphasisOverlay(manualPrompt);
-            initializeEmphasisOverlay(manualUc);
-        
+        await initializeEmphasisOverlay(manualPrompt);
+        await initializeEmphasisOverlay(manualUc);
             const manualSeed = document.getElementById('manualSeed');
             const clearSeedBtn = document.getElementById('clearSeedBtn');
             const editSeedBtn = document.getElementById('editSeedBtn');
@@ -2148,10 +1984,6 @@ if (window.wsClient) {
                     setSeedInputGroupState(false);
                 }
             });
-        } catch (error) {
-            console.error('Failed to initialize app:', error);
-            showError('Failed to load application data');
-        }
     });
 }
 
@@ -2159,7 +1991,7 @@ if (window.wsClient) {
 function renderDatasetDropdown() {
     datasetDropdownMenu.innerHTML = '';
     
-    const datasets = optionsData?.datasets || [
+    const datasets = window.optionsData?.datasets || [
         { value: 'anime', display: 'Anime', sub_toggles: [] },
         { value: 'furry', display: 'Furry', sub_toggles: [] },
         { value: 'backgrounds', display: 'Backgrounds', sub_toggles: [] }
@@ -2263,7 +2095,7 @@ function toggleDataset(value) {
     // Update display
     updateDatasetDisplay();
     renderDatasetDropdown();
-    renderDatasetBiasControls();
+    updateSubTogglesButtonState();
     
     // Update prompt status icons to reflect dataset changes
     updatePromptStatusIcons();
@@ -2335,158 +2167,234 @@ function adjustDatasetBias(dataset, delta) {
     // Update dataset display to ensure dropdown stays in sync
     updateDatasetDisplay();
 }
-// Dataset Bias Functions - Simplified since bias controls are now in dropdown
-function renderDatasetBiasControls() {
-    const container = document.getElementById('datasetBiasControls');
-    if (!container) return;
 
-    container.innerHTML = '';
+// Sub Toggles Functions
+function renderSubTogglesDropdown() {
+    subTogglesDropdownMenu.innerHTML = '';
+    
+    const datasets = window.optionsData?.datasets || [];
+    
+    const selectedDatasetsWithToggles = datasets.filter(dataset => 
+        selectedDatasets.includes(dataset.value) && dataset.sub_toggles && dataset.sub_toggles.length > 0
+    );
 
-    // Only render sub-toggles if they exist, since main bias controls are now in dropdown
-    const orderedDatasets = ['anime', 'furry', 'backgrounds'];
-    const datasetsToRender = orderedDatasets.filter(dataset => selectedDatasets.includes(dataset));
+    if (selectedDatasetsWithToggles.length === 0) {
+        return;
+    }
 
-    let hasSubToggles = false;
+    selectedDatasetsWithToggles.forEach(dataset => {
+        const datasetGroup = document.createElement('div');
+        datasetGroup.className = 'sub-toggle-dataset-group';
 
-    datasetsToRender.forEach(dataset => {
-        // Add sub-toggles for datasets that have them
-        if (window.optionsData?.datasets[dataset]?.sub_toggles) {
-            hasSubToggles = true;
-            
-            const biasGroup = document.createElement('div');
-            biasGroup.className = 'form-group dataset-bias-group';
+        const datasetHeader = document.createElement('div');
+        datasetHeader.className = 'sub-toggle-dataset-header';
+        datasetHeader.textContent = dataset.display;
+        datasetGroup.appendChild(datasetHeader);
 
-            const label = document.createElement('label');
-            label.textContent = `${dataset.charAt(0).toUpperCase() + dataset.slice(1)} Options`;
+        dataset.sub_toggles.forEach(subToggle => {
+            const toggleOption = document.createElement('div');
+            toggleOption.className = 'custom-dropdown-option dataset-dropdown-option';
+            toggleOption.dataset.dataset = dataset.value;
+            toggleOption.dataset.toggle = subToggle.id;
 
-            const inputGroup = document.createElement('div');
-            inputGroup.className = 'form-row';
+            // Check if this toggle is enabled
+            const isEnabled = window.datasetSettings && 
+                            window.datasetSettings[dataset.value] && 
+                            window.datasetSettings[dataset.value][subToggle.id] ?
+                            window.datasetSettings[dataset.value][subToggle.id].enabled :
+                            (subToggle.default_enabled || false);
 
-            window.optionsData.datasets[dataset].sub_toggles.forEach(subToggle => {
-                const toggleBtn = document.createElement('button');
-                toggleBtn.type = 'button';
-                toggleBtn.className = 'btn-secondary indicator';
-                toggleBtn.setAttribute('data-state', 'off');
-                toggleBtn.textContent = subToggle.name;
-                toggleBtn.title = subToggle.description || `Toggle ${subToggle.name}`;
+            if (isEnabled) {
+                toggleOption.classList.add('selected');
+            }
 
-                // Initialize state from window.datasetSettings if available
-                if (window.datasetSettings && window.datasetSettings[dataset] && window.datasetSettings[dataset][subToggle.id]) {
-                    const setting = window.datasetSettings[dataset][subToggle.id];
-                    toggleBtn.setAttribute('data-state', setting.enabled ? 'on' : 'off');
-                }
+            const biasValue = (window.datasetSettings && 
+                             window.datasetSettings[dataset.value] && 
+                             window.datasetSettings[dataset.value][subToggle.id]) ?
+                             window.datasetSettings[dataset.value][subToggle.id].bias : 
+                             (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
 
-                toggleBtn.addEventListener('click', (e) => {
+            const biasDisplay = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
+
+            toggleOption.innerHTML = `
+                <div class="dataset-option-content">
+                    <div class="dataset-option-left">
+                        <span class="dataset-name">${subToggle.name}</span>
+                        ${isEnabled ? '<i class="fas fa-check dataset-check-icon"></i>' : ''}
+                    </div>
+                    <div class="dataset-option-right">
+                        ${isEnabled ? `
+                            <div class="dataset-bias-controls">
+                                <button type="button" class="dataset-bias-decrease" title="Decrease bias" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">
+                                    <i class="fas fa-minus"></i>
+                                </button>
+                                <span class="dataset-bias-value" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">${biasDisplay}</span>
+                                <button type="button" class="dataset-bias-increase" title="Increase bias" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+
+            // Add click handler for the main option (toggle selection)
+            const optionLeft = toggleOption.querySelector('.dataset-option-left');
+            optionLeft.addEventListener('click', (e) => {
                     e.preventDefault();
-                    const currentState = toggleBtn.getAttribute('data-state') === 'on';
-                    const newState = !currentState;
-                    toggleBtn.setAttribute('data-state', newState ? 'on' : 'off');
-
-                    // Initialize window.datasetSettings if needed
-                    if (!window.datasetSettings) window.datasetSettings = {};
-                    if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
-                    if (!window.datasetSettings[dataset][subToggle.id]) {
-                        window.datasetSettings[dataset][subToggle.id] = {
-                            enabled: subToggle.default_enabled || false,
-                            bias: subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0,
-                            value: subToggle.value
-                        };
-                    }
-
-                    window.datasetSettings[dataset][subToggle.id].enabled = newState;
-                    updateSubToggleBiasInput(subToggle.id, dataset);
-                });
-
-                inputGroup.appendChild(toggleBtn);
-
-                // Add bias input for sub-toggle
-                const biasInput = document.createElement('input');
-                biasInput.type = 'number';
-                biasInput.className = 'form-control hover-show';
-                biasInput.id = `${dataset}_${subToggle.id}_bias`;
-                biasInput.min = '-3';
-                biasInput.max = '5';
-                biasInput.step = '0.1';
-                biasInput.value = (window.datasetSettings && window.datasetSettings[dataset] && window.datasetSettings[dataset][subToggle.id]) ?
-                    window.datasetSettings[dataset][subToggle.id].bias : (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
-                biasInput.style.display = 'none';
-                biasInput.addEventListener('input', (e) => {
-                    if (!window.datasetSettings) window.datasetSettings = {};
-                    if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
-                    if (!window.datasetSettings[dataset][subToggle.id]) {
-                        window.datasetSettings[dataset][subToggle.id] = {
-                            enabled: false,
-                            bias: 1.0,
-                            value: subToggle.value
-                        };
-                    }
-                    window.datasetSettings[dataset][subToggle.id].bias = parseFloat(e.target.value);
-                });
-
-                // Add wheel scroll functionality to bias input
-                biasInput.addEventListener('wheel', function(e) {
-                    e.preventDefault();
-                    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-                    const currentValue = parseFloat(this.value) || 1.0;
-                    const newValue = Math.max(-3, Math.min(5, currentValue + delta));
-                    this.value = newValue.toFixed(1);
-                    if (!window.datasetSettings) window.datasetSettings = {};
-                    if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
-                    if (!window.datasetSettings[dataset][subToggle.id]) {
-                        window.datasetSettings[dataset][subToggle.id] = {
-                            enabled: false,
-                            bias: 1.0,
-                            value: subToggle.value
-                        };
-                    }
-                    window.datasetSettings[dataset][subToggle.id].bias = newValue;
-                });
-
-                inputGroup.appendChild(biasInput);
+                e.stopPropagation();
+                toggleSubToggle(dataset.value, subToggle.id);
             });
 
-            biasGroup.appendChild(label);
-            biasGroup.appendChild(inputGroup);
-            container.appendChild(biasGroup);
-        }
-    });
+            // Add click handlers for bias controls (only if toggle is enabled)
+            if (isEnabled) {
+                const decreaseBtn = toggleOption.querySelector('.dataset-bias-decrease');
+                const increaseBtn = toggleOption.querySelector('.dataset-bias-increase');
+                const biasValueSpan = toggleOption.querySelector('.dataset-bias-value');
 
-    // Toggle the settings button based on whether there are any sub-toggles
-    const settingsBtn = document.querySelector('#manualModal .prompt-tabs .tab-buttons button[data-tab="settings"]');
-    const promptBtn = document.querySelector('#manualModal .prompt-tabs .tab-buttons button[data-tab="prompt"]');
-    if (settingsBtn) {
-        // Only show settings button if there are sub-toggles to configure
-        if (!hasSubToggles) {
-            settingsBtn.style.display = 'none';
-            if (document.getElementById('settings-tab').classList.contains('active')) {
-                document.getElementById('prompt-tab').classList.add('active');
-                document.getElementById('settings-tab').classList.remove('active');
+                decreaseBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    adjustSubToggleBias(dataset.value, subToggle.id, -0.1);
+                });
+
+                increaseBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    adjustSubToggleBias(dataset.value, subToggle.id, 0.1);
+                });
+
+                // Add wheel event for bias value span
+                biasValueSpan.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                    adjustSubToggleBias(dataset.value, subToggle.id, delta);
+                    
+                    // Add visual feedback
+                    biasValueSpan.classList.add('scrolling');
+                    setTimeout(() => {
+                        biasValueSpan.classList.remove('scrolling');
+                    }, 200);
+                });
             }
-            if (settingsBtn.classList.contains('active') && promptBtn) {
-                settingsBtn.classList.remove('active');
-                promptBtn.classList.add('active');
-                // Optionally trigger tab switch logic if needed
-                const promptTab = document.getElementById('manualPromptTab');
-                const settingsTab = document.getElementById('manualSettingsTab');
-                if (promptTab && settingsTab) {
-                    promptTab.style.display = '';
-                    settingsTab.style.display = 'none';
-                }
+
+            datasetGroup.appendChild(toggleOption);
+        });
+
+        subTogglesDropdownMenu.appendChild(datasetGroup);
+    });
+}
+
+function toggleSubToggle(dataset, subToggleId) {
+    // Initialize window.datasetSettings if needed
+                    if (!window.datasetSettings) window.datasetSettings = {};
+                    if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
+    
+    const subToggle = window.optionsData?.datasets?.find(d => d.value === dataset)?.sub_toggles?.find(t => t.id === subToggleId);
+    if (!subToggle) return;
+
+    // If the setting doesn't exist, create it with the opposite of default_enabled
+    // This ensures the first click toggles from the default state to the opposite
+    if (!window.datasetSettings[dataset][subToggleId]) {
+        const newEnabledState = !(subToggle.default_enabled || false);
+        window.datasetSettings[dataset][subToggleId] = {
+            enabled: newEnabledState,
+            bias: subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0,
+                            value: subToggle.value
+                        };
+    } else {
+        // If it exists, just toggle the current state
+        const currentState = window.datasetSettings[dataset][subToggleId].enabled;
+        window.datasetSettings[dataset][subToggleId].enabled = !currentState;
+    }
+
+    renderSubTogglesDropdown();
+    updateSubTogglesButtonState();
+}
+
+function adjustSubToggleBias(dataset, subToggleId, delta) {
+                    if (!window.datasetSettings) window.datasetSettings = {};
+                    if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
+    if (!window.datasetSettings[dataset][subToggleId]) {
+        const subToggle = window.optionsData?.datasets?.find(d => d.value === dataset)?.sub_toggles?.find(t => t.id === subToggleId);
+        if (!subToggle) return;
+        
+        window.datasetSettings[dataset][subToggleId] = {
+            enabled: true, // If user is adjusting bias, they want it enabled
+            bias: subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0,
+                            value: subToggle.value
+                        };
+                    }
+
+    const currentBias = window.datasetSettings[dataset][subToggleId].bias;
+    const newBias = Math.max(-3, Math.min(5, currentBias + delta));
+    window.datasetSettings[dataset][subToggleId].bias = newBias;
+
+    renderSubTogglesDropdown();
+    updateSubTogglesButtonState();
+}
+
+function updateSubTogglesButtonState() {
+    if (!subTogglesBtn) return;
+
+    const datasets = window.optionsData?.datasets || [];
+    
+    const hasSubToggles = datasets.some(dataset => 
+        selectedDatasets.includes(dataset.value) && 
+        dataset.sub_toggles && 
+        dataset.sub_toggles.length > 0
+    );
+
+    const hasEnabledToggles = datasets.some(dataset => 
+        selectedDatasets.includes(dataset.value) && 
+        dataset.sub_toggles && 
+        dataset.sub_toggles.some(subToggle => 
+            window.datasetSettings && 
+            window.datasetSettings[dataset.value] && 
+            window.datasetSettings[dataset.value][subToggle.id] &&
+            window.datasetSettings[dataset.value][subToggle.id].enabled
+        )
+    );
+
+    // Check if any enabled sub toggles have extreme bias values (over 1.5 or under 1.0)
+    const hasExtremeBias = datasets.some(dataset => 
+        selectedDatasets.includes(dataset.value) && 
+        dataset.sub_toggles && 
+        dataset.sub_toggles.some(subToggle => {
+            if (!window.datasetSettings || 
+                !window.datasetSettings[dataset.value] || 
+                !window.datasetSettings[dataset.value][subToggle.id] ||
+                !window.datasetSettings[dataset.value][subToggle.id].enabled) {
+                return false;
             }
-        } else {
-            settingsBtn.style.display = '';
-        }
+            
+            const bias = window.datasetSettings[dataset.value][subToggle.id].bias;
+            return bias > 1.5 || bias < 1.0;
+        })
+    );
+
+    // Set button state based on conditions
+    let buttonState = 'off';
+    if (hasEnabledToggles) {
+        buttonState = hasExtremeBias ? 'onhigh' : 'on';
+    }
+
+    subTogglesBtn.setAttribute('data-state', buttonState);
+    subTogglesDropdown.style.display = hasSubToggles ? 'block' : 'none';
+    
+    // If the button is now visible, render the dropdown content
+    if (hasSubToggles && subTogglesBtn.style.display === 'block') {
+        renderSubTogglesDropdown();
     }
 }
 
-function updateSubToggleBiasInput(subToggleId, dataset) {
-    const biasInput = document.getElementById(`${dataset}_${subToggleId}_bias`);
-    if (biasInput) {
-        const isEnabled = window.datasetSettings && window.datasetSettings[dataset] &&
-                         window.datasetSettings[dataset][subToggleId] &&
-                         window.datasetSettings[dataset][subToggleId].enabled;
-        biasInput.style.display = isEnabled ? 'block' : 'none';
-    }
+function openSubTogglesDropdown() {
+    openDropdown(subTogglesDropdownMenu, subTogglesBtn);
+}
+
+function closeSubTogglesDropdown() {
+    closeDropdown(subTogglesDropdownMenu, subTogglesBtn);
 }
 
 // Quality Toggle Functions
@@ -2502,7 +2410,6 @@ function toggleQuality() {
 // UC Presets Dropdown Functions
 function renderUcPresetsDropdown() {
     ucPresetsDropdownMenu.innerHTML = '';
-
     [
         { value: 0, display: 'None' },
         { value: 1, display: 'Human Focus' },
@@ -2790,7 +2697,7 @@ function setupEventListeners() {
                 if (manualNoiseValue) manualNoiseValue.value = '0.1';
 
                 // Set transformation type to variation
-                updateTransformationDropdownState('variation', 'Variation');
+                updateTransformationDropdownState('variation');
 
                 // Show transformation section content
                 if (transformationRow) {
@@ -2866,7 +2773,10 @@ function setupEventListeners() {
     });
 
     // Dataset dropdown
-    setupDropdown(datasetDropdown, datasetDropdownBtn, datasetDropdownMenu, renderDatasetDropdown, () => selectedDatasets);
+    setupDropdown(datasetDropdown, datasetDropdownBtn, datasetDropdownMenu, renderDatasetDropdown, () => selectedDatasets, { preventFocusTransfer: true });
+
+    // Sub toggles dropdown
+    setupDropdown(subTogglesDropdown, subTogglesBtn, subTogglesDropdownMenu, renderSubTogglesDropdown, () => selectedDatasets, { preventFocusTransfer: true });
 
     // Quality toggle
     qualityToggleBtn.addEventListener('click', (e) => {
@@ -2884,7 +2794,7 @@ function setupEventListeners() {
     });
 
     // UC Presets dropdown
-    setupDropdown(ucPresetsDropdown, ucPresetsDropdownBtn, ucPresetsDropdownMenu, renderUcPresetsDropdown, () => selectedUcPreset);
+    setupDropdown(ucPresetsDropdown, ucPresetsDropdownBtn, ucPresetsDropdownMenu, renderUcPresetsDropdown, () => selectedUcPreset, { preventFocusTransfer: true });
 
     // Character autocomplete events (for both prompt and UC fields)
     manualPrompt.addEventListener('input', handleCharacterAutocompleteInput);
@@ -3062,6 +2972,19 @@ function setupEventListeners() {
         deleteImageBaseBtn.addEventListener('click', (e) => {
             e.preventDefault();
             handleDeleteBaseImage();
+        });
+    }
+
+    if (previewBaseImageBtn) {
+        previewBaseImageBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Get the base image source
+            const variationImage = document.getElementById('manualVariationImage');
+            if (variationImage && variationImage.src && variationImage.src !== '') {
+                showImagePreview(variationImage.src, 'Base Image');
+            } else {
+                showGlassToast('error', 'Preview Failed', 'No base image available');
+            }
         });
     }
 
@@ -3273,12 +3196,12 @@ function setupEventListeners() {
                 const newValue = Math.max(1, Math.min(50, currentValue + delta));
                 this.value = newValue;
             }
+            updateManualPriceDisplay();
         });
     }
 
     if (manualGuidance) {
         manualGuidance.addEventListener('wheel', function(e) {
-            
             const delta = e.deltaY > 0 ? -0.1 : 0.1;
             const currentValue = parseFloat(this.value) || 5.0;
             const newValue = Math.max(0.0, Math.min(10.0, currentValue + delta));
@@ -3288,7 +3211,6 @@ function setupEventListeners() {
 
     if (manualRescale) {
         manualRescale.addEventListener('wheel', function(e) {
-            
             const delta = e.deltaY > 0 ? -0.01 : 0.01;
             const currentValue = parseFloat(this.value) || 0.0;
             const newValue = Math.max(0.0, Math.min(1.0, currentValue + delta));
@@ -3448,6 +3370,17 @@ function setupEventListeners() {
         e.preventDefault();
         showCacheManagerModal();
     });
+
+    // Reference browser show all references button
+    const showAllReferencesBtn = document.getElementById('showAllReferencesBtn');
+    if (showAllReferencesBtn) {
+        showAllReferencesBtn.addEventListener('click', () => {
+            // Call the toggle function from referenceManager.js
+            if (typeof toggleShowAllReferences === 'function') {
+                toggleShowAllReferences();
+            }
+        });
+    }
 
     // Handle window resize to update infinite scroll configuration
     let resizeTimeout;
@@ -3866,7 +3799,7 @@ async function rerollImage(image) {
             // Generate variation with same settings using original base image
             const model = metadata.model ? metadata.model.toLowerCase() : 'v4_5';
             const url = `/${model}/generate`;
-            generateResponse = await fetch(url, {
+            generateResponse = await fetchWithAuth(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -3941,7 +3874,7 @@ async function rerollImage(image) {
             // Generate image with same settings
             const model = metadata.model ? metadata.model.toLowerCase() : 'v4_5';
             const url = `/${model}/generate`;
-            generateResponse = await fetch(url, {
+            generateResponse = await fetchWithAuth(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -4072,7 +4005,7 @@ async function rerollImageWithEdit(image) {
         if (isVariation) {
             window.currentRequestType = 'reroll';
             // Set transformation type to reroll
-            updateTransformationDropdownState('reroll', 'Referance');
+            updateTransformationDropdownState('reroll');
 
             const [type, id] = metadata.image_source.split(':');
             const previewUrl = type === 'file' ? `/images/${id}` : `/cache/preview/${id}.webp`;
@@ -4098,7 +4031,7 @@ async function rerollImageWithEdit(image) {
         } else {
             window.currentRequestType = null;
             // Clear transformation type
-            updateTransformationDropdownState(undefined, 'References');
+            updateTransformationDropdownState();
 
             if (presetNameGroup) presetNameGroup.style.display = 'block';
             if (saveButton) saveButton.style.display = 'inline-block';
@@ -4244,6 +4177,9 @@ async function handleLogout() {
 }
 // Show manual modal
 async function showManualModal() {
+    // Prevent body scrolling when modal is open
+    document.body.style.overflow = 'hidden';
+    
     // Show loading overlay for manual modal opening
     const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
     if (manualLoadingOverlay) {
@@ -4315,6 +4251,9 @@ async function showManualModal() {
 
 // Hide manual modal
 function hideManualModal(e, preventModalReset = false) {
+    // Restore body scrolling when modal is closed
+    document.body.style.overflow = '';
+    
     const isManualModalOpen = manualModal && manualModal.style.display === 'flex';
 
     if (!preventModalReset || !isManualModalOpen) {
@@ -4444,14 +4383,14 @@ function clearManualForm() {
 
     // Reset new parameters
     selectedDatasets = []; // Default to anime enabled
-    datasetBias = {
-        anime: 1.0,
-        furry: 1.0,
-        backgrounds: 1.0
-    };
+    datasetBias = {};
+    if (window.optionsData?.datasets) {
+        window.optionsData.datasets.forEach(dataset => {
+            datasetBias[dataset.value] = 1.0;
+        });
+    }
     updateDatasetDisplay();
     renderDatasetDropdown();
-    renderDatasetBiasControls();
 
     appendQuality = true;
     if (qualityToggleBtn) {
@@ -4555,7 +4494,7 @@ function clearManualForm() {
     if (clearSeedBtn) clearSeedBtn.style.display = 'inline-block';
 
     // Reset transformation dropdown state
-    updateTransformationDropdownState(undefined, 'References');
+    updateTransformationDropdownState();
 
     updateUploadDeleteButtonVisibility();
 
@@ -4578,10 +4517,9 @@ function collectManualFormValues() {
         manualResolutionHidden.value = 'normal_square';
     }
 
-    const values = {
+    let values = {
         model: manualModel.value,
         prompt: manualPrompt.value.trim() + '',
-        resolutionValue: manualResolution.value,
         uc: manualUc.value.trim() + '',
         seed: manualSeed.value.trim(),
         sampler: manualSampler.value,
@@ -4596,6 +4534,17 @@ function collectManualFormValues() {
         characterItems: characterPromptsContainer ? characterPromptsContainer.querySelectorAll('.character-prompt-item') : [],
         characterPrompts: getCharacterPrompts()
     };
+
+    // Process resolution value to determine if it's custom or predefined
+    const resolutionData = processResolutionValue(manualResolution.value);
+    values.resolutionValue = manualResolution.value;
+    // Add width and height for custom resolutions
+    if (resolutionData.isCustom) {
+        values.width = resolutionData.width;
+        values.height = resolutionData.height;
+    } else {
+        console.log('Set predefined resolution:', values.resolutionValue);
+    }
 
     // Handle image bias - support both legacy and dynamic bias
     const imageBiasHidden = document.getElementById('imageBias');
@@ -4764,7 +4713,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
             imageContainer.classList.remove('swapped');
 
             await loadGallery(true);
-            await updateManualPreview(imageUrl, response);
+            await updateManualPreview(0, response);
         } else {
             // Clear context only when modal is not open or not in wide viewport mode
             if (typeof clearContextFn === "function") clearContextFn();
@@ -4790,7 +4739,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
 }
 
 // Function to update manual modal preview
-async function updateManualPreview(imageUrl, response = null, metadata = null) {
+async function updateManualPreview(index = 0, response = null, metadata = null) {
     const previewImage = document.getElementById('manualPreviewImage');
     const originalImage = document.getElementById('manualPreviewOriginalImage');
     const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
@@ -4803,6 +4752,40 @@ async function updateManualPreview(imageUrl, response = null, metadata = null) {
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
 
     if (previewImage && previewPlaceholder) {
+        // Get the image at the specified index
+        let imageData = null;
+        let imageUrl = null;
+        
+        if (response && response.headers) {
+            // For newly generated images, use the response data
+            const generatedFilename = response.headers.get('X-Generated-Filename');
+            if (generatedFilename) {
+                imageUrl = `/images/${generatedFilename}`;
+                imageData = {
+                    original: generatedFilename,
+                    base: generatedFilename,
+                    upscaled: null
+                };
+            }
+        } else {
+            // For existing images, request from server by index
+            try {
+                const viewType = currentGalleryView || 'images';
+                imageData = await window.wsClient.requestImageByIndex(index, viewType);
+                if (imageData) {
+                    imageUrl = `/images/${imageData.original}`;
+                }
+            } catch (error) {
+                console.warn('Failed to get image by index:', error);
+                return;
+            }
+        }
+        
+        if (!imageData || !imageUrl) {
+            console.warn('No image data available for index:', index);
+            return;
+        }
+        
         // Show the image and hide placeholder
         previewImage.src = imageUrl;
         previewImage.style.display = 'block';
@@ -4810,6 +4793,14 @@ async function updateManualPreview(imageUrl, response = null, metadata = null) {
 
         // Store the blob URL for download functionality
         previewImage.dataset.blobUrl = imageUrl;
+
+        // Wait for the image to load before continuing
+        await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error('Failed to load image'));
+            img.src = imageUrl;
+        });
 
         // Check if we have initialEdit data for side-by-side preview
         if (window.initialEdit && window.initialEdit.image) {
@@ -4835,51 +4826,23 @@ async function updateManualPreview(imageUrl, response = null, metadata = null) {
             imageContainer.classList.remove('dual-mode', 'original-hidden');
         }
 
-        // Get the actual filename from response headers if available, otherwise extract from URL
-        let generatedFilename = null;
-        if (response && response.headers) {
-            generatedFilename = response.headers.get('X-Generated-Filename');
-        }
+        // Set the current image and index
+        currentManualPreviewImage = imageData;
+        window.currentManualPreviewIndex = index;
 
-        if (!generatedFilename) {
-            // Fallback: try to extract from imageUrl (for existing images)
-            if (imageUrl.startsWith('/images/')) {
-                generatedFilename = imageUrl.split('/').pop();
-            }
-        }
-
-        // Only load gallery if we don't have allImages or if this is a newly generated image (has response)
-        if (!allImages || allImages.length === 0) {
-            await loadGallery();
-        }
-
-        const found = allImages.find(img => img.original === generatedFilename || img.upscaled === generatedFilename);
-
-        if (found) {
-            currentManualPreviewImage = found;
-
-            // Use passed metadata if available, otherwise load if not already loaded
+        // Use passed metadata if available, otherwise use metadata from imageData
             if (metadata) {
-                found.metadata = metadata;
-            } else if (!found.metadata && generatedFilename) {
-                try {
-                    const metadata = await getImageMetadata(generatedFilename);
-                    found.metadata = metadata;
+            imageData.metadata = metadata;
+        } else if (imageData.metadata) {
+            // Metadata already included from server
+        } else if (imageData.original) {
+            // Load metadata if not available
+            try {
+                const loadedMetadata = await getImageMetadata(imageData.original);
+                imageData.metadata = loadedMetadata;
                 } catch (error) {
                     console.warn('Failed to load metadata for image:', error);
                 }
-            }
-        } else if (generatedFilename) {
-            // If not found in gallery, create a temporary image object for newly generated images
-            const tempImage = {
-                original: generatedFilename,
-                base: generatedFilename,
-                upscaled: null
-            };
-            currentManualPreviewImage = tempImage;
-        } else {
-            // No filename available, can't set up delete functionality
-            currentManualPreviewImage = null;
         }
 
         // Show control buttons
@@ -5053,51 +5016,58 @@ function updateManualPreviewNavigation() {
 // Function to navigate manual preview
 async function navigateManualPreview(event) {
     const direction = event.currentTarget.id === 'manualPreviewPrevBtn' ? -1 : 1;
-
-    if (!currentManualPreviewImage || !allImages || allImages.length === 0) return;
-
-    // Find current image index in gallery using filename comparison
-    const currentFilename = currentManualPreviewImage.original || currentManualPreviewImage.filename;
-    const currentIndex = allImages.findIndex(img =>
-        img.original === currentFilename ||
-        img.upscaled === currentFilename
-    );
-
-    if (currentIndex === -1) return;
-
-    // Calculate new index
-    const newIndex = currentIndex + direction;
-
-    // Check bounds
-    if (newIndex < 0 || newIndex >= allImages.length) return;
-
-    // Get the new image
-    const newImage = allImages[newIndex];
-
-    // Load the new image and its metadata
-    try {
-        const metadataResponse = await fetchWithAuth(`/images/${newImage.original}`, {
-            method: 'OPTIONS'
-        });
-        if (metadataResponse.ok) {
-            const metadata = await metadataResponse.json();
-            newImage.metadata = metadata;
-        }
-    } catch (error) {
-        console.warn('Failed to load metadata for navigation image:', error);
+    if (!currentManualPreviewImage) return;
+    // Use WebSocket to get image by index
+    if (!window.wsClient || !window.wsClient.isConnected()) {
+        throw new Error('WebSocket not connected');
     }
 
-    // Update the preview with the new image and metadata
-    const imageUrl = `/images/${newImage.original}`;
-    updateManualPreview(imageUrl, null, newImage.metadata);
+    try {
+        // Show navigation loading overlay
+        showManualPreviewNavigationLoading(true);
+        
+        // Get current view type based on current gallery view
+        const viewType = currentGalleryView || 'images';
+        
+        // Calculate new index, default to 0 if not set
+        const currentIndex = window.currentManualPreviewIndex ?? 0;
+        const newIndex = currentIndex + direction;
+
+        // Check for negative index
+        if (newIndex < 0) {
+            console.warn('Cannot navigate before first image');
+            showManualPreviewNavigationLoading(false);
+            return;
+        }
+        
+        // Request the image at the new index from the server
+        const newImage = await window.wsClient.requestImageByIndex(newIndex, viewType);
+        
+        if (!newImage) {
+            console.warn('No image found at index:', newIndex);
+            showManualPreviewNavigationLoading(false);
+            return;
+        }
+
+        // Update the current index
+        window.currentManualPreviewIndex = newIndex;
+
+        // Update the preview with the new image and metadata
+        await updateManualPreview(newIndex, null, newImage.metadata);
     
-    const imageContainer = document.querySelector('.manual-preview-image-container');
-    imageContainer.classList.add('swapped');
+        const imageContainer = document.querySelector('.manual-preview-image-container');
+        imageContainer.classList.add('swapped');
+        
+    } catch (error) {
+        console.error('Failed to navigate manual preview:', error);
+        showError('Failed to navigate to next image: ' + error.message);
+    } finally {
+        // Hide navigation loading overlay
+        showManualPreviewNavigationLoading(false);
+    }
 }
 async function handleManualGeneration(e) {
     e.preventDefault();
-
-    manualGenerateBtn.disabled = true;
 
     const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
     const values = collectManualFormValues();
@@ -5105,7 +5075,13 @@ async function handleManualGeneration(e) {
     // Helper: Validate required fields
     function validateFields(requiredFields, msg) {
         for (const field of requiredFields) {
-            if (!values[field]) {
+            if (field === 'resolutionValue') {
+                // Special handling for resolution: check for either resolutionValue or custom dimensions
+                if (!values[field] && (!values.width || !values.height)) {
+                    showError(msg);
+                    return false;
+                }
+            } else if (!values[field]) {
                 showError(msg);
                 return false;
             }
@@ -5113,29 +5089,31 @@ async function handleManualGeneration(e) {
         return true;
     }
 
-    // Helper: Get processed resolution
-    function getResolution(resolutionValue) {
-        const resolutionData = processResolutionValue(resolutionValue);
-        return resolutionData.isCustom ? `${resolutionData.width}x${resolutionData.height}` : resolutionData.resolution;
-    }
-
     if (isImg2Img) {
         // Img2Img / Variation Edit/Reroll
         if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
-        const resolution = getResolution(values.resolutionValue);
 
         // Prepare requestBody
         const requestBody = {
             strength: parseFloat(manualStrengthValue.value) || 0.8,
             noise: parseFloat(manualNoiseValue.value) || 0.1,
             prompt: values.prompt,
-            resolution: resolution,
             steps: values.steps,
             guidance: values.guidance,
             rescale: values.rescale,
             allow_paid: forcePaidRequest,
             workspace: activeWorkspace
         };
+
+        // Process resolution to determine if it's custom or predefined
+        const resolutionData = processResolutionValue(values.resolutionValue);
+        // Add resolution or width/height based on type
+        if (resolutionData.isCustom) {
+            requestBody.width = resolutionData.width;
+            requestBody.height = resolutionData.height;
+        } else {
+            requestBody.resolution = resolutionData.resolution;
+        }
 
         // Handle uploaded image data
         if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
@@ -5167,8 +5145,8 @@ async function handleManualGeneration(e) {
         if (values.presetName) requestBody.preset = values.presetName;
 
         // Check if this requires paid credits and user hasn't already allowed paid
-        if (requiresPaidCredits(requestBody) && !forcePaidRequest) {
-            const cost = calculateCreditCost(requestBody);
+        const cost = calculateCreditCost(requestBody);
+        if (cost > 0 && !forcePaidRequest) {
             const confirmed = await showCreditCostDialog(cost, e);
             
             if (!confirmed) {
@@ -5178,14 +5156,19 @@ async function handleManualGeneration(e) {
             
             // Set allow_paid to true for this request only (don't change UI)
             requestBody.allow_paid = true;
+            forcePaidRequest = true;
+            paidRequestToggle.setAttribute('data-state', 'on');
         }
 
+        
+
+        manualGenerateBtn.disabled = true;
         hideManualModal(undefined, true);
         showManualLoading(true, 'Generating Image...');
 
         try {
             const url = `/${values.model.toLowerCase()}/generate`;
-            const response = await fetch(url, {
+            const response = await fetchWithAuth(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody)
@@ -5205,24 +5188,32 @@ async function handleManualGeneration(e) {
     } else {
         // Regular manual generation or reroll
         if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
-        const resolution = getResolution(values.resolutionValue);
 
         const requestBody = {
             prompt: values.prompt,
-            resolution: resolution,
             steps: values.steps,
             guidance: values.guidance,
             rescale: values.rescale,
             allow_paid: forcePaidRequest,
             workspace: activeWorkspace
         };
+
+        // Process resolution to determine if it's custom or predefined
+        const resolutionData = processResolutionValue(values.resolutionValue);
+        // Add resolution or width/height based on type
+        if (resolutionData.isCustom) {
+            requestBody.width = resolutionData.width;
+            requestBody.height = resolutionData.height;
+        } else {
+            requestBody.resolution = resolutionData.resolution;
+        }
         if (values.presetName) requestBody.preset = values.presetName;
 
         addSharedFieldsToRequestBody(requestBody, values);
     
-        // Check if this requires paid credits and user hasn't already allowed paid
-        if (requiresPaidCredits(requestBody) && !forcePaidRequest) {
-            const cost = calculateCreditCost(requestBody);
+    // Check if this requires paid credits and user hasn't already allowed paid
+        const cost = calculateCreditCost(requestBody);
+        if (cost > 0 && !forcePaidRequest) {
             const confirmed = await showCreditCostDialog(cost, e);
             
             if (!confirmed) {
@@ -5232,6 +5223,8 @@ async function handleManualGeneration(e) {
             
             // Set allow_paid to true for this request only (don't change UI)
             requestBody.allow_paid = true;
+            forcePaidRequest = true;
+            paidRequestToggle.setAttribute('data-state', 'on');
         }
 
         showManualLoading(true, 'Generating Image...');
@@ -5240,7 +5233,7 @@ async function handleManualGeneration(e) {
         
         try {
             const url = `/${values.model.toLowerCase()}/generate`;
-            const response = await fetch(url, {
+            const response = await fetchWithAuth(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody)
@@ -5260,37 +5253,26 @@ async function handleManualGeneration(e) {
     }
 }
 
-// Save manual preset (this would need a backend endpoint)
+// Save manual preset using WebSocket
 async function saveManualPreset(presetName, config) {
     try {
-        let response;
-        response = await fetchWithAuth(`/preset/${presetName}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                ...config
-            })
-        });
-
-        if (response.ok) {
-            const result = await response.json();
-            showGlassToast('success', null, result.message);
-
-            // Refresh the preset list
-            await loadOptions();
-
-            // Select the newly saved preset
-            presetSelect.value = presetName;
-            updateGenerateButton();
-
-            // Close the manual modal
-            hideManualModal(undefined, true);
-        } else {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to save preset');
+        // Use WebSocket for preset saving
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
+
+        const result = await window.wsClient.savePreset(presetName, config);
+        showGlassToast('success', null, result.message);
+
+        // Refresh the preset list
+        await loadOptions();
+
+        // Select the newly saved preset
+        presetSelect.value = presetName;
+        updateGenerateButton();
+
+        // Close the manual modal
+        hideManualModal(undefined, true);
     } catch (error) {
         console.error('Error saving preset:', error);
         showError('Failed to save preset: ' + error.message);
@@ -5640,7 +5622,7 @@ async function generateImage(event = null) {
             throw new Error('Invalid selection type');
         }
 
-        const response = await fetch(url);
+        const response = await fetchWithAuth(url);
 
         if (!response.ok) {
             throw new Error(`Generation failed: ${response.statusText}`);
@@ -5727,6 +5709,17 @@ function initializeManualPreviewZoom() {
     const image = document.getElementById('manualPreviewImage');
 
     if (!imageContainer || !image) return;
+
+    // Remove existing event listeners to prevent duplicates
+    imageContainer.removeEventListener('wheel', handleManualPreviewWheelZoom);
+    imageContainer.removeEventListener('mousedown', handleManualPreviewMouseDown);
+    imageContainer.removeEventListener('mousemove', handleManualPreviewMouseMove);
+    imageContainer.removeEventListener('mouseup', handleManualPreviewMouseUp);
+    imageContainer.removeEventListener('mouseleave', handleManualPreviewMouseUp);
+    imageContainer.removeEventListener('touchstart', handleManualPreviewTouchStart);
+    imageContainer.removeEventListener('touchmove', handleManualPreviewTouchMove);
+    imageContainer.removeEventListener('touchend', handleManualPreviewTouchEnd);
+    imageContainer.removeEventListener('dblclick', resetManualPreviewZoom);
 
     // Reset zoom and pan
     resetManualPreviewZoom();
@@ -5815,15 +5808,16 @@ function handleManualPreviewWheelZoom(e) {
 }
 
 function handleManualPreviewMouseDown(e) {
+    e.preventDefault();
     if (manualPreviewZoom > 1) {
         isManualPreviewDragging = true;
         lastManualPreviewMouseX = e.clientX;
         lastManualPreviewMouseY = e.clientY;
-        
     }
 }
 
 function handleManualPreviewMouseMove(e) {
+    e.preventDefault();
     if (isManualPreviewDragging && manualPreviewZoom > 1) {
         const deltaX = e.clientX - lastManualPreviewMouseX;
         const deltaY = e.clientY - lastManualPreviewMouseY;
@@ -5835,13 +5829,16 @@ function handleManualPreviewMouseMove(e) {
         lastManualPreviewMouseY = e.clientY;
 
         updateManualPreviewImageTransform();
-        
     }
 }
 
-function handleManualPreviewMouseUp() {
+function handleManualPreviewMouseUp(e) {
+    if (e) {
+        e.preventDefault();
+    }
     isManualPreviewDragging = false;
 }
+
 function handleManualPreviewTouchStart(e) {
     if (e.touches.length === 1) {
         // Single touch - start pan
@@ -5853,6 +5850,7 @@ function handleManualPreviewTouchStart(e) {
         lastManualPreviewTouchDistance = getTouchDistance(e.touches);
     }
 }
+
 function handleManualPreviewTouchMove(e) {
     if (e.touches.length === 1 && isManualPreviewDragging && manualPreviewZoom > 1) {
         // Single touch pan
@@ -5866,7 +5864,6 @@ function handleManualPreviewTouchMove(e) {
         lastManualPreviewMouseY = e.touches[0].clientY;
 
         updateManualPreviewImageTransform();
-        
     } else if (e.touches.length === 2) {
         // Two touch pinch zoom
         const currentDistance = getTouchDistance(e.touches);
@@ -5908,8 +5905,6 @@ function handleManualPreviewTouchMove(e) {
                 }
             }
         }
-
-        
     }
 }
 
@@ -5990,18 +5985,14 @@ async function deleteImage(image, event = null) {
         }
 
 
-        // Send delete request
-        const response = await fetchWithAuth(`/images/${filenameToDelete}`, {
-            method: 'DELETE'
-        });
-
-        if (!response.ok) {
-            throw new Error(`Delete failed: ${response.statusText}`);
+        // Use WebSocket bulk delete request
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
+        
+        const result = await window.wsClient.deleteImagesBulk([filenameToDelete]);
 
-        const result = await response.json();
-
-        if (result.success) {
+        if (result.successful > 0) {
             showGlassToast('success', null, 'Image deleted!', false, 5000, '<i class="fas fa-trash"></i>');
 
             // Close lightbox
@@ -6010,7 +6001,7 @@ async function deleteImage(image, event = null) {
             // Remove image from gallery and add placeholder
             removeImageFromGallery(image);
         } else {
-            throw new Error(result.error || 'Delete failed');
+            throw new Error('Delete failed');
         }
 
     } catch (error) {
@@ -6026,6 +6017,9 @@ async function deleteManualPreviewImage() {
     }
 
     try {
+        // Show navigation loading overlay
+        showManualPreviewNavigationLoading(true);
+        
         // Determine which filename to use for deletion
         let filenameToDelete = null;
 
@@ -6040,63 +6034,56 @@ async function deleteManualPreviewImage() {
             throw new Error('No filename available for deletion');
         }
 
-        // Send delete request
-        const response = await fetchWithAuth(`/images/${filenameToDelete}`, {
-            method: 'DELETE'
-        });
-
-        if (!response.ok) {
-            throw new Error(`Delete failed: ${response.statusText}`);
+        // Use WebSocket bulk delete request
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
+        
+        const result = await window.wsClient.deleteImagesBulk([filenameToDelete]);
 
-        const result = await response.json();
+        if (result.successful > 0) {
+            // Get the current index and view type
+            const currentIndex = window.currentManualPreviewIndex ?? 0;
+            const viewType = currentGalleryView || 'images';
 
-        if (result.success) {
-
-            // Find the current image index in the manual preview image list
-            const currentIndex = allImages.findIndex(img =>
-                img.original === currentManualPreviewImage.original ||
-                img.upscaled === currentManualPreviewImage.upscaled
-            );
-
-            // Remove the current image from the manual preview list
-            if (currentIndex !== -1) {
-                allImages.splice(currentIndex, 1);
-            }
-
-            // Find the next (previous) image in the manual preview list
-            let nextImage = null;
-            const nextIndex = currentIndex >= allImages.length ? allImages.length - 1 : currentIndex;
-
-            if (nextIndex >= 0 && nextIndex < allImages.length) {
-                nextImage = allImages[nextIndex];
-            }
-
-            if (nextImage) {
-                // Load the next image and its metadata
-                try {
-                    const metadata = await getImageMetadata(nextImage.original);
-                    nextImage.metadata = metadata;
-                } catch (error) {
-                    console.warn('Failed to load metadata for next image:', error);
+            // Request the same image at the current index (which will now be a different image)
+            try {
+                const newImage = await window.wsClient.requestImageByIndex(currentIndex, viewType);
+                
+                if (newImage) {
+                    // Update the preview with the new image at the same index
+                    await updateManualPreview(currentIndex, null, newImage.metadata);
+                    showGlassToast('success', null, 'Image deleted');
+                } else {
+                    // No image at this index anymore, try the previous index
+                    if (currentIndex > 0) {
+                        const prevImage = await window.wsClient.requestImageByIndex(currentIndex - 1, viewType);
+                        if (prevImage) {
+                            await updateManualPreview(currentIndex - 1, null, prevImage.metadata);
+                            showGlassToast('success', null, 'Image deleted');
+                        } else {
+                            resetManualPreview();
+                            showGlassToast('success', null, 'Image deleted');
+                        }
+                    } else {
+                        resetManualPreview();
+                        showGlassToast('success', null, 'Image deleted');
+                    }
                 }
-
-                // Update the preview with the next image
-                const imageUrl = `/images/${nextImage.original}`;
-                updateManualPreview(imageUrl);
-
-                showGlassToast('success', null, 'Image deleted');
-            } else {
-                // No next image, reset the preview
+            } catch (error) {
+                console.warn('Failed to load new image after delete:', error);
                 resetManualPreview();
                 showGlassToast('success', null, 'Image deleted');
             }
         } else {
-            throw new Error(result.error || 'Delete failed');
+            throw new Error('Delete failed');
         }
     } catch (error) {
         console.error('Delete error:', error);
         showError('Failed to delete image: ' + error.message);
+    } finally {
+        // Hide navigation loading overlay
+        showManualPreviewNavigationLoading(false);
     }
 
     // Refresh gallery after processing is complete
@@ -6228,6 +6215,19 @@ function showManualLoading(show, message = 'Generating Image...') {
     }
 }
 
+// Show manual preview navigation loading overlay
+function showManualPreviewNavigationLoading(show) {
+    const navigationLoadingOverlay = document.getElementById('manualPreviewNavigationLoading');
+    
+    if (navigationLoadingOverlay) {
+        if (show) {
+            navigationLoadingOverlay.classList.remove('hidden');
+        } else {
+            navigationLoadingOverlay.classList.add('hidden');
+        }
+    }
+}
+
 // Show error message (simple glass toast)
 function showError(message) {
     showGlassToast('error', null, message);
@@ -6325,34 +6325,6 @@ function handleAuthError(error, context = '') {
     }
     
     showErrorSubHeader(message, type, 15000);
-}
-
-// Enhanced fetchWithAuth with error sub-header support
-async function fetchWithAuth(url, options = {}) {
-    try {
-        const response = await fetch(url, options);
-        
-        // Handle authentication errors
-        if (response.status === 401) {
-            handleAuthError(new Error('Unauthorized access'), 'fetchWithAuth');
-            throw new Error('Authentication required');
-        } else if (response.status === 403) {
-            handleAuthError(new Error('Access forbidden'), 'fetchWithAuth');
-            throw new Error('Access denied');
-        }
-        
-        return response;
-    } catch (error) {
-        // Handle network or other errors
-        if (error.name === 'TypeError' && error.message.includes('fetch')) {
-            showErrorSubHeader('Network connection error. Please check your internet connection.', 'warning', 8000);
-        } else if (error.message.includes('Authentication required') || error.message.includes('Access denied')) {
-            // Already handled above
-        } else {
-            console.error('Fetch error:', error);
-        }
-        throw error;
-    }
 }
 
 // Debounced resize handler
@@ -6698,6 +6670,7 @@ if (document.getElementById('varietyBtn')) {
 // Add event listener for manualSampler to auto-set noise scheduler
 async function fetchWithAuth(url, options = {}) {
     if (!(await ensureSessionValid())) {
+        handleAuthError(new Error('Unauthorized access'), 'fetchWithAuth');
         return Promise.reject(new Error('Session invalid or cancelled'));
     }
     return fetch(url, options);
@@ -7034,27 +7007,6 @@ function completeAllTestProgress() {
 
 let showSubscriptionExpirationToast = false;
 async function checkSubscriptionExpiration() {
-    // Try to get user data if not available
-    if (!window.optionsData?.user?.subscription?.expiresAt) {
-        try {
-            const response = await fetchWithAuth('/user');
-            if (response.ok) {
-                const userData = await response.json();
-                if (userData.ok && userData.subscription?.expiresAt) {
-                    window.optionsData = window.optionsData || {};
-                    window.optionsData.user = userData;
-                } else {
-                    return; // No expiration data available
-                }
-            } else {
-                return; // Failed to fetch user data
-            }
-        } catch (error) {
-            console.error('Error fetching user data for subscription check:', error);
-            return;
-        }
-    }
-
     const expiresAt = new Date(window.optionsData.user.subscription.expiresAt * 1000);
     const subTier = window.optionsData.user.subscription.tier;
     const subName = subTier === 3 ? 'Opus' : subTier === 2 ? 'Scroll' : subTier === 1 ? 'Tablet' : 'Enterprise';
@@ -7081,28 +7033,6 @@ async function checkFixedTrainingSteps() {
     }
 
     const fixedSteps = window.optionsData.balance.fixedTrainingStepsLeft;
-    if (!window.optionsData?.user?.subscription?.expiresAt) {
-        try {
-            const response = await fetchWithAuth('/user');
-            if (response.ok) {
-                const userData = await response.json();
-                if (userData.ok && userData.subscription?.expiresAt) {
-                    window.optionsData = window.optionsData || {};
-                    window.optionsData.user = userData;
-                } else {
-                    console.error('No subscription expiration data available');
-                    return;
-                }
-            } else {
-                console.error('Failed to fetch user data');
-                return;
-            }
-        } catch (error) {
-            console.error('Error fetching user data for fixed steps check:', error);
-            return;
-        }
-    }
-
     const expiresAt = new Date(window.optionsData.user.subscription.expiresAt * 1000);
     const now = new Date();
     const daysUntilRenewal = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
@@ -7305,6 +7235,16 @@ function updateUploadDeleteButtonVisibility() {
             deleteImageBaseBtn.style.display = 'none';
         }
     }
+    
+    if (previewBaseImageBtn) {
+        if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
+            // Image is uploaded (not a placeholder), show preview button
+            previewBaseImageBtn.style.display = 'inline-block';
+        } else {
+            // No image uploaded or it's a placeholder, hide preview button
+            previewBaseImageBtn.style.display = 'none';
+        }
+    }
 }
 
 async function handleBulkUnpin(event = null) {
@@ -7345,31 +7285,12 @@ async function handleBulkUnpin(event = null) {
 
         let responseData = null;
         
-        // Unpin all files at once using bulk endpoint
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                responseData = await window.wsClient.removePinnedBulk(activeWorkspace, validFilenames);
-            } catch (wsError) {
-                showError('Failed to unpin images: ' + wsError.message);
-                throw new Error('Failed to unpin images');
-            }
-        } else {
-            // Fallback to HTTP
-            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned/bulk`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ filenames: validFilenames })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to unpin images');
-            }
-            
-            responseData = await response.json();
+        // Unpin all files at once using WebSocket
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
+        
+        responseData = await window.wsClient.removePinnedBulk(activeWorkspace, validFilenames);
 
         // Use server response data for accurate toast message
         if (responseData) {
@@ -7439,31 +7360,12 @@ async function handleBulkPin(event = null) {
 
         let responseData = null;
         
-        // Pin all files at once using bulk endpoint
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                responseData = await window.wsClient.addPinnedBulk(activeWorkspace, validFilenames);
-            } catch (wsError) {
-                showError('Failed to pin images: ' + wsError.message);
-                throw new Error('Failed to pin images');
-            }
-        } else {
-            // Fallback to HTTP
-            const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/pinned/bulk`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ filenames: validFilenames })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to pin images');
-            }
-            
-            responseData = await response.json();
+        // Pin all files at once using WebSocket
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
+        
+        responseData = await window.wsClient.addPinnedBulk(activeWorkspace, validFilenames);
 
         // Use server response data for accurate toast message
         if (responseData) {
@@ -7547,33 +7449,12 @@ async function handleBulkChangePresetConfirm() {
 
         let responseData = null;
         
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                responseData = await window.wsClient.updateImagePresetBulk(validFilenames, newPresetName || null);
-            } catch (wsError) {
-                showError('Failed to update preset names: ' + wsError.message);
-                throw new Error('Failed to update preset names');
-            }
-        } else {
-            // Fallback to HTTP
-            const response = await fetchWithAuth('/images/bulk/preset', {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    filenames: validFilenames,
-                    presetName: newPresetName || null // Send null if empty to remove preset name
-                })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to update preset names');
-            }
-            
-            responseData = await response.json();
+        // Use WebSocket API
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
+        
+        responseData = await window.wsClient.updateImagePresetBulk(validFilenames, newPresetName || null);
 
         // Use server response data for accurate toast message
         if (responseData) {
@@ -8681,66 +8562,89 @@ function calculatePriceUnified({
     };
 }
 
+// Timeout for debouncing price display updates
+let manualPriceDisplayTimeout = null;
+
 // Calculate and update price display for manual generation
-function updateManualPriceDisplay() {
+function updateManualPriceDisplay(bypass = false) {
     const priceDisplay = document.getElementById('manualPriceDisplay');
     const priceList = document.getElementById('manualPriceList');
+    const priceIcon = priceDisplay?.querySelector('i');
 
-    if (!priceDisplay || !priceList) return;
+    if (!priceDisplay || !priceList || !priceIcon) return;
 
-    try {
-        // Get current form values
-        const model = manualSelectedModel || 'V4_5';
-        const steps = parseInt(manualSteps.value) || 25;
-        const sampler = manualSelectedSampler || 'k_euler_ancestral';
-        const strength = parseFloat(manualStrengthValue.value) || 1.0;
-
-        // Calculate area from resolution
-        let height = 1024; // Default area
-        let width = 1024; // Default area
-        if (manualSelectedResolution === 'custom') {
-            width = parseInt(manualWidth.value) || 1024;
-            height = parseInt(manualHeight.value) || 1024;
-        } else if (manualSelectedResolution) {
-            const dimensions = getDimensionsFromResolution(manualSelectedResolution);
-            if (dimensions) {
-                width = dimensions.width;
-                height = dimensions.height;
-            }
-        }
-
-        // Determine if this is an img2img request
-        const isImg2Img = !document.getElementById('transformationSection')?.classList.contains('hidden');
-
-        // Get sampler object
-        const samplerObj = getSamplerMeta(sampler) || { meta: 'k_euler_ancestral' };
-
-        // Calculate price
-        const price = calculatePriceUnified({
-            height: height,
-            width: width,
-            steps: steps,
-            model: model,
-            sampler: samplerObj,
-            subscription: window.optionsData?.user?.subscription || { perks: { unlimitedImageGenerationLimits: [] } },
-            nSamples: 1,
-            image: isImg2Img,
-            strength: isImg2Img ? strength : 1
-        });
-
-        // Update display
-        priceList.textContent = `${price.opus === 0 ? 0 : price.list}`;
-
-        // Apply styling for free opus price
-        priceDisplay.classList.toggle('free', price.opus === 0);
-
-        // Show the price display
-        priceDisplay.style.display = 'flex';
-
-    } catch (error) {
-        console.error('Error calculating price:', error);
-        priceDisplay.style.display = 'none';
+    // Clear any existing timeout
+    if (manualPriceDisplayTimeout) {
+        clearTimeout(manualPriceDisplayTimeout);
     }
+
+    // Show loading state immediately
+    priceIcon.className = 'fas fa-hourglass';
+    priceDisplay.style.display = 'flex';
+
+    // Debounce the actual calculation for 3 seconds
+    manualPriceDisplayTimeout = setTimeout(() => {
+        try {
+            // Get current form values
+            const model = manualSelectedModel || 'V4_5';
+            const steps = parseInt(manualSteps.value) || 25;
+            const sampler = manualSelectedSampler || 'k_euler_ancestral';
+            const strength = parseFloat(manualStrengthValue.value) || 1.0;
+            const noise = parseFloat(manualNoiseValue.value) || 0.1;
+
+            // Calculate area from resolution
+            let height = 1024; // Default area
+            let width = 1024; // Default area
+            if (manualSelectedResolution === 'custom') {
+                width = parseInt(manualWidth.value) || 1024;
+                height = parseInt(manualHeight.value) || 1024;
+            } else if (manualSelectedResolution) {
+                const dimensions = getDimensionsFromResolution(manualSelectedResolution);
+                if (dimensions) {
+                    width = dimensions.width;
+                    height = dimensions.height;
+                }
+            }
+
+            // Determine if this is an img2img request
+            const isImg2Img = !document.getElementById('transformationSection')?.classList.contains('hidden');
+
+            // Build request body for calculateCreditCost
+            const requestBody = {
+                model: model,
+                steps: steps,
+                sampler: sampler,
+                width: width,
+                height: height,
+                strength: isImg2Img ? strength : 1,
+                noise: noise,
+                image: isImg2Img ? true : false
+            };
+
+            // Calculate cost using the more accurate function
+            const cost = calculateCreditCost(requestBody);
+
+            // Update display
+            priceIcon.className = 'nai-anla';
+            if (cost > 0) {
+                // Paid request
+                priceList.textContent = `${cost}`;
+                priceDisplay.classList.remove('free');
+            } else {
+                // Free request
+                priceList.textContent = '0';
+                priceDisplay.classList.add('free');
+            }
+
+            // Show the price display
+            priceDisplay.style.display = 'flex';
+
+        } catch (error) {
+            console.error('Error calculating price:', error);
+            priceIcon.className = 'nai-anla';
+            priceDisplay.style.display = 'none';
+        }
+    }, bypass ? 5 : 1000);
 }
 
 // Character Prompt Collapse/Expand Functions
@@ -8819,9 +8723,9 @@ async function updateQueueStatus(data) {
         const statusElem = document.getElementById('queueIcon');
         if (statusElem) {
             let classList = 'fas ';
-            if (data.value === 2) classList += 'fa-octagon-exclamation fa-beat-fade';
-            else if (data.value === 1) classList += 'fa-ban';
-            else classList += 'fa-check hidden';
+            if (data.value === 2) classList += 'fa-diamond-exclamation';
+            else if (data.value === 1) classList += (statusElem.classList.contains('fa-hourglass-start') ? 'fa-hourglass-half' : (statusElem.classList.contains('fa-hourglass-half') ? 'fa-hourglass-end' : 'fa-hourglass-start'));
+            else classList += 'hidden';
 
             if (data.value === 2) queueStatus.classList.add('stopped');
             else queueStatus.classList.remove('stopped');
@@ -8885,36 +8789,66 @@ function handleServerPing(data) {
 }
 
 async function ensureSessionValid() {
-    // Try a lightweight authenticated endpoint
+    // Use WebSocket ping if available, otherwise fall back to HTTP
     try {
-        const resp = await fetch('/ping', { method: 'OPTIONS', timeout: 4000 });
-        if (resp.status !== 401) {
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                await window.wsClient.pingWithAuth();
             return true;
+            } catch (wsError) {
+                console.warn('WebSocket ping failed, authentication required:', wsError);
         }
-    } catch {}
-    try {
+        }
+        
+        // Show PIN modal for re-authentication
         if (pinModalPromise) return pinModalPromise;
         pinModalPromise = await window.showPinModal();
-        // Try again after re-auth
-        const resp2 = await fetch('/ping', { method: 'OPTIONS', timeout: 4000 });
-        if (resp2.status !== 401) {
+        
+        // After re-authentication, try WebSocket first, then HTTP
+        if (window.wsClient) {
+            try {
+                // Wait for WebSocket to reconnect after authentication
+                await window.wsClient.waitForConnection(10000);
+                
+                // Verify authentication with WebSocket ping
+                await window.wsClient.pingWithAuth();
             pinModalPromise = null;
             return true;
+            } catch (wsError) {
+                console.warn('WebSocket authentication after re-auth failed:', wsError);
+                // Fall through to HTTP fallback
+            }
         }
-    } catch {
-        // User cancelled
+        pinModalPromise = null;
+    } catch (error) {
+        // User cancelled or other error
+        console.error('Session validation error:', error);
         window.location.href = '/';
         return false;
     }
 }
 
-(async () => {
+// Initialize session validation after WebSocket is ready
+async function initializeSessionValidation() {
+    // Wait a bit for WebSocket to connect if it's available
+    if (window.wsClient) {
+        try {
+            await window.wsClient.waitForConnection(5000);
+        } catch (error) {
+            console.log('WebSocket not available, proceeding with HTTP authentication');
+        }
+    }
+    
     await ensureSessionValid();
-    // Initial ping timeout check
+    
+    // Set up periodic session validation
     pingTimeoutId = setTimeout(() => {
         ensureSessionValid();
     }, 15000);
-})();
+}
+
+// Start session validation after a short delay to allow WebSocket to connect
+setTimeout(initializeSessionValidation, 1000);
 
 // Bulk operations with WebSocket support
 async function handleBulkMoveToWorkspace() {
@@ -8943,41 +8877,20 @@ async function moveBulkImagesToWorkspace(workspaceId) {
             throw new Error('No valid filenames to move');
         }
 
-        // Use WebSocket API if available, otherwise fall back to HTTP
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                await window.wsClient.moveFilesToWorkspace(validFilenames, workspaceId);
-            } catch (wsError) {
-                showError('Failed to move files: ' + wsError.message);
-                throw new Error('Failed to move files');
-            }
-        } else {
-            // Fallback to HTTP
-            // Use appropriate endpoint based on current view
-            let endpoint;
-            if (isScrapsView) {
-                endpoint = `/workspaces/${workspaceId}/scraps`;
-            } else if (isPinnedView) {
-                endpoint = `/workspaces/${workspaceId}/pinned`;
-            } else {
-                endpoint = `/workspaces/${workspaceId}/files`;
-            }
-
-            const response = await fetchWithAuth(endpoint, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    filenames: validFilenames
-                })
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Failed to move items');
-            }
+        // Use WebSocket API
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
+        
+        // Determine the type based on current gallery view
+        let moveType = 'files'; // default
+            if (isScrapsView) {
+            moveType = 'scraps';
+            } else if (isPinnedView) {
+            moveType = 'pinned';
+        }
+        
+        await window.wsClient.moveFilesToWorkspace(validFilenames, workspaceId, null, moveType);
 
         const workspace = workspaces[workspaceId];
         let itemType;
@@ -9033,32 +8946,12 @@ async function handleBulkDelete(event = null) {
 
         let responseData = null;
         
-        // Use WebSocket API if available, otherwise fall back to HTTP
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                responseData = await window.wsClient.deleteImagesBulk(validFilenames);
-            } catch (wsError) {
-                showError('Failed to delete images: ' + wsError.message);
-                throw new Error('Failed to delete images');
-            }
-        } else {
-            // Fallback to HTTP
-            const response = await fetchWithAuth('/images/bulk', {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    filenames: validFilenames
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`Bulk delete failed: ${response.statusText}`);
-            }
-            
-            responseData = await response.json();
+        // Use WebSocket API
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
+        
+        responseData = await window.wsClient.deleteImagesBulk(validFilenames);
 
         // Use server response data for accurate toast message
         if (responseData) {
@@ -9118,32 +9011,12 @@ async function handleBulkSequenzia(event = null) {
 
         let responseData = null;
         
-        // Use WebSocket API if available, otherwise fall back to HTTP
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                responseData = await window.wsClient.sendToSequenziaBulk(validFilenames);
-            } catch (wsError) {
-                showError('Failed to send to Sequenzia: ' + wsError.message);
-                throw new Error('Failed to send to Sequenzia');
-            }
-        } else {
-            // Fallback to HTTP
-            const response = await fetchWithAuth('/images/send-to-sequenzia', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    filenames: validFilenames
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`Send to Sequenzia failed: ${response.statusText}`);
-            }
-            
-            responseData = await response.json();
+        // Use WebSocket API
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
+        
+        responseData = await window.wsClient.sendToSequenziaBulk(validFilenames);
 
         // Use server response data for accurate toast message
         if (responseData) {
@@ -9203,46 +9076,12 @@ async function handleBulkMoveToScraps(event = null) {
 
         let responseData = null;
         
-        // Use WebSocket API if available, otherwise fall back to HTTP
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                responseData = await window.wsClient.addScrapBulk(activeWorkspace, validFilenames);
-            } catch (wsError) {
-                showError('Failed to move to scraps: ' + wsError.message);
-                throw new Error('Failed to move to scraps');
-            }
-        } else {
-            // Fallback to HTTP - move each file to scraps
-            let successCount = 0;
-            let errorCount = 0;
-
-            for (const filename of validFilenames) {
-                try {
-                    const response = await fetchWithAuth(`/workspaces/${activeWorkspace}/scraps`, {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ filename })
-                    });
-
-                    if (response.ok) {
-                        successCount++;
-                    } else {
-                        errorCount++;
-                    }
-                } catch (error) {
-                    errorCount++;
-                    console.error(`Failed to move ${filename} to scraps:`, error);
-                }
-            }
-
-            responseData = { addedCount: successCount, failed: errorCount };
-            
-            if (errorCount > 0) {
-                showError(`${errorCount} image(s) failed to move to scraps`);
-            }
+        // Use WebSocket API
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
         }
+        
+        responseData = await window.wsClient.addScrapBulk(activeWorkspace, validFilenames);
 
         // Use server response data for accurate toast message
         if (responseData) {

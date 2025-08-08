@@ -134,23 +134,7 @@ async function loadScraps() {
             
             displayCurrentPageOptimized();
         } else {
-            // Fallback to API if WebSocket not available
-            const response = await fetchWithAuth('/images?scraps=true');
-            if (response.ok) {
-                const scrapsImageData = await response.json();
-                allImages = scrapsImageData;
-                
-                // Apply current sort order to the loaded data
-                sortGalleryData();
-                
-                displayCurrentPageOptimized();
-                    } else {
-            console.error('Failed to load scraps:', response.statusText);
-            allImages = [];
-            window.allImages = allImages;
-            resetInfiniteScroll();
-            displayCurrentPageOptimized();
-        }
+            throw new Error('WebSocket not connected');
         }
         updateGalleryPlaceholders();
     } catch (error) {
@@ -177,23 +161,7 @@ async function loadPinned() {
             
             displayCurrentPageOptimized();
         } else {
-            // Fallback to API if WebSocket not available
-            const response = await fetchWithAuth('/images?pinned=true');
-            if (response.ok) {
-                const pinnedImageData = await response.json();
-                allImages = pinnedImageData;
-                
-                // Apply current sort order to the loaded data
-                sortGalleryData();
-                
-                displayCurrentPageOptimized();
-                    } else {
-            console.error('Failed to load pinned images:', response.statusText);
-            allImages = [];
-            window.allImages = allImages;
-            resetInfiniteScroll();
-            displayCurrentPageOptimized();
-        }
+            throw new Error('WebSocket not connected');
         }
         updateGalleryPlaceholders();
     } catch (error) {
@@ -220,23 +188,7 @@ async function loadUpscaled() {
             
             displayCurrentPageOptimized();
         } else {
-            // Fallback to API if WebSocket not available
-            const response = await fetchWithAuth('/images?upscaled=true');
-            if (response.ok) {
-                const upscaledImageData = await response.json();
-                allImages = upscaledImageData;
-                
-                // Apply current sort order to the loaded data
-                sortGalleryData();
-                
-                displayCurrentPageOptimized();
-            } else {
-                console.error('Failed to load upscaled images:', response.statusText);
-                allImages = [];
-                window.allImages = allImages;
-                resetInfiniteScroll();
-                displayCurrentPageOptimized();
-            }
+            throw new Error('WebSocket not connected');
         }
         updateGalleryPlaceholders();
     } catch (error) {
@@ -275,32 +227,7 @@ async function loadGallery(addLatest) {
                 await addNewGalleryItemAfterGeneration(galleryData[0]);
             }
         } else {
-            // Fallback to API if WebSocket not available
-            const response = await fetchWithAuth('/images');
-            if (response.ok) {
-                const newImages = await response.json();
-
-                // Check if images have actually changed to avoid unnecessary updates
-                if (JSON.stringify(allImages) === JSON.stringify(newImages)) {
-                    return; // No changes, skip update
-                }
-
-                allImages = newImages;
-                window.allImages = allImages;
-
-                // Apply current sort order to the loaded data
-                sortGalleryData();
-
-                // Reset infinite scroll state and display initial batch
-                if (!addLatest) {
-                    resetInfiniteScroll();
-                    displayCurrentPageOptimized();
-                } else {
-                    await addNewGalleryItemAfterGeneration(newImages[0]);
-                }
-            } else {
-                console.error('Failed to load gallery:', response.statusText);
-            }
+            throw new Error('WebSocket not connected');
         }
     } catch (error) {
         console.error('Error loading gallery:', error);
@@ -414,7 +341,7 @@ function updateGalleryItemToolbars() {
                 miniToolbar.className = 'mini-toolbar';
                 miniToolbar.innerHTML = `
                     <button class="btn-small" title="Edit"><i class="nai-settings"></i></button>
-                    <button class="btn-small" title="Download"><i class="nai-save"></i></button>
+                    <button class="btn-small" title="Download"><i class="fas fa-download"></i></button>
                     <button class="btn-small" title="Delete"><i class="nai-trash"></i></button>
                 `;
                 overlay.appendChild(miniToolbar);
@@ -618,7 +545,7 @@ function createGalleryItem(image, index) {
     // Download button
     const downloadBtn = document.createElement('button');
     downloadBtn.className = 'btn-secondary round-button';
-    downloadBtn.innerHTML = '<i class="nai-save"></i>';
+    downloadBtn.innerHTML = '<i class="fas fa-download"></i>';
     downloadBtn.title = 'Download';
     downloadBtn.onclick = (e) => {
         e.stopPropagation();
@@ -1407,8 +1334,6 @@ function removeImageFromGallery(image) {
                 }
             }
         }
-
-        console.log(`Removed image ${filename} from gallery and added placeholder`);
     } catch (error) {
         console.error('Error removing image from gallery:', error);
     }
@@ -1504,8 +1429,6 @@ function removeMultipleImagesFromGallery(images) {
             
             placeholder.dataset.index = newIndex.toString();
         }
-
-        console.log(`Removed ${images.length} images from gallery and added placeholders`);
     } catch (error) {
         console.error('Error removing multiple images from gallery:', error);
     }

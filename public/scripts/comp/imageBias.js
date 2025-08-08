@@ -924,7 +924,7 @@ async function generateServerBiasPreview() {
     const imageSource = window.uploadedImageData.image_source;
 
     // Send to server for processing
-    const response = await fetch('/test-bias-adjustment', {
+    const response = await fetchWithAuth('/test-bias-adjustment', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -1473,12 +1473,8 @@ function setupImageBiasAdjustmentListeners() {
         }
     });
     if (createMaskBtn) {
-        console.log('Create mask button found and event listener added');
         createMaskBtn.addEventListener('click', async (e) => {
-            
-            console.log('Create mask button clicked');
-            hideImageBiasMaskAlertModal();
-
+        hideImageBiasMaskAlertModal();
         let hadPendingChanges = false;
 
         // Continue with the pending image bias change first
@@ -1499,11 +1495,9 @@ function setupImageBiasAdjustmentListeners() {
         }
 
         if (hadPendingChanges) {
-            console.log('Creating mask from transparent pixels');
             // Then create mask from transparent pixels
             await createMaskFromTransparentPixels();
         } else {
-            console.log('Opening mask editor directly');
             // No pending changes, just open the mask editor
             openMaskEditor();
         }

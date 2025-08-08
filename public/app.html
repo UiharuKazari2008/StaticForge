@@ -85,13 +85,17 @@
                 <button type="button" id="sortOrderToggleBtn" class="btn-secondary indicator" data-state="desc" title="Sort Order: Newest First">
                     <i class="fas fa-sort-amount-down"></i>
                 </button>
-                <input type="number" id="galleryColumnsInput" class="form-control hover-show colored" min="3" max="10" value="5" style="width: 42px;">
+                <input type="number" id="galleryColumnsInput" class="form-control hover-show colored" min="3" max="10" value="5" style="width: 32px;">
             </div>
             <div class="header-controls">
                 <!-- Pending Requests Spinner -->
                 <div id="pendingRequestsSpinner" class="pending-requests-spinner hidden">
                     <i class="fas fa-spinner fa-spin"></i>
                     <span id="pendingRequestsBadge" class="pending-requests-badge">0</span>
+                </div>
+                <div id="queueStatus" class="pending-requests-spinner">
+                    <i id="queueIcon" class="fas fa-spinner fa-spin"></i>
+                    <span id="imageGenCounter" class="pending-requests-badge">---</span>
                 </div>
                 <div id="customPresetDropdown" class="custom-dropdown">
                     <div class="button-group">
@@ -119,11 +123,6 @@
                     <button id="uploadBtn" class="btn-secondary" title="Upload Images (or paste from clipboard)">
                         <i class="fas fa-file-import"></i>
                     </button>
-                </div>
-                
-                <div id="queueStatus" class="inset-badge queue-status" title="Flow Control and Generated Images Counter">
-                    <i id="queueIcon" class="fas fa-spinner fa-spin"></i>
-                    <span id="imageGenCounter" class="image-gen-counter">---</span>
                 </div>
                 <div id="balanceDisplay" class="inset-badge balance-display" title="Loading balance...">
                     <i class="nai-anla"></i>
@@ -176,9 +175,6 @@
                                                 <button type="button" class="gallery-toggle-btn" data-tab="uc" title="Undesired Content">
                                                     <i class="fas fa-ban"></i>
                                                 </button>
-                                                <button type="button" class="gallery-toggle-btn" data-tab="settings" title="Dataset Settings">
-                                                    <i class="nai-settings"></i>
-                                                </button>
                                                 <div class="gallery-toggle-slider"></div>
                                             </div>
                                             <div class="extra-buttons">
@@ -223,12 +219,20 @@
                                                             <!-- Regular Toolbar Buttons -->
                                                             <div class="toolbar-regular-buttons">
                                                                 <!-- Dataset Dropdown -->
-                                                                <div id="datasetDropdown" class="custom-dropdown dropup dropright">
+                                                                <div id="datasetDropdown" class="custom-dropdown dropright dark-menu">
                                                                     <button type="button" id="datasetDropdownBtn" class="btn-secondary btn-small indicator" data-state="off" title="Dataset Selection">
                                                                         <i id="datasetIcon" class="nai-sakura"></i>
                                                                         <span id="datasetSelected" class="badge hidden"></span>
                                                                     </button>
                                                                     <div id="datasetDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                                                </div>
+                                                                <!-- Sub Toggles Dropdown -->
+                                                                <div id="subTogglesDropdown" class="custom-dropdown dropright dark-menu">
+                                                                    <!-- Sub Toggles Button -->
+                                                                    <button type="button" id="subTogglesBtn" class="btn-secondary btn-small indicator" data-state="off" title="Dataset Adjustment Toggles">
+                                                                        <i class="fas fa-diamond-half-stroke"></i>
+                                                                    </button>
+                                                                    <div id="subTogglesDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
                                                                 </div>
                                                                 <!-- Quality Toggle -->
                                                                 <button type="button" id="qualityToggleBtn" class="btn-small btn-secondary indicator" data-state="off" title="Enable Quality Enhancements">
@@ -340,14 +344,6 @@
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div class="tab-pane" id="settings-tab" data-label="Dataset Settings">
-                                                <div class="dataset-bias-container">
-                                                    <!-- Dataset bias inputs will be dynamically populated here -->
-                                                    <div id="datasetBiasControls">
-                                                        <!-- Dynamic content -->
-                                                    </div>
-                                                </div>
-                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -362,7 +358,7 @@
                                                 <i class="fas fa-arrows-up-down-left-right"></i> Auto
                                             </button>
                                             <button type="button" id="vibeNormalizeToggle" class="btn-secondary indicator" data-state="on" title="Normalize vibe strengths">
-                                                <i class="fas fa-scale-balanced"></i>
+                                                <i class="fas fa-equals"></i>
                                             </button>
                                             <!-- Custom Transformation Dropdown -->
                                             <input type="hidden" id="transformationType" value="reroll">
@@ -398,15 +394,20 @@
                                 <div id="transformationRow" class="transforms-container form-row">
                                     <!-- Transformation Section -->
                                     <div id="transformationSection" class="transformation-image-container">
-                                        <div class="overlay-buttons-container">
-                                            <button type="button" id="inpaintBtn" class="btn-secondary indicator blur" data-state="off">
-                                                <i class="nai-inpaint"></i>
-                                            </button>
-                                            <button type="button" id="deleteImageBaseBtn" class="btn-danger blur" style="display: none;">
-                                                <i class="nai-thin-cross"></i>
-                                            </button>
-                                        </div>
                                         <div class="variation-image-container">
+                                            <div class="overlay-buttons-container-bottom">
+                                                <button type="button" id="previewBaseImageBtn" class="btn-secondary blur" style="display: none;">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                            </div>
+                                            <div class="overlay-buttons-container">
+                                                <button type="button" id="inpaintBtn" class="btn-secondary indicator blur" data-state="off">
+                                                    <i class="nai-inpaint"></i>
+                                                </button>
+                                                <button type="button" id="deleteImageBaseBtn" class="btn-danger blur" style="display: none;">
+                                                    <i class="nai-thin-cross"></i>
+                                                </button>
+                                            </div>
                                             <img id="manualVariationImage" src="" alt="Source Image" class="variation-image">
                                             <canvas id="maskPreviewCanvas" class="mask-preview-canvas" style="pointer-events: none;"></canvas>
                                                 
@@ -615,8 +616,14 @@
                             <!-- Manual Modal Loading Overlay -->
                             <div id="manualLoadingOverlay" class="manual-loading-overlay hidden return">
                                 <div class="manual-loading-content">
-                                    <img src="/azuspin.gif"></img>
-                                    <p>Generating your image...</p>
+                                    <img class="loading" src="/azuspin.gif"></img>
+                                    <p class="loading">Generating your image...</p>
+                                </div>
+                            </div>
+                            <!-- Manual Preview Navigation Loading Overlay -->
+                            <div id="manualPreviewNavigationLoading" class="manual-preview-navigation-loading hidden">
+                                <div class="manual-preview-navigation-loading-content">
+                                    <div class="fas fa-spinner-third fa-spin"></div>
                                 </div>
                             </div>
                             <div class="manual-preview-content">
@@ -633,7 +640,7 @@
                                 </div>
                                 <div class="manual-preview-controls">
                                     <button id="manualPreviewDownloadBtn" class="btn-secondary round-button blur" style="display: none;">
-                                        <i class="nai-save"></i>
+                                        <i class="fas fa-download"></i>
                                     </button>
                                     <button id="manualPreviewPinBtn" class="btn-secondary round-button blur" style="display: none;">
                                         <i class="nai-heart-disabled"></i>
@@ -684,6 +691,9 @@
                                     <h3>References</h3>
                                 </div>
                                 <div class="cache-browser-header-right">
+                                    <button type="button" id="showAllReferencesBtn" class="btn-secondary indicator" data-state="off" title="Show all references">
+                                        <i class="fas fa-folder-open"></i> Show All
+                                    </button>
                                     <button id="cacheBrowserOptionsBtn" class="btn-secondary">
                                         <i class="fas fa-cog"></i>
                                     </button>
@@ -696,8 +706,8 @@
                                         <!-- Reference images will be loaded here -->
                                     </div>
                                     <div class="cache-browser-loading" id="cacheBrowserLoadingContainer" style="display: none;">
-                                        <img src="/azuspin.gif"></img>
-                                        <p>Loading references...</p>
+                                        <img class="loading" src="/azuspin.gif"></img>
+                                        <p class="loading">Loading references...</p>
                                     </div>
                                 </div>
                             </div>
@@ -752,16 +762,16 @@
             
             <!-- Loading indicator for infinite scroll -->
             <div id="infiniteScrollLoading" class="infinite-scroll-loading" style="display: none;">
-                <img src="/azuspin.gif"></img>
-                <p>Loading more images...</p>
+                <img class="loading" src="/azuspin.gif"></img>
+                <p class="loading">Loading more images...</p>
             </div>
         </div>
 
         <!-- Loading Overlay -->
         <div id="loadingOverlay" class="loading-overlay hidden">
             <div class="loading-content">
-                <img src="/azuspin.gif"></img>
-                <p>Generating your image...</p>
+                <img class="loading" src="/azuspin.gif"></img>
+                <p class="loading">Generating your image...</p>
             </div>
         </div>
     </div>
@@ -849,7 +859,7 @@
                 <div class="mask-editor-actions">
                     <button type="button" id="cancelMaskBtn" class="btn-secondary">Cancel</button>
                     <button type="button" id="deleteMaskBtn" class="btn-danger">Delete</button>
-                    <button type="button" id="saveMaskBtn" class="btn-primary">Save</button>
+                    <button type="button" id="saveMaskBtn" class="btn-primary"><span>Save</span> <i class="nai-save"></i></button>
                 </div>
             </div>
         </div>
@@ -919,7 +929,7 @@
             </div>
             <div class="image-bias-adjustment-actions">
                 <button type="button" id="cancelBiasAdjustmentBtn" class="btn-secondary">Cancel</button>
-                <button type="button" id="saveBiasAdjustmentBtn" class="btn-primary">Save Adjustment</button>
+                <button type="button" id="saveBiasAdjustmentBtn" class="btn-primary"><span>Save Adjustment</span> <i class="nai-save"></i></button>
             </div>
         </div>
     </div>
@@ -950,7 +960,7 @@
             </div>
             <div class="bias-confirm-actions">
                 <button type="button" id="cancelBiasConfirmBtn" class="btn-secondary">Cancel</button>
-                <button type="button" id="acceptBiasConfirmBtn" class="btn-primary">Accept & Save</button>
+                <button type="button" id="acceptBiasConfirmBtn" class="btn-primary"><span></span>Save</span> <i class="nai-save"></i></button>
             </div>
         </div>
     </div>
@@ -1050,7 +1060,7 @@
                     <div class="lightbox-controls-section">
                         <div class="lightbox-controls">
                             <button id="lightboxDownloadBtn" class="btn-secondary round-button">
-                                <i class="nai-save"></i>
+                                <i class="fas fa-download"></i>
                             </button>
                             <button id="lightboxUpscaleBtn" class="btn-secondary round-button" style="display:none;">
                                 <i class="nai-upscale"></i>
@@ -1264,7 +1274,7 @@
     <div id="workspaceManageModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3>Workspaces</h3>
+                <h3>Settings</h3>
                 <button id="closeWorkspaceManageBtn" class="close-dialog" aria-label="Close">&times;</button>
             </div>
             <div class="modal-body">
@@ -1275,9 +1285,49 @@
                 </div>
             </div>
             <div class="modal-footer">
+                <button type="button" id="textReplacementManagerBtn" class="btn-secondary" title="Manage Text Replacements">
+                    <span>Text Replacements</span>
+                    <i class="fas fa-code"></i>
+                </button>
                 <button type="button" id="workspaceAddBtn" class="btn-secondary" title="Add Workspace">
                     <span>New Workspace</span>
                     <i class="fas fa-grid-2-plus"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Text Replacement Manager Modal -->
+    <div id="textReplacementManagerModal" class="modal">
+        <div class="modal-content text-replacement-manager-content">
+            <div class="modal-header">
+                <h3>Text Replacement Manager</h3>
+                <button id="closeTextReplacementManagerBtn" class="close-dialog" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="text-replacement-search">
+                    <input type="text" id="textReplacementSearch" class="form-control" placeholder="Search text replacements...">
+                    <i class="fas fa-search"></i>
+                </div>
+                <div class="text-replacement-list-container">
+                    <div id="textReplacementList" class="text-replacement-list">
+                        <!-- Text replacement items will be populated here -->
+                    </div>
+                    <div class="text-replacement-pagination">
+                        <button type="button" id="textReplacementPrevBtn" class="btn-secondary pagination-btn" title="Previous Page">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <span id="textReplacementPageInfo" class="page-info">Page 1 of 1</span>
+                        <button type="button" id="textReplacementNextBtn" class="btn-secondary pagination-btn" title="Next Page">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="saveTextReplacementsBtn" class="btn-primary" title="Save Changes">
+                    <span>Save Changes</span>
+                    <i class="fas fa-save"></i>
                 </button>
             </div>
         </div>
@@ -1324,7 +1374,7 @@
                 </div>
                 <div class="modal-actions btn-group">
                     <button type="button" id="workspaceSaveBtn" class="btn-primary">
-                        <i class="fas fa-save"></i> Save
+                        <i class="nai-save"></i> Save
                     </button>
                     <button type="button" id="workspaceCancelBtn" class="btn-secondary">
                         Cancel
@@ -1387,9 +1437,8 @@
                                 <i class="nai-import"></i> Upload
                             </button>
                             <button type="button" id="cacheManagerRefreshBtn" class="btn-secondary">
-                                <i class="nai-reload"></i> Refresh
+                                <i class="nai-reload"></i>
                             </button>
-
                         </div>
                     </div>
                 </div>
@@ -1399,8 +1448,8 @@
                             <!-- Reference images will be loaded here -->
                         </div>
                         <div class="cache-manager-loading" id="cacheManagerLoading" style="display: none;">
-                            <img src="/azuspin.gif"></img>
-                            <p>Loading cache images...</p>
+                            <img class="loading" src="/azuspin.gif"></img>
+                            <p class="loading">Loading cache images...</p>
                         </div>
                     </div>
                 </div>
@@ -1412,10 +1461,10 @@
     <div id="unifiedUploadModal" class="modal">
         <div class="modal-content gallery-move-modal-content">
             <div class="gallery-move-left-panel">
-                <img id="unifiedUploadBackgroundImage" src="/images/placeholder.png" alt="Upload image" class="gallery-move-background-image">
+                <img id="unifiedUploadBackgroundImage" src="/background.jpg" alt="Upload image" class="gallery-move-background-image">
                 <div class="gallery-move-overlay">
                     <div class="gallery-move-image-info-overlay">
-                        <p><strong>Mode:</strong> <span id="unifiedUploadModeDisplay">Upload Reference</span></p>
+                        <p><strong><span id="unifiedUploadModeDisplay">Upload Reference</span></strong></p>
                         <p><strong>Model:</strong> <span id="unifiedUploadModelDisplay">V4.5</span></p>
                     </div>
                 </div>
@@ -1442,25 +1491,22 @@
                     </div>
 
                     <!-- File Upload Section -->
-                    <div class="form-section">
-                        <div class="form-group">
-                            <label for="unifiedUploadFileInput">Select Images</label>
-                            <input type="file" id="unifiedUploadFileInput" class="form-control" accept="image/*" multiple>
-                            <small class="form-text" id="unifiedUploadFileText">Select one or more images to upload to the cache</small>
-                        </div>
-                        <div class="form-group">
-                            <label for="unifiedUploadProgress">Upload Progress</label>
-                            <div id="unifiedUploadProgress" class="upload-progress" style="display: none;">
-                                <div class="progress-bar">
-                                    <div class="progress-fill" id="unifiedUploadProgressFill"></div>
-                                </div>
-                                <span id="unifiedUploadProgressText">0%</span>
+                    <div class="form-group">
+                        <label for="unifiedUploadFileInput">Select Images</label>
+                        <input type="file" id="unifiedUploadFileInput" class="form-control" accept="image/*,.json,application/json,.naiv4vibebundle" multiple>
+                    </div>
+
+                    <!-- Vibe Bundle Preview Section (Hidden by default) -->
+                    <div id="unifiedUploadVibeBundlePreview" class="form-group" style="display: none;">
+                        <div class="vibe-bundle-preview-container">
+                            <div id="unifiedUploadVibeBundleList" class="vibe-bundle-list">
+                                <!-- Vibe bundle items will be populated here -->
                             </div>
                         </div>
                     </div>
 
                     <!-- Vibe Encoding Controls (Hidden by default) -->
-                    <div id="unifiedUploadVibeControls" class="form-section" style="display: none;">
+                    <div id="unifiedUploadVibeControls" class="form-row" style="display: none;">
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="unifiedUploadModelSelect">Model</label>
@@ -1476,10 +1522,14 @@
                             </div>
                             <div class="form-group">
                                 <label for="unifiedUploadIeInput">Information Extraction</label>
-                                <input type="number" id="unifiedUploadIeInput" class="form-control hover-show" min="0" max="1" step="0.01" value="0.35">
+                                <input type="number" id="unifiedUploadIeInput" class="form-control hover-show colored" min="0" max="1" step="0.01" value="0.35">
                             </div>
                         </div>
                         <small class="form-text">Information Extraction: Controls how much information is extracted from the image (0 = minimal, 1 = maximum). Use scroll wheel to adjust.</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="unifiedUploadCommentInput">Comment (Optional)</label>
+                        <textarea id="unifiedUploadCommentInput" class="form-control hover-show" rows="2" placeholder="Add a comment about this import..."></textarea>
                     </div>
                 </div>
                 <div class="gallery-move-actions">
@@ -1496,7 +1546,7 @@
     <div id="cacheManagerMoveModal" class="modal">
         <div class="modal-content gallery-move-modal-content">
             <div class="gallery-move-left-panel">
-                <img id="cacheManagerMoveBackgroundImage" src="/images/placeholder.png" alt="Reference image" class="gallery-move-background-image">
+                <img id="cacheManagerMoveBackgroundImage" src="/background.jpg" alt="Reference image" class="gallery-move-background-image">
                 <div class="gallery-move-overlay">
                     <div class="gallery-move-image-info-overlay">
                         <p><strong><span id="cacheManagerMoveCount">0</span></strong> Image(s)</p>
@@ -1541,7 +1591,7 @@
     <div id="vibeEncodingModal" class="modal">
         <div class="modal-content gallery-move-modal-content">
             <div class="gallery-move-left-panel">
-                <img id="vibeEncodingBackgroundImage" src="/images/placeholder.png" alt="Vibe encoding image" class="gallery-move-background-image">
+                <img id="vibeEncodingBackgroundImage" src="/background.jpg" alt="Vibe encoding image" class="gallery-move-background-image">
                 <div class="gallery-move-overlay">
                     <div class="gallery-move-image-info-overlay">
                         <p><strong>Mode:</strong> <span id="vibeEncodingModeDisplay">Upload</span></p>
@@ -1593,8 +1643,13 @@
                             </div>
                             <div class="form-group">
                                 <label for="vibeEncodingIeInput">Information Extraction</label>
-                                <input type="number" id="vibeEncodingIeInput" class="form-control hover-show" min="0" max="1" step="0.01" value="0.35">
+                                <input type="number" id="vibeEncodingIeInput" class="form-control hover-show colored" min="0" max="1" step="0.01" value="0.35">
                             </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="vibeEncodingCommentInput">Comment (Optional)</label>
+                            <textarea id="vibeEncodingCommentInput" class="form-control hover-show" rows="2" placeholder="Add a comment about this vibe encoding..."></textarea>
+                            <small class="form-text">Add a comment to help identify or describe this vibe encoding</small>
                         </div>
                         <small class="form-text">Information Extraction: Controls how much information is extracted from the image (0 = minimal, 1 = maximum). Use scroll wheel to adjust.</small>
                     </div>
@@ -1687,8 +1742,8 @@
                     <!-- Thumbnails will be loaded here -->
                 </div>
                 <div id="backgroundImageLoading" class="background-image-loading" style="display: none;">
-                    <img src="/azuspin.gif"></img>
-                    <p>Loading images...</p>
+                    <img class="loading" src="/azuspin.gif"></img>
+                    <p class="loading">Loading images...</p>
                 </div>
                 <div class="modal-actions">
                     <button type="button" id="backgroundImageCancelBtn" class="btn-secondary">
@@ -1715,12 +1770,26 @@
                 </div>
                 <div class="modal-actions btn-group">
                     <button type="button" id="bulkChangePresetConfirmBtn" class="btn-primary">
-                        <i class="fas fa-save"></i> Update Preset Names
+                        <i class="nai-save"></i> Update Preset Names
                     </button>
                     <button type="button" id="bulkChangePresetCancelBtn" class="btn-secondary">
                         Cancel
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Preview Modal -->
+    <div id="imagePreviewModal" class="image-preview-modal">
+        <!-- Close button overlay -->
+        <button id="imagePreviewCloseBtn" class="image-preview-close-btn">
+            <i class="nai-thin-cross"></i>
+        </button>
+        
+        <div class="image-preview-container">
+            <div class="image-preview-image-container">
+                <img id="imagePreviewImage" src="" alt="Preview Image">
             </div>
         </div>
     </div>
@@ -1789,10 +1858,13 @@
 
     <script src="scripts/comp/dropdown.js"></script>
     <script src="scripts/comp/lightbox.js"></script>
+    <script src="scripts/comp/imagePreview.js"></script>
     <script src="scripts/comp/modalUtils.js"></script>
     <script src="scripts/comp/inpaint.js"></script>
     <script src="scripts/comp/workspaceUtils.js"></script>
+    <script src="scripts/comp/textReplacementManager.js"></script>
     <script src="scripts/comp/autocompleteUtils.js"></script>
+    <script src="scripts/utils/referenceUtils.js"></script>
     <script src="scripts/comp/imageBias.js"></script>
     <script src="scripts/comp/referenceManager.js"></script>
     <script src="scripts/comp/emphasisManager.js"></script>

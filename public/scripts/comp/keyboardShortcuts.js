@@ -6,14 +6,9 @@ let shortcutsOverlay = null;
 
 // Initialize keyboard shortcuts
 function initializeManualModalShortcuts() {
-    console.log('Initializing manual modal keyboard shortcuts');
-    // Create shortcuts overlay
     createShortcutsOverlay();
-    
-    // Add event listeners
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
-    console.log('Keyboard shortcuts initialized');
 }
 
 // Create the shortcuts overlay
@@ -34,8 +29,17 @@ function createShortcutsOverlay() {
                     <span class="shortcut-desc">Switch to UC Tab</span>
                 </div>
                 <div class="shortcut-item">
+                    <span class="shortcut-key">Alt + V</span>
+                    <span class="shortcut-desc">Reference Browser</span>
+                </div>
+                <div class="divider"></div>
+                <div class="shortcut-item">
                     <span class="shortcut-key">Alt + A</span>
-                    <span class="shortcut-desc">Dataset Tag Search</span>
+                    <span class="shortcut-desc">Quick Access</span>
+                </div>
+                <div class="shortcut-item">
+                    <span class="shortcut-key">Alt + F</span>
+                    <span class="shortcut-desc">Add Favorite</span>
                 </div>
                 <div class="shortcut-item">
                     <span class="shortcut-key">Alt + E</span>
@@ -46,13 +50,15 @@ function createShortcutsOverlay() {
                     <span class="shortcut-desc">Inline Search</span>
                 </div>
                 <div class="shortcut-item">
+                    <span class="shortcut-key">Alt + O</span>
+                    <span class="shortcut-desc">Toggle Autofill</span>
+                </div>
+                <div class="divider"></div>
+                <div class="shortcut-item">
                     <span class="shortcut-key">Alt + C</span>
                     <span class="shortcut-desc">Add Character</span>
                 </div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">Alt + V</span>
-                    <span class="shortcut-desc">Reference Browser</span>
-                </div>
+                <div class="divider"></div>
                 <div class="shortcut-item">
                     <span class="shortcut-key">Alt + ,</span>
                     <span class="shortcut-desc">Previous Image</span>
@@ -64,10 +70,6 @@ function createShortcutsOverlay() {
                 <div class="shortcut-item">
                     <span class="shortcut-key">Alt + X</span>
                     <span class="shortcut-desc">Start Generation</span>
-                </div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">Alt + O</span>
-                    <span class="shortcut-desc">Toggle Autofill</span>
                 </div>
             </div>
         </div>
@@ -83,11 +85,6 @@ function handleKeyDown(event) {
     
     // Only handle shortcuts when manual modal is open
     if (!isManualModalOpen) return;
-    
-    // Debug logging for key events
-    if (event.altKey) {
-        console.log('ALT key combination detected:', event.key);
-    }
     
     // Handle Alt key press
     if (event.key === 'Alt') {
@@ -191,12 +188,8 @@ function handleKeyDown(event) {
                             if (icon) {
                                 icon.className = isEnabled ? 'fas fa-lightbulb' : 'fas fa-lightbulb-slash';
                             }
-                        } else {
-                            console.log(`No autofill button found in toolbar ${index}`);
                         }
                     });
-                } else {
-                    console.log('toggleAutofill function not found on window object');
                 }
                 break;
         }

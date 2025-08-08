@@ -1004,7 +1004,6 @@ function closeMaskEditor() {
 
 // Move to mask.js: Open mask editor
 function openMaskEditor() {
-    console.log('openMaskEditor called');
     const maskEditorDialog = document.getElementById('maskEditorDialog');
 
     if (!maskEditorDialog) {

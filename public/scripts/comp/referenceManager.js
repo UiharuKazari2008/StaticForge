@@ -14,6 +14,7 @@ const closeCacheManagerBtn = document.getElementById('closeCacheManagerBtn');
 const closeCacheManagerMoveModalBtn = document.getElementById('closeCacheManagerMoveModalBtn');
 const cacheManagerRefreshBtn = document.getElementById('cacheManagerRefreshBtn');
 const cacheManagerUploadBtn = document.getElementById('cacheManagerUploadBtn');
+const showAllReferencesBtn = document.getElementById('showAllReferencesBtn');
 const closeVibeEncodingBtn = document.getElementById('closeVibeEncodingBtn');
 const vibeEncodingCancelBtn = document.getElementById('vibeEncodingCancelBtn');
 const vibeEncodingConfirmBtn = document.getElementById('vibeEncodingConfirmBtn');
@@ -62,7 +63,6 @@ const closeUnifiedUploadBtn = document.getElementById('closeUnifiedUploadBtn');
 const unifiedUploadCancelBtn = document.getElementById('unifiedUploadCancelBtn');
 const unifiedUploadConfirmBtn = document.getElementById('unifiedUploadConfirmBtn');
 const unifiedUploadFileInput = document.getElementById('unifiedUploadFileInput');
-const unifiedUploadFileText = document.getElementById('unifiedUploadFileText');
 const unifiedUploadProgress = document.getElementById('unifiedUploadProgress');
 const unifiedUploadProgressFill = document.getElementById('unifiedUploadProgressFill');
 const unifiedUploadProgressText = document.getElementById('unifiedUploadProgressText');
@@ -78,10 +78,32 @@ const unifiedUploadModeDisplay = document.getElementById('unifiedUploadModeDispl
 const unifiedUploadModelDisplay = document.getElementById('unifiedUploadModelDisplay');
 const unifiedUploadBackgroundImage = document.getElementById('unifiedUploadBackgroundImage');
 
+const importModelMapping = {
+    'v4full': 'v4',
+    'v4-5full': 'v4_5',
+    'v4curated': 'v4_cur',
+    'v4-5curated': 'v4_5_cur'
+};
+
 // Reference Browser Functions
 let cacheImages = [];
 let cacheCurrentPage = 1;
 let cacheImagesPerPage = 20;
+let cacheShowAllReferences = false;
+
+// Toggle show all references functionality for cache browser
+async function toggleShowAllReferences() {
+    cacheShowAllReferences = !cacheShowAllReferences;
+    
+    // Update button state
+    if (showAllReferencesBtn) {
+        showAllReferencesBtn.setAttribute('data-state', cacheShowAllReferences ? 'on' : 'off');
+    }
+    
+    // Reload images with new filter
+    await loadCacheImages();
+    displayCacheImagesContainer();
+}
 
 // Combined Vibe Encoding Modal Variables
 let vibeEncodingCurrentMode = null; // 'upload', 'ie', 'reference'
@@ -96,6 +118,7 @@ let unifiedUploadSelectedModel = 'v4_5';
 // Reference Manager Variables
 let cacheManagerImages = [];
 let cacheManagerCurrentWorkspace = 'default';
+let cacheManagerShowAllReferences = false;
 let vibeManagerImages = [];
 let vibeManagerMoveTargetImage = null;
 let vibeManagerSelectedImages = new Set();
@@ -146,10 +169,32 @@ function hideCacheBrowser() {
     }
 }
 
-async function loadCacheImages() {
+async function refreshReferenceBrowserIfOpen() {
+    const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
+    const previewOpen = (previewSection && previewSection.getAttribute('data-active-panel') === 'cache-browser');
+    if (previewOpen) {
+        displayCacheImagesContainer();
+    }
+    if (vibeReferencesContainer) {
+        const vibeReferenceItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item');
+        if (vibeReferenceItems.length > 0) {
+            refreshReferenceBrowserForModelChange();
+        }
+    }
+}
+
+// Unified function to load reference images for both cache browser and manager
+async function loadReferenceImages(workspace = null, showAll = false) {
     try {
         // Load unified references (cache images and vibe images together)
-        const response = await wsClient.getReferences();
+        let response;
+        if (showAll) {
+            response = await wsClient.getWorkspaceReferences('all');
+        } else if (workspace) {
+            response = await wsClient.getWorkspaceReferences(workspace);
+        } else {
+            response = await wsClient.getReferences();
+        }
 
         if (response.success) {
             const data = response.data;
@@ -178,13 +223,17 @@ async function loadCacheImages() {
                     const standaloneVibe = {
                         hash: vibe.id,
                         filename: vibe.filename,
-                        mtime: vibe.mtime,
+                        mtime: vibe.createdAt || vibe.mtime,
                         size: vibe.size,
+                        source: vibe.source,
                         hasPreview: vibe.preview,
                         type: 'vibe',
                         vibes: [vibe],
                         hasVibes: true,
-                        isStandalone: true
+                        isStandalone: true,
+                        workspaceId: vibe.workspaceId,
+                        importedFrom: vibe.importedFrom,
+                        locked: vibe.locked
                     };
                     cacheMap.set(vibe.id, standaloneVibe);
                 }
@@ -200,109 +249,88 @@ async function loadCacheImages() {
                 return bTime - aTime;
             });
             
-            cacheImages = combinedImages;
+            return combinedImages;
         } else {
             throw new Error('Failed to load references');
         }
+    } catch (error) {
+        console.error('Error loading reference images:', error);
+        throw error;
+    }
+}
+
+async function loadCacheImages() {
+    try {
+        const images = await loadReferenceImages(null, cacheShowAllReferences);
+        cacheImages = images;
     } catch (error) {
         console.error('Error loading cache images:', error);
         throw error;
     }
 }
 
-function displayCacheImages() {
-    // Get the references tab gallery (modal version)
-    const cacheGallery = referencesTab ? referencesTab.querySelector('#cacheGallery') : null;
+// Unified function to display reference images in any container
+function displayReferenceImages(container, images, createItemFunction, options = {}) {
+    if (!container) return;
 
-    if (!cacheGallery) return;
+    container.innerHTML = '';
 
-    cacheGallery.innerHTML = '';
-
-    if (cacheImages.length === 0) {
-        cacheGallery.innerHTML = `
+    if (images.length === 0) {
+        const noImagesMessage = options.noImagesMessage || 'No cache images found';
+        container.innerHTML = `
         <div class="no-images">
             <i class="fas fa-image-slash"></i>
-            <span>No cache images found</span>
+            <span>${noImagesMessage}</span>
         </div>
     `;
         return;
     }
 
-    // Separate default workspace items from current workspace items
-    const currentWorkspaceItems = [];
-    const defaultWorkspaceItems = [];
+    // Separate default workspace items from current workspace items if requested
+    if (options.separateWorkspaces) {
+        const currentWorkspaceItems = [];
+        const defaultWorkspaceItems = [];
 
-    cacheImages.forEach(cacheImage => {
-        if (cacheImage.workspaceId === 'default') {
-            defaultWorkspaceItems.push(cacheImage);
-        } else {
-            currentWorkspaceItems.push(cacheImage);
-        }
-    });
+        images.forEach(image => {
+            if (image.workspaceId === 'default') {
+                defaultWorkspaceItems.push(image);
+            } else {
+                currentWorkspaceItems.push(image);
+            }
+        });
 
-    // Display current workspace items first, then default workspace items
-    currentWorkspaceItems.forEach(cacheImage => {
-        const galleryItem = createCacheGalleryItem(cacheImage);
-        cacheGallery.appendChild(galleryItem);
-    });
+        // Display current workspace items first, then default workspace items
+        currentWorkspaceItems.forEach(image => {
+            const galleryItem = createItemFunction(image);
+            container.appendChild(galleryItem);
+        });
 
-    defaultWorkspaceItems.forEach(cacheImage => {
-        const galleryItem = createCacheGalleryItem(cacheImage);
-        cacheGallery.appendChild(galleryItem);
-    });
+        defaultWorkspaceItems.forEach(image => {
+            const galleryItem = createItemFunction(image);
+            container.appendChild(galleryItem);
+        });
+    } else {
+        // Display all images in order
+        images.forEach(image => {
+            const galleryItem = createItemFunction(image);
+            container.appendChild(galleryItem);
+        });
+    }
 
     // Add few-items class if there are 3 or fewer items
-    if (cacheImages.length <= 3) {
-        cacheGallery.classList.add('few-items');
-    } else {
-        cacheGallery.classList.remove('few-items');
+    if (options.addFewItemsClass && images.length <= 3) {
+        container.classList.add('few-items');
+    } else if (options.addFewItemsClass) {
+        container.classList.remove('few-items');
     }
 }
 
 function displayCacheImagesContainer() {
-    if (!cacheGalleryContainer) return;
-
-    cacheGalleryContainer.innerHTML = '';
-
-    if (cacheImages.length === 0) {
-        cacheGalleryContainer.innerHTML = `
-        <div class="no-images">
-            <i class="fas fa-image-slash"></i>
-            <span>No cache images found</span>
-        </div>
-    `;
-        return;
-    }
-
-    // Separate default workspace items from current workspace items
-    const currentWorkspaceItems = [];
-    const defaultWorkspaceItems = [];
-
-    cacheImages.forEach(cacheImage => {
-        if (cacheImage.workspaceId === 'default') {
-            defaultWorkspaceItems.push(cacheImage);
-        } else {
-            currentWorkspaceItems.push(cacheImage);
-        }
+    displayReferenceImages(cacheGalleryContainer, cacheImages, createCacheGalleryItem, {
+        separateWorkspaces: true,
+        addFewItemsClass: true,
+        noImagesMessage: 'No cache images found'
     });
-
-    // Display current workspace items first, then default workspace items
-    currentWorkspaceItems.forEach(cacheImage => {
-        const galleryItem = createCacheGalleryItem(cacheImage);
-        cacheGalleryContainer.appendChild(galleryItem);
-    });
-
-    defaultWorkspaceItems.forEach(cacheImage => {
-        const galleryItem = createCacheGalleryItem(cacheImage);
-        cacheGalleryContainer.appendChild(galleryItem);
-    });
-
-    // Add few-items class if there are 3 or fewer items
-    if (cacheImages.length <= 3) {
-        cacheGalleryContainer.classList.add('few-items');
-    } else {
-        cacheGalleryContainer.classList.remove('few-items');
-    }
 }
 
 function createCacheGalleryItem(cacheImage) {
@@ -316,7 +344,7 @@ function createCacheGalleryItem(cacheImage) {
         if (cacheImage.hasPreview) {
             img.src = `/cache/preview/${cacheImage.hasPreview}`;
         } else {
-            img.src = '/images/placeholder.png';
+            img.src = '/background.jpg';
         }
     } else {
         // For cache images (with or without vibes)
@@ -363,10 +391,27 @@ function createCacheGalleryItem(cacheImage) {
         addAsVibeReference(cacheImage);
     });
     
+    // Check if there are available encodings for the current model
+    const currentModel = getCurrentSelectedModel();
+    let hasCompatibleEncodings = false;
+    
     if (cacheImage.hasVibes && cacheImage.vibes.length > 0) {
+        hasCompatibleEncodings = cacheImage.vibes.some(vibe => 
+            vibe.encodings && vibe.encodings.some(encoding => 
+                encoding.model.toLowerCase() === currentModel.toLowerCase()
+            )
+        );
+    }
+    
+    if (hasCompatibleEncodings) {
         vibeBtn.disabled = false;
+        vibeBtn.title = 'Add as vibe reference';
+    } else if (cacheImage.hasVibes && cacheImage.vibes.length > 0) {
+        vibeBtn.disabled = true;
+        vibeBtn.title = `No encodings available for ${getCurrentSelectedModelDisplayName()}`;
     } else {
         vibeBtn.disabled = true;
+        vibeBtn.title = 'No vibe encodings available';
     }
     if (cacheImage.isStandalone) {
         baseImageBtn.disabled = true;
@@ -383,10 +428,26 @@ function createCacheGalleryItem(cacheImage) {
     const buttonsContainer = document.createElement('div');
     buttonsContainer.className = 'cache-gallery-item-buttons';
     
+    // Create comment button if any vibes have comments
+    if (cacheImage.vibes && cacheImage.vibes.length > 0) {
+        const vibesWithComments = cacheImage.vibes.filter(vibe => vibe.comment && vibe.comment.trim() !== '');
+        if (vibesWithComments.length > 0) {
+            const commentBtn = document.createElement('button');
+            commentBtn.className = 'btn-secondary btn-small';
+            commentBtn.innerHTML = '<i class="fas fa-comment"></i>';
+            commentBtn.title = `View comments (${vibesWithComments.length} vibe${vibesWithComments.length > 1 ? 's' : ''})`;
+            commentBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showVibesCommentsDialog(vibesWithComments);
+            });
+            buttonsContainer.appendChild(commentBtn);
+        }
+    }
+
     // Create vibe encode button (always show to allow adding more IEs)
     const vibeEncodeBtn = document.createElement('button');
     vibeEncodeBtn.className = 'btn-secondary btn-small';
-    vibeEncodeBtn.innerHTML = '<span>New IE</span><i class="nai-vibe-transfer"></i>';
+    vibeEncodeBtn.innerHTML = '<i class="nai-plus"></i> <span>IE</span>';
     vibeEncodeBtn.title = cacheImage.hasVibes ? 'Add Another Vibe Encoding' : 'Create Vibe Encoding';
     vibeEncodeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -399,6 +460,43 @@ function createCacheGalleryItem(cacheImage) {
         }
     });
 
+    // Create preview button
+    if (cacheImage.hasPreview) {
+        const previewBtn = document.createElement('button');
+        previewBtn.className = 'btn-secondary btn-small';
+        previewBtn.innerHTML = '<i class="fas fa-eye"></i>';
+        previewBtn.title = 'Preview image';
+        previewBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            // Get the full image source - prefer original image if available
+            let imageSrc;
+            if (cacheImage.isStandalone) {
+                // For standalone vibes, use the vibe's preview or fallback
+                if (cacheImage.type === 'base64' && cacheImage.source) {
+                    imageSrc = `data:image/png;base64,${cacheImage.source}`;
+                } else if (cacheImage.type === 'vibe' && cacheImage.source) {
+                    imageSrc = `data:image/png;base64,${cacheImage.source}`;
+                } else if (cacheImage.hasPreview) {
+                    imageSrc = `/cache/preview/${cacheImage.hasPreview}`;
+                }
+            } else {
+                if (cacheImage.hash) {
+                    imageSrc = `/cache/upload/${cacheImage.hash}`;
+                } else if (cacheImage.hasPreview) {
+                    imageSrc = `/cache/preview/${cacheImage.hash}.webp`;
+                }
+            }
+
+            if (imageSrc) {
+                showImagePreview(imageSrc, `Reference image ${cacheImage.hash}`);
+            } else {
+                showError('No image found');
+            }
+        });
+
+        buttonsContainer.appendChild(previewBtn);
+    }
+    
     buttonsContainer.appendChild(vibeEncodeBtn);
 
     overlay.appendChild(info);
@@ -409,19 +507,52 @@ function createCacheGalleryItem(cacheImage) {
     const badgesContainer = document.createElement('div');
     badgesContainer.className = 'cache-badges';
 
-    // Add default workspace badge if this is a default workspace item
-    if (cacheImage.workspaceId === 'default') {
+    // Add workspace badge if show all references is enabled and this has a workspaceId
+    if (cacheShowAllReferences && cacheImage.workspaceId) {
+        const workspaceBadge = document.createElement('div');
+        if (cacheImage.workspaceId === 'default') {
+            workspaceBadge.className = 'cache-badge default-workspace-badge';
+            workspaceBadge.innerHTML = '<i class="fas fa-home"></i><span>Default</span>';
+        } else {
+            workspaceBadge.className = 'cache-badge workspace-badge';
+            const workspaceName = getWorkspaceDisplayName(cacheImage.workspaceId);
+            workspaceBadge.innerHTML = `<i class="fas fa-folder"></i><span>${workspaceName}</span>`;
+            workspaceBadge.title = `Workspace: ${workspaceName}`;
+        }
+        badgesContainer.appendChild(workspaceBadge);
+    } else if (!cacheShowAllReferences && cacheImage.workspaceId === 'default') {
+        // Show default badge only when not showing all references (current behavior)
         const badge = document.createElement('div');
         badge.className = 'cache-badge default-workspace-badge';
         badge.innerHTML = '<i class="fas fa-home"></i><span>Default</span>';
         badgesContainer.appendChild(badge);
     }
 
+
+    // Add NovelAI badge if imported from NovelAI
+    if (cacheImage.importedFrom === 'novelai') {
+        const novelaiBadge = document.createElement('div');
+        novelaiBadge.className = 'cache-badge novelai-badge';
+        novelaiBadge.innerHTML = '<i class="nai-pen-tip-light"></i> NovelAI';
+        novelaiBadge.title = 'Imported from NovelAI Vibe Bundle';
+        badgesContainer.appendChild(novelaiBadge);
+    }
+
+    // Add locked badge if vibe is locked
+    if (cacheImage.locked) {
+        const lockedBadge = document.createElement('div');
+        lockedBadge.className = 'cache-badge locked-badge';
+        lockedBadge.innerHTML = '<i class="fas fa-lock"></i> Locked';
+        lockedBadge.title = 'Vibe is locked - cannot add new Information Extractions';
+        badgesContainer.appendChild(lockedBadge);
+    }
+
+
     // Add base image badge only for actual cache images (not standalone vibes)
     if (!cacheImage.isStandalone) {
         const baseBadge = document.createElement('div');
         baseBadge.className = 'cache-badge base-image';
-        baseBadge.textContent = 'Base Image';
+        baseBadge.innerHTML = '<i class="nai-img2img"></i> Base Image';
         badgesContainer.appendChild(baseBadge);
     }
 
@@ -431,17 +562,21 @@ function createCacheGalleryItem(cacheImage) {
             if (vibe.encodings && Array.isArray(vibe.encodings)) {
                 vibe.encodings.forEach(encoding => {
                     const encodingBadge = document.createElement('div');
-                    encodingBadge.className = 'cache-badge encoding';
+                    const currentModel = getCurrentSelectedModel();
+                    const isAvailable = encoding.model.toLowerCase() === currentModel.toLowerCase();
+                    
+                    encodingBadge.className = 'cache-badge encoding' + 
+                        (modelBadges[encoding.model]?.badge ? ' encoding-' + modelBadges[encoding.model].badge.toLowerCase() : '') +
+                        (!isAvailable ? ' unavailable' : '');
                     
                     // Get model display name
                     const modelKey = encoding.model;
                     const modelDisplayName = modelBadges[modelKey] ? modelBadges[modelKey].display : modelKey;
-                    
                     encodingBadge.innerHTML = `
-                        <span class="badge-model">${modelDisplayName}</span>
+                        <div class="badge-model"><i class="nai-vibe-transfer"></i> <span>${modelDisplayName}</span></div>
                         <span class="badge-ie">${((encoding.informationExtraction || 0.0) * 100).toFixed(0)}%</span>
                     `;
-                    encodingBadge.title = `Model: ${modelDisplayName}, IE: ${((encoding.informationExtraction || 0.0) * 100).toFixed(0)}%`;
+                    encodingBadge.title = `Model: ${modelDisplayName}, IE: ${((encoding.informationExtraction || 0.0) * 100).toFixed(0)}%${!isAvailable ? ' (Unavailable for current model)' : ''}`;
                     badgesContainer.appendChild(encodingBadge);
                 });
             }
@@ -455,7 +590,66 @@ function createCacheGalleryItem(cacheImage) {
     return item;
 }
 
-function createVibeReferenceItem(vibeRef) {
+// Helper function to get current selected model display name
+function getCurrentSelectedModelDisplayName() {
+    const currentModel = getCurrentSelectedModel();
+    if (window.optionsData?.models?.[currentModel]) {
+        return window.optionsData.models[currentModel];
+    }
+    return currentModel || 'Selected Model';
+}
+
+// Function to refresh reference browser when model changes
+function refreshReferenceBrowserForModelChange() {
+    // Refresh the reference browser display
+    if (cacheImages && Array.isArray(cacheImages)) {
+        displayCacheImagesContainer();
+    }
+    
+    // Refresh vibe references in the modal
+    refreshVibeReferencesDisplay();
+}
+
+// Function to refresh vibe references display
+function refreshVibeReferencesDisplay() {
+    const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
+    if (!vibeReferencesContainer) return;
+    
+    // Get all current vibe reference items
+    const vibeReferenceItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item');
+    
+    vibeReferenceItems.forEach(item => {
+        const vibeId = item.getAttribute('data-vibe-id');
+        if (!vibeId) return;
+        
+        // Store current IE and strength values before replacing
+        const ieDropdownBtn = item.querySelector('.custom-dropdown-btn');
+        const ratioInput = item.querySelector('.vibe-reference-ratio-input');
+        
+        const currentIe = ieDropdownBtn?.dataset.selectedIe || null;
+        const currentStrength = ratioInput?.value || null;
+        
+        // Find the vibe reference data
+        let vibeRef = null;
+        for (const cacheImage of cacheImages) {
+            if (cacheImage.vibes) {
+                const foundVibe = cacheImage.vibes.find(vibe => vibe.id === vibeId);
+                if (foundVibe) {
+                    vibeRef = foundVibe;
+                    break;
+                }
+            }
+        }
+        
+        if (vibeRef) {
+            // Create new item with preserved IE and strength values
+            const newItem = createVibeReferenceItem(vibeRef, currentIe, currentStrength);
+            item.parentNode.replaceChild(newItem, item);
+        }
+    });
+}
+
+function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null) {
     const item = document.createElement('div');
     item.className = 'vibe-reference-item';
     item.setAttribute('data-vibe-id', vibeRef.id);
@@ -468,11 +662,11 @@ function createVibeReferenceItem(vibeRef) {
     preview.className = 'vibe-reference-preview';
     if (vibeRef.preview) {
         preview.src = `/cache/preview/${vibeRef.preview}`;
-    } else if (vibeRef.type === 'base64' && vibeRef.source) {
-        preview.src = `data:image/png;base64,${vibeRef.source}`;
+    } else if (vibeRef.type === 'base64' && vibeRef.image) {
+        preview.src = `data:image/png;base64,${vibeRef.image}`;
     } else {
         // Fallback to a placeholder
-        preview.src = '/images/placeholder.png';
+        preview.src = '/background.jpg';
     }
     preview.alt = `Vibe reference ${vibeRef.id}`;
 
@@ -486,13 +680,60 @@ function createVibeReferenceItem(vibeRef) {
     // Create controls
     const controls = document.createElement('div');
     controls.className = 'vibe-reference-controls';
+    const controlsBottom = document.createElement('div');
+    controlsBottom.className = 'vibe-reference-controls-bottom';
+
+    // Create preview button
+    const previewBtn = document.createElement('button');
+    previewBtn.type = 'button';
+    previewBtn.className = 'btn-secondary blur';
+    previewBtn.innerHTML = '<i class="fas fa-eye"></i>';
+    previewBtn.title = 'Preview image';
+    previewBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Get the full image source - prefer original image if available
+        let imageSrc;
+        if (vibeRef.type === 'base64' && vibeRef.source) {
+            imageSrc = `data:image/png;base64,${vibeRef.source}`;
+        } else if (vibeRef.type === 'cache' && vibeRef.source) {
+            imageSrc = `/cache/upload/${vibeRef.source}`;
+        } else if (vibeRef.preview) {
+            imageSrc = `/cache/preview/${vibeRef.preview}`;
+        }
+                
+        if (imageSrc) {
+            showImagePreview(imageSrc, `Vibe reference ${vibeRef.id}`);
+        } else {
+            showError('No image found');
+        }
+    });
+    controlsBottom.appendChild(previewBtn);
+
+    // Create comment button if vibe has a comment
+    if (vibeRef.comment && vibeRef.comment.trim() !== '') {
+        const commentBtn = document.createElement('button');
+        commentBtn.type = 'button';
+        commentBtn.className = 'btn-secondary blur';
+        commentBtn.innerHTML = '<i class="fas fa-comment"></i>';
+        commentBtn.title = 'View comment';
+        commentBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            showVibesCommentsDialog([vibeRef]);
+        });
+        controls.appendChild(commentBtn);
+    }
 
     // Create delete button
     const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
     deleteBtn.className = 'btn-danger blur';
     deleteBtn.innerHTML = '<i class="nai-thin-cross"></i>';
     deleteBtn.title = 'Remove vibe reference';
-    deleteBtn.addEventListener('click', () => {
+    deleteBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         removeVibeReference(vibeRef.id);
     });
 
@@ -517,20 +758,65 @@ function createVibeReferenceItem(vibeRef) {
     const ieText = document.createElement('span');
 
     // Get current model
-    const currentModel = manualSelectedModel || manualModelHidden?.value || '';
+    const currentModel = getCurrentSelectedModel();
 
     // Get available encodings for this vibe (filtered by current model)
     const availableEncodings = vibeRef.encodings ?
         vibeRef.encodings.filter(encoding => encoding.model.toLowerCase() === currentModel.toLowerCase()) : [];
 
-    if (availableEncodings.length > 0) {
-        // Use the first encoding as default
-        const defaultEncoding = availableEncodings[0];
-        ieText.textContent = `${(parseFloat(defaultEncoding.informationExtraction) * 100).toFixed(0)}%`;
-        ieDropdownBtn.dataset.selectedModel = defaultEncoding.model;
-        ieDropdownBtn.dataset.selectedIe = defaultEncoding.informationExtraction;
+    // Check if there are any encodings for any model (to show missing IE option)
+    const allEncodings = vibeRef.encodings || [];
+    
+    // Determine which encoding to use
+    let targetEncoding = null;
+    
+    if (selectedIe !== null) {
+        // Try to find the exact encoding with the selected IE for the current model
+        targetEncoding = availableEncodings.find(enc => 
+            parseFloat(enc.informationExtraction) === parseFloat(selectedIe)
+        );
+        
+        // If not found for current model, check if it exists for any model
+        if (!targetEncoding && allEncodings.length > 0) {
+            const anyModelEncoding = allEncodings.find(enc => 
+                parseFloat(enc.informationExtraction) === parseFloat(selectedIe)
+            );
+            if (anyModelEncoding) {
+                // Show that this IE exists but for a different model
+                ieText.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${(parseFloat(selectedIe) * 100).toFixed(0)}%`;
+                ieDropdownBtn.title = `IE ${(parseFloat(selectedIe) * 100).toFixed(0)}% not available for ${getCurrentSelectedModelDisplayName()}`;
+                ieDropdownBtn.dataset.selectedIe = selectedIe;
+                ieDropdownBtn.disabled = false;
+            }
+        }
+    }
+    
+    // Fall back to first available encoding if no specific IE or not found
+    if (!targetEncoding && availableEncodings.length > 0) {
+        targetEncoding = availableEncodings[0];
+    }
+    
+    if (targetEncoding) {
+        ieText.innerHTML = `<span>${(parseFloat(targetEncoding.informationExtraction) * 100).toFixed(0)}%</span>`;
+        ieDropdownBtn.dataset.selectedModel = targetEncoding.model;
+        ieDropdownBtn.dataset.selectedIe = targetEncoding.informationExtraction;
+        ieDropdownBtn.disabled = false;
+    } else if (allEncodings.length > 0) {
+        // Has encodings for other models but not current model
+        if (selectedIe !== null) {
+            // Show the requested IE value that's not available
+            ieText.innerHTML = `<i class="fas fa-exclamation-triangle"></i><span>${(parseFloat(selectedIe) * 100).toFixed(0)}%</span>`;
+            ieDropdownBtn.title = `IE ${(parseFloat(selectedIe) * 100).toFixed(0)}% not available for ${getCurrentSelectedModelDisplayName()}`;
+            ieDropdownBtn.dataset.selectedIe = selectedIe;
+        } else {
+            // No specific IE requested
+            ieText.innerHTML = `<i class="fas fa-exclamation-triangle"></i><span>0%</span>`;
+            ieDropdownBtn.title = `No encodings available for ${getCurrentSelectedModelDisplayName()}`;
+        }
+        ieDropdownBtn.disabled = false;
     } else {
-        ieText.textContent = 'No encodings';
+        // No encodings at all
+        ieText.innerHTML = '<i class="fas fa-exclamation-triangle"></i><span>No encodings</span>';
         ieDropdownBtn.disabled = true;
     }
     ieDropdownBtn.appendChild(ieText);
@@ -565,6 +851,40 @@ function createVibeReferenceItem(vibeRef) {
 
         ieDropdownMenu.appendChild(option);
     });
+    
+    // Add "Request New IE" option if no encodings available for current model
+    if (availableEncodings.length === 0 && allEncodings.length > 0) {
+        const requestOption = document.createElement('div');
+        requestOption.className = 'custom-dropdown-option missing-ie';
+        requestOption.innerHTML = `<i class="fas fa-exclamation-triangle"></i><span>${(parseFloat(selectedIe) * 100).toFixed(0)}%</span>`;
+        
+        requestOption.addEventListener('click', async () => {
+            ieDropdownMenu.style.display = 'none';
+            
+            // Check if vibe is locked
+            if (vibeRef.locked) {
+                const shouldRemove = await window.showConfirmationDialog(
+                    'This reference cannot be modified. Would you like to remove it from your references?',
+                    [
+                        { text: 'Remove Reference', value: true, className: 'btn-danger' },
+                        { text: 'Cancel', value: false, className: 'btn-secondary' }
+                    ]
+                );
+                
+                if (shouldRemove) {
+                    removeVibeReference(vibeRef.id);
+                }
+                return;
+            }
+            
+            // Open Request New IE modal with current model and target IE
+            const currentModel = getCurrentSelectedModel();
+            const targetIe = ieDropdownBtn.dataset.selectedIe || null;
+            showVibeEncodingModal('ie', vibeRef, currentModel, targetIe);
+        });
+        
+        ieDropdownMenu.appendChild(requestOption);
+    }
 
     // Add dropdown toggle functionality
     ieDropdownBtn.addEventListener('click', () => {
@@ -596,7 +916,7 @@ function createVibeReferenceItem(vibeRef) {
     ratioInput.min = '0.0';
     ratioInput.max = '1.0';
     ratioInput.step = '0.01';
-    ratioInput.value = '0.7';
+    ratioInput.value = strength !== null ? strength.toString() : '0.7';
 
     // Add wheel event for scrolling
     ratioInput.addEventListener('wheel', function(e) {
@@ -610,6 +930,8 @@ function createVibeReferenceItem(vibeRef) {
 
     info.appendChild(ieControl);
     info.appendChild(ratioControl);
+
+    previewContainer.appendChild(controlsBottom);
 
     item.appendChild(previewContainer);
     item.appendChild(controls);
@@ -635,6 +957,9 @@ async function addAsBaseImage(cacheImage) {
         
         // Close cache browser
         hideCacheBrowser();
+        
+        await loadCacheImages();
+        await refreshReferenceBrowserIfOpen();
         
         showGlassToast('success', null, 'Base image set successfully');
     } catch (error) {
@@ -675,6 +1000,9 @@ async function addAsVibeReference(cacheImage) {
 
         // Close cache browser
         hideCacheBrowser();
+        
+        await loadCacheImages();
+        await refreshReferenceBrowserIfOpen();
         
         showGlassToast('success', null, 'Vibe reference added successfully');
             } catch (error) {
@@ -717,33 +1045,8 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
         return;
     }
 
-    const item = createVibeReferenceItem(vibeRef);
-
-    // Set the specific IE and strength values
-    const ieDropdownBtn = item.querySelector('.custom-dropdown-btn');
-    const ratioInput = item.querySelector('.vibe-reference-ratio-input');
-
-    const ieSuffix = document.createElement('span');
-    ieSuffix.style.opacity = '0.5';
-    ieSuffix.textContent = 'IE';
-    
-    if (ieDropdownBtn && selectedIe) {
-        // Find the encoding with the specified IE
-        const encoding = vibeRef.encodings?.find(enc => enc.informationExtraction === selectedIe);
-        if (encoding) {
-            const optionText = document.createElement('span');
-            optionText.textContent = `${(parseFloat(encoding.informationExtraction) * 100).toFixed(0)}%`;
-            ieDropdownBtn.innerHTML = '';
-            ieDropdownBtn.appendChild(optionText);
-            ieDropdownBtn.appendChild(ieSuffix);
-            ieDropdownBtn.dataset.selectedModel = encoding.model;
-            ieDropdownBtn.dataset.selectedIe = encoding.informationExtraction;
-        }
-    }
-
-    if (ratioInput && strength !== undefined) {
-        ratioInput.value = strength.toString();
-    }
+    // Create item with the specific IE and strength values
+    const item = createVibeReferenceItem(vibeRef, selectedIe, strength);
 
     vibeReferencesContainer.appendChild(item);
 
@@ -780,14 +1083,6 @@ function removeVibeReference(vibeId) {
             }
         }
     }
-}
-
-function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 async function selectCacheImage(cacheImage) {
@@ -837,7 +1132,7 @@ async function selectCacheImageInternal(cacheImage) {
         renderImageBiasDropdown('2');
 
         // Set transformation type to browse (successful)
-        updateTransformationDropdownState('browse', 'Upload');
+        updateTransformationDropdownState('browse');
 
         // Update mask preview and button visibility
         updateUploadDeleteButtonVisibility();
@@ -855,7 +1150,8 @@ async function selectCacheImageInternal(cacheImage) {
     }
 }
 
-async function deleteCacheImage(cacheImage) {
+// Unified function to delete reference images (cache images with optional vibes)
+async function deleteReferenceImage(cacheImage, workspace = null, refreshCallback = null) {
     let deleteType = 'both';
     
     // If the item has both base image and vibes, ask what to delete
@@ -886,10 +1182,12 @@ async function deleteCacheImage(cacheImage) {
         deleteType = cacheImage.isStandalone ? 'vibes' : 'base';
     }
 
+    const targetWorkspace = workspace || cacheImage.workspaceId || 'default';
+
     try {
         if (deleteType === 'base' || deleteType === 'both') {
             // Delete the base image
-            const response = await wsClient.deleteReference(cacheImage.hash, cacheImage.workspaceId || 'default');
+            const response = await wsClient.deleteReference(cacheImage.hash, targetWorkspace);
             if (!response.success) {
                 throw new Error(`Failed to delete cache image: ${response.message}`);
             }
@@ -899,7 +1197,7 @@ async function deleteCacheImage(cacheImage) {
             // Delete the vibes
             if (cacheImage.vibes && cacheImage.vibes.length > 0) {
                 for (const vibe of cacheImage.vibes) {
-                    const vibeResponse = await wsClient.deleteVibeImage(vibe.id, cacheImage.workspaceId || 'default');
+                    const vibeResponse = await wsClient.deleteVibeImage(vibe.id, targetWorkspace);
                     if (!vibeResponse.success) {
                         console.error(`Failed to delete vibe ${vibe.id}: ${vibeResponse.message}`);
                     }
@@ -907,35 +1205,35 @@ async function deleteCacheImage(cacheImage) {
             }
         }
 
-        // Remove from local array
-        cacheImages = cacheImages.filter(img => img.hash !== cacheImage.hash);
+        // Execute refresh callback if provided
+        if (refreshCallback) {
+            await refreshCallback();
+        }
 
-        // Refresh both displays
-        displayCacheImages();
-        displayCacheImagesContainer();
-
-        showGlassToast('success', null, 'Reference image deleted');
+        showGlassToast('success', null, 'Reference deleted');
     } catch (error) {
-        console.error('Error deleting cache image:', error);
+        console.error('Error deleting reference image:', error);
         showError('Failed to delete reference');
     }
 }
 
-
-// Helper function to get workspace display name
-function getWorkspaceDisplayName(workspaceId) {
-    const workspace = workspaces[workspaceId];
-    return workspace ? workspace.name : 'Default';
+async function deleteCacheImage(cacheImage) {
+    await deleteReferenceImage(cacheImage, null, async () => {
+        // Remove from local array
+        cacheImages = cacheImages.filter(img => img.hash !== cacheImage.hash);
+        if (cacheBrowserContainer.style.display !== 'none') {
+            await loadCacheManagerImages();
+        } else {
+            await loadCacheImages();
+        }
+        await refreshReferenceBrowserIfOpen();
+    });
 }
 
-// Modal management functions
-function disablePageScroll() {
-    document.body.classList.add('modal-open');
-}
 
-function enablePageScroll() {
-    document.body.classList.remove('modal-open');
-}
+// Workspace helper moved to utils/referenceUtils.js
+
+// Modal management functions - moved to shared modal system
 
 // Reference Manager Functions
 
@@ -953,38 +1251,60 @@ function showCacheManagerModal() {
     }
 }
 
-function hideCacheManagerModal() {
+async function hideCacheManagerModal() {
     if (cacheManagerModal) {
         closeModal(cacheManagerModal);
     }
+    
+    if (cacheBrowserContainer.style.display !== 'none') {
+        await loadCacheManagerImages();
+    } else {
+        await loadCacheImages();
+    }
+    await refreshReferenceBrowserIfOpen();
 }
 
-function setupCacheManagerWorkspaceDropdown() {
-    if (!cacheManagerWorkspaceDropdown || !cacheManagerWorkspaceDropdownBtn || !cacheManagerWorkspaceDropdownMenu || !cacheManagerWorkspaceSelected) return;
+// Unified workspace dropdown setup
+function setupWorkspaceDropdown(config) {
+    const { dropdown, button, menu, selected, getCurrentWorkspace, onWorkspaceChange, markupId } = config;
+    
+    if (!dropdown || !button || !menu || !selected) return;
 
     // Update selected workspace
-    cacheManagerWorkspaceSelected.textContent = getWorkspaceDisplayName(cacheManagerCurrentWorkspace);
+    selected.textContent = getWorkspaceDisplayName(getCurrentWorkspace());
 
     // Check if dropdown is already set up
-    if (cacheManagerWorkspaceDropdown.dataset.setup === 'true') {
+    if (dropdown.dataset.setup === 'true') {
         return; // Already set up, don't add duplicate event listeners
     }
 
+    // Create a render function that captures the config
+    const renderFunction = (selectedValue) => {
+        renderReferenceWorkspaceDropdown(config, selectedValue);
+    };
+
     // Setup dropdown functionality
-    setupDropdown(cacheManagerWorkspaceDropdown, cacheManagerWorkspaceDropdownBtn, cacheManagerWorkspaceDropdownMenu, renderCacheManagerWorkspaceDropdown, () => cacheManagerCurrentWorkspace);
+    setupDropdown(dropdown, button, menu, renderFunction, getCurrentWorkspace);
 
     // Mark as set up
-    cacheManagerWorkspaceDropdown.dataset.setup = 'true';
+    dropdown.dataset.setup = 'true';
 }
 
-function renderCacheManagerWorkspaceDropdown() {
-    if (!cacheManagerWorkspaceDropdownMenu) return '';
+function renderReferenceWorkspaceDropdown(config, selectedValue = null) {
+    const { menu, getCurrentWorkspace, onWorkspaceChange, filterCurrentWorkspace = false } = config;
+    
+    if (!menu) return '';
 
-    cacheManagerWorkspaceDropdownMenu.innerHTML = '';
+    menu.innerHTML = '';
 
     Object.values(workspaces).forEach(workspace => {
+        // Skip current workspace if filtering enabled
+        if (filterCurrentWorkspace && workspace.id === getCurrentWorkspace()) {
+            return;
+        }
+
         const option = document.createElement('div');
-        option.className = 'custom-dropdown-option' + (workspace.id === cacheManagerCurrentWorkspace ? ' selected' : '');
+        option.className = 'custom-dropdown-option' + (workspace.id === getCurrentWorkspace() ? ' selected' : '');
         option.tabIndex = 0;
         option.dataset.value = workspace.id;
 
@@ -998,16 +1318,10 @@ function renderCacheManagerWorkspaceDropdown() {
         `;
 
         const action = () => {
-            if (workspace.id !== cacheManagerCurrentWorkspace) {
-                cacheManagerCurrentWorkspace = workspace.id;
-                loadCacheManagerImages();
-
-                // Update selected workspace display
-                if (cacheManagerWorkspaceSelected) {
-                    cacheManagerWorkspaceSelected.textContent = workspace.name;
-                }
+            if (onWorkspaceChange) {
+                onWorkspaceChange(workspace);
             }
-            closeDropdown(cacheManagerWorkspaceDropdownMenu, cacheManagerWorkspaceDropdownBtn);
+            closeDropdown(menu, config.button);
         };
 
         option.addEventListener('click', action);
@@ -1017,7 +1331,42 @@ function renderCacheManagerWorkspaceDropdown() {
             }
         });
 
-        cacheManagerWorkspaceDropdownMenu.appendChild(option);
+        menu.appendChild(option);
+    });
+}
+
+function setupCacheManagerWorkspaceDropdown() {
+    setupWorkspaceDropdown({
+        dropdown: cacheManagerWorkspaceDropdown,
+        button: cacheManagerWorkspaceDropdownBtn,
+        menu: cacheManagerWorkspaceDropdownMenu,
+        selected: cacheManagerWorkspaceSelected,
+        getCurrentWorkspace: () => cacheManagerCurrentWorkspace,
+        onWorkspaceChange: (workspace) => {
+            if (workspace.id !== cacheManagerCurrentWorkspace) {
+                cacheManagerCurrentWorkspace = workspace.id;
+                loadCacheManagerImages();
+                if (cacheManagerWorkspaceSelected) {
+                    cacheManagerWorkspaceSelected.textContent = workspace.name;
+                }
+            }
+        }
+    });
+}
+
+function renderCacheManagerWorkspaceDropdown() {
+    renderReferenceWorkspaceDropdown({
+        menu: cacheManagerWorkspaceDropdownMenu,
+        getCurrentWorkspace: () => cacheManagerCurrentWorkspace,
+        onWorkspaceChange: (workspace) => {
+            if (workspace.id !== cacheManagerCurrentWorkspace) {
+                cacheManagerCurrentWorkspace = workspace.id;
+                loadCacheManagerImages();
+                if (cacheManagerWorkspaceSelected) {
+                    cacheManagerWorkspaceSelected.textContent = workspace.name;
+                }
+            }
+        }
     });
 }
 
@@ -1026,63 +1375,8 @@ async function loadCacheManagerImages() {
     if (cacheManagerGallery) cacheManagerGallery.innerHTML = '';
 
     try {
-        // Load unified references (cache images and vibe images together)
-        const response = await wsClient.getWorkspaceReferences(cacheManagerCurrentWorkspace);
-
-        if (response.success) {
-            const data = response.data;
-            const cacheImages = data.cacheFiles || [];
-            const vibeImages = data.vibeImages || [];
-            
-            // Create a map of cache images by hash
-            const cacheMap = new Map();
-            cacheImages.forEach(cache => {
-                cacheMap.set(cache.hash, {
-                    ...cache,
-                    type: 'cache',
-                    vibes: []
-                });
-            });
-            
-            // Add vibe images to their corresponding cache images
-            vibeImages.forEach(vibe => {
-                if (vibe.type === 'cache' && cacheMap.has(vibe.source)) {
-                    // This vibe is based on a cache image
-                    const cacheItem = cacheMap.get(vibe.source);
-                    cacheItem.vibes.push(vibe);
-                    cacheItem.hasVibes = true;
-                } else {
-                    // This is a standalone vibe (base64)
-                    const standaloneVibe = {
-                        hash: vibe.id,
-                        filename: vibe.filename,
-                        mtime: vibe.mtime,
-                        size: vibe.size,
-                        hasPreview: vibe.preview,
-                        type: 'vibe',
-                        vibes: [vibe],
-                        hasVibes: true,
-                        isStandalone: true
-                    };
-                    cacheMap.set(vibe.id, standaloneVibe);
-                }
-            });
-            
-            // Convert map to array and sort by newest first
-            const combinedImages = Array.from(cacheMap.values());
-            
-            // Sort by mtime (newest first)
-            combinedImages.sort((a, b) => {
-                const aTime = a.mtime || 0;
-                const bTime = b.mtime || 0;
-                return bTime - aTime;
-            });
-            
-            cacheManagerImages = combinedImages;
-        } else {
-            throw new Error('Failed to load images');
-        }
-
+        const images = await loadReferenceImages(cacheManagerCurrentWorkspace, false);
+        cacheManagerImages = images;
         displayCacheManagerImages();
     } catch (error) {
         console.error('Error loading cache manager images:', error);
@@ -1093,23 +1387,10 @@ async function loadCacheManagerImages() {
 }
 
 function displayCacheManagerImages() {
-    if (!cacheManagerGallery) return;
-
-    cacheManagerGallery.innerHTML = '';
-
-    if (cacheManagerImages.length === 0) {
-        cacheManagerGallery.innerHTML = `
-            <div class="no-images">
-                <i class="fas fa-image-slash"></i>
-                <span>No cache images found in this workspace</span>
-            </div>
-        `;
-        return;
-    }
-
-    cacheManagerImages.forEach(cacheImage => {
-        const galleryItem = createCacheManagerGalleryItem(cacheImage);
-        cacheManagerGallery.appendChild(galleryItem);
+    displayReferenceImages(cacheManagerGallery, cacheManagerImages, createCacheManagerGalleryItem, {
+        separateWorkspaces: false,
+        addFewItemsClass: false,
+        noImagesMessage: 'No cache images found in this workspace'
     });
 }
 
@@ -1125,7 +1406,7 @@ function createCacheManagerGalleryItem(cacheImage) {
         if (cacheImage.hasPreview) {
             img.src = `/cache/preview/${cacheImage.hasPreview}`;
         } else {
-            img.src = '/images/placeholder.png';
+            img.src = '/background.jpg';
         }
     } else {
         // For cache images (with or without vibes)
@@ -1154,8 +1435,60 @@ function createCacheManagerGalleryItem(cacheImage) {
 
 
     // Create buttons container
-    const buttonsContainer = document.createElement('div');
-    buttonsContainer.className = 'cache-manager-gallery-item-buttons';
+    const buttonsContainerTop = document.createElement('div');
+    const buttonsContainerBottom = document.createElement('div');
+    buttonsContainerTop.className = 'cache-manager-gallery-item-buttons';
+    buttonsContainerBottom.className = 'cache-manager-gallery-item-buttons';
+
+    // Create comment button if any vibes have comments
+    if (cacheImage.vibes && cacheImage.vibes.length > 0) {
+        const vibesWithComments = cacheImage.vibes.filter(vibe => vibe.comment);
+        if (vibesWithComments.length > 0) {
+            const commentBtn = document.createElement('button');
+            commentBtn.className = 'btn-secondary btn-small';
+            commentBtn.innerHTML = '<i class="fas fa-comment"></i>';
+            commentBtn.title = `View comments (${vibesWithComments.length} vibe${vibesWithComments.length > 1 ? 's' : ''})`;
+            commentBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showVibesCommentsDialog(vibesWithComments);
+            });
+            buttonsContainerTop.appendChild(commentBtn);
+        }
+    }
+
+    // Create preview button
+    if (cacheImage.hasPreview) {
+        const previewBtn = document.createElement('button');
+        previewBtn.className = 'btn-secondary btn-small';
+        previewBtn.innerHTML = '<i class="fas fa-eye"></i>';
+        previewBtn.title = 'Preview image';
+        previewBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            let imageSrc;
+            if (cacheImage.isStandalone) {
+                if (cacheImage.type === 'base64' && cacheImage.source) {
+                    imageSrc = `data:image/png;base64,${cacheImage.source}`;
+                } else if (cacheImage.type === 'vibe' && cacheImage.source) {
+                    imageSrc = `data:image/png;base64,${cacheImage.source}`;
+                } else if (cacheImage.hasPreview) {
+                    imageSrc = `/cache/preview/${cacheImage.hasPreview}`;
+                }
+            } else {
+                if (cacheImage.hash) {
+                    imageSrc = `/cache/upload/${cacheImage.hash}`;
+                } else if (cacheImage.hasPreview) {
+                    imageSrc = `/cache/preview/${cacheImage.hash}.webp`;
+                }
+            }
+
+            if (imageSrc) {
+                showImagePreview(imageSrc, `Reference image ${cacheImage.hash}`);
+            } else {
+                showError('No image found');
+            }
+        });
+        buttonsContainerBottom.appendChild(previewBtn);
+    }
 
     // Create vibe encode button (always show to allow adding more IEs)
     const vibeBtn = document.createElement('button');
@@ -1172,7 +1505,7 @@ function createCacheManagerGalleryItem(cacheImage) {
             showVibeEncodingModal('reference', cacheImage);
         }
     });
-    buttonsContainer.appendChild(vibeBtn);
+    buttonsContainerBottom.appendChild(vibeBtn);
 
     // Create delete button
     const deleteBtn = document.createElement('button');
@@ -1184,20 +1517,39 @@ function createCacheManagerGalleryItem(cacheImage) {
         deleteCacheManagerImage(cacheImage, cacheManagerCurrentWorkspace);
     });
 
-    buttonsContainer.appendChild(moveBtn);
-    buttonsContainer.appendChild(deleteBtn);
+    buttonsContainerBottom.appendChild(moveBtn);
+    buttonsContainerBottom.appendChild(deleteBtn);
 
-    overlay.appendChild(buttonsContainer);
+    overlay.appendChild(buttonsContainerTop);
+    overlay.appendChild(buttonsContainerBottom);
 
     // Create badges container
     const badgesContainer = document.createElement('div');
     badgesContainer.className = 'cache-manager-badges';
 
+    // Add NovelAI badge if imported from NovelAI
+    if (cacheImage.importedFrom === 'novelai') {
+        const novelaiBadge = document.createElement('div');
+        novelaiBadge.className = 'cache-badge novelai-badge';
+        novelaiBadge.innerHTML = '<i class="nai-import"></i> NovelAI';
+        novelaiBadge.title = 'Imported from NovelAI Vibe Bundle';
+        badgesContainer.appendChild(novelaiBadge);
+    }
+
+    // Add locked badge if vibe is locked
+    if (cacheImage.locked) {
+        const lockedBadge = document.createElement('div');
+        lockedBadge.className = 'cache-badge locked-badge';
+        lockedBadge.innerHTML = '<i class="fas fa-lock"></i> Locked';
+        lockedBadge.title = 'Vibe is locked - cannot add new Information Extractions';
+        badgesContainer.appendChild(lockedBadge);
+    }
+
     // Add base image badge only for actual cache images (not standalone vibes)
     if (!cacheImage.isStandalone) {
         const baseBadge = document.createElement('div');
         baseBadge.className = 'cache-badge base-image';
-        baseBadge.textContent = 'Base Image';
+        baseBadge.innerHTML = '<i class="nai-img2img"></i> Base Image';
         badgesContainer.appendChild(baseBadge);
     }
 
@@ -1207,14 +1559,16 @@ function createCacheManagerGalleryItem(cacheImage) {
             if (vibe.encodings && Array.isArray(vibe.encodings)) {
                 vibe.encodings.forEach(encoding => {
                     const encodingBadge = document.createElement('div');
-                    encodingBadge.className = 'cache-badge encoding';
+                    
+                    encodingBadge.className = 'cache-badge encoding' + 
+                        (modelBadges[encoding.model]?.badge ? ' encoding-' + modelBadges[encoding.model].badge.toLowerCase() : '');
                     
                     // Get model display name
                     const modelKey = encoding.model;
                     const modelDisplayName = modelBadges[modelKey] ? modelBadges[modelKey].display : modelKey;
                     
                     encodingBadge.innerHTML = `
-                        <span class="badge-model">${modelDisplayName}</span>
+                        <div class="badge-model"><i class="nai-vibe-transfer"></i> <span>${modelDisplayName}</span></div>
                         <span class="badge-ie">${((encoding.informationExtraction || 0.0) * 100).toFixed(0)}%</span>
                     `;
                     encodingBadge.title = `Model: ${modelDisplayName}, IE: ${((encoding.informationExtraction || 0.0) * 100).toFixed(0)}%`;
@@ -1259,68 +1613,18 @@ async function moveCacheManagerImage(cacheImage) {
 }
 
 async function deleteCacheManagerImage(cacheImage, workspace) {
-    let deleteType = 'both';
-    
-    // If the item has both base image and vibes, ask what to delete
-    if (cacheImage.hasVibes && !cacheImage.isStandalone) {
-        const deleteOptions = await showConfirmationDialog(
-            'What would you like to delete?',
-            [
-                { text: 'Base Image', value: 'base', className: 'btn-warning' },
-                { text: 'Vibe Encoding(s)', value: 'vibes', className: 'btn-warning' },
-                { text: 'All', value: 'both', className: 'btn-danger' },
-                { text: 'Cancel', value: null, className: 'btn-secondary' }
-            ]
-        );
-        
-        if (!deleteOptions) return;
-        deleteType = deleteOptions;
-    } else {
-        // Simple confirmation for base image only or standalone vibe
-        const confirmed = await showConfirmationDialog(
-            'Are you sure you want to delete this item?',
-            [
-                { text: 'Delete', value: true, className: 'btn-danger' },
-                { text: 'Cancel', value: false, className: 'btn-secondary' }
-            ]
-        );
-        
-        if (!confirmed) return;
-        deleteType = cacheImage.isStandalone ? 'vibes' : 'base';
-    }
-
-    try {
-        if (deleteType === 'base' || deleteType === 'both') {
-            // Delete the base image
-            const response = await wsClient.deleteReference(cacheImage.hash, workspace || cacheManagerCurrentWorkspace);
-            if (!response.success) {
-                throw new Error(`Failed to delete cache image: ${response.message}`);
-            }
-        }
-        
-        if (deleteType === 'vibes' || deleteType === 'both') {
-            // Delete the vibes
-            if (cacheImage.vibes && cacheImage.vibes.length > 0) {
-                for (const vibe of cacheImage.vibes) {
-                    const vibeResponse = await wsClient.deleteVibeImage(vibe.id, workspace || cacheManagerCurrentWorkspace);
-                    if (!vibeResponse.success) {
-                        console.error(`Failed to delete vibe ${vibe.id}: ${vibeResponse.message}`);
-                    }
-                }
-            }
-        }
-
+    await deleteReferenceImage(cacheImage, workspace || cacheManagerCurrentWorkspace, async () => {
         // Remove from local array
         cacheManagerImages = cacheManagerImages.filter(img => img.hash !== cacheImage.hash);
-
         // Refresh display
+        if (cacheBrowserContainer.style.display !== 'none') {
+            await loadCacheManagerImages();
+        } else {
+            await loadCacheImages();
+        }
         displayCacheManagerImages();
-
-        showGlassToast('success', null, 'Reference deleted');
-    } catch (error) {
-        console.error('Error deleting cache manager image:', error);
-        showError('Failed to delete reference');
-    }
+        await refreshReferenceBrowserIfOpen();
+    });
 }
 
 
@@ -1334,20 +1638,24 @@ function showUnifiedUploadModal() {
     if (unifiedUploadIeInput) unifiedUploadIeInput.value = '0.35';
     if (unifiedUploadConfirmBtn) unifiedUploadConfirmBtn.disabled = true;
     
-    // Reset to reference mode
-    unifiedUploadCurrentMode = 'reference';
-    updateUnifiedUploadMode();
+    // Reset comment input
+    const commentInput = document.getElementById('unifiedUploadCommentInput');
+    if (commentInput) commentInput.value = '';
     
-    // Reset background image
-    if (unifiedUploadBackgroundImage) {
-        unifiedUploadBackgroundImage.src = '/images/placeholder.png';
+    // Use the mode that was set before opening, or default to reference mode
+    if (typeof window.unifiedUploadCurrentMode === 'string') {
+        unifiedUploadCurrentMode = window.unifiedUploadCurrentMode;
+        // Reset the global variable
+        window.unifiedUploadCurrentMode = 'reference';
+    } else {
+        unifiedUploadCurrentMode = 'reference';
     }
     
-    // Update displays
-    if (unifiedUploadModeDisplay) unifiedUploadModeDisplay.textContent = 'Upload Reference';
-    if (unifiedUploadModelDisplay) unifiedUploadModelDisplay.textContent = unifiedUploadSelectedModel || 'V4.5';
-    if (unifiedUploadModalTitle) unifiedUploadModalTitle.innerHTML = '<i class="nai-import"></i> Upload & Encode';
-    if (unifiedUploadConfirmText) unifiedUploadConfirmText.textContent = 'Upload';
+    // Reset UI elements
+    hideVibeBundlePreview();
+    showModeSelector();
+    resetUploadModal();
+    updateUnifiedUploadMode();
     
     // Populate model dropdown
     populateUnifiedUploadModelDropdown();
@@ -1408,7 +1716,7 @@ function updateUnifiedUploadMode() {
         }
     }
     
-    // Update file input configuration
+    // Update file input configuration but preserve file selection
     if (unifiedUploadFileInput) {
         if (unifiedUploadCurrentMode === 'vibe') {
             unifiedUploadFileInput.removeAttribute('multiple');
@@ -1416,25 +1724,12 @@ function updateUnifiedUploadMode() {
             unifiedUploadFileInput.setAttribute('multiple', '');
         }
         
-        // Reset file input when mode changes
-        unifiedUploadFileInput.value = '';
-        
-        // Update confirm button state
-        if (unifiedUploadConfirmBtn) {
-            unifiedUploadConfirmBtn.disabled = true;
+        // Don't reset file input - preserve selection
+        // Only update the UI to reflect the current mode
+        if (unifiedUploadFileInput.files.length > 0) {
+            // Re-trigger file change handler to update UI for current mode
+            handleUnifiedUploadFileChange();
         }
-        
-        // Reset background image
-        if (unifiedUploadBackgroundImage) {
-            unifiedUploadBackgroundImage.src = '/images/placeholder.png';
-        }
-    }
-    
-    // Update file input text
-    if (unifiedUploadFileText) {
-        unifiedUploadFileText.textContent = unifiedUploadCurrentMode === 'reference' 
-            ? 'Select one or more images to upload to the cache' 
-            : 'Select an image to upload and encode for vibe transfer';
     }
 }
 
@@ -1507,18 +1802,23 @@ async function handleUnifiedUploadConfirm() {
         return;
     }
     
-    // Validate file types
-    const invalidFiles = files.filter(file => !file.type.startsWith('image/'));
+    // Validate file types - accept images, JSON files, and .naiv4vibebundle files
+    const invalidFiles = files.filter(file => {
+        const isImage = file.type.startsWith('image/');
+        const isJson = file.type === 'application/json';
+        const isNaiv4Bundle = file.name.endsWith('.naiv4vibebundle');
+        return !isImage && !isJson && !isNaiv4Bundle;
+    });
     if (invalidFiles.length > 0) {
-        showError('Please select valid image files only.');
+        showError('Please select valid image files, JSON files, or .naiv4vibebundle files only.');
         return;
     }
     
-    // Validate file sizes (max 10MB per file)
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    const oversizedFiles = files.filter(file => file.size > maxSize);
-    if (oversizedFiles.length > 0) {
-        showError('File size too large. Please select images smaller than 10MB.');
+    // Check if any JSON files or .naiv4vibebundle files are selected
+    const jsonFiles = files.filter(file => file.type === 'application/json' || file.name.endsWith('.naiv4vibebundle'));
+    if (jsonFiles.length > 0) {
+        // Handle JSON file import
+        await handleJsonFileImport(jsonFiles);
         return;
     }
     
@@ -1574,8 +1874,22 @@ async function uploadUnifiedReferenceImages(files) {
         removeGlassToast(toastId);
         showGlassToast('success', 'Upload Complete', `Successfully uploaded ${results.length} image(s)`, false, true, '<i class="nai-check"></i>');
         
+        // If this was uploaded as a base image (reference mode), add it to the manual form
+        if (unifiedUploadCurrentMode === 'reference' && results.length > 0) {
+            const uploadedHash = results[0].hash;
+            if (uploadedHash) {
+                // Add as base image to the manual form
+                await addAsBaseImage({ hash: uploadedHash, type: 'cache' });
+            }
+        }
+        
         // Refresh cache manager
-        await loadCacheManagerImages();
+        if (cacheBrowserContainer.style.display !== 'none') {
+            await loadCacheManagerImages();
+        } else {
+            await loadCacheImages();
+        }
+        await refreshReferenceBrowserIfOpen();
         
         // Close modal
         hideUnifiedUploadModal();
@@ -1583,6 +1897,96 @@ async function uploadUnifiedReferenceImages(files) {
     } catch (error) {
         removeGlassToast(toastId);
         showError('Upload failed: ' + error.message);
+    }
+}
+
+async function handleJsonFileImport(files) {
+    let toastId = showGlassToast('info', 'Importing Vibe Bundle', 'Processing JSON files...', true, false, '<i class="nai-import"></i>');
+    try {
+        let targetWorkspace = cacheManagerCurrentWorkspace;
+        if (cacheManagerModal && cacheManagerModal.classList.contains('modal-open')) {
+            const selectedWorkspaceElement = cacheManagerWorkspaceSelected;
+            if (selectedWorkspaceElement && selectedWorkspaceElement.textContent) {
+                const workspaceName = selectedWorkspaceElement.textContent.trim();
+                const workspace = Object.values(workspaces).find(w => w.name === workspaceName);
+                if (workspace) {
+                    targetWorkspace = workspace.id;
+                }
+            }
+        }
+        if (!targetWorkspace) {
+            showError('No workspace selected. Please select a workspace first.');
+            return;
+        }
+        const commentInput = document.getElementById('unifiedUploadCommentInput');
+        const comment = commentInput ? commentInput.value.trim() : '';
+        const importPromises = files.map(async (file, index) => {
+            updateGlassToast(toastId, 'info', 'Importing Vibe Bundle', `Processing ${file.name}...`);
+            const fileContent = await file.text();
+            let jsonData = JSON.parse(fileContent);
+            
+            // Handle missing preview images for vibes (both single and bundle formats)
+            const vibesToProcess = jsonData.identifier === 'novelai-vibe-transfer' ? [jsonData] : (jsonData.vibes || []);
+            
+            // Get any user-added images from the UI before importing
+            const updatedJsonData = { ...jsonData };
+            
+            // Check if we have modified vibe data from button interactions
+            if (window.modifiedVibeData && window.modifiedVibeData.length > 0) {
+                if (jsonData.identifier === 'novelai-vibe-transfer') {
+                    // Single vibe format - check if this vibe was modified
+                    const modifiedVibe = window.modifiedVibeData.find(v => v.id === jsonData.id);
+                    if (modifiedVibe) {
+                        if (modifiedVibe.thumbnail) {
+                            updatedJsonData.thumbnail = modifiedVibe.thumbnail;
+                        }
+                        if (modifiedVibe.image) {
+                            updatedJsonData.image = modifiedVibe.image;
+                            updatedJsonData.type = 'base64';
+                        }
+                    }
+                } else if (jsonData.identifier === 'novelai-vibe-transfer-bundle') {
+                    // Bundle format - update vibes with any modifications
+                    const updatedVibes = vibesToProcess.map(vibe => {
+                        const modifiedVibe = window.modifiedVibeData.find(v => v.id === vibe.id);
+                        if (modifiedVibe) {
+                            return {
+                                ...vibe,
+                                thumbnail: modifiedVibe.thumbnail || vibe.thumbnail,
+                                image: modifiedVibe.image || vibe.image,
+                                type: modifiedVibe.image ? 'base64' : vibe.type
+                            };
+                        }
+                        return vibe;
+                    });
+                    updatedJsonData.vibes = updatedVibes;
+                }
+            }
+            
+            // Send updated data to server for processing
+            const response = await wsClient.importVibeBundle(updatedJsonData, targetWorkspace, comment);
+            if (!response.success) {
+                throw new Error(response.message || 'Import failed');
+            }
+            return response;
+        });
+        const results = await Promise.all(importPromises);
+        removeGlassToast(toastId);
+        showGlassToast('success', 'Import Complete', `Successfully imported ${results.length} vibe bundle(s)`, false, true, '<i class="nai-check"></i>');
+        
+        // Clear modified vibe data after successful import
+        window.modifiedVibeData = [];
+        
+        if (cacheBrowserContainer.style.display !== 'none') {
+            await loadCacheManagerImages();
+        } else {
+            await loadCacheImages();
+        }
+        await refreshReferenceBrowserIfOpen();
+        hideUnifiedUploadModal();
+    } catch (error) {
+        removeGlassToast(toastId);
+        showError('Import failed: ' + error.message);
     }
 }
 
@@ -1652,7 +2056,19 @@ async function uploadUnifiedVibeImage(file) {
         showGlassToast('success', 'Vibe Created', 'Successfully created vibe encoding', false, true, '<i class="nai-check"></i>');
         
         // Use consistent refresh function
-        await loadCacheManagerImages();
+        if (cacheBrowserContainer.style.display !== 'none') {
+            await loadCacheManagerImages();
+        } else {
+            await loadCacheImages();
+        }
+        await refreshReferenceBrowserIfOpen();
+        
+        // Add the vibe to the vibe references container
+        if (response.vibeData && response.vibeData.id) {
+            // Refresh cache images to get the latest vibe data
+            await loadCacheImages();
+            await addVibeReferenceToContainer(response.vibeData.id, informationExtraction, 0.7);
+        }
         
         // Close modal
         hideUnifiedUploadModal();
@@ -1700,7 +2116,7 @@ function showCacheManagerMoveModal() {
             if (cacheManagerMoveTargetImage.hasPreview) {
                 backgroundImage.src = `/cache/preview/${cacheManagerMoveTargetImage.hasPreview}`;
             } else {
-                backgroundImage.src = '/images/placeholder.png';
+                backgroundImage.src = '/background.jpg';
             }
         } else {
             if (cacheManagerMoveTargetImage.hasPreview) {
@@ -1741,40 +2157,24 @@ function setupCacheManagerMoveWorkspaceDropdown() {
     const modal = document.getElementById('cacheManagerMoveModal');
     if (!modal) return;
     
-    const dropdownContainer = modal.querySelector('#cacheManagerMoveWorkspaceDropdown');
-    const dropdownBtn = modal.querySelector('#cacheManagerMoveWorkspaceDropdownBtn');
-    const dropdownMenu = modal.querySelector('#cacheManagerMoveWorkspaceDropdownMenu');
-    const selectedSpan = modal.querySelector('#cacheManagerMoveWorkspaceSelected');
-    const confirmBtn = modal.querySelector('#cacheManagerMoveConfirmBtn');
-    
-    // Check if dropdown is already set up
-    if (dropdownContainer.dataset.setup === 'true') {
-        return; // Already set up, don't add duplicate event listeners
-    }
-    
-    // Setup dropdown functionality using the main dropdown system
-    setupDropdown(
-        dropdownContainer, 
-        dropdownBtn, 
-        dropdownMenu, 
-        renderCacheManagerMoveWorkspaceDropdown, 
-        () => selectedSpan.dataset.value || null,
-        {
-            onSelectOption: (value) => {
-                const workspace = workspaces[value];
-                if (workspace) {
-                    const workspaceColor = workspace.color || '#124';
-                    selectedSpan.innerHTML = `<div class="workspace-option-content"><div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
-                        <div class="workspace-name">${workspace.name}</div></div>`;
-                    selectedSpan.dataset.value = workspace.id;
-                    confirmBtn.disabled = false;
-                }
-            }
+    setupWorkspaceDropdown({
+        dropdown: modal.querySelector('#cacheManagerMoveWorkspaceDropdown'),
+        button: modal.querySelector('#cacheManagerMoveWorkspaceDropdownBtn'),
+        menu: modal.querySelector('#cacheManagerMoveWorkspaceDropdownMenu'),
+        selected: modal.querySelector('#cacheManagerMoveWorkspaceSelected'),
+        getCurrentWorkspace: () => cacheManagerCurrentWorkspace,
+        filterCurrentWorkspace: true,
+        onWorkspaceChange: (workspace) => {
+            const selectedSpan = modal.querySelector('#cacheManagerMoveWorkspaceSelected');
+            const confirmBtn = modal.querySelector('#cacheManagerMoveConfirmBtn');
+            
+            const workspaceColor = workspace.color || '#124';
+            selectedSpan.innerHTML = `<div class="workspace-option-content"><div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
+                <div class="workspace-name">${workspace.name}</div></div>`;
+            selectedSpan.dataset.value = workspace.id;
+            confirmBtn.disabled = false;
         }
-    );
-    
-    // Mark as set up
-    dropdownContainer.dataset.setup = 'true';
+    });
 }
 
 // Render function for cache manager move workspace dropdown
@@ -1782,48 +2182,19 @@ function renderCacheManagerMoveWorkspaceDropdown() {
     const modal = document.getElementById('cacheManagerMoveModal');
     if (!modal) return;
     
-    const dropdownMenu = modal.querySelector('#cacheManagerMoveWorkspaceDropdownMenu');
-    if (!dropdownMenu) return;
-    
-    dropdownMenu.innerHTML = '';
-    
-    Object.values(workspaces).forEach(workspace => {
-        if (workspace.id !== cacheManagerCurrentWorkspace) {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option';
-            option.tabIndex = 0;
-            option.dataset.value = workspace.id;
+    renderReferenceWorkspaceDropdown({
+        menu: modal.querySelector('#cacheManagerMoveWorkspaceDropdownMenu'),
+        getCurrentWorkspace: () => cacheManagerCurrentWorkspace,
+        filterCurrentWorkspace: true,
+        onWorkspaceChange: (workspace) => {
+            const selectedSpan = modal.querySelector('#cacheManagerMoveWorkspaceSelected');
+            const confirmBtn = modal.querySelector('#cacheManagerMoveConfirmBtn');
             
             const workspaceColor = workspace.color || '#124';
-            
-            option.innerHTML = `
-                <div class="workspace-option-content">
-                    <div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
-                    <div class="workspace-name">${workspace.name}</div>
-                </div>
-            `;
-            
-            option.addEventListener('click', () => {
-                const selectedSpan = modal.querySelector('#cacheManagerMoveWorkspaceSelected');
-                const confirmBtn = modal.querySelector('#cacheManagerMoveConfirmBtn');
-                
-                selectedSpan.innerHTML = `<div class="workspace-option-content"><div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
-                    <div class="workspace-name">${workspace.name}</div></div>`;
-                selectedSpan.dataset.value = workspace.id;
-                confirmBtn.disabled = false;
-                
-                const dropdownBtn = modal.querySelector('#cacheManagerMoveWorkspaceDropdownBtn');
-                closeDropdown(dropdownMenu, dropdownBtn);
-            });
-            
-            option.addEventListener('keydown', e => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    option.click();
-                }
-            });
-            
-            dropdownMenu.appendChild(option);
+            selectedSpan.innerHTML = `<div class="workspace-option-content"><div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
+                <div class="workspace-name">${workspace.name}</div></div>`;
+            selectedSpan.dataset.value = workspace.id;
+            confirmBtn.disabled = false;
         }
     });
 }
@@ -1896,7 +2267,12 @@ async function moveCacheManagerImages() {
         if (response.success) {
             showGlassToast('success', null, 'Image moved successfully');
             hideCacheManagerMoveModal();
-            loadCacheManagerImages(); // Refresh the gallery
+            if (cacheBrowserContainer.style.display !== 'none') {
+                await loadCacheManagerImages();
+            } else {
+                await loadCacheImages();
+            }
+            await refreshReferenceBrowserIfOpen();
         } else {
             throw new Error(`Failed to move image: ${response.message}`);
         }
@@ -1907,15 +2283,19 @@ async function moveCacheManagerImages() {
 }
 
 // Combined Vibe Encoding Modal Functions
-function showVibeEncodingModal(mode, data = null) {
+function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe = null) {
     if (!vibeEncodingModal) return;
     
     vibeEncodingCurrentMode = mode;
     
     // Reset form
     if (vibeEncodingFileInput) vibeEncodingFileInput.value = '';
-    if (vibeEncodingIeInput) vibeEncodingIeInput.value = '0.35';
+    if (vibeEncodingIeInput) vibeEncodingIeInput.value = targetIe || '0.35';
     if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = true;
+    
+    // Reset comment input
+    const commentInput = document.getElementById('vibeEncodingCommentInput');
+    if (commentInput) commentInput.value = '';
     
     // Hide all sections initially
     if (vibeEncodingUploadSection) vibeEncodingUploadSection.style.display = 'none';
@@ -1933,7 +2313,7 @@ function showVibeEncodingModal(mode, data = null) {
             if (vibeEncodingConfirmText) vibeEncodingConfirmText.textContent = 'Upload';
             if (vibeEncodingUploadSection) vibeEncodingUploadSection.style.display = 'block';
             if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = true;
-            if (backgroundImage) backgroundImage.src = '/images/placeholder.png';
+            if (backgroundImage) backgroundImage.src = '/background.jpg';
             if (modeDisplay) modeDisplay.textContent = 'Upload Mode';
             break;
             
@@ -1948,14 +2328,18 @@ function showVibeEncodingModal(mode, data = null) {
             break;
             
         case 'ie':
-            if (vibeEncodingModalTitle) vibeEncodingModalTitle.innerHTML = '<i class="nai-vibe-transfer"></i> <span>Request New IE</span>';
+            // Set title based on whether we have a target model
+            const ieTitle = targetModel 
+                ? `<i class="nai-vibe-transfer"></i> <span>Request IE for ${window.optionsData?.models?.[targetModel] || targetModel}</span>`
+                : '<i class="nai-vibe-transfer"></i> <span>Request New IE</span>';
+            if (vibeEncodingModalTitle) vibeEncodingModalTitle.innerHTML = ieTitle;
             if (vibeEncodingConfirmText) vibeEncodingConfirmText.textContent = 'Encode';
             if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = false;
             vibeEncodingCurrentVibeImage = data;
             if (backgroundImage && data && data.preview) {
                 backgroundImage.src = `/cache/preview/${data.preview}`;
             }
-            if (modeDisplay) modeDisplay.textContent = 'IE Request Mode';
+            if (modeDisplay) modeDisplay.textContent = 'IE Request';
             break;
             
         case 'reference':
@@ -1977,19 +2361,31 @@ function showVibeEncodingModal(mode, data = null) {
             break;
     }
     
+    // Set target model if provided
+    if (targetModel) {
+        vibeEncodingSelectedModel = targetModel;
+    }
+    
     // Update model display
     if (modelDisplay) {
-        modelDisplay.textContent = vibeEncodingSelectedModel || 'V4.5';
+        const displayName = window.optionsData?.models?.[vibeEncodingSelectedModel] || vibeEncodingSelectedModel || 'V4.5';
+        modelDisplay.textContent = displayName;
     }
     
     // Populate model dropdown
     populateVibeEncodingModelDropdown();
     
+    // Update model dropdown selection if target model was provided
+    if (targetModel && vibeEncodingModelSelected) {
+        const displayName = window.optionsData?.models?.[targetModel] || targetModel;
+        vibeEncodingModelSelected.textContent = displayName;
+    }
+    
     // Open modal
     openModal(vibeEncodingModal);
 }
 
-function hideVibeEncodingModal() {
+async function hideVibeEncodingModal() {
     if (vibeEncodingModal) {
         closeModal(vibeEncodingModal);
     }
@@ -2003,6 +2399,13 @@ function hideVibeEncodingModal() {
     if (window.galleryToolbarVibeImage) {
         delete window.galleryToolbarVibeImage;
     }
+    
+    if (cacheBrowserContainer.style.display !== 'none') {
+        await loadCacheManagerImages();
+    } else {
+        await loadCacheImages();
+    }
+    await refreshReferenceBrowserIfOpen();
 }
 
 function populateVibeEncodingModelDropdown() {
@@ -2058,21 +2461,22 @@ function populateVibeEncodingModelDropdown() {
     }
 }
 
-
-
-
-
 async function handleVibeEncodingConfirm() {
     if (!vibeEncodingCurrentMode) return;
     
     const informationExtraction = vibeEncodingIeInput ? parseFloat(vibeEncodingIeInput.value) : 0.35;
     const model = vibeEncodingSelectedModel;
     
+    // Get comment from input
+    const commentInput = document.getElementById('vibeEncodingCommentInput');
+    const comment = commentInput ? commentInput.value.trim() : '';
+    
     let toastId;
     let requestParams = {
         informationExtraction: informationExtraction,
         model: model,
-        workspace: cacheManagerCurrentWorkspace
+        workspace: cacheManagerCurrentWorkspace, // Default, will be updated based on mode
+        comment: comment || null
     };
     
     try {
@@ -2111,6 +2515,11 @@ async function handleVibeEncodingConfirm() {
                 toastId = showGlassToast('info', 'Requesting IE', 'Processing new Information Extraction...', true, false, '<i class="fas fa-binary"></i>');
                 
                 requestParams.id = vibeEncodingCurrentVibeImage.id;
+                
+                // Use the vibe's workspace instead of current workspace
+                if (vibeEncodingCurrentVibeImage.workspaceId) {
+                    requestParams.workspace = vibeEncodingCurrentVibeImage.workspaceId;
+                }
                 break;
                 
             case 'reference':
@@ -2122,6 +2531,11 @@ async function handleVibeEncodingConfirm() {
                 toastId = showGlassToast('info', 'Vibe Encoding', 'Generating vibe from reference image...', true, false, '<i class="fas fa-binary"></i>');
                 
                 requestParams.cacheFile = vibeEncodingCurrentCacheImage.hash;
+                
+                // Use the source cache image's workspace instead of current workspace
+                if (vibeEncodingCurrentCacheImage.workspaceId) {
+                    requestParams.workspace = vibeEncodingCurrentCacheImage.workspaceId;
+                }
                 break;
         }
         
@@ -2137,8 +2551,13 @@ async function handleVibeEncodingConfirm() {
             };
             
             updateGlassToast(toastId, 'success', 'Encoding Complete', successMessages[vibeEncodingCurrentMode]);
-            hideVibeEncodingModal();
-                loadCacheManagerImages();
+            await hideVibeEncodingModal();
+            if (cacheBrowserContainer.style.display !== 'none') {
+                await loadCacheManagerImages();
+            } else {
+                await loadCacheImages();
+            }
+            await refreshReferenceBrowserIfOpen();
         } else {
             throw new Error(response.message || 'Failed to process vibe encoding');
         }
@@ -2187,7 +2606,7 @@ function createVibeManagerGalleryItem(vibeImage) {
     if (vibeImage.preview) {
         img.src = `/cache/preview/${vibeImage.preview}`;
     } else {
-        img.src = '/images/placeholder.png'; // Fallback image
+        img.src = '/background.jpg'; // Fallback image
     }
     img.alt = `Vibe image ${vibeImage.id}`;
     img.loading = 'lazy';
@@ -2206,6 +2625,24 @@ function createVibeManagerGalleryItem(vibeImage) {
     const encodingsContainer = document.createElement('div');
     encodingsContainer.className = 'vibe-manager-gallery-item-encodings';
 
+    // Add NovelAI badge if imported from NovelAI
+    if (vibeImage.importedFrom === 'novelai') {
+        const novelaiBadge = document.createElement('div');
+        novelaiBadge.className = 'vibe-badge novelai-badge';
+        novelaiBadge.innerHTML = '<i class="nai-import"></i> NovelAI';
+        novelaiBadge.title = 'Imported from NovelAI Vibe Bundle';
+        encodingsContainer.appendChild(novelaiBadge);
+    }
+
+    // Add locked badge if vibe is locked
+    if (vibeImage.locked) {
+        const lockedBadge = document.createElement('div');
+        lockedBadge.className = 'vibe-badge locked-badge';
+        lockedBadge.innerHTML = '<i class="fas fa-lock"></i> Locked';
+        lockedBadge.title = 'Vibe is locked - cannot add new Information Extractions';
+        encodingsContainer.appendChild(lockedBadge);
+    }
+
     if (vibeImage.encodings && vibeImage.encodings.length > 0) {
         // Create enhanced badges container
         const badgesContainer = document.createElement('div');
@@ -2214,13 +2651,13 @@ function createVibeManagerGalleryItem(vibeImage) {
         vibeImage.encodings.forEach(encoding => {
             // Get model display name
             const modelKey = encoding.model || 'kayra';
-            const modelDisplayName = modelBadges[modelKey] ? modelBadges[modelKey].display : modelKey;
+            const modelDisplayName = modelBadges[modelKey] ? (modelBadges[modelKey].display + (modelBadges[modelKey].badge ? ' ' + modelBadges[modelKey].badge : '')) : modelKey;
 
             // Combined model and IE badge with split colors
             const combinedBadge = document.createElement('div');
             combinedBadge.className = 'vibe-badge split';
             combinedBadge.innerHTML = `
-                <span class="badge-model">${modelDisplayName}</span>
+                <div class="badge-model"><i class="nai-vibe-transfer"></i> <span>${modelDisplayName}</span></div>
                 <span class="badge-ie">${((encoding.informationExtraction || 0.0) * 100).toFixed(0)}%</span>
             `;
             combinedBadge.title = `Model: ${modelDisplayName}, IE: ${((encoding.informationExtraction || 0.0) * 100).toFixed(0)}%`;
@@ -2253,14 +2690,53 @@ function createVibeManagerGalleryItem(vibeImage) {
     const buttonsContainer = document.createElement('div');
     buttonsContainer.className = 'vibe-manager-gallery-item-buttons';
 
-    // Create IE request button
-    const ieBtn = document.createElement('button');
-    ieBtn.className = 'btn-secondary btn-small';
-    ieBtn.innerHTML = '<i class="nai-plus"></i>';
-    ieBtn.title = 'Request new Information Extraction';
-    ieBtn.addEventListener('click', (e) => {
+    // Create IE request button (only if not locked)
+    if (!vibeImage.locked) {
+        const ieBtn = document.createElement('button');
+        ieBtn.className = 'btn-secondary btn-small';
+        ieBtn.innerHTML = '<i class="nai-plus"></i>';
+        ieBtn.title = 'Request new Information Extraction';
+        ieBtn.addEventListener('click', (e) => {z``
+            e.stopPropagation();
+            showVibeEncodingModal('ie', vibeImage);
+        });
+        buttonsContainer.appendChild(ieBtn);
+    }
+
+    // Create comment button if comment exists
+    if (vibeImage.comment) {
+        const commentBtn = document.createElement('button');
+        commentBtn.className = 'btn-secondary btn-small';
+        commentBtn.innerHTML = '<i class="fas fa-comment"></i>';
+        commentBtn.title = 'View comment';
+        commentBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showCommentDialog(vibeImage.comment, vibeImage.originalName || 'Vibe Comment');
+        });
+        buttonsContainer.appendChild(commentBtn);
+    }
+
+    // Create preview button
+    const previewBtn = document.createElement('button');
+    previewBtn.className = 'btn-secondary btn-small';
+    previewBtn.innerHTML = '<i class="fas fa-eye"></i>';
+    previewBtn.title = 'Preview image';
+    previewBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        showVibeEncodingModal('ie', vibeImage);
+        // Get the full image source
+        let imageSrc;
+        if (vibeImage.type === 'base64' && vibeImage.source) {
+            imageSrc = `data:image/png;base64,${vibeImage.source}`;
+        } else if (vibeImage.type === 'cache' && vibeImage.source) {
+            imageSrc = `/cache/upload/${vibeImage.source}`;
+        } else if (vibeImage.preview) {
+            imageSrc = `/cache/preview/${vibeImage.preview}`;
+        }
+        if (imageSrc) {
+            showImagePreview(imageSrc, `Vibe image ${vibeImage.id}`);
+        } else {
+            showError('No preview image found');
+        }
     });
 
     // Create delete button
@@ -2270,14 +2746,13 @@ function createVibeManagerGalleryItem(vibeImage) {
     deleteBtn.title = 'Delete vibe encoding';
     deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        // Show vibe delete selection dialog
         vibeManagerSelectedImages.clear();
         vibeManagerSelectedImages.add(vibeImage.id);
         showVibeManagerDeleteModal();
     });
 
+    buttonsContainer.appendChild(previewBtn);
     buttonsContainer.appendChild(moveBtn);
-    buttonsContainer.appendChild(ieBtn);
     buttonsContainer.appendChild(deleteBtn);
 
     overlay.appendChild(infoSection);
@@ -2289,7 +2764,6 @@ function createVibeManagerGalleryItem(vibeImage) {
 
     return item;
 }
-
 
 function showVibeManagerDeleteModal() {
     if (vibeManagerSelectedImages.size === 0) {
@@ -2353,8 +2827,8 @@ function showVibeManagerDeleteModal() {
                 encodingItem.dataset.type = 'encoding';
                 encodingItem.innerHTML = `
                     <div class="vibe-delete-item-content">
-                            <div class="vibe-delete-item-name">${(encoding.informationExtraction * 100).toFixed(0)}% IE</div>
-                            <div class="vibe-badge">${window.modelNames[encoding.model] || encoding.model}</div>
+                        <div class="vibe-delete-item-name">${(encoding.informationExtraction * 100).toFixed(0)}% IE</div>
+                        <div class="vibe-badge">${window.modelNames[encoding.model] || encoding.model}</div>
                     </div>
                 `;
                 
@@ -2372,6 +2846,7 @@ function showVibeManagerDeleteModal() {
         openModal(vibeManagerDeleteModal);
     }
 }
+
 function hideVibeManagerDeleteModal() {
     if (vibeManagerDeleteModal) {
         closeModal(vibeManagerDeleteModal);
@@ -2421,7 +2896,12 @@ async function moveVibeManagerImages() {
             showGlassToast('success', null, 'Vibe image moved successfully');
 
             hideVibeManagerMoveModal();
-            loadCacheManagerImages(); // Refresh the gallery
+            if (cacheBrowserContainer.style.display !== 'none') {
+                await loadCacheManagerImages();
+            } else {
+                await loadCacheImages();
+            }
+            await refreshReferenceBrowserIfOpen();
         } else {
             throw new Error(`Failed to move vibe image: ${response.message}`);
         }
@@ -2451,87 +2931,6 @@ async function moveVibeManagerImage(vibeImage) {
     }
 }
 
-async function deleteVibeManagerImage(vibeImage) {
-    try {
-        // Check if this is a standalone vibe or has a cache reference
-        if (vibeImage.type === 'base64') {
-            // Standalone vibe - just delete the vibe
-            const confirmed = await showConfirmationDialog(
-                'Are you sure you want to delete this vibe encoding?',
-                [
-                    { text: 'Delete', value: true, className: 'btn-danger' },
-                    { text: 'Cancel', value: false, className: 'btn-secondary' }
-                ]
-            );
-            
-            if (!confirmed) return;
-            
-            // Delete the vibe
-            const response = await wsClient.deleteVibeImage(vibeImage.id, cacheManagerCurrentWorkspace);
-            if (response.success) {
-                // Remove from local array
-                vibeManagerImages = vibeManagerImages.filter(img => img.id !== vibeImage.id);
-                displayVibeManagerImages();
-                showGlassToast('success', null, 'Vibe encoding deleted');
-            } else {
-                throw new Error(response.message || 'Failed to delete vibe');
-            }
-        } else if (vibeImage.type === 'cache') {
-            // This vibe uses a cache image - check if the cache image has other vibes
-            const cacheImage = cacheManagerImages.find(img => img.hash === vibeImage.source);
-            
-            if (cacheImage && cacheImage.hasVibes && cacheImage.vibes.length > 1) {
-                // Multiple vibes exist - show options
-                const deleteOptions = await showConfirmationDialog(
-                    'What would you like to delete?',
-                    [
-                        { text: 'Base Image', value: 'base', className: 'btn-warning' },
-                        { text: 'Vibe Encoding(s)', value: 'vibes', className: 'btn-warning' },
-                        { text: 'Delete', value: 'both', className: 'btn-danger' },
-                        { text: 'Cancel', value: null, className: 'btn-secondary' }
-                    ]
-                );
-                
-                if (!deleteOptions) return;
-                
-                if (deleteOptions === 'base') {
-                    // Delete base image - server will automatically convert vibes to base64
-                    await deleteBaseImage(cacheImage);
-                } else if (deleteOptions === 'vibes') {
-                    // Show vibe IE delete modal for this specific vibe
-                    showVibeManagerDeleteModal();
-                    // Set up the vibe for deletion
-                    vibeManagerSelectedImages.clear();
-                    vibeManagerSelectedImages.add(vibeImage.id);
-                } else if (deleteOptions === 'both') {
-                    // Delete both base image and vibe
-                    await deleteBaseImage(cacheImage);
-                    await deleteVibeImage(vibeImage);
-                }
-            } else {
-                // Only one vibe exists - show simple confirmation
-                const confirmed = await showConfirmationDialog(
-                    'Are you sure you want to delete this vibe encoding?',
-                    [
-                        { text: 'Delete', value: true, className: 'btn-danger' },
-                        { text: 'Cancel', value: false, className: 'btn-secondary' }
-                    ]
-                );
-                
-                if (!confirmed) return;
-                
-                // Delete the vibe
-                await deleteVibeImage(vibeImage);
-            }
-        }
-    } catch (error) {
-        console.error('Error deleting vibe manager image:', error);
-        showError('Failed to delete vibe encoding');
-    }
-}
-
-
-
 async function deleteBaseImage(cacheImage) {
     try {
         const response = await wsClient.deleteReference(cacheImage.hash, cacheManagerCurrentWorkspace);
@@ -2551,7 +2950,13 @@ async function deleteVibeImage(vibeImage) {
     try {
         const response = await wsClient.deleteVibeImage(vibeImage.id, cacheManagerCurrentWorkspace);
         if (response.success) {
+            if (cacheBrowserContainer.style.display !== 'none') {
+                await loadCacheManagerImages();
+            } else {
+                await loadCacheImages();
+            }
             displayVibeManagerImages();
+            await refreshReferenceBrowserIfOpen();
             showGlassToast('success', null, 'Vibe encoding deleted');
             return true;
         } else {
@@ -2643,8 +3048,13 @@ async function handleVibeManagerDeleteConfirm() {
         }
 
         // Refresh the display
-        await loadCacheManagerImages();
+        if (cacheBrowserContainer.style.display !== 'none') {
+            await loadCacheManagerImages();
+        } else {
+            await loadCacheImages();
+        }
         displayVibeManagerImages();
+        await refreshReferenceBrowserIfOpen();
         
         // Show success message
         if (deletedCount > 0) {
@@ -2662,22 +3072,405 @@ async function handleVibeManagerDeleteConfirm() {
     }
 }
 
-
-
-// Helper function to convert file to base64
-function fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => {
-            const base64 = reader.result.split(',')[1]; // Remove data URL prefix
-            resolve(base64);
-        };
-        reader.onerror = error => reject(error);
-    });
+// Handle file input changes for unified upload modal
+async function handleUnifiedUploadFileChange() {
+    if (unifiedUploadConfirmBtn) {
+        unifiedUploadConfirmBtn.disabled = !unifiedUploadFileInput.files.length;
+    }
+    
+    // Reset UI elements
+    hideVibeBundlePreview();
+    showModeSelector();
+    
+    // Display uploaded file in background (for both modes)
+    if (unifiedUploadFileInput.files.length > 0) {
+        const file = unifiedUploadFileInput.files[0];
+        const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
+        
+        if (backgroundImage && file) {
+            try {
+                if (file.type === 'application/json' || file.name.endsWith('.naiv4vibebundle')) {
+                    await handleVibeBundleFile(file, backgroundImage);
+                } else {
+                    await handleImageFile(file, backgroundImage);
+                }
+            } catch (error) {
+                console.error('Error creating file preview:', error);
+                backgroundImage.src = '/background.jpg';
+            }
+        }
+    } else {
+        resetUploadModal();
+    }
 }
 
-// Initialize cache manager functionality
+// Handle vibe bundle file selection
+async function handleVibeBundleFile(file, backgroundImage) {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        try {
+            const jsonData = JSON.parse(e.target.result);
+            
+            // Check if it's a vibe bundle or single vibe
+            const isVibeBundle = jsonData.identifier === 'novelai-vibe-transfer-bundle' && jsonData.vibes && jsonData.vibes.length > 0;
+            const isSingleVibe = jsonData.identifier === 'novelai-vibe-transfer';
+            
+            if (isVibeBundle || isSingleVibe) {
+                const vibes = isVibeBundle ? jsonData.vibes : [jsonData];
+                
+                // Hide mode selection for vibe bundles
+                hideModeSelector();
+                
+                // Show vibe bundle preview
+                showVibeBundlePreview(vibes);
+                
+                // Set background image to first vibe's thumbnail
+                const firstVibe = vibes[0];
+                if (firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
+                    backgroundImage.src = firstVibe.thumbnail;
+                } else {
+                    backgroundImage.src = '/background.jpg';
+                }
+                
+                // Update UI for bundle import
+                updateUIForVibeBundleImport(vibes.length, isVibeBundle);
+            } else {
+                handleInvalidBundle(backgroundImage);
+            }
+        } catch (parseError) {
+            console.error('Error parsing JSON:', parseError);
+            handleInvalidBundle(backgroundImage);
+        }
+    };
+    reader.readAsText(file);
+}
+
+// Handle regular image file selection
+async function handleImageFile(file, backgroundImage) {
+    // Create a preview URL for the uploaded image
+    const imageUrl = URL.createObjectURL(file);
+    backgroundImage.src = imageUrl;
+    
+    // Clean up the object URL when the image loads
+    backgroundImage.onload = () => {
+        URL.revokeObjectURL(imageUrl);
+    };
+}
+
+// Show vibe bundle preview
+function showVibeBundlePreview(vibes) {
+    const vibeBundlePreview = document.getElementById('unifiedUploadVibeBundlePreview');
+    const vibeBundleList = document.getElementById('unifiedUploadVibeBundleList');
+    
+    if (!vibeBundlePreview || !vibeBundleList) return;
+    
+    // Initialize modified vibe data tracking
+    window.modifiedVibeData = [];
+    
+    vibeBundleList.innerHTML = '';
+    
+    vibes.forEach(vibe => {
+        const item = document.createElement('div');
+        item.className = 'vibe-bundle-item';
+        item.setAttribute('data-vibe-id', vibe.id);
+        
+        // Create image element
+        const img = document.createElement('img');
+        img.className = 'vibe-bundle-item-image';
+        if (vibe.thumbnail && vibe.thumbnail.startsWith('data:image/')) {
+            img.src = vibe.thumbnail;
+        } else {
+            img.src = '/background.jpg';
+        }
+        img.alt = vibe.name || 'Vibe';
+        
+        // Create details section
+        const details = document.createElement('div');
+        details.className = 'vibe-bundle-item-details';
+        
+        const name = document.createElement('div');
+        name.className = 'vibe-bundle-item-name';
+        name.textContent = vibe.name || 'Unnamed Vibe';
+        
+        const info = document.createElement('div');
+        info.className = 'vibe-bundle-item-info';
+        
+        // Add encoding badges using the same system as gallery - exactly like createVibeManagerGalleryItem
+        if (vibe.encodings && Object.keys(vibe.encodings).length > 0) {
+            // Create badges container like cache manager
+            const badgesContainer = document.createElement('div');
+            badgesContainer.className = 'vibe-badges';
+            
+            let hasEncodings = false;
+            
+            Object.entries(vibe.encodings).forEach(([bundleModel, encodings]) => {
+                // Map the bundle model name to the correct internal model name
+                const mappedModel = importModelMapping[bundleModel] || bundleModel;
+                
+                // Extract IE values from encoding structure
+                const ieValues = new Set();
+                
+                Object.entries(encodings).forEach(([encodingId, encodingData]) => {
+                    let ie;
+                    if (encodingId !== 'unknown') {
+                        // Use the IE from params if available
+                        ie = encodingData.params?.information_extracted;
+                    } else {
+                        // For unknown encodingId, try params first, then fallback to importInfo
+                        if (encodingData.params && encodingData.params.information_extracted && 
+                            typeof encodingData.params.information_extracted === 'number' && 
+                            encodingData.params.information_extracted > 0) {
+                            ie = encodingData.params.information_extracted;
+                        } else if (vibe.importInfo && vibe.importInfo.information_extracted) {
+                            ie = vibe.importInfo.information_extracted;
+                        } else {
+                            ie = 1; // Default fallback
+                        }
+                    }
+                    
+                    if (ie !== undefined && ie !== null && !isNaN(ie)) {
+                        ieValues.add(ie);
+                    }
+                });
+                
+                // Create badges for each unique IE value exactly like cache manager
+                ieValues.forEach(ieValue => {
+                    hasEncodings = true;
+                    // Get model display name exactly like cache manager
+                    const modelKey = mappedModel || 'kayra';
+                    const modelDisplayName = window.modelBadges?.[modelKey] ? window.modelBadges[modelKey].display : modelKey;
+
+                    // Create encoding badge with proper cache-badge classes like cache manager
+                    const encodingBadge = document.createElement('div');
+                    encodingBadge.className = 'cache-badge encoding' + 
+                        (window.modelBadges?.[modelKey]?.badge ? ' encoding-' + window.modelBadges[modelKey].badge.toLowerCase() : '');
+                    
+                    encodingBadge.innerHTML = `
+                        <div class="badge-model"><i class="nai-vibe-transfer"></i> <span>${modelDisplayName}</span></div>
+                        <span class="badge-ie">${(ieValue * 100).toFixed(0)}%</span>
+                    `;
+                    encodingBadge.title = `Model: ${modelDisplayName}, IE: ${(ieValue * 100).toFixed(0)}%`;
+                    badgesContainer.appendChild(encodingBadge);
+                });
+            });
+            
+            if (hasEncodings) {
+                info.appendChild(badgesContainer);
+            } else {
+                // No encodings found - add "No IE" badge like createVibeManagerGalleryItem
+                const noEncodingsBadge = document.createElement('div');
+                noEncodingsBadge.className = 'vibe-manager-encoding-badge no-encodings';
+                noEncodingsBadge.textContent = 'No IE';
+                info.appendChild(noEncodingsBadge);
+            }
+        } else {
+            // No encodings - add "No IE" badge like createVibeManagerGalleryItem
+            const noEncodingsBadge = document.createElement('div');
+            noEncodingsBadge.className = 'vibe-manager-encoding-badge no-encodings';
+            noEncodingsBadge.textContent = 'No IE';
+            info.appendChild(noEncodingsBadge);
+        }
+        
+        // Add buttons for vibes missing thumbnails or source images
+        const buttonsContainer = document.createElement('div');
+        buttonsContainer.style.display = 'flex';
+        buttonsContainer.style.gap = '8px';
+        buttonsContainer.style.margin = '8px 0';
+        
+        // Add thumbnail selection button for vibes missing thumbnails
+        if (!vibe.thumbnail) {
+            const thumbnailButton = document.createElement('button');
+            thumbnailButton.className = 'btn-primary btn-small';
+            thumbnailButton.innerHTML = '<i class="fas fa-image"></i> Preview';
+            
+            // Handle thumbnail selection
+            thumbnailButton.onclick = async () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.style.display = 'none';
+                document.body.appendChild(input);
+                
+                input.onchange = async () => {
+                    const selectedFile = input.files[0];
+                    document.body.removeChild(input);
+                    
+                    if (selectedFile) {
+                        try {
+                            const base64 = await fileToBase64(selectedFile);
+                            vibe.thumbnail = 'data:image/png;base64,' + base64;
+                            
+                            // Update the image preview
+                            img.src = vibe.thumbnail;
+                            
+                            // Update button to show success
+                            thumbnailButton.innerHTML = '<i class="fas fa-check"></i>';
+                            thumbnailButton.className = 'btn-secondary btn-small';
+                            thumbnailButton.style.background = 'rgb(0 162 37 / 57%)';
+                            thumbnailButton.style.borderColor = 'rgb(84 255 123)';
+                            thumbnailButton.style.color = '#ccffc8';
+                            thumbnailButton.disabled = true;
+                            
+                            // Store the modified vibe data for import
+                            const existingIndex = window.modifiedVibeData.findIndex(v => v.id === vibe.id);
+                            if (existingIndex >= 0) {
+                                window.modifiedVibeData[existingIndex].thumbnail = vibe.thumbnail;
+                            } else {
+                                window.modifiedVibeData.push({
+                                    id: vibe.id,
+                                    thumbnail: vibe.thumbnail
+                                });
+                            }
+                        } catch (error) {
+                            showError('Failed to process thumbnail image: ' + error.message);
+                        }
+                    }
+                };
+                
+                input.click();
+            };
+            
+            buttonsContainer.appendChild(thumbnailButton);
+        }
+        
+        // Add source image selection button for vibes missing source images
+        if (!vibe.image) {
+            const sourceButton = document.createElement('button');
+            sourceButton.className = 'btn-primary btn-small';
+            sourceButton.innerHTML = '<i class="fas fa-file-image"></i> Source';
+            
+            // Handle source image selection
+            sourceButton.onclick = async () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.style.display = 'none';
+                document.body.appendChild(input);
+                
+                input.onchange = async () => {
+                    const selectedFile = input.files[0];
+                    document.body.removeChild(input);
+                    
+                    if (selectedFile) {
+                        try {
+                            const base64 = await fileToBase64(selectedFile);
+                            vibe.image = base64;
+                            vibe.type = 'base64';
+                            
+                            // Update button to show success
+                            sourceButton.innerHTML = '<i class="fas fa-check"></i>';
+                            sourceButton.className = 'btn-secondary btn-small';
+                            sourceButton.style.background = 'rgb(0 162 37 / 57%)';
+                            sourceButton.style.borderColor = 'rgb(84 255 123)';
+                            sourceButton.style.color = '#ccffc8';
+                            sourceButton.disabled = true;
+                            
+                            // Store the modified vibe data for import
+                            const existingIndex = window.modifiedVibeData.findIndex(v => v.id === vibe.id);
+                            if (existingIndex >= 0) {
+                                window.modifiedVibeData[existingIndex].image = vibe.image;
+                                window.modifiedVibeData[existingIndex].type = 'base64';
+                            } else {
+                                window.modifiedVibeData.push({
+                                    id: vibe.id,
+                                    image: vibe.image,
+                                    type: 'base64'
+                                });
+                            }
+                        } catch (error) {
+                            showError('Failed to process source image: ' + error.message);
+                        }
+                    }
+                };
+                
+                input.click();
+            };
+            
+            buttonsContainer.appendChild(sourceButton);
+        }
+        
+        // Only add the buttons container if there are buttons to show
+        if (buttonsContainer.children.length > 0) {
+            info.appendChild(buttonsContainer);
+        }
+        
+        details.appendChild(name);
+        details.appendChild(info);
+        
+        item.appendChild(img);
+        item.appendChild(details);
+        vibeBundleList.appendChild(item);
+    });
+    
+    vibeBundlePreview.style.display = 'block';
+}
+
+// Hide vibe bundle preview
+function hideVibeBundlePreview() {
+    const vibeBundlePreview = document.getElementById('unifiedUploadVibeBundlePreview');
+    if (vibeBundlePreview) {
+        vibeBundlePreview.style.display = 'none';
+    }
+}
+
+// Hide mode selector buttons
+function hideModeSelector() {
+    const modeSelector = document.querySelector('.unified-upload-mode-selector');
+    if (modeSelector) {
+        modeSelector.style.display = 'none';
+    }
+}
+
+// Show mode selector buttons
+function showModeSelector() {
+    const modeSelector = document.querySelector('.unified-upload-mode-selector');
+    if (modeSelector) {
+        modeSelector.style.display = '';
+    }
+}
+
+// Update UI for vibe bundle import
+function updateUIForVibeBundleImport(vibeCount, isBundle) {
+    const modalTitle = document.getElementById('unifiedUploadModalTitle');
+    const confirmText = document.getElementById('unifiedUploadConfirmText');
+    
+    if (modalTitle) {
+        modalTitle.innerHTML = '<i class="nai-import"></i> Import Vibe Bundle';
+    }
+    
+    if (confirmText) {
+        confirmText.textContent = 'Import Bundle';
+    }
+}
+
+// Handle invalid bundle
+function handleInvalidBundle(backgroundImage) {
+    backgroundImage.src = '/background.jpg';
+    // Invalid bundle handling - could show toast notification instead
+    console.warn('Invalid vibe bundle format');
+}
+
+// Reset upload modal to default state
+function resetUploadModal() {
+    const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
+    if (backgroundImage) {
+        backgroundImage.src = '/background.jpg';
+    }
+    
+    const modalTitle = document.getElementById('unifiedUploadModalTitle');
+    const confirmText = document.getElementById('unifiedUploadConfirmText');
+    
+    if (modalTitle) {
+        modalTitle.innerHTML = '<i class="nai-import"></i> Upload & Encode';
+    }
+    if (confirmText) {
+        confirmText.textContent = 'Upload';
+    }
+    
+    hideVibeBundlePreview();
+    showModeSelector();
+}
+
 function initializeCacheManager() {
     // Reference manager button
     if (cacheManagerBtn) {
@@ -2692,7 +3485,7 @@ function initializeCacheManager() {
     // Reference manager refresh button
     if (cacheManagerRefreshBtn) {
         cacheManagerRefreshBtn.addEventListener('click', () => {
-                loadCacheManagerImages();
+            loadCacheManagerImages();
         });
     }
 
@@ -2702,12 +3495,6 @@ function initializeCacheManager() {
             showUnifiedUploadModal();
         });
     }
-
-// Export functions for use in other modules
-window.showVibeEncodingModal = showVibeEncodingModal;
-window.hideVibeEncodingModal = hideVibeEncodingModal;
-window.showUnifiedUploadModal = showUnifiedUploadModal;
-window.hideUnifiedUploadModal = hideUnifiedUploadModal;
 
     // Reference manager move button
     if (cacheManagerMoveBtn) {
@@ -2734,38 +3521,7 @@ window.hideUnifiedUploadModal = hideUnifiedUploadModal;
     // File input change handler for unified upload
     if (unifiedUploadFileInput) {
         unifiedUploadFileInput.addEventListener('change', async () => {
-            if (unifiedUploadConfirmBtn) {
-                unifiedUploadConfirmBtn.disabled = !unifiedUploadFileInput.files.length;
-            }
-            
-            // Display uploaded image in background (for both modes)
-            if (unifiedUploadFileInput.files.length > 0) {
-                const file = unifiedUploadFileInput.files[0];
-                const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
-                
-                if (backgroundImage && file) {
-                    try {
-                        // Create a preview URL for the uploaded image
-                        const imageUrl = URL.createObjectURL(file);
-                        backgroundImage.src = imageUrl;
-                        
-                        // Clean up the object URL when the image loads
-                        backgroundImage.onload = () => {
-                            URL.revokeObjectURL(imageUrl);
-                        };
-                    } catch (error) {
-                        console.error('Error creating image preview:', error);
-                        // Fallback to placeholder
-                        backgroundImage.src = '/images/placeholder.png';
-                    }
-                }
-            } else if (unifiedUploadFileInput.files.length === 0) {
-                // Reset to placeholder if no file selected
-                const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
-                if (backgroundImage) {
-                    backgroundImage.src = '/images/placeholder.png';
-                }
-            }
+            await handleUnifiedUploadFileChange();
         });
     }
 
@@ -2789,8 +3545,8 @@ window.hideUnifiedUploadModal = hideUnifiedUploadModal;
     }
 
     // Combined Vibe Encoding Modal Controls
-    if (closeVibeEncodingBtn) closeVibeEncodingBtn.addEventListener('click', hideVibeEncodingModal);
-    if (vibeEncodingCancelBtn) vibeEncodingCancelBtn.addEventListener('click', hideVibeEncodingModal);
+    if (closeVibeEncodingBtn) closeVibeEncodingBtn.addEventListener('click', async () => await hideVibeEncodingModal());
+    if (vibeEncodingCancelBtn) vibeEncodingCancelBtn.addEventListener('click', async () => await hideVibeEncodingModal());
     if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.addEventListener('click', handleVibeEncodingConfirm);
 
     // File input change handler for upload mode
@@ -2818,14 +3574,14 @@ window.hideUnifiedUploadModal = hideUnifiedUploadModal;
                     } catch (error) {
                         console.error('Error creating image preview:', error);
                         // Fallback to placeholder
-                        backgroundImage.src = '/images/placeholder.png';
+                        backgroundImage.src = '/background.jpg';
                     }
                 }
             } else {
                 // Reset to placeholder if no file selected
                 const backgroundImage = document.getElementById('vibeEncodingBackgroundImage');
                 if (backgroundImage) {
-                    backgroundImage.src = '/images/placeholder.png';
+                    backgroundImage.src = '/background.jpg';
                 }
             }
         });

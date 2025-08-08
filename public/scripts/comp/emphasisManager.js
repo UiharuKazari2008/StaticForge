@@ -948,13 +948,22 @@ function highlightEmphasisInText(text) {
 
     // Highlight text replacements <text> - no emphasis levels, just visual highlighting
     // Match patterns that look like valid text replacement keys (letters, numbers, underscores) - case insensitive
-    highlightedText = highlightedText.replace(/(<)([a-zA-Z0-9_]+)(>)/g, (match, openBracket, content, closeBracket) => {
-        // Check if content starts with PICK_ (case insensitive)
-        const isPickReplacement = content.toUpperCase().startsWith('PICK_');
-        const backgroundColor = isPickReplacement ? '#628a33' : '#8bc34a8a';
+    // Handle PICK replacements with ~ suffix
+    highlightedText = highlightedText.replace(/(!)([a-zA-Z0-9_]+)(~)/g, (match, exclamation, content, tilde) => {
+        const backgroundColor = '#628a33'; // PICK replacement color
 
-        // Escape the < and > characters for HTML display
-        const escapedMatch = match.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        // Escape the ! and ~ characters for HTML display
+        const escapedMatch = match.replace(/!/g, '&#33;').replace(/~/g, '&#126;');
+
+        return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+    });
+    
+    // Handle regular replacements with word boundary matching
+    highlightedText = highlightedText.replace(/(!)([a-zA-Z0-9_]+)\b/g, (match, exclamation, content) => {
+        const backgroundColor = '#8bc34a8a'; // Regular replacement color
+
+        // Escape the ! character for HTML display
+        const escapedMatch = match.replace(/!/g, '&#33;');
 
         return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
     });

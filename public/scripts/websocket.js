@@ -392,6 +392,11 @@ class WebSocketClient {
                 clearTimeout(this.pingTimeout);
                 this.pingTimeout = null;
             }
+            
+            // Handle pong responses with requestId for authentication checking
+            if (message.requestId) {
+                this.resolveRequest(message.requestId, { success: true }, null);
+            }
             return;
         }
         
@@ -481,6 +486,9 @@ class WebSocketClient {
             showGlassToast('error', null, 'Authentication required. Please log in.', false, 5000, '<i class="fas fa-lock"></i>');
         }
         
+        // Trigger authentication event for other parts of the app to handle
+        this.triggerEvent('authentication_required', message);
+        
         // Show PIN modal for authentication
         if (typeof window.showPinModal === 'function') {
             window.showPinModal().then(() => {
@@ -553,8 +561,6 @@ class WebSocketClient {
             }, (response, error) => {
                 if (error) {
                     console.error('Gallery request callback error:', error);
-                } else {
-                    console.log('Gallery request completed:', viewType, response);
                 }
             });
             return result;
@@ -580,13 +586,41 @@ class WebSocketClient {
             const result = await this.sendWithCallback('request_image_metadata', { filename }, (response, error) => {
                 if (error) {
                     console.error('Image metadata request callback error:', error);
-                } else {
-                    console.log('Image metadata request completed:', filename, response);
                 }
             });
             return result;
         } catch (error) {
             showGlassToast('error', 'Image metadata request error', error.message, false);
+            throw error;
+        }
+    }
+
+    // Method to request image by index via WebSocket
+    async requestImageByIndex(index, viewType = 'images') {
+        try {
+            const result = await this.sendWithCallback('request_image_by_index', { index, viewType }, (response, error) => {
+                if (error) {
+                    console.error('Image by index request callback error:', error);
+                }
+            });
+            return result;
+        } catch (error) {
+            showGlassToast('error', 'Image by index request error', error.message, false);
+            throw error;
+        }
+    }
+
+    // Method to find image index by filename via WebSocket
+    async findImageIndex(filename, viewType = 'images') {
+        try {
+            const result = await this.sendWithCallback('find_image_index', { filename, viewType }, (response, error) => {
+                if (error) {
+                    console.error('Find image index callback error:', error);
+                }
+            });
+            return result;
+        } catch (error) {
+            showGlassToast('error', 'Find image index error', error.message, false);
             throw error;
         }
     }
@@ -603,13 +637,15 @@ class WebSocketClient {
     }
 
     async searchPresets(query) {
-        try {
-            const result = await this.sendMessage('search_presets', { query });
-            return result;
-        } catch (error) {
-            showGlassToast('error', 'Preset search error', error.message, false);
-            throw error;
-        }
+        return this.sendMessageWithRequestId('search_presets', this.generateRequestId(), { query });
+    }
+
+    async loadPreset(presetName) {
+        return this.sendMessageWithRequestId('load_preset', this.generateRequestId(), { presetName });
+    }
+
+    async savePreset(presetName, config) {
+        return this.sendMessageWithRequestId('save_preset', this.generateRequestId(), { presetName, config });
     }
 
     async searchDatasetTags(query, path = []) {
@@ -685,8 +721,8 @@ class WebSocketClient {
         return this.sendMessage('workspace_get_files', { id });
     }
 
-    async moveFilesToWorkspace(filenames, targetWorkspaceId, sourceWorkspaceId = null) {
-        return this.sendMessage('workspace_move_files', { id: targetWorkspaceId, filenames, sourceWorkspaceId });
+    async moveFilesToWorkspace(filenames, targetWorkspaceId, sourceWorkspaceId = null, moveType = 'files') {
+        return this.sendMessage('workspace_move_files', { id: targetWorkspaceId, filenames, sourceWorkspaceId, moveType });
     }
 
     async getWorkspaceScraps(id) {
@@ -845,6 +881,41 @@ class WebSocketClient {
 
     async encodeVibe(params) {
         return this.sendMessage('encode_vibe', params);
+    }
+
+    async importVibeBundle(bundleData, workspaceId, comment = '') {
+        return this.sendMessage('import_vibe_bundle', { bundleData, workspaceId, comment });
+    }
+
+    async checkVibeEncoding(vibeId, workspaceId) {
+        return this.sendMessage('check_vibe_encoding', { vibeId, workspaceId });
+    }
+
+    async getAppOptions() {
+        return this.sendMessage('get_app_options');
+    }
+
+    async pingWithAuth() {
+        return this.sendMessage('ping');
+    }
+
+    async waitForConnection(timeout = 10000) {
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+                reject(new Error('WebSocket connection timeout'));
+            }, timeout);
+
+            const checkConnection = () => {
+                if (this.isConnected()) {
+                    clearTimeout(timeoutId);
+                    resolve(true);
+                } else {
+                    setTimeout(checkConnection, 100);
+                }
+            };
+
+            checkConnection();
+        });
     }
 
     // Send message with request/response handling

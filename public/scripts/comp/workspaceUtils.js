@@ -31,7 +31,6 @@ async function moveCacheToDefaultWorkspace(cacheImage) {
 
         showGlassToast('success', null, 'Reference moved to default workspace', false, 5000, '<i class="fas fa-folder"></i>');
         await loadCacheImages();
-        displayCacheImages();
         displayCacheImagesContainer();
     } catch (error) {
         showError('Failed to move cache file: ' + error.message);
@@ -116,7 +115,6 @@ async function moveCacheToWorkspace(cacheImage, workspaceId) {
         const workspace = workspaces[workspaceId];
         showGlassToast('success', null, `Reference file moved to ${workspace ? workspace.name : 'workspace'}`, false, 5000, '<i class="fas fa-folder-open"></i>');
         await loadCacheImages();
-        displayCacheImages();
         displayCacheImagesContainer();
     } catch (error) {
         showError('Failed to move cache file: ' + error.message);
@@ -871,8 +869,8 @@ async function setActiveWorkspace(id) {
             workspaceLoadingOverlay.className = 'workspace-loading-overlay';
             workspaceLoadingOverlay.innerHTML = `
                 <div class="workspace-loading-content">
-                    <img src="/azuspin.gif" alt="Loading">
-                    <p>Switching Workspace...</p>
+                    <img class="loading" src="/azuspin.gif" alt="Loading">
+                    <p class="loading">Switching Workspace...</p>
                 </div>
             `;
             

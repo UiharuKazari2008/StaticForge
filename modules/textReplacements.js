@@ -49,6 +49,25 @@ function loadPromptConfig() {
     return promptConfig;
 }
 
+function savePromptConfig(config) {
+    const promptConfigPath = './prompt.config.json';
+    
+    try {
+        const configData = JSON.stringify(config, null, 2);
+        fs.writeFileSync(promptConfigPath, configData, 'utf8');
+        
+        // Update our cached config and timestamp
+        promptConfig = config;
+        const stats = fs.statSync(promptConfigPath);
+        promptConfigLastModified = stats.mtime.getTime();
+        
+        return true;
+    } catch (error) {
+        console.error('❌ Error saving prompt config:', error.message);
+        return false;
+    }
+}
+
 // Utility function for random selection
 const getReplacementValue = value => Array.isArray(value) ? value[Math.floor(Math.random() * value.length)] : value;
 
@@ -57,10 +76,10 @@ const applyTextReplacements = (text, presetName, model = null) => {
     const currentPromptConfig = loadPromptConfig();
     if (!text || !currentPromptConfig.text_replacements) return text;
     
-    let result = text.replace(/<PRESET_NAME>/g, presetName);
+    let result = text.replace(/!PRESET_NAME/g, presetName);
     
-    // Handle PICK_<NAME> replacements
-    result = result.replace(/<PICK_([^>]+)>/g, (match, name) => {
+    // Handle PICK replacements (using ~ suffix)
+    result = result.replace(/!([a-zA-Z0-9_]+)~/g, (match, name) => {
         const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(key => 
             key.startsWith(name) && key !== name
         );
@@ -68,16 +87,17 @@ const applyTextReplacements = (text, presetName, model = null) => {
         return getReplacementValue(currentPromptConfig.text_replacements[matchingKeys[Math.floor(Math.random() * matchingKeys.length)]]);
     });
     
-    // Handle regular replacements
+    // Handle regular replacements with word boundary approach
     const foundKeys = new Set();
     let match;
-    const keyPattern = /<([^>]+)>/g;
+    const keyPattern = /!([a-zA-Z0-9_]+)(?=[,\s|\[\]{}:]|$)/g;
     while ((match = keyPattern.exec(text)) !== null) {
-        if (!match[1].startsWith('PICK_')) foundKeys.add(match[1]);
+        foundKeys.add(match[1]);
     }
     
     for (const baseKey of foundKeys) {
-        const pattern = new RegExp(`<${baseKey}>`, 'g');
+        // Use word boundary to ensure we match the exact key
+        const pattern = new RegExp(`!${baseKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
         if (model && currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`]) {
             result = result.replace(pattern, getReplacementValue(currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`]));
         } else if (currentPromptConfig.text_replacements[baseKey]) {
@@ -85,7 +105,7 @@ const applyTextReplacements = (text, presetName, model = null) => {
         }
     }
     
-    const remainingReplacements = result.match(/<[^>]+>/g);
+    const remainingReplacements = result.match(/![^~\s]+~/g);
     if (remainingReplacements?.length > 0) {
         throw new Error(`Invalid text replacement: ${remainingReplacements.join(', ')}`);
     }
@@ -98,24 +118,24 @@ const getUsedReplacements = (text, model = null) => {
     if (!text || !currentPromptConfig.text_replacements) return [];
     
     const usedKeys = [];
-    if (text.includes('<PRESET_NAME>')) usedKeys.push('PRESET_NAME');
+    if (text.includes('!PRESET_NAME')) usedKeys.push('PRESET_NAME');
     
-    // PICK_ replacements
+    // PICK replacements (using ~ suffix)
     let pickMatch;
-    const pickPattern = /<PICK_([^>]+)>/g;
+    const pickPattern = /!([a-zA-Z0-9_]+)~/g;
     while ((pickMatch = pickPattern.exec(text)) !== null) {
         const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(key => 
             key.startsWith(pickMatch[1]) && key !== pickMatch[1]
         );
-        if (matchingKeys.length > 0) usedKeys.push(`PICK_${pickMatch[1]} (${matchingKeys.length} options)`);
+        if (matchingKeys.length > 0) usedKeys.push(`${pickMatch[1]}~ (${matchingKeys.length} options)`);
     }
     
     // Regular replacements
     const foundKeys = new Set();
     let match;
-    const keyPattern = /<([^>]+)>/g;
+    const keyPattern = /!([a-zA-Z0-9_]+)(?=[,\s|\[\]{}:]|$)/g;
     while ((match = keyPattern.exec(text)) !== null) {
-        if (!match[1].startsWith('PICK_')) foundKeys.add(match[1]);
+        foundKeys.add(match[1]);
     }
     
     for (const baseKey of foundKeys) {
@@ -151,8 +171,8 @@ class SearchService {
     // Search for characters and tags
     async searchCharacters(query, model, ws = null) {
         try {
-            // Check if query starts with < - only return text replacements in this case
-            const isTextReplacementSearch = query.startsWith('<');
+            // Check if query starts with ! - only return text replacements in this case
+            const isTextReplacementSearch = query.startsWith('!');
             
             // Check if query starts with "Text:" - only perform spell correction in this case
             const isTextPrefixSearch = query.startsWith('Text:');
@@ -253,24 +273,28 @@ class SearchService {
                 }
             }
 
-            // Handle PICK_ prefix stripping for search but preserve in inserted text
+            // Handle PICK suffix stripping for search but preserve in inserted text
             let searchQuery = query;
-            let hasPickPrefix = false;
+            let hasPickSuffix = false;
 
-            if (query.startsWith('PICK_')) {
-                searchQuery = query.substring(5); // Remove PICK_ prefix for searching
-                hasPickPrefix = true;
+            if (query.startsWith('!') && query.includes('~')) {
+                // Extract the name between ! and ~
+                const match = query.match(/^!([^~]+)~/);
+                if (match) {
+                    searchQuery = match[1]; // Remove ! and ~ for searching
+                    hasPickSuffix = true;
+                }
             }
 
-            // For text replacement searches, strip the < character from the search query
+            // For text replacement searches, strip the ! character from the search query
             if (isTextReplacementSearch) {
-                searchQuery = searchQuery.substring(1); // Remove the < character
+                searchQuery = searchQuery.substring(1); // Remove the ! character
             }
 
             // Search through text replacements (only for non-"Text:" searches)
             let textReplacementResults = [];
             if (!isTextPrefixSearch) {
-                textReplacementResults = this.searchTextReplacements(searchQuery, hasPickPrefix);
+                textReplacementResults = this.searchTextReplacements(searchQuery, hasPickSuffix);
             }
 
             // Combine search results with text replacement results
@@ -1091,7 +1115,7 @@ class SearchService {
         }
     }
 
-    searchTextReplacements(searchQuery, hasPickPrefix) {
+    searchTextReplacements(searchQuery, hasPickSuffix) {
         // Access optionsData from context
         const currentPromptConfig = loadPromptConfig();
         const textReplacements = currentPromptConfig.text_replacements;
@@ -1099,11 +1123,11 @@ class SearchService {
         const results = [];
         
         for (const [key, value] of Object.entries(textReplacements)) {
-            const keyToSearch = key.startsWith('PICK_') ? key.substring(5) : key;
+            const keyToSearch = key;
             let matchScore = 0;
             let matchType = 'none';
             
-            // If searchQuery is empty (just < was typed), return all items
+            // If searchQuery is empty (just ! was typed), return all items
             if (searchQuery === '') {
                 matchScore = 50; // Default score for empty query
                 matchType = 'all';
@@ -1163,9 +1187,9 @@ class SearchService {
                     type: 'textReplacement',
                     name: key,
                     description: value,
-                    placeholder: key, // The placeholder name like <NAME> or <PICK_NAME>
-                    // If we searched with PICK_ prefix, ensure the result preserves it
-                    displayName: hasPickPrefix && !key.startsWith('PICK_') ? `PICK_${key}` : key,
+                    placeholder: key, // The placeholder name like !NAME or !NAME~
+                    // If we searched with ~ suffix, ensure the result preserves it
+                    displayName: hasPickSuffix ? `${key}~` : key,
                     matchScore: matchScore,
                     matchType: matchType,
                     // Include the actual replacement value for display
@@ -1183,6 +1207,7 @@ class SearchService {
 
 module.exports = {
     loadPromptConfig,
+    savePromptConfig,
     getReplacementValue,
     applyTextReplacements,
     getUsedReplacements,

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const FavoritesManager = require('./favorites');
 
 /**
  * Dataset Tag Service
@@ -15,6 +16,7 @@ class DatasetTagService {
         this.datasetTagGroupsPath = path.join(__dirname, '../dataset_tag_groups.json');
         this.tagToPathIndex = null;
         this.tagToPathIndexPath = path.join(__dirname, '../.cache/tag_to_path_index.json');
+        this.favoritesManager = new FavoritesManager();
     }
 
     /**
@@ -44,6 +46,11 @@ class DatasetTagService {
      */
     async searchDatasetTags(query, path = []) {
         try {
+            // Handle favorites path specially
+            if (path.length > 0 && path[0] === 'favorites') {
+                return await this.searchFavorites(query, path.slice(1));
+            }
+
             // Load dataset tag groups if not already loaded
             if (!this.datasetTagGroups) {
                 const loaded = await this.loadDatasetTagGroups();
@@ -55,6 +62,21 @@ class DatasetTagService {
             const results = [];
             const mainTags = [];
             const searchQuery = query.toLowerCase();
+
+            // If we're at the root level (empty path) and doing a wildcard search, 
+            // include favorites as the first item
+            if (path.length === 0 && searchQuery === '*') {
+                results.push({
+                    name: 'favorites',
+                    prettyName: 'Favorites',
+                    description: '',
+                    hasChildren: true,
+                    path: ['favorites'],
+                    icon: 'fas fa-star',
+                    isTagArray: false,
+                    itemCount: 2 // tags and textReplacements
+                });
+            }
 
             // Navigate to the current path in the hierarchy
             let currentLevel = this.datasetTagGroups;
@@ -127,13 +149,26 @@ class DatasetTagService {
                         itemCount = nonMainKeys.length;
                     }
 
+                    // Determine icon for this item
+                    let icon = null;
+                    if (value._metadata && value._metadata.icon) {
+                        // Item has its own metadata with icon
+                        icon = value._metadata.icon;
+                    } else if (Array.isArray(value) && currentLevel._metadata && currentLevel._metadata.arrayIcons && currentLevel._metadata.arrayIcons[key]) {
+                        // Array has icon defined in parent's arrayIcons
+                        icon = currentLevel._metadata.arrayIcons[key];
+                    } else if (Array.isArray(value)) {
+                        // Default icon for arrays
+                        icon = 'fa-tag';
+                    }
+
                     results.push({
                         name: key,
                         prettyName: prettyName,
                         description,
                         hasChildren,
                         path: [...path, key],
-                        icon: value._metadata && value._metadata.icon ? value._metadata.icon : null,
+                        icon: icon,
                         isTagArray: Array.isArray(value),
                         itemCount: itemCount
                     });
@@ -151,6 +186,73 @@ class DatasetTagService {
     }
 
     /**
+     * Search favorites
+     * @param {string} query - Search query
+     * @param {Array} subPath - Path within favorites (e.g., ['tags'] or ['textReplacements'])
+     * @returns {Object} Search results for favorites
+     */
+    async searchFavorites(query, subPath = []) {
+        try {
+            const results = [];
+            const mainTags = [];
+
+            // If no subPath, return the categories (tags and textReplacements)
+            if (subPath.length === 0) {
+                return {
+                    results: [
+                        {
+                            name: 'tags',
+                            prettyName: 'Tag Favorites',
+                            description: '',
+                            hasChildren: false,
+                            path: ['favorites', 'tags'],
+                            icon: 'fas fa-tag',
+                            isTagArray: true,
+                            itemCount: 0
+                        },
+                        {
+                            name: 'textReplacements',
+                            prettyName: 'Text Replacement Favorites',
+                            description: '',
+                            hasChildren: false,
+                            path: ['favorites', 'textReplacements'],
+                            icon: 'fas fa-code',
+                            isTagArray: true,
+                            itemCount: 0
+                        }
+                    ],
+                    mainTags: []
+                };
+            }
+
+            // Get favorites and return them as tags
+            const favoriteType = subPath[0];
+            const favorites = this.favoritesManager.getFavorites(favoriteType);
+            
+            return {
+                results: [],
+                mainTags: favorites.map(favorite => ({
+                    name: favorite.originalName || favorite.name,
+                    prettyName: favorite.name,
+                    description: favorite.description || '',
+                    hasChildren: false,
+                    path: ['favorites', favoriteType],
+                    icon: 'fas fa-star',
+                    isTagArray: false,
+                    itemCount: 1,
+                    isMainTag: true,
+                    originalGroup: 'favorites',
+                    favoriteId: favorite.id,
+                    favoriteType: favoriteType
+                }))
+            };
+        } catch (error) {
+            console.error('Error searching favorites:', error);
+            return { results: [], mainTags: [] };
+        }
+    }
+
+    /**
      * Get all available top-level categories
      * @returns {Array} Array of top-level category objects with name and prettyName
      */
@@ -163,7 +265,17 @@ class DatasetTagService {
                 }
             }
 
-            return Object.keys(this.datasetTagGroups).map(key => {
+            const categories = [];
+            
+            // Add Favorites as the first category
+            categories.push({
+                name: 'favorites',
+                prettyName: 'Favorites',
+                icon: 'fas fa-star'
+            });
+
+            // Add regular dataset categories
+            const datasetCategories = Object.keys(this.datasetTagGroups).map(key => {
                 const value = this.datasetTagGroups[key];
                 let prettyName = key;
                 
@@ -178,6 +290,9 @@ class DatasetTagService {
                     icon: value._metadata && value._metadata.icon ? value._metadata.icon : null
                 };
             });
+            
+            categories.push(...datasetCategories);
+            return categories;
         } catch (error) {
             console.error('Error getting top-level categories:', error);
             return [];
@@ -191,6 +306,18 @@ class DatasetTagService {
      */
     async getTagsForPath(path) {
         try {
+            // Handle favorites paths
+            if (path.length >= 2 && path[0] === 'favorites') {
+                const favoriteType = path[1];
+                const favorites = this.favoritesManager.getFavorites(favoriteType);
+                return favorites.map(favorite => {
+                    if (favoriteType === 'textReplacements') {
+                        return `!${favorite.placeholder || favorite.name}`;
+                    }
+                    return favorite.originalName || favorite.name;
+                });
+            }
+
             if (!this.datasetTagGroups) {
                 const loaded = await this.loadDatasetTagGroups();
                 if (!loaded) {
@@ -227,6 +354,15 @@ class DatasetTagService {
      */
     async validatePath(path) {
         try {
+            // Handle favorites paths
+            if (path.length > 0 && path[0] === 'favorites') {
+                if (path.length === 1) return true; // Just "favorites"
+                if (path.length === 2 && (path[1] === 'tags' || path[1] === 'textReplacements')) {
+                    return true; // "favorites/tags" or "favorites/textReplacements"
+                }
+                return false;
+            }
+
             if (!this.datasetTagGroups) {
                 const loaded = await this.loadDatasetTagGroups();
                 if (!loaded) {

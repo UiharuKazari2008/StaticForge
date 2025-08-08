@@ -11,6 +11,9 @@ const lightboxRerollEditBtn = document.getElementById('lightboxRerollEditBtn');
 
 // Show lightbox
 async function showLightbox(image) {
+    // Prevent body scrolling when lightbox is open
+    document.body.style.overflow = 'hidden';
+    
     // Set current lightbox image for navigation
     currentLightboxImage = image;
 
@@ -46,6 +49,9 @@ async function showLightbox(image) {
 
 // Hide lightbox
 function hideLightbox() {
+    // Restore body scrolling when lightbox is closed
+    document.body.style.overflow = '';
+    
     closeModal(lightboxModal);
 
     // Clear any existing metadata
@@ -134,6 +140,17 @@ function initializeLightboxZoom() {
 
     if (!imageContainer || !image) return;
 
+    // Remove existing event listeners to prevent duplicates
+    imageContainer.removeEventListener('wheel', handleWheelZoom);
+    imageContainer.removeEventListener('mousedown', handleMouseDown);
+    imageContainer.removeEventListener('mousemove', handleMouseMove);
+    imageContainer.removeEventListener('mouseup', handleMouseUp);
+    imageContainer.removeEventListener('mouseleave', handleMouseUp);
+    imageContainer.removeEventListener('touchstart', handleTouchStart);
+    imageContainer.removeEventListener('touchmove', handleTouchMove);
+    imageContainer.removeEventListener('touchend', handleTouchEnd);
+    imageContainer.removeEventListener('dblclick', resetLightboxZoom);
+
     // Reset zoom and pan
     resetLightboxZoom();
 
@@ -205,7 +222,7 @@ function handleWheelZoom(e) {
 }
 
 function handleMouseDown(e) {
-        e.preventDefault();
+    e.preventDefault();
     if (lightboxZoom > 1) {
         isDragging = true;
         lastMouseX = e.clientX;
@@ -229,7 +246,10 @@ function handleMouseMove(e) {
     }
 }
 
-function handleMouseUp() {
+function handleMouseUp(e) {
+    if (e) {
+        e.preventDefault();
+    }
     isDragging = false;
 }
 

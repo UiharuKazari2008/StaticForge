@@ -86,9 +86,6 @@ const {
     broadcastReceiptNotification
 } = require('./modules/metadataCache.js');
 const imageCounter = require('./modules/imageCounter');
-
-console.log(config);
-
 // Initialize NovelAI client
 const client = new NovelAI({ 
     token: config.apiKey,
@@ -206,7 +203,8 @@ async function refreshBalance(force = false) {
 }
 
 // Calculate credit usage and determine which type was used
-async function calculateCreditUsage(oldBalance) {
+async function calculateCreditUsage(_oldBalance) {
+    const oldBalance = _oldBalance || { ...accountBalance };
     await refreshBalance(true);
     if (oldBalance.totalCredits === -1 || accountBalance.totalCredits === -1) return { totalUsage: 0, freeUsage: 0, paidUsage: 0 };
     
@@ -283,6 +281,7 @@ app.get('/app', (req, res) => {
     }
 });
 
+// DEPRECATED: This endpoint has been migrated to WebSocket. Kept for fallback compatibility.
 app.options('/app', authMiddleware, async (req, res) => {
     try {
         const currentPromptConfig = loadPromptConfig();
@@ -1513,10 +1512,11 @@ app.post('/vibe/encode', authMiddleware, async (req, res) => {
             };
         }
         
-        // Check if encoding already exists for this model and extraction value
+        // Check if encoding already exists for this model and extraction value (case-insensitive lookup)
         const extractionValueStr = informationExtraction.toString();
-        if (vibeData.encodings[model] && vibeData.encodings[model][extractionValueStr]) {
-            console.log(`✅ Using existing encoding for model ${model} and extraction ${extractionValueStr}`);
+        const modelKey = Object.keys(vibeData.encodings || {}).find(key => key.toUpperCase() === model.toUpperCase());
+        if (modelKey && vibeData.encodings[modelKey] && vibeData.encodings[modelKey][extractionValueStr]) {
+            console.log(`✅ Using existing encoding for model ${modelKey} and extraction ${extractionValueStr}`);
             
             // Add to workspace if provided
             if (workspace) {
@@ -1526,7 +1526,7 @@ app.post('/vibe/encode', authMiddleware, async (req, res) => {
             res.json({
                 success: true,
                 filename: jsonFilename,
-                model: model,
+                model: modelKey,
                 informationExtraction: informationExtraction
             });
             return;
@@ -1636,7 +1636,10 @@ function collectVibeImageDetails(filenames, workspaceId) {
                     encodings: encodings,
                     type: vibeData.type === 'base64' ? 'base64' : 'cache',
                     source: vibeData.image,
-                    workspaceId: workspaceId
+                    workspaceId: workspaceId,
+                    comment: vibeData.comment || null,
+                    importedFrom: vibeData.importedFrom || null,
+                    originalName: vibeData.originalName || null
                 });
             } catch (parseError) {
                 console.error(`Error parsing vibe file ${filename}:`, parseError);
@@ -2358,8 +2361,8 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
         width = body.width || preset?.width || 1024;
         height = body.height || preset?.height || 1024;
         if ((width > 1024 || height > 1024) && !allowPaid) {
-                throw new Error(`Custom dimensions ${width}x${height} exceed maximum of 1024. Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
-            }
+            throw new Error(`Custom dimensions ${width}x${height} exceed maximum of 1024. Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
+        }
     }
 
     const steps = body.steps || preset?.steps || 24;
@@ -2444,11 +2447,13 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
         // Handle dataset prepending (exclude for V3 models)
         const isV3Model = model === 'v3' || model === 'v3_furry';
         if (!isV3Model && body.dataset_config && body.dataset_config.include && Array.isArray(body.dataset_config.include) && body.dataset_config.include.length > 0) {
-            const datasetMappings = {
-                'anime': 'anime dataset',
-                'furry': 'furry dataset', 
-                'backgrounds': 'background dataset'
-            };
+            // Build dataset mappings dynamically from config
+            const datasetMappings = {};
+            if (currentPromptConfig.datasets) {
+                currentPromptConfig.datasets.forEach(dataset => {
+                    datasetMappings[dataset.value] = `${dataset.value} dataset`;
+                });
+            }
             
             const datasetPrepends = [];
             
@@ -2457,8 +2462,8 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
                     let datasetText = datasetMappings[dataset];
                     
                     // Add bias if > 1.0
-                    if (body.dataset_config.bias && body.dataset_config.bias[dataset] && body.dataset_config.bias[dataset] > 1.0) {
-                        datasetText = `${parseFloat(parseFloat(body.dataset_config.bias[dataset].toString()).toFixed(2)).toString()}::${dataset}::`;
+                    if (body.dataset_config.bias && body.dataset_config.bias[dataset] !== undefined) {
+                        datasetText = `${parseFloat(parseFloat(body.dataset_config.bias[dataset].toString()).toFixed(2)).toString()}::${dataset} dataset::`;
                     }
                     
                     datasetPrepends.push(datasetText);
@@ -2469,9 +2474,7 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
                         Object.keys(datasetSettings).forEach(settingId => {
                             const setting = datasetSettings[settingId];
                             if (setting.enabled && setting.value) {
-                                // If no bias is set or bias is 1.0, just use the value
-                                // If bias is set and > 1.0, apply the bias
-                                const settingText = (setting.bias && setting.bias > 1.0) ? 
+                                const settingText = (setting.bias && setting.bias !== undefined) ? 
                                     `${setting.bias}::${setting.value}::` : setting.value;
                                 datasetPrepends.push(settingText);
                             }
@@ -2731,15 +2734,17 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
                             try {
                                 const vibeData = JSON.parse(fs.readFileSync(vibeFilePath, 'utf8'));
                                 
-                                // Get the encoding for the specific model and IE
+                                // Get the encoding for the specific model and IE (case-insensitive lookup)
+                                const modelKey = Object.keys(vibeData.encodings || {}).find(key => key.toUpperCase() === model.toUpperCase());
                                 if (vibeData.encodings && 
-                                    vibeData.encodings[model] && 
-                                    vibeData.encodings[model][vibeTransfer.ie.toString()]) {
+                                    modelKey && 
+                                    vibeData.encodings[modelKey] && 
+                                    vibeData.encodings[modelKey][vibeTransfer.ie.toString()]) {
                                     
-                                    const encoding = vibeData.encodings[model][vibeTransfer.ie.toString()];
+                                    const encoding = vibeData.encodings[modelKey][vibeTransfer.ie.toString()];
                                     referenceImageMultiple.push(encoding);
                                     referenceStrengthMultiple.push(vibeTransfer.strength);
-                                    console.log(`🎨 Found encoding for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} and strength ${vibeTransfer.strength}`);
+                                    console.log(`🎨 Found encoding for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} and strength ${vibeTransfer.strength} (model: ${modelKey})`);
                                 } else {
                                     console.warn(`⚠️ No encoding found for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} for model ${model}`);
                                 }
@@ -4066,7 +4071,10 @@ const searchContext = {
     config: config,
     tagSuggestionsCache: tagSuggestionsCache,
     cacheDirty: cacheDirty,
-    scheduleCacheSave
+    scheduleCacheSave,
+    calculateCreditUsage,
+    accountData: () => accountData,
+    accountBalance: () => accountBalance
 };
 
 // Initialize WebSocket message handlers

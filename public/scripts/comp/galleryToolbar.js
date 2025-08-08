@@ -223,7 +223,7 @@ async function addImageAsVibeTransfer(image) {
         const filename = image.filename || image.original || image.upscaled;
         
         // Convert image to base64 for vibe encoding
-        const imageResponse = await fetchWithAuth(`/images/${filename}`);
+        const imageResponse = await fetch(`/images/${filename}`);
         const imageBlob = await imageResponse.blob();
         const base64 = await blobToBase64(imageBlob);
         
@@ -274,7 +274,7 @@ function showGalleryMoveModal(filename) {
         modal.innerHTML = `
             <div class="modal-content gallery-move-modal-content">
                 <div class="gallery-move-left-panel">
-                    <img src="/images/placeholder.png" alt="Image to move" class="gallery-move-background-image" id="galleryMoveBackgroundImage">
+                    <img src="/background.jpg" alt="Image to move" class="gallery-move-background-image" id="galleryMoveBackgroundImage">
                     <div class="gallery-move-overlay">
                         <div class="gallery-move-image-info-overlay">
                             <p><strong>Images:</strong> <span id="galleryMoveCount">0</span> selected</p>

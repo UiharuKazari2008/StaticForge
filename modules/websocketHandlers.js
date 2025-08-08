@@ -1,5 +1,6 @@
-const { SearchService, loadPromptConfig } = require('./textReplacements');
+const { SearchService, loadPromptConfig, savePromptConfig } = require('./textReplacements');
 const DatasetTagService = require('./datasetTagService');
+const FavoritesManager = require('./favorites');
 const { 
     getActiveWorkspaceScraps, 
     getActiveWorkspacePinned, 
@@ -13,6 +14,7 @@ const {
     setActiveWorkspace,
     dumpWorkspace,
     moveFilesToWorkspace,
+    moveToWorkspaceArray,
     addToWorkspaceArray,
     removeFromWorkspaceArray,
     updateWorkspaceColor,
@@ -35,9 +37,11 @@ const {
     getWorkspacesData, 
     getActiveWorkspaceData
 } = require('./workspace');
-const { getCachedMetadata, getAllMetadata, removeImageMetadata } = require('./metadataCache');
+const { getCachedMetadata, getAllMetadata, removeImageMetadata, addUnattributedReceipt, getImageMetadata: getImageMetadataFromCache } = require('./metadataCache');
 const { isImageLarge, matchOriginalResolution } = require('./imageTools');
-const { readMetadata, updateMetadata, getImageMetadata, extractRelevantFields } = require('./pngMetadata');
+const { readMetadata, updateMetadata, getImageMetadata, extractRelevantFields, getModelDisplayName } = require('./pngMetadata');
+const { getStatus } = require('./queue');
+const imageCounter = require('./imageCounter');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -59,6 +63,7 @@ class WebSocketMessageHandlers {
     constructor(context = {}) {
         this.searchService = new SearchService(context);
         this.datasetTagService = new DatasetTagService();
+        this.favoritesManager = new FavoritesManager();
         this.context = context;
         // Initialize the service at startup
         this.initializeDatasetTagService();
@@ -105,6 +110,14 @@ class WebSocketMessageHandlers {
                     await this.handlePresetSearch(ws, message, clientInfo, wsServer);
                     break;
                 
+                case 'load_preset':
+                    await this.handleLoadPreset(ws, message, clientInfo, wsServer);
+                    break;
+                
+                case 'save_preset':
+                    await this.handleSavePreset(ws, message, clientInfo, wsServer);
+                    break;
+                
                 case 'search_dataset_tags':
                     await this.handleDatasetTagSearch(ws, message, clientInfo, wsServer);
                     break;
@@ -121,12 +134,46 @@ class WebSocketMessageHandlers {
                     await this.handleAddWordToDictionary(ws, message, clientInfo, wsServer);
                     break;
                 
+                // Favorites handlers
+                case 'favorites_add':
+                    await this.handleAddFavorite(ws, message, clientInfo, wsServer);
+                    break;
+                
+                case 'favorites_remove':
+                    await this.handleRemoveFavorite(ws, message, clientInfo, wsServer);
+                    break;
+                
+                case 'favorites_get':
+                    await this.handleGetFavorites(ws, message, clientInfo, wsServer);
+                    break;
+                
+                // Text replacement management handlers
+                case 'get_text_replacements':
+                    await this.handleGetTextReplacements(ws, message, clientInfo, wsServer);
+                    break;
+                
+                case 'save_text_replacements':
+                    await this.handleSaveTextReplacements(ws, message, clientInfo, wsServer);
+                    break;
+                
                 case 'request_gallery':
                     await this.handleGalleryRequest(ws, message, clientInfo, wsServer);
                     break;
                 
                 case 'request_image_metadata':
                     await this.handleImageMetadataRequest(ws, message, clientInfo, wsServer);
+                    break;
+                
+                case 'request_image_by_index':
+                    await this.handleImageByIndexRequest(ws, message, clientInfo, wsServer);
+                    break;
+                
+                case 'find_image_index':
+                    await this.handleFindImageIndexRequest(ws, message, clientInfo, wsServer);
+                    break;
+                
+                case 'get_app_options':
+                    await this.handleGetAppOptions(ws, message, clientInfo, wsServer);
                     break;
                 
                 // Workspace handlers
@@ -324,6 +371,14 @@ class WebSocketMessageHandlers {
                     await this.handleEncodeVibe(ws, message, clientInfo, wsServer);
                     break;
                 
+                case 'import_vibe_bundle':
+                    await this.handleImportVibeBundle(ws, message, clientInfo, wsServer);
+                    break;
+                
+                case 'check_vibe_encoding':
+                    await this.handleCheckVibeEncoding(ws, message, clientInfo, wsServer);
+                    break;
+                
                 case 'ping':
                     this.handlePing(ws, message, clientInfo, wsServer);
                     break;
@@ -399,6 +454,127 @@ class WebSocketMessageHandlers {
         }
     }
 
+    // Handle preset load requests
+    async handleLoadPreset(ws, message, clientInfo, wsServer) {
+        const { presetName } = message;
+        
+        if (!presetName) {
+            this.sendError(ws, 'Missing presetName parameter', 'load_preset');
+            return;
+        }
+
+        try {
+            const currentPromptConfig = loadPromptConfig();
+            const preset = currentPromptConfig.presets[presetName];
+            
+            if (!preset) {
+                this.sendError(ws, 'Preset not found', `Preset "${presetName}" does not exist`, message.requestId);
+                return;
+            }
+
+            // Return the raw preset data without processing text replacements
+            const presetData = {
+                name: presetName,
+                prompt: (preset.prompt !== undefined ? preset.prompt : ''),
+                uc: (preset.uc !== undefined ? preset.uc : ''),
+                model: (preset.model !== undefined ? preset.model : 'v4_5'),
+                resolution: (preset.resolution !== undefined ? preset.resolution : 'normal_portrait'),
+                steps: (preset.steps !== undefined ? preset.steps : 25),
+                guidance: (preset.guidance !== undefined ? preset.guidance : 5.0),
+                rescale: (preset.rescale !== undefined ? preset.rescale : 0.0),
+                seed: preset.seed || undefined,
+                sampler: preset.sampler || undefined,
+                noiseScheduler: preset.noiseScheduler || undefined,
+                upscale: (preset.upscale !== undefined ? preset.upscale : false),
+                allow_paid: (preset.allow_paid !== undefined ? preset.allow_paid : false),
+                variety: (preset.variety !== undefined ? preset.variety : false),
+                image: preset.image || undefined,
+                strength: (preset.strength !== undefined ? preset.strength : undefined),
+                noise: (preset.noise !== undefined ? preset.noise : undefined),
+                image_bias: (preset.image_bias !== undefined ? preset.image_bias : undefined),
+                mask: preset.mask || undefined,
+                mask_compressed: preset.mask_compressed || undefined,
+                mask_bias: (preset.mask_bias !== undefined ? preset.mask_bias : undefined),
+                characterPrompts: (preset.characterPrompts !== undefined ? preset.characterPrompts : []),
+                allCharacterPrompts: (preset.allCharacterPrompts !== undefined ? preset.allCharacterPrompts : []),
+                use_coords: preset.use_coords || false,
+                width: (preset.width !== undefined ? preset.width : undefined),
+                height: (preset.height !== undefined ? preset.height : undefined),
+                image_source: preset.image_source || undefined
+            };
+            
+            this.sendToClient(ws, {
+                type: 'load_preset_response',
+                requestId: message.requestId,
+                data: presetData,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Preset load error:', error);
+            this.sendError(ws, 'Failed to load preset', error.message, message.requestId);
+        }
+    }
+
+    // Handle preset save requests
+    async handleSavePreset(ws, message, clientInfo, wsServer) {
+        const { presetName, config } = message;
+        
+        if (!presetName || !config || !config.prompt || !config.model) {
+            this.sendError(ws, 'Missing required parameters', 'Preset name, prompt, and model are required', message.requestId);
+            return;
+        }
+
+        try {
+            const currentPromptConfig = loadPromptConfig();
+
+            // Only set default if value is missing (null or undefined)
+            function withDefault(val, def) {
+                return (val === undefined || val === null) ? def : val;
+            }
+
+            currentPromptConfig.presets[presetName] = {
+                prompt: config.prompt,
+                uc: withDefault(config.uc, ''),
+                model: config.model,
+                resolution: withDefault(config.resolution, ''),
+                steps: withDefault(config.steps, 25),
+                guidance: withDefault(config.guidance, 5.0),
+                rescale: withDefault(config.rescale, 0.0),
+                seed: withDefault(config.seed, undefined),
+                sampler: withDefault(config.sampler, undefined),
+                noiseScheduler: withDefault(config.noiseScheduler, undefined),
+                upscale: withDefault(config.upscale, undefined),
+                allow_paid: withDefault(config.allow_paid, false),
+                variety: withDefault(config.variety, false),
+                image: withDefault(config.image, undefined),
+                strength: withDefault(config.strength, 0.8),
+                noise: withDefault(config.noise, 0.1),
+                image_bias: withDefault(config.image_bias, undefined),
+                mask: withDefault(config.mask, undefined),
+                mask_compressed: withDefault(config.mask_compressed, undefined),
+                characterPrompts: withDefault(config.allCharacterPrompts, withDefault(config.characterPrompts, [])),
+                use_coords: withDefault(config.use_coords, false),
+                width: withDefault(config.width, undefined),
+                height: withDefault(config.height, undefined),
+                image_source: withDefault(config.image_source, undefined)
+            };
+
+            fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
+
+            console.log(`💾 Saved new preset: ${presetName}`);
+
+            this.sendToClient(ws, {
+                type: 'save_preset_response',
+                requestId: message.requestId,
+                data: { success: true, message: `Preset "${presetName}" saved successfully` },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Preset save error:', error);
+            this.sendError(ws, 'Failed to save preset', error.message, message.requestId);
+        }
+    }
+
     // Handle dataset tag search requests
     async handleDatasetTagSearch(ws, message, clientInfo, wsServer) {
         const { query, path = [] } = message;
@@ -439,8 +615,6 @@ class WebSocketMessageHandlers {
             this.sendError(ws, 'Failed to get tags', error.message, message.requestId);
         }
     }
-
-
 
     // Handle search tags requests
     async handleSearchTags(ws, message, clientInfo, wsServer) {
@@ -493,6 +667,7 @@ class WebSocketMessageHandlers {
     handlePing(ws, message, clientInfo, wsServer) {
         this.sendToClient(ws, {
             type: 'pong',
+            requestId: message.requestId,
             timestamp: new Date().toISOString()
         });
     }
@@ -584,11 +759,22 @@ class WebSocketMessageHandlers {
                 const file = upscaled || original;
                 if (!file) continue;
                 
-                // Get metadata from cache instead of file system
-                const metadata = getCachedMetadata(file);
+                // Get metadata from cache, or load it if missing
+                let metadata = getCachedMetadata(file);
                 if (!metadata) {
-                    console.warn(`No metadata found for file: ${file}`);
-                    continue;
+                    console.log(`🔄 Loading metadata for file: ${file}`);
+                    try {
+                        // Try to extract metadata for the missing file
+                        const imagesDir = path.join(process.cwd(), 'images');
+                        metadata = await getImageMetadataFromCache(file, imagesDir);
+                        if (!metadata) {
+                            console.warn(`❌ Could not extract metadata for file: ${file}`);
+                            continue;
+                        }
+                    } catch (error) {
+                        console.error(`❌ Error loading metadata for file ${file}:`, error);
+                        continue;
+                    }
                 }
                 
                 const preview = getPreviewFilename(base);
@@ -702,6 +888,292 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('Image metadata request error:', error);
             this.sendError(ws, 'Failed to load image metadata', error.message, message.requestId);
+        }
+    }
+
+    // Helper function to build gallery data for a given view type
+    async buildGalleryData(viewType = 'images') {
+        // Helper functions for file processing
+        const getBaseName = (filename) => {
+            const base = filename.replace(/\.(png|jpg|jpeg|webp)$/i, '');
+            return base.replace(/_upscaled$/, '');
+        };
+        
+        // Get files based on view type
+        let files;
+        switch (viewType) {
+            case 'scraps':
+                files = getActiveWorkspaceScraps();
+                break;
+            case 'pinned':
+                files = getActiveWorkspacePinned();
+                break;
+            case 'upscaled':
+                // For upscaled view, get all files and filter for upscaled/large images
+                const workspaceFiles = getActiveWorkspaceFiles();
+                files = workspaceFiles;
+                
+                // Also include wallpaper and large resolution images from metadata cache
+                const allMetadata = getAllMetadata();
+                
+                // Find large resolution images (area > 1024x1024)
+                const specialImages = [];
+                for (const [filename, metadata] of Object.entries(allMetadata)) {
+                    if (metadata.width && metadata.height) {
+                        if (isImageLarge(metadata.width, metadata.height)) {
+                            // Check if this image is in the current workspace
+                            const workspace = getActiveWorkspace();
+                            const workspaceData = getWorkspace(workspace);
+                            if (workspaceData && workspaceData.files && workspaceData.files.includes(filename)) {
+                                specialImages.push(filename);
+                            }
+                        }
+                    }
+                }
+                
+                // Add special images to the files list
+                files = [...new Set([...files, ...specialImages])];
+                break;
+            case 'images':
+            default:
+                files = getActiveWorkspaceFiles();
+                break;
+        }
+        
+        // Build gallery data (same logic as handleGalleryRequest)
+        if (!Array.isArray(files)) {
+            console.error('Files is not an array:', files);
+            files = [];
+        }
+        
+        const baseMap = {};
+        for (const file of files) {
+            const base = getBaseName(file);
+            if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
+            if (file.includes('_upscaled')) baseMap[base].upscaled = file;
+            else baseMap[base].original = file;
+        }
+        
+        const gallery = [];
+        for (const base in baseMap) {
+            const { original, upscaled } = baseMap[base];
+            
+            // Get the file to use (prefer upscaled, then original)
+            const file = upscaled || original;
+            if (!file) continue;
+            
+            // Get metadata from cache, or load it if missing
+            let metadata = getCachedMetadata(file);
+            if (!metadata) {
+                console.log(`🔄 Loading metadata for file: ${file}`);
+                try {
+                    // Try to extract metadata for the missing file
+                    const imagesDir = path.join(process.cwd(), 'images');
+                    metadata = await getImageMetadataFromCache(file, imagesDir);
+                    if (!metadata) {
+                        console.warn(`❌ Could not extract metadata for file: ${file}`);
+                        continue;
+                    }
+                } catch (error) {
+                    console.error(`❌ Error loading metadata for file ${file}:`, error);
+                    continue;
+                }
+            }
+            
+            const preview = `${base}.jpg`;
+            const isLarge = metadata?.width && metadata?.height ? 
+                isImageLarge(metadata.width, metadata.height) : false;
+            
+            if (viewType === 'upscaled') {
+                // For upscaled view, include images that have upscaled versions OR are wallpaper/large
+                const shouldInclude = upscaled || isLarge;
+                if (!shouldInclude) continue;
+            }
+            
+            gallery.push({
+                base,
+                original,
+                upscaled,
+                preview,
+                mtime: metadata.mtime || Date.now(),
+                size: metadata.size || 0,
+                isLarge: isLarge
+            });
+        }
+        
+        // Sort by newest first
+        gallery.sort((a, b) => b.mtime - a.mtime);
+        
+        return gallery;
+    }
+
+    // Handle image by index request messages
+    async handleImageByIndexRequest(ws, message, clientInfo, wsServer) {
+        const { index, viewType = 'images' } = message;
+        
+        if (index === undefined || index === null) {
+            this.sendError(ws, 'Missing index parameter', 'request_image_by_index');
+            return;
+        }
+        
+        try {
+            // Build gallery data using shared helper
+            const images = await this.buildGalleryData(viewType);
+            
+            // Check if index is valid
+            if (index < 0 || index >= images.length) {
+                this.sendError(ws, 'Index out of bounds', 'request_image_by_index', message.requestId);
+                return;
+            }
+            
+            const image = images[index];
+            
+            // Get metadata for the image
+            let metadata = null;
+            try {
+                const filePath = path.join(imagesDir, image.original);
+                if (fs.existsSync(filePath)) {
+                    let cachedMetadata = getCachedMetadata(image.original);
+                    
+                    if (!cachedMetadata) {
+                        cachedMetadata = await getImageMetadata(image.original, imagesDir);
+                    }
+                    
+                    if (cachedMetadata && cachedMetadata.metadata) {
+                        metadata = await extractRelevantFields(cachedMetadata.metadata, image.original);
+                    }
+                }
+            } catch (metadataError) {
+                console.warn('Failed to load metadata for image by index:', metadataError);
+            }
+            
+            // Add metadata to image object
+            const result = {
+                ...image,
+                metadata: metadata
+            };
+            
+            // Send response
+            this.sendToClient(ws, {
+                type: 'request_image_by_index_response',
+                requestId: message.requestId,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('Image by index request error:', error);
+            this.sendError(ws, 'Failed to load image by index', error.message, message.requestId);
+        }
+    }
+
+    // Handle find image index request messages
+    async handleFindImageIndexRequest(ws, message, clientInfo, wsServer) {
+        const { filename, viewType = 'images' } = message;
+        
+        if (!filename) {
+            this.sendError(ws, 'Missing filename parameter', 'find_image_index');
+            return;
+        }
+        
+        try {
+            // Build gallery data using shared helper
+            const gallery = await this.buildGalleryData(viewType);
+            
+            // Find the index of the requested filename
+            const index = gallery.findIndex(img => 
+                img.original === filename || img.upscaled === filename
+            );
+            
+            // Send response
+            this.sendToClient(ws, {
+                type: 'find_image_index_response',
+                requestId: message.requestId,
+                data: { index: index >= 0 ? index : -1 },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('Find image index request error:', error);
+            this.sendError(ws, 'Failed to find image index', error.message, message.requestId);
+        }
+    }
+
+    // Handle app options request messages
+    async handleGetAppOptions(ws, message, clientInfo, wsServer) {
+        try {
+            const currentPromptConfig = loadPromptConfig();
+            
+            // Filter out _INP models and use pretty names
+            const modelEntries = Object.keys(Model)
+                .filter(key => !key.endsWith('_INP'))
+                .map(key => [key, getModelDisplayName(key)]);
+            const modelEntriesShort = Object.keys(Model)
+                .filter(key => !key.endsWith('_INP'))
+                .map(key => [key, getModelDisplayName(key,true)]);
+            const imageCount = imageCounter.getCount();
+
+            // Helper to extract relevant preset info
+            const extractPresetInfo = (name, preset) => ({
+                name,
+                model: preset.model || 'Default',
+                upscale: preset.upscale || false,
+                allow_paid: preset.allow_paid || false,
+                variety: preset.variety || false,
+                character_prompts: preset.character_prompts || false,
+                base_image: preset.base_image || false,
+                resolution: preset.resolution || 'Default',
+                steps: preset.steps || 25,
+                guidance: preset.guidance || 5.0,
+                rescale: preset.rescale || 0.0,
+                sampler: preset.sampler || null,
+                noiseScheduler: preset.noiseScheduler || null,
+                image: !!(preset.image || null),
+                strength: preset.strength || 0.8,
+                noise: preset.noise || 0.1,
+                image_bias: preset.image_bias || null,
+                mask_compressed: !!(preset.mask_compressed || null),
+            });
+
+            // Build detailed preset info
+            const detailedPresets = Object.entries(currentPromptConfig.presets || {}).map(
+                ([name, preset]) => extractPresetInfo(name, preset)
+            );
+
+            // Get account data and balance from the context
+            const accountData = this.context.accountData ? this.context.accountData() : { ok: false };
+            const accountBalance = this.context.accountBalance ? this.context.accountBalance() : { fixedTrainingStepsLeft: -1, purchasedTrainingSteps: -1, totalCredits: -1 };
+            
+            const options = {
+                ok: true,
+                user: accountData,
+                balance: accountBalance,
+                presets: detailedPresets,
+                queue_status: getStatus(),
+                image_count: imageCount,
+                models: Object.fromEntries(modelEntries),
+                modelsShort: Object.fromEntries(modelEntriesShort),
+                actions: Object.fromEntries(Object.keys(Action).map(key => [key, Action[key]])),
+                samplers: Object.fromEntries(Object.keys(Sampler).map(key => [key, Sampler[key]])),
+                noiseSchedulers: Object.fromEntries(Object.keys(Noise).map(key => [key, Noise[key]])),
+                resolutions: Object.fromEntries(Object.keys(Resolution).map(key => [key, Resolution[key]])),
+                textReplacements: currentPromptConfig.text_replacements || {},
+                datasets: currentPromptConfig.datasets || [],
+                quality_presets: currentPromptConfig.quality_presets || {},
+                uc_presets: currentPromptConfig.uc_presets || {}
+            };
+
+            // Send response
+            this.sendToClient(ws, {
+                type: 'get_app_options_response',
+                requestId: message.requestId,
+                data: options,
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('App options request error:', error);
+            this.sendError(ws, 'Failed to load app options', error.message, message.requestId);
         }
     }
 
@@ -966,7 +1438,7 @@ class WebSocketMessageHandlers {
 
     async handleWorkspaceMoveFiles(ws, message, clientInfo, wsServer) {
         try {
-            const { id, filenames, sourceWorkspaceId } = message;
+            const { id, filenames, sourceWorkspaceId, moveType = 'files' } = message;
             
             if (!id) {
                 this.sendError(ws, 'Workspace ID is required', 'workspace_move_files', message.requestId);
@@ -985,7 +1457,20 @@ class WebSocketMessageHandlers {
                 return;
             }
             
-            const movedCount = moveFilesToWorkspace(filenames, id, sourceWorkspaceId);
+            // Use the appropriate move function based on moveType
+            let movedCount;
+            switch (moveType) {
+                case 'scraps':
+                    movedCount = moveToWorkspaceArray('scraps', filenames, id, sourceWorkspaceId);
+                    break;
+                case 'pinned':
+                    movedCount = moveToWorkspaceArray('pinned', filenames, id, sourceWorkspaceId);
+                    break;
+                case 'files':
+                default:
+                    movedCount = moveFilesToWorkspace(filenames, id, sourceWorkspaceId);
+                    break;
+            }
             
             this.sendToClient(ws, {
                 type: 'workspace_move_files_response',
@@ -2232,30 +2717,88 @@ class WebSocketMessageHandlers {
         try {            
             const workspaceId = message.workspaceId;
             
-            // Get cache files for specific workspace
-            const workspaceCacheFiles = getActiveWorkspaceCacheFiles(workspaceId);
-            const allFiles = fs.readdirSync(uploadCacheDir);
-            const files = allFiles.filter(file => workspaceCacheFiles.includes(file));
+            let cacheFiles = [];
+            let vibeImageDetails = [];
             
-            const cacheFiles = [];
-            for (const file of files) {
-                const filePath = path.join(uploadCacheDir, file);
-                const stats = fs.statSync(filePath);
-                const previewPath = path.join(previewCacheDir, `${file}.webp`);
+            if (workspaceId === 'all') {
+                // Get references from all workspaces
+                const workspaces = getWorkspaces();
+                const allWorkspaces = Object.entries(workspaces);
+
+                // Collect all unique cache files across all workspaces
+                const allCacheFileHashes = new Set();
                 
-                cacheFiles.push({
-                    hash: file,
-                    filename: file,
-                    mtime: stats.mtime.valueOf(),
-                    size: stats.size,
-                    hasPreview: fs.existsSync(previewPath)
-                });
+                // First pass: collect all unique cache file hashes
+                for (const [currentWorkspaceId, workspace] of allWorkspaces) {
+                    const workspaceCacheFiles = getActiveWorkspaceCacheFiles(currentWorkspaceId);
+                    workspaceCacheFiles.forEach(file => allCacheFileHashes.add(file));
+                }
+                
+                // Second pass: process each unique cache file
+                const allFiles = fs.readdirSync(uploadCacheDir);
+                for (const file of allCacheFileHashes) {
+                    if (!allFiles.includes(file)) continue; // Skip if file doesn't exist on disk
+                    
+                    // Find which workspaces contain this file
+                    const workspacesWithFile = [];
+                    for (const [currentWorkspaceId, workspace] of allWorkspaces) {
+                        const workspaceCacheFiles = getActiveWorkspaceCacheFiles(currentWorkspaceId);
+                        if (workspaceCacheFiles.includes(file)) {
+                            workspacesWithFile.push(currentWorkspaceId);
+                        }
+                    }
+                    
+                    // Use the first workspace that contains the file (or primary workspace)
+                    const primaryWorkspaceId = workspacesWithFile[0] || 'default';
+                    
+                    const filePath = path.join(uploadCacheDir, file);
+                    const stats = fs.statSync(filePath);
+                    const previewPath = path.join(previewCacheDir, `${file}.webp`);
+                    
+                    cacheFiles.push({
+                        hash: file,
+                        filename: file,
+                        mtime: stats.mtime.valueOf(),
+                        size: stats.size,
+                        hasPreview: fs.existsSync(previewPath),
+                        workspaceId: primaryWorkspaceId,
+                        workspaces: workspacesWithFile // Include all workspaces that have this file
+                    });
+                }
+                
+                // Process vibe images for each workspace
+                for (const [currentWorkspaceId, workspace] of allWorkspaces) {
+                    // Get vibe images for this workspace
+                    const workspaceVibeDetails = this.collectVibeImageDetails(workspace.vibeImages || [], currentWorkspaceId);
+                    vibeImageDetails.push(...workspaceVibeDetails);
+                }
+                
+            } else {
+                // Get cache files for specific workspace
+                const workspaceCacheFiles = getActiveWorkspaceCacheFiles(workspaceId);
+                const allFiles = fs.readdirSync(uploadCacheDir);
+                const files = allFiles.filter(file => workspaceCacheFiles.includes(file));
+                
+                for (const file of files) {
+                    const filePath = path.join(uploadCacheDir, file);
+                    const stats = fs.statSync(filePath);
+                    const previewPath = path.join(previewCacheDir, `${file}.webp`);
+                    
+                    cacheFiles.push({
+                        hash: file,
+                        filename: file,
+                        mtime: stats.mtime.valueOf(),
+                        size: stats.size,
+                        hasPreview: fs.existsSync(previewPath),
+                        workspaceId: workspaceId
+                    });
+                }
+                
+                // Get vibe images for the workspace
+                const workspace = getWorkspace(workspaceId);
+                vibeImageDetails = workspace ? 
+                    this.collectVibeImageDetails(workspace.vibeImages || [], workspaceId) : [];
             }
-            
-            // Get vibe images for the workspace
-            const workspace = getWorkspace(workspaceId);
-            const vibeImageDetails = workspace ? 
-                this.collectVibeImageDetails(workspace.vibeImages || [], workspaceId) : [];
             
             // Sort by newest first
             cacheFiles.sort((a, b) => b.mtime - a.mtime);
@@ -2459,8 +3002,6 @@ class WebSocketMessageHandlers {
             this.sendError(ws, 'Failed to move references', error.message, message.requestId);
         }
     }
-
-
 
     async handleGetVibeImage(ws, message, clientInfo, wsServer) {
         try {
@@ -2823,7 +3364,7 @@ class WebSocketMessageHandlers {
 
     async handleEncodeVibe(ws, message, clientInfo, wsServer) {
         try {
-            const { image, informationExtraction, model, workspace, cacheFile, id } = message;
+            const { image, informationExtraction, model, workspace, cacheFile, id, comment } = message;
             
             // Validate workspace parameter
             if (!workspace) {
@@ -2853,7 +3394,8 @@ class WebSocketMessageHandlers {
                     image: image,
                     preview: imageHash,
                     mtime: Date.now(),
-                    encodings: {}
+                    encodings: {},
+                    comment: comment || null
                 };
                 
                 // Generate preview for base64 image
@@ -2897,7 +3439,8 @@ class WebSocketMessageHandlers {
                     image: cacheFile,
                     preview: imageHash,
                     mtime: Date.now(),
-                    encodings: {}
+                    encodings: {},
+                    comment: comment || null
                 };
                 
                 // Generate preview for cache file (if not already exists)
@@ -2957,6 +3500,14 @@ class WebSocketMessageHandlers {
                 const filePath = path.join(vibeCacheDir, foundFilename);
                 vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
                 
+                // Validate vibe for encoding
+                try {
+                    this.validateVibeForEncoding(vibeData, id);
+                } catch (validationError) {
+                    this.sendError(ws, 'Vibe validation failed', validationError.message, message.requestId);
+                    return;
+                }
+                
                 // Generate new encoding
                 let imageBase64;
                 if (vibeData.type === 'base64') {
@@ -2972,6 +3523,11 @@ class WebSocketMessageHandlers {
                     vibeData.encodings[model] = {};
                 }
                 vibeData.encodings[model][informationExtraction] = encoding;
+                
+                // Update comment if provided
+                if (comment !== undefined) {
+                    vibeData.comment = comment;
+                }
                 
                 // Update file
                 fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
@@ -2994,8 +3550,133 @@ class WebSocketMessageHandlers {
         }
     }
 
+    async handleCheckVibeEncoding(ws, message, clientInfo, wsServer) {
+        try {
+            const { vibeId, workspaceId } = message;
+            
+            if (!workspaceId) {
+                this.sendError(ws, 'Missing workspace parameter', 'Workspace parameter is required', message.requestId);
+                return;
+            }
+            
+            if (!vibeId) {
+                this.sendError(ws, 'Missing vibe ID', 'Vibe ID is required', message.requestId);
+                return;
+            }
+            
+            const workspaces = getWorkspaces();
+            if (!workspaces[workspaceId]) {
+                this.sendError(ws, 'Invalid workspace', `Workspace '${workspaceId}' not found`, message.requestId);
+                return;
+            }
+            
+            // Find the vibe file
+            const workspaceData = getWorkspace(workspaceId);
+            const vibeFiles = workspaceData.vibeImages || [];
+            
+            let foundFilename = null;
+            let vibeData = null;
+            
+            for (const filename of vibeFiles) {
+                const filePath = path.join(vibeCacheDir, filename);
+                if (fs.existsSync(filePath)) {
+                    try {
+                        const existingVibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                        if (existingVibeData.id === vibeId) {
+                            foundFilename = filename;
+                            vibeData = existingVibeData;
+                            break;
+                        }
+                    } catch (parseError) {
+                        continue;
+                    }
+                }
+            }
+            
+            if (!foundFilename || !vibeData) {
+                this.sendError(ws, 'Vibe not found', 'Vibe not found in workspace', message.requestId);
+                return;
+            }
+            
+            // Check if vibe can be encoded
+            const encodingStatus = this.canEncodeVibe(vibeData, vibeId);
+            
+            this.sendToClient(ws, {
+                type: 'check_vibe_encoding_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    vibeId: vibeId,
+                    canEncode: encodingStatus.canEncode,
+                    reason: encodingStatus.reason,
+                    isLocked: this.shouldLockVibe(vibeData)
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('Check vibe encoding error:', error);
+            this.sendError(ws, 'Failed to check vibe encoding', error.message, message.requestId);
+        }
+    }
 
-    
+    // Helper function to determine if a vibe should be locked
+    shouldLockVibe(vibe) {
+        // Lock if missing original image
+        if (!vibe.image) {
+            return true;
+        }
+        
+        // Lock if explicitly set to locked
+        if (vibe.locked === true) {
+            return true;
+        }
+        
+        // Lock if imported from external source without original image
+        if (vibe.importedFrom && !vibe.image) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    // Helper function to validate vibe for encoding
+    validateVibeForEncoding(vibe, vibeId) {
+        // Check if vibe is locked
+        if (this.shouldLockVibe(vibe)) {
+            throw new Error(`Cannot encode locked vibe: ${vibeId}`);
+        }
+        
+        // Check if vibe has valid source image
+        if (!vibe.image) {
+            throw new Error(`Cannot encode vibe without source image: ${vibeId}`);
+        }
+        
+        // Check if vibe has valid image data
+        if (vibe.type === 'base64' && (!vibe.image || vibe.image.trim() === '')) {
+            throw new Error(`Cannot encode vibe with invalid base64 image: ${vibeId}`);
+        }
+        
+        if (vibe.type === 'cache') {
+            const cachePath = path.join(uploadCacheDir, vibe.image);
+            if (!fs.existsSync(cachePath)) {
+                throw new Error(`Cannot encode vibe with missing cache file: ${vibeId}`);
+            }
+        }
+        
+        return true;
+    }
+
+    // Helper function to check if a vibe can be encoded (returns object with status and reason)
+    canEncodeVibe(vibe, vibeId) {
+        try {
+            this.validateVibeForEncoding(vibe, vibeId);
+            return { canEncode: true, reason: null };
+        } catch (error) {
+            return { canEncode: false, reason: error.message };
+        }
+    }
+
     // Direct NovelAI vibe encoding function
     async encodeVibeDirect(imageBase64, informationExtracted, model) {
         const body = {
@@ -3010,7 +3691,6 @@ class WebSocketMessageHandlers {
         
         return new Promise((resolve, reject) => {
             const postData = JSON.stringify(body);
-            
             const options = {
                 hostname: 'image.novelai.net',
                 port: 443,
@@ -3043,12 +3723,24 @@ class WebSocketMessageHandlers {
                 let data = [];
                 
                 res.on('data', chunk => data.push(chunk));
-                
-                res.on('end', () => {
+                res.on('end', async () => {
+                    // Get new balance and calculate credit usage
+                    const vibeCreditUsage = await this.context.calculateCreditUsage();
+                    if (vibeCreditUsage.totalUsage > 0) {
+                        console.log(`💰 Vibe encoding credits used: ${vibeCreditUsage.totalUsage} ${vibeCreditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
+                    }
+                    // Add unattributed receipt for vibe encoding
+                    if (vibeCreditUsage.totalUsage > 0) {
+                        addUnattributedReceipt({
+                            type: 'vibe_encoding',
+                            cost: vibeCreditUsage.totalUsage,
+                            creditType: vibeCreditUsage.usageType,
+                            date: Date.now().valueOf()
+                        });
+                    }
+
                     const buffer = Buffer.concat(data);
-                    
                     if (res.statusCode === 200) {
-                        // Return the buffer as base64 string (matches original implementation)
                         resolve(buffer.toString('base64'));
                     } else {
                         try {
@@ -3095,12 +3787,16 @@ class WebSocketMessageHandlers {
                         filename,
                         id: vibeData.id,
                         preview: fs.existsSync(previewPath) ? `${vibeData.preview}.webp` : null,
-                        mtime: stats.mtime.valueOf(),
+                        mtime: vibeData.mtime || stats.mtime.valueOf(), // Use vibe's mtime if available, otherwise file mtime
                         size: stats.size,
                         encodings: encodings,
                         type: vibeData.type === 'base64' ? 'base64' : 'cache',
                         source: vibeData.image,
-                        workspaceId: workspaceId
+                        workspaceId: workspaceId,
+                        comment: vibeData.comment || null,
+                        importedFrom: vibeData.importedFrom || null,
+                        originalName: vibeData.originalName || null,
+                        locked: vibeData.locked || false
                     });
                 } catch (parseError) {
                     console.error(`Error parsing vibe file ${filename}:`, parseError);
@@ -3109,6 +3805,318 @@ class WebSocketMessageHandlers {
             }
         }
         return vibeImageDetails;
+    }
+
+    // Favorites handlers
+    async handleAddFavorite(ws, message, clientInfo, wsServer) {
+        try {
+            const { favoriteType, item, customName } = message;
+            
+            if (!favoriteType || !item) {
+                this.sendError(ws, 'Missing required parameters: favoriteType and item');
+                return;
+            }
+
+            // Create favorite item from the provided data
+            const favoriteItem = this.favoritesManager.createFavoriteFromResult(item, customName);
+            const result = this.favoritesManager.addFavorite(favoriteType, favoriteItem);
+            
+            if (result.success) {
+                this.sendToClient(ws, {
+                    type: 'favorites_add_response',
+                    success: true,
+                    item: result.item,
+                    requestId: message.requestId
+                });
+            } else {
+                this.sendError(ws, result.error, null, message.requestId);
+            }
+        } catch (error) {
+            console.error('Error adding favorite:', error);
+            this.sendError(ws, 'Failed to add favorite', error.message, message.requestId);
+        }
+    }
+
+    async handleRemoveFavorite(ws, message, clientInfo, wsServer) {
+        try {
+            const { favoriteType, itemId } = message;
+            
+            if (!favoriteType || !itemId) {
+                this.sendError(ws, 'Missing required parameters: favoriteType and itemId');
+                return;
+            }
+
+            const result = this.favoritesManager.removeFavorite(favoriteType, itemId);
+            
+            if (result.success) {
+                this.sendToClient(ws, {
+                    type: 'favorites_remove_response',
+                    success: true,
+                    requestId: message.requestId
+                });
+            } else {
+                this.sendError(ws, result.error, null, message.requestId);
+            }
+        } catch (error) {
+            console.error('Error removing favorite:', error);
+            this.sendError(ws, 'Failed to remove favorite', error.message, message.requestId);
+        }
+    }
+
+    async handleGetFavorites(ws, message, clientInfo, wsServer) {
+        try {
+            const { favoriteType } = message;
+            const favorites = this.favoritesManager.getFavorites(favoriteType);
+            
+            this.sendToClient(ws, {
+                type: 'favorites_get_response',
+                favorites: favorites,
+                requestId: message.requestId
+            });
+        } catch (error) {
+            console.error('Error getting favorites:', error);
+            this.sendError(ws, 'Failed to get favorites', error.message, message.requestId);
+        }
+    }
+
+    // Text replacement management handlers
+    async handleGetTextReplacements(ws, message, clientInfo, wsServer) {
+        try {
+            const config = loadPromptConfig();
+            const textReplacements = config.text_replacements || {};
+            
+            this.sendToClient(ws, {
+                type: 'get_text_replacements_response',
+                data: {
+                    textReplacements: textReplacements
+                },
+                requestId: message.requestId
+            });
+        } catch (error) {
+            console.error('Error getting text replacements:', error);
+            this.sendError(ws, 'Failed to get text replacements', error.message, message.requestId);
+        }
+    }
+
+    async handleSaveTextReplacements(ws, message, clientInfo, wsServer) {
+        try {
+            const { textReplacements } = message;
+            
+            if (!textReplacements || typeof textReplacements !== 'object') {
+                this.sendError(ws, 'Invalid text replacements data', null, message.requestId);
+                return;
+            }
+
+            // Load current config
+            const config = loadPromptConfig();
+            
+            // Update text replacements
+            config.text_replacements = textReplacements;
+            
+            // Save config
+            const success = savePromptConfig(config);
+            
+            if (success) {
+                this.sendToClient(ws, {
+                    type: 'save_text_replacements_response',
+                    data: {
+                        success: true
+                    },
+                    requestId: message.requestId
+                });
+                
+                console.log('✅ Text replacements saved successfully');
+            } else {
+                this.sendToClient(ws, {
+                    type: 'save_text_replacements_response',
+                    data: {
+                        success: false,
+                        error: 'Failed to save configuration file'
+                    },
+                    requestId: message.requestId
+                });
+            }
+        } catch (error) {
+            console.error('Error saving text replacements:', error);
+            this.sendToClient(ws, {
+                type: 'save_text_replacements_response',
+                data: {
+                    success: false,
+                    error: error.message
+                },
+                requestId: message.requestId
+            });
+        }
+    }
+
+    async handleImportVibeBundle(ws, message, clientInfo, wsServer) {
+        try {
+            const { bundleData, workspaceId, comment } = message;
+            if (!workspaceId) {
+                this.sendError(ws, 'Missing workspace parameter', 'Workspace parameter is required', message.requestId);
+                return;
+            }
+            const workspaces = getWorkspaces();
+            if (!workspaces[workspaceId]) {
+                this.sendError(ws, 'Invalid workspace', `Workspace '${workspaceId}' not found`, message.requestId);
+                return;
+            }
+            if (!bundleData || !bundleData.identifier) {
+                this.sendError(ws, 'Invalid bundle format', 'Not a valid NovelAI vibe transfer or bundle file', message.requestId);
+                return;
+            }
+
+            // Handle both bundle format and single vibe format
+            let vibes = [];
+            if (bundleData.identifier === 'novelai-vibe-transfer-bundle') {
+                if (!bundleData.vibes || !Array.isArray(bundleData.vibes)) {
+                    this.sendError(ws, 'Invalid bundle format', 'No vibes found in bundle', message.requestId);
+                    return;
+                }
+                vibes = bundleData.vibes;
+            } else if (bundleData.identifier === 'novelai-vibe-transfer') {
+                // Single vibe format - wrap as array
+                vibes = [bundleData];
+            } else {
+                this.sendError(ws, 'Invalid bundle format', 'Not a valid NovelAI vibe transfer or bundle file', message.requestId);
+                return;
+            }
+
+            const importedVibes = [];
+            const errors = [];
+            for (const vibe of vibes) {
+                try {
+                    // Validate structure (allow missing image/thumbnail, but mark as locked)
+                    if (!vibe.identifier || vibe.identifier !== 'novelai-vibe-transfer') {
+                        console.warn(`Skipping invalid vibe: ${vibe.name || 'unnamed'}`);
+                        continue;
+                    }
+
+                    // Generate ID if it's 'unknown'
+                    let vibeId = vibe.id;
+                    if (vibeId === 'unknown') {
+                        // Create a hash based on the vibe's content
+                        const hashData = {
+                            name: vibe.name || '',
+                            encodings: vibe.encodings || {},
+                            importInfo: vibe.importInfo || {},
+                            createdAt: vibe.createdAt || Date.now()
+                        };
+                        const hashString = JSON.stringify(hashData);
+                        vibeId = crypto.createHash('sha256').update(hashString).digest('hex');
+                        console.log(`Generated SHA256 ID for unknown vibe: ${vibeId}`);
+                    }
+
+                    // Map model names
+                    const modelMapping = {
+                        'v4full': 'v4',
+                        'v4-5full': 'v4_5',
+                        'v4curated': 'v4_cur',
+                        'v4-5curated': 'v4_5_cur'
+                    };
+                    // Process encodings for each model
+                    const processedEncodings = {};
+                    
+                    for (const [bundleModel, encodings] of Object.entries(vibe.encodings || {})) {
+                        const mappedModel = modelMapping[bundleModel] || bundleModel;                        
+                        if (!processedEncodings[mappedModel]) {
+                            processedEncodings[mappedModel] = {};
+                        }
+                        
+                        for (const [encodingId, encodingData] of Object.entries(encodings)) {                            
+                            if (encodingId !== 'unknown') {
+                                const informationExtraction = encodingData.params?.information_extracted || 1;
+                                if (encodingData.encoding && encodingData.encoding.trim() !== '') {
+                                    processedEncodings[mappedModel][informationExtraction] = encodingData.encoding;
+                                    console.log(`Normal encoding: IE=${informationExtraction}, encoding length=${encodingData.encoding?.length || 0}`);
+                                } else {
+                                    console.warn(`Warning: Empty encoding found for ${mappedModel} with IE=${informationExtraction}`);
+                                }
+                            } else {
+                                // For 'unknown' encodingId, use importInfo.information_extracted if params.information_extracted is not valid
+                                let ie = 1;
+                                if (encodingData.params && encodingData.params.information_extracted && typeof encodingData.params.information_extracted === 'number' && encodingData.params.information_extracted > 0) {
+                                    ie = encodingData.params.information_extracted;
+                                } else if (vibe.importInfo && vibe.importInfo.information_extracted) {
+                                    ie = vibe.importInfo.information_extracted;
+                                }
+                                if (encodingData.encoding && encodingData.encoding.trim() !== '') {
+                                    processedEncodings[mappedModel][ie] = encodingData.encoding;
+                                    console.log(`Unknown encoding: IE=${ie}, encoding length=${encodingData.encoding?.length || 0}`);
+                                } else {
+                                    console.warn(`Warning: Empty encoding found for ${mappedModel} with IE=${ie}`);
+                                }
+                            }
+                        }
+                    }
+                                        
+                    // Create vibe data structure
+                    const vibeData = {
+                        version: vibe.version || 1,
+                        id: vibeId,
+                        type: 'base64',
+                        image: vibe.image || null, // Keep original image if present, null if missing
+                        preview: vibe.thumbnail ? vibe.thumbnail.split(',')[1] : null,
+                        mtime: vibe.createdAt || Date.now(),
+                        encodings: processedEncodings,
+                        importedFrom: 'novelai',
+                        originalName: vibe.name || null,
+                        comment: comment || null,
+                        locked: false // Will be determined by server-side logic
+                    };
+                    
+                    // Determine locked status using server-side logic
+                    vibeData.locked = this.shouldLockVibe(vibeData);
+                    // Save vibe file
+                    const filename = `${vibeId}.json`;
+                    const filePath = path.join(vibeCacheDir, filename);
+                    fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
+                    // Add to workspace
+                    addToWorkspaceArray('vibeImages', filename, workspaceId);
+                    // Save thumbnail if provided
+                    if (vibe.thumbnail && vibe.thumbnail.startsWith('data:image/')) {
+                        const thumbnailBase64 = vibe.thumbnail.split(',')[1];
+                        const thumbnailBuffer = Buffer.from(thumbnailBase64, 'base64');
+                        const thumbnailHash = crypto.createHash('md5').update(thumbnailBuffer).digest('hex');
+                        const thumbnailPath = path.join(previewCacheDir, `${thumbnailHash}.webp`);
+                        if (!fs.existsSync(thumbnailPath)) {
+                            await sharp(thumbnailBuffer)
+                                .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+                                .webp({ quality: 80 })
+                                .toFile(thumbnailPath);
+                        }
+                        // Update vibe data with thumbnail hash
+                        vibeData.preview = thumbnailHash;
+                        fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
+                    }
+                    importedVibes.push({
+                        id: vibeId,
+                        name: vibe.name || 'Imported Vibe',
+                        modelCount: Object.keys(processedEncodings).length,
+                        locked: vibeData.locked,
+                        createdAt: vibe.createdAt || Date.now()
+                    });
+                    console.log(`✅ Imported vibe: ${vibe.name || vibeId}${vibeData.locked ? ' (locked)' : ''}`);
+                } catch (error) {
+                    console.error(`❌ Error importing vibe ${vibe.name || vibe.id}:`, error);
+                    errors.push(`${vibe.name || vibe.id}: ${error.message}`);
+                }
+            }
+            this.sendToClient(ws, {
+                type: 'import_vibe_bundle_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    message: `Successfully imported ${importedVibes.length} vibes`,
+                    importedVibes: importedVibes,
+                    errors: errors
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Import vibe bundle error:', error);
+            this.sendError(ws, 'Failed to import vibe bundle', error.message, message.requestId);
+        }
     }
 
     // Utility methods

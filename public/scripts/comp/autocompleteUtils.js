@@ -1155,6 +1155,22 @@ function handleCharacterAutocompleteKeydown(e) {
                 }
                 break;
                 
+            case 'f':
+            case 'F':
+                if (e.altKey) {
+                    e.preventDefault();
+                    
+                    // Add selected item to favorites
+                    if (selectedCharacterAutocompleteIndex >= 0 && items.length > 0) {
+                        const selectedItem = items[selectedCharacterAutocompleteIndex];
+                        if (selectedItem) {
+                            addToFavorites(selectedItem);
+                        }
+                    }
+                    return;
+                }
+                break;
+                
             case 'Escape':
                 e.preventDefault();
                 if (spellCheckNavigationMode) {
@@ -1191,6 +1207,20 @@ function handleCharacterAutocompleteKeydown(e) {
                     deleteTagBehindCursor(document.activeElement);
                 }
                 break;
+                
+            case 'f':
+            case 'F':
+                if (e.altKey && document.activeElement.type === 'textarea' && 
+                    (document.activeElement.classList.contains('prompt-textarea') || 
+                     document.activeElement.classList.contains('character-prompt-textarea'))) {
+                    
+                    const selectedText = getSelectedTextFromTextarea(document.activeElement);
+                    if (selectedText && selectedText.trim()) {
+                        e.preventDefault();
+                        showAddToFavoritesDialog(selectedText.trim());
+                    }
+                }
+                break;
         }
     }
 }
@@ -1224,8 +1254,8 @@ async function searchCharacters(query, target) {
         updateAutocompleteDisplay([], target);
         updateSearchStatusDisplay();
         
-        // Check if query starts with < - only return text replacements in this case
-        const isTextReplacementSearch = query.startsWith('<');
+        // Check if query starts with ! - only return text replacements in this case
+        const isTextReplacementSearch = query.startsWith('!');
         
         // Check if query starts with "Text:" - only perform spell correction in this case
         const isTextPrefixSearch = query.startsWith('Text:');
@@ -1249,20 +1279,51 @@ async function searchCharacters(query, target) {
             }
         }
 
-        // Handle PICK_ prefix stripping for search but preserve in inserted text
+        // Handle PICK suffix stripping for search but preserve in inserted text
         let searchQuery = query;
-        let hasPickPrefix = false;
+        let hasPickSuffix = false;
 
-        if (query.startsWith('PICK_')) {
-            searchQuery = query.substring(5); // Remove PICK_ prefix for searching
-            hasPickPrefix = true;
+        if (query.startsWith('!') && query.includes('~')) {
+            // Extract the name between ! and ~
+            const match = query.match(/^!([^~]+)~/);
+            if (match) {
+                searchQuery = match[1]; // Remove ! and ~ for searching
+                hasPickSuffix = true;
+            }
         }
 
-        // For text replacement searches, strip the < character from the search query
+        // For text replacement searches, strip the ! character from the search query
         if (isTextReplacementSearch) {
-            searchQuery = searchQuery.substring(1); // Remove the < character
+            searchQuery = searchQuery.substring(1); // Remove the ! character
         }
-        
+        // Search through text replacements (only for non-"Text:" searches)
+        if (!isTextPrefixSearch) {
+            const textReplacementResults = Object.keys(window.optionsData?.textReplacements || {})
+                .filter(key => {
+                    const keyToSearch = key;
+                    // If searchQuery is empty (just ! was typed), return all items
+                    if (searchQuery === '') {
+                        return true;
+                    }
+                    return keyToSearch.toLowerCase().includes(searchQuery.toLowerCase());
+                })
+                .map((key, index) => ({
+                    type: 'textReplacement',
+                    name: key,
+                    description: window.optionsData?.textReplacements[key],
+                    placeholder: key, // The placeholder name like !NAME or !NAME~
+                    // If we searched with ~ suffix, ensure the result preserves it
+                    displayName: hasPickSuffix ? `${key}~` : key,
+                    serviceOrder: index === 0 ? -1 : 10000, // Text replacements come first
+                    resultOrder: index,
+                    serviceName: 'textReplacements'
+                }));
+
+            // Add text replacements to the result collection
+            if (textReplacementResults.length > 0) {
+                searchResultsByService.set('textReplacements', textReplacementResults);
+            }
+        }
         // For "Text:" searches, extract the text after the prefix for spell checking
         if (isTextPrefixSearch) {
             searchQuery = searchQuery.substring(5).trim(); // Remove "Text:" prefix
@@ -1280,35 +1341,6 @@ async function searchCharacters(query, target) {
                     console.error('WebSocket spell check failed:', wsError);
                     // Continue without spell check
                 }
-            }
-        }
-
-        // Search through text replacements (only for non-"Text:" searches)
-        if (!isTextPrefixSearch) {
-            const textReplacementResults = Object.keys(window.optionsData?.textReplacements || {})
-                .filter(key => {
-                    const keyToSearch = key.startsWith('PICK_') ? key.substring(5) : key;
-                    // If searchQuery is empty (just < was typed), return all items
-                    if (searchQuery === '') {
-                        return true;
-                    }
-                    return keyToSearch.toLowerCase().includes(searchQuery.toLowerCase());
-                })
-                .map((key, index) => ({
-                    type: 'textReplacement',
-                    name: key,
-                    description: window.optionsData?.textReplacements[key],
-                    placeholder: key, // The placeholder name like <NAME> or <PICK_NAME>
-                    // If we searched with PICK_ prefix, ensure the result preserves it
-                    displayName: hasPickPrefix && !key.startsWith('PICK_') ? `PICK_${key}` : key,
-                    serviceOrder: index === 0 ? -1 : 10000, // Text replacements come first
-                    resultOrder: index,
-                    serviceName: 'textReplacements'
-                }));
-
-            // Add text replacements to the result collection
-            if (textReplacementResults.length > 0) {
-                searchResultsByService.set('textReplacements', textReplacementResults);
             }
         }
 
@@ -2004,8 +2036,8 @@ function selectTextReplacement(placeholder) {
     const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
     newPrompt = textBefore;
 
-    // Add the placeholder wrapped in angle brackets
-    const wrappedPlaceholder = `<${placeholder}>`;
+    // Add the placeholder wrapped in exclamation mark format
+    const wrappedPlaceholder = `!${placeholder}`;
     if (newPrompt) {
         // Check if we should add a comma before the text
         if (shouldAddCommaBefore(currentValue, cursorPosition)) {
@@ -2978,17 +3010,8 @@ function expandAutocompleteToShowAll() {
 
     autocompleteExpanded = true;
 
-    // Filter out spell check results from main display (same as in updateAutocompleteDisplay)
-    const displayResults = window.allAutocompleteResults.filter(result => result.type !== 'spellcheck');
-
     // Use the new display system to show all results
     updateAutocompleteDisplay(window.allAutocompleteResults, currentCharacterAutocompleteTarget);
-
-    // Add all results using unified item creation
-    displayResults.forEach((result, index) => {
-        const item = createAutocompleteItem(result);
-        characterAutocompleteList.appendChild(item);
-    });
 
     // Maintain selection after expanding
     if (selectedCharacterAutocompleteIndex >= 0) {
@@ -3773,4 +3796,394 @@ function deleteTagBehindCursor(target) {
     const event = new Event('input', { bubbles: true });
     target.dispatchEvent(event);
 }
+
+// Favorites functionality
+function getSelectedTextFromTextarea(textarea) {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    return textarea.value.substring(start, end);
+}
+
+function addToFavorites(selectedItem) {
+    if (!selectedItem) return;
+    
+    const type = selectedItem.dataset.type;
+    let itemData;
+    
+    if (type === 'tag') {
+        itemData = {
+            type: 'tag',
+            name: selectedItem.dataset.tagName,
+            count: selectedItem.dataset.count,
+            model: selectedItem.dataset.model,
+            confidence: selectedItem.dataset.confidence
+        };
+    } else if (type === 'textReplacement') {
+        itemData = {
+            type: 'textReplacement',
+            name: selectedItem.dataset.placeholder,
+            placeholder: selectedItem.dataset.placeholder,
+            description: selectedItem.textContent
+        };
+    } else if (type === 'character') {
+        const characterData = JSON.parse(selectedItem.dataset.characterData);
+        itemData = {
+            type: 'character',
+            name: characterData.name,
+            description: characterData.description || ''
+        };
+    } else {
+        console.error('Unknown item type for favorites:', type);
+        return;
+    }
+    
+    // Send to server via WebSocket
+    if (window.wsClient && window.wsClient.isConnected()) {
+        const favoriteType = type === 'character' ? 'tags' : type + 's'; // characters go in tags, textReplacement becomes textReplacements
+        
+        window.wsClient.send({
+            type: 'favorites_add',
+            favoriteType: favoriteType,
+            item: itemData,
+            requestId: `favorite_add_${Date.now()}`
+        });
+        
+        // Show success notification
+        if (typeof showGlassToast === 'function') {
+            showGlassToast('success', null, `Added "${itemData.name}" to favorites`, false, 3000, '<i class="fas fa-star"></i>');
+        }
+    } else {
+        if (typeof showGlassToast === 'function') {
+            showGlassToast('error', null, 'Unable to add to favorites: not connected to server', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+        }
+    }
+}
+
+// Auto-detect if text is a tag and show appropriate dialog
+async function showAddToFavoritesDialog(selectedText) {
+    console.log('🔍 Analyzing selected text:', selectedText);
+    const isTag = await detectIfTag(selectedText);
+    console.log('📋 Detection result - isTag:', isTag);
+    
+    if (isTag) {
+        console.log('🏷️ Showing tag confirmation dialog');
+        // Show simple confirmation for tags
+        await showTagConfirmationDialog(selectedText);
+    } else {
+        console.log('📝 Showing text replacement dialog');
+        // Show redesigned dialog for text replacements
+        await showTextReplacementDialog(selectedText);
+    }
+}
+
+// Detect if selected text is likely a tag
+async function detectIfTag(text) {
+    // Clean the text
+    const cleanText = text.trim();
+    
+    // Basic heuristics for tag detection
+    const tagPatterns = [
+        // Single words without spaces (most tags)
+        /^[a-zA-Z0-9_-]+$/,
+        // Character names (typically 1-3 words)
+        /^[a-zA-Z0-9_\s-]{1,50}$/,
+        // Common tag formats
+        /^\d+(boy|girl|man|woman)s?$/i,
+        /^(very\s+)?(short|long|medium)\s+(hair|skirt|dress|pants)$/i,
+        /^(red|blue|green|black|white|brown|blonde|pink|purple|yellow|orange)\s+(hair|eyes)$/i
+    ];
+    
+    // If it's very short (1-2 words), likely a tag
+    const wordCount = cleanText.split(/\s+/).length;
+    if (wordCount <= 2 && cleanText.length <= 30) {
+        return true;
+    }
+    
+    // Check against tag patterns
+    for (const pattern of tagPatterns) {
+        if (pattern.test(cleanText)) {
+            return true;
+        }
+    }
+    
+    // If it contains common text replacement indicators, it's not a tag
+    const textReplacementIndicators = [
+        ',', // Lists like "forest, nature, outdoors"
+        ':', // Ratios or descriptions
+        '!', // Existing replacement references
+        '\n', // Multi-line content
+        '(', ')', // Parenthetical content
+        '"', "'", // Quoted content
+    ];
+    
+    for (const indicator of textReplacementIndicators) {
+        if (cleanText.includes(indicator)) {
+            return false;
+        }
+    }
+    
+    // If it's longer than typical tag length, likely text replacement
+    if (cleanText.length > 50) {
+        return false;
+    }
+    
+    // Default to tag for ambiguous cases
+    return true;
+}
+
+// Show simple confirmation dialog for tags
+async function showTagConfirmationDialog(tagText) {
+    const confirmed = await showConfirmationDialog(
+        `Add "${tagText}" to favorites as a tag?`,
+        [
+            { text: 'Cancel', value: false, className: 'btn-secondary' },
+            { text: 'Add to Favorites', value: true, className: 'btn-primary' }
+        ]
+    );
+    
+    if (confirmed) {
+        const itemData = {
+            type: 'tag',
+            name: tagText,
+            originalName: tagText,
+            description: tagText
+        };
+        
+        // Send to server via WebSocket
+        if (window.wsClient && window.wsClient.isConnected()) {
+            window.wsClient.send({
+                type: 'favorites_add',
+                favoriteType: 'tags',
+                item: itemData,
+                requestId: `favorite_add_${Date.now()}`
+            });
+            
+            // Show success notification
+            showGlassToast('success', null, `Added "${tagText}" to favorites`, false, 3000, '<i class="fas fa-star"></i>');
+        } else {
+            showGlassToast('error', null, 'Unable to add to favorites: not connected to server', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+        }
+    }
+}
+
+// Position custom dialog similar to confirmationDialog
+function positionCustomDialog(dialog, event = null) {
+    if (!dialog) return;
+
+    let x, y;
+    
+    if (event) {
+        // Use mouse position or button position
+        if (event.clientX && event.clientY) {
+            x = event.clientX;
+            y = event.clientY;
+        } else if (event.target) {
+            const rect = event.target.getBoundingClientRect();
+            x = rect.left + rect.width / 2;
+            y = rect.top + rect.height / 2;
+        }
+    } else {
+        // Center on screen if no event
+        x = window.innerWidth / 2;
+        y = window.innerHeight / 2;
+    }
+
+    // Get dialog dimensions
+    const dialogRect = dialog.getBoundingClientRect();
+    const dialogWidth = dialogRect.width || 400; // Default width
+    const dialogHeight = dialogRect.height || 200; // Default height
+
+    // Calculate position to center on cursor/button
+    let left = x - dialogWidth / 2;
+    let top = y - dialogHeight / 2;
+
+    // Ensure dialog doesn't go off screen
+    const margin = 20;
+    
+    // Check horizontal bounds
+    if (left < margin) {
+        left = margin;
+    } else if (left + dialogWidth > window.innerWidth - margin) {
+        left = window.innerWidth - dialogWidth - margin;
+    }
+
+    // Check vertical bounds
+    if (top < margin) {
+        top = margin;
+    } else if (top + dialogHeight > window.innerHeight - margin) {
+        top = window.innerHeight - dialogHeight - margin;
+    }
+
+    // Apply position
+    dialog.style.left = `${left}px`;
+    dialog.style.top = `${top}px`;
+    dialog.style.position = 'fixed';
+}
+
+// Extract first tag from text for use as placeholder name
+function extractFirstTag(text) {
+    const cleanText = text.trim();
+    
+    // Split by common delimiters
+    const delimiters = [',', '\n', ';', '|', '(', ')', '[', ']', '{', '}'];
+    let parts = [cleanText];
+    
+    // Split by each delimiter
+    for (const delimiter of delimiters) {
+        const newParts = [];
+        for (const part of parts) {
+            newParts.push(...part.split(delimiter));
+        }
+        parts = newParts;
+    }
+    
+    // Find the first part that looks like a tag
+    for (const part of parts) {
+        const trimmed = part.trim();
+        if (trimmed.length > 0 && trimmed.length <= 50) {
+            // Convert to valid placeholder name
+            const placeholder = trimmed
+                .replace(/[^\w\s-]/g, '') // Remove special chars except word chars, spaces, hyphens
+                .replace(/\s+/g, '_') // Replace spaces with underscores
+                .toLowerCase()
+                .replace(/^_+|_+$/g, '') // Remove leading/trailing underscores
+                .replace(/_+/g, '_'); // Collapse multiple underscores
+            
+            if (placeholder.length > 0) {
+                return placeholder;
+            }
+        }
+    }
+    
+    // Fallback: use first few words
+    const words = cleanText.split(/\s+/).slice(0, 3);
+    return words.join('_').replace(/[^\w]/g, '').toLowerCase() || 'text_replacement';
+}
+
+// Show redesigned dialog for text replacements using popup system
+async function showTextReplacementDialog(selectedText) {
+    console.log('💬 Creating text replacement dialog for:', selectedText);
+    
+    // Extract first tag for placeholder
+    const defaultName = extractFirstTag(selectedText);
+    console.log('🏷️ Extracted default name:', defaultName);
+    
+    // Create custom dialog using confirmation dialog system
+    return new Promise((resolve) => {
+        // Remove any existing dialog
+        const existingDialog = document.querySelector('.favorites-dialog, .favorites-text-replacement-dialog');
+        if (existingDialog) {
+            console.log('🗑️ Removing existing dialog');
+            existingDialog.remove();
+        }
+        
+        console.log('🏗️ Creating new dialog element');
+        const dialog = document.createElement('div');
+        dialog.className = 'confirmation-dialog favorites-text-replacement-dialog';
+        dialog.innerHTML = `
+            <div class="confirmation-dialog-content">
+                <div class="confirmation-message">
+                    <strong>Add Text Replacement</strong>
+                    <div class="selected-text-preview">Selected: "${selectedText}"</div>
+                </div>
+                <div class="text-replacement-form">
+                    <div class="form-row">
+                        <label for="replacementName">Name:</label>
+                        <input type="text" id="replacementName" class="form-control" value="${defaultName}" placeholder="replacement_name">
+                    </div>
+                    <div class="form-hint">
+                        <i class="fas fa-info-circle"></i> Will be available as !<span id="namePreview">${defaultName}</span>
+                    </div>
+                </div>
+                <div class="confirmation-controls">
+                    <button class="btn btn-secondary" id="cancelTextReplacement">Cancel</button>
+                    <button class="btn btn-primary" id="saveTextReplacement">Add to Favorites</button>
+                </div>
+            </div>
+        `;
+        
+        console.log('📎 Appending dialog to body');
+        document.body.appendChild(dialog);
+        
+        console.log('📍 Positioning and showing dialog');
+        // Position and show dialog
+        positionCustomDialog(dialog);
+        dialog.style.display = 'block';
+        console.log('✅ Dialog should now be visible');
+        
+        // Get elements
+        const nameInput = dialog.querySelector('#replacementName');
+        const namePreview = dialog.querySelector('#namePreview');
+        const cancelBtn = dialog.querySelector('#cancelTextReplacement');
+        const saveBtn = dialog.querySelector('#saveTextReplacement');
+        
+        // Focus and select name input
+        nameInput.focus();
+        nameInput.select();
+        
+        // Update preview as user types
+        nameInput.addEventListener('input', (e) => {
+            let value = e.target.value.replace(/\s+/g, '_');
+            e.target.value = value;
+            namePreview.textContent = value || 'replacement_name';
+        });
+        
+        // Handle cancel
+        cancelBtn.addEventListener('click', () => {
+            dialog.remove();
+            resolve(false);
+        });
+        
+        // Handle save
+        const handleSave = async () => {
+            const name = nameInput.value.trim();
+            if (!name) {
+                showGlassToast('error', null, 'Please enter a name for the replacement', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+                nameInput.focus();
+                return;
+            }
+            
+            const itemData = {
+                type: 'textReplacement',
+                name: name,
+                originalName: selectedText,
+                description: selectedText,
+                placeholder: name,
+                replacementValue: selectedText
+            };
+            
+            // Send to server via WebSocket
+            if (window.wsClient && window.wsClient.isConnected()) {
+                window.wsClient.send({
+                    type: 'favorites_add',
+                    favoriteType: 'textReplacements',
+                    item: itemData,
+                    requestId: `favorite_add_${Date.now()}`
+                });
+                
+                showGlassToast('success', null, `Added text replacement "!${name}" to config`, false, 3000, '<i class="fas fa-code"></i>');
+            } else {
+                showGlassToast('error', null, 'Unable to add to favorites: not connected to server', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            }
+            
+            dialog.remove();
+            resolve(true);
+        };
+        
+        saveBtn.addEventListener('click', handleSave);
+        
+        // Handle Enter key
+        nameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSave();
+            } else if (e.key === 'Escape') {
+                dialog.remove();
+                resolve(false);
+            }
+        });
+    });
+}
+
+// Functions are automatically available in global scope
 

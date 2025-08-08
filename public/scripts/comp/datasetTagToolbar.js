@@ -427,7 +427,7 @@ function renderDropdownOptions(level, options, mainTags = []) {
             <div class="dataset-tag-option">
             <div class="dataset-tag-option-container">
                 <div class="dataset-tag-name">
-                    <i class="${icon}"></i>
+                    <i class="fas ${icon}"></i>
                     <span>${opt.label}</span>
                 </div>
                 <div class="dataset-tag-item-count badge">${opt.itemCount}</div>
@@ -841,16 +841,12 @@ function insertTagIntoTextarea(tag) {
         return;
     }
     
-    console.log('Inserting tag:', tag, 'into target:', currentTarget);
-    
     try {
         // Ensure the target has focus
         currentTarget.focus();
         
         // Use our own implementation based on autocompleteUtils.js logic
         insertTagDirect(currentTarget, tag);
-        
-        console.log('Tag inserted successfully');
     } catch (error) {
         console.error('Error inserting tag:', error);
     }
@@ -993,7 +989,7 @@ async function autoNavigateFromCursor() {
     
     // Only auto-navigate if we haven't already navigated somewhere
     if (currentPath.length > 0) {
-        console.log('Already navigated to a path, skipping auto-navigation');
+        console.warn('Already navigated to a path, skipping auto-navigation');
         return;
     }
     
@@ -1026,7 +1022,19 @@ async function autoNavigateFromCursor() {
                         
                         // Navigate to this path
                         await navigateToPath(targetPath, potentialTag);
+                    } else {
+                        setTimeout(() => {
+                            if (dropdowns.length > 0 && dropdowns[0] && dropdowns[0].menu && dropdowns[0].button) {
+                                openDropdown(dropdowns[0].menu, dropdowns[0].button);
+                            }
+                        }, 10);
                     }
+                } else {
+                    setTimeout(() => {
+                        if (dropdowns.length > 0 && dropdowns[0] && dropdowns[0].menu && dropdowns[0].button) {
+                            openDropdown(dropdowns[0].menu, dropdowns[0].button);
+                        }
+                    }, 10);
                 }
             }
         } catch (error) {
@@ -1487,8 +1495,6 @@ async function handleSearchInput(event) {
         hideSearchResults();
         return;
     }
-    
-    console.log('Search: Querying for:', query);
     
     // Query server for matching tags
     try {

@@ -846,18 +846,11 @@ class PromptTextareaToolbar {
     }
 
     toggleAutofill(toolbar) {
-        console.log('toggleAutofill method called');
-        // Toggle the autofill state globally
         const isEnabled = window.toggleAutofill ? window.toggleAutofill() : true;
-        console.log('Autofill state after toggle:', isEnabled);
-        
-        // Update all autofill toggle buttons across all toolbars
         const allToolbars = document.querySelectorAll('.prompt-textarea-toolbar');
-        console.log('Found toolbars to update:', allToolbars.length);
         allToolbars.forEach((toolbarElement, index) => {
             const autofillBtn = toolbarElement.querySelector('[data-action="autofill"]');
             if (autofillBtn) {
-                console.log(`Updating toolbar ${index} autofill button to state: ${isEnabled ? 'on' : 'off'}`);
                 autofillBtn.setAttribute('data-state', isEnabled ? 'on' : 'off');
                 // Update icon to show state
                 const icon = autofillBtn.querySelector('i');
@@ -865,7 +858,7 @@ class PromptTextareaToolbar {
                     icon.className = isEnabled ? 'fas fa-lightbulb' : 'fas fa-lightbulb-slash';
                 }
             } else {
-                console.log(`No autofill button found in toolbar ${index}`);
+                console.warn(`No autofill button found in toolbar ${index}`);
             }
         });
     }
