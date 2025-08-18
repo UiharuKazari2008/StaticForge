@@ -14,7 +14,7 @@ let globalMouseDown = false; // Track global mouse state for continuous drawing
 const negativeBtn = document.getElementById('maskNegativeBtn');
 const inpaintBtn = document.getElementById('inpaintBtn');
 
-document.addEventListener('DOMContentLoaded', async function() {
+window.wsClient.registerInitStep(90, 'Initializing Inpaint Editor', async () => {
     inpaintBtn.addEventListener('click', openMaskEditor);
     negativeBtn.addEventListener('click', invertMask);
 });
@@ -1306,7 +1306,7 @@ function updateInpaintButtonState() {
 async function updateMaskPreview() {
     const maskPreviewCanvas = document.getElementById('maskPreviewCanvas');
 
-    if (!maskPreviewCanvas || !variationImage) {
+    if (!maskPreviewCanvas || !variationImage || !window.uploadedImageData?.image_source) {
         if (maskPreviewCanvas) {
             maskPreviewCanvas.style.display = 'none';
         }

@@ -161,8 +161,8 @@ function positionGalleryToolbar(event) {
     if (x + rect.width > windowWidth - 10) x = windowWidth - rect.width - 10;
     if (y + rect.height > windowHeight - 10) y = windowHeight - rect.height - 10;
     
-    galleryToolbar.style.left = x + 'px';
-    galleryToolbar.style.top = y + 'px';
+    galleryToolbar.style.left = `min(${x}px, calc(100vw - 330px))`;
+    galleryToolbar.style.top = `min(${y}px, calc(100vh - 100px))`;
 }
 
 // Handle click outside toolbar
@@ -533,6 +533,11 @@ function hideGalleryMoveModal() {
     
     // Stop cross-fade animation
     stopGalleryMoveCrossFade();
+    
+    // Clear selection when modal is closed/cancelled to prevent stuck state
+    if (galleryMoveSelectedImages.size > 0) {
+        clearSelection();
+    }
 }
 
 // Execute the actual move operation
@@ -559,6 +564,7 @@ async function executeGalleryMove(filename, targetWorkspaceId) {
     } catch (error) {
         console.error('Error moving gallery image:', error);
         showError('Failed to move image: ' + error.message);
+        // For single image moves, we don't need to clear selection
     }
 }
 
@@ -582,8 +588,9 @@ async function executeGalleryMoveMultiple(targetWorkspaceId) {
             updateGlassToast(toastId, 'success', 'Images Moved', `${selectedImages.length} images moved successfully to the selected workspace`);
             hideGalleryMoveModal();
             
-            // Clear selection
+            // Clear selection in both the modal and the main gallery view
             galleryMoveSelectedImages.clear();
+            clearSelection();
             
             // Refresh gallery to reflect the change
             if (typeof requestGallery === 'function') {
@@ -596,5 +603,7 @@ async function executeGalleryMoveMultiple(targetWorkspaceId) {
     } catch (error) {
         console.error('Error moving gallery images:', error);
         showError('Failed to move images: ' + error.message);
+        // Clear selection on error to prevent stuck state
+        clearSelection();
     }
 }

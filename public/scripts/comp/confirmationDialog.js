@@ -51,18 +51,25 @@ function showConfirmationDialog(message, options = [], event = null) {
         const messageEl = confirmationDialog.querySelector('#confirmationMessage');
         const controlsEl = confirmationDialog.querySelector('#confirmationControls');
 
-        messageEl.textContent = message;
+        // Check if message contains HTML tags
+        if (message.includes('<') && message.includes('>')) {
+            messageEl.innerHTML = message;
+        } else {
+            messageEl.textContent = message;
+        }
         
         // Clear and recreate controls
         controlsEl.innerHTML = '';
         
         options.forEach((option, index) => {
             const button = document.createElement('button');
+            button.type = 'button';
             button.className = `btn ${option.className || 'btn-secondary'}`;
             button.textContent = option.text;
             button.id = `confirmationBtn${index}`;
             
             button.addEventListener('click', (e) => {
+                e.preventDefault();
                 hideConfirmationDialog();
                 resolve(option.value);
             });

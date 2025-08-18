@@ -81,10 +81,15 @@ function createShortcutsOverlay() {
 // Handle key down events
 function handleKeyDown(event) {
     const manualModal = document.getElementById('manualModal');
-    const isManualModalOpen = manualModal && manualModal.style.display === 'flex';
+    const textReplacementModal = document.getElementById('textReplacementManagerModal');
+    const createTextReplacementModal = document.getElementById('createTextReplacementModal');
     
-    // Only handle shortcuts when manual modal is open
-    if (!isManualModalOpen) return;
+    const isManualModalOpen = manualModal && manualModal.style.display !== 'none';
+    const isTextReplacementModalOpen = textReplacementModal && textReplacementModal.style.display !== 'none';
+    const isCreateTextReplacementModalOpen = createTextReplacementModal && createTextReplacementModal.style.display !== 'none';
+    
+    // Only handle shortcuts when relevant modals are open
+    if (!isManualModalOpen && !isTextReplacementModalOpen && !isCreateTextReplacementModalOpen) return;
     
     // Handle Alt key press
     if (event.key === 'Alt') {
@@ -146,11 +151,12 @@ function handleKeyDown(event) {
                 const searchTextarea = document.activeElement;
                 if (searchTextarea && (searchTextarea.matches('.prompt-textarea, .character-prompt-textarea'))) {
                     const searchToolbar = searchTextarea.closest('.prompt-textarea-container, .character-prompt-textarea-container')?.querySelector('.prompt-textarea-toolbar');
-                    if (searchToolbar) {
-                        const searchBtn = searchToolbar.querySelector('[data-action="search"]');
-                        if (searchBtn) {
-                            searchBtn.click();
+                    if (searchToolbar && window.promptTextareaToolbar) {
+                        // Check if already in search mode
+                        if (searchToolbar.classList.contains('search-mode')) {
+                            return;
                         }
+                        window.promptTextareaToolbar.openSearch(searchTextarea);
                     }
                 }
                 break;

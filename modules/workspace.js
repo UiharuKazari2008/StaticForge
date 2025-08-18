@@ -25,7 +25,8 @@ const DEFAULT_WORKSPACE_COLORS = [
 
 // In-memory workspace cache
 let workspaces = null;
-let activeWorkspace = 'default';
+// Per-session active workspace storage
+let sessionActiveWorkspaces = new Map();
 
 // Generate UUID v4
 function generateUUID() {
@@ -63,6 +64,15 @@ function loadWorkspaces() {
                     workspace.backgroundOpacity = 0.3; // Default opacity
                     needsSave = true;
                 }
+                // Add font settings if missing
+                if (typeof workspace.primaryFont === 'undefined') {
+                    workspace.primaryFont = null; // Use global default
+                    needsSave = true;
+                }
+                if (typeof workspace.textareaFont === 'undefined') {
+                    workspace.textareaFont = null; // Use global default
+                    needsSave = true;
+                }
                 // Add groups property if missing
                 if (!workspace.groups) {
                     workspace.groups = {};
@@ -93,6 +103,8 @@ function loadWorkspaces() {
                     backgroundColor: null, // Will be auto-generated from color
                     backgroundImage: null, // No background image by default
                     backgroundOpacity: 0.3, // Default opacity
+                    primaryFont: null, // Use global default
+                    textareaFont: null, // Use global default
                     sort: 0, // Default sort order
                     presets: [],
                     vibeImages: [],
@@ -274,6 +286,8 @@ function createWorkspace(name, color = null, backgroundColor = null, backgroundI
         backgroundColor: backgroundColor, // Can be null for auto-generation
         backgroundImage: backgroundImage, // Can be null for no background image
         backgroundOpacity: backgroundOpacity, // Default opacity
+        primaryFont: null,
+        textareaFont: null,
         sort: maxSort + 1, // Add to the end of the list
         presets: [],
         vibeImages: [],
@@ -371,6 +385,82 @@ function updateWorkspaceBackgroundOpacity(id, backgroundOpacity) {
     workspaces[id].backgroundOpacity = backgroundOpacity;
     saveWorkspaces();
     console.log(`🎚️ Updated workspace background opacity: ${workspaces[id].name} ${oldBackgroundOpacity} -> ${backgroundOpacity}`);
+}
+
+// Update multiple workspace settings at once and save once
+function updateWorkspaceSettings(id, settings = {}) {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+
+    if (!workspaces[id]) {
+        throw new Error(`Workspace ${id} not found`);
+    }
+
+    const ws = workspaces[id];
+    const prev = { ...ws };
+
+    if (typeof settings.name === 'string' && settings.name.trim()) {
+        if (id === 'default') {
+            throw new Error('Cannot rename the default workspace');
+        }
+        ws.name = settings.name.trim();
+    }
+    if (typeof settings.color === 'string' && settings.color.trim()) {
+        ws.color = settings.color.trim();
+    }
+    if (typeof settings.backgroundColor !== 'undefined') {
+        ws.backgroundColor = settings.backgroundColor || null;
+    }
+    if (typeof settings.backgroundImage !== 'undefined') {
+        ws.backgroundImage = settings.backgroundImage || null;
+    }
+    if (typeof settings.backgroundOpacity === 'number') {
+        ws.backgroundOpacity = settings.backgroundOpacity;
+    }
+    if (typeof settings.primaryFont !== 'undefined') {
+        ws.primaryFont = settings.primaryFont || null;
+    }
+    if (typeof settings.textareaFont !== 'undefined') {
+        ws.textareaFont = settings.textareaFont || null;
+    }
+
+    saveWorkspaces();
+    console.log(`🛠️ Updated workspace settings for ${ws.name}`, {
+        changed: Object.keys(settings)
+    });
+}
+
+// Update workspace primary (UI) font
+function updateWorkspacePrimaryFont(id, primaryFont) {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+
+    if (!workspaces[id]) {
+        throw new Error(`Workspace ${id} not found`);
+    }
+
+    const oldFont = workspaces[id].primaryFont;
+    workspaces[id].primaryFont = primaryFont || null;
+    saveWorkspaces();
+    console.log(`🔤 Updated workspace primary font: ${workspaces[id].name} ${oldFont} -> ${primaryFont}`);
+}
+
+// Update workspace textarea (mono) font
+function updateWorkspaceTextareaFont(id, textareaFont) {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+
+    if (!workspaces[id]) {
+        throw new Error(`Workspace ${id} not found`);
+    }
+
+    const oldFont = workspaces[id].textareaFont;
+    workspaces[id].textareaFont = textareaFont || null;
+    saveWorkspaces();
+    console.log(`🔤 Updated workspace textarea font: ${workspaces[id].name} ${oldFont} -> ${textareaFont}`);
 }
 
 // Delete a workspace
@@ -539,13 +629,18 @@ function movePinnedToWorkspace(filenames, targetWorkspaceId) {
     return moveToWorkspaceArray('pinned', filenames, targetWorkspaceId);
 }
 
-// Get active workspace
-function getActiveWorkspace() {
-    return activeWorkspace;
+// Get active workspace for a specific session
+function getActiveWorkspace(sessionId) {
+    if (!sessionId) {
+        throw new Error('Session ID is required to determine active workspace');
+    }
+    
+    const sessionWorkspace = sessionActiveWorkspaces.get(sessionId);
+    return sessionWorkspace || 'default';
 }
 
-// Set active workspace
-function setActiveWorkspace(id) {
+// Set active workspace for a specific session
+function setActiveWorkspace(id, sessionId = null) {
     if (!workspaces) {
         loadWorkspaces();
     }
@@ -554,43 +649,139 @@ function setActiveWorkspace(id) {
         throw new Error(`Workspace ${id} not found`);
     }
 
-    activeWorkspace = id;
-    console.log(`✅ Active workspace set to: ${workspaces[id].name} (${id})`);
+    if (sessionId) {
+        sessionActiveWorkspaces.set(sessionId, id);
+        console.log(`✅ Active workspace set to: ${workspaces[id].name} (${id}) for session: ${sessionId}`);
+        
+        // Store the workspace preference in the session for persistence
+        try {
+            const sessionStore = require('express-session').Store;
+            if (global.sessionStore && global.sessionStore instanceof sessionStore) {
+                global.sessionStore.get(sessionId, (err, session) => {
+                    if (!err && session) {
+                        session.lastActiveWorkspace = id;
+                        session.lastActiveWorkspaceTime = Date.now();
+                        global.sessionStore.set(sessionId, session, (setErr) => {
+                            if (setErr) {
+                                console.warn(`⚠️ Failed to persist workspace preference for session ${sessionId}:`, setErr.message);
+                            } else {
+                                console.log(`💾 Persisted workspace preference for session ${sessionId}: ${id}`);
+                            }
+                        });
+                    }
+                });
+            }
+        } catch (error) {
+            console.warn(`⚠️ Could not persist workspace preference for session ${sessionId}:`, error.message);
+        }
+    } else {
+        // For backward compatibility, also set global default
+        console.log(`✅ Global default workspace set to: ${workspaces[id].name} (${id})`);
+    }
+}
+
+// Clean up session workspace when session ends
+function cleanupSessionWorkspace(sessionId) {
+    if (sessionId && sessionActiveWorkspaces.has(sessionId)) {
+        sessionActiveWorkspaces.delete(sessionId);
+        console.log(`🧹 Cleaned up workspace for session: ${sessionId}`);
+    }
+}
+
+// Restore session workspace from persistent storage
+function restoreSessionWorkspace(sessionId) {
+    if (!sessionId) return null;
+    
+    try {
+        const sessionStore = require('express-session').Store;
+        if (global.sessionStore && global.sessionStore instanceof sessionStore) {
+            return new Promise((resolve) => {
+                global.sessionStore.get(sessionId, (err, session) => {
+                    if (err || !session) {
+                        resolve(null);
+                        return;
+                    }
+                    
+                    const lastWorkspace = session.lastActiveWorkspace;
+                    const lastWorkspaceTime = session.lastActiveWorkspaceTime;
+                    
+                    if (lastWorkspace && lastWorkspaceTime) {
+                        // Check if the workspace still exists
+                        if (workspaces && workspaces[lastWorkspace]) {
+                            // Check if the session is not too old (e.g., within 24 hours)
+                            const sessionAge = Date.now() - lastWorkspaceTime;
+                            const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+                            
+                            if (sessionAge < maxAge) {
+                                sessionActiveWorkspaces.set(sessionId, lastWorkspace);
+                                console.log(`🔄 Restored workspace for session ${sessionId}: ${lastWorkspace} (age: ${Math.round(sessionAge / 1000 / 60)} minutes)`);
+                                resolve(lastWorkspace);
+                                return;
+                            } else {
+                                console.log(`⏰ Session workspace too old for ${sessionId}: ${Math.round(sessionAge / 1000 / 60 / 60)} hours`);
+                            }
+                        } else {
+                            console.log(`⚠️ Previously active workspace ${lastWorkspace} no longer exists for session ${sessionId}`);
+                        }
+                    }
+                    
+                    resolve(null);
+                });
+            });
+        }
+    } catch (error) {
+        console.warn(`⚠️ Could not restore workspace for session ${sessionId}:`, error.message);
+    }
+    
+    return Promise.resolve(null);
 }
 
 // Get files for active workspace (includes default)
-function getActiveWorkspaceFiles() {
+function getActiveWorkspaceFiles(sessionId = null) {
     if (!workspaces) {
         loadWorkspaces();
     }
 
+    if (!sessionId) {
+        throw new Error('Session ID is required to get active workspace files');
+    }
+
+    const workspaceId = getActiveWorkspace(sessionId);
     // Include active workspace files if not default
-    if (workspaces[activeWorkspace]) {
-        return workspaces[activeWorkspace].files;
+    if (workspaces[workspaceId]) {
+        return workspaces[workspaceId].files;
     } 
     return workspaces.default.files;
 }
 
 // Get cache files for active workspace (includes default)
-function getActiveWorkspaceCacheFiles(workspaceId = null) {
+function getActiveWorkspaceCacheFiles(workspaceId = null, sessionId = null) {
     if (!workspaces) {
         loadWorkspaces();
     }
 
     const files = new Set();
 
-    // Include active workspace cache files if not default
+    // If a specific workspace ID is provided, get cache files for that workspace
     if (workspaceId) {
         if (workspaces[workspaceId]) {
             workspaces[workspaceId].cacheFiles.forEach(file => files.add(file));
         }
     } else {
+        // No specific workspace ID provided, use session ID to get active workspace
+        if (!sessionId) {
+            throw new Error('Session ID is required to get active workspace cache files');
+        }
+        
         // Always include default workspace cache files
         if (workspaces.default) {
             workspaces.default.cacheFiles.forEach(file => files.add(file));
         }
-        if (activeWorkspace !== 'default' && workspaces[activeWorkspace]) {
-            workspaces[activeWorkspace].cacheFiles.forEach(file => files.add(file));
+        
+        // Get cache files from the active workspace for this session
+        const currentActiveWorkspace = getActiveWorkspace(sessionId);
+        if (currentActiveWorkspace !== 'default' && workspaces[currentActiveWorkspace]) {
+            workspaces[currentActiveWorkspace].cacheFiles.forEach(file => files.add(file));
         }
     }
 
@@ -642,35 +833,45 @@ function initializeWorkspaces() {
 }
 
 // Get scraps for active workspace (only that workspace)
-function getActiveWorkspaceScraps() {
+function getActiveWorkspaceScraps(sessionId = null) {
     if (!workspaces) {
         loadWorkspaces();
     }
 
-    // Initialize scraps array if it doesn't exist
-    if (workspaces[activeWorkspace] && !workspaces[activeWorkspace].scraps) {
-        workspaces[activeWorkspace].scraps = [];
+    if (!sessionId) {
+        throw new Error('Session ID is required to get active workspace scraps');
     }
 
-    if (workspaces[activeWorkspace]) {
-        return workspaces[activeWorkspace].scraps;
+    const workspaceId = getActiveWorkspace(sessionId);
+    // Initialize scraps array if it doesn't exist
+    if (workspaces[workspaceId] && !workspaces[workspaceId].scraps) {
+        workspaces[workspaceId].scraps = [];
+    }
+
+    if (workspaces[workspaceId]) {
+        return workspaces[workspaceId].scraps;
     }
     return [];
 }
 
 // Get pinned images for active workspace (only that workspace)
-function getActiveWorkspacePinned() {
+function getActiveWorkspacePinned(sessionId = null) {
     if (!workspaces) {
         loadWorkspaces();
     }
 
-    // Initialize pinned array if it doesn't exist
-    if (workspaces[activeWorkspace] && !workspaces[activeWorkspace].pinned) {
-        workspaces[activeWorkspace].pinned = [];
+    if (!sessionId) {
+        throw new Error('Session ID is required to get active workspace pinned images');
     }
 
-    if (workspaces[activeWorkspace]) {
-        return workspaces[activeWorkspace].pinned;
+    const workspaceId = getActiveWorkspace(sessionId);
+    // Initialize pinned array if it doesn't exist
+    if (workspaces[workspaceId] && !workspaces[workspaceId].pinned) {
+        workspaces[workspaceId].pinned = [];
+    }
+
+    if (workspaces[workspaceId]) {
+        return workspaces[workspaceId].pinned;
     }
     return [];
 }
@@ -706,7 +907,7 @@ function addToWorkspaceArray(type, items, workspaceId = null) {
         loadWorkspaces();
     }
 
-    const targetId = workspaceId || activeWorkspace;
+    const targetId = workspaceId || 'default';
     
     if (!workspaces[targetId]) {
         throw new Error(`Workspace ${targetId} not found`);
@@ -814,7 +1015,7 @@ function removeFromWorkspaceArray(type, items, workspaceId = null) {
         loadWorkspaces();
     }
 
-    const targetId = workspaceId || activeWorkspace;
+    const targetId = workspaceId || 'default';
     
     if (!workspaces[targetId]) {
         throw new Error(`Workspace ${targetId} not found`);
@@ -1022,11 +1223,17 @@ function getWorkspacesData() {
 }
 
 // Get active workspace data for server use
-function getActiveWorkspaceData() {
+function getActiveWorkspaceData(sessionId = null) {
     if (!workspaces) {
         loadWorkspaces();
     }
-    return activeWorkspace;
+    
+    if (!sessionId) {
+        throw new Error('Session ID is required to get active workspace data');
+    }
+    
+    const workspaceId = getActiveWorkspace(sessionId);
+    return workspaces[workspaceId];
 }
 
 // Group management functions
@@ -1142,8 +1349,12 @@ function getGroupsForImage(workspaceId, imageFilename) {
     return groups.filter(group => group.images.includes(imageFilename));
 }
 
-function getActiveWorkspaceGroups() {
-    const workspaceId = getActiveWorkspace();
+function getActiveWorkspaceGroups(sessionId = null) {
+    if (!sessionId) {
+        throw new Error('Session ID is required to get active workspace groups');
+    }
+    
+    const workspaceId = getActiveWorkspace(sessionId);
     return getWorkspaceGroups(workspaceId);
 }
 
@@ -1153,7 +1364,7 @@ function bulkAddToWorkspaceArray(type, items, workspaceId = null) {
         loadWorkspaces();
     }
 
-    const targetWorkspaceId = workspaceId || getActiveWorkspace();
+    const targetWorkspaceId = workspaceId || 'default';
     if (!workspaces[targetWorkspaceId]) {
         throw new Error(`Workspace ${targetWorkspaceId} not found`);
     }
@@ -1208,7 +1419,7 @@ function bulkRemoveFromWorkspaceArray(type, items, workspaceId = null) {
         loadWorkspaces();
     }
 
-    const targetWorkspaceId = workspaceId || getActiveWorkspace();
+    const targetWorkspaceId = workspaceId || 'default';
     if (!workspaces[targetWorkspaceId]) {
         throw new Error(`Workspace ${targetWorkspaceId} not found`);
     }
@@ -1307,6 +1518,9 @@ module.exports = {
     updateWorkspaceBackgroundColor,
     updateWorkspaceBackgroundImage,
     updateWorkspaceBackgroundOpacity,
+    updateWorkspacePrimaryFont,
+    updateWorkspaceTextareaFont,
+    updateWorkspaceSettings,
     deleteWorkspace,
     dumpWorkspace,
     addToWorkspaceArray,
@@ -1333,5 +1547,8 @@ module.exports = {
     deleteGroup,
     getGroupsForImage,
     getActiveWorkspaceGroups,
-    reorderWorkspaces
+    reorderWorkspaces,
+    // Session management
+    cleanupSessionWorkspace,
+    restoreSessionWorkspace
 };

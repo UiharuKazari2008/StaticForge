@@ -21,6 +21,9 @@ const {
     updateWorkspaceBackgroundColor,
     updateWorkspaceBackgroundImage,
     updateWorkspaceBackgroundOpacity,
+    updateWorkspaceSettings,
+    updateWorkspacePrimaryFont,
+    updateWorkspaceTextareaFont,
     createGroup,
     getGroup,
     getWorkspaceGroups,
@@ -37,9 +40,9 @@ const {
     getWorkspacesData, 
     getActiveWorkspaceData
 } = require('./workspace');
-const { getCachedMetadata, getAllMetadata, removeImageMetadata, addUnattributedReceipt, getImageMetadata: getImageMetadataFromCache } = require('./metadataCache');
+const { getCachedMetadata, getAllMetadata, scanAndUpdateMetadata, removeImageMetadata, addUnattributedReceipt, getImageMetadata: getImageMetadataFromCache } = require('./metadataCache');
 const { isImageLarge, matchOriginalResolution } = require('./imageTools');
-const { readMetadata, updateMetadata, getImageMetadata, extractRelevantFields, getModelDisplayName } = require('./pngMetadata');
+const { readMetadata, updateMetadata, getImageMetadata, extractRelevantFields, getModelDisplayName, extractMetadataSummary } = require('./pngMetadata');
 const { getStatus } = require('./queue');
 const imageCounter = require('./imageCounter');
 const path = require('path');
@@ -54,7 +57,6 @@ const cacheDir = path.resolve(__dirname, '../.cache');
 const uploadCacheDir = path.join(cacheDir, 'upload');
 const previewCacheDir = path.join(cacheDir, 'preview');
 const vibeCacheDir = path.join(cacheDir, 'vibe');
-const vibeOrigCacheDir = path.join(cacheDir, 'vibe_orig');
 const imagesDir = path.resolve(__dirname, '../images');
 const previewsDir = path.resolve(__dirname, '../.previews');
 
@@ -101,298 +103,398 @@ class WebSocketMessageHandlers {
                 return;
             }
 
-            switch (message.type) {
-                case 'search_characters':
-                    await this.handleCharacterSearch(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'search_presets':
-                    await this.handlePresetSearch(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'load_preset':
-                    await this.handleLoadPreset(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'save_preset':
-                    await this.handleSavePreset(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'search_dataset_tags':
-                    await this.handleDatasetTagSearch(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'get_dataset_tags_for_path':
-                    await this.handleGetDatasetTagsForPath(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'search_tags':
-                    await this.handleSearchTags(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'spellcheck_add_word':
-                    await this.handleAddWordToDictionary(ws, message, clientInfo, wsServer);
-                    break;
-                
-                // Favorites handlers
-                case 'favorites_add':
-                    await this.handleAddFavorite(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'favorites_remove':
-                    await this.handleRemoveFavorite(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'favorites_get':
-                    await this.handleGetFavorites(ws, message, clientInfo, wsServer);
-                    break;
-                
-                // Text replacement management handlers
-                case 'get_text_replacements':
-                    await this.handleGetTextReplacements(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'save_text_replacements':
-                    await this.handleSaveTextReplacements(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'request_gallery':
-                    await this.handleGalleryRequest(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'request_image_metadata':
-                    await this.handleImageMetadataRequest(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'request_image_by_index':
-                    await this.handleImageByIndexRequest(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'find_image_index':
-                    await this.handleFindImageIndexRequest(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'get_app_options':
-                    await this.handleGetAppOptions(ws, message, clientInfo, wsServer);
-                    break;
-                
-                // Workspace handlers
-                case 'workspace_list':
-                    await this.handleWorkspaceList(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_get':
-                    await this.handleWorkspaceGet(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_create':
-                    await this.handleWorkspaceCreate(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_rename':
-                    await this.handleWorkspaceRename(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_delete':
-                    await this.handleWorkspaceDelete(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_activate':
-                    await this.handleWorkspaceActivate(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_dump':
-                    await this.handleWorkspaceDump(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_get_files':
-                    await this.handleWorkspaceGetFiles(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_move_files':
-                    await this.handleWorkspaceMoveFiles(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_get_scraps':
-                    await this.handleWorkspaceGetScraps(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_get_pinned':
-                    await this.handleWorkspaceGetPinned(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_add_scrap':
-                    await this.handleWorkspaceAddScrap(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_remove_scrap':
-                    await this.handleWorkspaceRemoveScrap(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_add_pinned':
-                    await this.handleWorkspaceAddPinned(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_remove_pinned':
-                    await this.handleWorkspaceRemovePinned(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_bulk_pinned':
-                    await this.handleWorkspaceBulkPinned(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_bulk_remove_pinned':
-                    await this.handleWorkspaceBulkRemovePinned(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_get_groups':
-                    await this.handleWorkspaceGetGroups(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_create_group':
-                    await this.handleWorkspaceCreateGroup(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_get_group':
-                    await this.handleWorkspaceGetGroup(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_rename_group':
-                    await this.handleWorkspaceRenameGroup(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_add_images_to_group':
-                    await this.handleWorkspaceAddImagesToGroup(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_remove_images_from_group':
-                    await this.handleWorkspaceRemoveImagesFromGroup(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_delete_group':
-                    await this.handleWorkspaceDeleteGroup(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_get_image_groups':
-                    await this.handleWorkspaceGetImageGroups(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_update_color':
-                    await this.handleWorkspaceUpdateColor(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_update_background_color':
-                    await this.handleWorkspaceUpdateBackgroundColor(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_update_background_image':
-                    await this.handleWorkspaceUpdateBackgroundImage(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_update_background_opacity':
-                    await this.handleWorkspaceUpdateBackgroundOpacity(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_reorder':
-                    await this.handleWorkspaceReorder(ws, message, clientInfo, wsServer);
-                    break;
-                
-                // Bulk operations
-                case 'workspace_bulk_add_scrap':
-                    await this.handleWorkspaceBulkAddScrap(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_bulk_remove_pinned':
-                    await this.handleWorkspaceBulkRemovePinned(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'workspace_bulk_add_pinned':
-                    await this.handleWorkspaceBulkAddPinned(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'delete_images_bulk':
-                    await this.handleDeleteImagesBulk(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'send_to_sequenzia_bulk':
-                    await this.handleSendToSequenziaBulk(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'update_image_preset_bulk':
-                    await this.handleUpdateImagePresetBulk(ws, message, clientInfo, wsServer);
-                    break;
-                
-                // References and Vibes WebSocket handlers
-                case 'get_references':
-                    await this.handleGetReferences(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'get_workspace_references':
-                    await this.handleGetWorkspaceReferences(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'delete_reference':
-                    await this.handleDeleteReference(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'upload_reference':
-                    await this.handleUploadReference(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'move_references':
-                    await this.handleMoveReferences(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'get_vibe_image':
-                    await this.handleGetVibeImage(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'delete_vibe_image':
-                    await this.handleDeleteVibeImage(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'delete_vibe_encodings':
-                    await this.handleDeleteVibeEncodings(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'bulk_delete_vibe_images':
-                    await this.handleBulkDeleteVibeImages(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'move_vibe_image':
-                    await this.handleMoveVibeImage(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'bulk_move_vibe_images':
-                    await this.handleBulkMoveVibeImages(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'encode_vibe':
-                    await this.handleEncodeVibe(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'import_vibe_bundle':
-                    await this.handleImportVibeBundle(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'check_vibe_encoding':
-                    await this.handleCheckVibeEncoding(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'ping':
-                    this.handlePing(ws, message, clientInfo, wsServer);
-                    break;
-                
-                case 'subscribe':
-                    this.handleSubscribe(ws, message, clientInfo, wsServer);
-                    break;
-                
-                default:
-                    this.sendError(ws, 'Unknown message type', message.type);
+            // Check if user is read-only and trying to perform destructive operations
+            if (clientInfo.userType === 'readonly' && this.isDestructiveOperation(message.type)) {
+                wsServer.sendToClient(ws, {
+                    type: 'error',
+                    message: 'Non-Administrator Login: This operation is not allowed for read-only users',
+                    code: 'READONLY_RESTRICTED',
+                    timestamp: new Date().toISOString()
+                });
+                return;
             }
+
+            // Continue with normal message handling
+            await this.routeMessage(ws, message, clientInfo, wsServer);
         } catch (error) {
-            console.error('WebSocket message handler error:', error);
-            this.sendError(ws, 'Internal server error', error.message);
+            console.error('❌ WebSocket message handling error:', error);
+            wsServer.sendToClient(ws, {
+                type: 'error',
+                message: 'Internal server error',
+                code: 'INTERNAL_ERROR',
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // Check if an operation is destructive (not allowed for read-only users)
+    isDestructiveOperation(messageType) {
+        const destructiveOperations = [
+            'workspace_create',
+            'workspace_delete',
+            'workspace_rename',
+            'workspace_move_files',
+            'workspace_remove_scrap',
+            'workspace_remove_pinned',
+            'workspace_bulk_remove_pinned',
+            'workspace_create_group',
+            'workspace_rename_group',
+            'workspace_delete_group',
+            'workspace_remove_images_from_group',
+            'workspace_update_color',
+            'workspace_update_background_color',
+            'workspace_update_background_image',
+            'workspace_update_background_opacity',
+            'workspace_update_primary_font',
+            'workspace_update_textarea_font',
+            'workspace_update_settings',
+            'delete_images_bulk',
+            'delete_reference',
+            'upload_reference',
+            'upload_workspace_image',
+            'download_url_file',
+            'fetch_url_info',
+            'move_references',
+            'delete_vibe_image',
+            'delete_vibe_encodings',
+            'bulk_delete_vibe_images',
+            'move_vibe_image',
+            'bulk_move_vibe_images',
+            'favorites_remove',
+            'favorites_add',
+            'save_preset',
+            'save_text_replacements',
+            'spellcheck_add_word'
+        ];
+        return destructiveOperations.includes(messageType);
+    }
+
+    // Route messages to appropriate handlers
+    async routeMessage(ws, message, clientInfo, wsServer) {
+        switch (message.type) {
+            case 'search_characters':
+                await this.handleCharacterSearch(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'search_presets':
+                await this.handlePresetSearch(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'load_preset':
+                await this.handleLoadPreset(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'save_preset':
+                await this.handleSavePreset(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'search_dataset_tags':
+                await this.handleDatasetTagSearch(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_dataset_tags_for_path':
+                await this.handleGetDatasetTagsForPath(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'search_tags':
+                await this.handleSearchTags(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'spellcheck_add_word':
+                await this.handleAddWordToDictionary(ws, message, clientInfo, wsServer);
+                break;
+                
+            // Favorites handlers
+            case 'favorites_add':
+                await this.handleAddFavorite(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'favorites_remove':
+                await this.handleRemoveFavorite(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'favorites_get':
+                await this.handleGetFavorites(ws, message, clientInfo, wsServer);
+                break;
+                
+            // Text replacement management handlers
+            case 'get_text_replacements':
+                await this.handleGetTextReplacements(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'save_text_replacements':
+                await this.handleSaveTextReplacements(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'delete_text_replacement':
+                await this.handleDeleteTextReplacement(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'create_text_replacement':
+                await this.handleCreateTextReplacement(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'request_gallery':
+                await this.handleGalleryRequest(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'request_image_metadata':
+                await this.handleImageMetadataRequest(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'request_url_upload_metadata':
+                await this.handleUrlUploadMetadataRequest(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'request_image_by_index':
+                await this.handleImageByIndexRequest(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'find_image_index':
+                await this.handleFindImageIndexRequest(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_app_options':
+                await this.handleGetAppOptions(ws, message, clientInfo, wsServer);
+                break;
+                
+            // Workspace handlers
+            case 'workspace_list':
+                await this.handleWorkspaceList(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_get':
+                await this.handleWorkspaceGet(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_create':
+                await this.handleWorkspaceCreate(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_rename':
+                await this.handleWorkspaceRename(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_delete':
+                await this.handleWorkspaceDelete(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_activate':
+                await this.handleWorkspaceActivate(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_dump':
+                await this.handleWorkspaceDump(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_get_files':
+                await this.handleWorkspaceGetFiles(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_move_files':
+                await this.handleWorkspaceMoveFiles(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_get_scraps':
+                await this.handleWorkspaceGetScraps(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_get_pinned':
+                await this.handleWorkspaceGetPinned(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_add_scrap':
+                await this.handleWorkspaceAddScrap(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_remove_scrap':
+                await this.handleWorkspaceRemoveScrap(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_add_pinned':
+                await this.handleWorkspaceAddPinned(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_remove_pinned':
+                await this.handleWorkspaceRemovePinned(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_bulk_pinned':
+                await this.handleWorkspaceBulkPinned(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_bulk_remove_pinned':
+                await this.handleWorkspaceBulkRemovePinned(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_get_groups':
+                await this.handleWorkspaceGetGroups(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_create_group':
+                await this.handleWorkspaceCreateGroup(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_get_group':
+                await this.handleWorkspaceGetGroup(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_rename_group':
+                await this.handleWorkspaceRenameGroup(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_add_images_to_group':
+                await this.handleWorkspaceAddImagesToGroup(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_remove_images_from_group':
+                await this.handleWorkspaceRemoveImagesFromGroup(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_delete_group':
+                await this.handleWorkspaceDeleteGroup(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_get_image_groups':
+                await this.handleWorkspaceGetImageGroups(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_update_color':
+                await this.handleWorkspaceUpdateColor(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_update_background_color':
+                await this.handleWorkspaceUpdateBackgroundColor(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_update_background_image':
+                await this.handleWorkspaceUpdateBackgroundImage(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_update_background_opacity':
+                await this.handleWorkspaceUpdateBackgroundOpacity(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_update_settings':
+                await this.handleWorkspaceUpdateSettings(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_update_primary_font':
+                await this.handleWorkspaceUpdatePrimaryFont(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'workspace_update_textarea_font':
+                await this.handleWorkspaceUpdateTextareaFont(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_reorder':
+                await this.handleWorkspaceReorder(ws, message, clientInfo, wsServer);
+                break;
+                
+            // Bulk operations
+            case 'workspace_bulk_add_scrap':
+                await this.handleWorkspaceBulkAddScrap(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_bulk_remove_pinned':
+                await this.handleWorkspaceBulkRemovePinned(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'workspace_bulk_add_pinned':
+                await this.handleWorkspaceBulkAddPinned(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'delete_images_bulk':
+                await this.handleDeleteImagesBulk(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'send_to_sequenzia_bulk':
+                await this.handleSendToSequenziaBulk(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'update_image_preset_bulk':
+                await this.handleUpdateImagePresetBulk(ws, message, clientInfo, wsServer);
+                break;
+                
+            // References and Vibes WebSocket handlers
+            case 'get_references':
+                await this.handleGetReferences(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_workspace_references':
+                await this.handleGetWorkspaceReferences(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'delete_reference':
+                await this.handleDeleteReference(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'upload_reference':
+                await this.handleUploadReference(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'upload_workspace_image':
+                await this.handleUploadWorkspaceImage(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'download_url_file':
+                await this.handleDownloadUrlFile(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'fetch_url_info':
+                await this.handleFetchUrl(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'move_references':
+                await this.handleMoveReferences(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_vibe_image':
+                await this.handleGetVibeImage(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'delete_vibe_image':
+                await this.handleDeleteVibeImage(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'delete_vibe_encodings':
+                await this.handleDeleteVibeEncodings(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'bulk_delete_vibe_images':
+                await this.handleBulkDeleteVibeImages(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'move_vibe_image':
+                await this.handleMoveVibeImage(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'bulk_move_vibe_images':
+                await this.handleBulkMoveVibeImages(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'encode_vibe':
+                await this.handleEncodeVibe(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'import_vibe_bundle':
+                await this.handleImportVibeBundle(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'check_vibe_encoding':
+                await this.handleCheckVibeEncoding(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'ping':
+                this.handlePing(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'subscribe':
+                this.handleSubscribe(ws, message, clientInfo, wsServer);
+                break;
+                
+            default:
+                this.sendError(ws, 'Unknown message type', message.type);
         }
     }
 
@@ -689,11 +791,11 @@ class WebSocketMessageHandlers {
             // Get files based on view type
             let files;
             if (viewType === 'scraps') {
-                files = getActiveWorkspaceScraps();
+                files = getActiveWorkspaceScraps(clientInfo.sessionId);
             } else if (viewType === 'pinned') {
-                files = getActiveWorkspacePinned();
+                files = getActiveWorkspacePinned(clientInfo.sessionId);
             } else if (viewType === 'upscaled') {
-                const workspaceFiles = getActiveWorkspaceFiles();
+                const workspaceFiles = getActiveWorkspaceFiles(clientInfo.sessionId);
                 files = workspaceFiles;
                 
                 // Also include wallpaper and large resolution images from metadata cache
@@ -705,7 +807,7 @@ class WebSocketMessageHandlers {
                     if (metadata.width && metadata.height) {
                         if (isImageLarge(metadata.width, metadata.height)) {
                             // Check if this image is in the current workspace
-                            const workspace = getActiveWorkspace();
+                            const workspace = getActiveWorkspace(clientInfo.sessionId);
                             const workspaceData = getWorkspace(workspace);
                             if (workspaceData && workspaceData.files && workspaceData.files.includes(filename)) {
                                 specialImages.push(filename);
@@ -718,13 +820,13 @@ class WebSocketMessageHandlers {
                 files = [...new Set([...files, ...specialImages])];
             } else {
                 // Default to regular images
-                files = getActiveWorkspaceFiles();
+                files = getActiveWorkspaceFiles(clientInfo.sessionId);
             }
             
             // Get pinned status if requested
             let pinnedFiles = [];
             if (includePinnedStatus) {
-                pinnedFiles = getActiveWorkspacePinned();
+                pinnedFiles = getActiveWorkspacePinned(clientInfo.sessionId);
             }
             
             // Helper function to get base name
@@ -892,25 +994,31 @@ class WebSocketMessageHandlers {
     }
 
     // Helper function to build gallery data for a given view type
-    async buildGalleryData(viewType = 'images') {
+    async buildGalleryData(viewType = 'images', clientInfo = null) {
         // Helper functions for file processing
         const getBaseName = (filename) => {
             const base = filename.replace(/\.(png|jpg|jpeg|webp)$/i, '');
             return base.replace(/_upscaled$/, '');
         };
         
+        // Validate that clientInfo is provided since workspace functions now require session IDs
+        if (!clientInfo || !clientInfo.sessionId) {
+            throw new Error('Client info with session ID is required to build gallery data');
+        }
+        
         // Get files based on view type
         let files;
+        const sessionId = clientInfo.sessionId;
         switch (viewType) {
             case 'scraps':
-                files = getActiveWorkspaceScraps();
+                files = getActiveWorkspaceScraps(sessionId);
                 break;
             case 'pinned':
-                files = getActiveWorkspacePinned();
+                files = getActiveWorkspacePinned(sessionId);
                 break;
             case 'upscaled':
                 // For upscaled view, get all files and filter for upscaled/large images
-                const workspaceFiles = getActiveWorkspaceFiles();
+                const workspaceFiles = getActiveWorkspaceFiles(sessionId);
                 files = workspaceFiles;
                 
                 // Also include wallpaper and large resolution images from metadata cache
@@ -922,7 +1030,7 @@ class WebSocketMessageHandlers {
                     if (metadata.width && metadata.height) {
                         if (isImageLarge(metadata.width, metadata.height)) {
                             // Check if this image is in the current workspace
-                            const workspace = getActiveWorkspace();
+                            const workspace = getActiveWorkspace(sessionId);
                             const workspaceData = getWorkspace(workspace);
                             if (workspaceData && workspaceData.files && workspaceData.files.includes(filename)) {
                                 specialImages.push(filename);
@@ -936,7 +1044,7 @@ class WebSocketMessageHandlers {
                 break;
             case 'images':
             default:
-                files = getActiveWorkspaceFiles();
+                files = getActiveWorkspaceFiles(sessionId);
                 break;
         }
         
@@ -1018,7 +1126,7 @@ class WebSocketMessageHandlers {
         
         try {
             // Build gallery data using shared helper
-            const images = await this.buildGalleryData(viewType);
+            const images = await this.buildGalleryData(viewType, clientInfo);
             
             // Check if index is valid
             if (index < 0 || index >= images.length) {
@@ -1078,7 +1186,7 @@ class WebSocketMessageHandlers {
         
         try {
             // Build gallery data using shared helper
-            const gallery = await this.buildGalleryData(viewType);
+            const gallery = await this.buildGalleryData(viewType, clientInfo);
             
             // Find the index of the requested filename
             const index = gallery.findIndex(img => 
@@ -1181,7 +1289,7 @@ class WebSocketMessageHandlers {
     async handleWorkspaceList(ws, message, clientInfo, wsServer) {
         try {
             const workspaces = getWorkspaces();
-            const activeWorkspaceId = getActiveWorkspace();
+            const activeWorkspaceId = getActiveWorkspace(clientInfo.sessionId);
             
             // Transform to include workspace metadata
             const workspaceList = Object.entries(workspaces).map(([id, workspace]) => ({
@@ -1191,6 +1299,8 @@ class WebSocketMessageHandlers {
                 backgroundColor: workspace.backgroundColor,
                 backgroundImage: workspace.backgroundImage,
                 backgroundOpacity: workspace.backgroundOpacity || 0.3,
+                primaryFont: typeof workspace.primaryFont !== 'undefined' ? workspace.primaryFont : null,
+                textareaFont: typeof workspace.textareaFont !== 'undefined' ? workspace.textareaFont : null,
                 sort: workspace.sort || 0, // Include sort field
                 fileCount: workspace.files.length,
                 presetCount: workspace.presets.length,
@@ -1216,7 +1326,7 @@ class WebSocketMessageHandlers {
 
     async handleWorkspaceGet(ws, message, clientInfo, wsServer) {
         try {
-            const activeId = getActiveWorkspace();
+            const activeId = getActiveWorkspace(clientInfo.sessionId);
             const workspace = getWorkspace(activeId);
             
             if (!workspace) {
@@ -1234,6 +1344,8 @@ class WebSocketMessageHandlers {
                     backgroundColor: workspace.backgroundColor,
                     backgroundImage: workspace.backgroundImage,
                     backgroundOpacity: workspace.backgroundOpacity || 0.3,
+                    primaryFont: typeof workspace.primaryFont !== 'undefined' ? workspace.primaryFont : null,
+                    textareaFont: typeof workspace.textareaFont !== 'undefined' ? workspace.textareaFont : null,
                     sort: workspace.sort || 0, // Include sort field
                     fileCount: workspace.files.length,
                     presetCount: workspace.presets.length,
@@ -1345,7 +1457,7 @@ class WebSocketMessageHandlers {
         try {
             const { id } = message;
             
-            setActiveWorkspace(id);
+            setActiveWorkspace(id, clientInfo.sessionId);
             
             this.sendToClient(ws, {
                 type: 'workspace_activate_response',
@@ -1502,7 +1614,7 @@ class WebSocketMessageHandlers {
             }
             
             // Get scraps for the requested workspace (scraps are shared across workspaces)
-            const scraps = getActiveWorkspaceScraps();
+            const scraps = getActiveWorkspaceScraps(clientInfo.sessionId);
             
             this.sendToClient(ws, {
                 type: 'workspace_get_scraps_response',
@@ -1531,7 +1643,7 @@ class WebSocketMessageHandlers {
             }
             
             // Get pinned images for the requested workspace
-            const pinned = getActiveWorkspacePinned();
+            const pinned = getActiveWorkspacePinned(clientInfo.sessionId);
             
             this.sendToClient(ws, {
                 type: 'workspace_get_pinned_response',
@@ -2119,6 +2231,98 @@ class WebSocketMessageHandlers {
         }
     }
 
+    async handleWorkspaceUpdatePrimaryFont(ws, message, clientInfo, wsServer) {
+        try {
+            const { id, primaryFont } = message;
+            // Allow null to reset
+            updateWorkspacePrimaryFont(id, primaryFont || null);
+
+            this.sendToClient(ws, {
+                type: 'workspace_update_primary_font_response',
+                requestId: message.requestId,
+                data: { success: true, message: 'Workspace primary font updated' },
+                timestamp: new Date().toISOString()
+            });
+
+            wsServer.broadcast({
+                type: 'workspace_updated',
+                data: { action: 'primary_font_updated', workspaceId: id, primaryFont: primaryFont || null },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Workspace update primary font error:', error);
+            this.sendError(ws, 'Failed to update workspace primary font', error.message, message.requestId);
+        }
+    }
+
+    async handleWorkspaceUpdateTextareaFont(ws, message, clientInfo, wsServer) {
+        try {
+            const { id, textareaFont } = message;
+            // Allow null to reset
+            updateWorkspaceTextareaFont(id, textareaFont || null);
+
+            this.sendToClient(ws, {
+                type: 'workspace_update_textarea_font_response',
+                requestId: message.requestId,
+                data: { success: true, message: 'Workspace textarea font updated' },
+                timestamp: new Date().toISOString()
+            });
+
+            wsServer.broadcast({
+                type: 'workspace_updated',
+                data: { action: 'textarea_font_updated', workspaceId: id, textareaFont: textareaFont || null },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Workspace update textarea font error:', error);
+            this.sendError(ws, 'Failed to update workspace textarea font', error.message, message.requestId);
+        }
+    }
+
+    async handleWorkspaceUpdateSettings(ws, message, clientInfo, wsServer) {
+        try {
+            const { id, settings } = message;
+            if (!id || !settings || typeof settings !== 'object') {
+                this.sendError(ws, 'Workspace ID and settings object are required', 'workspace_update_settings', message.requestId);
+                return;
+            }
+
+            // Validate color if provided
+            if (settings.color) {
+                const colorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
+                if (!colorRegex.test(settings.color.trim())) {
+                    this.sendError(ws, 'Invalid color format. Use hex format (e.g., #ff4500)', 'workspace_update_settings', message.requestId);
+                    return;
+                }
+            }
+            // Validate opacity if provided
+            if (typeof settings.backgroundOpacity !== 'undefined') {
+                if (typeof settings.backgroundOpacity !== 'number' || settings.backgroundOpacity < 0 || settings.backgroundOpacity > 1) {
+                    this.sendError(ws, 'Background opacity must be a number between 0 and 1', 'workspace_update_settings', message.requestId);
+                    return;
+                }
+            }
+
+            updateWorkspaceSettings(id, settings);
+
+            this.sendToClient(ws, {
+                type: 'workspace_update_settings_response',
+                requestId: message.requestId,
+                data: { success: true, message: 'Workspace settings updated' },
+                timestamp: new Date().toISOString()
+            });
+
+            wsServer.broadcast({
+                type: 'workspace_updated',
+                data: { action: 'settings_updated', workspaceId: id, settings },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Workspace update settings error:', error);
+            this.sendError(ws, 'Failed to update workspace settings', error.message, message.requestId);
+        }
+    }
+
     async handleWorkspaceReorder(ws, message, clientInfo, wsServer) {
         try {
             const { workspaceIds } = message;
@@ -2506,6 +2710,13 @@ class WebSocketMessageHandlers {
                         deletedFiles.push(path.basename(filePath));
                     }
 
+                    if (movedFiles.length > 0) {
+                        // Remove files from workspaces first
+                        if (filenamesToRemoveFromWorkspaces.length > 0) {
+                            removeFilesFromWorkspaces(filenamesToRemoveFromWorkspaces);
+                        }
+                    }
+
                     results.push({ filename, movedFiles, deletedFiles });
                     console.log(`✅ Sent to sequenzia: ${filename} (moved: ${movedFiles.join(', ')}, deleted: ${deletedFiles.join(', ')})`);
 
@@ -2644,11 +2855,11 @@ class WebSocketMessageHandlers {
     // References WebSocket Handlers
     async handleGetReferences(ws, message, clientInfo, wsServer) {
         try {
-            const activeWorkspace = getActiveWorkspaceData();
+            const activeWorkspaceId = getActiveWorkspace(clientInfo.sessionId);
             const workspaces = getWorkspacesData();
             
             // Get cache files for active workspace (includes default + active workspace)
-            const workspaceCacheFiles = getActiveWorkspaceCacheFiles();
+            const workspaceCacheFiles = getActiveWorkspaceCacheFiles(null, clientInfo.sessionId);
             const allFiles = fs.readdirSync(uploadCacheDir);
             const files = allFiles.filter(file => workspaceCacheFiles.includes(file));
             
@@ -2660,8 +2871,8 @@ class WebSocketMessageHandlers {
                 
                 // Determine workspace ownership
                 let workspaceId = 'default';
-                if (activeWorkspace !== 'default' && workspaces[activeWorkspace] && workspaces[activeWorkspace].cacheFiles.includes(file)) {
-                    workspaceId = activeWorkspace;
+                if (activeWorkspaceId !== 'default' && workspaces[activeWorkspaceId] && workspaces[activeWorkspaceId].cacheFiles.includes(file)) {
+                    workspaceId = activeWorkspaceId;
                 }
                 
                 cacheFiles.push({
@@ -2676,15 +2887,15 @@ class WebSocketMessageHandlers {
             
             // Get vibe images for current and default workspaces
             let vibeImageDetails = [];
-            const currentWorkspace = getWorkspace(activeWorkspace);
+            const currentWorkspace = getWorkspace(activeWorkspaceId);
             const defaultWorkspace = getWorkspace('default');
             
             if (currentWorkspace) {
-                vibeImageDetails = this.collectVibeImageDetails(currentWorkspace.vibeImages || [], activeWorkspace);
+                vibeImageDetails = this.collectVibeImageDetails(currentWorkspace.vibeImages || [], activeWorkspaceId);
             }
             
             // Add default workspace vibes if not already included
-            if (activeWorkspace !== 'default' && defaultWorkspace) {
+            if (activeWorkspaceId !== 'default' && defaultWorkspace) {
                 vibeImageDetails = vibeImageDetails.concat(
                     this.collectVibeImageDetails(defaultWorkspace.vibeImages || [], 'default')
                 );
@@ -2923,7 +3134,7 @@ class WebSocketMessageHandlers {
 
     async handleUploadReference(ws, message, clientInfo, wsServer) {
         try {
-            const { imageData, workspaceId } = message;
+            const { imageData, workspaceId, tempFile } = message;
             
             // Validate workspace parameter
             if (!workspaceId) {
@@ -2938,26 +3149,79 @@ class WebSocketMessageHandlers {
                 return;
             }
             
-            // Convert base64 to buffer
-            const imageBuffer = Buffer.from(imageData, 'base64');
+            let imageBuffer, hash;
             
-            // Generate hash
-            const hash = crypto.createHash('md5').update(imageBuffer).digest('hex');
+            if (tempFile) {
+                // Handle downloaded temp file
+                const tempFilePath = path.join(cacheDir, 'tempDownload', tempFile);
+                if (!fs.existsSync(tempFilePath)) {
+                    this.sendError(ws, 'Temp file not found', 'Downloaded temp file not found', message.requestId);
+                    return;
+                }
+                
+                imageBuffer = fs.readFileSync(tempFilePath);
+                hash = crypto.createHash('md5').update(imageBuffer).digest('hex');
+                
+                console.log(`📥 Using downloaded temp file: ${tempFile} -> ${hash}`);
+            } else if (imageData) {
+                // Handle base64 image data
+                imageBuffer = Buffer.from(imageData, 'base64');
+                hash = crypto.createHash('md5').update(imageBuffer).digest('hex');
+            } else {
+                this.sendError(ws, 'Missing image data', 'Either imageData or tempFile must be provided', message.requestId);
+                return;
+            }
             
             // Save file
             const filePath = path.join(uploadCacheDir, hash);
             fs.writeFileSync(filePath, imageBuffer);
             
-            // Generate and save preview
+            // Handle preview - use existing temp preview if available, otherwise generate new one
             const previewPath = path.join(previewCacheDir, `${hash}.webp`);
-            await sharp(imageBuffer)
-                .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
-                .webp({ quality: 80 })
-                .toFile(previewPath);
-            console.log(`📸 Generated cached preview: ${hash}.webp`);
+            let generatePreview = true;
+            if (tempFile) {
+                // Check if temp preview exists from download process
+                const tempPreviewPath = path.join(cacheDir, 'tempDownload', `${hash}.webp`);
+                if (fs.existsSync(tempPreviewPath)) {
+                    // Move temp preview to permanent preview cache
+                    fs.copyFileSync(tempPreviewPath, previewPath);
+                    console.log(`📸 Moved temp preview to permanent storage: ${hash}.webp`);
+                    generatePreview = false;
+                }
+            }
+            if (generatePreview) {
+                // Generate new preview for non-downloaded files
+                await sharp(imageBuffer)
+                    .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+                    .webp({ quality: 80 })
+                    .toFile(previewPath);
+                console.log(`📸 Generated new preview: ${hash}.webp`);
+            }
             
             // Add to workspace cache files
             addToWorkspaceArray('cacheFiles', hash, workspaceId);
+            
+            // Clean up temp download file if it was used
+            if (tempFile) {
+                try {
+                    const tempFilePath = path.join(cacheDir, 'tempDownload', tempFile);
+                    const tempPreviewPath = path.join(cacheDir, 'tempDownload', `${hash}.webp`);
+                    
+                    // Delete the temp file
+                    if (fs.existsSync(tempFilePath)) {
+                        fs.unlinkSync(tempFilePath);
+                        console.log(`🧹 Cleaned up temp file: ${tempFile}`);
+                    }
+                    
+                    // Delete the temp preview
+                    if (fs.existsSync(tempPreviewPath)) {
+                        fs.unlinkSync(tempPreviewPath);
+                        console.log(`🧹 Cleaned up temp preview: ${hash}.webp`);
+                    }
+                } catch (cleanupError) {
+                    console.warn(`⚠️ Failed to clean up temp files: ${cleanupError.message}`);
+                }
+            }
             
             this.sendToClient(ws, {
                 type: 'upload_reference_response',
@@ -2973,6 +3237,549 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('Upload reference error:', error);
             this.sendError(ws, 'Failed to upload reference', error.message, message.requestId);
+        }
+    }
+
+    async handleDownloadUrlFile(ws, message, clientInfo, wsServer) {
+        try {
+            const { url } = message;
+            
+            // Validate URL
+            if (!url || typeof url !== 'string') {
+                this.sendError(ws, 'Invalid URL', 'URL parameter is required and must be a string', message.requestId);
+                return;
+            }
+            
+            try {
+                // Create temp download directory if it doesn't exist
+                const tempDownloadDir = path.join(cacheDir, 'tempDownload');
+                if (!fs.existsSync(tempDownloadDir)) {
+                    fs.mkdirSync(tempDownloadDir, { recursive: true });
+                }
+                
+                // Download the file
+                const response = await new Promise((resolve, reject) => {
+                    const req = https.request(url, { method: 'GET' }, (res) => {
+                        if (res.statusCode !== 200) {
+                            reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+                            return;
+                        }
+                        
+                        const chunks = [];
+                        res.on('data', chunk => chunks.push(chunk));
+                        res.on('end', () => {
+                            const buffer = Buffer.concat(chunks);
+                            resolve({
+                                buffer,
+                                headers: res.headers,
+                                statusCode: res.statusCode
+                            });
+                        });
+                    });
+                    
+                    req.on('error', reject);
+                    req.setTimeout(30000, () => req.destroy()); // 30 second timeout
+                    req.end();
+                });
+                
+                // Validate file size (max 100MB)
+                const maxSize = 100 * 1024 * 1024; // 100MB
+                if (response.buffer.length > maxSize) {
+                    throw new Error(`File too large: ${(response.buffer.length / 1024 / 1024).toFixed(2)}MB. Maximum size is 100MB.`);
+                }
+                
+                // Generate unique filename
+                const timestamp = Date.now();
+                const randomSeed = Math.floor(Math.random() * 1000000000);
+                const tempFilename = `temp_${timestamp}_${randomSeed}`;
+                const tempFilePath = path.join(tempDownloadDir, tempFilename);
+                
+                // Determine file type and handle accordingly
+                const contentType = response.headers['content-type'] || '';
+                // Clean content type by removing parameters (like charset=utf-8)
+                const cleanContentType = contentType.split(';')[0].trim();
+                let fileInfo = {};
+                
+                if (cleanContentType.startsWith('image/')) {
+                    // Handle image files
+                    const extension = contentType.includes('jpeg') ? '.jpg' : 
+                                     contentType.includes('png') ? '.png' : 
+                                     contentType.includes('webp') ? '.webp' : '.jpg';
+                    
+                    // Generate hash for the file
+                    const hash = crypto.createHash('md5').update(response.buffer).digest('hex');
+                    
+                    // Extract original filename from URL or use hash
+                    let originalFilename = '';
+                    try {
+                        const urlObj = new URL(url);
+                        const pathname = urlObj.pathname;
+                        const urlFilename = path.basename(pathname);
+                        
+                        // Clean the filename (remove query params, invalid chars, etc.)
+                        if (urlFilename && urlFilename.includes('.') && urlFilename.length > 1) {
+                            // Remove query parameters and hash fragments
+                            const cleanFilename = urlFilename.split('?')[0].split('#')[0];
+                            // Remove invalid characters but keep dots and dashes
+                            originalFilename = cleanFilename.replace(/[<>:"/\\|?*]/g, '_');
+                        }
+                    } catch (urlError) {
+                        console.log(`⚠️ Could not parse URL for filename: ${urlError.message}`);
+                    }
+                    
+                    // Store file as hash.dat in tempDownloadDir
+                    const finalTempFilename = `${hash}.dat`;
+                    const finalTempFilePath = path.join(tempDownloadDir, finalTempFilename);
+                    fs.writeFileSync(finalTempFilePath, response.buffer);
+                    
+                    // Generate and save preview in tempDownloadDir
+                    const previewPath = path.join(tempDownloadDir, `${hash}.webp`);
+                    await sharp(response.buffer)
+                        .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+                        .webp({ quality: 80 })
+                        .toFile(previewPath);
+                    
+                    // Extract metadata for potential blueprints
+                    let metadata = null;
+                    let isBlueprint = false;
+                    
+                    if (cleanContentType === 'image/png') {
+                                        try {
+                    // Extract comprehensive metadata in the format the client expects
+                    const extractedMetadata = await extractMetadataSummary(response.buffer, originalFilename || finalTempFilename);
+                    
+                    if (extractedMetadata.success && extractedMetadata.isBlueprint) {
+                        isBlueprint = true;
+                        metadata = extractedMetadata;
+                    }
+                } catch (metadataError) {
+                    console.log(`⚠️ Could not extract metadata from PNG: ${metadataError.message}`);
+                }
+                    }
+                    
+                    fileInfo = {
+                        type: 'image',
+                        tempFilename: finalTempFilename,
+                        originalFilename: originalFilename,
+                        hash: hash,
+                        size: response.buffer.length,
+                        contentType: contentType,
+                        url: url,
+                        hasPreview: true,
+                        isBlueprint: isBlueprint,
+                        metadata: metadata
+                    };
+                    
+                    console.log(`📥 Downloaded image from URL: ${url} -> ${finalTempFilename} (${hash})${isBlueprint ? ' (NovelAI Generated)' : ''}`);
+                    
+                } else if (cleanContentType === 'application/json' || url.endsWith('.json')) {
+                    // Handle JSON files (vibe bundles)
+                    
+                    // Generate hash for the file
+                    const hash = crypto.createHash('md5').update(response.buffer).digest('hex');
+                    
+                    // Extract original filename from URL or use hash
+                    let originalFilename = '';
+                    try {
+                        const urlObj = new URL(url);
+                        const pathname = urlObj.pathname;
+                        const urlFilename = path.basename(pathname);
+                        
+                        // Clean the filename (remove query params, invalid chars, etc.)
+                        if (urlFilename && urlFilename.includes('.') && urlFilename.length > 1) {
+                            // Remove query parameters and hash fragments
+                            const cleanFilename = urlFilename.split('?')[0].split('#')[0];
+                            // Remove invalid characters but keep dots and dashes
+                            originalFilename = cleanFilename.replace(/[<>:"/\\|*]/g, '_');
+                        }
+                    } catch (urlError) {
+                        console.log(`⚠️ Could not parse URL for filename: ${urlError.message}`);
+                    }
+                    
+                    // Store file as hash.dat in tempDownloadDir
+                    const finalTempFilename = `${hash}.dat`;
+                    const finalTempFilePath = path.join(tempDownloadDir, finalTempFilename);
+                    fs.writeFileSync(finalTempFilePath, response.buffer);
+                    
+                    // Parse JSON to extract metadata
+                    let jsonData;
+                    try {
+                        jsonData = JSON.parse(response.buffer.toString());
+                    } catch (parseError) {
+                        throw new Error('Invalid JSON file');
+                    }
+                    
+                    // Check if it's a vibe bundle
+                    if (jsonData.identifier === 'novelai-vibe-transfer' || jsonData.vibes) {
+                        const vibes = jsonData.vibes ? jsonData.vibes : [jsonData];
+                        const vibeCount = vibes.length;
+                        
+                        // Extract detailed metadata for each vibe
+                        const vibeMetadata = [];
+                        
+                        for (const vibe of vibes) {
+                            try {
+                                // Extract thumbnail if available
+                                let thumbnail = null;
+                                if (vibe.thumbnail && vibe.thumbnail.startsWith('data:image/')) {
+                                    // Save thumbnail to preview cache
+                                    const thumbnailBase64 = vibe.thumbnail.split(',')[1];
+                                    const thumbnailBuffer = Buffer.from(thumbnailBase64, 'base64');
+                                    const thumbnailHash = crypto.createHash('md5').update(thumbnailBuffer).digest('hex');
+                                    const thumbnailPath = path.join(previewCacheDir, `${thumbnailHash}.webp`);
+                                    
+                                    if (!fs.existsSync(thumbnailPath)) {
+                                        await sharp(thumbnailBuffer)
+                                            .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+                                            .webp({ quality: 80 })
+                                            .toFile(thumbnailPath);
+                                    }
+                                    
+                                    thumbnail = thumbnailHash;
+                                }
+                                
+                                // Extract encoding information
+                                const encodings = {};
+                                if (vibe.encodings) {
+                                    Object.entries(vibe.encodings).forEach(([bundleModel, modelEncodings]) => {
+                                        if (!encodings[bundleModel]) {
+                                            encodings[bundleModel] = {};
+                                        }
+                                        
+                                        Object.entries(modelEncodings).forEach(([encodingId, encodingData]) => {
+                                            let ie = 1;
+                                            if (encodingId !== 'unknown') {
+                                                ie = encodingData.params?.information_extracted || 1;
+                                            } else if (vibe.importInfo && vibe.importInfo.information_extracted) {
+                                                ie = vibe.importInfo.information_extracted;
+                                            }
+                                            
+                                            if (encodingData.encoding && encodingData.encoding.trim() !== '') {
+                                                encodings[bundleModel][ie] = encodingData.encoding;
+                                            }
+                                        });
+                                    });
+                                }
+                                
+                                vibeMetadata.push({
+                                    id: vibe.id || 'unknown',
+                                    name: vibe.name || 'Unnamed Vibe',
+                                    thumbnail: thumbnail,
+                                    encodings: encodings,
+                                    model: vibe.model || 'Unknown',
+                                    createdAt: vibe.createdAt || Date.now(),
+                                    importInfo: vibe.importInfo || {}
+                                });
+                            } catch (vibeError) {
+                                console.warn(`⚠️ Error processing vibe ${vibe.id || vibe.name}: ${vibeError.message}`);
+                                // Add basic info for failed vibes
+                                vibeMetadata.push({
+                                    id: vibe.id || 'unknown',
+                                    name: vibe.name || 'Unnamed Vibe',
+                                    thumbnail: null,
+                                    encodings: {},
+                                    model: vibe.model || 'Unknown',
+                                    createdAt: vibe.createdAt || Date.now(),
+                                    importInfo: {},
+                                    error: vibeError.message
+                                });
+                            }
+                        }
+                        
+                        fileInfo = {
+                            type: 'vibe_bundle',
+                            tempFilename: finalTempFilename,
+                            originalFilename: originalFilename,
+                            hash: hash,
+                            size: response.buffer.length,
+                            contentType: contentType,
+                            url: url,
+                            vibeCount: vibeCount,
+                            model: jsonData.model || 'Unknown',
+                            identifier: jsonData.identifier || 'novelai-vibe-transfer',
+                            vibes: vibeMetadata
+                        };
+                        
+                        console.log(`📥 Downloaded vibe bundle from URL: ${url} -> ${finalTempFilename} (${vibeCount} vibes)`);
+                    } else {
+                        // Generic JSON file
+                        fileInfo = {
+                            type: 'json',
+                            tempFilename: finalTempFilename,
+                            size: response.buffer.length,
+                            contentType: contentType,
+                            url: url
+                        };
+                        
+                        console.log(`📥 Downloaded JSON file from URL: ${url} -> ${finalTempFilename}`);
+                    }
+                    
+                } else {
+                    // Unsupported file type
+                    throw new Error(`Unsupported file type: ${contentType}. Only image files and JSON files are allowed.`);
+                }
+                
+                this.sendToClient(ws, {
+                    type: 'download_url_file_response',
+                    requestId: message.requestId,
+                    data: { 
+                        success: true, 
+                        message: 'File downloaded successfully',
+                        ...fileInfo
+                    },
+                    timestamp: new Date().toISOString()
+                });
+                
+            } catch (downloadError) {
+                console.error('URL download error:', downloadError);
+                this.sendError(ws, 'Failed to download file from URL', downloadError.message, message.requestId);
+            }
+            
+        } catch (error) {
+            console.error('Download URL file error:', error);
+            this.sendError(ws, 'Failed to process download request', error.message, message.requestId);
+        }
+    }
+
+    // Universal fetch handler for any HTTP request with configurable response handling
+    async handleFetchUrl(ws, message, clientInfo, wsServer) {
+        try {
+            const { url, options = {}, responseType = 'json' } = message;
+            
+            // Validate URL
+            if (!url || typeof url !== 'string') {
+                this.sendError(ws, 'Invalid URL', 'URL parameter is required and must be a string', message.requestId);
+                return;
+            }
+            
+            // Set default options
+            const fetchOptions = {
+                method: 'GET',
+                signal: AbortSignal.timeout(30000), // 30 second default timeout
+                ...options
+            };
+            
+            // Override timeout if specified in options
+            if (options.timeout) {
+                fetchOptions.signal = AbortSignal.timeout(options.timeout);
+            }
+            
+            try {
+                // Make the fetch request
+                const response = await fetch(url, fetchOptions);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                // Handle different response types
+                let responseData = null;
+                let additionalInfo = {};
+                
+                switch (responseType) {
+                    case 'save_file':
+                        // Save file to specified destination
+                        const { destination, filename } = options;
+                        if (!destination || !filename) {
+                            throw new Error('save_file response type requires destination and filename options');
+                        }
+                        
+                        const buffer = await response.arrayBuffer();
+                        const filePath = path.join(destination, filename);
+                        
+                        // Ensure destination directory exists
+                        const destDir = path.dirname(filePath);
+                        if (!fs.existsSync(destDir)) {
+                            fs.mkdirSync(destDir, { recursive: true });
+                        }
+                        
+                        fs.writeFileSync(filePath, Buffer.from(buffer));
+                        
+                        responseData = {
+                            success: true,
+                            savedPath: filePath,
+                            size: buffer.byteLength,
+                            contentType: response.headers.get('content-type') || 'Unknown'
+                        };
+                        break;
+                        
+                    case 'base64':
+                        // Return base64 encoded binary data
+                        const arrayBuffer = await response.arrayBuffer();
+                        const base64Data = Buffer.from(arrayBuffer).toString('base64');
+                        
+                        responseData = {
+                            success: true,
+                            data: base64Data,
+                            size: arrayBuffer.byteLength,
+                            contentType: response.headers.get('content-type') || 'Unknown'
+                        };
+                        break;
+                        
+                    case 'arraybuffer':
+                        // Return array buffer data with optional byte limiting
+                        let finalArrayBuffer;
+                        if (options.maxBytes && options.maxBytes > 0) {
+                            // Limit the number of bytes read by using a ReadableStream reader
+                            // This allows us to stop accepting data after maxBytes and cancel the request
+                            const reader = response.body.getReader();
+                            const chunks = [];
+                            let totalBytes = 0;
+                            
+                            try {
+                                while (totalBytes < options.maxBytes) {
+                                    const { done, value } = await reader.read();
+                                    if (done) break;
+                                    
+                                    chunks.push(value);
+                                    totalBytes += value.length;
+                                    
+                                    if (totalBytes >= options.maxBytes) {
+                                        // Truncate the last chunk if needed
+                                        const remainingBytes = options.maxBytes - (totalBytes - value.length);
+                                        if (remainingBytes < value.length) {
+                                            chunks[chunks.length - 1] = value.slice(0, remainingBytes);
+                                            totalBytes = options.maxBytes;
+                                        }
+                                        break;
+                                    }
+                                }
+                                
+                                // Cancel the reader to stop further data transfer
+                                await reader.cancel();
+                                
+                                // Combine chunks into a single array buffer
+                                const totalLength = Math.min(totalBytes, options.maxBytes);
+                                finalArrayBuffer = new ArrayBuffer(totalLength);
+                                const uint8Array = new Uint8Array(finalArrayBuffer);
+                                
+                                let offset = 0;
+                                for (const chunk of chunks) {
+                                    uint8Array.set(chunk, offset);
+                                    offset += chunk.length;
+                                }
+                                
+                            } catch (readError) {
+                                console.warn('Error reading response body with byte limit:', readError);
+                                // Fall back to full response if byte limiting fails
+                                finalArrayBuffer = await response.arrayBuffer();
+                            }
+                        } else {
+                            // No byte limit, read the full response
+                            finalArrayBuffer = await response.arrayBuffer();
+                        }
+                        
+                        // Handle gzip encoding - if content is gzipped, we need to decompress it
+                        // Note: For byte-limited requests, we're getting raw compressed data
+                        // This is actually fine for magic byte detection since we're looking at the first bytes
+                        // But we should log this for debugging
+                        const contentEncoding = response.headers.get('content-encoding');
+                        if (contentEncoding === 'gzip') {
+                            console.log('⚠️ Response is gzip encoded - magic bytes may not work correctly');
+                        }
+                        
+                        responseData = {
+                            success: true,
+                            data: Buffer.from(finalArrayBuffer).toString('base64'),
+                            size: finalArrayBuffer.byteLength,
+                            contentType: response.headers.get('content-type') || 'Unknown'
+                        };
+                        break;
+                        
+                    case 'text':
+                        // Return plain text
+                        const textData = await response.text();
+                        
+                        responseData = {
+                            success: true,
+                            data: textData,
+                            size: textData.length,
+                            contentType: response.headers.get('content-type') || 'text/plain'
+                        };
+                        break;
+                        
+                    case 'json':
+                    default:
+                        // Return JSON data
+                        try {
+                            const jsonData = await response.json();
+                            responseData = {
+                                success: true,
+                                data: jsonData,
+                                contentType: response.headers.get('content-type') || 'application/json'
+                            };
+                        } catch (jsonError) {
+                            // If JSON parsing fails, fall back to text
+                            const fallbackText = await response.text();
+                            responseData = {
+                                success: true,
+                                data: fallbackText,
+                                contentType: response.headers.get('content-type') || 'text/plain',
+                                note: 'JSON parsing failed, returned as text'
+                            };
+                        }
+                        break;
+                }
+                
+                // Add common response information
+                additionalInfo = {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: Object.fromEntries(response.headers.entries()),
+                    url: response.url,
+                    timestamp: new Date().toISOString()
+                };
+                
+                // Send success response
+                this.sendToClient(ws, {
+                    type: 'fetch_url_info_response',
+                    requestId: message.requestId,
+                    data: {
+                        ...responseData,
+                        ...additionalInfo
+                    },
+                    timestamp: new Date().toISOString()
+                });
+                
+            } catch (fetchError) {
+                console.error('URL fetch error:', fetchError);
+                
+                // Send error response with fallback information
+                let fallbackInfo = {};
+                
+                try {
+                    const urlObj = new URL(url);
+                    fallbackInfo = {
+                        domain: urlObj.hostname,
+                        protocol: urlObj.protocol,
+                        pathname: urlObj.pathname,
+                        filename: path.basename(urlObj.pathname) || 'Unknown'
+                    };
+                } catch (urlError) {
+                    fallbackInfo = {
+                        domain: 'Unknown',
+                        protocol: 'Unknown',
+                        pathname: 'Unknown',
+                        filename: 'Unknown'
+                    };
+                }
+                
+                this.sendToClient(ws, {
+                    type: 'fetch_url_info_response',
+                    requestId: message.requestId,
+                    data: {
+                        success: false,
+                        error: fetchError.message,
+                        errorType: fetchError.name,
+                        ...fallbackInfo
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            }
+            
+        } catch (error) {
+            console.error('Fetch URL info error:', error);
+            this.sendError(ws, 'Failed to process fetch request', error.message, message.requestId);
         }
     }
 
@@ -3364,18 +4171,19 @@ class WebSocketMessageHandlers {
 
     async handleEncodeVibe(ws, message, clientInfo, wsServer) {
         try {
-            const { image, informationExtraction, model, workspace, cacheFile, id, comment } = message;
+            const { image, informationExtraction, model, workspace, cacheFile, tempFile, id, comment } = message;
             
-            // Validate workspace parameter
-            if (!workspace) {
-                this.sendError(ws, 'Missing workspace parameter', 'Workspace parameter is required', message.requestId);
-                return;
+            // Determine which workspace to use
+            let targetWorkspace = workspace;
+            if (!targetWorkspace) {
+                // No specific workspace provided, use the active workspace for this session
+                targetWorkspace = getActiveWorkspace(clientInfo.sessionId);
             }
             
             // Validate that the workspace exists
             const workspaces = getWorkspaces();
-            if (!workspaces[workspace]) {
-                this.sendError(ws, 'Invalid workspace', `Workspace '${workspace}' not found`, message.requestId);
+            if (!workspaces[targetWorkspace]) {
+                this.sendError(ws, 'Invalid workspace', `Workspace '${targetWorkspace}' not found`, message.requestId);
                 return;
             }
             
@@ -3423,7 +4231,7 @@ class WebSocketMessageHandlers {
                 fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
                 
                 // Add to workspace
-                addToWorkspaceArray('vibeImages', filename, workspace);
+                addToWorkspaceArray('vibeImages', filename, targetWorkspace);
                 
             } else if (cacheFile) {
                 // Create vibe from cache file
@@ -3467,11 +4275,66 @@ class WebSocketMessageHandlers {
                 fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
                 
                 // Add to workspace
-                addToWorkspaceArray('vibeImages', filename, workspace);
+                addToWorkspaceArray('vibeImages', filename, targetWorkspace);
+            } else if (tempFile) {
+                // Create vibe from temp downloaded file
+                const tempFilePath = path.join(cacheDir, 'tempDownload', tempFile);
+                if (!fs.existsSync(tempFilePath)) {
+                    this.sendError(ws, 'Temp file not found', 'Downloaded temp file not found', message.requestId);
+                    return;
+                }
                 
+                const imageBuffer = fs.readFileSync(tempFilePath);
+                const imageBase64 = imageBuffer.toString('base64');
+                const imageHash = crypto.createHash('md5').update(imageBuffer).digest('hex');
+                const sha256Hash = crypto.createHash('sha256').update(imageBuffer).digest('hex');
+                
+                vibeData = {
+                    version: 1,
+                    id: sha256Hash,
+                    type: 'base64',
+                    image: imageBase64,
+                    preview: imageHash,
+                    mtime: Date.now(),
+                    encodings: {},
+                    comment: comment || null
+                };
+                
+                // Handle preview - use existing temp preview if available, otherwise generate new one
+                const previewPath = path.join(previewCacheDir, `${imageHash}.webp`);
+                const tempPreviewPath = path.join(cacheDir, 'tempDownload', `${imageHash}.webp`);
+                if (fs.existsSync(tempPreviewPath)) {
+                    // Move temp preview to permanent preview cache
+                    fs.copyFileSync(tempPreviewPath, previewPath);
+                    console.log(`📸 Moved temp preview to permanent storage: ${imageHash}.webp`);
+                } else if (!fs.existsSync(previewPath)) {
+                    // Generate new preview if neither temp nor permanent preview exists
+                    await sharp(imageBuffer)
+                        .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+                        .webp({ quality: 80 })
+                        .toFile(previewPath);
+                    console.log(`📸 Generated new preview for temp vibe image: ${imageHash}.webp`);
+                } else {
+                    console.log(`📸 Preview already exists for vibe image: ${imageHash}.webp`);
+                }
+                
+                // Generate encoding from temp file
+                const encoding = await this.encodeVibeDirect(imageBase64, informationExtraction, model);
+                if (!vibeData.encodings[model]) {
+                    vibeData.encodings[model] = {};
+                }
+                vibeData.encodings[model][informationExtraction] = encoding;
+                
+                // Save vibe file
+                const filename = `${sha256Hash}.json`;
+                const filePath = path.join(vibeCacheDir, filename);
+                fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
+                
+                // Add to workspace
+                addToWorkspaceArray('vibeImages', filename, targetWorkspace);
             } else if (id) {
                 // Add new encoding to existing vibe
-                const workspaceData = getWorkspace(workspace);
+                const workspaceData = getWorkspace(targetWorkspace);
                 const vibeFiles = workspaceData.vibeImages || [];
                 
                 // Find the vibe file
@@ -3531,6 +4394,28 @@ class WebSocketMessageHandlers {
                 
                 // Update file
                 fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
+            }
+            
+            // Clean up temp download file if it was used
+            if (tempFile) {
+                try {
+                    const tempFilePath = path.join(cacheDir, 'tempDownload', tempFile);
+                    const tempPreviewPath = path.join(cacheDir, 'tempDownload', `${tempFile.replace('.dat', '')}.webp`);
+                    
+                    // Delete the temp file
+                    if (fs.existsSync(tempFilePath)) {
+                        fs.unlinkSync(tempFilePath);
+                        console.log(`🧹 Cleaned up temp file: ${tempFile}`);
+                    }
+                    
+                    // Delete the temp preview if it exists
+                    if (fs.existsSync(tempPreviewPath)) {
+                        fs.unlinkSync(tempPreviewPath);
+                        console.log(`🧹 Cleaned up temp preview: ${tempFile.replace('.dat', '')}.webp`);
+                    }
+                } catch (cleanupError) {
+                    console.warn(`⚠️ Failed to clean up temp files: ${cleanupError.message}`);
+                }
             }
             
             this.sendToClient(ws, {
@@ -3882,13 +4767,58 @@ class WebSocketMessageHandlers {
     // Text replacement management handlers
     async handleGetTextReplacements(ws, message, clientInfo, wsServer) {
         try {
+            const { page = 1, itemsPerPage = 10, searchTerm = '' } = message;
+            
             const config = loadPromptConfig();
-            const textReplacements = config.text_replacements || {};
+            const allTextReplacements = config.text_replacements || {};
+            
+            // Filter by search term if provided
+            let filteredReplacements = {};
+            if (searchTerm && searchTerm.trim() !== '') {
+                const searchLower = searchTerm.toLowerCase();
+                Object.keys(allTextReplacements).forEach(key => {
+                    const value = allTextReplacements[key];
+                    const searchableText = `${key} ${Array.isArray(value) ? value.join(' ') : value}`.toLowerCase();
+                    if (searchableText.includes(searchLower)) {
+                        filteredReplacements[key] = value;
+                    }
+                });
+            } else {
+                filteredReplacements = { ...allTextReplacements };
+            }
+            
+            // Sort keys alphabetically (case insensitive)
+            const sortedKeys = Object.keys(filteredReplacements).sort((a, b) => 
+                a.toLowerCase().localeCompare(b.toLowerCase())
+            );
+            
+            // Calculate pagination
+            const totalItems = sortedKeys.length;
+            const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+            const currentPage = Math.min(Math.max(1, page), totalPages);
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            
+            // Get items for current page
+            const pageKeys = sortedKeys.slice(startIndex, endIndex);
+            const pageItems = {};
+            pageKeys.forEach(key => {
+                pageItems[key] = filteredReplacements[key];
+            });
             
             this.sendToClient(ws, {
                 type: 'get_text_replacements_response',
                 data: {
-                    textReplacements: textReplacements
+                    textReplacements: pageItems,
+                    pagination: {
+                        currentPage: currentPage,
+                        totalPages: totalPages,
+                        totalItems: totalItems,
+                        itemsPerPage: itemsPerPage,
+                        hasNextPage: currentPage < totalPages,
+                        hasPrevPage: currentPage > 1
+                    },
+                    searchTerm: searchTerm
                 },
                 requestId: message.requestId
             });
@@ -3910,8 +4840,14 @@ class WebSocketMessageHandlers {
             // Load current config
             const config = loadPromptConfig();
             
-            // Update text replacements
-            config.text_replacements = textReplacements;
+            // Initialize text_replacements if it doesn't exist
+            if (!config.text_replacements) {
+                config.text_replacements = {};
+            }
+            
+            // Merge new text replacements with existing ones
+            // This allows both single item saves and bulk saves
+            Object.assign(config.text_replacements, textReplacements);
             
             // Save config
             const success = savePromptConfig(config);
@@ -3925,7 +4861,13 @@ class WebSocketMessageHandlers {
                     requestId: message.requestId
                 });
                 
-                console.log('✅ Text replacements saved successfully');
+                // Log what was saved
+                const savedKeys = Object.keys(textReplacements);
+                if (savedKeys.length === 1) {
+                    console.log(`✅ Text replacement "${savedKeys[0]}" saved successfully`);
+                } else {
+                    console.log(`✅ ${savedKeys.length} text replacements saved successfully`);
+                }
             } else {
                 this.sendToClient(ws, {
                     type: 'save_text_replacements_response',
@@ -3949,19 +4891,186 @@ class WebSocketMessageHandlers {
         }
     }
 
+    async handleDeleteTextReplacement(ws, message, clientInfo, wsServer) {
+        try {
+            const { key } = message;
+            
+            if (!key || typeof key !== 'string') {
+                this.sendError(ws, 'Invalid key', 'Text replacement key is required', message.requestId);
+                return;
+            }
+
+            // Load current config
+            const config = loadPromptConfig();
+            
+            // Check if text_replacements exists and contains the key
+            if (!config.text_replacements || !config.text_replacements.hasOwnProperty(key)) {
+                this.sendError(ws, 'Key not found', `Text replacement "${key}" not found`, message.requestId);
+                return;
+            }
+            
+            // Delete the text replacement
+            delete config.text_replacements[key];
+            
+            // Save config
+            const success = savePromptConfig(config);
+            
+            if (success) {
+                this.sendToClient(ws, {
+                    type: 'delete_text_replacement_response',
+                    data: {
+                        success: true,
+                        deletedKey: key
+                    },
+                    requestId: message.requestId
+                });
+                
+                console.log(`🗑️ Text replacement "${key}" deleted successfully`);
+            } else {
+                this.sendToClient(ws, {
+                    type: 'delete_text_replacement_response',
+                    data: {
+                        success: false,
+                        error: 'Failed to save configuration file'
+                    },
+                    requestId: message.requestId
+                });
+            }
+        } catch (error) {
+            console.error('Error deleting text replacement:', error);
+            this.sendToClient(ws, {
+                type: 'delete_text_replacement_response',
+                data: {
+                    success: false,
+                    error: error.message
+                },
+                requestId: message.requestId
+            });
+        }
+    }
+
+    async handleCreateTextReplacement(ws, message, clientInfo, wsServer) {
+        try {
+            const { key, value, type } = message;
+            
+            if (!key || typeof key !== 'string' || key.trim() === '') {
+                this.sendError(ws, 'Invalid key', 'Text replacement key is required and cannot be empty', message.requestId);
+                return;
+            }
+            
+            if (value === undefined || value === null) {
+                this.sendError(ws, 'Invalid value', 'Text replacement value is required', message.requestId);
+                return;
+            }
+            
+            if (!type || !['string', 'array'].includes(type)) {
+                this.sendError(ws, 'Invalid type', 'Type must be either "string" or "array"', message.requestId);
+                return;
+            }
+
+            // Load current config
+            const config = loadPromptConfig();
+            
+            // Initialize text_replacements if it doesn't exist
+            if (!config.text_replacements) {
+                config.text_replacements = {};
+            }
+            
+            // Check if key already exists
+            if (config.text_replacements.hasOwnProperty(key)) {
+                this.sendError(ws, 'Key already exists', `Text replacement "${key}" already exists`, message.requestId);
+                return;
+            }
+            
+            // Create the text replacement
+            if (type === 'array') {
+                config.text_replacements[key] = Array.isArray(value) ? value : [value];
+            } else {
+                config.text_replacements[key] = value;
+            }
+            
+            // Save config
+            const success = savePromptConfig(config);
+            
+            if (success) {
+                this.sendToClient(ws, {
+                    type: 'create_text_replacement_response',
+                    data: {
+                        success: true,
+                        key: key,
+                        value: config.text_replacements[key],
+                        type: type
+                    },
+                    requestId: message.requestId
+                });
+                
+                console.log(`✅ Text replacement "${key}" created successfully`);
+            } else {
+                this.sendToClient(ws, {
+                    type: 'create_text_replacement_response',
+                    data: {
+                        success: false,
+                        error: 'Failed to save configuration file'
+                    },
+                    requestId: message.requestId
+                });
+            }
+        } catch (error) {
+            console.error('Error creating text replacement:', error);
+            this.sendToClient(ws, {
+                type: 'create_text_replacement_response',
+                data: {
+                    success: false,
+                    error: error.message
+                },
+                requestId: message.requestId
+            });
+        }
+    }
+
     async handleImportVibeBundle(ws, message, clientInfo, wsServer) {
         try {
-            const { bundleData, workspaceId, comment } = message;
-            if (!workspaceId) {
-                this.sendError(ws, 'Missing workspace parameter', 'Workspace parameter is required', message.requestId);
+            const { bundleData, workspaceId, comment, tempFile } = message;
+            
+            // Determine which workspace to use
+            let targetWorkspace = workspaceId;
+            if (!targetWorkspace) {
+                // No specific workspace provided, use the active workspace for this session
+                targetWorkspace = getActiveWorkspace(clientInfo.sessionId);
+            }
+            if (!targetWorkspace) {
+                this.sendError(ws, 'Invalid workspace', 'No workspace provided, and no active workspace found', message.requestId);
                 return;
             }
+            
+            // Validate that the workspace exists
             const workspaces = getWorkspaces();
-            if (!workspaces[workspaceId]) {
-                this.sendError(ws, 'Invalid workspace', `Workspace '${workspaceId}' not found`, message.requestId);
+            if (!workspaces[targetWorkspace]) {
+                this.sendError(ws, 'Invalid workspace', `Workspace '${targetWorkspace}' not found`, message.requestId);
                 return;
             }
-            if (!bundleData || !bundleData.identifier) {
+            
+            let bundleDataToProcess = bundleData;
+            
+            if (tempFile) {
+                // Handle downloaded temp file
+                const tempFilePath = path.join(cacheDir, 'tempDownload', tempFile);
+                if (!fs.existsSync(tempFilePath)) {
+                    this.sendError(ws, 'Temp file not found', 'Downloaded temp file not found', message.requestId);
+                    return;
+                }
+                
+                try {
+                    const fileContent = fs.readFileSync(tempFilePath, 'utf8');
+                    bundleDataToProcess = JSON.parse(fileContent);
+                    console.log(`📥 Using downloaded temp file: ${tempFile}`);
+                } catch (parseError) {
+                    this.sendError(ws, 'Invalid JSON file', 'Downloaded file is not valid JSON', message.requestId);
+                    return;
+                }
+            }
+            
+            if (!bundleDataToProcess || !bundleDataToProcess.identifier) {
                 this.sendError(ws, 'Invalid bundle format', 'Not a valid NovelAI vibe transfer or bundle file', message.requestId);
                 return;
             }
@@ -3970,18 +5079,24 @@ class WebSocketMessageHandlers {
             let vibes = [];
             if (bundleData.identifier === 'novelai-vibe-transfer-bundle') {
                 if (!bundleData.vibes || !Array.isArray(bundleData.vibes)) {
-                    this.sendError(ws, 'Invalid bundle format', 'No vibes found in bundle', message.requestId);
+                    this.sendError(ws, 'Invalid bundle format', 'Bundle does not contain valid vibes array', message.requestId);
                     return;
                 }
                 vibes = bundleData.vibes;
             } else if (bundleData.identifier === 'novelai-vibe-transfer') {
-                // Single vibe format - wrap as array
+                // Single vibe format
                 vibes = [bundleData];
             } else {
                 this.sendError(ws, 'Invalid bundle format', 'Not a valid NovelAI vibe transfer or bundle file', message.requestId);
                 return;
             }
 
+            if (vibes.length === 0) {
+                this.sendError(ws, 'Empty bundle', 'No vibes found in bundle', message.requestId);
+                return;
+            }
+
+            // Process each vibe
             const importedVibes = [];
             const errors = [];
             for (const vibe of vibes) {
@@ -4071,8 +5186,10 @@ class WebSocketMessageHandlers {
                     const filename = `${vibeId}.json`;
                     const filePath = path.join(vibeCacheDir, filename);
                     fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
+                    
                     // Add to workspace
-                    addToWorkspaceArray('vibeImages', filename, workspaceId);
+                    addToWorkspaceArray('vibeImages', filename, targetWorkspace);
+
                     // Save thumbnail if provided
                     if (vibe.thumbnail && vibe.thumbnail.startsWith('data:image/')) {
                         const thumbnailBase64 = vibe.thumbnail.split(',')[1];
@@ -4102,6 +5219,29 @@ class WebSocketMessageHandlers {
                     errors.push(`${vibe.name || vibe.id}: ${error.message}`);
                 }
             }
+            
+            // Clean up temp download file if it was used
+            if (tempFile) {
+                try {
+                    const tempFilePath = path.join(cacheDir, 'tempDownload', tempFile);
+                    const tempPreviewPath = path.join(cacheDir, 'tempDownload', `${tempFile.replace('.dat', '')}.webp`);
+                    
+                    // Delete the temp file
+                    if (fs.existsSync(tempFilePath)) {
+                        fs.unlinkSync(tempFilePath);
+                        console.log(`🧹 Cleaned up temp file: ${tempFile}`);
+                    }
+                    
+                    // Delete the temp preview if it exists
+                    if (fs.existsSync(tempPreviewPath)) {
+                        fs.unlinkSync(tempPreviewPath);
+                        console.log(`🧹 Cleaned up temp preview: ${tempFile.replace('.dat', '')}.webp`);
+                    }
+                } catch (cleanupError) {
+                    console.warn(`⚠️ Failed to clean up temp files: ${cleanupError.message}`);
+                }
+            }
+            
             this.sendToClient(ws, {
                 type: 'import_vibe_bundle_response',
                 requestId: message.requestId,
@@ -4116,6 +5256,183 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('Import vibe bundle error:', error);
             this.sendError(ws, 'Failed to import vibe bundle', error.message, message.requestId);
+        }
+    }
+
+    async handleUploadWorkspaceImage(ws, message, clientInfo, wsServer) {
+        try {
+            const { imageData, workspaceId, originalFilename, batchInfo, tempFile } = message;
+            
+            // Validate workspace parameter
+            if (!workspaceId) {
+                this.sendError(ws, 'Missing workspace parameter', 'Workspace parameter is required', message.requestId);
+                return;
+            }
+            
+            // Validate that the workspace exists
+            const workspaces = getWorkspaces();
+            if (!workspaces[workspaceId]) {
+                this.sendError(ws, 'Invalid workspace', `Workspace '${workspaceId}' not found`, message.requestId);
+                return;
+            }
+            
+            let imageBuffer, hash;
+            
+            if (tempFile) {
+                // Handle downloaded temp file
+                const tempFilePath = path.join(cacheDir, 'tempDownload', tempFile);
+                if (!fs.existsSync(tempFilePath)) {
+                    this.sendError(ws, 'Temp file not found', 'Downloaded temp file not found', message.requestId);
+                    return;
+                }
+                
+                imageBuffer = fs.readFileSync(tempFilePath);
+                hash = crypto.createHash('md5').update(imageBuffer).digest('hex');
+                
+                console.log(`📥 Using downloaded temp file: ${tempFile} -> ${hash}`);
+            } else if (imageData) {
+                // Handle base64 image data
+                imageBuffer = Buffer.from(imageData, 'base64');
+                hash = crypto.createHash('md5').update(imageBuffer).digest('hex');
+            } else {
+                this.sendError(ws, 'Missing image data', 'Either imageData or tempFile must be provided', message.requestId);
+                return;
+            }
+            
+            // Generate filename - use original if provided, otherwise generate from hash
+            let filename;
+            if (originalFilename) {
+                // Use original filename, but ensure it has proper extension
+                const originalExt = path.extname(originalFilename).toLowerCase();
+                if (originalExt === '.png') {
+                    // Keep original filename with original case
+                    filename = hash + '_' + originalFilename;
+                } else {
+                    // If original doesn't have valid extension, add one based on image format
+                    const tempImg = sharp(imageBuffer);
+                    const metadata = await tempImg.metadata();
+                    const ext = metadata.format === 'jpeg' ? 'jpg' : metadata.format || 'png';
+                    const baseName = path.basename(originalFilename, path.extname(originalFilename));
+                    filename = `${hash}_${baseName}.${ext}`;
+                }
+            } else {
+                // Generate filename from hash with proper extension
+                const tempImg = sharp(imageBuffer);
+                const metadata = await tempImg.metadata();
+                const ext = metadata.format === 'jpeg' ? 'jpg' : metadata.format || 'png';
+                filename = `${hash}.${ext}`;
+            }
+            
+            // For downloaded files, we need to handle the .dat extension
+            if (filename.toLowerCase().endsWith('.dat')) {
+                // Convert .dat to .png for downloaded files
+                filename = filename.replace(/\.dat$/i, '.png');
+            }
+            
+            if (!filename.toLowerCase().endsWith('.png')) {
+                throw new Error('Invalid image format: Only PNG files are allowed');
+            }
+            
+            // Handle filename conflicts by appending a counter if needed
+            let finalFilename = filename;
+            let finalFilePath = path.join(imagesDir, finalFilename);
+            let counter = 1;
+            
+            while (fs.existsSync(finalFilePath)) {
+                const ext = path.extname(filename);
+                const baseName = path.basename(filename, ext);
+                finalFilename = `${baseName}_${counter}${ext}`;
+                finalFilePath = path.join(imagesDir, finalFilename);
+                counter++;
+            }
+            
+            // Save file to images directory
+            fs.writeFileSync(finalFilePath, imageBuffer);
+            
+            // Handle preview - use existing temp preview if available, otherwise generate new one
+            const previewPath = path.join(previewsDir, `${filename.split('.').slice(0, -1).join('.')}.jpg`);
+            let generatePreview = true;
+            if (tempFile) {
+                // Check if temp preview exists from download process
+                const tempPreviewPath = path.join(cacheDir, 'tempDownload', `${hash}.webp`);
+                if (fs.existsSync(tempPreviewPath)) {
+                    // Convert temp WebP preview to permanent JPG preview
+                    await sharp(tempPreviewPath)
+                        .jpeg({ quality: 70 })
+                        .toFile(previewPath);
+                    console.log(`📸 Moved temp preview to permanent storage: ${hash}`);
+                    generatePreview = false;
+                }
+            }
+            if (generatePreview) {
+                // Generate new preview for non-downloaded files
+                await sharp(imageBuffer)
+                    .resize(256, 256, { fit: 'cover' })
+                    .jpeg({ quality: 70 })
+                    .toFile(previewPath);
+                console.log(`📸 Generated preview: ${hash}`);
+            }
+            
+            // Add to workspace files
+            addToWorkspaceArray('files', finalFilename, workspaceId);
+            
+            // Clean up temp download file if it was used
+            if (tempFile) {
+                try {
+                    const tempFilePath = path.join(cacheDir, 'tempDownload', tempFile);
+                    const tempPreviewPath = path.join(cacheDir, 'tempDownload', `${hash}.webp`);
+                    
+                    // Delete the temp file
+                    if (fs.existsSync(tempFilePath)) {
+                        fs.unlinkSync(tempFilePath);
+                        console.log(`🧹 Cleaned up temp file: ${tempFile}`);
+                    }
+                    
+                    // Delete the temp preview
+                    if (fs.existsSync(tempPreviewPath)) {
+                        fs.unlinkSync(tempPreviewPath);
+                        console.log(`🧹 Cleaned up temp preview: ${hash}.webp`);
+                    }
+                } catch (cleanupError) {
+                    console.warn(`⚠️ Failed to clean up temp files: ${cleanupError.message}`);
+                }
+            }
+            
+            // Check if this is the last image in a batch and trigger metadata rescan
+            const isLastInBatch = batchInfo && (batchInfo.currentIndex === batchInfo.totalCount - 1);
+            if (isLastInBatch) {
+                // Trigger metadata cache rescan asynchronously
+                setImmediate(async () => {
+                    try {
+                        await scanAndUpdateMetadata(imagesDir);
+                        console.log('✅ Metadata cache rescan completed');
+                    } catch (error) {
+                        console.error('❌ Metadata cache rescan failed:', error);
+                    }
+                });
+            }
+            
+            // Broadcast gallery update
+            const galleryData = await this.buildGalleryData('images', clientInfo);
+            wsServer.broadcastGalleryUpdate(galleryData, 'images');
+            
+            this.sendToClient(ws, {
+                type: 'upload_workspace_image_response',
+                requestId: message.requestId,
+                data: { 
+                    success: true, 
+                    message: 'Image uploaded successfully',
+                    filename: finalFilename,
+                    hash: hash,
+                    originalFilename: originalFilename,
+                    batchInfo: batchInfo
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('Upload workspace image error:', error);
+            this.sendError(ws, 'Failed to upload image', error.message, message.requestId);
         }
     }
 
@@ -4134,6 +5451,61 @@ class WebSocketMessageHandlers {
             requestId,
             timestamp: new Date().toISOString()
         });
+    }
+
+    async handleUrlUploadMetadataRequest(ws, message, clientInfo, wsServer) {
+        const { filename } = message;
+        
+        if (!filename) {
+            this.sendError(ws, 'Missing filename parameter', 'request_url_upload_metadata');
+            return;
+        }
+        
+        try {
+            // Get the tempdownload directory path
+            const tempDownloadDir = path.join(cacheDir, 'tempdownload');
+            const filePath = path.join(tempDownloadDir, filename);
+            
+            if (!fs.existsSync(filePath)) {
+                this.sendError(ws, 'File not found in tempdownload folder', 'request_url_upload_metadata', message.requestId);
+                return;
+            }
+            
+            // Extract metadata from the file directly (skip cache, don't save to cache)
+            const imageMetadata = await extractImageMetadata(filePath);
+            if (!imageMetadata) {
+                this.sendError(ws, 'Failed to extract image metadata', 'request_url_upload_metadata', message.requestId);
+                return;
+            }
+            
+            // Extract PNG embedded metadata
+            const pngMetadata = extractNovelAIMetadata(filePath);
+            if (!pngMetadata) {
+                this.sendError(ws, 'No NovelAI metadata found', 'request_url_upload_metadata', message.requestId);
+                return;
+            }
+            
+            // Return the raw metadata like handleImageMetadataRequest does
+            // Don't transform it with extractRelevantFields - let the frontend handle that
+            const result = {
+                filename: filename,
+                width: imageMetadata.width,
+                height: imageMetadata.height,
+                metadata: pngMetadata
+            };
+            
+            // Send response
+            this.sendToClient(ws, {
+                type: 'request_url_upload_metadata_response',
+                requestId: message.requestId,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('URL upload metadata request error:', error);
+            this.sendError(ws, 'Failed to load URL upload metadata', error.message, message.requestId);
+        }
     }
 }
 

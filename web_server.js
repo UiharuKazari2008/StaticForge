@@ -225,6 +225,9 @@ app.use(cookieParser());
 // Create session store
 const sessionStore = new session.MemoryStore();
 
+// Make session store globally accessible for workspace persistence
+global.sessionStore = sessionStore;
+
 // Create session middleware
 const sessionMiddleware = session({
     secret: config.sessionSecret || 'staticforge-very-secret-key',
@@ -246,12 +249,12 @@ const cacheDir = path.resolve(__dirname, '.cache');
 const uploadCacheDir = path.join(cacheDir, 'upload');
 const previewCacheDir = path.join(cacheDir, 'preview');
 const vibeCacheDir = path.join(cacheDir, 'vibe');
-const vibeOrigCacheDir = path.join(cacheDir, 'vibe_orig');
+const tempDownloadDir = path.join(cacheDir, 'tempDownload');
 const imagesDir = path.resolve(__dirname, 'images');
 const previewsDir = path.resolve(__dirname, '.previews');
 
 // Ensure cache directories exist
-[uploadCacheDir, previewCacheDir, vibeCacheDir, vibeOrigCacheDir, imagesDir, previewsDir].forEach(dir => {
+[uploadCacheDir, previewCacheDir, vibeCacheDir, tempDownloadDir, imagesDir, previewsDir].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
@@ -366,7 +369,12 @@ app.post('/login', express.json(), (req, res) => {
     }
     if (pin === config.loginPin) {
         req.session.authenticated = true;
-        res.json({ success: true, message: 'Login successful' });
+        req.session.userType = 'admin';
+        res.json({ success: true, message: 'Login successful', userType: 'admin' });
+    } else if (pin === config.readOnlyPin) {
+        req.session.authenticated = true;
+        req.session.userType = 'readonly';
+        res.json({ success: true, message: 'Login successful', userType: 'readonly' });
     } else {
         res.status(401).json({ error: 'Invalid PIN code' });
     }
@@ -383,6 +391,7 @@ app.post('/logout', (req, res) => {
 // Serve static files from public directory
 app.use(express.static('public'));
 app.use('/cache', express.static(cacheDir));
+app.use('/temp', express.static(path.join(cacheDir, 'tempDownload')));
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -419,70 +428,6 @@ const cacheUpload = multer({
 // Helper: get preview filename
 function getPreviewFilename(baseName) {
     return `${baseName}.jpg`;
-}
-
-// Helper function to broadcast gallery updates via WebSocket
-function broadcastGalleryUpdate() {
-    const wsServer = getGlobalWsServer();
-    if (!wsServer) return;
-    
-    try {
-        // Helper function to get base name
-        const getBaseName = (filename) => {
-            const base = filename.replace(/\.(png|jpg|jpeg)$/i, '');
-            return base.replace(/_upscaled$/, '');
-        };
-        
-        // Get all images with pinned status
-        const allFiles = getActiveWorkspaceFiles();
-        const pinnedFiles = getActiveWorkspacePinned();
-        
-        const baseMap = {};
-        for (const file of allFiles) {
-            const base = getBaseName(file);
-            if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
-            if (file.includes('_upscaled')) baseMap[base].upscaled = file;
-            else baseMap[base].original = file;
-        }
-        
-        const gallery = [];
-        for (const base in baseMap) {
-            const { original, upscaled } = baseMap[base];
-            const file = upscaled || original;
-            if (!file) continue;
-            
-            try {
-                const metadata = getCachedMetadata(file);
-                if (!metadata) {
-                    console.warn(`No metadata found for file: ${file}`);
-                    continue;
-                }
-                
-                const preview = getPreviewFilename(base);
-                const isLarge = metadata.width && metadata.height ? 
-                    isImageLarge(metadata.width, metadata.height) : false;
-                
-                gallery.push({
-                    base,
-                    original,
-                    upscaled,
-                    preview,
-                    mtime: metadata.mtime,
-                    size: metadata.size,
-                    isLarge: isLarge,
-                    isPinned: pinnedFiles.includes(file)
-                });
-            } catch (error) {
-                console.warn(`Error processing file ${file}:`, error);
-                continue;
-            }
-        }
-        
-        gallery.sort((a, b) => b.mtime - a.mtime);
-        wsServer.broadcastGalleryUpdate(gallery, 'images');
-    } catch (error) {
-        console.error('Error broadcasting gallery update:', error);
-    }
 }
 
 // Generate a preview for an image
@@ -771,6 +716,9 @@ async function getUserData() {
 // Updated /images endpoint with workspace filtering
 app.get('/images', async (req, res) => {
     try {
+        // Extract session ID from request
+        const sessionId = req.session?.id;
+        
         // Check if scraps, pinned, or upscaled are requested
         const isScraps = req.query.scraps === 'true';
         const isPinned = req.query.pinned === 'true';
@@ -779,14 +727,13 @@ app.get('/images', async (req, res) => {
         let files;
         if (isScraps) {
             // Get scraps for active workspace (includes default + active workspace)
-            files = getActiveWorkspaceScraps();
+            files = getActiveWorkspaceScraps(sessionId);
         } else if (isPinned) {
             // Get pinned images for active workspace
-            files = getActiveWorkspacePinned();
+            files = getActiveWorkspacePinned(sessionId);
         } else if (isUpscaled) {
             // Get files for active workspace (includes default + active workspace)
-            const workspaceFiles = getActiveWorkspaceFiles();
-            files = workspaceFiles;
+            files = getActiveWorkspaceFiles(sessionId);
             
             // Also include wallpaper and large resolution images from metadata cache
             const allMetadata = getAllMetadata();
@@ -797,7 +744,7 @@ app.get('/images', async (req, res) => {
                 if (metadata.width && metadata.height) {
                     if (isImageLarge(metadata.width, metadata.height)) {
                         // Check if this image is in the current workspace
-                        const workspace = getActiveWorkspace();
+                        const workspace = getActiveWorkspace(sessionId);
                         const workspaceData = getWorkspace(workspace);
                         if (workspaceData && workspaceData.files && workspaceData.files.includes(filename)) {
                             specialImages.push(filename);
@@ -805,13 +752,10 @@ app.get('/images', async (req, res) => {
                     }
                 }
             }
-            
-            // Add special images to the files list
-            files = [...new Set([...files, ...specialImages])];
+            if (specialImages.length > 0)
+                files = [...new Set([...files, ...specialImages])];
         } else {
-            // Get files for active workspace (includes default + active workspace)
-            const workspaceFiles = getActiveWorkspaceFiles();
-            files = workspaceFiles;
+            files = getActiveWorkspaceFiles(sessionId);
         }
         
         const baseMap = {};
@@ -944,6 +888,10 @@ app.get('/images/all', async (req, res) => {
 
 // DELETE /images/bulk (bulk delete multiple images)
 app.delete('/images/bulk', authMiddleware, async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         const { filenames } = req.body;
 
@@ -1051,6 +999,10 @@ app.delete('/images/bulk', authMiddleware, async (req, res) => {
 
 // PUT /images/bulk/preset (bulk update preset names for multiple images)
 app.put('/images/bulk/preset', authMiddleware, async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         const { filenames, presetName } = req.body;
 
@@ -1126,6 +1078,10 @@ app.put('/images/bulk/preset', authMiddleware, async (req, res) => {
 
 // POST /images/send-to-sequenzia (move selected images to sequenzia folder)
 app.post('/images/send-to-sequenzia', authMiddleware, async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         const { filenames } = req.body;
         
@@ -1275,6 +1231,10 @@ app.get('/previews/:preview', (req, res) => {
 
 // POST /images/:filename/upscale (upscale an image)
 app.post('/images/:filename/upscale', authMiddleware, async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         const filename = req.params.filename;
         const filePath = path.join(imagesDir, filename);
@@ -1308,7 +1268,7 @@ app.post('/images/:filename/upscale', authMiddleware, async (req, res) => {
         console.log(`💾 Saved upscaled: ${upscaledFilename}`);
 
         // Add upscaled file to workspace
-        const targetWorkspaceId = workspaceId || getActiveWorkspace();
+        const targetWorkspaceId = workspaceId || getActiveWorkspace(req.session?.id);
         addToWorkspaceArray('files', upscaledFilename, targetWorkspaceId);
         
         // Generate preview for the base image (if not exists)
@@ -1666,7 +1626,7 @@ app.get('/vibe/images', authMiddleware, async (req, res) => {
             return res.json(allVibeImageDetails);
         }
         // Existing behavior: return for specific workspace (and default if not default)
-        const workspaceId = req.query.workspace || getActiveWorkspace();
+        const workspaceId = req.query.workspace || getActiveWorkspace(req.session?.id);
         const workspace = getWorkspace(workspaceId);
         if (!workspace) {
             return res.status(404).json({ error: 'Workspace not found' });
@@ -1719,9 +1679,13 @@ app.get('/vibe/images/:filename', authMiddleware, (req, res) => {
 
 // DELETE /vibe/images/:id (delete vibe image by ID)
 app.delete('/vibe/images/:id', authMiddleware, async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         const vibeId = req.params.id;
-        const workspaceId = req.query.workspace || getActiveWorkspace();
+        const workspaceId = req.query.workspace || getActiveWorkspace(req.session?.id);
         
         // Find the vibe file by ID
         const workspace = getWorkspace(workspaceId);
@@ -1772,9 +1736,13 @@ app.delete('/vibe/images/:id', authMiddleware, async (req, res) => {
 
 // DELETE /vibe/images/:id/encodings (delete specific encodings from vibe image)
 app.delete('/vibe/images/:id/encodings', authMiddleware, async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         const vibeId = req.params.id;
-        const workspaceId = req.query.workspace || getActiveWorkspace();
+        const workspaceId = req.query.workspace || getActiveWorkspace(req.session?.id);
         const { encodings } = req.body;
         
         if (!encodings || !Array.isArray(encodings)) {
@@ -1856,8 +1824,12 @@ app.delete('/vibe/images/:id/encodings', authMiddleware, async (req, res) => {
 
 // POST /vibe/images/bulk-delete (bulk delete vibe images and encodings)
 app.post('/vibe/images/bulk-delete', authMiddleware, async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
-        const workspaceId = req.body.workspace || getActiveWorkspace();
+        const workspaceId = req.body.workspace || getActiveWorkspace(req.session?.id);
         const { vibesToDelete, encodingsToDelete } = req.body;
         
         if (!vibesToDelete && !encodingsToDelete) {
@@ -2016,10 +1988,14 @@ app.post('/vibe/images/bulk-delete', authMiddleware, async (req, res) => {
 
 // PUT /vibe/images/:id/move (move vibe image to workspace)
 app.put('/vibe/images/:id/move', authMiddleware, async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         const vibeId = req.params.id;
         const { targetWorkspace } = req.body;
-        const sourceWorkspace = req.query.workspace || getActiveWorkspace();
+        const sourceWorkspace = req.query.workspace || getActiveWorkspace(req.session?.id);
         
         if (!targetWorkspace) {
             return res.status(400).json({ error: 'targetWorkspace is required' });
@@ -2070,9 +2046,13 @@ app.put('/vibe/images/:id/move', authMiddleware, async (req, res) => {
 
 // POST /vibe/images/bulk-move (bulk move vibe images to workspace)
 app.post('/vibe/images/bulk-move', authMiddleware, async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         const { imageIds, targetWorkspace, sourceWorkspace } = req.body;
-        const workspaceId = sourceWorkspace || getActiveWorkspace();
+        const workspaceId = sourceWorkspace || getActiveWorkspace(req.session?.id);
         
         if (!targetWorkspace) {
             return res.status(400).json({ error: 'targetWorkspace is required' });
@@ -2205,6 +2185,10 @@ app.options('/images/:filename', authMiddleware, async (req, res) => {
 
 // DELETE /images/:filename (delete image and upscaled/base versions)
 app.delete('/images/:filename', authMiddleware, async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         const filename = req.params.filename;
         const filePath = path.join(imagesDir, filename);
@@ -2501,13 +2485,30 @@ const buildOptions = async (model, body, preset = null, queryParams = {}) => {
             const selectedQuality = selectPresetItem(currentPromptConfig.quality_presets, modelKey, combinedPrompt, body.append_quality_id);
             
             if (selectedQuality) {
-                // Split prompt by "|", add quality to end of first group, then rejoin with " | "
-                const groups = processedPrompt.split('|').map(group => group.trim());
-                if (groups.length > 0) {
-                    groups[0] = groups[0] + ', ' + selectedQuality.value;
-                    processedPrompt = groups.join(' | ');
+                // Check if prompt contains "Text:" and handle accordingly
+                if (processedPrompt.includes('Text:')) {
+                    // Find the first instance of "Text:" and insert quality before it
+                    const textIndex = processedPrompt.indexOf('Text:');
+                    const beforeText = processedPrompt.substring(0, textIndex).trim();
+                    const afterText = processedPrompt.substring(textIndex);
+                    
+                    if (beforeText) {
+                        // If there's content before "Text:", add quality with ", " separator
+                        processedPrompt = beforeText + ', ' + selectedQuality.value + ' ' + afterText;
+                    } else {
+                        // If "Text:" is at the beginning, just add quality before it
+                        processedPrompt = selectedQuality.value + ' ' + afterText;
+                    }
                 } else {
-                    processedPrompt = processedPrompt + ', ' + selectedQuality.value;
+                    // Original logic for prompts without "Text:"
+                    // Split prompt by "|", add quality to end of first group, then rejoin with " | "
+                    const groups = processedPrompt.split('|').map(group => group.trim());
+                    if (groups.length > 0) {
+                        groups[0] = groups[0] + ', ' + selectedQuality.value;
+                        processedPrompt = groups.join(' | ');
+                    } else {
+                        processedPrompt = processedPrompt + ', ' + selectedQuality.value;
+                    }
                 }
                 selectedQualityId = selectedQuality.id;
                 console.log(`🎨 Applied quality preset for ${modelKey}: ${selectedQuality.value} (ID: ${selectedQuality.id})`);
@@ -2991,7 +2992,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         
         // Update buffer with forge metadata
         buffer = updateMetadata(buffer, forgeData);
-        const targetWorkspaceId = workspaceId || getActiveWorkspace();
+        const targetWorkspaceId = workspaceId || getActiveWorkspace(req.session?.id);
         
         if (shouldSave) {
             fs.writeFileSync(path.join(imagesDir, name), buffer);
@@ -3431,6 +3432,10 @@ app.options('/preset/:name', authMiddleware, async (req, res) => {
 });
 
 app.put('/preset/:name', authMiddleware, async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         const presetName = req.params.name;
         const presetData = req.body;
@@ -3614,6 +3619,10 @@ app.post('/:model/prompt', authMiddleware, async (req, res) => {
 
 // POST /:model/generate (direct model generation)
 app.post('/:model/generate', authMiddleware, queueMiddleware, async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         const key = req.params.model.toLowerCase();
         const model = Model[key.toUpperCase()];
@@ -3767,6 +3776,10 @@ app.post('/test-bias-adjustment', async (req, res) => {
 
 // Upload endpoint
 app.post('/workspaces/:id/images', authMiddleware, upload.array('images', 10), async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         if (!req.files || req.files.length === 0) {
             return res.status(400).json({ error: 'No image files provided' });
@@ -3840,7 +3853,8 @@ app.post('/workspaces/:id/images', authMiddleware, upload.array('images', 10), a
 app.options('/references', authMiddleware, (req, res) => {
     try {
         // Get cache files for active workspace (includes default + active workspace)
-        const workspaceCacheFiles = getActiveWorkspaceCacheFiles();
+        const sessionId = req.session?.id;
+        const workspaceCacheFiles = getActiveWorkspaceCacheFiles(null, sessionId);
         
         // Get all files in cache directory
         const allFiles = fs.readdirSync(uploadCacheDir);
@@ -3857,10 +3871,10 @@ app.options('/references', authMiddleware, (req, res) => {
             
             // Determine which workspace this file belongs to
             const workspaces = getWorkspacesData();
-            const activeWorkspace = getActiveWorkspaceData();
+            const activeWorkspaceId = getActiveWorkspace(sessionId);
             let workspaceId = 'default';
-            if (activeWorkspace !== 'default' && workspaces[activeWorkspace] && workspaces[activeWorkspace].cacheFiles.includes(file)) {
-                workspaceId = activeWorkspace;
+            if (activeWorkspaceId !== 'default' && workspaces[activeWorkspaceId] && workspaces[activeWorkspaceId].cacheFiles.includes(file)) {
+                workspaceId = activeWorkspaceId;
             }
             
             cacheFiles.push({
@@ -3919,6 +3933,10 @@ app.options('/workspaces/:id/references', authMiddleware, (req, res) => {
 });
 // Delete cache file
 app.delete('/workspaces/:id/references/:hash', authMiddleware, (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         const hash = req.params.hash;
         const filePath = path.join(uploadCacheDir, hash);
@@ -3948,6 +3966,10 @@ app.delete('/workspaces/:id/references/:hash', authMiddleware, (req, res) => {
 });
 // PUT /workspaces/:id/references (move cache files to workspace)
 app.put('/workspaces/:id/references', authMiddleware, (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     try {
         const { id } = req.params;
         const { hashes } = req.body;
@@ -3965,6 +3987,10 @@ app.put('/workspaces/:id/references', authMiddleware, (req, res) => {
 });
 // POST /upload/:id/references (upload base image to cache)
 app.post('/workspaces/:id/references', authMiddleware, cacheUpload.single('image'), async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     const { id } = req.params;
     try {
         if (!req.file) {
@@ -4006,6 +4032,10 @@ app.post('/workspaces/:id/references', authMiddleware, cacheUpload.single('image
 
 // POST /workspaces/:id/references/copy (copy existing image to cache)
 app.post('/workspaces/:id/references/copy', authMiddleware, async (req, res) => {
+    // Check if user is read-only
+    if (req.userType === 'readonly') {
+        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
+    }
     const { id } = req.params;
     const { filename } = req.body;
     
@@ -4096,10 +4126,40 @@ wsServer.startPingInterval(() => {
     };
 });
 
+// Clear temp downloads on server boot
+function clearTempDownloads() {
+    try {
+        if (fs.existsSync(tempDownloadDir)) {
+            const files = fs.readdirSync(tempDownloadDir);
+            let deletedCount = 0;
+            
+            for (const file of files) {
+                try {
+                    const filePath = path.join(tempDownloadDir, file);
+                    fs.unlinkSync(filePath);
+                    deletedCount++;
+                } catch (error) {
+                    console.warn(`⚠️ Failed to delete temp file ${file}:`, error.message);
+                }
+            }
+            
+            if (deletedCount > 0) {
+                console.log(`🧹 Cleared ${deletedCount} temp download files on server boot`);
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ Failed to clear temp downloads:', error.message);
+    }
+}
+
 // Start server
 (async () => {
     console.log('🚀 Initializing cache... (Server unavalible until cache is initialized)');
     await initializeCache();
+    
+    // Clear temp downloads on startup
+    clearTempDownloads();
+    
     server.listen(config.port, () => console.log(`Server running on port ${config.port}`));
 })();
 

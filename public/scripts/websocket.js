@@ -17,6 +17,7 @@ class WebSocketClient {
         this.initSteps = [];
         this.currentInitStep = 0;
         this.totalInitSteps = 0;
+        this.initializationCompleted = false; // Track if initialization has been completed
         
         // Pending requests tracking
         this.pendingRequestsCount = 0;
@@ -80,13 +81,86 @@ class WebSocketClient {
     }
 
     registerInitStep(priority, message, stepFunction) {
-        this.initSteps.push({ priority, message, stepFunction });
+        // Check if step with same message already exists
+        const existingStepIndex = this.initSteps.findIndex(step => step.message === message);
+        if (existingStepIndex !== -1) {
+            console.log(`🔄 Updating existing init step: ${message}`);
+            this.initSteps[existingStepIndex] = { priority, message, stepFunction };
+        } else {
+            console.log(`📝 Registering new init step: ${message} (priority: ${priority})`);
+            this.initSteps.push({ priority, message, stepFunction });
+        }
+        
+        // Sort by priority
         this.initSteps.sort((a, b) => a.priority - b.priority);
         this.totalInitSteps = this.initSteps.length;
     }
 
+    // Method to remove a specific initialization step
+    removeInitStep(message) {
+        const index = this.initSteps.findIndex(step => step.message === message);
+        if (index !== -1) {
+            console.log(`🗑️ Removing init step: ${message}`);
+            this.initSteps.splice(index, 1);
+            this.totalInitSteps = this.initSteps.length;
+            return true;
+        }
+        return false;
+    }
+
+    // Method to clear all initialization steps
+    clearInitSteps() {
+        console.log('🗑️ Clearing all initialization steps');
+        this.initSteps = [];
+        this.totalInitSteps = 0;
+        this.initializationCompleted = false;
+    }
+
+    // Method to get current WebSocket client status
+    getStatus() {
+        return {
+            connectionState: this.getConnectionState(),
+            isConnected: this.isConnected(),
+            isConnecting: this.isConnecting,
+            reconnectAttempts: this.reconnectAttempts,
+            maxReconnectAttempts: this.maxReconnectAttempts,
+            initializationCompleted: this.initializationCompleted,
+            totalInitSteps: this.totalInitSteps,
+            currentInitStep: this.currentInitStep,
+            pendingRequestsCount: this.pendingRequestsCount,
+            isManualClose: this.isManualClose
+        };
+    }
+
+    // Method to manually trigger initialization (useful for testing or manual refresh)
+    async manualInit() {
+        if (this.initializationCompleted) {
+            console.log('🔄 Resetting initialization for manual trigger');
+            this.initializationCompleted = false;
+        }
+        return this.executeInitSteps();
+    }
+
     async executeInitSteps() {
+        // Prevent duplicate initialization on reconnection
+        if (this.initializationCompleted) {
+            console.log('🔄 Skipping initialization steps - already completed');
+            this.hideLoadingOverlay();
+            return;
+        }
+        
+        // Safety check for empty init steps
+        if (!this.initSteps || this.initSteps.length === 0) {
+            console.log('ℹ️ No initialization steps registered');
+            this.initializationCompleted = true;
+            this.hideLoadingOverlay();
+            return;
+        }
+        
         this.currentInitStep = 0;
+        this.totalInitSteps = this.initSteps.length;
+        
+        console.log(`🚀 Starting initialization with ${this.totalInitSteps} steps`);
         
         try {
             for (const step of this.initSteps) {
@@ -94,20 +168,27 @@ class WebSocketClient {
                 const progress = (this.currentInitStep / this.totalInitSteps) * 100;
                 this.updateLoadingProgress(step.message, progress);
                 
+                console.log(`📋 Executing init step ${this.currentInitStep}/${this.totalInitSteps}: ${step.message}`);
+                
                 try {
                     await step.stepFunction();
+                    console.log(`✅ Completed init step: ${step.message}`);
                 } catch (error) {
-                    console.error(`Error in init step "${step.message}":`, error);
+                    console.error(`❌ Error in init step "${step.message}":`, error);
                     // Continue with next step even if one fails
                 }
             }
+            
+            // Mark initialization as completed
+            this.initializationCompleted = true;
+            console.log('🎉 All initialization steps completed successfully');
             
             // Hide overlay after all steps complete
             setTimeout(() => {
                 this.hideLoadingOverlay();
             }, 500);
         } catch (error) {
-            console.error('Error during initialization:', error);
+            console.error('❌ Error during initialization:', error);
             this.updateLoadingProgress('Initialization failed', 100);
             setTimeout(() => {
                 this.hideLoadingOverlay();
@@ -132,22 +213,34 @@ class WebSocketClient {
         // Handle page visibility changes
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && !this.ws) {
+                console.log('👁️ Page became visible, reconnecting if needed');
                 this.connect();
             }
         });
 
         // Handle beforeunload
         window.addEventListener('beforeunload', () => {
+            console.log('🚪 Page unloading, closing WebSocket');
             this.isManualClose = true;
             this.disconnect();
+        });
+
+        // Handle page focus events
+        window.addEventListener('focus', () => {
+            if (!this.isConnected() && !this.isConnecting) {
+                console.log('🎯 Page focused, attempting reconnection');
+                this.connect();
+            }
         });
     }
 
     connect() {
         if (this.isConnecting || this.ws?.readyState === WebSocket.OPEN) {
+            console.log('🔄 Connection already in progress or connected, skipping');
             return;
         }
 
+        console.log('🔌 Attempting WebSocket connection...');
         this.isConnecting = true;
         this.updateLoadingProgress('Connecting to server...', 10);
         
@@ -164,7 +257,7 @@ class WebSocketClient {
             this.ws = new WebSocket(wsUrl);
             
             this.ws.onopen = () => {
-                console.log('🔌 WebSocket connected');
+                console.log('🔌 WebSocket connected successfully');
                 this.isConnecting = false;
                 this.reconnectAttempts = 0;
                 this.reconnectDelay = 1000;
@@ -199,14 +292,17 @@ class WebSocketClient {
                     }
                 }
                 
-                // Start ping interval
-                this.startPingInterval();
-                
                 // Trigger connection event
                 this.triggerEvent('connected');
                 
-                // Execute initialization steps
-                this.executeInitSteps();
+                // Execute initialization steps only if not already completed
+                if (!this.initializationCompleted) {
+                    console.log('🚀 Executing initialization steps for new connection');
+                    this.executeInitSteps();
+                } else {
+                    console.log('✅ Initialization already completed, skipping');
+                    this.hideLoadingOverlay();
+                }
             };
 
             this.ws.onmessage = (event) => {
@@ -293,6 +389,7 @@ class WebSocketClient {
     }
 
     disconnect() {
+        console.log('🔌 Disconnecting WebSocket...');
         this.isManualClose = true;
         this.stopPingInterval();
         
@@ -301,14 +398,18 @@ class WebSocketClient {
         this.updatePendingRequestsSpinner();
         
         if (this.ws) {
+            console.log('🔌 Closing WebSocket connection');
             this.ws.close(1000, 'Manual disconnect');
             this.ws = null;
+        } else {
+            console.log('ℹ️ WebSocket already closed or null');
         }
     }
 
     reconnect() {
         if (this.isManualClose || this.reconnectAttempts >= this.maxReconnectAttempts) {
             if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                console.log(`❌ Max reconnection attempts (${this.maxReconnectAttempts}) reached, stopping reconnection`);
                 if (typeof showGlassToast === 'function' && typeof updateGlassToast === 'function') {
                     try {
                         if (window.websocketToastId) {
@@ -321,6 +422,8 @@ class WebSocketClient {
                         window.websocketToastId = null;
                     }
                 }
+            } else {
+                console.log('🔄 Manual close detected, skipping reconnection');
             }
             return;
         }
@@ -332,7 +435,10 @@ class WebSocketClient {
         
         setTimeout(() => {
             if (!this.isManualClose) {
+                console.log(`🔄 Executing reconnection attempt ${this.reconnectAttempts}`);
                 this.connect();
+            } else {
+                console.log('🔄 Manual close detected during reconnection delay, aborting');
             }
         }, delay);
     }
@@ -343,10 +449,49 @@ class WebSocketClient {
         this.isManualClose = false;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
+        this.initializationCompleted = false; // Reset initialization flag for force reconnect
         this.disconnect();
         setTimeout(() => {
             this.connect();
         }, 100);
+    }
+
+    // Method to reset initialization flag (useful for manual page refresh scenarios)
+    resetInitialization() {
+        console.log('🔄 Resetting initialization flag');
+        this.initializationCompleted = false;
+    }
+
+    // Method to check if initialization has been completed
+    isInitialized() {
+        return this.initializationCompleted;
+    }
+
+    // Method to execute a specific initialization step by name
+    async executeSpecificStep(stepName) {
+        const step = this.initSteps.find(s => s.message === stepName);
+        if (step) {
+            console.log(`🔄 Executing specific init step: ${stepName}`);
+            try {
+                await step.stepFunction();
+                return true;
+            } catch (error) {
+                console.error(`Error executing specific init step "${stepName}":`, error);
+                return false;
+            }
+        } else {
+            console.warn(`⚠️ Init step not found: ${stepName}`);
+            return false;
+        }
+    }
+
+    // Method to get list of available initialization steps
+    getInitSteps() {
+        return this.initSteps.map(step => ({
+            message: step.message,
+            priority: step.priority,
+            completed: this.initializationCompleted
+        }));
     }
 
     send(message) {
@@ -595,6 +740,21 @@ class WebSocketClient {
         }
     }
 
+    // Method to request URL upload metadata via WebSocket
+    async requestUrlUploadMetadata(filename) {
+        try {
+            const result = await this.sendWithCallback('request_url_upload_metadata', { filename }, (response, error) => {
+                if (error) {
+                    console.error('URL upload metadata request callback error:', error);
+                }
+            });
+            return result;
+        } catch (error) {
+            showGlassToast('error', 'URL upload metadata request error', error.message, false);
+            throw error;
+        }
+    }
+
     // Method to request image by index via WebSocket
     async requestImageByIndex(index, viewType = 'images') {
         try {
@@ -805,6 +965,18 @@ class WebSocketClient {
         return this.sendMessage('workspace_update_background_opacity', { id, backgroundOpacity });
     }
 
+    async updateWorkspacePrimaryFont(id, primaryFont) {
+        return this.sendMessage('workspace_update_primary_font', { id, primaryFont });
+    }
+
+    async updateWorkspaceTextareaFont(id, textareaFont) {
+        return this.sendMessage('workspace_update_textarea_font', { id, textareaFont });
+    }
+
+    async updateWorkspaceSettings(id, settings) {
+        return this.sendMessage('workspace_update_settings', { id, settings });
+    }
+
     async reorderWorkspaces(workspaceIds) {
         return this.sendMessage('workspace_reorder', { workspaceIds });
     }
@@ -847,8 +1019,20 @@ class WebSocketClient {
         return this.sendMessage('delete_reference', { hash, workspaceId });
     }
 
-    async uploadReference(imageData, workspaceId) {
-        return this.sendMessage('upload_reference', { imageData, workspaceId });
+    async uploadReference(imageData, workspaceId, tempFile = null) {
+        return this.sendMessage('upload_reference', { imageData, workspaceId, tempFile });
+    }
+
+    async downloadUrlFile(url) {
+        return this.sendMessage('download_url_file', { url });
+    }
+
+    async fetchUrlInfo(url, options = {}, responseType = 'json') {
+        return this.sendMessage('fetch_url_info', { url, options, responseType });
+    }
+
+    async uploadWorkspaceImage(imageData, workspaceId, originalFilename = null, batchInfo = null, tempFile = null) {
+        return this.sendMessage('upload_workspace_image', { imageData, workspaceId, originalFilename, batchInfo, tempFile });
     }
 
     async moveReferences(hashes, targetWorkspaceId, sourceWorkspaceId) {
@@ -883,8 +1067,8 @@ class WebSocketClient {
         return this.sendMessage('encode_vibe', params);
     }
 
-    async importVibeBundle(bundleData, workspaceId, comment = '') {
-        return this.sendMessage('import_vibe_bundle', { bundleData, workspaceId, comment });
+    async importVibeBundle(bundleData, workspaceId, comment = '', tempFile = null) {
+        return this.sendMessage('import_vibe_bundle', { bundleData, workspaceId, comment, tempFile });
     }
 
     async checkVibeEncoding(vibeId, workspaceId) {
@@ -1146,16 +1330,6 @@ class WebSocketClient {
 
 // Create global WebSocket instance
 window.wsClient = new WebSocketClient();
-
-// Initialize realtime search functionality
-if (typeof initializeRealtimeSearch === 'function') {
-    // Wait for DOM to be ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initializeRealtimeSearch);
-    } else {
-        initializeRealtimeSearch();
-    }
-}
 
 // Export for module use
 if (typeof module !== 'undefined' && module.exports) {

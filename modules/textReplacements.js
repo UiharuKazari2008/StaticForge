@@ -181,69 +181,49 @@ class SearchService {
             let spellCheckData = null;
 
             if (!isTextReplacementSearch && !isTextPrefixSearch) {
-                // Perform server-side search for characters and tags
-                const characterResults = await this.performCharacterSearch(query, model, ws);
+                // Start all services independently - no waiting for each other
                 
-                // Get tag results from the tag suggestions cache or API calls
-                let tagResults = [];
-                const queryHash = this.generateQueryHash(query.trim().toLowerCase(), model);
-                const tagSuggestionsCache = this.context.tagSuggestionsCache;
+                // Start character search as independent service
+                const characterPromise = this.performCharacterSearch(query, model, ws);
                 
-                if (tagSuggestionsCache.queries[model] && tagSuggestionsCache.queries[model][queryHash]) {
-                    // Use cached tag results
-                    const tagObjs = tagSuggestionsCache.queries[model][queryHash];
-                    tagResults = tagObjs.map(obj => {
-                        const tag = tagSuggestionsCache.tags[obj.key];
-                        if (tag) {
-                            return {
-                                type: 'tag',
-                                name: tag.tag,
-                                count: tag.count,
-                                confidence: obj.confidence,
-                                model: obj.model,
-                                serviceOrder: 0,
-                                resultOrder: 0,
-                                serviceName: obj.model
-                            };
-                        }
-                        return null;
-                    }).filter(Boolean);
+                // Start tag search as independent service
+                const tagPromise = this.performTagSearch(query, model, ws);
+                
+                // Start spellcheck as independent service
+                const spellcheckPromise = this.performSpellCheckAsync(query, ws);
+                
+                // Wait for all services to complete (they run concurrently)
+                const [characterResults, tagResults, spellcheckData] = await Promise.allSettled([
+                    characterPromise,
+                    tagPromise,
+                    spellcheckPromise
+                ]);
+                
+                // Extract results (handle any failures gracefully)
+                if (characterResults.status === 'fulfilled') {
+                    searchResults = [...searchResults, ...characterResults.value];
                 }
                 
-                // Combine character and tag results
-                searchResults = [...characterResults, ...tagResults];
+                if (tagResults.status === 'fulfilled') {
+                    searchResults = [...searchResults, ...tagResults.value];
+                }
                 
-                // Perform spell checking separately
-                try {
-                    if (this.spellChecker && typeof this.spellChecker.checkText === 'function') {
-                        spellCheckData = this.performSpellCheck(query);
-                        
-                        // Send spell check results separately if WebSocket is available
-                        if (ws && spellCheckData && spellCheckData.hasErrors) {
-                            ws.send(JSON.stringify({
-                                type: 'search_results_update',
-                                service: 'spellcheck',
-                                results: [{
-                                    type: 'spellcheck',
-                                    data: spellCheckData,
-                                    serviceOrder: -2, // Spell check comes before text replacements
-                                    resultOrder: 0,
-                                    serviceName: 'spellcheck'
-                                }],
-                                serviceOrder: -2,
-                                isComplete: false
-                            }));
-                        }
-                    }
-                } catch (error) {
-                    console.error('Spell check failed, continuing without spell check:', error);
-                    spellCheckData = null;
+                if (spellcheckData.status === 'fulfilled') {
+                    spellCheckData = spellcheckData.value;
                 }
             }
             
             // Handle "Text:" prefix - only perform spell checking
             if (isTextPrefixSearch) {
                 const textAfterPrefix = query.substring(5).trim(); // Remove "Text:" prefix
+                
+                // Send initial status update for spellcheck service
+                if (ws) {
+                    ws.send(JSON.stringify({
+                        type: 'search_status_update',
+                        services: [{ name: 'spellcheck', status: 'searching' }]
+                    }));
+                }
                 
                 // Only perform spell checking for "Text:" searches
                 try {
@@ -266,9 +246,24 @@ class SearchService {
                                 isComplete: false
                             }));
                         }
+                        
+                        // Send completion status for spellcheck service
+                        if (ws) {
+                            ws.send(JSON.stringify({
+                                type: 'search_status_update',
+                                services: [{ name: 'spellcheck', status: 'completed' }]
+                            }));
+                        }
                     }
                 } catch (error) {
                     console.error('Spell check failed for Text: search:', error);
+                    // Send error status for spellcheck service
+                    if (ws) {
+                        ws.send(JSON.stringify({
+                            type: 'search_status_update',
+                            services: [{ name: 'spellcheck', status: 'error' }]
+                        }));
+                    }
                     spellCheckData = null;
                 }
             }
@@ -294,7 +289,32 @@ class SearchService {
             // Search through text replacements (only for non-"Text:" searches)
             let textReplacementResults = [];
             if (!isTextPrefixSearch) {
+                // Send initial status update for textReplacements service
+                if (ws) {
+                    ws.send(JSON.stringify({
+                        type: 'search_status_update',
+                        services: [{ name: 'textReplacements', status: 'searching' }]
+                    }));
+                }
+                
                 textReplacementResults = this.searchTextReplacements(searchQuery, hasPickSuffix);
+                
+                // Send text replacement results update
+                if (ws && textReplacementResults.length > 0) {
+                    ws.send(JSON.stringify({
+                        type: 'search_results_update',
+                        service: 'textReplacements',
+                        results: textReplacementResults
+                    }));
+                }
+                
+                // Send completion status for textReplacements service
+                if (ws) {
+                    ws.send(JSON.stringify({
+                        type: 'search_status_update',
+                        services: [{ name: 'textReplacements', status: 'completed' }]
+                    }));
+                }
             }
 
             // Combine search results with text replacement results
@@ -440,16 +460,32 @@ class SearchService {
             });
             
             // Sort character results by similarity (highest first)
-            characterResults.sort((a, b) => b.similarity - a.similarity);            
+            characterResults.sort((a, b) => b.similarity - a.similarity);
+            
+            // Send initial status update for characters service
+            if (ws) {
+                ws.send(JSON.stringify({
+                    type: 'search_status_update',
+                    services: [{ name: 'characters', status: 'searching' }]
+                }));
+            }
+            
             // Send character results immediately if WebSocket is available
             if (ws && characterResults.length > 0) {
-                
                 ws.send(JSON.stringify({
                     type: 'search_results_update',
                     service: 'characters',
                     results: characterResults,
                     serviceOrder: 1,
                     isComplete: false
+                }));
+            }
+            
+            // Send completion status for characters service
+            if (ws) {
+                ws.send(JSON.stringify({
+                    type: 'search_status_update',
+                    services: [{ name: 'characters', status: 'completed' }]
                 }));
             }
 
@@ -681,7 +717,7 @@ class SearchService {
                 }));
             }
             
-            // Make sequential API calls with rate limiting
+            // Start all API calls concurrently - no sequential waiting
             const allTags = [];
             const queryTagObjs = [];
             
@@ -1202,6 +1238,108 @@ class SearchService {
         results.sort((a, b) => b.matchScore - a.matchScore);
         
         return results;
+    }
+
+    // New helper method for independent tag search
+    async performTagSearch(query, model, ws = null) {
+        try {
+            if (!query || query.trim().length < 2) {
+                return [];
+            }
+
+            // Get tag results from the tag suggestions cache or API calls
+            let tagResults = [];
+            const queryHash = this.generateQueryHash(query.trim().toLowerCase(), model);
+            const tagSuggestionsCache = this.context.tagSuggestionsCache;
+            
+            if (tagSuggestionsCache.queries[model] && tagSuggestionsCache.queries[model][queryHash]) {
+                // Use cached tag results
+                const tagObjs = tagSuggestionsCache.queries[model][queryHash];
+                tagResults = tagObjs.map(obj => {
+                    const tag = tagSuggestionsCache.tags[obj.key];
+                    if (tag) {
+                        return {
+                            type: 'tag',
+                            name: tag.tag,
+                            count: tag.count,
+                            confidence: obj.confidence,
+                            model: obj.model,
+                            serviceOrder: 0,
+                            resultOrder: 0,
+                            serviceName: obj.model
+                        };
+                    }
+                    return null;
+                }).filter(Boolean);
+            } else {
+                // Make API requests for tags
+                tagResults = await this.makeTagRequests(query, model, tagSuggestionsCache, queryHash, ws);
+            }
+            
+            return tagResults;
+        } catch (error) {
+            console.error('Tag search error:', error);
+            return [];
+        }
+    }
+
+    // New helper method for independent spellcheck
+    async performSpellCheckAsync(query, ws = null) {
+        try {
+            if (!this.spellChecker || typeof this.spellChecker.checkText !== 'function') {
+                return null;
+            }
+
+            // Send initial status update for spellcheck service
+            if (ws) {
+                ws.send(JSON.stringify({
+                    type: 'search_status_update',
+                    services: [{ name: 'spellcheck', status: 'searching' }]
+                }));
+            }
+
+            // Perform spell checking
+            const spellCheckData = this.performSpellCheck(query);
+            
+            // Send spell check results separately if WebSocket is available
+            if (ws && spellCheckData && spellCheckData.hasErrors) {
+                ws.send(JSON.stringify({
+                    type: 'search_results_update',
+                    service: 'spellcheck',
+                    results: [{
+                        type: 'spellcheck',
+                        data: spellCheckData,
+                        serviceOrder: -2, // Spell check comes before text replacements
+                        resultOrder: 0,
+                        serviceName: 'spellcheck'
+                    }],
+                    serviceOrder: -2,
+                    isComplete: false
+                }));
+            }
+            
+            // Send completion status for spellcheck service
+            if (ws) {
+                ws.send(JSON.stringify({
+                    type: 'search_status_update',
+                    services: [{ name: 'spellcheck', status: 'completed' }]
+                }));
+            }
+
+            return spellCheckData;
+        } catch (error) {
+            console.error('Spell check failed:', error);
+            
+            // Send error status for spellcheck service
+            if (ws) {
+                ws.send(JSON.stringify({
+                    type: 'search_status_update',
+                    services: [{ name: 'spellcheck', status: 'error' }]
+                }));
+            }
+            
+            return null;
+        }
     }
 }
 

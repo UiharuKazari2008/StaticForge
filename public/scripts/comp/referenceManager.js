@@ -37,8 +37,7 @@ const cacheManagerMoveConfirmBtn = document.getElementById('cacheManagerMoveConf
 const vibeManagerMoveCancelBtn = document.getElementById('vibeManagerMoveCancelBtn');
 const vibeManagerMoveConfirmBtn = document.getElementById('vibeManagerMoveConfirmBtn');
 const vibeManagerMoveBtn = document.getElementById('vibeManagerMoveBtn');
-const manualStrengthGroup = document.getElementById('manualStrengthGroup');
-const manualNoiseGroup = document.getElementById('manualNoiseGroup');
+const manualImg2ImgGroup = document.getElementById('manualImg2ImgGroup');
 const cacheManagerWorkspaceDropdown = document.getElementById('cacheManagerWorkspaceDropdown');
 const cacheManagerWorkspaceDropdownBtn = document.getElementById('cacheManagerWorkspaceDropdownBtn');
 const cacheManagerWorkspaceDropdownMenu = document.getElementById('cacheManagerWorkspaceDropdownMenu');
@@ -61,8 +60,8 @@ const vibeManagerMoveCount = document.getElementById('vibeManagerMoveCount');
 const vibeManagerMoveTargetSelect = document.getElementById('vibeManagerMoveTargetSelect');
 const closeUnifiedUploadBtn = document.getElementById('closeUnifiedUploadBtn');
 const unifiedUploadCancelBtn = document.getElementById('unifiedUploadCancelBtn');
+const unifiedUploadOpenInEditorBtn = document.getElementById('unifiedUploadOpenInEditorBtn');
 const unifiedUploadConfirmBtn = document.getElementById('unifiedUploadConfirmBtn');
-const unifiedUploadFileInput = document.getElementById('unifiedUploadFileInput');
 const unifiedUploadProgress = document.getElementById('unifiedUploadProgress');
 const unifiedUploadProgressFill = document.getElementById('unifiedUploadProgressFill');
 const unifiedUploadProgressText = document.getElementById('unifiedUploadProgressText');
@@ -75,14 +74,13 @@ const unifiedUploadIeInput = document.getElementById('unifiedUploadIeInput');
 const unifiedUploadModalTitle = document.getElementById('unifiedUploadModalTitle');
 const unifiedUploadConfirmText = document.getElementById('unifiedUploadConfirmText');
 const unifiedUploadModeDisplay = document.getElementById('unifiedUploadModeDisplay');
-const unifiedUploadModelDisplay = document.getElementById('unifiedUploadModelDisplay');
 const unifiedUploadBackgroundImage = document.getElementById('unifiedUploadBackgroundImage');
 
 const importModelMapping = {
     'v4full': 'v4',
     'v4-5full': 'v4_5',
     'v4curated': 'v4_cur',
-    'v4-5curated': 'v4_5_cur'
+    'v4-5curated': 'v4_5_cur'   
 };
 
 // Reference Browser Functions
@@ -112,8 +110,11 @@ let vibeEncodingCurrentVibeImage = null;
 let vibeEncodingCurrentCacheImage = null;
 
 // Unified Upload Modal Variables
-let unifiedUploadCurrentMode = 'reference'; // 'reference', 'vibe'
+let unifiedUploadCurrentMode = 'reference'; // 'reference', 'vibe', 'blueprint'
 let unifiedUploadSelectedModel = 'v4_5';
+let unifiedUploadFiles = []; // Array of selected files
+let unifiedUploadCurrentIndex = 0; // Current file index
+let unifiedUploadFileMetadata = []; // Array of file metadata/validation results
 
 // Reference Manager Variables
 let cacheManagerImages = [];
@@ -286,31 +287,78 @@ function displayReferenceImages(container, images, createItemFunction, options =
         return;
     }
 
-    // Separate default workspace items from current workspace items if requested
+    // Group images by workspace
     if (options.separateWorkspaces) {
-        const currentWorkspaceItems = [];
-        const defaultWorkspaceItems = [];
-
+        const workspaceGroups = {};
         images.forEach(image => {
-            if (image.workspaceId === 'default') {
-                defaultWorkspaceItems.push(image);
-            } else {
-                currentWorkspaceItems.push(image);
+            const workspaceId = image.workspaceId || 'default';
+            if (!workspaceGroups[workspaceId]) {
+                workspaceGroups[workspaceId] = [];
             }
+            workspaceGroups[workspaceId].push(image);
         });
 
-        // Display current workspace items first, then default workspace items
-        currentWorkspaceItems.forEach(image => {
-            const galleryItem = createItemFunction(image);
-            container.appendChild(galleryItem);
+        // Get current workspace ID for comparison - check multiple sources
+        let currentWorkspaceId = getCurrentWorkspaceId();
+        
+        // Try to get the actual current workspace from the workspace system
+        // Check if we can access the activeWorkspace from workspaceUtils
+        if (typeof activeWorkspace !== 'undefined' && activeWorkspace !== 'default') {
+            currentWorkspaceId = activeWorkspace;
+        } else if (window.cacheManagerCurrentWorkspace && window.cacheManagerCurrentWorkspace !== 'default') {
+            currentWorkspaceId = window.cacheManagerCurrentWorkspace;
+        }
+
+        // Sort workspace IDs: current workspace first, then others, default last
+        const workspaceIds = Object.keys(workspaceGroups).sort((a, b) => {
+            if (a === currentWorkspaceId) return -1;
+            if (b === currentWorkspaceId) return 1;
+            if (a === 'default') return 1;
+            if (b === 'default') return -1;
+            return a.localeCompare(b);
         });
 
-        defaultWorkspaceItems.forEach(image => {
-            const galleryItem = createItemFunction(image);
-            container.appendChild(galleryItem);
+        workspaceIds.forEach(workspaceId => {
+            const workspaceItems = workspaceGroups[workspaceId];
+            const workspaceName = getWorkspaceDisplayName(workspaceId);
+            
+            // Create workspace container
+            const workspaceContainer = document.createElement('div');
+            workspaceContainer.className = 'workspace-reference-container';
+            workspaceContainer.setAttribute('data-workspace-id', workspaceId);
+            
+            // Create workspace header logic:
+            // - When show all is OFF: hide header for current workspace, show for others
+            // - When show all is ON: show headers for all workspaces
+            const shouldShowHeader = cacheShowAllReferences || workspaceId !== currentWorkspaceId;
+            
+            if (shouldShowHeader) {
+                const workspaceHeader = document.createElement('div');
+                workspaceHeader.className = 'workspace-reference-header';
+                
+                const workspaceNameSpan = document.createElement('span');
+                workspaceNameSpan.className = 'workspace-reference-name';
+                workspaceNameSpan.textContent = workspaceName;
+                
+                workspaceHeader.appendChild(workspaceNameSpan);
+                workspaceContainer.appendChild(workspaceHeader);
+            }
+            
+            // Create workspace items container
+            const workspaceItemsContainer = document.createElement('div');
+            workspaceItemsContainer.className = 'workspace-reference-items';
+            
+            // Add all items for this workspace
+            workspaceItems.forEach(image => {
+                const galleryItem = createItemFunction(image);
+                workspaceItemsContainer.appendChild(galleryItem);
+            });
+            
+            workspaceContainer.appendChild(workspaceItemsContainer);
+            container.appendChild(workspaceContainer);
         });
     } else {
-        // Display all images in order
+        // Display all images in order without workspace grouping
         images.forEach(image => {
             const galleryItem = createItemFunction(image);
             container.appendChild(galleryItem);
@@ -373,6 +421,7 @@ function createCacheGalleryItem(cacheImage) {
     
     // Create "Add as Base Image" button
     const baseImageBtn = document.createElement('button');
+    baseImageBtn.type = 'button';
     baseImageBtn.className = 'btn-primary';
     baseImageBtn.innerHTML = '<i class="nai-img2img"></i>';
     baseImageBtn.title = 'Add as base image';
@@ -383,6 +432,7 @@ function createCacheGalleryItem(cacheImage) {
     
     // Create "Add as Vibe" button
     const vibeBtn = document.createElement('button');
+    vibeBtn.type = 'button';
     vibeBtn.className = 'btn-primary';
     vibeBtn.innerHTML = '<i class="nai-vibe-transfer"></i>';
     vibeBtn.title = 'Add as vibe reference';
@@ -433,6 +483,7 @@ function createCacheGalleryItem(cacheImage) {
         const vibesWithComments = cacheImage.vibes.filter(vibe => vibe.comment && vibe.comment.trim() !== '');
         if (vibesWithComments.length > 0) {
             const commentBtn = document.createElement('button');
+            commentBtn.type = 'button';
             commentBtn.className = 'btn-secondary btn-small';
             commentBtn.innerHTML = '<i class="fas fa-comment"></i>';
             commentBtn.title = `View comments (${vibesWithComments.length} vibe${vibesWithComments.length > 1 ? 's' : ''})`;
@@ -446,6 +497,7 @@ function createCacheGalleryItem(cacheImage) {
 
     // Create vibe encode button (always show to allow adding more IEs)
     const vibeEncodeBtn = document.createElement('button');
+    vibeEncodeBtn.type = 'button';
     vibeEncodeBtn.className = 'btn-secondary btn-small';
     vibeEncodeBtn.innerHTML = '<i class="nai-plus"></i> <span>IE</span>';
     vibeEncodeBtn.title = cacheImage.hasVibes ? 'Add Another Vibe Encoding' : 'Create Vibe Encoding';
@@ -463,6 +515,7 @@ function createCacheGalleryItem(cacheImage) {
     // Create preview button
     if (cacheImage.hasPreview) {
         const previewBtn = document.createElement('button');
+        previewBtn.type = 'button';
         previewBtn.className = 'btn-secondary btn-small';
         previewBtn.innerHTML = '<i class="fas fa-eye"></i>';
         previewBtn.title = 'Preview image';
@@ -889,7 +942,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null) {
     // Add dropdown toggle functionality
     ieDropdownBtn.addEventListener('click', () => {
         if (ieDropdownMenu.style.display === 'none') {
-            ieDropdownMenu.style.display = 'block';
+            ieDropdownMenu.style.display = '';
         } else {
             ieDropdownMenu.style.display = 'none';
         }
@@ -910,23 +963,51 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null) {
     const ratioControl = document.createElement('div');
     ratioControl.className = 'vibe-reference-ratio-control';
 
+    const ratioInputContainer = document.createElement('div');
+    ratioInputContainer.className = 'percentage-input-container hover-show colored vibe-reference-ratio-input right';
+
     const ratioInput = document.createElement('input');
     ratioInput.type = 'number';
-    ratioInput.className = 'vibe-reference-ratio-input hover-show right colored';
-    ratioInput.min = '0.0';
-    ratioInput.max = '1.0';
+    ratioInput.className = 'form-control vibe-reference-ratio-input right';
+    ratioInput.min = '-1.00';
+    ratioInput.max = '1.00';
     ratioInput.step = '0.01';
-    ratioInput.value = strength !== null ? strength.toString() : '0.7';
+    ratioInput.value = strength !== null ? strength.toFixed(2) : '0.70';
+
+    // Create percentage overlay
+    const ratioOverlay = document.createElement('span');
+    ratioOverlay.className = 'percentage-input-overlay';
+    const currentValue = strength !== null ? strength : 0.7;
+    ratioOverlay.textContent = `${(currentValue * 100).toFixed(0)}%`;
 
     // Add wheel event for scrolling
     ratioInput.addEventListener('wheel', function(e) {
         e.preventDefault();
         const delta = e.deltaY > 0 ? -0.01 : 0.01;
-        const newValue = Math.max(0, Math.min(1, parseFloat(this.value) + delta));
+        const newValue = Math.max(-1, Math.min(1, parseFloat(this.value) + delta));
         this.value = newValue.toFixed(2);
+        ratioOverlay.textContent = `${(newValue * 100).toFixed(0)}%`;
+        if (this.value < 0 && !this.parentElement.classList.contains('negative-value')) {
+            this.parentElement.classList.add('negative-value');
+        } else if (this.value >= 0 && this.parentElement.classList.contains('negative-value')) {
+            this.parentElement.classList.remove('negative-value');
+        }
     });
 
-    ratioControl.appendChild(ratioInput);
+    // Add input event to update overlay
+    ratioInput.addEventListener('input', function() {
+        const value = parseFloat(this.value) || 0;
+        ratioOverlay.textContent = `${(value * 100).toFixed(0)}%`;
+        if (this.value < 0 && !this.parentElement.classList.contains('negative-value')) {
+            this.parentElement.classList.add('negative-value');
+        } else if (this.value >= 0 && this.parentElement.classList.contains('negative-value')) {
+            this.parentElement.classList.remove('negative-value');
+        }
+    });
+
+    ratioInputContainer.appendChild(ratioOverlay);
+    ratioInputContainer.appendChild(ratioInput);
+    ratioControl.appendChild(ratioInputContainer);
 
     info.appendChild(ieControl);
     info.appendChild(ratioControl);
@@ -1109,27 +1190,46 @@ async function selectCacheImage(cacheImage) {
 // Internal function to handle the actual cache image selection
 async function selectCacheImageInternal(cacheImage) {
     try {
-        // Set the uploaded image data
+        // Set the uploaded image data with temporary dimensions
         window.uploadedImageData = {
             image_source: `cache:${cacheImage.hash}`,
-            width: 512, // Default, will be updated when image loads
-            height: 512,
+            width: 0, // Will be updated when image loads
+            height: 0,
             bias: 2, // Reset bias to center (2)
             isBiasMode: true,
             isClientSide: 2
         };
 
+        // Load actual image dimensions
+        const previewUrl = `/cache/preview/${cacheImage.hash}.webp`;
+        await new Promise((resolve) => {
+            const tempImg = new Image();
+            tempImg.onload = () => {
+                window.uploadedImageData.width = tempImg.width;
+                window.uploadedImageData.height = tempImg.height;
+                resolve();
+            };
+            tempImg.onerror = () => {
+                console.warn('Failed to load cache image dimensions, using defaults');
+                window.uploadedImageData.width = 512;
+                window.uploadedImageData.height = 512;
+                resolve();
+            };
+            tempImg.src = previewUrl;
+        });
 
         // Show transformation section content
         if (transformationRow) {
             transformationRow.classList.add('display-image');
         }
-        if (manualStrengthGroup) manualStrengthGroup.style.display = '';
-        if (manualNoiseGroup) manualNoiseGroup.style.display = '';
+        if (manualImg2ImgGroup) manualImg2ImgGroup.style.display = '';
 
         // Update image bias - reset to center (2)
         if (imageBiasHidden != null) imageBiasHidden.value = '2';
         renderImageBiasDropdown('2');
+        
+        // Update image bias orientation after setting image dimensions
+        updateImageBiasOrientation();
 
         // Set transformation type to browse (successful)
         updateTransformationDropdownState('browse');
@@ -1238,6 +1338,8 @@ async function deleteCacheImage(cacheImage) {
 // Reference Manager Functions
 
 function showCacheManagerModal() {
+    closeSubMenu();
+    
     cacheManagerCurrentWorkspace = activeWorkspace;
 
     // Setup workspace dropdown
@@ -1629,33 +1731,95 @@ async function deleteCacheManagerImage(cacheImage, workspace) {
 
 
 
+// Gallery Move Right Panel Cover Control Functions
+function showGalleryMoveRightPanelCover(message = 'Processing upload...') {
+    const cover = document.getElementById('galleryMoveRightPanelCover');
+    if (cover) {
+        const textElement = cover.querySelector('.cover-text');
+        if (textElement) {
+            textElement.textContent = message;
+        }
+        cover.classList.add('show');
+    }
+}
+
+function hideGalleryMoveRightPanelCover() {
+    const cover = document.getElementById('galleryMoveRightPanelCover');
+    if (cover) {
+        cover.classList.remove('show');
+    }
+}
+
 // Unified Upload Modal Functions
 function showUnifiedUploadModal() {
     if (!unifiedUploadModal) return;
 
     // Reset form
-    if (unifiedUploadFileInput) unifiedUploadFileInput.value = '';
     if (unifiedUploadIeInput) unifiedUploadIeInput.value = '0.35';
-    if (unifiedUploadConfirmBtn) unifiedUploadConfirmBtn.disabled = true;
+    if (unifiedUploadConfirmBtn) {
+        unifiedUploadConfirmBtn.disabled = true;
+        unifiedUploadConfirmBtn.innerHTML = '<span id="unifiedUploadConfirmText">Upload</span> <i class="fas fa-upload"></i>';
+    }
+    
+    // Reset modal title to initial state
+    const modalTitle = document.getElementById('unifiedUploadModalTitle');
+    if (modalTitle) {
+        modalTitle.innerHTML = '<i class="nai-import"></i> Import File';
+    }
+    
+    // Reset downloaded file state
+    unifiedUploadDownloadedFile = null;
+    
+    // Reset pending URL state
+    unifiedUploadPendingUrl = null;
+    
+    // Hide downloaded file info section
+    const downloadedInfo = document.getElementById('unifiedUploadDownloadedInfo');
+    if (downloadedInfo) {
+        downloadedInfo.style.display = 'none';
+    }
     
     // Reset comment input
     const commentInput = document.getElementById('unifiedUploadCommentInput');
     if (commentInput) commentInput.value = '';
     
-    // Use the mode that was set before opening, or default to reference mode
-    if (typeof window.unifiedUploadCurrentMode === 'string') {
-        unifiedUploadCurrentMode = window.unifiedUploadCurrentMode;
-        // Reset the global variable
-        window.unifiedUploadCurrentMode = 'reference';
-    } else {
-        unifiedUploadCurrentMode = 'reference';
-    }
+    // Reset mode to reference
+    unifiedUploadCurrentMode = 'reference';
     
     // Reset UI elements
+    hideModeSelector();
     hideVibeBundlePreview();
-    showModeSelector();
+    hideBlueprintPreview();
     resetUploadModal();
     updateUnifiedUploadMode();
+    
+    // Reset files array
+    unifiedUploadFiles = [];
+    unifiedUploadCurrentIndex = 0;
+    unifiedUploadFileMetadata = [];
+    
+    // Show initial upload options
+    showInitialUploadOptions();
+    
+    // Hide comment input container initially
+    const commentContainer = document.getElementById('unifiedUploadCommentInputContainer');
+    if (commentContainer) {
+        commentContainer.style.display = 'none';
+    }
+    
+    // Hide footer actions initially
+    const footerActions = document.querySelector('.gallery-move-actions');
+    if (footerActions) {
+        footerActions.style.display = 'none';
+    }
+    
+    // Hide Open in Editor button initially
+    if (unifiedUploadOpenInEditorBtn) {
+        unifiedUploadOpenInEditorBtn.style.display = 'none';
+    }
+    
+    // Reset overlay content
+    resetUploadOverlay();
     
     // Populate model dropdown
     populateUnifiedUploadModelDropdown();
@@ -1666,7 +1830,38 @@ function showUnifiedUploadModal() {
 
 function hideUnifiedUploadModal() {
     if (unifiedUploadModal) {
+        // Hide cover overlay when closing modal
+        hideGalleryMoveRightPanelCover();
+        
+        // Close the modal
         closeModal(unifiedUploadModal);
+
+        // Reset all state before closing
+        unifiedUploadDownloadedFile = null;
+        unifiedUploadPendingUrl = null;
+        unifiedUploadFiles = [];
+        unifiedUploadCurrentIndex = 0;
+        unifiedUploadFileMetadata = [];
+        unifiedUploadCurrentMode = 'reference';
+        
+        // Reset UI elements
+        hideModeSelector();
+        hideVibeBundlePreview();
+        hideBlueprintPreview();
+        
+        // Reset overlay content
+        resetUploadOverlay();
+        
+        // Reset background image
+        const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
+        if (backgroundImage) {
+            backgroundImage.src = '/background.jpg';
+        }
+        
+        // Hide Open in Editor button
+        if (unifiedUploadOpenInEditorBtn) {
+            unifiedUploadOpenInEditorBtn.style.display = 'none';
+        }
     }
 }
 
@@ -1688,21 +1883,47 @@ function updateUnifiedUploadMode() {
         }
     });
     
-    // Update mode display
+    // Update mode display only when we have files or are in a specific mode
     if (unifiedUploadModeDisplay) {
-        unifiedUploadModeDisplay.textContent = unifiedUploadCurrentMode === 'reference' ? 'Upload Reference' : 'Upload & Encode';
+        // Only update mode display if we have files or are in a specific mode
+        if (unifiedUploadFiles.length > 0 || unifiedUploadDownloadedFile || unifiedUploadPendingUrl) {
+            if (unifiedUploadCurrentMode === 'reference') {
+                unifiedUploadModeDisplay.textContent = 'Upload Reference';
+            } else if (unifiedUploadCurrentMode === 'vibe') {
+                unifiedUploadModeDisplay.textContent = 'Upload & Encode';
+            } else if (unifiedUploadCurrentMode === 'blueprint') {
+                unifiedUploadModeDisplay.textContent = 'Import Image';
+            }
+        } else {
+            // In initial state, show default text
+            unifiedUploadModeDisplay.textContent = 'Import File';
+        }
     }
     
-    // Update modal title
+    // Update modal title only when we have files or are in a specific mode
     if (unifiedUploadModalTitle) {
-        unifiedUploadModalTitle.innerHTML = unifiedUploadCurrentMode === 'reference' 
-            ? '<i class="nai-img2img"></i> Upload Reference' 
-            : '<i class="nai-vibe-transfer"></i> Encode Vibe Transfer';
+        // Only update title if we have files or are in a specific mode
+        if (unifiedUploadFiles.length > 0 || unifiedUploadDownloadedFile || unifiedUploadPendingUrl) {
+            if (unifiedUploadCurrentMode === 'reference') {
+                unifiedUploadModalTitle.innerHTML = '<i class="nai-img2img"></i> <span>Upload Reference</span>';
+            } else if (unifiedUploadCurrentMode === 'vibe') {
+                unifiedUploadModalTitle.innerHTML = '<i class="nai-vibe-transfer"></i> <span>Encode Vibe</span>';
+            } else if (unifiedUploadCurrentMode === 'blueprint') {
+                unifiedUploadModalTitle.innerHTML = '<i class="nai-import"></i> <span>Import Image</span>';
+            }
+        }
+        // If no files and no specific mode, keep the default "Import File" title
     }
     
     // Update confirm button text
     if (unifiedUploadConfirmText) {
-        unifiedUploadConfirmText.textContent = unifiedUploadCurrentMode === 'reference' ? 'Upload' : 'Upload & Encode';
+        if (unifiedUploadCurrentMode === 'reference') {
+            unifiedUploadConfirmText.textContent = 'Upload';
+        } else if (unifiedUploadCurrentMode === 'vibe') {
+            unifiedUploadConfirmText.textContent = 'Encode';
+        } else if (unifiedUploadCurrentMode === 'blueprint') {
+            unifiedUploadConfirmText.textContent = 'Import';
+        }
     }
     
     // Show/hide vibe controls
@@ -1716,19 +1937,32 @@ function updateUnifiedUploadMode() {
         }
     }
     
-    // Update file input configuration but preserve file selection
-    if (unifiedUploadFileInput) {
-        if (unifiedUploadCurrentMode === 'vibe') {
-            unifiedUploadFileInput.removeAttribute('multiple');
+    // Show/hide blueprint info based on mode
+    const blueprintPreview = document.getElementById('unifiedUploadBlueprintPreview');
+    if (blueprintPreview) {
+        if (unifiedUploadCurrentMode === 'blueprint') {
+            blueprintPreview.style.display = '';
         } else {
-            unifiedUploadFileInput.setAttribute('multiple', '');
+            blueprintPreview.style.display = 'none';
         }
-        
-        // Don't reset file input - preserve selection
-        // Only update the UI to reflect the current mode
-        if (unifiedUploadFileInput.files.length > 0) {
-            // Re-trigger file change handler to update UI for current mode
-            handleUnifiedUploadFileChange();
+    }
+    
+    // Show/hide reference comment based on mode
+    const referenceComment = document.getElementById('unifiedUploadCommentInputContainer');
+    if (referenceComment) {
+        if (unifiedUploadCurrentMode === 'blueprint') {
+            referenceComment.style.display = 'none';
+        } else {
+            referenceComment.style.display = '';
+        }
+    }
+    
+    // Show/hide Open in Editor button based on mode
+    if (unifiedUploadOpenInEditorBtn) {
+        if (unifiedUploadCurrentMode === 'blueprint') {
+            unifiedUploadOpenInEditorBtn.style.display = '';
+        } else {
+            unifiedUploadOpenInEditorBtn.style.display = 'none';
         }
     }
 }
@@ -1766,13 +2000,6 @@ function populateUnifiedUploadModelDropdown() {
             option.addEventListener('click', () => {
                 unifiedUploadSelectedModel = key;
                 unifiedUploadModelSelected.textContent = displayName;
-                
-                // Update the model display in the overlay
-                const modelDisplay = document.getElementById('unifiedUploadModelDisplay');
-                if (modelDisplay) {
-                    modelDisplay.textContent = displayName;
-                }
-                
                 closeDropdown(unifiedUploadModelDropdownMenu, unifiedUploadModelDropdownBtn);
             });
 
@@ -1789,56 +2016,688 @@ function populateUnifiedUploadModelDropdown() {
 async function handleUnifiedUploadConfirm() {
     if (!unifiedUploadCurrentMode) return;
     
-    if (!unifiedUploadFileInput || !unifiedUploadFileInput.files.length) {
-        showError('Please select an image file');
+    // Show cover overlay to indicate processing
+    showGalleryMoveRightPanelCover('Processing...');
+    
+    // Check if we have a pending URL download
+    if (unifiedUploadPendingUrl) {
+        await handlePendingUrlDownload();
         return;
     }
     
-    const files = Array.from(unifiedUploadFileInput.files);
+    // Check if we have either files or a downloaded file
+    if (!unifiedUploadFiles.length && !unifiedUploadDownloadedFile) {
+        hideGalleryMoveRightPanelCover();
+        showError('Please select an image file or download from clipboard');
+        return;
+    }
     
     // Add validation for vibe mode
-    if (unifiedUploadCurrentMode === 'vibe' && files.length > 1) {
+    if (unifiedUploadCurrentMode === 'vibe' && unifiedUploadFiles.length > 1) {
+        hideGalleryMoveRightPanelCover();
         showError('Vibe encoding only supports single file upload. Please select only one image.');
         return;
     }
     
-    // Validate file types - accept images, JSON files, and .naiv4vibebundle files
-    const invalidFiles = files.filter(file => {
-        const isImage = file.type.startsWith('image/');
-        const isJson = file.type === 'application/json';
-        const isNaiv4Bundle = file.name.endsWith('.naiv4vibebundle');
-        return !isImage && !isJson && !isNaiv4Bundle;
-    });
-    if (invalidFiles.length > 0) {
-        showError('Please select valid image files, JSON files, or .naiv4vibebundle files only.');
-        return;
+    // If we have a downloaded file, skip file validation and proceed directly
+    // Downloaded files are already validated on the server side
+    if (!unifiedUploadDownloadedFile) {
+        // Validate file types - accept images, JSON files, and .naiv4vibebundle files
+        const invalidFiles = unifiedUploadFiles.filter(file => {
+            const isImage = file.type.startsWith('image/');
+            const isJson = file.type === 'application/json';
+            const isNaiv4Bundle = file.name.endsWith('.naiv4vibebundle');
+            return !isImage && !isJson && !isNaiv4Bundle;
+        });
+        if (invalidFiles.length > 0) {
+            hideGalleryMoveRightPanelCover();
+            showError('Please select valid image files, JSON files, or .naiv4vibebundle files only.');
+            return;
+        }
+        
+        // Check if any JSON files or .naiv4vibebundle files are selected
+        const jsonFiles = unifiedUploadFiles.filter(file => file.type === 'application/json' || file.name.endsWith('.naiv4vibebundle'));
+        if (jsonFiles.length > 0) {
+            // Handle JSON file import
+            await handleJsonFileImport(jsonFiles);
+            return;
+        }
+        
+        // For blueprint mode, filter to only valid files
+        if (unifiedUploadCurrentMode === 'blueprint') {
+            if (unifiedUploadDownloadedFile && unifiedUploadDownloadedFile.type === 'image') {
+                // Handle downloaded file for blueprint import
+                await importUnifiedBlueprint(null);
+                hideUnifiedUploadModal();
+                return;
+            }
+            
+            const validFiles = [];
+            const validMetadata = [];
+            
+            unifiedUploadFiles.forEach((file, index) => {
+                if (unifiedUploadFileMetadata[index]?.valid) {
+                    validFiles.push(file);
+                    validMetadata.push(unifiedUploadFileMetadata[index]);
+                }
+            });
+            
+            if (validFiles.length === 0) {
+                hideGalleryMoveRightPanelCover();
+                showError('None of the selected images contain valid NovelAI metadata.');
+                return;
+            }
+            
+            // Process only valid files for blueprints
+            for (const file of validFiles) {
+                await importUnifiedBlueprint(file);
+            }
+            hideUnifiedUploadModal();
+            return;
+        }
     }
-    
-    // Check if any JSON files or .naiv4vibebundle files are selected
-    const jsonFiles = files.filter(file => file.type === 'application/json' || file.name.endsWith('.naiv4vibebundle'));
-    if (jsonFiles.length > 0) {
-        // Handle JSON file import
-        await handleJsonFileImport(jsonFiles);
-        return;
-    }
-    
+
     try {
         if (unifiedUploadCurrentMode === 'reference') {
             // Upload as reference images
-            await uploadUnifiedReferenceImages(files);
+            await uploadUnifiedReferenceImages();
         } else if (unifiedUploadCurrentMode === 'vibe') {
-            // Upload and encode as vibe (only first file)
-            const file = files[0];
-            await uploadUnifiedVibeImage(file);
+            // Upload and encode as vibe
+            if (unifiedUploadDownloadedFile && unifiedUploadDownloadedFile.type === 'vibe_bundle') {
+                // Handle downloaded vibe bundle import
+                await importDownloadedVibeBundle();
+            } else {
+                await uploadUnifiedVibeImage(!unifiedUploadDownloadedFile ? unifiedUploadFiles[0] : null);
+            }
         }
+        hideGalleryMoveRightPanelCover();
     } catch (error) {
         console.error('Error in unified upload:', error);
+        hideGalleryMoveRightPanelCover();
         showError('Upload failed: ' + error.message);
     }
 }
 
-async function uploadUnifiedReferenceImages(files) {
+async function handleUnifiedUploadOpenInEditor() {
+    try {
+        let metadata = null;
+        
+        if (unifiedUploadCurrentMode === 'blueprint') {
+            // Get metadata from current file
+            if (unifiedUploadDownloadedFile && unifiedUploadDownloadedFile.type === 'image') {
+                // For URL uploads, check if we already have the metadata
+                if (unifiedUploadDownloadedFile.metadata && unifiedUploadDownloadedFile.isBlueprint) {
+                    console.log('Debug: Using metadata from downloaded file');
+                    metadata = unifiedUploadDownloadedFile.metadata;
+                } else if (unifiedUploadDownloadedFile.filename) {
+                    // Fallback: get metadata from server
+                    try {
+                        metadata = await window.wsClient.requestUrlUploadMetadata(unifiedUploadDownloadedFile.filename);
+                    } catch (error) {
+                        console.error('Failed to get URL upload metadata:', error);
+                        showError('Failed to get image metadata for editor');
+                        return;
+                    }
+                }
+            } else if (unifiedUploadFiles.length > 0) {
+                // For file uploads, try to get metadata from multiple sources
+                let currentMetadata = null;
+                
+                console.log('Debug: unifiedUploadFiles length:', unifiedUploadFiles.length);
+                console.log('Debug: unifiedUploadCurrentIndex:', unifiedUploadCurrentIndex);
+                console.log('Debug: unifiedUploadFileMetadata length:', unifiedUploadFileMetadata.length);
+                console.log('Debug: Current file:', unifiedUploadFiles[unifiedUploadCurrentIndex]);
+                
+                // First try to get from unifiedUploadFileMetadata array
+                if (unifiedUploadFileMetadata.length > 0 && unifiedUploadCurrentIndex < unifiedUploadFileMetadata.length) {
+                    currentMetadata = unifiedUploadFileMetadata[unifiedUploadCurrentIndex];
+                    console.log('Debug: Found metadata in array:', currentMetadata);
+                    if (currentMetadata && currentMetadata.valid && currentMetadata.metadata) {
+                        metadata = currentMetadata.metadata;
+                        console.log('Debug: Using metadata from array');
+                    }
+                }
+                
+                // Check if there's metadata in the window object (from blueprint processing)
+                if (!metadata && window.currentBlueprintMetadata) {
+                    console.log('Debug: Found metadata in window.currentBlueprintMetadata');
+                    metadata = window.currentBlueprintMetadata;
+                }
+                
+                // If no metadata found, try to extract it from the current file
+                if (!metadata && unifiedUploadFiles[unifiedUploadCurrentIndex]) {
+                    try {
+                        const currentFile = unifiedUploadFiles[unifiedUploadCurrentIndex];
+                        console.log('Extracting metadata from file:', currentFile.name);
+                        metadata = await extractPNGMetadata(currentFile);
+                        
+                        // Check if it's a valid NovelAI image
+                        if (!metadata || !metadata.source || !metadata.source.includes('NovelAI')) {
+                            throw new Error('No NovelAI metadata found in file');
+                        }
+                        console.log('Debug: Successfully extracted metadata from file');
+                    } catch (error) {
+                        console.error('Failed to extract metadata from file:', error);
+                        showError('Failed to extract metadata from file: ' + error.message);
+                        return;
+                    }
+                }
+            }
+            
+            if (!metadata) {
+                showError('No valid metadata found to open in editor');
+                return;
+            }
+            
+            console.log('Metadata found for editor:', metadata);
+            
+            // Prepare image data for preview
+            let imageData = null;
+            let finalMetadata = metadata;
+            
+            if (unifiedUploadDownloadedFile && unifiedUploadDownloadedFile.type === 'image') {
+                // For URL uploads, transform raw metadata to the format expected by the manual form
+                // The raw metadata has fields nested under metadata.forge_data, metadata.v4_prompt, etc.
+                finalMetadata = transformRawMetadataForEditor(metadata);
+                console.log('Transformed raw metadata for URL upload:', finalMetadata);
+                
+                imageData = {
+                    filename: unifiedUploadDownloadedFile.originalFilename || 'downloaded_image.png',
+                    tempFilename: unifiedUploadDownloadedFile.tempFilename,
+                    isTempFile: true, // Flag to indicate this is not a saved file
+                    width: metadata.width || 1024,
+                    height: metadata.height || 1024
+                };
+            } else if (unifiedUploadFiles.length > 0 && unifiedUploadFiles[unifiedUploadCurrentIndex]) {
+                // For file uploads, transform metadata to the format expected by the manual form
+                finalMetadata = transformMetadataForEditor(metadata);
+                console.log('Transformed metadata for file upload:', finalMetadata);
+                
+                const currentFile = unifiedUploadFiles[unifiedUploadCurrentIndex];
+                imageData = {
+                    filename: currentFile.name,
+                    file: currentFile,
+                    isTempFile: true, // Flag to indicate this is not a saved file
+                    width: metadata.width || 1024,
+                    height: metadata.height || 1024
+                };
+            }
+            
+            // Close upload modal
+            hideUnifiedUploadModal();
+            
+            // Use rerollImageWithEdit to properly set up the manual modal with image data
+                // Create a proper image object that rerollImageWithEdit expects
+            const imageObject = {
+                filename: imageData.filename,
+                original: imageData.filename,
+                tempFilename: imageData.tempFilename,
+                isTempFile: imageData.isTempFile,
+                width: imageData.width,
+                height: imageData.height,
+                metadata: finalMetadata // Pass the metadata so rerollImageWithEdit can use it
+            };
+            
+            // Call rerollImageWithEdit to properly set up the modal
+            await window.rerollImageWithEdit(imageObject);
+
+        } else {
+            showError('Open in Editor is only available for blueprint mode');
+        }
+    } catch (error) {
+        console.error('Error opening in editor:', error);
+        showError('Failed to open in editor: ' + error.message);
+    }
+}
+
+// Transform raw metadata from server to the format expected by the manual form
+function transformRawMetadataForEditor(metadata) {
+    // Create a copy of the metadata to avoid modifying the original
+    const transformed = { ...metadata };
+    
+    console.log('Debug: Raw metadata for transformation:', metadata);
+    
+    // Extract fields from the nested structure
+    if (metadata.forge_data) {
+        const forgeData = metadata.forge_data;
+        
+        // Extract basic fields
+        if (forgeData.input_prompt !== undefined) {
+            transformed.prompt = forgeData.input_prompt;
+        }
+        if (forgeData.input_uc !== undefined) {
+            transformed.uc = forgeData.input_uc;
+        }
+        if (forgeData.append_quality !== undefined) {
+            transformed.append_quality = forgeData.append_quality;
+        }
+        if (forgeData.append_uc !== undefined) {
+            transformed.append_uc = forgeData.append_uc;
+        }
+        if (forgeData.dataset_config !== undefined) {
+            transformed.dataset_config = forgeData.dataset_config;
+        }
+        if (forgeData.vibe_transfer !== undefined) {
+            transformed.vibe_transfer = forgeData.vibe_transfer;
+        }
+        if (forgeData.normalize_vibes !== undefined) {
+            transformed.normalize_vibes = forgeData.normalize_vibes;
+        }
+        if (forgeData.image_source !== undefined) {
+            transformed.image_source = forgeData.image_source;
+        }
+        if (forgeData.image_bias !== undefined) {
+            transformed.image_bias = forgeData.image_bias;
+        }
+        if (forgeData.mask_compressed !== undefined) {
+            transformed.mask_compressed = forgeData.mask_compressed;
+        }
+        if (forgeData.mask_bias !== undefined) {
+            transformed.mask_bias = forgeData.mask_bias;
+        }
+        if (forgeData.img2img_strength !== undefined) {
+            transformed.strength = forgeData.img2img_strength;
+        }
+        if (forgeData.img2img_noise !== undefined) {
+            transformed.noise = forgeData.img2img_noise;
+        }
+        if (forgeData.layer1_seed !== undefined) {
+            transformed.layer1_seed = forgeData.layer1_seed;
+            transformed.layer2_seed = forgeData.layer2_seed;
+        }
+        
+        // Extract character prompts
+        if (forgeData.allCharacters && Array.isArray(forgeData.allCharacters)) {
+            console.log('Debug: Found allCharacters in forge_data:', forgeData.allCharacters);
+            // Transform the allCharacters format to match what loadCharacterPrompts expects
+            const characterPrompts = forgeData.allCharacters.map(character => ({
+                prompt: character.prompt || character.input_prompt || '',
+                uc: character.uc || character.input_uc || '',
+                center: character.center || character.centers?.[0] || { x: 0.5, y: 0.5 },
+                enabled: character.enabled !== false, // Default to true if not specified
+                chara_name: character.chara_name || character.name || ''
+            }));
+            transformed.allCharacterPrompts = characterPrompts;
+            transformed.use_coords = forgeData.use_coords || false;
+            console.log('Debug: Transformed allCharacters to:', characterPrompts);
+        }
+    }
+    
+    // Extract fields from v4_prompt if available
+    if (metadata.v4_prompt && !transformed.allCharacterPrompts) {
+        const v4Prompt = metadata.v4_prompt;
+        console.log('Debug: Found v4_prompt:', v4Prompt);
+        
+        if (v4Prompt.caption && v4Prompt.caption.char_captions) {
+            const charCaptions = v4Prompt.caption.char_captions;
+            console.log('Debug: Found char_captions in v4_prompt:', charCaptions);
+            if (Array.isArray(charCaptions) && charCaptions.length > 0) {
+                // Convert v4_prompt character data to the format expected by the form
+                const characterPrompts = charCaptions.map(caption => ({
+                    prompt: caption.char_caption || '',
+                    uc: '',
+                    center: caption.centers && caption.centers.length > 0 ? caption.centers[0] : { x: 0.5, y: 0.5 },
+                    enabled: true,
+                    chara_name: ''
+                }));
+                
+                // Handle negative prompts if available
+                if (metadata.v4_negative_prompt && metadata.v4_negative_prompt.caption && metadata.v4_negative_prompt.caption.char_captions) {
+                    const negativeCaptions = metadata.v4_negative_prompt.caption.char_captions;
+                    console.log('Debug: Found v4_negative_prompt:', negativeCaptions);
+                    negativeCaptions.forEach((caption, index) => {
+                        if (characterPrompts[index] && caption.char_caption) {
+                            characterPrompts[index].uc = caption.char_caption;
+                        }
+                    });
+                }
+                
+                // Set allCharacterPrompts from v4_prompt (since we don't have them from forge_data)
+                transformed.allCharacterPrompts = characterPrompts;
+                transformed.use_coords = v4Prompt.use_coords || false;
+                console.log('Debug: Set allCharacterPrompts from v4_prompt:', characterPrompts);
+            }
+        }
+    }
+    
+    // Extract other fields
+    if (metadata.model) {
+        transformed.model = metadata.model;
+    } else if (metadata.source) {
+        // Use the existing comprehensive model detection function
+        const detectedModel = determineModelFromMetadata(metadata);
+        if (detectedModel !== 'unknown') {
+            // Convert the detected model to the format expected by the form
+            switch (detectedModel) {
+                case 'V4_5':
+                    transformed.model = 'v4_5';
+                    break;
+                case 'V4_5_CUR':
+                    transformed.model = 'v4_5_cur';
+                    break;
+                case 'V4':
+                    transformed.model = 'v4';
+                    break;
+                case 'V4_CUR':
+                    transformed.model = 'v4_cur';
+                    break;
+                case 'V3':
+                    transformed.model = 'v3';
+                    break;
+                case 'FURRY':
+                    transformed.model = 'v3_furry';
+                    break;
+                default:
+                    transformed.model = 'v4_5'; // Default fallback
+            }
+            console.log('Debug: Extracted model from source using determineModelFromMetadata:', metadata.source, '->', detectedModel, '->', transformed.model);
+        } else {
+            transformed.model = 'v4_5'; // Default fallback
+            console.log('Debug: Could not determine model from source, using default:', metadata.source);
+        }
+    }
+    
+    if (metadata.sampler) {
+        transformed.sampler = metadata.sampler;
+    }
+    if (metadata.noise_schedule) {
+        transformed.noiseScheduler = metadata.noise_schedule;
+    }
+    if (metadata.steps) {
+        transformed.steps = metadata.steps;
+    }
+    if (metadata.scale) {
+        transformed.scale = metadata.scale;
+    }
+    if (metadata.seed) {
+        transformed.seed = metadata.seed;
+    }
+    if (metadata.upscale) {
+        transformed.upscale = metadata.upscale;
+    }
+    if (metadata.skip_cfg_above_sigma !== undefined) {
+        transformed.skip_cfg_above_sigma = metadata.skip_cfg_above_sigma;
+    }
+    
+    console.log('Debug: Final transformed metadata:', transformed);
+    console.log('Debug: allCharacterPrompts:', transformed.allCharacterPrompts);
+    console.log('Debug: use_coords:', transformed.use_coords);
+    return transformed;
+}
+
+// Transform metadata to the format expected by the manual form
+function transformMetadataForEditor(metadata) {
+    // Create a copy of the metadata to avoid modifying the original
+    const transformed = { ...metadata };
+    
+    console.log('Debug: Original metadata for transformation:', metadata);
+    
+    // Map fields to match what loadIntoManualForm expects
+    if (transformed.characterPrompts && Array.isArray(transformed.characterPrompts)) {
+        transformed.allCharacterPrompts = transformed.characterPrompts;
+    }
+    
+    // Handle v4_prompt character data if available
+    if (transformed.v4_prompt && transformed.v4_prompt.caption && transformed.v4_prompt.caption.char_captions) {
+        const charCaptions = transformed.v4_prompt.caption.char_captions;
+        if (Array.isArray(charCaptions) && charCaptions.length > 0) {
+            // Convert v4_prompt character data to the format expected by the form
+            const characterPrompts = charCaptions.map(caption => ({
+                prompt: caption.char_caption || '',
+                uc: '',
+                center: caption.centers && caption.centers.length > 0 ? caption.centers[0] : { x: 0.5, y: 0.5 },
+                enabled: true,
+                chara_name: ''
+            }));
+            
+            // Handle negative prompts if available
+            if (transformed.v4_negative_prompt && transformed.v4_negative_prompt.caption && transformed.v4_negative_prompt.caption.char_captions) {
+                const negativeCaptions = transformed.v4_negative_prompt.caption.char_captions;
+                negativeCaptions.forEach((caption, index) => {
+                    if (characterPrompts[index] && caption.char_caption) {
+                        characterPrompts[index].uc = caption.char_caption;
+                    }
+                });
+            }
+            
+            transformed.allCharacterPrompts = characterPrompts;
+            transformed.use_coords = transformed.v4_prompt.use_coords || false;
+        }
+    }
+    
+    // Handle forge_data if available
+    if (transformed.forge_data) {
+        // Extract character prompts from forge data
+        if (transformed.forge_data.allCharacters && Array.isArray(transformed.forge_data.allCharacters)) {
+            transformed.allCharacterPrompts = transformed.forge_data.allCharacters;
+            transformed.use_coords = transformed.forge_data.use_coords || false;
+        }
+        
+        // Extract other forge data fields
+        if (transformed.forge_data.input_prompt !== undefined) {
+            transformed.prompt = transformed.forge_data.input_prompt;
+        }
+        if (transformed.forge_data.input_uc !== undefined) {
+            transformed.uc = transformed.forge_data.input_uc;
+        }
+        if (transformed.forge_data.append_quality !== undefined) {
+            transformed.append_quality = transformed.forge_data.append_quality;
+        }
+        if (transformed.forge_data.append_uc !== undefined) {
+            transformed.append_uc = transformed.forge_data.append_uc;
+        }
+        if (transformed.forge_data.dataset_config !== undefined) {
+            transformed.dataset_config = transformed.forge_data.dataset_config;
+        }
+        if (transformed.forge_data.vibe_transfer !== undefined) {
+            transformed.vibe_transfer = transformed.forge_data.vibe_transfer;
+        }
+        if (transformed.forge_data.normalize_vibes !== undefined) {
+            transformed.normalize_vibes = transformed.forge_data.normalize_vibes;
+        }
+        if (transformed.forge_data.image_source !== undefined) {
+            transformed.image_source = transformed.forge_data.image_source;
+        }
+        if (transformed.forge_data.image_bias !== undefined) {
+            transformed.image_bias = transformed.forge_data.image_bias;
+        }
+        if (transformed.forge_data.mask_compressed !== undefined) {
+            transformed.mask_compressed = transformed.forge_data.mask_compressed;
+        }
+        if (transformed.forge_data.mask_bias !== undefined) {
+            transformed.mask_bias = transformed.forge_data.mask_bias;
+        }
+        if (transformed.forge_data.img2img_strength !== undefined) {
+            transformed.strength = transformed.forge_data.img2img_strength;
+        }
+        if (transformed.forge_data.img2img_noise !== undefined) {
+            transformed.noise = transformed.forge_data.img2img_noise;
+        }
+        if (transformed.forge_data.layer1_seed !== undefined) {
+            transformed.layer1_seed = transformed.forge_data.layer1_seed;
+            transformed.layer2_seed = transformed.seed;
+        }
+    }
+    
+    // Ensure resolution is properly set
+    if (transformed.resolution) {
+        transformed.resolution = transformed.resolution.toLowerCase();
+    } else if (transformed.width && transformed.height) {
+        // Try to determine resolution from dimensions
+        if (transformed.width === 832 && transformed.height === 1216) {
+            transformed.resolution = 'normal_portrait';
+        } else if (transformed.width === 1216 && transformed.height === 832) {
+            transformed.resolution = 'normal_landscape';
+        } else if (transformed.width === 1024 && transformed.height === 1024) {
+            transformed.resolution = 'normal_square';
+        } else if (transformed.width === 1472 && transformed.height === 1472) {
+            transformed.resolution = 'large_square';
+        } else if (transformed.width === 1600 && transformed.height === 1600) {
+            transformed.resolution = 'wallpaper_square';
+        } else {
+            transformed.resolution = 'custom';
+        }
+    }
+    
+    // Ensure model is in the correct format
+    if (transformed.model) {
+        // Map model names to the format expected by the form
+        const modelMapping = {
+            'v4': 'v4',
+            'v4_5': 'v4_5',
+            'v4_cur': 'v4_cur',
+            'v4_5_cur': 'v4_5_cur',
+            'v4full': 'v4',
+            'v4-5full': 'v4_5',
+            'v4curated': 'v4_cur',
+            'v4-5curated': 'v4_5_cur'
+        };
+        
+        if (modelMapping[transformed.model]) {
+            transformed.model = modelMapping[transformed.model];
+        }
+    } else if (transformed.source) {
+        // Extract model from source field if no model field exists
+        const detectedModel = determineModelFromMetadata(transformed);
+        if (detectedModel !== 'unknown') {
+            // Convert the detected model to the format expected by the form
+            switch (detectedModel) {
+                case 'V4_5':
+                    transformed.model = 'v4_5';
+                    break;
+                case 'V4_5_CUR':
+                    transformed.model = 'v4_5_cur';
+                    break;
+                case 'V4':
+                    transformed.model = 'v4';
+                    break;
+                case 'V4_CUR':
+                    transformed.model = 'v4_cur';
+                    break;
+                case 'V3':
+                    transformed.model = 'v3';
+                    break;
+                case 'FURRY':
+                    transformed.model = 'v3_furry';
+                    break;
+                default:
+                    transformed.model = 'v4_5'; // Default fallback
+            }
+            console.log('Debug: Extracted model from source using determineModelFromMetadata:', transformed.source, '->', detectedModel, '->', transformed.model);
+        } else {
+            transformed.model = 'v4_5'; // Default fallback
+            console.log('Debug: Could not determine model from source, using default:', transformed.source);
+        }
+    }
+    
+    // Ensure sampler and noise scheduler are in the correct format
+    if (transformed.sampler) {
+        // The form expects the meta value, not the display name
+        const samplerObj = window.getSamplerMeta ? window.getSamplerMeta(transformed.sampler) : null;
+        if (samplerObj) {
+            transformed.sampler = samplerObj.meta;
+        }
+    }
+    
+    if (transformed.noise_schedule) {
+        // The form expects the meta value, not the display name
+        const noiseObj = window.getNoiseMeta ? window.getNoiseMeta(transformed.noise_schedule) : null;
+        if (noiseObj) {
+            transformed.noiseScheduler = noiseObj.meta;
+        }
+    }
+    
+    // Handle dataset configuration
+    if (transformed.dataset_config && transformed.dataset_config.include) {
+        // Ensure it's an array
+        if (!Array.isArray(transformed.dataset_config.include)) {
+            transformed.dataset_config.include = [transformed.dataset_config.include];
+        }
+    }
+    
+    console.log('Debug: Transformed metadata:', transformed);
+    return transformed;
+}
+
+async function importUnifiedBlueprint(file) {
+    let toastId = showGlassToast('info', 'Importing Image', 'Importing image to workspace...', true, false, '<i class="nai-import"></i>');
+    
+    try {
+        // Update cover message for server processing
+        showGalleryMoveRightPanelCover('Importing Blueprint...');
+        // Extract metadata from the PNG file to verify it's a NovelAI image
+        const metadata = await extractPNGMetadata(file);
+        if (!metadata || !metadata.source || !metadata.source.includes('NovelAI')) {
+            throw new Error('Invalid blueprint file: No NovelAI metadata found');
+        }
+        
+        // Get the current workspace from the cache manager dropdown
+        let targetWorkspace = cacheManagerCurrentWorkspace;
+        
+        // If cache manager modal is open, get the workspace from the dropdown
+        if (cacheManagerModal && cacheManagerModal.classList.contains('modal-open')) {
+            const selectedWorkspaceElement = cacheManagerWorkspaceSelected;
+            if (selectedWorkspaceElement && selectedWorkspaceElement.textContent) {
+                // Find the workspace by display name
+                const workspaceName = selectedWorkspaceElement.textContent.trim();
+                const workspace = Object.values(workspaces).find(w => w.name === workspaceName);
+                if (workspace) {
+                    targetWorkspace = workspace.id;
+                }
+            }
+        }
+        
+        let uploadResponse;
+        
+        if (unifiedUploadDownloadedFile && unifiedUploadDownloadedFile.type === 'image') {
+            // Handle downloaded image file
+            const batchInfo = {
+                currentIndex: 0,
+                totalCount: 1
+            };
+            
+            uploadResponse = await wsClient.uploadWorkspaceImage(
+                null, 
+                targetWorkspace, 
+                unifiedUploadDownloadedFile.originalFilename || 'downloaded_image', 
+                batchInfo, 
+                unifiedUploadDownloadedFile.tempFilename
+            );
+        } else if (file) {
+            // Handle uploaded file
+            const base64 = await fileToBase64(file);
+            const batchInfo = {
+                currentIndex: 0,
+                totalCount: 1
+            };
+            uploadResponse = await wsClient.uploadWorkspaceImage(base64, targetWorkspace, file.name, batchInfo);
+        } else {
+            throw new Error('No file provided for blueprint import');
+        }
+        
+        if (!uploadResponse.success) {
+            throw new Error(uploadResponse.message || 'Upload failed');
+        }
+        
+        removeGlassToast(toastId);
+        showGlassToast('success', 'Image Imported', 'Successfully imported image to workspace', false, true, '<i class="nai-check"></i>');
+        
+        // Refresh gallery to show the new image
+        await loadGallery(true);        // Close the modal
+        hideUnifiedUploadModal();
+    } catch (error) {
+        console.error('Error importing blueprint:', error);
+        removeGlassToast(toastId);
+        hideGalleryMoveRightPanelCover();
+        showError('Blueprint import failed: ' + error.message);
+    }
+}
+
+async function uploadUnifiedReferenceImages() {
     let toastId = showGlassToast('info', 'Uploading Images', 'Uploading reference images...', true, false, '<i class="nai-import"></i>');
+    
+    // Update cover message for upload
+    showGalleryMoveRightPanelCover('Uploading Reference...');
     
     try {
         // Get the current workspace from the cache manager dropdown
@@ -1857,19 +2716,42 @@ async function uploadUnifiedReferenceImages(files) {
             }
         }
         
-        const uploadPromises = files.map(async (file, index) => {
-            const base64 = await fileToBase64(file);
-            
-            const response = await wsClient.uploadReference(base64, targetWorkspace);
-
-            if (!response.success) {
-                throw new Error(response.message || 'Upload failed');
-            }
-            
-            return response;
-        });
+        let results = [];
         
-        const results = await Promise.all(uploadPromises);
+        // Check if we have a downloaded file
+        if (unifiedUploadDownloadedFile) {
+            // For downloaded files, we need to handle them differently based on type
+            if (unifiedUploadDownloadedFile.type === 'image') {
+                // Use the downloaded file temp filename
+                const response = await wsClient.uploadReference(null, targetWorkspace, unifiedUploadDownloadedFile.tempFilename);
+                
+                if (!response.success) {
+                    throw new Error(response.message || 'Upload failed');
+                }
+                
+                results.push(response);
+            } else if (unifiedUploadDownloadedFile.type === 'vibe_bundle') {
+                // For vibe bundles, we'll handle them in the vibe mode
+                throw new Error('Vibe bundles should be imported using vibe mode, not reference mode');
+            } else {
+                throw new Error(`Unsupported file type for reference upload: ${unifiedUploadDownloadedFile.type}`);
+            }
+        } else {
+            // Use the file input files
+            const uploadPromises = unifiedUploadFiles.map(async (file, index) => {
+                const base64 = await fileToBase64(file);
+                
+                const response = await wsClient.uploadReference(base64, targetWorkspace);
+
+                if (!response.success) {
+                    throw new Error(response.message || 'Upload failed');
+                }
+                
+                return response;
+            });
+            
+            results = await Promise.all(uploadPromises);
+        }
         
         removeGlassToast(toastId);
         showGlassToast('success', 'Upload Complete', `Successfully uploaded ${results.length} image(s)`, false, true, '<i class="nai-check"></i>');
@@ -1896,11 +2778,15 @@ async function uploadUnifiedReferenceImages(files) {
         
     } catch (error) {
         removeGlassToast(toastId);
+        hideGalleryMoveRightPanelCover();
         showError('Upload failed: ' + error.message);
     }
 }
 
 async function handleJsonFileImport(files) {
+    // Update cover message for JSON import
+    showGalleryMoveRightPanelCover('Processing Vibe Bundle...');
+    
     let toastId = showGlassToast('info', 'Importing Vibe Bundle', 'Processing JSON files...', true, false, '<i class="nai-import"></i>');
     try {
         let targetWorkspace = cacheManagerCurrentWorkspace;
@@ -1916,6 +2802,7 @@ async function handleJsonFileImport(files) {
         }
         if (!targetWorkspace) {
             showError('No workspace selected. Please select a workspace first.');
+            hideGalleryMoveRightPanelCover();
             return;
         }
         const commentInput = document.getElementById('unifiedUploadCommentInput');
@@ -1986,6 +2873,7 @@ async function handleJsonFileImport(files) {
         hideUnifiedUploadModal();
     } catch (error) {
         removeGlassToast(toastId);
+        hideGalleryMoveRightPanelCover();
         showError('Import failed: ' + error.message);
     }
 }
@@ -2028,32 +2916,67 @@ async function uploadUnifiedVibeImage(file) {
         return;
     }
     
-    let toastId = showGlassToast('info', 'Vibe Encoding', 'Generating vibe from uploaded image...', true, false, '<i class="nai-vibe-transfer"></i>');
+    // Determine if we're processing a downloaded file or uploaded file
+    const isDownloadedFile = !file && unifiedUploadDownloadedFile;
+    const isImageFile = file && file.type && file.type.startsWith('image/');
+    
+    // Validate file type for vibe encoding
+    if (isDownloadedFile) {
+        if (unifiedUploadDownloadedFile.type !== 'image' && unifiedUploadDownloadedFile.type !== 'vibe_bundle') {
+            showError('Only image files and vibe bundles can be used for vibe encoding');
+            return;
+        }
+    } else if (!isImageFile) {
+        showError('Please select a valid image file for vibe encoding');
+        return;
+    }
+    
+    // Update cover message for vibe encoding
+    showGalleryMoveRightPanelCover('Generating Vibe Encoding...');
+    
+    let toastId = showGlassToast('info', 'Vibe Encoding', 'Generating vibe...', true, false, '<i class="nai-vibe-transfer"></i>');
+    
+    // Start progress tracking
+    startVibeEncodingProgress(toastId);
     
     try {
-        // Show progress for large files
-        if (file.size > 5 * 1024 * 1024) { // 5MB
-            updateGlassToast(toastId, 'info', 'Processing Large File', 'Converting image to base64...');
-        }
-        
-        const base64 = await fileToBase64(file);
-        
         // Update toast for encoding phase
         updateGlassToast(toastId, 'info', 'Vibe Encoding', 'Sending to encoding service...');
         
-        const response = await wsClient.encodeVibe({
-            image: base64,
-            informationExtraction: informationExtraction,
-            model: model,
-            workspace: targetWorkspace
-        });
+        let response;
+        
+        if (isDownloadedFile) {
+            // Handle downloaded file
+            if (unifiedUploadDownloadedFile.type === 'vibe_bundle') {
+                // For vibe bundles, we need to handle them differently
+                showError('Vibe bundles should be imported, not encoded. Please use the import functionality.');
+                return;
+            } else {
+                // Use the downloaded file temp filename
+                response = await wsClient.encodeVibe({
+                    tempFile: unifiedUploadDownloadedFile.tempFilename,
+                    informationExtraction: informationExtraction,
+                    model: model,
+                    workspace: targetWorkspace
+                });
+            }
+        } else {
+            // Handle uploaded file
+            const base64 = await fileToBase64(file);
+            
+            response = await wsClient.encodeVibe({
+                image: base64,
+                informationExtraction: informationExtraction,
+                model: model,
+                workspace: targetWorkspace
+            });
+        }
         
         if (!response.success) {
             throw new Error(response.message || 'Vibe encoding failed');
         }
         
-        removeGlassToast(toastId);
-        showGlassToast('success', 'Vibe Created', 'Successfully created vibe encoding', false, true, '<i class="nai-check"></i>');
+        completeVibeEncodingProgress(toastId, 'Successfully created vibe encoding');
         
         // Use consistent refresh function
         if (cacheBrowserContainer.style.display !== 'none') {
@@ -2074,7 +2997,8 @@ async function uploadUnifiedVibeImage(file) {
         hideUnifiedUploadModal();
         
     } catch (error) {
-        removeGlassToast(toastId);
+        // Hide cover overlay on error
+        hideGalleryMoveRightPanelCover();
         
         // Provide more specific error messages
         let errorMessage = 'Vibe encoding failed';
@@ -2092,7 +3016,70 @@ async function uploadUnifiedVibeImage(file) {
             errorMessage = 'Vibe encoding failed: ' + error.message;
         }
         
-        showError(errorMessage);
+        failVibeEncodingProgress(toastId, errorMessage);
+    }
+}
+
+// Import downloaded vibe bundle
+async function importDownloadedVibeBundle() {
+    if (!unifiedUploadDownloadedFile || unifiedUploadDownloadedFile.type !== 'vibe_bundle') {
+        throw new Error('No vibe bundle downloaded');
+    }
+    
+    // Update cover message for downloaded vibe bundle import
+    showGalleryMoveRightPanelCover('Importing Vibe Bundle...');
+    
+    let toastId = showGlassToast('info', 'Importing Vibe Bundle', 'Processing downloaded vibe bundle...', true, false, '<i class="nai-import"></i>');
+    
+    try {
+        // Get the current workspace from the cache manager dropdown
+        let targetWorkspace = cacheManagerCurrentWorkspace;
+        
+        // If cache manager modal is open, get the workspace from the dropdown
+        if (cacheManagerModal && cacheManagerModal.classList.contains('modal-open')) {
+            const selectedWorkspaceElement = cacheManagerWorkspaceSelected;
+            if (selectedWorkspaceElement && selectedWorkspaceElement.textContent) {
+                // Find the workspace by display name
+                const workspaceName = selectedWorkspaceElement.textContent.trim();
+                const workspace = Object.values(workspaces).find(w => w.name === workspaceName);
+                targetWorkspace = workspace.id;
+            }
+        }
+        
+        if (!targetWorkspace) {
+            showError('No workspace selected. Please select a workspace first.');
+            return;
+        }
+        
+        const commentInput = document.getElementById('unifiedUploadCommentInput');
+        const comment = commentInput ? commentInput.value.trim() : '';
+        
+        // Import the vibe bundle using temp file
+        const response = await wsClient.importVibeBundle(null, targetWorkspace, comment, unifiedUploadDownloadedFile.tempFilename);
+        
+        if (!response.success) {
+            throw new Error(response.message || 'Vibe bundle import failed');
+        }
+        
+        removeGlassToast(toastId);
+        showGlassToast('success', 'Vibe Bundle Imported', `Successfully imported ${unifiedUploadDownloadedFile.vibeCount} vibe(s)`, false, true, '<i class="nai-check"></i>');
+        
+        // Refresh cache manager
+        if (cacheBrowserContainer.style.display !== 'none') {
+            await loadCacheManagerImages();
+        } else {
+            await loadCacheImages();
+        }
+        await refreshReferenceBrowserIfOpen();
+        
+        // Close modal
+        hideUnifiedUploadModal();
+        
+    } catch (error) {
+        console.error('Error importing downloaded vibe bundle:', error);
+        removeGlassToast(toastId);
+        hideGalleryMoveRightPanelCover();
+        showError('Vibe bundle import failed: ' + error.message);
     }
 }
 
@@ -2311,7 +3298,7 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
         case 'upload':
             if (vibeEncodingModalTitle) vibeEncodingModalTitle.innerHTML = '<i class="nai-vibe-transfer"></i> <span>Upload & Encode Vibe Image</span>';
             if (vibeEncodingConfirmText) vibeEncodingConfirmText.textContent = 'Upload';
-            if (vibeEncodingUploadSection) vibeEncodingUploadSection.style.display = 'block';
+            if (vibeEncodingUploadSection) vibeEncodingUploadSection.style.display = '';
             if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = true;
             if (backgroundImage) backgroundImage.src = '/background.jpg';
             if (modeDisplay) modeDisplay.textContent = 'Upload Mode';
@@ -2539,6 +3526,11 @@ async function handleVibeEncodingConfirm() {
                 break;
         }
         
+        // Start progress tracking if toast was created
+        if (toastId) {
+            startVibeEncodingProgress(toastId);
+        }
+        
         // Send to encode endpoint via WebSocket
         const response = await wsClient.encodeVibe(requestParams);
 
@@ -2550,7 +3542,7 @@ async function handleVibeEncodingConfirm() {
                 'reference': 'Vibe encoding created successfully from reference image'
             };
             
-            updateGlassToast(toastId, 'success', 'Encoding Complete', successMessages[vibeEncodingCurrentMode]);
+            completeVibeEncodingProgress(toastId, successMessages[vibeEncodingCurrentMode]);
             await hideVibeEncodingModal();
             if (cacheBrowserContainer.style.display !== 'none') {
                 await loadCacheManagerImages();
@@ -2569,9 +3561,7 @@ async function handleVibeEncodingConfirm() {
             'ie': 'Failed to request Information Extraction: ' + error.message,
             'reference': 'Failed to create vibe encoding: ' + error.message
         };
-        updateGlassToast(toastId, 'error', 'Processing Failed', errorMessages[vibeEncodingCurrentMode]);
-    } finally {
-        // Toast will auto-remove after 3 seconds
+        failVibeEncodingProgress(toastId, errorMessages[vibeEncodingCurrentMode]);
     }
 }
 
@@ -3073,35 +4063,130 @@ async function handleVibeManagerDeleteConfirm() {
 }
 
 // Handle file input changes for unified upload modal
-async function handleUnifiedUploadFileChange() {
-    if (unifiedUploadConfirmBtn) {
-        unifiedUploadConfirmBtn.disabled = !unifiedUploadFileInput.files.length;
+async function handleUnifiedUploadFileChange(event) {
+    // Handle cases where function is called without event parameter
+    let files;
+    if (event && event.target && event.target.files) {
+        files = event.target.files;
+    } else {
+        return;
     }
+    
+    if (!files || files.length === 0) return;
     
     // Reset UI elements
     hideVibeBundlePreview();
-    showModeSelector();
+    hideBlueprintPreview();
     
-    // Display uploaded file in background (for both modes)
-    if (unifiedUploadFileInput.files.length > 0) {
-        const file = unifiedUploadFileInput.files[0];
-        const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
-        
-        if (backgroundImage && file) {
+    // Update confirm button state
+    if (unifiedUploadConfirmBtn) {
+        // Enable button if we have files OR a downloaded file
+        unifiedUploadConfirmBtn.disabled = !(files.length > 0 || unifiedUploadDownloadedFile);
+    }
+    
+    // Store files and reset index
+    unifiedUploadFiles = Array.from(files);
+    unifiedUploadCurrentIndex = 0;
+    unifiedUploadFileMetadata = [];
+    
+    // Process all files first to check for blueprint metadata
+    const metadataPromises = unifiedUploadFiles.map(async (file) => {
+        if (file.type === 'image/png') {
             try {
-                if (file.type === 'application/json' || file.name.endsWith('.naiv4vibebundle')) {
-                    await handleVibeBundleFile(file, backgroundImage);
+                const metadata = await extractPNGMetadata(file);
+                if (metadata && metadata.source && metadata.source.includes('NovelAI')) {
+                    return { valid: true, metadata };
                 } else {
-                    await handleImageFile(file, backgroundImage);
+                    return { 
+                        valid: false, 
+                        error: 'No Valid NovelAI / StaticForge metadata found' 
+                    };
                 }
             } catch (error) {
-                console.error('Error creating file preview:', error);
-                backgroundImage.src = '/background.jpg';
+                console.warn('Error extracting PNG metadata:', error.message, 'for file:', file.name);
+                return { 
+                    valid: false, 
+                    error: `Invalid PNG: ${error.message}` 
+                };
+            }
+        } else {
+            return { 
+                valid: false, 
+                error: 'Not a PNG file' 
+            };
+        }
+    });
+    
+    // Wait for all metadata checks to complete using Promise.allSettled to avoid failing on individual errors
+    const metadataResults = await Promise.allSettled(metadataPromises);
+    unifiedUploadFileMetadata = metadataResults.map((result, index) => {
+        if (result.status === 'fulfilled') {
+            return result.value;
+        } else {
+            console.warn('Promise rejected for file:', unifiedUploadFiles[index].name, 'Error:', result.reason);
+            return { 
+                valid: false, 
+                error: `Processing failed: ${result.reason.message || result.reason}` 
+            };
+        }
+    });
+    
+    // Count valid blueprints
+    const validBlueprintCount = unifiedUploadFileMetadata.filter(meta => meta.valid).length;
+    const hasValidBlueprint = validBlueprintCount > 0;
+    
+    // ALWAYS enable blueprint mode option if at least one valid blueprint exists
+    const modeSliderContainer = document.querySelector('.mode-slider-container');
+    if (modeSliderContainer) {
+        // Always add the blueprint-enabled class if we have any valid blueprints
+        if (hasValidBlueprint) {
+            modeSliderContainer.classList.add('blueprint-enabled');
+        } else {
+            modeSliderContainer.classList.remove('blueprint-enabled');
+        }
+    }
+    
+    // If at least one file has valid NovelAI metadata, switch to blueprint mode
+    if (hasValidBlueprint) {
+        // Switch to blueprint mode
+        unifiedUploadCurrentMode = 'blueprint';
+        updateUnifiedUploadMode();
+        
+        // Show warning if some files are invalid
+        const warningContainer = document.getElementById('unifiedUploadWarnings');
+        if (warningContainer) {
+            if (validBlueprintCount < unifiedUploadFiles.length) {
+                const invalidCount = unifiedUploadFiles.length - validBlueprintCount;
+                warningContainer.style.display = '';
+                warningContainer.querySelector('.warning-message').textContent = 
+                    `${invalidCount} of ${unifiedUploadFiles.length} files cannot be imported as blueprints.`;
+            } else {
+                warningContainer.style.display = 'none';
             }
         }
     } else {
-        resetUploadModal();
+        // Clear any existing warnings if no blueprints detected
+        const warningContainer = document.getElementById('unifiedUploadWarnings');
+        if (warningContainer) {
+            warningContainer.style.display = 'none';
+        }
     }
+    
+    // Show mode selector if we have image files (not just vibe bundles)
+    const hasImageFiles = unifiedUploadFiles.some(file => file.type.startsWith('image/'));
+    if (hasImageFiles) {
+        showModeSelector();
+    }
+    
+    // Hide initial options
+    hideInitialUploadOptions();
+    
+    // Update overlay with file information
+    const fileInfo = createFileInfoHTML(unifiedUploadFiles[0], unifiedUploadFiles.length);
+    updateUploadOverlayWithFileInfo(fileInfo);
+    
+    // Process first file immediately
+    await updateUnifiedUploadPreview();
 }
 
 // Handle vibe bundle file selection
@@ -3145,6 +4230,322 @@ async function handleVibeBundleFile(file, backgroundImage) {
     reader.readAsText(file);
 }
 
+// Extract PNG metadata from a File object
+async function extractPNGMetadata(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const buffer = e.target.result;
+                const metadata = readPNGMetadata(buffer);
+                
+                const enhancedMetadata = await extractMetadataWithDimensions(metadata, buffer, file);
+                resolve(enhancedMetadata);
+            } catch (error) {
+                reject(error);
+            }
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+// Read PNG metadata from ArrayBuffer
+function readPNGMetadata(buffer) {
+    const data = new Uint8Array(buffer);
+    if (!isValidPNGHeader(data)) {
+        throw new Error('Invalid PNG file header');
+    }
+    
+    const result = {};
+    let idx = 8;
+    
+    while (idx < data.length) {
+        if (idx + 8 > data.length) break;
+        
+        const length = readUint32(data, idx);
+        const name = String.fromCharCode(...data.slice(idx + 4, idx + 8));
+        idx += 8;
+        
+        if (name === 'IEND') break;
+        
+        if (name === 'tEXt') {
+            const chunkData = data.slice(idx, idx + length);
+            const textChunk = textDecode(chunkData);
+            if (!result.tEXt) result.tEXt = {};
+            result.tEXt[textChunk.keyword] = textChunk.text;
+        }
+        
+        idx += length + 4; // Skip data and CRC
+    }
+    
+    if (result.tEXt && result.tEXt.Comment) {
+        try {
+            const commentData = JSON.parse(result.tEXt.Comment);
+            return { ...commentData, source: result.tEXt.Source, software: result.tEXt.Software };
+        } catch (e) {
+            // Comment is not JSON, return basic metadata
+            return { source: result.tEXt.Source, software: result.tEXt.Software };
+        }
+    }
+    
+    return result;
+}
+
+// Enhance metadata with actual image dimensions and scale ratio detection
+async function extractMetadataWithDimensions(metadata, buffer, file) {
+    try {
+        // Create an image element to get actual dimensions
+        const imageUrl = URL.createObjectURL(file);
+        const img = new Image();
+        
+        const dimensions = await new Promise((resolve, reject) => {
+            img.onload = () => {
+                const actualWidth = img.naturalWidth;
+                const actualHeight = img.naturalHeight;
+                URL.revokeObjectURL(imageUrl);
+                resolve({ width: actualWidth, height: actualHeight });
+            };
+            img.onerror = () => {
+                URL.revokeObjectURL(imageUrl);
+                reject(new Error('Failed to load image for dimension extraction'));
+            };
+            img.src = imageUrl;
+        });
+        
+        // Add actual dimensions to metadata
+        metadata.actual_width = dimensions.width;
+        metadata.actual_height = dimensions.height;
+        
+        // Calculate scale ratio if both embedded and actual dimensions are present
+        if (metadata.width && metadata.height) {
+            const embeddedWidth = metadata.width;
+            const embeddedHeight = metadata.height;
+            
+            // Check if image was scaled up (both dimensions increased)
+            if (dimensions.width > embeddedWidth && dimensions.height > embeddedHeight) {
+                const scaleX = (dimensions.width / embeddedWidth).toFixed(2);
+                const scaleY = (dimensions.height / embeddedHeight).toFixed(2);
+                
+                // Use the smaller scale factor for display (more conservative)
+                const displayScale = Math.min(parseFloat(scaleX), parseFloat(scaleY));
+                
+                // Add scale ratio information
+                metadata.scale_ratio = {
+                    x: parseFloat(scaleX),
+                    y: parseFloat(scaleY),
+                    display: `${displayScale % 1 === 0 ? displayScale : displayScale.toFixed(1)}×`,
+                    original_dimensions: `${embeddedWidth}×${embeddedHeight}`,
+                    current_dimensions: `${dimensions.width}×${dimensions.height}`
+                };
+            }
+        }
+        
+        return metadata;
+    } catch (error) {
+        console.warn('Could not extract image dimensions:', error.message);
+        return metadata; // Return original metadata if dimension extraction fails
+    }
+}
+
+// Helper function to determine model from metadata
+function determineModelFromMetadata(metadata) {
+    if (!metadata || !metadata.source) {
+        return "unknown";
+    }
+    
+    const source = metadata.source;
+    
+    // NovelAI Diffusion V4/V4.5 models
+    if (source.includes("NovelAI Diffusion V4")) {
+        switch (source) {
+            case "NovelAI Diffusion V4.5 4BDE2A90":
+            case "NovelAI Diffusion V4.5 1229B44F":
+            case "NovelAI Diffusion V4.5 B9F340FD":
+            case "NovelAI Diffusion V4.5 F3D95188":
+                return "V4_5";
+            case "NovelAI Diffusion V4.5 C02D4F98":
+            case "NovelAI Diffusion V4.5 5AB81C7C":
+            case "NovelAI Diffusion V4.5 B5A2A797":
+            case "NovelAI Diffusion V4 5AB81C7C":
+            case "NovelAI Diffusion V4 B5A2A797":
+                return "V4_5_CUR";
+            case "NovelAI Diffusion V4 37442FCA":
+            case "NovelAI Diffusion V4 4F49EC75":
+            case "NovelAI Diffusion V4 CA4B7203":
+            case "NovelAI Diffusion V4 79F47848":
+            case "NovelAI Diffusion V4 F6302A9D":
+                return "V4";
+            case "NovelAI Diffusion V4 7ABFFA2A":
+            case "NovelAI Diffusion V4 C1CCBA86":
+            case "NovelAI Diffusion V4 770A9E12":
+                return "V4_CUR";
+            default:
+                return "V4_5";
+        }
+    }
+    
+    // Stable Diffusion models
+    switch (source) {
+        case "Stable Diffusion XL B0BDF6C1":
+        case "Stable Diffusion XL C1E1DE52":
+        case "Stable Diffusion XL 7BCCAA2C":
+        case "Stable Diffusion XL 1120E6A9":
+        case "Stable Diffusion XL 8BA2AF87":
+            return "V3";
+        case "Stable Diffusion XL 4BE8C60C":
+        case "Stable Diffusion XL C8704949":
+        case "Stable Diffusion XL 37C2B166":
+        case "Stable Diffusion XL F306816B":
+        case "Stable Diffusion XL 9CC2F394":
+            return "FURRY";
+        default:
+            return source;
+    }
+}
+
+// Helper function to get model display name
+function getModelDisplayName(model) {
+    return model === "V4_5" ? "<span class='model-name'>NovelAI v4.5</span><span class='badge custom-dropdown-badge'>F</span>" : 
+           model === "V4_5_CUR" ? "<span class='model-name'>NovelAI v4.5</span><span class='badge custom-dropdown-badge curated-badge'>C</span>" : 
+           model === "V4" ? "<span class='model-name'>NovelAI v4</span><span class='badge custom-dropdown-badge'>F</span>" : 
+           model === "V4_CUR" ? "<span class='model-name'>NovelAI v4</span><span class='badge custom-dropdown-badge curated-badge'>C</span>" : 
+           model === "V3" ? "<span class='model-name'>NovelAI v3</span><span class='badge custom-dropdown-badge legacy-badge'>L</span>" :  
+           model === "FURRY" ? "<span class='model-name'>NovelAI v3</span><span class='badge custom-dropdown-badge furry-badge'>LF</span>" :
+           model;
+}
+
+// Helper functions for PNG parsing
+function isValidPNGHeader(data) {
+    return (
+        data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47 &&
+        data[4] === 0x0D && data[5] === 0x0A && data[6] === 0x1A && data[7] === 0x0A
+    );
+}
+
+function readUint32(data, offset) {
+    return (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
+}
+
+function textDecode(data) {
+    let naming = true;
+    let text = '';
+    let name = '';
+    
+    for (let i = 0; i < data.length; i++) {
+        if (naming) {
+            if (data[i]) {
+                name += String.fromCharCode(data[i]);
+            } else {
+                naming = false;
+            }
+        } else {
+            const textDecoder = new TextDecoder("utf-8");
+            text = textDecoder.decode(data.slice(i));
+            break;
+        }
+    }
+    
+    return { keyword: name, text };
+}
+
+// Update the preview and metadata display for the current file
+async function updateUnifiedUploadPreview() {
+    const currentFile = unifiedUploadFiles[unifiedUploadCurrentIndex];
+    if (!currentFile) return;
+
+    // Show overlay since we now have file data to display
+    const overlay = document.querySelector('#unifiedUploadModal .gallery-move-image-info-overlay');
+    if (overlay) {
+        overlay.classList.remove('hidden');
+    }
+
+    // Update navigation display
+    const navContainer = document.getElementById('unifiedUploadNavigation');
+    const currentIndexSpan = document.getElementById('unifiedUploadCurrentIndex');
+    const totalCountSpan = document.getElementById('unifiedUploadTotalCount');
+    
+    if (navContainer && currentIndexSpan && totalCountSpan) {
+        navContainer.style.display = unifiedUploadFiles.length > 1 ? '' : 'none';
+        currentIndexSpan.textContent = (unifiedUploadCurrentIndex + 1).toString();
+        totalCountSpan.textContent = unifiedUploadFiles.length.toString();
+    }
+
+    // Update background preview
+    const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
+    if (backgroundImage) {
+        const imageUrl = URL.createObjectURL(currentFile);
+        backgroundImage.src = imageUrl;
+        backgroundImage.onload = () => URL.revokeObjectURL(imageUrl);
+    }
+
+    // Get all preview areas
+    const blueprintPreview = document.getElementById('unifiedUploadBlueprintPreview');
+    const blueprintInfo = document.getElementById('unifiedUploadBlueprintInfo');
+    const commentContainer = document.getElementById('unifiedUploadCommentInputContainer');
+    
+    // First hide all preview areas
+    if (blueprintPreview) {
+        blueprintPreview.style.display = 'none';
+    }
+    
+    // Show footer actions when files are selected
+    const footerActions = document.querySelector('.gallery-move-actions');
+    if (footerActions) {
+        footerActions.style.display = '';
+    }
+    
+    // Show/hide Open in Editor button based on mode
+    if (unifiedUploadOpenInEditorBtn) {
+        unifiedUploadOpenInEditorBtn.style.display = unifiedUploadCurrentMode === 'blueprint' ? '' : 'none';
+    }
+    
+    // Show/hide reference comment based on mode
+    if (commentContainer) {
+        commentContainer.style.display = unifiedUploadCurrentMode === 'blueprint' ? 'none' : '';
+    }
+    
+    // Update metadata display based on mode
+    if (unifiedUploadCurrentMode === 'blueprint') {
+        const currentMetadata = unifiedUploadFileMetadata[unifiedUploadCurrentIndex];
+        
+        if (blueprintPreview) {
+            blueprintPreview.style.display = 'block';
+        }
+        
+        if (currentMetadata && currentMetadata.valid) {
+            // Show blueprint preview for valid files using the consolidated function
+            showBlueprintPreview(currentMetadata.metadata);
+        } else {
+            // Show individual file warning in the blueprint preview area
+            // Invalid blueprint, show warning
+            if (blueprintInfo) {
+                blueprintInfo.innerHTML = `<div class="form-group">
+                    <p class="text-warning">This file cannot be imported as a blueprint.</p>
+                    <p class="text-warning small">${currentMetadata ? currentMetadata.error : 'Invalid file'}</p>
+                </div>`;
+            }
+        }
+    } else if (unifiedUploadCurrentMode === 'vibe') {
+        // Handle vibe preview
+        if (currentFile.type === 'application/json' || currentFile.name.endsWith('.naiv4vibebundle')) {
+            await handleVibeBundleFile(currentFile, backgroundImage);
+        }
+    }
+}
+
+// Handle PNG file selection and check for NovelAI metadata
+async function handlePNGFile(file, backgroundImage) {
+    // Create a preview URL for the uploaded image
+    const imageUrl = URL.createObjectURL(file);
+    backgroundImage.src = imageUrl;
+    
+    // Clean up the object URL when the image loads
+    backgroundImage.onload = () => {
+        URL.revokeObjectURL(imageUrl);
+    };
+}
+
 // Handle regular image file selection
 async function handleImageFile(file, backgroundImage) {
     // Create a preview URL for the uploaded image
@@ -3157,12 +4558,209 @@ async function handleImageFile(file, backgroundImage) {
     };
 }
 
+// Show blueprint mode in the mode slider
+function showBlueprintMode() {
+    const blueprintBtn = document.querySelector('.blueprint-mode-btn');
+    if (blueprintBtn) {
+        blueprintBtn.classList.add('show');
+    } else {
+        console.warn('Blueprint mode button not found');
+    }
+    
+    // Also enable blueprint mode in the mode slider container
+    const modeSliderContainer = document.querySelector('.mode-slider-container');
+    if (modeSliderContainer) {
+        modeSliderContainer.classList.add('blueprint-enabled');
+    } else {
+        console.warn('Mode slider container not found');
+    }
+}
+
+// Show blueprint preview with metadata information
+function showBlueprintPreview(metadata) {
+    // Show overlay since we now have blueprint data to display
+    const overlay = document.querySelector('#unifiedUploadModal .gallery-move-image-info-overlay');
+    if (overlay) {
+        overlay.classList.remove('hidden');
+    }
+    
+    const blueprintPreview = document.getElementById('unifiedUploadBlueprintPreview');
+    const blueprintInfo = document.getElementById('unifiedUploadBlueprintInfo');
+    
+    if (blueprintPreview && blueprintInfo) {
+        blueprintPreview.style.display = 'block';
+        
+        // Validate metadata structure
+        if (!metadata || typeof metadata !== 'object') {
+            console.error('Invalid metadata structure:', metadata);
+            blueprintInfo.innerHTML = '<div class="form-group"><label>Error</label><div class="meta-value">Invalid metadata structure</div></div>';
+            return;
+        }
+        
+        // Build metadata display using the latest system
+        let infoRows = [[],[],[],[],[]];
+
+        // Model information - use prettified model name
+        if (metadata.source) {
+            const modelKey = determineModelFromMetadata(metadata);
+            const modelDisplayName = getModelDisplayName(modelKey);
+            infoRows[1].push(`<div class="form-group"><label for="modelName">Model</label><div class="meta-value">${modelDisplayName}</div></div>`);
+        }
+        
+        // Resolution information - use priority order: embedded JSON > server dimensions > client fallback
+        let resolutionText = null;
+        if (metadata.resolution) {
+            resolutionText = formatResolution(metadata.resolution, metadata.width, metadata.height);
+        } else if (metadata.actual_resolution) {
+            resolutionText = metadata.actual_resolution_display;
+        } else if (metadata.width && metadata.height) {
+            resolutionText = formatResolution(null, metadata.width, metadata.height);
+        } else if (metadata.actual_width && metadata.actual_height) {
+            resolutionText = `${metadata.actual_width} × ${metadata.actual_height}`;
+        }                
+        if (resolutionText) {                    
+            let resolutionHtml = `<div class="form-group"><label for="modelName">Resolution</label><div class="meta-value space-between"><span>${resolutionText}</span>`
+            if (metadata.scale_ratio)
+                resolutionHtml += ` <span class="badge custom-dropdown-badge scale-ratio-badge" title="Image scaled up from ${metadata.scale_ratio.original_dimensions} to ${metadata.scale_ratio.current_dimensions}">${metadata.scale_ratio.display}</span>`;
+            resolutionHtml += `</div></div>`;
+            infoRows[1].push(resolutionHtml);
+        }
+        if (metadata.seed !== undefined) {
+            infoRows[1].push(`<div class="form-group auto-width"><label class="justify-end" for="modelName">Seed</label><div class="meta-value justify-end">${metadata.seed}</div></div>`);
+        }
+        
+        // Generation parameters
+        if (metadata.steps) {
+            infoRows[2].push(`<div class="form-group auto-width"><label for="modelName">Steps</label><div class="meta-value">${metadata.steps}</div></div>`);
+        }
+        if (metadata.scale) {
+            infoRows[2].push(`<div class="form-group auto-width"><label for="modelName">Guidance</label><div class="meta-value space-between"><span>${metadata.scale.toFixed(1)}</span>${metadata.cfg_rescale && metadata.cfg_rescale > 0 ? '<i class="fas fa-sparkle"></i>' : ''}</div></div>`);
+        }
+        if (metadata.cfg_rescale !== undefined) {
+            infoRows[2].push(`<div class="form-group auto-width"><label for="modelName">Rescale</label><div class="meta-value">${metadata.cfg_rescale ? (metadata.cfg_rescale * 100).toFixed(0) + '%' : 'None'}</div></div>`);
+        }
+        if (metadata.sampler) {
+            const samplerObj = getSamplerMeta(metadata.sampler);
+            const samplerText = samplerObj ? `<span>${samplerObj.display_short || samplerObj.display}</span>${samplerObj.badge ? `<span class="custom-dropdown-badge ${samplerObj.badge_class}">${samplerObj.badge}</span>` : ''}` : metadata.sampler;
+            infoRows[2].push(`<div class="form-group"><label for="modelName">Sampler</label><div class="meta-value">${samplerText}</div></div>`);
+        }
+        if (metadata.noise_schedule) {
+            const noiseObj = getNoiseMeta(metadata.noise_schedule);
+            const noiseText = noiseObj ? noiseObj.display : metadata.noise_schedule;
+            infoRows[2].push(`<div class="form-group"><label for="modelName">Noise Scheduler</label><div class="meta-value">${noiseText}</div></div>`);
+        }
+        if (metadata.forge_data) {
+            infoRows[0].unshift(`<div class="form-group"><label for="modelName">Software</label><div class="meta-value"><i class="fa-light fa-sparkles"></i><span>${metadata.forge_data.software}</span></div></div>`);
+            infoRows[3].push(`<div class="form-group"><label for="modelName">Preset Name</label><div class="meta-value">${metadata.forge_data.preset_name || 'Manual'}</div></div>`);
+            let infoBadges = [];
+            let icon = '<i class="nai-sakura"></i>';
+            let text = 'Anime'
+            if (metadata.forge_data.dataset_config !== undefined && metadata.forge_data.dataset_config?.include?.length > 0) {
+                if (metadata.forge_data.dataset_config?.include?.includes('furry')) {
+                    icon = '<i class="nai-furry"></i>';
+                    text = 'Furry';
+                } else if (metadata.forge_data.dataset_config?.include?.includes('background')) {
+                    icon = '<i class="fa-solid fa-mountain-city"></i>';
+                    text = 'Background';
+                } else {
+                    if (metadata.forge_data.dataset_config?.include?.includes('danbooru')) {
+                        text = 'Danbooru';
+                    }
+                }
+                
+                if (metadata.forge_data.dataset_config?.include?.length > 1) {
+                    text = `${metadata.forge_data.dataset_config?.include?.length} Dataset${metadata.forge_data.dataset_config?.include?.length > 1 ? 's' : ''}`;
+                }
+            }
+            infoBadges.push(`<div class="badge forgedata-badge">${icon}<span>${text}</span></div>`);
+
+            if (metadata.forge_data.input_prompt !== undefined)
+                infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-pen-nib"></i><span>Prompt</span></div>`);
+            if (metadata.forge_data.allCharacters !== undefined) {
+                if (metadata.forge_data.input_uc !== undefined && 
+                    metadata.forge_data.allCharacters.length > 0 && 
+                    metadata.forge_data.allCharacters.some(character => character.uc && character.uc.trim().length > 0)) {
+                    infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-ban"></i><span>Multi-UC</span></div>`);
+                } else if (metadata.forge_data.append_uc !== undefined) {
+                    infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-soap"></i><span>UC</span></div>`);
+                }
+                if (metadata.forge_data.append_uc !== undefined) 
+                    infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-soap"></i><span>UC</span></div>`);
+                infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light ${metadata.forge_data.allCharacters.length > 1 ? 'fa-user-group' : 'fa-child'}"></i><span>${metadata.forge_data.allCharacters.length > 1 ? metadata.forge_data.allCharacters.length + ' Characters' : 'Character'}</span></div>`);
+            } else {
+                if (metadata.forge_data.input_uc !== undefined)
+                    infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-ban"></i><span>UC</span></div>`);
+                if (metadata.forge_data.append_uc !== undefined)
+                    infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-soap"></i><span>UC</span></div>`);                        
+            }
+            if (metadata.forge_data.append_quality !== undefined)
+                infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-crown"></i><span>Quality</span></div>`);
+            if (metadata.forge_data.image_source !== undefined)
+                infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-scanner-image"></i><span>Reference Image</span></div>`);
+            if (metadata.forge_data.image_bias !== undefined)
+                infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-crop"></i><span>NDRB</span></div>`);
+            if (metadata.forge_data.mask_compressed !== undefined)
+                infoBadges.push(`<div class="badge forgedata-badge"><i class="nai-inpaint"></i><span>InPaint</span></div>`);
+            if (metadata.forge_data.vibe_transfer !== undefined && metadata.forge_data.vibe_transfer.length > 0)
+                infoBadges.push(`<div class="badge forgedata-badge"><i class="nai-vibe-transfer"></i><span>${metadata.forge_data.vibe_transfer.length > 1 ? metadata.forge_data.vibe_transfer.length + ' Encodings' : 'Vibe Encoding'}</span></div>`);
+            if (infoBadges.length > 0) {
+                infoRows[4].push(`<div class="form-group"><label for="modelName">Available Data</label><div class="meta-value badge-list">${infoBadges.join('')}</div></div>`);
+            }
+            if (metadata.forge_data.date_generated) {
+                const date = new Date(metadata.forge_data.date_generated);
+                infoRows[0].push(`<div class="form-group auto-width"><label class="justify-end" for="modelName">Date</label><div class="meta-value justify-end">${date.toLocaleDateString()}</div></div>`);
+            }
+        } else {
+            let softwareName = metadata.source;
+            try {
+                const items = softwareName.split(' ');
+                const version = items.pop();
+                let name = items.slice(0, -1).join(' ');
+                if (name.includes('V4')) {
+                    name = name.split(' V4')[0];
+                }
+                softwareName = name;
+                if (version) {
+                    softwareName += ` (${version})`;
+                }
+            } catch (e) {
+                softwareName = 'NovelAI Diffusion';
+            }
+            infoRows[0].unshift(`<div class="form-group"><label for="modelName">Software</label><div class="meta-value"><i class="nai-pen-tip-light"></i><span>${softwareName}</span></div></div>`);
+        }
+        
+        const htmlContent = infoRows.filter(row => row.length > 0).map(row => `<div class="form-row">${row.join('')}</div>`).join('');
+        blueprintInfo.innerHTML = htmlContent;
+    }
+}
+
+// Hide blueprint preview
+function hideBlueprintPreview() {
+    const blueprintPreview = document.getElementById('unifiedUploadBlueprintPreview');
+    if (blueprintPreview) {
+        blueprintPreview.style.display = 'none';
+    }
+}
+
 // Show vibe bundle preview
 function showVibeBundlePreview(vibes) {
+    console.log('showVibeBundlePreview called with vibes:', vibes);
+    
+    // Show overlay since we now have vibe data to display
+    const overlay = document.querySelector('#unifiedUploadModal .gallery-move-image-info-overlay');
+    if (overlay) {
+        overlay.classList.remove('hidden');
+    }
+    
     const vibeBundlePreview = document.getElementById('unifiedUploadVibeBundlePreview');
     const vibeBundleList = document.getElementById('unifiedUploadVibeBundleList');
     
-    if (!vibeBundlePreview || !vibeBundleList) return;
+    console.log('Vibe bundle preview elements:', vibeBundlePreview ? 'Found' : 'Not found', vibeBundleList ? 'Found' : 'Not found');
+    
+    if (!vibeBundlePreview || !vibeBundleList) {
+        console.error('Vibe bundle preview elements not found');
+        return;
+    }
     
     // Initialize modified vibe data tracking
     window.modifiedVibeData = [];
@@ -3179,6 +4777,9 @@ function showVibeBundlePreview(vibes) {
         img.className = 'vibe-bundle-item-image';
         if (vibe.thumbnail && vibe.thumbnail.startsWith('data:image/')) {
             img.src = vibe.thumbnail;
+        } else if (vibe.thumbnail) {
+            // Use the server-generated thumbnail with indexed filename
+            img.src = `/cache/${vibe.thumbnail}.webp`;
         } else {
             img.src = '/background.jpg';
         }
@@ -3402,7 +5003,7 @@ function showVibeBundlePreview(vibes) {
         vibeBundleList.appendChild(item);
     });
     
-    vibeBundlePreview.style.display = 'block';
+    vibeBundlePreview.style.display = '';
 }
 
 // Hide vibe bundle preview
@@ -3415,17 +5016,17 @@ function hideVibeBundlePreview() {
 
 // Hide mode selector buttons
 function hideModeSelector() {
-    const modeSelector = document.querySelector('.unified-upload-mode-selector');
+    const modeSelector = document.getElementById('unifiedUploadModeSelector');
     if (modeSelector) {
-        modeSelector.style.display = 'none';
+        modeSelector.classList.add('hide');
     }
 }
 
 // Show mode selector buttons
 function showModeSelector() {
-    const modeSelector = document.querySelector('.unified-upload-mode-selector');
+    const modeSelector = document.getElementById('unifiedUploadModeSelector');
     if (modeSelector) {
-        modeSelector.style.display = '';
+        modeSelector.classList.remove('hide');
     }
 }
 
@@ -3440,6 +5041,11 @@ function updateUIForVibeBundleImport(vibeCount, isBundle) {
     
     if (confirmText) {
         confirmText.textContent = 'Import Bundle';
+    }
+    
+    // Hide Open in Editor button for vibe mode
+    if (unifiedUploadOpenInEditorBtn) {
+        unifiedUploadOpenInEditorBtn.style.display = 'none';
     }
 }
 
@@ -3461,14 +5067,33 @@ function resetUploadModal() {
     const confirmText = document.getElementById('unifiedUploadConfirmText');
     
     if (modalTitle) {
-        modalTitle.innerHTML = '<i class="nai-import"></i> Upload & Encode';
+        modalTitle.innerHTML = '<i class="nai-import"></i> Import File';
     }
     if (confirmText) {
         confirmText.textContent = 'Upload';
     }
     
     hideVibeBundlePreview();
-    showModeSelector();
+    
+    // Reset downloaded file state
+    unifiedUploadDownloadedFile = null;
+    
+    // Hide downloaded file info section
+    const downloadedInfo = document.getElementById('unifiedUploadDownloadedInfo');
+    if (downloadedInfo) {
+        downloadedInfo.style.display = 'none';
+    }
+    
+    // Reset confirm button state
+    const confirmBtn = document.getElementById('unifiedUploadConfirmBtn');
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+    }
+    
+    // Hide Open in Editor button
+    if (unifiedUploadOpenInEditorBtn) {
+        unifiedUploadOpenInEditorBtn.style.display = 'none';
+    }
 }
 
 function initializeCacheManager() {
@@ -3503,9 +5128,32 @@ function initializeCacheManager() {
 
     // Unified Upload Modal Controls
     if (closeUnifiedUploadBtn) closeUnifiedUploadBtn.addEventListener('click', hideUnifiedUploadModal);
-    if (unifiedUploadCancelBtn) unifiedUploadCancelBtn.addEventListener('click', hideUnifiedUploadModal);
+    if (unifiedUploadCancelBtn) unifiedUploadCancelBtn.addEventListener('click', resetUnifiedUploadModal);
+    if (unifiedUploadOpenInEditorBtn) unifiedUploadOpenInEditorBtn.addEventListener('click', handleUnifiedUploadOpenInEditor);
     if (unifiedUploadConfirmBtn) unifiedUploadConfirmBtn.addEventListener('click', handleUnifiedUploadConfirm);
 
+    // Navigation controls
+    const prevBtn = document.getElementById('unifiedUploadPrevBtn');
+    const nextBtn = document.getElementById('unifiedUploadNextBtn');
+    
+    if (prevBtn) {
+        prevBtn.addEventListener('click', async () => {
+            if (unifiedUploadCurrentIndex > 0) {
+                unifiedUploadCurrentIndex--;
+                await updateUnifiedUploadPreview();
+            }
+        });
+    }
+    
+    if (nextBtn) {
+        nextBtn.addEventListener('click', async () => {
+            if (unifiedUploadCurrentIndex < unifiedUploadFiles.length - 1) {
+                unifiedUploadCurrentIndex++;
+                await updateUnifiedUploadPreview();
+            }
+        });
+    }
+    
     // Mode slider controls
     const modeSliderBtns = document.querySelectorAll('.mode-slider-btn');
     modeSliderBtns.forEach(btn => {
@@ -3518,10 +5166,34 @@ function initializeCacheManager() {
         });
     });
 
-    // File input change handler for unified upload
-    if (unifiedUploadFileInput) {
-        unifiedUploadFileInput.addEventListener('change', async () => {
-            await handleUnifiedUploadFileChange();
+    // Clipboard button click handler for unified upload
+    const unifiedUploadClipboardBtn = document.getElementById('unifiedUploadClipboardBtn');
+    if (unifiedUploadClipboardBtn) {
+        unifiedUploadClipboardBtn.addEventListener('click', handleUnifiedUploadClipboard);
+    }
+
+    // Select files button click handler for unified upload
+    const unifiedUploadSelectBtn = document.getElementById('unifiedUploadSelectBtn');
+    if (unifiedUploadSelectBtn) {
+        unifiedUploadSelectBtn.addEventListener('click', () => {
+            // Create a hidden file input element
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.multiple = true;
+            fileInput.accept = 'image/*,.naiv4vibebundle,.json';
+            fileInput.style.display = 'none';
+            
+            // Add change event listener
+            fileInput.addEventListener('change', handleUnifiedUploadFileChange);
+            
+            // Append to body temporarily and trigger click
+            document.body.appendChild(fileInput);
+            fileInput.click();
+            
+            // Clean up after a short delay
+            setTimeout(() => {
+                document.body.removeChild(fileInput);
+            }, 1000);
         });
     }
 
@@ -3549,43 +5221,7 @@ function initializeCacheManager() {
     if (vibeEncodingCancelBtn) vibeEncodingCancelBtn.addEventListener('click', async () => await hideVibeEncodingModal());
     if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.addEventListener('click', handleVibeEncodingConfirm);
 
-    // File input change handler for upload mode
-    if (vibeEncodingFileInput) {
-        vibeEncodingFileInput.addEventListener('change', async () => {
-            if (vibeEncodingConfirmBtn && vibeEncodingCurrentMode === 'upload') {
-                vibeEncodingConfirmBtn.disabled = !vibeEncodingFileInput.files.length;
-            }
-            
-            // Display uploaded image in background
-            if (vibeEncodingFileInput.files.length > 0) {
-                const file = vibeEncodingFileInput.files[0];
-                const backgroundImage = document.getElementById('vibeEncodingBackgroundImage');
-                
-                if (backgroundImage && file) {
-                    try {
-                        // Create a preview URL for the uploaded image
-                        const imageUrl = URL.createObjectURL(file);
-                        backgroundImage.src = imageUrl;
-                        
-                        // Clean up the object URL when the image loads
-                        backgroundImage.onload = () => {
-                            URL.revokeObjectURL(imageUrl);
-                        };
-                    } catch (error) {
-                        console.error('Error creating image preview:', error);
-                        // Fallback to placeholder
-                        backgroundImage.src = '/background.jpg';
-                    }
-                }
-            } else {
-                // Reset to placeholder if no file selected
-                const backgroundImage = document.getElementById('vibeEncodingBackgroundImage');
-                if (backgroundImage) {
-                    backgroundImage.src = '/background.jpg';
-                }
-            }
-        });
-    }
+
 
     // Add scroll wheel functionality for IE input
     if (vibeEncodingIeInput) {
@@ -3628,7 +5264,7 @@ function initializeCacheManager() {
     if (vibeManagerMoveConfirmBtn) vibeManagerMoveConfirmBtn.addEventListener('click', moveVibeManagerImages);
 
     // Close modals when clicking outside
-    const modals = ['cacheManagerModal', 'unifiedUploadModal', 'cacheManagerMoveModal', 'vibeEncodingModal', 'vibeManagerDeleteModal', 'vibeManagerMoveModal'];
+    const modals = ['cacheManagerModal'];
     modals.forEach(modalId => {
         const modal = document.getElementById(modalId);
         if (modal) {
@@ -3639,4 +5275,1143 @@ function initializeCacheManager() {
             });
         }
     });
+}
+
+// Helper function to format resolution with aspect ratio matching
+function formatResolution(resolution, width, height) {
+    if (!resolution && !width && !height) return '';
+    
+    // If we have a resolution string, try to match it first
+    if (resolution) {
+        const RESOLUTIONS = [
+            { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768, aspect: 0.667 },
+            { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512, aspect: 1.5 },
+            { value: 'small_square', display: 'Small Square', width: 640, height: 640, aspect: 1.0 },
+            { value: 'normal_portrait', display: 'Normal Portrait', width: 832, height: 1216, aspect: 0.684 },
+            { value: 'normal_landscape', display: 'Normal Landscape', width: 1216, height: 832, aspect: 1.462 },
+            { value: 'normal_square', display: 'Normal Square', width: 1024, height: 1024, aspect: 1.0 },
+            { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536, aspect: 0.667 },
+            { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024, aspect: 1.5 },
+            { value: 'large_square', display: 'Large Square', width: 1472, height: 1472, aspect: 1.0 },
+            { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920, aspect: 0.567 },
+            { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088, aspect: 1.765 }
+        ];
+        
+        // Handle custom resolution format: custom_1024x768
+        if (resolution.startsWith('custom_')) {
+            const dimensions = resolution.replace('custom_', '');
+            const [w, h] = dimensions.split('x').map(Number);
+            if (w && h) {
+                return `Custom ${w}×${h}`;
+            }
+        }
+        
+        // Try to find the resolution in our array first
+        const res = RESOLUTIONS.find(r => r.value.toLowerCase() === resolution.toLowerCase());
+        if (res) {
+            return res.display;
+        }
+        
+        // Fallback: Convert snake_case to Title Case
+        return resolution
+            .split('_')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    }
+    
+    // If no resolution string but we have dimensions, match by aspect ratio
+    if (width && height) {
+        const aspect = width / height;
+        const tolerance = 0.05; // 5% tolerance for aspect ratio matching
+        
+        const RESOLUTIONS = [
+            { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768, aspect: 0.667 },
+            { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512, aspect: 1.5 },
+            { value: 'small_square', display: 'Small Square', width: 640, height: 640, aspect: 1.0 },
+            { value: 'normal_portrait', display: 'Normal Portrait', width: 832, height: 1216, aspect: 0.684 },
+            { value: 'normal_landscape', display: 'Normal Landscape', width: 1216, height: 832, aspect: 1.462 },
+            { value: 'normal_square', display: 'Normal Square', width: 1024, height: 1024, aspect: 1.0 },
+            { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536, aspect: 0.667 },
+            { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024, aspect: 1.5 },
+            { value: 'large_square', display: 'Large Square', width: 1472, height: 1472, aspect: 1.0 },
+            { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920, aspect: 0.567 },
+            { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088, aspect: 1.765 }
+        ];
+        
+        const exactMatch = RESOLUTIONS.find(r => r.width === width && r.height === height);
+        if (exactMatch) {
+            return exactMatch.display;
+        }
+        
+        const matchedResolution = RESOLUTIONS.find(r => 
+            Math.abs(r.aspect - aspect) < tolerance
+        );
+        
+        if (matchedResolution) {
+            return matchedResolution.display;
+        }
+        
+        // If no match found, return dimensions
+        return `${width} × ${height}`;
+    }
+    
+    return '';
+}
+
+// Global variable to store downloaded file info
+let unifiedUploadDownloadedFile = null;
+// Global variable to store pending URL for download
+let unifiedUploadPendingUrl = null;
+
+// Get file information from URL for confirmation dialog
+async function getFileInfoFromUrl(url) {
+    try {
+        const urlObj = new URL(url);
+        const domain = urlObj.hostname;
+        const protocol = urlObj.protocol;
+        const pathname = urlObj.pathname;
+        const filename = pathname.split('/').pop() || 'Unknown';
+        
+        // Check if WebSocket is connected
+        if (!wsClient || !wsClient.isConnected()) {
+            throw new Error('WebSocket not connected to server');
+        }
+        
+        // First, try HEAD method to get basic info
+        console.log('🌐 Sending WebSocket HEAD request for URL:', url);
+        const headResponse = await wsClient.fetchUrlInfo(url, {
+            method: 'HEAD',
+            timeout: 3000
+        }, 'text');
+        console.log('📡 WebSocket HEAD response received:', headResponse);
+        
+        if (headResponse.success) {
+            // Extract file size from content-length header
+            const contentLength = headResponse.headers['content-length'];
+
+            // Check if we got a content type and size from HEAD request
+            let contentType = headResponse.contentType;
+            let fileSize = 'Unknown';
+            let needsSecondRequest = false;
+            
+            // Check if we need a second request for missing info
+            if (!contentType || contentType === 'application/octet-stream' || contentType === 'application/unknown') {
+                needsSecondRequest = true;
+            }
+            
+            // Check if size is missing or 0
+            if (!contentLength || parseInt(contentLength) === 0) {
+                needsSecondRequest = true;
+            }
+            
+            // If we need a second request, get it
+            if (needsSecondRequest) {
+                try {
+                    // Request first 1KB of the file for type and size detection
+                    // The server will stop accepting data after 1KB and cancel the request
+                    const typeDetectionResponse = await wsClient.fetchUrlInfo(url, {
+                        method: 'GET',
+                        timeout: 5000,
+                        maxBytes: 1024 // Server will limit response to this many bytes
+                    }, 'arraybuffer');
+                    
+                    if (typeDetectionResponse.success && typeDetectionResponse.data) {
+                        // Convert base64 data back to Uint8Array for analysis
+                        const binaryString = atob(typeDetectionResponse.data);
+                        const bytes = new Uint8Array(binaryString.length);
+                        for (let i = 0; i < binaryString.length; i++) {
+                            bytes[i] = binaryString.charCodeAt(i);
+                        }
+                        
+                        // Detect file type from magic bytes if we don't have a good one
+                        if (!contentType || contentType === 'application/octet-stream' || contentType === 'application/unknown') {
+                            contentType = detectFileTypeFromBytes(bytes);
+                        }
+                        
+                        // Use the actual bytes received for size if HEAD didn't provide it
+                        if (!contentLength || parseInt(contentLength) > 0) {
+                            const sizeInBytes = bytes.length;
+                            if (sizeInBytes > (1024 * 1024)) {
+                                if (sizeInBytes < 1024 * 1024) {
+                                    fileSize = `${(sizeInBytes / 1024).toFixed(1)} KB`;
+                                } else if (sizeInBytes < 1024 * 1024 * 1024) {
+                                    fileSize = `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
+                                } else {
+                                    fileSize = `${(sizeInBytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+                                }
+                            }
+                        }
+                        
+                        if (typeDetectionResponse.headers['content-encoding'] === 'gzip') {
+                            console.warn('⚠️ Response was gzipped - size may be compressed size, not actual file size');
+                        }
+                    }
+                } catch (typeDetectionError) {
+                    console.warn('⚠️ Failed to get file content for type/size detection:', typeDetectionError);
+                }
+            }
+            
+            // If we still don't have a size, use the contentLength from HEAD
+            if (fileSize === 'Unknown' && contentLength) {
+                const sizeInBytes = parseInt(contentLength);
+                if (sizeInBytes < 1024) {
+                    fileSize = `${sizeInBytes} B`;
+                } else if (sizeInBytes < 1024 * 1024) {
+                    fileSize = `${(sizeInBytes / 1024).toFixed(1)} KB`;
+                } else if (sizeInBytes < 1024 * 1024 * 1024) {
+                    fileSize = `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
+                } else {
+                    fileSize = `${(sizeInBytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+                }
+            }
+
+            // Check if we need to show a warning
+            let warningHTML = '';
+            const isExpectedType = contentType && (
+                contentType.startsWith('image/') || 
+                contentType === 'application/json' ||
+                contentType === 'application/octet-stream' // Generic but might be an image
+            );
+            
+            // Check for various warning conditions
+            if (!contentType || contentType === 'application/unknown' || !isExpectedType) {
+                warningHTML = `
+                    <div class="form-group warning-section">
+                        <div class="warning-message">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Warning:</strong> This file type (${formatContentType(contentType)}) may not be supported for import. 
+                            Only image files (JPEG, PNG, GIF, WebP) and JSON files are guaranteed to work.
+                        </div>
+                    </div>
+                `;
+            } else if (contentType === 'application/octet-stream') {
+                warningHTML = `
+                    <div class="form-group warning-section">
+                        <div class="warning-message info">
+                            <i class="fas fa-info-circle"></i>
+                            <strong>Note:</strong> This file type is generic. The system will attempt to detect the actual file type, 
+                            but import may not work if it's not a supported image or JSON format.
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Add warning for very small files (might be broken/incomplete)
+            if (contentLength && parseInt(contentLength) > 0 && parseInt(contentLength) < 1024) {
+                const smallFileWarning = `
+                    <div class="form-group warning-section">
+                        <div class="warning-message">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Warning:</strong> This file is very small (${fileSize}). 
+                            It may be incomplete, corrupted, or not a valid file. Import may fail.
+                        </div>
+                    </div>
+                `;
+                warningHTML += smallFileWarning;
+            }
+            
+            // Format the information display as HTML with form-groups
+            return `
+                <div class="form-group">
+                    <label>URL</label>
+                    <div class="meta-value">${url}</div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>File Name</label>
+                        <div class="meta-value">${filename}</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Size</label>
+                        <div class="meta-value">${fileSize}</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Type</label>
+                        <div class="meta-value">${formatContentType(contentType)}</div>
+                     </div>
+                </div>
+                ${warningHTML}
+            `;
+        } else {
+            // Server-side fetch failed, but we still have basic info
+            return `
+                <div class="form-group">
+                    <label>URL</label>
+                    <div class="meta-value">${url}</div>
+                </div>
+                <div class="form-group">
+                    <label>Error</label>
+                    <div class="meta-value">${headResponse.error || 'Failed to fetch file info'}</div>
+                </div>
+            `;
+        }
+        
+    } catch (error) {
+        console.error('❌ Failed to fetch URL info:', error);
+        console.error('Error details:', {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+        });
+        
+        // Fallback if everything fails - try to parse URL manually
+        try {
+            return `
+                <div class="form-group">
+                    <label>URL</label>
+                    <div class="meta-value">${url}</div>
+                </div>
+                <div class="form-group">
+                    <label>Error</label>
+                    <div class="meta-value">Failed to connect to server</div>
+                </div>
+            `;
+        } catch (urlError) {
+            // Ultimate fallback if URL parsing fails
+            return `
+                <div class="form-group">
+                    <label>URL</label>
+                    <div class="meta-value">${url}</div>
+                </div>
+            `;
+        }
+    }
+}
+
+// Detect file type from the first few bytes (magic bytes)
+function detectFileTypeFromBytes(bytes) {
+    if (!bytes || bytes.length < 4) {
+        return 'application/unknown';
+    }
+    
+    // Check for image formats
+    // JPEG: starts with FF D8 FF
+    if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+        return 'image/jpeg';
+    }
+    
+    // PNG: starts with 89 50 4E 47 0D 0A 1A 0A
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47 &&
+        bytes[4] === 0x0D && bytes[5] === 0x0A && bytes[6] === 0x1A && bytes[7] === 0x0A) {
+        return 'image/png';
+    }
+    
+    // GIF: starts with 47 49 46 38 (GIF8)
+    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+        return 'image/gif';
+    }
+    
+    // WebP: starts with 52 49 46 46 (RIFF) followed by WebP
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+        bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) {
+        return 'image/webp';
+    }
+    
+    // Check for JSON: starts with { or [
+    if (bytes[0] === 0x7B || bytes[0] === 0x5B) {
+        // Additional check: look for more JSON-like content in the first 1KB
+        const text = new TextDecoder('utf-8').decode(bytes);
+        const trimmedText = text.trim();
+        
+        // Check if it looks like valid JSON structure
+        if ((trimmedText.startsWith('{') && trimmedText.includes('}')) ||
+            (trimmedText.startsWith('[') && trimmedText.includes(']'))) {
+            return 'application/json';
+        }
+    }
+    
+    // If no specific type detected, return unknown
+    return 'application/unknown';
+}
+
+// Handle clipboard file upload
+async function handleClipboardFile(file) {
+    try {
+        // Add file to files array
+        unifiedUploadFiles = [file];
+        unifiedUploadCurrentIndex = 0;
+        
+        // Process the file like a normal file selection
+        // This will handle hiding initial options, showing file section, and updating overlay
+        await handleUnifiedUploadFileChange();
+        
+        // Update background image for clipboard files
+        const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
+        if (backgroundImage && file) {
+            const imageUrl = URL.createObjectURL(file);
+            backgroundImage.src = imageUrl;
+            backgroundImage.onload = () => URL.revokeObjectURL(imageUrl);
+        }
+        
+        // Enable confirm button
+        if (unifiedUploadConfirmBtn) {
+            unifiedUploadConfirmBtn.disabled = false;
+        }
+        
+    } catch (error) {
+        console.error('Error handling clipboard file:', error);
+        showError('Failed to process clipboard file: ' + error.message);
+    }
+}
+
+// Create HTML for file information display
+function createFileInfoHTML(file, fileCount = 1) {
+    if (fileCount > 1) {
+        return `
+            <p><strong>Files Selected:</strong> ${fileCount} file(s)</p>
+            <p><strong>First File:</strong> ${file.name}</p>
+            <p><strong>File Type:</strong> ${file.type ? formatContentType(file.type) : 'Unknown'}</p>
+        `;
+    } else {
+        const fileSize = file.size ? formatFileSize(file.size) : 'Unknown';
+        const fileType = file.type ? formatContentType(file.type) : 'Unknown';
+        return `
+            <p><strong>File Name:</strong> ${file.name}</p>
+            <p><strong>File Size:</strong> ${fileSize}</p>
+            <p><strong>File Type:</strong> ${fileType}</p>
+        `;
+    }
+}
+
+// Create HTML for URL information display
+function createURLInfoHTML(url, fileInfo) {
+    try {
+        const urlObj = new URL(url);
+        const domain = urlObj.hostname;
+        const protocol = urlObj.protocol;
+        const pathname = urlObj.pathname;
+        const filename = pathname.split('/').pop() || 'Unknown';
+        
+        // Extract file size from content-length header if available
+        let fileSize = 'Unknown';
+        if (fileInfo && fileInfo.size) {
+            const sizeInBytes = parseInt(fileInfo.size);
+            fileSize = formatFileSize(sizeInBytes);
+        } else if (fileInfo && fileInfo.headers && fileInfo.headers['content-length']) {
+            const sizeInBytes = parseInt(fileInfo.headers['content-length']);
+            fileSize = formatFileSize(sizeInBytes);
+        } 
+        
+        // Extract content type
+        let contentType = 'Unknown';
+        if (fileInfo && fileInfo.contentType) {
+            contentType = formatContentType(fileInfo.contentType);
+        }
+        
+        // Format domain with lock icon for HTTPS
+        const domainDisplay = protocol === 'https:' ? 
+            `<i class="fas fa-lock" style="color: #3db435;"></i> ${domain}` : 
+            domain;
+        
+        return `
+            <p><strong>File Size:</strong> ${fileSize}</p>
+            <p><strong>File Name:</strong> ${filename}</p>
+            <p><strong>File Type:</strong> ${contentType}</p>
+        `;
+    } catch (error) {
+        return `
+            <p><strong>URL:</strong> ${url}</p>
+            <p><strong>Error:</strong> Failed to parse URL</p>
+        `;
+    }
+}
+
+// Create HTML for URL preview display in modal
+function createURLPreviewHTML(url, fileInfo) {
+    try {
+        const urlObj = new URL(url);
+        const domain = urlObj.hostname;
+        const protocol = urlObj.protocol;
+        const pathname = urlObj.pathname;
+        const filename = pathname.split('/').pop() || 'Unknown';
+        
+        // Extract file size and content type from fileInfo
+        // fileInfo can come from getFileInfoFromUrl (which returns HTML) or from download response
+        let fileSize = 'Unknown';
+        let contentType = 'Unknown';
+        
+        if (fileInfo) {
+            // Check if fileInfo is HTML string (from getFileInfoFromUrl)
+            if (typeof fileInfo === 'string' && fileInfo.includes('<div class="meta-value">')) {
+                // Parse the HTML to extract values
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = fileInfo;
+                
+                const labels = tempDiv.querySelectorAll('label');                
+                labels.forEach(label => {
+                    const labelText = label.textContent.trim();
+                    const metaValue = label.nextElementSibling;
+                    
+                    if (metaValue && metaValue.classList.contains('meta-value')) {
+                        if (labelText === 'Size') {
+                            fileSize = metaValue.textContent.trim();
+                        } else if (labelText === 'Type') {
+                            contentType = metaValue.textContent.trim();
+                        }
+                    }
+                });
+            } else {
+                // fileInfo is an object (from download response)
+                if (fileInfo.size) {
+                    const sizeInBytes = parseInt(fileInfo.size);
+                    fileSize = formatFileSize(sizeInBytes);
+                } else if (fileInfo.headers && fileInfo.headers['content-length']) {
+                    const sizeInBytes = parseInt(fileInfo.headers['content-length']);
+                    fileSize = formatFileSize(sizeInBytes);
+                }
+                
+                if (fileInfo.contentType) {
+                    contentType = formatContentType(fileInfo.contentType);
+                } else if (fileInfo.headers && fileInfo.headers['content-type']) {
+                    contentType = formatContentType(fileInfo.headers['content-type']);
+                }
+            }
+        }
+        
+        return `
+            <div class="form-row">
+                <div class="form-group">
+                    <label>URL</label>
+                    <div class="meta-value url-display">${url}</div>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>File Name</label>
+                    <div class="meta-value">${filename}</div>
+                </div>
+                <div class="form-group auto-width">
+                    <label>Size</label>
+                    <div class="meta-value">${fileSize}</div>
+                </div>
+                <div class="form-group auto-width">
+                    <label>File Type</label>
+                    <div class="meta-value">${contentType}</div>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        return `
+            <div class="form-group">
+                <label>URL</label>
+                <div class="meta-value">${url}</div>
+            </div>
+            <div class="form-group">
+                <label>Error</label>
+                <div class="meta-value">Failed to parse URL</div>
+            </div>
+        `;
+    }
+}
+
+// Show URL preview in main content area
+function showUrlPreview(urlPreviewHTML) {
+    const urlPreview = document.getElementById('unifiedUploadUrlPreview');
+    const urlPreviewContent = document.getElementById('unifiedUploadUrlPreviewContent');
+    
+    if (urlPreview && urlPreviewContent) {
+        urlPreviewContent.innerHTML = urlPreviewHTML;
+        urlPreview.style.display = '';
+    }
+}
+
+// Hide URL preview
+function hideUrlPreview() {
+    const urlPreview = document.getElementById('unifiedUploadUrlPreview');
+    if (urlPreview) {
+        urlPreview.style.display = 'none';
+    }
+}
+
+// Handle pending URL download when confirm button is clicked
+async function handlePendingUrlDownload() {
+    if (!unifiedUploadPendingUrl) return;
+    
+    // Update cover message for URL download
+    showGalleryMoveRightPanelCover('Loading File...');
+    
+    try {
+        // Show loading state
+        const confirmBtn = document.getElementById('unifiedUploadConfirmBtn');
+        if (confirmBtn) {
+            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+            confirmBtn.disabled = true;
+        }
+        
+        // Download the file via websocket
+        const response = await wsClient.downloadUrlFile(unifiedUploadPendingUrl);
+        
+        console.log('Download response:', response);
+        
+        if (response.success) {
+            // Store downloaded file info
+            unifiedUploadDownloadedFile = {
+                tempFilename: response.tempFilename,
+                originalFilename: response.originalFilename,
+                hash: response.hash,
+                size: response.size,
+                contentType: response.contentType,
+                url: response.url,
+                type: response.type,
+                ...response
+            };
+            
+            console.log('Stored downloaded file info:', unifiedUploadDownloadedFile);
+            
+            // Clear pending URL
+            unifiedUploadPendingUrl = null;
+            
+            // Hide URL preview
+            hideUrlPreview();
+            
+            // Hide subtitle
+            const subtitle = document.getElementById('unifiedUploadModalSubtitle');
+            if (subtitle) {
+                subtitle.classList.add('hidden');
+            }
+            
+            // Keep site domain visible after download (don't hide it)
+            
+            // Update overlay with downloaded file information
+            const urlInfo = createURLInfoHTML(unifiedUploadDownloadedFile.url, response);
+            updateUploadOverlayWithFileInfo(urlInfo);
+            
+            // Set background image for downloaded files
+            if (unifiedUploadDownloadedFile.type === 'image') {
+                const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
+                if (backgroundImage) {
+                    // Create a temporary URL for the downloaded file
+                    const tempUrl = `/temp/${unifiedUploadDownloadedFile.tempFilename}`;
+                    backgroundImage.src = tempUrl;
+                }
+            }
+            
+            // Show mode selector if it's an image file (not a vibe bundle)
+            if (unifiedUploadDownloadedFile.type === 'image') {
+                showModeSelector();
+            }
+            
+            // Update confirm button state
+            if (confirmBtn) {
+                confirmBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
+                confirmBtn.disabled = false;
+            }
+            
+            // Clear any existing file selection to avoid conflicts
+            unifiedUploadFiles = [];
+            unifiedUploadCurrentIndex = 0;
+            unifiedUploadFileMetadata = [];
+            
+            // Show comment container for downloaded files initially
+            const commentContainer = document.getElementById('unifiedUploadCommentInputContainer');
+            if (commentContainer) {
+                commentContainer.style.display = '';
+            }
+            
+            // Process metadata based on file type and update UI accordingly
+            if (unifiedUploadDownloadedFile.type === 'image' && unifiedUploadDownloadedFile.isBlueprint) {
+                // Show blueprint preview if it's a PNG with NovelAI metadata
+                console.log('Processing blueprint image with metadata:', unifiedUploadDownloadedFile.metadata);
+                showBlueprintMode();
+                
+                // Ensure metadata is properly structured before showing preview
+                if (unifiedUploadDownloadedFile.metadata && typeof unifiedUploadDownloadedFile.metadata === 'object') {
+                    showBlueprintPreview(unifiedUploadDownloadedFile.metadata);
+                } else {
+                    console.warn('Invalid metadata structure for blueprint:', unifiedUploadDownloadedFile.metadata);
+                    // Fallback: try to fetch the downloaded file and extract metadata
+                    try {
+                        const response = await fetch(`/temp/${unifiedUploadDownloadedFile.tempFilename}`);
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            const file = new File([blob], unifiedUploadDownloadedFile.originalFilename || 'downloaded_image.png', { type: 'image/png' });
+                            const metadata = await extractPNGMetadata(file);
+                            if (metadata && metadata.source && metadata.source.includes('NovelAI')) {
+                                showBlueprintPreview(metadata);
+                            } else {
+                                console.warn('Could not extract valid metadata from downloaded file');
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error extracting metadata from downloaded file:', error);
+                    }
+                }
+                
+                // Update mode to blueprint to match file upload behavior
+                unifiedUploadCurrentMode = 'blueprint';
+                updateUnifiedUploadMode();
+            } else if (unifiedUploadDownloadedFile.type === 'vibe_bundle' && unifiedUploadDownloadedFile.vibes) {
+                // Show vibe bundle preview
+                console.log('Processing vibe bundle with vibes:', unifiedUploadDownloadedFile.vibes);
+                
+                // Hide mode selection for vibe bundles (like file uploads do)
+                hideModeSelector();
+                
+                // Ensure vibes data is properly structured before showing preview
+                if (Array.isArray(unifiedUploadDownloadedFile.vibes) && unifiedUploadDownloadedFile.vibes.length > 0) {
+                    showVibeBundlePreview(unifiedUploadDownloadedFile.vibes);
+                } else {
+                    console.warn('Invalid vibes structure for vibe bundle:', unifiedUploadDownloadedFile.vibes);
+                    // Fallback: try to parse the downloaded file as JSON
+                    try {
+                        const response = await fetch(`/temp/${unifiedUploadDownloadedFile.tempFilename}`);
+                        if (response.ok) {
+                            const jsonData = await response.json();
+                            if (jsonData.identifier === 'novelai-vibe-transfer-bundle' && jsonData.vibes) {
+                                showVibeBundlePreview(jsonData.vibes);
+                            } else if (jsonData.identifier === 'novelai-vibe-transfer') {
+                                showVibeBundlePreview([jsonData]);
+                            } else {
+                                console.warn('Invalid vibe bundle format');
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error parsing vibe bundle:', error);
+                    }
+                }
+                
+                // Update UI for bundle import
+                updateUIForVibeBundleImport(unifiedUploadDownloadedFile.vibes.length, true);
+            }
+            
+            // Hide cover overlay after successful download
+            hideGalleryMoveRightPanelCover();
+            
+        } else {
+            showError('Download failed: ' + (response.error || 'Unknown error'));
+            
+            // Hide cover overlay on failure
+            hideGalleryMoveRightPanelCover();
+            
+            // Reset confirm button
+            if (confirmBtn) {
+                confirmBtn.innerHTML = '<i class="fas fa-download"></i> Download';
+                confirmBtn.disabled = false;
+            }
+            
+            // Reset to initial state on failure
+            showInitialUploadOptions();
+            
+            // Hide site domain display on failure
+            const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
+            if (siteDomainDisplay) {
+                siteDomainDisplay.style.display = 'none';
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error downloading URL:', error);
+        showError('Download failed: ' + error.message);
+        
+        // Hide cover overlay on error
+        hideGalleryMoveRightPanelCover();
+        
+        // Reset confirm button
+        const confirmBtn = document.getElementById('unifiedUploadConfirmBtn');
+        if (confirmBtn) {
+            confirmBtn.innerHTML = '<i class="fas fa-download"></i> Download';
+            confirmBtn.disabled = false;
+        }
+        
+        // Reset to initial state on error
+        showInitialUploadOptions();
+        
+        // Hide site domain display on error
+        const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
+        if (siteDomainDisplay) {
+            siteDomainDisplay.style.display = 'none';
+        }
+    }
+}
+
+// Handle clipboard paste for URL download or file
+async function handleUnifiedUploadClipboard() {
+    try {
+        // Check if clipboard API is available
+        if (!navigator.clipboard) {
+            showError('Clipboard API not available in this browser. Please copy and paste the URL manually.');
+            return;
+        }
+
+        // Try to read clipboard items (files first)
+        try {
+            const clipboardItems = await navigator.clipboard.read();
+            
+            // Check if there are files in the clipboard
+            for (const item of clipboardItems) {
+                for (const type of item.types) {
+                    if (type.startsWith('image/')) {
+                        // Handle clipboard image file
+                        const blob = await item.getType(type);
+                        const file = new File([blob], `clipboard-image.${type.split('/')[1]}`, { type });
+                        
+                        // Set the file size explicitly since File constructor from blob doesn't set it
+                        Object.defineProperty(file, 'size', {
+                            value: blob.size,
+                            writable: false
+                        });
+                        
+                        console.log('Clipboard file created:', {
+                            name: file.name,
+                            type: file.type,
+                            size: file.size,
+                            blobSize: blob.size
+                        });
+                        
+                        // Process as a file upload
+                        await handleClipboardFile(file);
+                        return;
+                    }
+                }
+            }
+        } catch (clipboardError) {
+            // Clipboard.read() failed, try reading text instead
+            console.log('Clipboard.read() failed, falling back to text:', clipboardError);
+        }
+
+        // Read clipboard text (for URLs)
+        let clipboardText = await navigator.clipboard.readText();
+        if (!clipboardText) {
+            showError('No text found in clipboard.');
+            return;
+        }
+        clipboardText = clipboardText.trim();
+
+        // Check if it looks like a URL
+        if (!clipboardText.startsWith('http') && !clipboardText.startsWith('https://')) {
+            showError('Clipboard content does not appear to be a valid URL. Please copy a valid image URL.');
+            return;
+        }
+
+        // Get file information to display in modal
+        const fileInfo = await getFileInfoFromUrl(clipboardText);
+        
+        // Store the URL for later download
+        unifiedUploadPendingUrl = clipboardText;
+        
+        // Hide initial options
+        hideInitialUploadOptions();
+        
+        // Show subtitle with "Download URL"
+        const subtitle = document.getElementById('unifiedUploadModalSubtitle');
+        const subtitleText = document.getElementById('unifiedUploadModalSubtitleText');
+        if (subtitle && subtitleText) {
+            subtitleText.textContent = 'Download URL';
+            subtitle.classList.remove('hidden');
+        }
+        
+        // Show site domain in footer
+        const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
+        const siteDomainText = document.getElementById('unifiedUploadSiteDomainText');
+        if (siteDomainDisplay && siteDomainText) {
+            const urlObj = new URL(clipboardText);
+            const domain = urlObj.hostname;
+            const protocol = urlObj.protocol;
+            const domainDisplay = protocol === 'https:' ? 
+                `<i class="fas fa-lock"></i> ${domain}` : 
+                `<i class="fas fa-fa-exclamation-triangle"></i> ${domain}`;
+            siteDomainText.innerHTML = domainDisplay;
+            siteDomainDisplay.style.display = 'flex';
+        }
+        
+        // Show URL preview in main content area
+        const urlPreview = createURLPreviewHTML(clipboardText, fileInfo);
+        showUrlPreview(urlPreview);
+        
+        // Show footer actions with download/cancel buttons
+        const footerActions = document.querySelector('.gallery-move-actions');
+        if (footerActions) {
+            footerActions.style.display = '';
+        }
+        
+        // Hide Open in Editor button for URL downloads
+        if (unifiedUploadOpenInEditorBtn) {
+            unifiedUploadOpenInEditorBtn.style.display = 'none';
+        }
+        
+        // Update confirm button to show download state
+        if (unifiedUploadConfirmBtn) {
+            unifiedUploadConfirmBtn.innerHTML = '<i class="fas fa-download"></i> Download';
+            unifiedUploadConfirmBtn.disabled = false;
+        }
+        
+        // Keep comment container hidden during URL preview
+        const commentContainer = document.getElementById('unifiedUploadCommentInputContainer');
+        if (commentContainer) {
+            commentContainer.style.display = 'none';
+        }
+        
+        // Set background to show URL preview
+        const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
+        if (backgroundImage) {
+            backgroundImage.src = '/background.jpg';
+        }
+    } catch (error) {
+        console.error('Clipboard download error:', error);
+        showError('Failed to download file from clipboard: ' + error.message);
+    } finally {
+
+    }
+}
+
+
+
+// Show initial upload options
+function showInitialUploadOptions() {
+    const initialOptions = document.getElementById('unifiedUploadInitialOptions');
+    
+    if (initialOptions) {
+        initialOptions.style.display = '';
+    }
+    
+    // Hide URL preview when showing initial options
+    hideUrlPreview();
+    
+    // Hide subtitle when showing initial options
+    const subtitle = document.getElementById('unifiedUploadModalSubtitle');
+    if (subtitle) {
+        subtitle.classList.add('hidden');
+    }
+    
+    // Hide site domain display when showing initial options
+    const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
+    if (siteDomainDisplay) {
+        siteDomainDisplay.style.display = 'none';
+    }
+}
+
+// Hide initial upload options
+function hideInitialUploadOptions() {
+    const initialOptions = document.getElementById('unifiedUploadInitialOptions');
+    
+    if (initialOptions) {
+        initialOptions.style.display = 'none';
+    }
+}
+
+// Reset upload overlay content
+function resetUploadOverlay() {
+    const overlayContent = document.getElementById('unifiedUploadOverlayContent');
+    const fileInfo = document.getElementById('unifiedUploadFileInfo');
+    const overlay = document.querySelector('#unifiedUploadModal .gallery-move-image-info-overlay');
+    
+    if (overlayContent) {
+        overlayContent.style.display = '';
+    }
+    if (fileInfo) {
+        fileInfo.style.display = 'none';
+        fileInfo.innerHTML = '';
+    }
+    if (overlay) {
+        overlay.classList.add('hidden');
+    }
+    
+    // Hide URL preview
+    hideUrlPreview();
+    
+    // Hide subtitle
+    const subtitle = document.getElementById('unifiedUploadModalSubtitle');
+    if (subtitle) {
+        subtitle.classList.add('hidden');
+    }
+    
+    // Hide site domain display
+    const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
+    if (siteDomainDisplay) {
+        siteDomainDisplay.style.display = 'none';
+    }
+    
+    // Clear pending URL
+    unifiedUploadPendingUrl = null;
+}
+
+// Update overlay with file information
+function updateUploadOverlayWithFileInfo(fileInfo) {
+    const overlayContent = document.getElementById('unifiedUploadOverlayContent');
+    const fileInfoDiv = document.getElementById('unifiedUploadFileInfo');
+    const overlay = document.querySelector('#unifiedUploadModal .gallery-move-image-info-overlay');
+    
+    if (overlayContent) {
+        overlayContent.style.display = 'none';
+    }
+    if (fileInfoDiv) {
+        fileInfoDiv.style.display = '';
+        fileInfoDiv.innerHTML = fileInfo;
+    }
+    if (overlay) {
+        overlay.classList.remove('hidden');
+    }
+}
+
+// Reset unified upload modal to initial state
+function resetUnifiedUploadModal() {
+    // Reset form
+    if (unifiedUploadIeInput) unifiedUploadIeInput.value = '0.35';
+    if (unifiedUploadConfirmBtn) {
+        unifiedUploadConfirmBtn.disabled = true;
+        unifiedUploadConfirmBtn.innerHTML = '<span id="unifiedUploadConfirmText">Upload</span> <i class="fas fa-upload"></i>';
+    }
+    
+    // Reset modal title to initial state
+    const modalTitle = document.getElementById('unifiedUploadModalTitle');
+    if (modalTitle) {
+        modalTitle.innerHTML = '<i class="nai-import"></i> Import File';
+    }
+    
+    // Reset downloaded file state
+    unifiedUploadDownloadedFile = null;
+    
+    // Reset pending URL state
+    unifiedUploadPendingUrl = null;
+    
+    // Hide downloaded file info section
+    const downloadedInfo = document.getElementById('unifiedUploadDownloadedInfo');
+    if (downloadedInfo) {
+        downloadedInfo.style.display = 'none';
+    }
+    
+    // Reset comment input
+    const commentInput = document.getElementById('unifiedUploadCommentInput');
+    if (commentInput) commentInput.value = '';
+    
+    // Reset mode to reference
+    unifiedUploadCurrentMode = 'reference';
+    
+    // Reset UI elements
+    hideModeSelector();
+    hideVibeBundlePreview();
+    hideBlueprintPreview();
+    resetUploadModal();
+    updateUnifiedUploadMode();
+    
+    // Reset files array
+    unifiedUploadFiles = [];
+    unifiedUploadCurrentIndex = 0;
+    unifiedUploadFileMetadata = [];
+    
+    // Show initial upload options
+    showInitialUploadOptions();
+    
+    // Hide comment container when resetting
+    const commentContainer = document.getElementById('unifiedUploadCommentInputContainer');
+    if (commentContainer) {
+        commentContainer.style.display = 'none';
+    }
+    
+    // Hide footer actions when resetting
+    const footerActions = document.querySelector('.gallery-move-actions');
+    if (footerActions) {
+        footerActions.style.display = 'none';
+    }
+    
+    // Hide Open in Editor button when resetting
+    if (unifiedUploadOpenInEditorBtn) {
+        unifiedUploadOpenInEditorBtn.style.display = 'none';
+    }
+    
+    // Reset overlay content
+    resetUploadOverlay();
+    
+    // Reset background image
+    const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
+    if (backgroundImage) {
+        backgroundImage.src = '/background.jpg';
+    }
+    
+    // Reset navigation buttons
+    const navContainer = document.getElementById('unifiedUploadNavigation');
+    if (navContainer) {
+        navContainer.style.display = 'none';
+    }
+    
+    // Reset any warning indicators
+    const warningContainer = document.getElementById('unifiedUploadWarnings');
+    if (warningContainer) {
+        warningContainer.style.display = 'none';
+        warningContainer.innerHTML = '';
+    }
+    
+    // Reset blueprint enabled state
+    const modeSliderContainer = document.querySelector('.mode-slider-container');
+    if (modeSliderContainer) {
+        modeSliderContainer.classList.remove('blueprint-enabled');
+    }
+}
+
+// Helper function to format file size
+function formatFileSize(bytes) {
+    if (bytes === 0) return 'No Data';
+    if (bytes === null || bytes === undefined) return 'Unknown';
+    if (isNaN(bytes)) return 'Invalid Size';
+    
+    const k = 1024;
+    const sizes = ['', 'K', 'M', 'G'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    const result = parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i] + 'B';
+    return result;
+}
+
+// Helper function to format content type in a user-friendly way
+function formatContentType(contentType) {
+    if (!contentType || contentType === 'Unknown') {
+        return 'Unknown';
+    }
+    
+    // Common content type mappings for better readability
+    const typeMappings = {
+        // Images
+        'image/jpeg': 'JPEG Image',
+        'image/jpg': 'JPEG Image',
+        'image/png': 'PNG Image',
+        'image/gif': 'GIF Image',
+        'image/webp': 'WebP Image',
+        'application/json': 'Object File',
+        'application/octet-stream': 'Binary File',
+        'application/x-binary': 'Binary File',
+        'application/unknown': 'Unknown Type'
+    };
+    
+    // Check if we have a direct mapping
+    if (typeMappings[contentType]) {
+        return typeMappings[contentType];
+    }
+    
+    // For unknown types, try to extract and format the main type and subtype
+    // Handle MIME types with parameters like charset, boundary, etc.
+    const cleanContentType = contentType.split(';')[0].trim(); // Remove parameters
+    const parts = cleanContentType.split('/');
+    
+    if (parts.length === 2) {
+        const mainType = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+        const subType = parts[1].toUpperCase();
+        
+        // Check if we have a mapping for the clean type
+        if (typeMappings[cleanContentType]) {
+            return typeMappings[cleanContentType];
+        }
+        
+        return `<i class="fas fa-question-circle"></i> ${mainType}/${subType}`;
+    }
+    
+    // Fallback to original content type
+    return contentType;
+}
+
+// Helper function to get current workspace ID
+function getCurrentWorkspaceId() {
+    // Try to get from cache manager if open
+    if (window.cacheManagerCurrentWorkspace) {
+        return window.cacheManagerCurrentWorkspace;
+    }
+    
+    // Try to get from workspace selector if available
+    const workspaceSelector = document.querySelector('.workspace-selector .custom-dropdown-btn span');
+    if (workspaceSelector && workspaceSelector.textContent) {
+        // This is a simplified approach - in a real implementation you'd want to map display names to IDs
+        return 'default';
+    }
+    
+    // Default fallback
+    return 'default';
 }

@@ -24,16 +24,21 @@ class WebSocketServer {
                 return;
             }
 
-            const { session, sessionId } = sessionResult;
+            const { session, sessionId, userType } = sessionResult;
 
-            // Store client with session info (no user object needed)
+            // Store client information
             this.clients.set(ws, {
-                sessionId: sessionId, // Use the decoded session ID we already have
+                sessionId,
                 authenticated: true,
-                connectedAt: new Date()
+                userType: userType || 'admin',
+                connectedAt: new Date(),
+                lastActivity: new Date()
             });
 
             console.log(`✅ WebSocket connected: Session ${sessionId}`);
+
+            // Restore session workspace if available
+            this.restoreSessionWorkspace(sessionId, ws);
 
             // Send welcome message
             this.sendToClient(ws, {
@@ -63,6 +68,11 @@ class WebSocketServer {
                 const clientInfo = this.clients.get(ws);
                 if (clientInfo) {
                     console.log(`🔌 WebSocket disconnected: Session ${clientInfo.sessionId} - Code: ${code}, Reason: ${reason}`);
+                    
+                    // Clean up session workspace
+                    const { cleanupSessionWorkspace } = require('./workspace');
+                    cleanupSessionWorkspace(clientInfo.sessionId);
+                    
                     this.clients.delete(ws);
                 }
             });
@@ -76,6 +86,37 @@ class WebSocketServer {
         });
 
         console.log('🚀 WebSocket server initialized');
+    }
+
+    // Restore session workspace when user reconnects
+    async restoreSessionWorkspace(sessionId, ws) {
+        try {
+            const { restoreSessionWorkspace } = require('./workspace');
+            const restoredWorkspace = await restoreSessionWorkspace(sessionId);
+            
+            if (restoredWorkspace) {
+                // Send workspace restoration notification to client
+                this.sendToClient(ws, {
+                    type: 'workspace_restored',
+                    workspace: restoredWorkspace,
+                    message: `Welcome back! Restored to workspace: ${restoredWorkspace}`,
+                    timestamp: new Date().toISOString()
+                });
+                
+                // Also send the current workspace data
+                const { getActiveWorkspaceData } = require('./workspace');
+                const workspaceData = getActiveWorkspaceData(sessionId);
+                if (workspaceData) {
+                    this.sendToClient(ws, {
+                        type: 'workspace_data',
+                        data: workspaceData,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            }
+        } catch (error) {
+            console.warn(`⚠️ Failed to restore workspace for session ${sessionId}:`, error.message);
+        }
     }
 
     async extractSession(req) {
@@ -123,7 +164,9 @@ class WebSocketServer {
                         // Check if session is authenticated (this is the key check)
                         if (session.authenticated === true) {
                             console.log('✅ WebSocket session verified for authenticated session:', sessionId);
-                            resolve({ session, sessionId });
+                            // Include user type information
+                            const userType = session.userType || 'admin'; // Default to admin for backward compatibility
+                            resolve({ session, sessionId, userType });
                         } else {
                             console.error('❌ WebSocket session not authenticated:', sessionId);
                             resolve(null);

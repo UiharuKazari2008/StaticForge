@@ -191,10 +191,16 @@ function updateImageTransform() {
     }
 }
 
+let lightboxWheelZoomTimeout = null;
 function handleWheelZoom(e) {
     e.preventDefault();
 
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    if (lightboxWheelZoomTimeout)
+        return;
+    lightboxWheelZoomTimeout = setTimeout(() => {
+        lightboxWheelZoomTimeout = null;
+    }, 100);
+    const delta = e.deltaY > 0 ? 0.95 : 1.05;
     const newZoom = Math.max(1, Math.min(5, lightboxZoom * delta));
 
     // If zooming out to original size, reset pan to center
@@ -202,14 +208,36 @@ function handleWheelZoom(e) {
         lightboxPanX = 0;
         lightboxPanY = 0;
     } else {
-        // Zoom towards mouse position only when zooming in or when already zoomed
+        // Get the container bounds
         const rect = e.currentTarget.getBoundingClientRect();
+        
+        // Calculate mouse position relative to the container
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
-
+        
+        // Get the image element to calculate its dimensions
+        const image = document.getElementById('lightboxImage');
+        if (!image) return;
+        
+        // Calculate the image's visual dimensions and position within the container
+        const imageRect = image.getBoundingClientRect();
+        const containerRect = e.currentTarget.getBoundingClientRect();
+        
+        // Calculate the image's center offset from the container center
+        const imageCenterX = containerRect.width / 2;
+        const imageCenterY = containerRect.height / 2;
+        
+        // Calculate the mouse position relative to the image center
+        const mouseRelToImageCenterX = mouseX - imageCenterX;
+        const mouseRelToImageCenterY = mouseY - imageCenterY;
+        
+        // Calculate the zoom change factor
         const zoomChange = newZoom / lightboxZoom;
-        lightboxPanX = mouseX - (mouseX - lightboxPanX) * zoomChange;
-        lightboxPanY = mouseY - (mouseY - lightboxPanY) * zoomChange;
+        
+        // Calculate new pan position to zoom into the mouse cursor
+        // Account for transform-origin: center
+        lightboxPanX = lightboxPanX - (mouseRelToImageCenterX * (zoomChange - 1));
+        lightboxPanY = lightboxPanY - (mouseRelToImageCenterY * (zoomChange - 1));
     }
 
     lightboxZoom = newZoom;
@@ -541,6 +569,7 @@ function createPromptItem(title, content) {
     titleDiv.textContent = title;
 
     const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
     copyBtn.className = 'prompt-copy-btn';
     copyBtn.innerHTML = '<i class="nai-clipboard"></i>';
     copyBtn.title = 'Copy to clipboard';
@@ -596,6 +625,7 @@ function createCharacterPromptItem(title, content, uc, charPrompt = null) {
     }
 
     const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
     copyBtn.className = 'prompt-copy-btn';
     copyBtn.innerHTML = '<i class="nai-clipboard"></i>';
     copyBtn.title = 'Copy to clipboard';
@@ -625,6 +655,7 @@ function createCharacterPromptItem(title, content, uc, charPrompt = null) {
         ucTitleDiv.textContent = 'Undesired Content';
 
         const ucCopyBtn = document.createElement('button');
+        ucCopyBtn.type = 'button';
         ucCopyBtn.className = 'prompt-copy-btn';
         ucCopyBtn.innerHTML = '<i class="nai-clipboard"></i>';
         ucCopyBtn.title = 'Copy to clipboard';
@@ -846,7 +877,7 @@ function formatRequestType(requestType) {
     return typeMappings[requestType] || requestType;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+window.wsClient.registerInitStep(89, 'Initializing Lightbox', async () => {
     // Lightbox events
     if (lightboxCloseBtn) {
         lightboxCloseBtn.addEventListener('click', hideLightbox);

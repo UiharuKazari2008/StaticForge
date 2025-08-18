@@ -1,0 +1,529 @@
+@font-face {
+    font-family: 'Noto Sans';
+    src: url('/fonts/NotoSans-VariableFont_wdth,wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-stretch: 50% 100%;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Noto Sans';
+    src: url('/fonts/NotoSans-Italic-VariableFont_wdth,wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-stretch: 50% 100%;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Noto Sans JP';
+    src: url('/fonts/NotoSansJP-VariableFont_wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-stretch: 50% 100%;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Oxanium';
+    src: url('/fonts/Oxanium-VariableFont_wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-stretch: 50% 100%;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Share Tech Mono';
+    src: url('/fonts/ShareTechMono-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Eczar';
+    src: url('/fonts/Eczar-VariableFont_wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Atkinson Hyperlegible Next';
+    src: url('/fonts/AtkinsonHyperlegibleNext-VariableFont_wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Atkinson Hyperlegible Next';
+    src: url('/fonts/AtkinsonHyperlegibleNext-Italic-VariableFont_wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: italic;
+}
+
+
+
+/* Grenze Font Family */
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-Thin.ttf') format('truetype');
+    font-weight: 100;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-ExtraLight.ttf') format('truetype');
+    font-weight: 200;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-Light.ttf') format('truetype');
+    font-weight: 300;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-Medium.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-SemiBold.ttf') format('truetype');
+    font-weight: 600;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-ExtraBold.ttf') format('truetype');
+    font-weight: 800;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-Black.ttf') format('truetype');
+    font-weight: 900;
+    font-style: normal;
+}
+
+/* Grenze Italic Variants */
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-ThinItalic.ttf') format('truetype');
+    font-weight: 100;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-ExtraLightItalic.ttf') format('truetype');
+    font-weight: 200;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-LightItalic.ttf') format('truetype');
+    font-weight: 300;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-Italic.ttf') format('truetype');
+    font-weight: 400;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-MediumItalic.ttf') format('truetype');
+    font-weight: 500;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-SemiBoldItalic.ttf') format('truetype');
+    font-weight: 600;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-BoldItalic.ttf') format('truetype');
+    font-weight: 700;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-ExtraBoldItalic.ttf') format('truetype');
+    font-weight: 800;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Grenze';
+    src: url('/fonts/Grenze-BlackItalic.ttf') format('truetype');
+    font-weight: 900;
+    font-style: italic;
+}
+
+/* Texturina Font Family */
+@font-face {
+    font-family: 'Texturina';
+    src: url('/fonts/Texturina-VariableFont_opsz,wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Texturina';
+    src: url('/fonts/Texturina-Italic-VariableFont_opsz,wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: italic;
+}
+
+/* Bodoni Moda Font Family */
+@font-face {
+    font-family: 'Bodoni Moda';
+    src: url('/fonts/BodoniModa-VariableFont_opsz,wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Bodoni Moda';
+    src: url('/fonts/BodoniModa-Italic-VariableFont_opsz,wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: italic;
+}
+
+/* Red Hat Display Font Family */
+@font-face {
+    font-family: 'Red Hat Display';
+    src: url('/fonts/RedHatDisplay-VariableFont_wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Red Hat Display';
+    src: url('/fonts/RedHatDisplay-Italic-VariableFont_wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: italic;
+}
+
+/* Tomorrow Font Family */
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-Thin.ttf') format('truetype');
+    font-weight: 100;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-ExtraLight.ttf') format('truetype');
+    font-weight: 200;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-Light.ttf') format('truetype');
+    font-weight: 300;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-Medium.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-SemiBold.ttf') format('truetype');
+    font-weight: 600;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-ExtraBold.ttf') format('truetype');
+    font-weight: 800;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-Black.ttf') format('truetype');
+    font-weight: 900;
+    font-style: normal;
+}
+
+/* Tomorrow Italic Variants */
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-ThinItalic.ttf') format('truetype');
+    font-weight: 100;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-ExtraLightItalic.ttf') format('truetype');
+    font-weight: 200;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-LightItalic.ttf') format('truetype');
+    font-weight: 300;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-Italic.ttf') format('truetype');
+    font-weight: 400;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-MediumItalic.ttf') format('truetype');
+    font-weight: 500;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-SemiBoldItalic.ttf') format('truetype');
+    font-weight: 600;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-BoldItalic.ttf') format('truetype');
+    font-weight: 700;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-ExtraBoldItalic.ttf') format('truetype');
+    font-weight: 800;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Tomorrow';
+    src: url('/fonts/Tomorrow-BlackItalic.ttf') format('truetype');
+    font-weight: 900;
+    font-style: italic;
+}
+
+/* Tektur Font Family */
+@font-face {
+    font-family: 'Tektur';
+    src: url('/fonts/Tektur-VariableFont_wdth,wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-Thin.ttf') format('truetype');
+    font-weight: 100;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-ExtraLight.ttf') format('truetype');
+    font-weight: 200;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-Light.ttf') format('truetype');
+    font-weight: 300;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-Medium.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-SemiBold.ttf') format('truetype');
+    font-weight: 600;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-ExtraBold.ttf') format('truetype');
+    font-weight: 800;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-ThinItalic.ttf') format('truetype');
+    font-weight: 100;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-ExtraLightItalic.ttf') format('truetype');
+    font-weight: 200;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-LightItalic.ttf') format('truetype');
+    font-weight: 300;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-Italic.ttf') format('truetype');
+    font-weight: 400;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-MediumItalic.ttf') format('truetype');
+    font-weight: 500;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-SemiBoldItalic.ttf') format('truetype');
+    font-weight: 600;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-BoldItalic.ttf') format('truetype');
+    font-weight: 700;
+    font-style: italic;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-ExtraBoldItalic.ttf') format('truetype');
+    font-weight: 800;
+    font-style: italic; 
+}
+
+/* Kanit Black weights */
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-Black.ttf') format('truetype');
+    font-weight: 900;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Kanit';
+    src: url('/fonts/Kanit-BlackItalic.ttf') format('truetype');
+    font-weight: 900;
+    font-style: italic;
+}
+
+/* Mozilla variable fonts */
+@font-face {
+    font-family: 'Mozilla Headline';
+    src: url('/fonts/MozillaHeadline-VariableFont_wdth,wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-stretch: 50% 100%;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Mozilla Text';
+    src: url('/fonts/MozillaText-VariableFont_wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+}
+
+/* Japanese and display fonts */
+@font-face {
+    font-family: 'Zen Kurenaido';
+    src: url('/fonts/ZenKurenaido-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'DotGothic16';
+    src: url('/fonts/DotGothic16-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+}
+
+/* Kaisei Decol */
+@font-face {
+    font-family: 'Kaisei Decol';
+    src: url('/fonts/KaiseiDecol-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Kaisei Decol';
+    src: url('/fonts/KaiseiDecol-Medium.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Kaisei Decol';
+    src: url('/fonts/KaiseiDecol-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+}
+
+/* Zen Antique */
+@font-face {
+    font-family: 'Zen Antique';
+    src: url('/fonts/ZenAntique-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+}
+
+/* Solway Font Family */
+@font-face {
+    font-family: 'Solway';
+    src: url('/fonts/Solway-Light.ttf') format('truetype');
+    font-weight: 300;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Solway';
+    src: url('/fonts/Solway-Regular.ttf') format('truetype');
+    font-weight: 400;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Solway';
+    src: url('/fonts/Solway-Medium.ttf') format('truetype');
+    font-weight: 500;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Solway';
+    src: url('/fonts/Solway-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Solway';
+    src: url('/fonts/Solway-ExtraBold.ttf') format('truetype');
+    font-weight: 800;
+    font-style: normal;
+}

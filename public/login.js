@@ -102,6 +102,10 @@ class LoginPage {
             });
             const data = await response.json();
             if (response.ok) {
+                // Store user type for use in the app
+                if (data.userType) {
+                    localStorage.setItem('userType', data.userType);
+                }
                 window.location.href = '/app';
             } else {
                 this.showPinError();

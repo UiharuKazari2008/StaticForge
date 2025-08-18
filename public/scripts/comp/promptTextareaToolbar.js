@@ -6,6 +6,7 @@ class PromptTextareaToolbar {
         this.activeTextarea = null;
         this.tokenCounters = new Map();
         this.searchStates = new Map(); // Map of toolbar -> search state
+        this.originalCharacterStates = new Map(); // Track original collapse states
         this.init();
     }
 
@@ -60,6 +61,24 @@ class PromptTextareaToolbar {
         });
 
         // Search mode persists until explicitly closed - no auto-close on outside clicks
+        
+        // Listen for manual modal close events
+        document.addEventListener('click', (e) => {
+            // Check if clicking outside the manual modal
+            const manualModal = document.getElementById('manualModal');
+            if (manualModal && !manualModal.contains(e.target) && !e.target.closest('.prompt-textarea-toolbar')) {
+                // Clicked outside modal and not on toolbar - reset search
+                this.resetAllSearchStates();
+            }
+        });
+        
+        // Listen for modal close button clicks
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.modal-close, .close-modal, [data-dismiss="modal"]')) {
+                // Modal close button clicked - reset search
+                this.resetAllSearchStates();
+            }
+        }); 
     }
 
     handleTextareaFocus(textarea) {
@@ -233,6 +252,9 @@ class PromptTextareaToolbar {
         // Add search mode class to show search elements
         toolbar.classList.add('search-mode');
 
+        // Expand all character prompts for better search visibility
+        this.expandAllCharacterPrompts();
+
         // Initialize search functionality
         this.initializeSearchMode(textarea, toolbar);
     }
@@ -251,6 +273,20 @@ class PromptTextareaToolbar {
         const prevBtn = searchButtons.querySelector('.text-search-prev');
         const nextBtn = searchButtons.querySelector('.text-search-next');
         const closeBtn = searchButtons.querySelector('.text-search-close');
+        
+        // Create select button if it doesn't exist
+        let selectBtn = searchButtons.querySelector('.text-search-select');
+        if (!selectBtn) {
+            selectBtn = document.createElement('button');
+            selectBtn.type = 'button';
+            selectBtn.className = 'btn-secondary btn-small toolbar-btn text-search-select';
+            selectBtn.setAttribute('data-action', 'search-select');
+            selectBtn.setAttribute('title', 'Select (Enter)');
+            selectBtn.innerHTML = '<i class="fas fa-arrow-right-long-to-line"></i>';
+            
+            // Insert before the close button
+            closeBtn.parentNode.insertBefore(selectBtn, closeBtn);
+        }
         
         if (!searchInput || !matchCount || !prevBtn || !nextBtn || !closeBtn) {
             console.error('Required search elements not found');
@@ -275,37 +311,64 @@ class PromptTextareaToolbar {
         searchInput.focus();
         searchInput.select();
 
-        // Add event listeners
-        searchInput.addEventListener('input', (e) => {
-            const searchState = this.searchStates.get(toolbar);
-            if (searchState) {
-                searchState.query = e.target.value;
-                this.performSearch(toolbar);
-            }
-        });
+        // Add event listeners only if they haven't been added yet
+        if (!searchInput.hasAttribute('data-listeners-attached')) {
+            searchInput.addEventListener('input', (e) => {
+                const searchState = this.searchStates.get(toolbar);
+                if (searchState) {
+                    searchState.query = e.target.value;
+                    this.performSearch(toolbar);
+                }
+            });
 
-        searchInput.addEventListener('keydown', (e) => {
-            this.handleSearchKeydown(e);
-        });
+            searchInput.addEventListener('keydown', (e) => {
+                this.handleSearchKeydown(e);
+            });
 
-        // Ensure search input is clickable
-        searchInput.addEventListener('click', (e) => {
-            e.stopPropagation();
-            searchInput.focus();
-        });
+            // Ensure search input is clickable
+            searchInput.addEventListener('click', (e) => {
+                e.stopPropagation();
+                searchInput.focus();
+            });
 
-        prevBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.navigateSearchResult(-1, toolbar);
-        });
-        nextBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.navigateSearchResult(1, toolbar);
-        });
-        closeBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.closeSearch(toolbar);
-        });
+            // Mark as having listeners attached
+            searchInput.setAttribute('data-listeners-attached', 'true');
+        }
+
+        if (!prevBtn.hasAttribute('data-listeners-attached')) {
+            prevBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.navigateSearchResult(-1, toolbar);
+            });
+            prevBtn.setAttribute('data-listeners-attached', 'true');
+        }
+
+        if (!nextBtn.hasAttribute('data-listeners-attached')) {
+            nextBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.navigateSearchResult(1, toolbar);
+            });
+            nextBtn.setAttribute('data-listeners-attached', 'true');
+        }
+
+        if (!selectBtn.hasAttribute('data-listeners-attached')) {
+            selectBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (searchState.selectedIndex >= 0) {
+                    this.jumpToSearchResult(toolbar);
+                    // closeSearch will be called from jumpToSearchResult if switching textareas
+                }
+            });
+            selectBtn.setAttribute('data-listeners-attached', 'true');
+        }
+
+        if (!closeBtn.hasAttribute('data-listeners-attached')) {
+            closeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.closeSearch(toolbar);
+            });
+            closeBtn.setAttribute('data-listeners-attached', 'true');
+        }
     }
 
     performSearch(toolbar = null) {
@@ -316,37 +379,65 @@ class PromptTextareaToolbar {
         const searchState = this.searchStates.get(activeToolbar);
         if (!searchState) return;
         
-        const { textarea, query, searchElements } = searchState;
+        const { query, searchElements } = searchState;
         const matchCount = searchElements.querySelector('.text-search-match-count');
 
         if (!query.trim()) {
             searchState.results = [];
             searchState.selectedIndex = -1;
             matchCount.textContent = '0';
-            this.clearSearchHighlights(activeToolbar);
+            this.clearAllSearchHighlights();
             return;
         }
 
-        const text = textarea.value;
         const searchQuery = query.toLowerCase();
-        const results = [];
+        const allResults = [];
         
-        // Find all occurrences of the search term (case insensitive)
-        let index = 0;
-        while ((index = text.toLowerCase().indexOf(searchQuery, index)) !== -1) {
-            results.push({
-                start: index,
-                end: index + searchQuery.length,
-                text: text.substring(index, index + searchQuery.length)
-            });
-            index += 1; // Move to next character to avoid infinite loop
-        }
+        // Search across textareas based on current view mode
+        const allTextareas = document.querySelectorAll('.prompt-textarea, .character-prompt-textarea');
+        
+        allTextareas.forEach((textarea, textareaIndex) => {
+            // Only include textareas that should be searched based on current view mode
+            if (!this.shouldIncludeTextareaInSearch(textarea)) {
+                return;
+            }
+            
+            const text = textarea.value;
+            let index = 0;
+            
+            // Find all occurrences of the search term in this textarea (case insensitive)
+            while ((index = text.toLowerCase().indexOf(searchQuery, index)) !== -1) {
+                allResults.push({
+                    textarea: textarea,
+                    textareaIndex: textareaIndex,
+                    start: index,
+                    end: index + searchQuery.length,
+                    text: text.substring(index, index + searchQuery.length)
+                });
+                index += 1; // Move to next character to avoid infinite loop
+            }
+        });
 
-        searchState.results = results;
-        searchState.selectedIndex = results.length > 0 ? 0 : -1;
+        searchState.results = allResults;
+        
+        // Prioritize selecting a result from the current textarea if available
+        if (allResults.length > 0) {
+            const currentTextarea = searchState.textarea;
+            const currentTextareaResults = allResults.filter(r => r.textarea === currentTextarea);
+            
+            if (currentTextareaResults.length > 0) {
+                // Select first result from current textarea
+                searchState.selectedIndex = allResults.indexOf(currentTextareaResults[0]);
+            } else {
+                // Fall back to first result overall
+                searchState.selectedIndex = 0;
+            }
+        } else {
+            searchState.selectedIndex = -1;
+        }
         
         this.updateSearchResults(activeToolbar);
-        this.highlightSearchResults(activeToolbar);
+        this.highlightAllSearchResults();
     }
 
     updateSearchResults(toolbar = null) {
@@ -376,21 +467,20 @@ class PromptTextareaToolbar {
         const searchState = this.searchStates.get(activeToolbar);
         if (!searchState) return;
         
-        const { results } = searchState;
+        const { results, selectedIndex } = searchState;
         if (results.length === 0) return;
 
+        // Simple navigation through all results
         if (direction === -1) {
             // Previous
-            searchState.selectedIndex = searchState.selectedIndex > 0 ? 
-                searchState.selectedIndex - 1 : results.length - 1;
+            searchState.selectedIndex = selectedIndex > 0 ? selectedIndex - 1 : results.length - 1;
         } else {
             // Next
-            searchState.selectedIndex = searchState.selectedIndex < results.length - 1 ? 
-                searchState.selectedIndex + 1 : 0;
+            searchState.selectedIndex = selectedIndex < results.length - 1 ? selectedIndex + 1 : 0;
         }
 
         this.updateSearchResults(activeToolbar);
-        this.highlightSearchResults(activeToolbar);
+        this.highlightAllSearchResults();
         this.scrollToHighlightedResult(activeToolbar);
     }
 
@@ -448,6 +538,225 @@ class PromptTextareaToolbar {
         searchState.highlightOverlay.scrollLeft = textarea.scrollLeft;
     }
 
+    highlightAllSearchResults() {
+        const activeToolbar = this.getActiveSearchToolbar();
+        if (!activeToolbar) return;
+        
+        const searchState = this.searchStates.get(activeToolbar);
+        if (!searchState) return;
+        
+        const { results, selectedIndex } = searchState;
+        
+        if (results.length === 0) {
+            this.clearAllSearchHighlights();
+            return;
+        }
+
+        // Clear all existing highlights first
+        this.clearAllSearchHighlights();
+
+        // Highlight results in all textareas
+        results.forEach((result, index) => {
+            const isSelected = index === selectedIndex;
+            this.highlightSearchResultInTextarea(result, isSelected);
+        });
+    }
+
+    highlightSearchResultInTextarea(result, isSelected) {
+        const { textarea, start, end } = result;
+        
+        // Create or update highlight overlay for this textarea
+        let highlightOverlay = textarea.parentElement.querySelector('.search-highlight-overlay');
+        if (!highlightOverlay) {
+            highlightOverlay = document.createElement('div');
+            highlightOverlay.className = 'search-highlight-overlay';
+            textarea.parentElement.appendChild(highlightOverlay);
+        }
+
+        const text = textarea.value;
+        
+        // Build highlighted text by processing each character and inserting spans at the right positions
+        let highlightedText = '';
+        let currentPos = 0;
+        
+        // Find all results for this specific textarea
+        const activeToolbar = this.getActiveSearchToolbar();
+        const searchState = this.searchStates.get(activeToolbar);
+        const textareaResults = searchState ? searchState.results.filter(r => r.textarea === textarea) : [];
+        
+        // Sort results by start position to process them in order
+        const sortedResults = [...textareaResults].sort((a, b) => a.start - b.start);
+        
+        for (const textareaResult of sortedResults) {
+            // Add text before this match
+            highlightedText += text.substring(currentPos, textareaResult.start);
+            
+            // Add the highlighted match
+            const originalIndex = searchState.results.indexOf(textareaResult);
+            const isResultSelected = originalIndex === searchState.selectedIndex;
+            const highlightClass = isResultSelected ? 'search-highlight-selected' : 'search-highlight';
+            const matchText = text.substring(textareaResult.start, textareaResult.end);
+            
+            highlightedText += `<span class="${highlightClass}">${matchText}</span>`;
+            
+            // Update position
+            currentPos = textareaResult.end;
+        }
+        
+        // Add remaining text after the last match
+        highlightedText += text.substring(currentPos);
+
+        highlightOverlay.innerHTML = highlightedText;
+        highlightOverlay.scrollTop = textarea.scrollTop;
+        highlightOverlay.scrollLeft = textarea.scrollLeft;
+    }
+
+    clearAllSearchHighlights() {
+        // Clear highlights from all textareas
+        const allTextareas = document.querySelectorAll('.prompt-textarea, .character-prompt-textarea');
+        allTextareas.forEach(textarea => {
+            const highlightOverlay = textarea.parentElement.querySelector('.search-highlight-overlay');
+            if (highlightOverlay) {
+                highlightOverlay.remove();
+            }
+        });
+    }
+
+    resetAllSearchStates() {
+        // Clear all search states and close any active search modes
+        this.searchStates.forEach((searchState, toolbar) => {
+            // Remove search mode class
+            toolbar.classList.remove('search-mode');
+            
+            // Reset search label and placeholder
+            const searchLabel = toolbar.querySelector('.text-search-label');
+            if (searchLabel) {
+                searchLabel.textContent = 'Search';
+            }
+            
+            const searchInput = toolbar.querySelector('.text-search-input');
+            if (searchInput) {
+                searchInput.placeholder = 'Find Tag';
+                searchInput.value = '';
+            }
+            
+            // Reset match count
+            const matchCount = toolbar.querySelector('.text-search-match-count');
+            if (matchCount) {
+                matchCount.textContent = '0';
+            }
+        });
+        
+        // Clear all search states
+        this.searchStates.clear();
+        
+        // Clear all search highlights
+        this.clearAllSearchHighlights();
+        
+        // Restore character prompt states
+        this.restoreCharacterPromptStates();
+    }
+
+    expandAllCharacterPrompts() {
+        // Store original collapse states and expand all character prompts
+        this.originalCharacterStates.clear();
+        
+        const characterItems = document.querySelectorAll('.character-prompt-item');
+        characterItems.forEach(item => {
+            const characterId = item.id;
+            const isCollapsed = item.classList.contains('collapsed');
+            
+            // Store original state
+            this.originalCharacterStates.set(characterId, isCollapsed);
+            
+            // Expand if collapsed
+            if (isCollapsed) {
+                item.classList.remove('collapsed');
+                // Update the collapse button state
+                if (window.updateCharacterPromptCollapseButton) {
+                    window.updateCharacterPromptCollapseButton(characterId, false);
+                }
+            }
+        });
+    }
+
+    restoreCharacterPromptStates() {
+        // Restore all character prompts to their original collapse states
+        this.originalCharacterStates.forEach((wasCollapsed, characterId) => {
+            const item = document.getElementById(characterId);
+            if (item) {
+                if (wasCollapsed) {
+                    item.classList.add('collapsed');
+                    if (window.updateCharacterPromptCollapseButton) {
+                        window.updateCharacterPromptCollapseButton(characterId, true);
+                    }
+                } else {
+                    item.classList.remove('collapsed');
+                    if (window.updateCharacterPromptCollapseButton) {
+                        window.updateCharacterPromptCollapseButton(characterId, false);
+                    }
+                }
+            }
+        });
+    }
+
+    expandCharacterPromptWithSelection(textarea) {
+        // Find and expand the character prompt that contains the selected textarea
+        if (textarea && textarea.id.includes('_')) {
+            // Extract character ID from textarea ID (e.g., "char_123_prompt" -> "char_123")
+            const characterId = textarea.id.split('_').slice(0, -1).join('_');
+            const characterItem = document.getElementById(characterId);
+            
+            if (characterItem && characterItem.classList.contains('collapsed')) {
+                characterItem.classList.remove('collapsed');
+                if (window.updateCharacterPromptCollapseButton) {
+                    window.updateCharacterPromptCollapseButton(characterId, false);
+                }
+            }
+        }
+    }
+
+    getCurrentViewMode() {
+        // Check if we're in show-both mode
+        const promptTabs = document.querySelector('.prompt-tabs');
+        const isShowingBoth = promptTabs && promptTabs.classList.contains('show-both');
+        
+        if (isShowingBoth) {
+            return 'both';
+        }
+        
+        // Check which tab is currently active
+        const tabButtons = document.querySelector('#tab-buttons');
+        if (tabButtons) {
+            const activeTab = tabButtons.getAttribute('data-active');
+            return activeTab || 'prompt';
+        }
+        
+        return 'prompt'; // Default to prompt mode
+    }
+
+    shouldIncludeTextareaInSearch(textarea) {
+        const viewMode = this.getCurrentViewMode();
+        const textareaId = textarea.id;
+        
+        // Always include character prompt textareas
+        if (textareaId.includes('_prompt') || textareaId.includes('_uc')) {
+            return true;
+        }
+        
+        // Handle main textareas based on view mode
+        if (viewMode === 'both') {
+            // Show both mode: include both prompt and UC
+            return textareaId === 'manualPrompt' || textareaId === 'manualUc';
+        } else if (viewMode === 'uc') {
+            // UC mode: only include UC textarea
+            return textareaId === 'manualUc';
+        } else {
+            // Prompt mode (default): only include prompt textarea
+            return textareaId === 'manualPrompt';
+        }
+    }
+
     clearSearchHighlights(toolbar = null) {
         const activeToolbar = toolbar || this.getActiveSearchToolbar();
         if (!activeToolbar) return;
@@ -468,10 +777,11 @@ class PromptTextareaToolbar {
         const searchState = this.searchStates.get(activeToolbar);
         if (!searchState) return;
         
-        const { textarea, results, selectedIndex } = searchState;
+        const { results, selectedIndex } = searchState;
         
         if (selectedIndex >= 0 && selectedIndex < results.length) {
             const result = results[selectedIndex];
+            const textarea = result.textarea;
             
             // Ensure the highlighted text is visible by scrolling
             const textBeforeSelection = textarea.value.substring(0, result.start);
@@ -517,7 +827,7 @@ class PromptTextareaToolbar {
                 e.preventDefault();
                 if (searchState.selectedIndex >= 0) {
                     this.jumpToSearchResult(activeToolbar);
-                    this.closeSearch(activeToolbar);
+                    // closeSearch will be called from jumpToSearchResult if switching textareas
                 }
                 break;
             case 'Escape':
@@ -534,12 +844,37 @@ class PromptTextareaToolbar {
         const searchState = this.searchStates.get(activeToolbar);
         if (!searchState) return;
         
-        const { textarea, results, selectedIndex } = searchState;
+        const { results, selectedIndex } = searchState;
         
         if (selectedIndex >= 0 && selectedIndex < results.length) {
             const result = results[selectedIndex];
-            textarea.setSelectionRange(result.start, result.end);
+            const textarea = result.textarea;
+            
+            // Now we can focus and select the text since Enter was pressed
+            // Ensure the textarea is properly focused and activated
             textarea.focus();
+            textarea.click(); // Additional activation step
+            
+            // Add focus styling to the container
+            const textareaContainer = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+            if (textareaContainer) {
+                textareaContainer.classList.add('textarea-focused');
+            }
+            
+            // Expand the character prompt if this is a character textarea
+            this.expandCharacterPromptWithSelection(textarea);
+            
+            // Use a longer timeout to ensure the textarea is fully active
+            setTimeout(() => {
+                try {
+                    textarea.setSelectionRange(result.start, result.end);
+                    // Ensure the selection is visible
+                    textarea.scrollTop = 0;
+                    textarea.scrollLeft = 0;
+                } catch (e) {
+                    console.warn('Failed to set selection range:', e);
+                }
+            }, 150);
             
             // Ensure the selected text is visible
             const textBeforeSelection = textarea.value.substring(0, result.start);
@@ -562,26 +897,78 @@ class PromptTextareaToolbar {
             if (scrollLeft > 0) {
                 textarea.scrollLeft = scrollLeft;
             }
+            
+            // Check if we're switching to a different textarea
+            const originalTextarea = searchState.textarea;
+            const isSwitchingTextareas = textarea !== originalTextarea;
+            
+            // If switching textareas, hide the toolbar and handle blur for original textarea
+            if (isSwitchingTextareas) {
+                // Get the original toolbar and hide it
+                const originalToolbar = this.getToolbarFromTextarea(originalTextarea);
+                if (originalToolbar) {
+                    originalToolbar.classList.add('hidden');
+                }
+                
+                // Manually trigger all the blur actions that would normally happen
+                const originalContainer = originalTextarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+                
+                // Remove focus styling from original textarea container
+                if (originalContainer) {
+                    originalContainer.classList.remove('textarea-focused');
+                }
+                
+                // Clear the active textarea reference
+                if (this.activeTextarea === originalTextarea) {
+                    this.activeTextarea = null;
+                }
+                
+                // Adjust container height after toolbar is hidden
+                if (window.autoResizeTextarea) {
+                    setTimeout(() => window.autoResizeTextarea(originalTextarea), 10);
+                }
+            }
+            
+            // Always close search at the end, but keep focus on current element if switching textareas
+            this.closeSearch(activeToolbar, isSwitchingTextareas);
         }
     }
 
-    closeSearch(toolbar = null) {
+    closeSearch(toolbar = null, keepFocusOnCurrent = false) {
         const activeToolbar = toolbar || this.getActiveSearchToolbar();
         if (!activeToolbar) return;
         
         const searchState = this.searchStates.get(activeToolbar);
         if (!searchState) return;
         
+        // Store reference to original textarea before clearing state
+        const originalTextarea = searchState.textarea;
+        
         // Clear search state
-        this.clearSearchHighlights(activeToolbar);
+        this.clearAllSearchHighlights();
         this.searchStates.delete(activeToolbar);
         
         // Remove search mode class to hide search elements
         activeToolbar.classList.remove('search-mode');
         
-        // Return focus to the textarea
-        if (searchState.textarea) {
-            searchState.textarea.focus();
+        // Reset the search label
+        const searchLabel = activeToolbar.querySelector('.text-search-label');
+        if (searchLabel) {
+            searchLabel.textContent = 'Search';
+        }
+        
+        // Reset the search input placeholder
+        const searchInput = activeToolbar.querySelector('.text-search-input');
+        if (searchInput) {
+            searchInput.placeholder = 'Find Tag';
+        }
+        
+        // Restore character prompt states to their original collapse/expand state
+        this.restoreCharacterPromptStates();
+        
+        // Only return focus to original textarea if not keeping focus on current element
+        if (originalTextarea && !keepFocusOnCurrent) {
+            setTimeout(() => originalTextarea.focus(), 10);
         }
     }
 
@@ -609,6 +996,9 @@ class PromptTextareaToolbar {
         
         // Update emphasis display immediately
         this.updateEmphasisDisplay(toolbar);
+        
+        // Ensure textarea maintains focus for keyboard input
+        setTimeout(() => textarea.focus(), 10);
     }
 
     initializeEmphasisMode(textarea, toolbar) {
@@ -622,43 +1012,82 @@ class PromptTextareaToolbar {
                     <div class="emphasis-type" id="emphasisType">New Group</div>
                     <div class="emphasis-value" id="emphasisValue">1.0</div>
                     <div class="emphasis-controls">
-                        <button class="btn-secondary emphasis-btn emphasis-up" data-action="emphasis-up" title="Increase">
+                        <button class="btn-secondary emphasis-btn btn-small emphasis-up" data-action="emphasis-up" title="Increase">
                             <i class="nai-plus"></i>
                         </button>
-                        <button class="btn-secondary emphasis-btn emphasis-down" data-action="emphasis-down" title="Decrease">
+                        <button class="btn-secondary emphasis-btn btn-small emphasis-down" data-action="emphasis-down" title="Decrease">
                             <i class="nai-minus"></i>
                         </button>
-                        <button class="btn-secondary emphasis-btn emphasis-toggle" data-action="emphasis-toggle" title="Toggle Mode" style="display: none;">
+                        <button class="btn-secondary emphasis-btn btn-small emphasis-toggle" data-action="emphasis-toggle" title="Toggle Mode" style="display: none;">
                             <i class="nai-arrow-left"></i>
                         </button>
+                        <div class="emphasis-actions">
+                            <button class="btn-secondary emphasis-btn btn-small emphasis-apply" data-action="emphasis-apply" title="Apply (Enter)">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button class="btn-secondary emphasis-btn btn-small emphasis-cancel" data-action="emphasis-cancel" title="Cancel (Esc)">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
             toolbar.appendChild(emphasisElements);
         }
 
-        // Add event listeners for emphasis buttons
+        // Add event listeners for emphasis buttons only if they haven't been added yet
         const upBtn = emphasisElements.querySelector('[data-action="emphasis-up"]');
         const downBtn = emphasisElements.querySelector('[data-action="emphasis-down"]');
         const toggleBtn = emphasisElements.querySelector('[data-action="emphasis-toggle"]');
+        const applyBtn = emphasisElements.querySelector('[data-action="emphasis-apply"]');
+        const cancelBtn = emphasisElements.querySelector('[data-action="emphasis-cancel"]');
 
-        if (upBtn) {
+        // Check if listeners are already attached to prevent duplicates
+        if (upBtn && !upBtn.hasAttribute('data-listeners-attached')) {
             upBtn.addEventListener('click', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 this.adjustEmphasis(0.1, toolbar);
             });
+            upBtn.setAttribute('data-listeners-attached', 'true');
         }
-        if (downBtn) {
+        if (downBtn && !downBtn.hasAttribute('data-listeners-attached')) {
             downBtn.addEventListener('click', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 this.adjustEmphasis(-0.1, toolbar);
             });
+            downBtn.setAttribute('data-listeners-attached', 'true');
         }
-        if (toggleBtn) {
+        if (toggleBtn && !toggleBtn.hasAttribute('data-listeners-attached')) {
             toggleBtn.addEventListener('click', (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 this.switchEmphasisMode(toolbar);
             });
+            toggleBtn.setAttribute('data-listeners-attached', 'true');
+        }
+        if (applyBtn && !applyBtn.hasAttribute('data-listeners-attached')) {
+            applyBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.applyEmphasisEditing) {
+                    window.applyEmphasisEditing();
+                    this.closeEmphasisMode(toolbar);
+                }
+            });
+            applyBtn.setAttribute('data-listeners-attached', 'true');
+        }
+        if (cancelBtn && !cancelBtn.hasAttribute('data-listeners-attached')) {
+            cancelBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.cancelEmphasisEditing) {
+                    window.cancelEmphasisEditing();
+                    this.closeEmphasisMode(toolbar);
+                }
+            });
+            cancelBtn.setAttribute('data-listeners-attached', 'true');
         }
 
         // Add keyboard event listener for emphasis mode
@@ -865,8 +1294,15 @@ class PromptTextareaToolbar {
 }
 
 // Initialize the toolbar manager when the DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
+window.wsClient.registerInitStep(91, 'Initializing Prompt Toolbar', async () => {
     window.promptTextareaToolbar = new PromptTextareaToolbar();
+    
+    // Expose reset method globally for other components to use
+    window.resetInlineSearch = () => {
+        if (window.promptTextareaToolbar) {
+            window.promptTextareaToolbar.resetAllSearchStates();
+        }
+    };
 });
 
 // Expose method for handling dynamic textareas

@@ -63,12 +63,16 @@ function initializeImagePreviewZoom() {
 }
 
 // Handle mouse wheel zoom
+let imagePreviewWheelZoomTimeout = null;
 function handleImagePreviewWheel(e) {
     e.preventDefault();
     
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const mouseX = e.clientX;
-    const mouseY = e.clientY;
+    if (imagePreviewWheelZoomTimeout)
+        return;
+    imagePreviewWheelZoomTimeout = setTimeout(() => {
+        imagePreviewWheelZoomTimeout = null;
+    }, 100);
+    const delta = e.deltaY > 0 ? 0.95 : 1.05;
     
     const newZoom = Math.max(1, Math.min(5, imagePreviewZoom * delta));
     
@@ -78,10 +82,36 @@ function handleImagePreviewWheel(e) {
         return;
     }
     
-    // Zoom towards mouse position
+    // Get the container bounds
+    const rect = e.currentTarget.getBoundingClientRect();
+    
+    // Calculate mouse position relative to the container
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    // Get the image element to calculate its dimensions
+    const image = document.getElementById('imagePreviewImage');
+    if (!image) return;
+    
+    // Calculate the image's visual dimensions and position within the container
+    const imageRect = image.getBoundingClientRect();
+    const containerRect = e.currentTarget.getBoundingClientRect();
+    
+    // Calculate the image's center offset from the container center
+    const imageCenterX = containerRect.width / 2;
+    const imageCenterY = containerRect.height / 2;
+    
+    // Calculate the mouse position relative to the image center
+    const mouseRelToImageCenterX = mouseX - imageCenterX;
+    const mouseRelToImageCenterY = mouseY - imageCenterY;
+    
+    // Calculate the zoom change factor
     const zoomChange = newZoom / imagePreviewZoom;
-    imagePreviewPanX = mouseX - (mouseX - imagePreviewPanX) * zoomChange;
-    imagePreviewPanY = mouseY - (mouseY - imagePreviewPanY) * zoomChange;
+    
+    // Calculate new pan position to zoom into the mouse cursor
+    // Account for transform-origin: center
+    imagePreviewPanX = imagePreviewPanX - (mouseRelToImageCenterX * (zoomChange - 1));
+    imagePreviewPanY = imagePreviewPanY - (mouseRelToImageCenterY * (zoomChange - 1));
     
     imagePreviewZoom = newZoom;
     updateImagePreviewTransform();
@@ -240,11 +270,9 @@ function hideImagePreview() {
 }
 
 // Initialize when DOM is loaded
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeImagePreview);
-} else {
+window.wsClient.registerInitStep(88, 'Initializing Lightbox (Preview)', async () => {
     initializeImagePreview();
-}
+});
 
 // Export functions for use in other modules
 window.showImagePreview = showImagePreview;

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const sharp = require('sharp');
 const { getImageDimensions, getResolutionFromDimensions } = require('./imageTools');
 
 // Helper: Read PNG metadata
@@ -702,6 +703,208 @@ function getBaseName(filename) {
         .replace(/\.(png|jpg|jpeg)$/i, '');  // Remove file extension
 }
 
+// New comprehensive metadata extraction function for download URL functionality
+async function extractMetadataSummary(buffer, filename = null) {
+    try {
+        const metadata = readMetadata(buffer);
+        
+        if (!metadata.tEXt || !metadata.tEXt.Comment) {
+            return {
+                success: false,
+                error: 'No metadata found in PNG file',
+                isBlueprint: false
+            };
+        }
+        
+        let parsedMetadata;
+        try {
+            parsedMetadata = JSON.parse(metadata.tEXt.Comment);
+        } catch (e) {
+            return {
+                success: false,
+                error: 'Invalid JSON metadata in PNG file',
+                isBlueprint: false
+            };
+        }
+        
+        // Check if this is a NovelAI or StaticForge image
+        const isNovelAI = metadata.tEXt.Source && metadata.tEXt.Source.includes('NovelAI');
+        const isBlueprint = isNovelAI || (parsedMetadata.forge_data && parsedMetadata.forge_data.software);
+        
+        if (!isBlueprint) {
+            return {
+                success: false,
+                error: 'Not a NovelAI or StaticForge image',
+                isBlueprint: false
+            };
+        }
+        
+        // Condense large data fields to booleans to reduce payload size
+        const condensedMetadata = { ...parsedMetadata };
+        
+        // Convert forge_data fields to booleans where the frontend only needs to know if they exist
+        if (condensedMetadata.forge_data) {
+            if (condensedMetadata.forge_data.image_source) {
+                condensedMetadata.forge_data.image_source = true;
+            }
+            if (condensedMetadata.forge_data.mask_compressed) {
+                condensedMetadata.forge_data.mask_compressed = true;
+            }
+        }
+        
+        // Convert reference_image_multiple to just the length if it's an array
+        if (condensedMetadata.reference_image_multiple && Array.isArray(condensedMetadata.reference_image_multiple)) {
+            condensedMetadata.reference_image_multiple = condensedMetadata.reference_image_multiple.length;
+        }
+        
+        // Extract actual PNG dimensions from the image data using Sharp for safety
+        let actualWidth, actualHeight;
+        try {
+
+            const imageInfo = await sharp(buffer).metadata();
+            actualWidth = imageInfo.width;
+            actualHeight = imageInfo.height;
+        } catch (e) {
+            console.log('⚠️ Could not extract PNG dimensions using Sharp:', e.message);
+        }
+        
+        // Add actual dimensions to the response for fallback use
+        if (actualWidth && actualHeight) {
+            condensedMetadata.actual_width = actualWidth;
+            condensedMetadata.actual_height = actualHeight;
+            
+            // Use actual dimensions for resolution detection as fallback
+            const actualResolution = getResolutionFromDimensions(actualWidth, actualHeight);
+            if (actualResolution) {
+                condensedMetadata.actual_resolution = actualResolution;
+                condensedMetadata.actual_resolution_display = formatResolution(actualResolution, actualWidth, actualHeight);
+            } else {
+                condensedMetadata.actual_resolution_display = `${actualWidth} × ${actualHeight}`;
+            }
+            
+                    // Calculate scale ratio if both embedded and actual dimensions are present
+        if (condensedMetadata.width && condensedMetadata.height) {
+            const embeddedWidth = condensedMetadata.width;
+            const embeddedHeight = condensedMetadata.height;
+            
+            // Check if image was scaled up (both dimensions increased)
+            if (actualWidth > embeddedWidth && actualHeight > embeddedHeight) {
+                const scaleX = (actualWidth / embeddedWidth).toFixed(2);
+                const scaleY = (actualHeight / embeddedHeight).toFixed(2);
+                
+                // Use the smaller scale factor for display (more conservative)
+                const displayScale = Math.min(parseFloat(scaleX), parseFloat(scaleY));
+                
+                // Add scale ratio information
+                condensedMetadata.scale_ratio = {
+                    x: parseFloat(scaleX),
+                    y: parseFloat(scaleY),
+                    display: `${displayScale % 1 === 0 ? displayScale : displayScale.toFixed(1)}×`,
+                    original_dimensions: `${embeddedWidth}×${embeddedHeight}`,
+                    current_dimensions: `${actualWidth}×${actualHeight}`
+                };
+            }
+        }
+        }
+        
+        // Return the condensed metadata with source/software info added
+        return {
+            success: true,
+            isBlueprint: true,
+            ...condensedMetadata,
+            source: metadata.tEXt.Source,
+            software: metadata.tEXt.Software ? `${metadata.tEXt.Software} (${metadata.tEXt.Source})` : metadata.tEXt.Source,
+            filename: filename,
+            file_size: buffer.length,
+            content_type: 'image/png'
+        };
+        
+    } catch (error) {
+        return {
+            success: false,
+            error: error.message,
+            isBlueprint: false
+        };
+    }
+}
+
+// Helper function to format resolution with aspect ratio matching (ported from frontend)
+function formatResolution(resolution, width, height) {
+    if (!resolution && !width && !height) return '';
+    
+    // If we have a resolution string, try to match it first
+    if (resolution) {
+        const RESOLUTIONS = [
+            { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768, aspect: 0.667 },
+            { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512, aspect: 1.5 },
+            { value: 'small_square', display: 'Small Square', width: 640, height: 640, aspect: 1.0 },
+            { value: 'normal_portrait', display: 'Normal Portrait', width: 832, height: 1216, aspect: 0.684 },
+            { value: 'normal_landscape', display: 'Normal Landscape', width: 1216, height: 832, aspect: 1.462 },
+            { value: 'normal_square', display: 'Normal Square', width: 1024, height: 1024, aspect: 1.0 },
+            { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536, aspect: 0.667 },
+            { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024, aspect: 1.5 },
+            { value: 'large_square', display: 'Large Square', width: 1472, height: 1472, aspect: 1.0 },
+            { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920, aspect: 0.567 },
+            { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088, aspect: 1.765 }
+        ];
+        
+        // Handle custom resolution format: custom_1024x768
+        if (resolution.startsWith('custom_')) {
+            const dimensions = resolution.replace('custom_', '');
+            const [w, h] = dimensions.split('x').map(Number);
+            if (w && h) {
+                return `Custom ${w}×${h}`;
+            }
+        }
+        
+        // Try to find the resolution in our array first
+        const res = RESOLUTIONS.find(r => r.value.toLowerCase() === resolution.toLowerCase());
+        if (res) {
+            return res.display;
+        }
+        
+        // Fallback: Convert snake_case to Title Case
+        return resolution
+            .split('_')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    }
+    
+    // If no resolution string but we have dimensions, match by aspect ratio
+    if (width && height) {
+        const aspect = width / height;
+        const tolerance = 0.05; // 5% tolerance for aspect ratio matching
+        
+        const RESOLUTIONS = [
+            { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768, aspect: 0.667 },
+            { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512, aspect: 1.5 },
+            { value: 'small_square', display: 'Small Square', width: 640, height: 640, aspect: 1.0 },
+            { value: 'normal_portrait', display: 'Normal Portrait', width: 832, height: 1216, aspect: 0.684 },
+            { value: 'normal_landscape', display: 'Normal Landscape', width: 1216, height: 832, aspect: 1.462 },
+            { value: 'normal_square', display: 'Normal Square', width: 1024, height: 1024, aspect: 1.0 },
+            { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536, aspect: 0.667 },
+            { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024, aspect: 1.5 },
+            { value: 'large_square', display: 'Large Square', width: 1472, height: 1472, aspect: 1.0 },
+            { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920, aspect: 0.567 },
+            { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088, aspect: 1.765 }
+        ];
+        
+        // Find resolution by aspect ratio with tolerance
+        const matchedResolution = RESOLUTIONS.find(r => 
+            Math.abs(r.aspect - aspect) < tolerance
+        );
+        
+        if (matchedResolution) {
+            return matchedResolution.display;
+        }
+        
+        // If no match found, return dimensions
+        return `${width} × ${height}`;
+    }
+    
+    return '';
+}
+
 module.exports = {
     readMetadata,
     updateMetadata,
@@ -710,5 +913,7 @@ module.exports = {
     extractRelevantFields,
     getModelDisplayName,
     determineModelFromMetadata,
-    getBaseName
+    getBaseName,
+    extractMetadataSummary,
+    formatResolution
 }; 

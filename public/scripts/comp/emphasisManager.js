@@ -713,7 +713,7 @@ function autoResizeTextarea(textarea) {
     const borderBottom = parseFloat(computedStyle.borderBottomWidth);
     const totalPadding = paddingTop + paddingBottom + borderTop + borderBottom;
 
-    const minHeight = 80;
+    const minHeight = 70;
 
     // Ensure scrollHeight is calculated correctly
     let scrollHeight = textarea.scrollHeight;
@@ -746,7 +746,7 @@ function autoResizeTextarea(textarea) {
     const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
     if (container) {
         const toolbar = container.querySelector('.prompt-textarea-toolbar');
-        const toolbarHeight = toolbar && !toolbar.classList.contains('hidden') ? toolbar.offsetHeight + 10 : 0; // 10px for margin-top
+        const toolbarHeight = toolbar && !toolbar.classList.contains('hidden') ? toolbar.offsetHeight + 8 : 0; // 10px for margin-top
         const totalHeight = newHeight + toolbarHeight;
         container.style.height = totalHeight + 'px';
         container.style.minHeight = totalHeight + 'px';
@@ -1687,18 +1687,6 @@ function closeTextSearch() {
         textSearchTarget.focus();
     }
 }
-
-// Expose functions globally for use by other modules
-window.startEmphasisEditing = startEmphasisEditing;
-window.startTextSearch = startTextSearch;
-window.autoResizeTextarea = autoResizeTextarea;
-window.adjustEmphasisEditing = adjustEmphasisEditing;
-window.switchEmphasisMode = switchEmphasisMode;
-window.applyEmphasisEditing = applyEmphasisEditing;
-window.cancelEmphasisEditing = cancelEmphasisEditing;
-window.updateEmphasisHighlighting = updateEmphasisHighlighting;
-window.addEmphasisSelectionHighlight = addEmphasisSelectionHighlight;
-window.removeEmphasisSelectionHighlight = removeEmphasisSelectionHighlight;
 
 // Expose global variables for toolbar access
 Object.defineProperty(window, 'emphasisEditingValue', {

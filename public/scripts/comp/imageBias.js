@@ -22,9 +22,6 @@ let imageBiasAdjustmentData = {
 
 // Render image bias dropdown
 async function renderImageBiasDropdown(selectedVal) {
-    let imageAR = 1;
-    let targetAR = 1;
-
     if (!window.uploadedImageData || window.uploadedImageData.isPlaceholder) {
         if (imageBiasGroup) {
             imageBiasGroup.style.display = 'none';
@@ -56,51 +53,37 @@ async function renderImageBiasDropdown(selectedVal) {
 
     // Check if we have dynamic bias (object) instead of legacy bias (number)
     const hasDynamicBias = window.uploadedImageData && window.uploadedImageData.image_bias && typeof window.uploadedImageData.image_bias === 'object';
-    if (hasDynamicBias) {
+    
+    // Get orientation data using the centralized function
+    const { isPortrait: isPortraitImage } = getImageBiasOrientation();
+
+    // Check if image bias should be visible
+    const shouldShow = shouldShowImageBias();
+
+    if (shouldShow) {
         imageBiasGroup.style.display = 'flex';
-        await updateImageBiasDisplay('custom');
-    }
-
-    const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-    if (currentResolution === 'custom' && manualWidth && manualHeight) {
-        const width = parseInt(manualWidth.value);
-        const height = parseInt(manualHeight.value);
-        targetAR = width / height;
-    } else {
-        const resolutionDims = getDimensionsFromResolution(currentResolution);
-        if (resolutionDims) {
-            targetAR = resolutionDims.width / resolutionDims.height;
+        
+        // If we have dynamic bias, update the display
+        if (hasDynamicBias) {
+            await updateImageBiasDisplay('custom');
         }
-    }
-
-    if (window.uploadedImageData) {
-        if (window.uploadedImageData.width && window.uploadedImageData.height) {
-            imageAR = window.uploadedImageData.width / window.uploadedImageData.height;
-        } else if (window.uploadedImageData.originalDataUrl) {
-            // Fallback to loading image if dimensions not stored
-            imageAR = await new Promise(resolve => {
-                const img = new Image();
-                img.onload = function() {
-                    resolve(img.width / img.height);
-                };
-                img.src = window.uploadedImageData.originalDataUrl;
-            });
-        }
-    }
-
-    // Show image bias group if aspect ratios are different enough OR if both are square (bias still useful for cropping)
-    const aspectRatioDifference = Math.abs(imageAR - targetAR);
-    const isImageSquare = Math.abs(imageAR - 1.0) < 0.05;
-    const isTargetSquare = Math.abs(targetAR - 1.0) < 0.05;
-
-    if (aspectRatioDifference > 0.05 || (isImageSquare && isTargetSquare)) {
-        imageBiasGroup.style.display = 'flex';
     } else {
-        imageBiasGroup.style.display = 'none';
+        // Aspect ratios are the same or very close - hide the dropdown but keep custom bias button if it exists
+        if (hasDynamicBias) {
+            // Keep the group visible for custom bias button, but hide the dropdown
+            imageBiasGroup.style.display = 'flex';
+            // Hide the dropdown menu
+            if (imageBiasDropdownMenu) {
+                imageBiasDropdownMenu.style.display = 'none';
+            }
+            // Update the display to show custom bias
+            await updateImageBiasDisplay('custom');
+        } else {
+            // No dynamic bias, hide the entire group
+            imageBiasGroup.style.display = 'none';
+        }
         return;
     }
-
-    const isPortraitImage = imageAR < targetAR;
     imageBiasDropdownMenu.innerHTML = '';
 
     // Create bias options based on image orientation (exclude Custom from dropdown)
@@ -152,15 +135,18 @@ async function renderImageBiasDropdown(selectedVal) {
     if (imageBiasDropdownBtn) {
         const buttonGrid = imageBiasDropdownBtn.querySelector('.mask-bias-grid');
         if (buttonGrid) {
+            // Get current orientation data using centralized function
+            const { isPortrait: currentIsPortraitImage } = getImageBiasOrientation();
+            
             if (hasDynamicBias) {
                 // Show custom bias with diagonal grid
                 buttonGrid.setAttribute('data-bias', 'custom');
-                buttonGrid.setAttribute('data-orientation', isPortraitImage ? 'portrait' : 'landscape');
+                buttonGrid.setAttribute('data-orientation', currentIsPortraitImage ? 'portrait' : 'landscape');
                 buttonGrid.classList.add('custom-bias');
             } else {
                 // Show normal bias
                 buttonGrid.setAttribute('data-bias', selectedVal);
-                buttonGrid.setAttribute('data-orientation', isPortraitImage ? 'portrait' : 'landscape');
+                buttonGrid.setAttribute('data-orientation', currentIsPortraitImage ? 'portrait' : 'landscape');
                 buttonGrid.classList.remove('custom-bias');
             }
         }
@@ -200,7 +186,9 @@ function updateImageBiasDisplay(value) {
     const buttonGrid = imageBiasDropdownBtn.querySelector('.mask-bias-grid');
     if (!buttonGrid) return;
 
-    const isPortraitImage = buttonGrid.getAttribute('data-orientation') === 'portrait';
+    // Get orientation data using centralized function
+    const { isPortrait: isPortraitImage } = getImageBiasOrientation();
+    
     const hasDynamicBias = window.uploadedImageData && window.uploadedImageData.image_bias;
 
     if (hasDynamicBias) {
@@ -221,11 +209,19 @@ function updateImageBiasDisplay(value) {
         ];
 
         // Fix: Use string comparison to handle '0' value correctly
-        const selectedOption = biasOptions.find(opt => opt.value === value.toString());
-        if (imageBiasSelected && selectedOption) {
-            imageBiasSelected.textContent = selectedOption.display;
+        if (value !== undefined && value !== null) {
+            const selectedOption = biasOptions.find(opt => opt.value === value.toString());
+            if (imageBiasSelected && selectedOption) {
+                imageBiasSelected.textContent = selectedOption.display;
+            }
+            buttonGrid.setAttribute('data-bias', value);
+        } else {
+            // Default to center bias if no value provided
+            buttonGrid.setAttribute('data-bias', '2');
+            if (imageBiasSelected) {
+                imageBiasSelected.textContent = 'Center';
+            }
         }
-        buttonGrid.setAttribute('data-bias', value);
         buttonGrid.classList.remove('custom-bias');
     }
 
@@ -344,6 +340,166 @@ function cleanupBlobUrls() {
     }
 }
 
+// Get image and target resolution data and determine orientation
+function getImageBiasOrientation() {
+    const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
+    let targetAR = 1;
+    
+    if (currentResolution === 'custom' && manualWidth && manualHeight) {
+        const width = parseInt(manualWidth.value);
+        const height = parseInt(manualHeight.value);
+        targetAR = width / height;
+    } else {
+        const resolutionDims = getDimensionsFromResolution(currentResolution);
+        if (resolutionDims) {
+            targetAR = resolutionDims.width / resolutionDims.height;
+        }
+    }
+    
+    let imageAR = 1;
+    if (window.uploadedImageData && window.uploadedImageData.width && window.uploadedImageData.height) {
+        imageAR = window.uploadedImageData.width / window.uploadedImageData.height;
+    } else {
+        // Image dimensions not yet loaded - this can happen during resolution changes
+        // Use a safe default that won't cause errors
+        imageAR = 1.0; // Default to square
+    }
+    
+    // Determine orientation based on actual image vs target aspect ratios
+    const isPortrait = imageAR < targetAR;
+    const orientation = isPortrait ? 'portrait' : 'landscape';
+    
+    return { isPortrait, imageAR, targetAR, orientation };
+}
+
+// Check if image bias should be visible based on current image and resolution
+function shouldShowImageBias() {
+    if (!window.uploadedImageData || window.uploadedImageData.isPlaceholder) {
+        return false;
+    }
+    
+    const { imageAR, targetAR } = getImageBiasOrientation();
+    
+    // Show image bias group if aspect ratios are different enough OR if both are square (bias still useful for cropping)
+    const aspectRatioDifference = Math.abs(imageAR - targetAR);
+    const isImageSquare = Math.abs(imageAR - 1.0) < 0.05;
+    const isTargetSquare = Math.abs(targetAR - 1.0) < 0.05;
+    
+    return aspectRatioDifference > 0.05 || (isImageSquare && isTargetSquare);
+}
+
+// Refresh image bias state after resolution changes
+async function refreshImageBiasState() {
+    if (!window.uploadedImageData) return;
+    
+    // Check if we have dynamic bias
+    const hasDynamicBias = window.uploadedImageData.image_bias && typeof window.uploadedImageData.image_bias === 'object';
+    
+    if (hasDynamicBias) {
+        // Always show custom bias button, regardless of aspect ratio
+        if (imageBiasGroup) {
+            imageBiasGroup.style.display = 'flex';
+        }
+        
+        // Update the display to show custom bias
+        await updateImageBiasDisplay('custom');
+        
+        // Hide the dropdown menu if aspect ratios are the same
+        if (!shouldShowImageBias() && imageBiasDropdownMenu) {
+            imageBiasDropdownMenu.style.display = 'none';
+        }
+        
+        // If we have custom bias, we need to ensure the image is cropped to apply the bias
+        // This is especially important after resolution changes
+        if (typeof cropImageToResolution === 'function' && isCroppingNeeded()) {
+            console.log('Custom bias detected and cropping needed, ensuring image is cropped to apply bias adjustments');
+            await cropImageToResolution();
+        }
+    } else {
+        // Re-render the dropdown to check visibility (no specific value needed)
+        await renderImageBiasDropdown();
+    }
+}
+
+// Debounced version of cropImageToResolution to prevent excessive calls during rapid changes
+let cropImageTimeout = null;
+function debouncedCropImageToResolution() {
+    if (cropImageTimeout) {
+        clearTimeout(cropImageTimeout);
+    }
+    cropImageTimeout = setTimeout(() => {
+        cropImageToResolution();
+    }, 100); // 100ms delay
+}
+
+// Check if cropping is needed based on current state
+function isCroppingNeeded() {
+    if (!window.uploadedImageData) return false;
+    
+    // Check if we have custom bias that needs to be applied
+    const hasCustomBias = window.uploadedImageData.image_bias && typeof window.uploadedImageData.image_bias === 'object';
+    if (hasCustomBias) {
+        return true; // Always crop when custom bias is present
+    }
+    
+    // Check if dimensions match target resolution
+    if (window.uploadedImageData.width && window.uploadedImageData.height) {
+        const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
+        let targetWidth, targetHeight;
+        
+        if (currentResolution === 'custom' && manualWidth && manualHeight) {
+            targetWidth = parseInt(manualWidth.value);
+            targetHeight = parseInt(manualHeight.value);
+        } else {
+            const resolutionDims = getDimensionsFromResolution(currentResolution);
+            if (resolutionDims) {
+                targetWidth = resolutionDims.width;
+                targetHeight = resolutionDims.height;
+            }
+        }
+        
+        // If dimensions don't match, cropping is needed
+        if (targetWidth && targetHeight && 
+            (window.uploadedImageData.width !== targetWidth || 
+             window.uploadedImageData.height !== targetHeight)) {
+            return true;
+        }
+    }
+    
+    return false; // No cropping needed
+}
+
+// Update image bias orientation based on current image and resolution
+function updateImageBiasOrientation() {
+    if (!imageBiasDropdownBtn || !window.uploadedImageData) return;
+    
+    const buttonGrid = imageBiasDropdownBtn.querySelector('.mask-bias-grid');
+    if (!buttonGrid) return;
+    
+    // Only update orientation if we have valid image dimensions
+    if (!window.uploadedImageData.width || !window.uploadedImageData.height) {
+        // Image dimensions not yet loaded, skip orientation update
+        return;
+    }
+    
+    const { orientation } = getImageBiasOrientation();
+    
+    // Update the button grid orientation
+    buttonGrid.setAttribute('data-orientation', orientation);
+    
+    // Also update any preset dropdown if it's open
+    const presetMenu = document.getElementById('imageBiasPresetMenu');
+    if (presetMenu && presetMenu.style.display === 'block') {
+        renderImageBiasPresetDropdown();
+    }
+    
+    // Also update the main image bias dropdown if it's open
+    if (imageBiasDropdownMenu && imageBiasDropdownMenu.style.display !== 'none') {
+        // Re-render to ensure proper state
+        renderImageBiasDropdown();
+    }
+}
+
 // Show image bias adjustment modal
 async function showImageBiasAdjustmentModal() {
     if (!window.uploadedImageData) {
@@ -428,6 +584,12 @@ async function showImageBiasAdjustmentModal() {
         setTimeout(() => {
             updateBiasAdjustmentUI();
             updateBiasAdjustmentImage();
+            imageBiasAdjustmentData.previewMode = 'css';
+            
+            const toggleBtn = document.getElementById('previewToggleBtn');
+            if (toggleBtn) {
+                toggleBtn.setAttribute('data-state', 'on');
+            }
         }, 100);
     };
     originalImage.src = imageDataUrl;
@@ -437,10 +599,15 @@ async function showImageBiasAdjustmentModal() {
 function updateBiasAdjustmentUI() {
     const { x, y, scale, rotate } = imageBiasAdjustmentData.currentBias;
 
-    document.getElementById('biasX').value = x;
-    document.getElementById('biasY').value = y;
-    document.getElementById('biasScale').value = scale;
-    document.getElementById('biasRotate').value = rotate;
+    const biasX = document.getElementById('biasX');
+    const biasY = document.getElementById('biasY');
+    const biasScale = document.getElementById('biasScale');
+    const biasRotate = document.getElementById('biasRotate');
+
+    if (biasX) biasX.value = x;
+    if (biasY) biasY.value = y;
+    if (biasScale) biasScale.value = scale;
+    if (biasRotate) biasRotate.value = rotate;
 }
 
 // Update bias adjustment image display
@@ -448,9 +615,22 @@ function updateBiasAdjustmentImage() {
     const image = document.getElementById('biasAdjustmentImage');
     const wrapper = document.getElementById('biasAdjustmentImageWrapper');
     const targetOverlay = document.getElementById('targetAreaOverlay');
+    
+    if (!image || !wrapper || !targetOverlay) {
+        console.warn('Required DOM elements not found for bias adjustment image');
+        return;
+    }
+    
     const targetBorder = targetOverlay.querySelector('.target-area-border');
+    if (!targetBorder) {
+        console.warn('Target area border not found');
+        return;
+    }
 
-    if (!imageBiasAdjustmentData.originalImage || !imageBiasAdjustmentData.targetDimensions) return;
+    if (!imageBiasAdjustmentData.originalImage || !imageBiasAdjustmentData.targetDimensions) {
+        console.warn('Missing image data for bias adjustment');
+        return;
+    }
 
     const { originalImage, targetDimensions, currentBias } = imageBiasAdjustmentData;
 
@@ -459,6 +639,11 @@ function updateBiasAdjustmentImage() {
 
     // Calculate display dimensions - use the actual container size with padding accounted for
     const container = document.getElementById('imagePreviewContainer');
+    if (!container) {
+        console.warn('Image preview container not found');
+        return;
+    }
+    
     const containerRect = container.getBoundingClientRect();
     const padding = 32; // 2em = 32px (assuming 1em = 16px)
     const containerWidth = containerRect.width - (padding * 2);
@@ -506,14 +691,14 @@ function updateBiasAdjustmentImage() {
     const scaledX = currentBias.x * scaleX;
     const scaledY = currentBias.y * scaleY;
 
-    // Position the wrapper relative to the target area overlay (top-left is 0,0)
+    // Position the wrapper at the target area's top-left corner
     // The target area overlay is centered in the container, so we need to calculate its position
     // The container has 2em padding, so the target area is centered within the padded area
     const targetAreaX = (containerWidth - targetDisplayWidth) / 2;
     const targetAreaY = (containerHeight - targetDisplayHeight) / 2;
 
-    // Apply position to wrapper (scaled to match display dimensions, referenced to target area top-left)
-    // The wrapper is positioned relative to the container, and the target area is already centered within the padded area
+    // Apply position to wrapper - start at target area top-left (0,0), then apply bias offset
+    // This matches the client preview behavior where bias 0,0 means top-left corner
     wrapper.style.transform = `translate(${targetAreaX + scaledX}px, ${targetAreaY + scaledY}px)`;
 
     // Apply rotation and scale to image (from top-left corner)
@@ -523,10 +708,20 @@ function updateBiasAdjustmentImage() {
 
 // Handle bias control changes
 function handleBiasControlChange() {
-    const x = parseInt(document.getElementById('biasX').value) || 0;
-    const y = parseInt(document.getElementById('biasY').value) || 0;
-    const scale = parseFloat(document.getElementById('biasScale').value) || 1.0;
-    const rotate = parseInt(document.getElementById('biasRotate').value) || 0;
+    const biasX = document.getElementById('biasX');
+    const biasY = document.getElementById('biasY');
+    const biasScale = document.getElementById('biasScale');
+    const biasRotate = document.getElementById('biasRotate');
+
+    if (!biasX || !biasY || !biasScale || !biasRotate) {
+        console.warn('Bias control inputs not found');
+        return;
+    }
+
+    const x = parseInt(biasX.value) || 0;
+    const y = parseInt(biasY.value) || 0;
+    const scale = parseFloat(biasScale.value) || 1.0;
+    const rotate = parseInt(biasRotate.value) || 0;
 
     imageBiasAdjustmentData.currentBias = { x, y, scale, rotate };
     updateBiasAdjustmentImage();
@@ -539,16 +734,8 @@ function handleBiasControlChange() {
 
 // Image Bias Preset Functions
 function getImageBiasPresetOptions() {
-    // Get current resolution to determine if we're in portrait or landscape mode
-    const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-    let isPortrait = currentResolution.toLowerCase().includes('portrait');
-
-    // For custom resolutions, determine based on width/height
-    if (currentResolution === 'custom' && manualWidth && manualHeight) {
-        const width = parseInt(manualWidth.value);
-        const height = parseInt(manualHeight.value);
-        isPortrait = height > width;
-    }
+    // Get orientation data using centralized function
+    const { isPortrait } = getImageBiasOrientation();
 
     if (!isPortrait) {
         return [
@@ -559,7 +746,7 @@ function getImageBiasPresetOptions() {
             { value: '4', display: 'Bottom' }
         ];
     } else {
-        // Landscape or square - use same position names
+        // Portrait - use vertical position names
         return [
             { value: '0', display: 'Left' },
             { value: '1', display: 'Mid-Left' },
@@ -583,17 +770,8 @@ function renderImageBiasPresetDropdown(selectedVal) {
         optionElement.className = 'custom-dropdown-option';
         optionElement.dataset.value = option.value;
 
-        // Determine grid layout based on aspect ratio
-        const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-        const isPortrait = currentResolution.includes('portrait');
-
-        // For custom resolutions, determine based on width/height
-        let isPortraitMode = isPortrait;
-        if (currentResolution === 'custom' && manualWidth && manualHeight) {
-            const width = parseInt(manualWidth.value);
-            const height = parseInt(manualHeight.value);
-            isPortraitMode = height > width;
-        }
+        // Get orientation data using centralized function
+        const { isPortrait: isPortraitMode } = getImageBiasOrientation();
 
         // Create grid based on orientation
         let gridHTML = '';
@@ -630,8 +808,18 @@ function renderImageBiasPresetDropdown(selectedVal) {
 
 function selectImageBiasPreset(value) {
     const btn = document.getElementById('imageBiasPresetBtn');
+    if (!btn) {
+        console.warn('Image bias preset button not found');
+        return;
+    }
+    
     const grid = btn.querySelector('.mask-bias-grid');
     const label = btn.querySelector('.mask-bias-label');
+    
+    if (!grid || !label) {
+        console.warn('Required elements not found in preset button');
+        return;
+    }
 
     const presetOptions = getImageBiasPresetOptions();
     const selectedOption = presetOptions.find(option => option.value === value);
@@ -643,30 +831,22 @@ function selectImageBiasPreset(value) {
     }
 
     // Update the button's grid preview
-    if (grid) {
-        grid.setAttribute('data-bias', value);
+    grid.setAttribute('data-bias', value);
 
-        // Update orientation based on current resolution
-        const currentResolution = manualResolutionHidden ? manualResolutionHidden.value : 'normal_portrait';
-        const isPortrait = currentResolution.includes('portrait');
+    // Get orientation data using centralized function
+    const { isPortrait: isPortraitMode } = getImageBiasOrientation();
 
-        // For custom resolutions, determine based on width/height
-        let isPortraitMode = isPortrait;
-        if (currentResolution === 'custom' && manualWidth && manualHeight) {
-            const width = parseInt(manualWidth.value);
-            const height = parseInt(manualHeight.value);
-            isPortraitMode = height > width;
-        }
-
-        grid.setAttribute('data-orientation', isPortraitMode ? 'portrait' : 'landscape');
-    }
+    grid.setAttribute('data-orientation', isPortraitMode ? 'portrait' : 'landscape');
 
     // Calculate and apply the preset position
     applyImageBiasPreset(value);
 }
 
 function applyImageBiasPreset(presetValue) {
-    if (!imageBiasAdjustmentData.targetDimensions) return;
+    if (!imageBiasAdjustmentData.targetDimensions || !imageBiasAdjustmentData.originalImage) {
+        console.warn('Missing target dimensions or original image for bias preset');
+        return;
+    }
 
     const { width: targetWidth, height: targetHeight } = imageBiasAdjustmentData.targetDimensions;
     const { width: imageWidth, height: imageHeight } = imageBiasAdjustmentData.originalImage;
@@ -718,8 +898,11 @@ function applyImageBiasPreset(presetValue) {
     imageBiasAdjustmentData.currentBias.y = Math.round(y);
 
     // Update the UI
-    document.getElementById('biasX').value = Math.round(x);
-    document.getElementById('biasY').value = Math.round(y);
+    const biasX = document.getElementById('biasX');
+    const biasY = document.getElementById('biasY');
+    
+    if (biasX) biasX.value = Math.round(x);
+    if (biasY) biasY.value = Math.round(y);
 
     updateBiasAdjustmentImage();
 
@@ -735,6 +918,8 @@ function openImageBiasPresetDropdown() {
     if (menu && btn) {
         menu.style.display = 'block';
         btn.classList.add('active');
+    } else {
+        console.warn('Required elements not found for opening preset dropdown');
     }
 }
 
@@ -744,6 +929,8 @@ function closeImageBiasPresetDropdown() {
     if (menu && btn) {
         menu.style.display = 'none';
         btn.classList.remove('active');
+    } else {
+        console.warn('Required elements not found for closing preset dropdown');
     }
 }
 
@@ -761,8 +948,6 @@ function handleBiasImageMouseDown(e) {
     imageBiasAdjustmentData.isDragging = true;
     imageBiasAdjustmentData.dragStart = { x: e.clientX, y: e.clientY };
     imageBiasAdjustmentData.originalTransform = { ...imageBiasAdjustmentData.currentBias };
-
-    
 }
 
 function handleBiasImageMouseMove(e) {
@@ -788,22 +973,26 @@ function togglePreviewMode() {
     const cssWrapper = document.getElementById('biasAdjustmentImageWrapper');
     const clientImage = document.getElementById('clientPreviewImage');
 
+    if (!toggleBtn || !cssWrapper || !clientImage) {
+        console.warn('Required elements not found for preview toggle');
+        return;
+    }
+
     const currentState = toggleBtn.getAttribute('data-state');
     const newState = currentState === 'on' ? 'off' : 'on';
 
+    // Fix: Set preview mode based on the new state, not the current state
     imageBiasAdjustmentData.previewMode = newState === 'on' ? 'client' : 'css';
 
-    if (newState === 'on') {
+    if (newState === 'off') {
         // Show client preview
-        toggleBtn.setAttribute('data-state', 'on');
-        toggleBtn.innerHTML = '<i class="fas fa-mouse-pointer"></i> Interactive';
+        toggleBtn.setAttribute('data-state', 'off');
         cssWrapper.style.display = 'none';
         clientImage.style.display = 'block';
         updateClientPreview();
     } else {
         // Show CSS interactive view
-        toggleBtn.setAttribute('data-state', 'off');
-        toggleBtn.innerHTML = '<i class="nai-sparkles"></i> Preview';
+        toggleBtn.setAttribute('data-state', 'on');
         cssWrapper.style.display = 'block';
         clientImage.style.display = 'none';
         updateBiasAdjustmentImage();
@@ -817,7 +1006,11 @@ async function updateClientPreview() {
     try {
         const clientPreview = await generateClientBiasPreview();
         const clientImage = document.getElementById('clientPreviewImage');
-        clientImage.src = clientPreview;
+        if (clientImage) {
+            clientImage.src = clientPreview;
+        } else {
+            console.warn('Client preview image element not found');
+        }
     } catch (error) {
         console.error('Failed to update client preview:', error);
     }
@@ -833,17 +1026,28 @@ async function testBiasAdjustment() {
     const testBtn = document.getElementById('biasTestBtn');
     const resultsDiv = document.getElementById('biasTestResults');
 
+    if (!testBtn || !resultsDiv) {
+        console.warn('Required elements not found for bias testing');
+        return;
+    }
+
     testBtn.disabled = true;
     testBtn.innerHTML = '<i class="spinner"></i> Testing...';
 
     try {
         // Generate client-side preview
         const clientPreview = await generateClientBiasPreview();
-        document.getElementById('clientTestImage').src = clientPreview;
+        const clientTestImage = document.getElementById('clientTestImage');
+        if (clientTestImage) {
+            clientTestImage.src = clientPreview;
+        }
 
         // Generate server-side preview
         const serverPreview = await generateServerBiasPreview();
-        document.getElementById('serverTestImage').src = serverPreview;
+        const serverTestImage = document.getElementById('serverTestImage');
+        if (serverTestImage) {
+            serverTestImage.src = serverPreview;
+        }
 
         resultsDiv.style.display = 'flex';
 
@@ -1045,6 +1249,9 @@ function applyBiasAdjustment() {
 
     // Update the main preview
     cropImageToResolution();
+    
+    // Update image bias orientation after applying bias adjustment
+    updateImageBiasOrientation();
 
     renderImageBiasDropdown();
 }
@@ -1130,6 +1337,9 @@ async function applyImageBiasChange(value, callback) {
     }
 
     updateImageBiasDisplay(value);
+    
+    // Update image bias orientation after changing bias
+    updateImageBiasOrientation();
 
     // Reload the preview image with the new bias
     await cropImageToResolution();
@@ -1155,12 +1365,25 @@ function hideImageBiasAdjustmentModal() {
 
     // Reset dragging state
     imageBiasAdjustmentData.isDragging = false;
+    imageBiasAdjustmentData.previewMode = 'css';
+    
+    // Reset toggle button state to default (CSS view)
+    const toggleBtn = document.getElementById('previewToggleBtn');
+    if (toggleBtn) {
+        toggleBtn.setAttribute('data-state', 'on');
+    }
 }
 
 // Enhanced cropImageToResolution function to handle dynamic bias adjustments
 async function cropImageToResolution() {
     if (!(window.uploadedImageData && (window.uploadedImageData.image_source || window.uploadedImageData.originalDataUrl))) {
         console.warn('No uploaded image data available for cropping');
+        return;
+    }
+    
+    // Check if we actually need to crop using the helper function
+    if (!isCroppingNeeded()) {
+        console.log('No cropping needed - dimensions match and no custom bias');
         return;
     }
 
@@ -1216,6 +1439,9 @@ async function cropImageToResolution() {
         setTimeout(updateMaskPreview, 500);
 
         window.uploadedImageData.croppedBlobUrl = croppedBlobUrl;
+        
+        // Update the image bias orientation to ensure it's correct
+        updateImageBiasOrientation();
     } catch (error) {
         console.error('Failed to crop image to resolution:', error);
         showError('Failed to crop image to resolution');
@@ -1534,6 +1760,11 @@ function addBiasAdjustmentButton() {
     // Check if button already exists
     if (document.getElementById('imageBiasAdjustBtn')) return;
 
+    if (!imageBiasDropdown) {
+        console.warn('Image bias dropdown not found, cannot add adjustment button');
+        return;
+    }
+
     const adjustBtn = document.createElement('button');
     adjustBtn.id = 'imageBiasAdjustBtn';
     adjustBtn.type = 'button';
@@ -1557,15 +1788,19 @@ function initializeImageBiasAdjustment() {
     }
 
     // Add bias adjustment button when image bias group is shown (fallback)
-    const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-                if (imageBiasGroup && imageBiasGroup.style.display !== 'none') {
-                    addBiasAdjustmentButton();
+    if (imageBiasGroup) {
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                    if (imageBiasGroup && imageBiasGroup.style.display !== 'none') {
+                        addBiasAdjustmentButton();
+                    }
                 }
-            }
+            });
         });
-    });
 
-    observer.observe(imageBiasGroup, { attributes: true });
+        observer.observe(imageBiasGroup, { attributes: true });
+    } else {
+        console.warn('Image bias group not found, cannot set up observer');
+    }
 }

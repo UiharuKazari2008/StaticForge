@@ -232,9 +232,7 @@ class CustomScrollbar {
         });
     }
 }
-
-// Initialize custom scrollbar when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
+window.wsClient.registerInitStep(86, 'Initializing Scrollbars', async () => {
     window.customScrollbar = new CustomScrollbar();
 });
 

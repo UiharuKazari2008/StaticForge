@@ -544,6 +544,7 @@ function createGalleryItem(image, index) {
 
     // Download button
     const downloadBtn = document.createElement('button');
+    downloadBtn.type = 'button';
     downloadBtn.className = 'btn-secondary round-button';
     downloadBtn.innerHTML = '<i class="fas fa-download"></i>';
     downloadBtn.title = 'Download';
@@ -554,6 +555,7 @@ function createGalleryItem(image, index) {
 
     // Direct reroll button (left side)
     const rerollBtn = document.createElement('button');
+    rerollBtn.type = 'button';
     rerollBtn.className = 'btn-secondary round-button';
     rerollBtn.innerHTML = '<i class="nai-dice"></i>';
     rerollBtn.title = 'Reroll with same settings';
@@ -564,6 +566,7 @@ function createGalleryItem(image, index) {
 
     // Reroll with edit button (right side with cog)
     const rerollEditBtn = document.createElement('button');
+    rerollEditBtn.type = 'button';
     rerollEditBtn.className = 'btn-secondary round-button';
     rerollEditBtn.innerHTML = '<i class="nai-penwriting"></i>';
     rerollEditBtn.title = 'Reroll with Edit';
@@ -574,6 +577,7 @@ function createGalleryItem(image, index) {
 
     // Upscale button (only for non-upscaled images)
     const upscaleBtn = document.createElement('button');
+    upscaleBtn.type = 'button';
     upscaleBtn.className = 'btn-secondary round-button';
     upscaleBtn.innerHTML = '<i class="nai-upscale"></i>';
     upscaleBtn.title = 'Upscale';
@@ -591,6 +595,7 @@ function createGalleryItem(image, index) {
 
     // Pin button
     const pinBtn = document.createElement('button');
+    pinBtn.type = 'button';
     pinBtn.className = 'btn-secondary round-button';
     
     // Set initial pin button state from WebSocket data if available
@@ -616,6 +621,7 @@ function createGalleryItem(image, index) {
 
     // Toolbar trigger button (combines scrap and delete)
     const toolbarBtn = document.createElement('button');
+    toolbarBtn.type = 'button';
     toolbarBtn.className = 'btn-secondary round-button';
     toolbarBtn.innerHTML = '<i class="nai-dotdotdot"></i>';
     toolbarBtn.title = 'More actions';
@@ -1572,7 +1578,7 @@ function clearSelection() {
     updateBulkActionsBar();
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+window.wsClient.registerInitStep(87, 'Initializing Gallery System', async () => {
     // Improved infinite scroll with percentage-based triggers
     let lastScrollTime = 0;
     let scrollTimeout;
@@ -1643,16 +1649,6 @@ function sortGalleryData() {
     window.allImages = allImages;
 }
 
-// Export functions for use in other modules
-window.switchGalleryView = switchGalleryView;
-window.loadGallery = loadGallery;
-window.loadScraps = loadScraps;
-window.loadPinned = loadPinned;
-window.loadUpscaled = loadUpscaled;
-window.currentGalleryView = currentGalleryView;
-window.toggleGallerySortOrder = toggleGallerySortOrder;
-window.sortGalleryData = sortGalleryData;
-
 // Function to trigger gallery move modal with selected images
 function triggerGalleryMoveWithSelection() {
     if (selectedImages.size === 0) {
@@ -1673,6 +1669,3 @@ function triggerGalleryMoveWithSelection() {
         showGalleryMoveModal(null);
     }
 }
-
-// Export the function for use in other modules
-window.triggerGalleryMoveWithSelection = triggerGalleryMoveWithSelection;

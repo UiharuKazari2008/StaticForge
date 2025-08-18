@@ -35,8 +35,55 @@ let searchCompletionStatus = {
 let persistentSpellCheckData = null; // Current spell check data
 let isAutocompleteVisible = false; // Track if autocomplete is currently visible
 
+// Spellcheck timing variables for frequent checking
+let lastSpellCheckQuery = ''; // Track last spellcheck query to avoid duplicates
+let spellCheckTimer = null; // Timer for frequent spellcheck
+let spellCheckWordCount = 0; // Track word count for spellcheck
+let lastSpellCheckTime = 0; // Track last spellcheck time
+let spellCheckInputTimer = null; // Timer for input delay spellcheck
+
 // Track last search query to prevent unnecessary clearing
 let lastSearchQuery = '';
+
+// Track whether services have been initialized for the current autofill session
+let servicesInitialized = false;
+
+// Map client model names to server model names
+const searchModelMapping = {
+    'v4_5': 'nai-diffusion-4-5-full',
+    'v4_5_cur': 'nai-diffusion-4-5-curated',
+    'v4': 'nai-diffusion-4-full',
+    'v4_cur': 'nai-diffusion-4-curated',
+    'v3': 'nai-diffusion-3',
+    'v3_furry': 'nai-diffusion-furry-3'
+};
+
+// Function to initialize all autofill services
+function initializeAutofillServices() {
+    // Initialize ALL services immediately when autofill appears
+    // This ensures all services are visible with their icons from the start
+    searchServices.set('characters', 'stalled');
+    searchServices.set('anime-local', 'stalled');
+    
+    // Set the current model service dynamically based on the actual model being searched
+    // Map client model names to server model names to prevent conflicts
+    let currentModel = window.manualModel?.value || 'unknown';
+    
+    // Use mapped name if available, otherwise use original
+    currentModel = searchModelMapping[currentModel] || currentModel;
+    
+    // Only add if it's a valid model name (starts with nai-diffusion)
+    searchServices.set(currentModel, 'stalled');
+    
+    searchServices.set('furry-local', 'stalled');
+    searchServices.set('nai-diffusion-furry-3', 'stalled');
+    searchServices.set('dual-match', 'stalled');
+    searchServices.set('textReplacements', 'stalled');
+    searchServices.set('spellcheck', 'stalled');
+    
+    // Update the display to show the services
+    updateSearchStatusDisplay();
+}
 
 const modelKeys = {
     "nai-diffusion-3": { type: "NovelAI", version: "v3 Anime" },
@@ -233,27 +280,13 @@ async function enhanceTagResults(tags, query) {
     return enhancedTags;
 }
 
-// Initialize WebSocket event handlers for realtime search
-function initializeRealtimeSearch() {
-    if (window.wsClient) {
-        window.wsClient.on('search_status_update', handleSearchStatusUpdate);
-        window.wsClient.on('search_results_update', handleSearchResultsUpdate);
-        window.wsClient.on('search_results_complete', handleSearchResultsComplete);
-    }
-}
-
 // Handle search status updates from WebSocket
 function handleSearchStatusUpdate(message) {
     if (!message.services || !Array.isArray(message.services)) return;
     
     message.services.forEach(service => {
-        if (service.status === 'completed' || service.status === 'error') {
-            // Remove completed/error services from the status display
-            searchServices.delete(service.name);
-        } else {
-            // Update status for active services
-            searchServices.set(service.name, service.status);
-        }
+        // Always update service status, don't remove completed/error services
+        searchServices.set(service.name, service.status);
     });
     
     // Update the UI to show service status
@@ -268,6 +301,28 @@ function handleSearchResultsUpdate(message) {
     const results = message.results || [];
     searchResultsByService.set(message.service, results);
     
+    // Update service status based on results
+    if (results.length === 0) {
+        // No results found, mark as completed-none
+        searchServices.set(message.service, 'completed-none');
+    } else {
+        // Results found, mark as completed
+        searchServices.set(message.service, 'completed');
+    }
+    
+    // Special handling for spellcheck service
+    if (message.service === 'spellcheck' && results.length > 0) {
+        const spellCheckResult = results[0];
+        if (spellCheckResult.data && spellCheckResult.data.hasErrors && 
+            spellCheckResult.data.misspelled && spellCheckResult.data.misspelled.length > 0) {
+            // Has spelling errors
+            searchServices.set('spellcheck', 'completed');
+        } else {
+            // No spelling errors found
+            searchServices.set('spellcheck', 'completed-noerrors');
+        }
+    }
+    
     // Handle dynamic results (spell check and text replacements) separately
     handleDynamicResultsUpdate(message.service, results);
     
@@ -275,6 +330,9 @@ function handleSearchResultsUpdate(message) {
     rebuildAndDisplayResults().catch(error => {
         console.error('Error rebuilding display:', error);
     });
+    
+    // Update the UI to show service status changes
+    updateSearchStatusDisplay();
 }
 
 // Handle search completion
@@ -285,8 +343,8 @@ function handleSearchResultsComplete(message) {
         isComplete: true
     };
     
-    // Clear all search services since they're all done
-    searchServices.clear();
+    // Don't clear search services - keep them visible with completed status
+    // The services will remain visible until explicitly cleared or new search starts
     
     // Final rebuild and display
     rebuildAndDisplayResults().catch(error => {
@@ -303,7 +361,8 @@ function handleSearchResultsComplete(message) {
     setTimeout(() => {
         // Only clear if we're still in the same search session and no new search has started
         if (searchCompletionStatus.isComplete && !isSearching && lastSearchQuery === '') {
-            searchServices.clear();
+            // Don't clear searchServices - keep services visible with completed status
+            // Only clear results and other state
             searchResultsByService.clear();
             clearDynamicResults();
             allSearchResults = [];
@@ -505,82 +564,142 @@ async function rebuildAndDisplayResults() {
 function updateSearchStatusDisplay() {
     if (!characterAutocompleteList) return;
     
-    // Remove existing status display
-    const existingStatus = characterAutocompleteList.querySelector('.search-status-display');
-    if (existingStatus) {
-        existingStatus.remove();
+    if (!characterAutocompleteList) {
+        return;
     }
     
-    if (searchServices.size === 0) return;
+    // Check if status display already exists
+    let statusDisplay = characterAutocompleteList.querySelector('.search-status-display');
     
-    const statusDisplay = document.createElement('div');
-    statusDisplay.className = 'search-status-display';
-    
-    let statusHTML = '<div class="search-status-header"><i class="fas fa-search"></i> Searching...</div>';
-    
-    // Show service status
-    for (const [serviceName, status] of searchServices) {
-        const iconClass = getServiceIconClass(serviceName);
-        const statusClass = getStatusClass(status);
-        statusHTML += `
-            <div class="search-service-status ${statusClass}">
-                <i class="${iconClass}"></i>
-                <span class="service-name">${serviceName}</span>
-                <span class="service-status">${status}</span>
-            </div>
-        `;
+    if (!statusDisplay) {
+        // Create new status display if it doesn't exist
+        statusDisplay = document.createElement('div');
+        statusDisplay.className = 'search-status-display';
+        characterAutocompleteList.appendChild(statusDisplay);
     }
     
-    // Show dynamic results status if available
-    if (hasDynamicResults()) {
-        const spellCheckCount = spellCheckResults.size;
-        const textReplacementCount = textReplacementResults.size;
+    if (searchServices.size === 0) {
+        return;
+    }
+    
+    // Only update if we actually have services to show
+    const visibleServices = Array.from(searchServices.entries()).filter(([name, status]) => status !== undefined);
+    if (visibleServices.length === 0) {
+        return;
+    }
         
-        statusHTML += '<div class="dynamic-results-status">';
-        if (spellCheckCount > 0) {
-            statusHTML += `<div class="dynamic-result-type"><i class="fas fa-spell-check"></i> Spell check: ${spellCheckCount} service(s)</div>`;
+    let statusHTML = '<div class="search-status-header"><i class="fas fa-search"></i><span>Searching...</span></div><div class="search-service-indicators">';
+    
+    // Define the order you want services to appear in the status bar
+    const serviceOrder = [
+        'spellcheck',        // 1st - Spellcheck (most important for user feedback)
+        'characters',        // 2nd - Character search
+        'anime-local',      // 4th - Anime Local
+        // Note: The current model service will be inserted here as 5th
+        'furry-local',      // 6th - Furry Local
+        'nai-diffusion-furry-3', // 7th - Furry v3
+        'dual-match',       // 8th - Dual match corrections
+        'textReplacements', // 9th - Text replacements
+    ];
+    
+    // Get the current model for dynamic insertion
+    let currentModel = window.manualModel?.value || 'unknown';
+    currentModel = searchModelMapping[currentModel] || currentModel;
+    
+    // Show service status in the defined order, with current model inserted at 5th position
+    let serviceCount = 0;
+    for (const serviceName of serviceOrder) {
+        const status = searchServices.get(serviceName);
+        if (status !== undefined) { // Only show services that exist
+            const iconClass = getServiceIconClass(serviceName, status);
+            const statusClass = getStatusClass(status);
+            const displayName = getServiceDisplayName(serviceName);
+            statusHTML += `
+                <div class="search-service-status ${statusClass}" title="${displayName}: ${status}">
+                    <i class="${iconClass}"></i>
+                </div>
+            `;
+            serviceCount++;
+            
+            // Insert current model as 5th item (after 4th item)
+            if (serviceCount === 4 && searchServices.has(currentModel)) {
+                const currentModelStatus = searchServices.get(currentModel);
+                const currentModelIconClass = getServiceIconClass(currentModel, currentModelStatus);
+                const currentModelStatusClass = getStatusClass(currentModelStatus);
+                const currentModelDisplayName = getServiceDisplayName(currentModel);
+                statusHTML += `
+                    <div class="search-service-status ${currentModelStatusClass}" title="${currentModelDisplayName}: ${currentModelStatus}">
+                        <i class="${currentModelIconClass}"></i>
+                    </div>
+                `;
+            }
         }
-        if (textReplacementCount > 0) {
-            statusHTML += `<div class="dynamic-result-type"><i class="fas fa-exchange-alt"></i> Text replacements: ${textReplacementCount} service(s)</div>`;
-        }
-        statusHTML += '</div>';
     }
     
+    // Show any remaining services that weren't in the order list (fallback)
+    for (const [serviceName, status] of searchServices) {
+        if (!serviceOrder.includes(serviceName)) {
+            const iconClass = getServiceIconClass(serviceName, status);
+            const statusClass = getStatusClass(status);
+            const displayName = getServiceDisplayName(serviceName);
+            statusHTML += `
+                <div class="search-service-status ${statusClass}" title="${displayName}: ${status}">
+                    <i class="${iconClass}"></i>
+                </div>
+            `;
+        }
+    }
+    statusHTML += '</div>';
+    
+    // Update the existing status display instead of recreating it
     statusDisplay.innerHTML = statusHTML;
-    characterAutocompleteList.appendChild(statusDisplay);
 }
 
 // Get CSS class for service icon
-function getServiceIconClass(serviceName) {
+function getServiceIconClass(serviceName, status) {
     switch (serviceName) {
         case 'nai-diffusion-4-5-full':
         case 'nai-diffusion-4-5':
         case 'nai-diffusion-4-full':
         case 'nai-diffusion-4-curated-preview':
         case 'nai-diffusion-3':
-            return 'nai-sakura';
+        case 'v4':
+        case 'v4_cur':
+        case 'v4_5':
+        case 'v4_5_cur':
+        case 'v3':
+            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-database';
         case 'nai-diffusion-furry-3':
+        case 'v3_furry':
             return 'nai-paw';
         case 'furry-local':
             return 'nai-paw';
         case 'anime-local':
             return 'nai-sakura';
         case 'dual-match':
-            return 'fas fa-link';
+            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-link';
         case 'characters':
         case 'cached_characters':
-            return 'fas fa-user';
+            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-user';
         case 'tags':
         case 'cached_tags':
-            return 'fas fa-tag';
+            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-tag';
         case 'textReplacements':
-            return 'fas fa-code';
+            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-code';
         case 'spellcheck':
-            return 'fas fa-spell-check';
+            return ((status === 'searching' || status === 'stalled' || status === 'completed-noerrors') ? 'fa-light' : 'fas') + ' fa-spell-check';
         case 'cached':
-            return 'fas fa-database';
+            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-database';
         default:
-            return 'fas fa-question';
+            // Handle dynamic model names (like nai-diffusion-4-5, nai-diffusion-furry-3, etc.)
+            if (serviceName.startsWith('nai-diffusion')) {
+                if (serviceName.includes('furry')) {
+                    return 'nai-paw';
+                } else {
+                    return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-database';
+                }
+            }
+            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-question';
     }
 }
 
@@ -590,13 +709,65 @@ function getStatusClass(status) {
         case 'searching':
             return 'status-searching';
         case 'stalled':
-            return 'status-searching';
+            return 'status-stalled';
         case 'completed':
             return 'status-completed';
+        case 'completed-none':
+            return 'status-completed-none';
+        case 'completed-noerrors':
+            return 'status-completed-noerrors';
         case 'error':
             return 'status-error';
         default:
             return 'status-unknown';
+    }
+}
+
+// Get display name for service
+function getServiceDisplayName(serviceName) {
+    switch (serviceName) {
+        case 'nai-diffusion-4-5-full':
+        case 'nai-diffusion-4-5':
+        case 'nai-diffusion-4-full':
+        case 'nai-diffusion-4-curated-preview':
+        case 'nai-diffusion-3':
+            return 'NovelAI';
+        case 'nai-diffusion-furry-3':
+            return 'Furry';
+        case 'furry-local':
+            return 'Furry Local';
+        case 'anime-local':
+            return 'Anime Local';
+        case 'dual-match':
+            return 'Dual Match';
+        case 'characters':
+        case 'cached_characters':
+            return 'Characters';
+        case 'tags':
+        case 'cached_tags':
+            return 'Tags';
+        case 'textReplacements':
+            return 'Text Replacements';
+        case 'spellcheck':
+            return 'Spell Check';
+        case 'cached':
+            return 'Cache';
+        default:
+            // Handle dynamic model names (like nai-diffusion-4-5, nai-diffusion-furry-3, etc.)
+            if (serviceName.startsWith('nai-diffusion')) {
+                if (serviceName.includes('furry')) {
+                    return 'Furry v3';
+                } else if (serviceName.includes('4-5')) {
+                    return 'NovelAI 4.5';
+                } else if (serviceName.includes('4')) {
+                    return 'NovelAI 4';
+                } else if (serviceName.includes('3')) {
+                    return 'NovelAI 3';
+                } else {
+                    return 'NovelAI';
+                }
+            }
+            return serviceName;
     }
 }
 
@@ -671,6 +842,11 @@ function handleCharacterAutocompleteInput(e) {
                         hideCharacterAutocomplete();
                     }
                 }, 50);
+                
+                // Also trigger frequent spellcheck for backspace cases
+                if (textAfterPrefix.length >= 3) {
+                    requestFrequentSpellCheck(textAfterPrefix, target);
+                }
                 return;
             } else {
                 // Not actively navigating, hide autocomplete
@@ -694,6 +870,11 @@ function handleCharacterAutocompleteInput(e) {
                 hideCharacterAutocomplete();
             }
         }, 500);
+        
+        // Also trigger frequent spellcheck for Text: searches
+        if (textAfterPrefix.length >= 3) {
+            requestFrequentSpellCheck(textAfterPrefix, target);
+        }
         return;
     }
 
@@ -742,6 +923,11 @@ function handleCharacterAutocompleteInput(e) {
                     hideCharacterAutocomplete();
                 }
             }, 50);
+            
+            // Also trigger frequent spellcheck for backspace cases
+            if (searchText.length >= 2) {
+                requestFrequentSpellCheck(searchText, target);
+            }
             return;
         } else {
             // Not actively navigating, hide autocomplete
@@ -765,6 +951,11 @@ function handleCharacterAutocompleteInput(e) {
             hideCharacterAutocomplete();
         }
     }, 500);
+    
+    // Also trigger frequent spellcheck for continuous typing
+    if (searchText.length >= 3) {
+        requestFrequentSpellCheck(searchText, target);
+    }
 }
 
 function handleCharacterAutocompleteKeydown(e) {
@@ -1073,6 +1264,18 @@ function handleCharacterAutocompleteKeydown(e) {
                         }
                         return;
                     }
+                    
+                    // Handle text replacement insertion with right arrow
+                    if (selectedCharacterAutocompleteIndex >= 0 && items && items.length > 0) {
+                        const selectedItem = items[selectedCharacterAutocompleteIndex];
+                        if (selectedItem && selectedItem.dataset.type === 'textReplacement') {
+                            const replacementValue = selectedItem.dataset.replacementValue;
+                            if (replacementValue) {
+                                insertTextReplacement(replacementValue);
+                                return;
+                            }
+                        }
+                    }
                 }
                 break;
             case 'Tab':
@@ -1194,7 +1397,6 @@ function handleCharacterAutocompleteKeydown(e) {
         switch(e.key) {
             case 'Tab':
                 if (document.activeElement.type === 'textarea' && (document.activeElement.classList.contains('prompt-textarea') || document.activeElement.classList.contains('character-prompt-textarea'))) {
-                    console.log('Tabbing in prompt textarea', document.activeElement);
                     if (e.metaKey || e.ctrlKey || e.altKey)
                         return;
                     e.preventDefault();
@@ -1225,14 +1427,144 @@ function handleCharacterAutocompleteKeydown(e) {
     }
 }
 
+// Function to handle frequent spellcheck requests
+async function requestFrequentSpellCheck(query, target) {
+    // Clear any existing timers
+    if (spellCheckTimer) {
+        clearTimeout(spellCheckTimer);
+    }
+    if (spellCheckInputTimer) {
+        clearTimeout(spellCheckInputTimer);
+    }
+    
+    // Count words in the query
+    const wordCount = query.trim().split(/\s+/).filter(word => word.length > 0).length;
+    
+    // Check if we should trigger spellcheck based on conditions
+    const shouldTriggerSpellCheck = (
+        query !== lastSpellCheckQuery && // Different query
+        query.length >= 3 && // At least 3 characters
+        (
+            wordCount >= 3 || // Every 3 words
+            (Date.now() - lastSpellCheckTime >= 250) || // Every 250ms
+            wordCount > spellCheckWordCount // Word count increased
+        )
+    );
+    
+    if (shouldTriggerSpellCheck) {
+        // Update tracking variables
+        lastSpellCheckQuery = query;
+        lastSpellCheckTime = Date.now();
+        spellCheckWordCount = wordCount;
+        
+        // Trigger spellcheck immediately
+        await triggerSpellCheck(query, target);
+    }
+    
+    // Set timer for 250ms spellcheck
+    spellCheckTimer = setTimeout(async () => {
+        if (query === lastSpellCheckQuery && query.length >= 3) {
+            await triggerSpellCheck(query, target);
+        }
+    }, 250);
+    
+    // Set timer for 500ms after no input
+    spellCheckInputTimer = setTimeout(async () => {
+        if (query === lastSpellCheckQuery && query.length >= 3) {
+            await triggerSpellCheck(query, target);
+        }
+    }, 500);
+}
+
+// Function to trigger spellcheck
+async function triggerSpellCheck(query, target) {
+    try {
+        // Only proceed if we have a valid query and target
+        if (!query || !target || query.length < 3) {
+            return;
+        }
+        
+        // Check if query starts with "Text:" - if not, add it for spellcheck
+        const spellCheckQuery = query.startsWith('Text:') ? query : `Text:${query}`;
+        
+        // Initialize spellcheck service as searching
+        searchServices.set('spellcheck', 'searching');
+        updateSearchStatusDisplay();
+        
+        // Send spellcheck request via WebSocket
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                const responseData = await window.wsClient.searchCharacters(spellCheckQuery, manualModel.value);
+                const spellCheckData = responseData.spellCheck || null;
+                
+                if (spellCheckData) {
+                    // Update persistent spellcheck data
+                    persistentSpellCheckData = spellCheckData;
+                    
+                    // Store spellcheck results in the unified system instead of sending separate WebSocket messages
+                    if (spellCheckData.hasErrors) {
+                        const spellCheckResult = {
+                            type: 'spellcheck',
+                            data: spellCheckData,
+                            serviceOrder: -2,
+                            resultOrder: 0,
+                            serviceName: 'spellcheck'
+                        };
+                        
+                        // Add to the unified results system
+                        searchResultsByService.set('spellcheck', [spellCheckResult]);
+                    }
+                    
+                    // Mark spellcheck service as completed or completed-none based on results
+                    if (spellCheckData.hasErrors && spellCheckData.misspelled && spellCheckData.misspelled.length > 0) {
+                        searchServices.set('spellcheck', 'completed');
+                    } else {
+                        searchServices.set('spellcheck', 'completed-noerrors');
+                    }
+                    updateSearchStatusDisplay();
+                    
+                    // Rebuild and display results to show spellcheck
+                    rebuildAndDisplayResults();
+                }
+            } catch (wsError) {
+                console.error('WebSocket spellcheck failed:', wsError);
+                searchServices.set('spellcheck', 'error');
+                updateSearchStatusDisplay();
+            }
+        }
+    } catch (error) {
+        console.error('Spellcheck error:', error);
+        searchServices.set('spellcheck', 'error');
+        updateSearchStatusDisplay();
+    }
+}
+
 async function searchCharacters(query, target) {
     try {
         // Only clear results if this is a completely new search query
+        // But don't clear searchServices - we want to preserve service status
         if (lastSearchQuery !== query) {
-            searchServices.clear();
-            searchResultsByService.clear();
-            clearDynamicResults();
-            allSearchResults = [];
+            // Check if this is a continuation of the same search (just more characters)
+            const isContinuation = lastSearchQuery && query.startsWith(lastSearchQuery);
+            
+            if (!isContinuation) {
+                // This is a completely different search, clear results but preserve services
+                searchResultsByService.clear();
+                clearDynamicResults();
+                allSearchResults = [];
+                
+                // Don't reset services initialization - keep the services visible
+                // Only reset if we have no services at all
+                if (searchServices.size === 0) {
+                    servicesInitialized = false;
+                }
+            } else {
+                // This is a continuation, just clear results but keep services
+                searchResultsByService.clear();
+                clearDynamicResults();
+                allSearchResults = [];
+            }
+            
             lastSearchQuery = query;
         }
         
@@ -1247,8 +1579,24 @@ async function searchCharacters(query, target) {
         persistentSpellCheckData = null;
         isAutocompleteVisible = false;
         
+        // Clear any existing spellcheck timers for new search
+        if (spellCheckTimer) {
+            clearTimeout(spellCheckTimer);
+            spellCheckTimer = null;
+        }
+        if (spellCheckInputTimer) {
+            clearTimeout(spellCheckInputTimer);
+            spellCheckInputTimer = null;
+        }
+        
         // Set the current target for autocomplete
         currentCharacterAutocompleteTarget = target;
+        
+        // Initialize services if this is the first time in this autofill session
+        if (!servicesInitialized) {
+            initializeAutofillServices();
+            servicesInitialized = true;
+        }
         
         // Show autocomplete dropdown immediately with loading state
         updateAutocompleteDisplay([], target);
@@ -1264,14 +1612,53 @@ async function searchCharacters(query, target) {
         let spellCheckData = null;
 
         if (!isTextReplacementSearch && !isTextPrefixSearch) {
-            // Use WebSocket for search
+            // Start frequent spellcheck for this query (separate from main search)
+            requestFrequentSpellCheck(query, target);
+            
+            // Mark services as searching for regular searches
+            searchServices.set('characters', 'searching');
+            searchServices.set('anime-local', 'searching');
+            
+            // Mark the current model service as searching
+            let currentModel = window.manualModel?.value || 'unknown';
+            
+            currentModel = searchModelMapping[currentModel] || currentModel;
+            
+            if (searchServices.has(currentModel)) {
+                searchServices.set(currentModel, 'searching');
+            }
+            
+            searchServices.set('furry-local', 'searching');
+            searchServices.set('nai-diffusion-furry-3', 'searching');
+            searchServices.set('textReplacements', 'searching');
+            updateSearchStatusDisplay();
+            
+            // Use WebSocket for search - this will handle characters, tags, and textReplacements server-side
             if (window.wsClient && window.wsClient.isConnected()) {
                 try {
                     const responseData = await window.wsClient.searchCharacters(query, manualModel.value);
                     searchResults = responseData.results || [];
-                    spellCheckData = responseData.spellCheck || null;
+                    
+                    // Note: Spellcheck is now handled separately by frequent requests
+                    // The backend will send status updates for characters, tags, and textReplacements
                 } catch (wsError) {
                     console.error('WebSocket search failed:', wsError);
+                    // Mark services as error if search fails
+                    searchServices.set('characters', 'error');
+                    searchServices.set('anime-local', 'error');
+                    
+                    // Mark the current model service as error
+                    let currentModel = window.manualModel?.value || 'unknown';
+                    
+                    currentModel = searchModelMapping[currentModel] || currentModel;
+                    
+                    if (searchServices.has(currentModel)) {
+                        searchServices.set(currentModel, 'error');
+                    }
+                    
+                    searchServices.set('furry-local', 'error');
+                    searchServices.set('nai-diffusion-furry-3', 'error');
+                    searchServices.set('textReplacements', 'error');
                     throw new Error('Search service unavailable');
                 }
             } else {
@@ -1292,41 +1679,44 @@ async function searchCharacters(query, target) {
             }
         }
 
-        // For text replacement searches, strip the ! character from the search query
+        // For text replacement searches, update service status and perform search
         if (isTextReplacementSearch) {
-            searchQuery = searchQuery.substring(1); // Remove the ! character
-        }
-        // Search through text replacements (only for non-"Text:" searches)
-        if (!isTextPrefixSearch) {
-            const textReplacementResults = Object.keys(window.optionsData?.textReplacements || {})
-                .filter(key => {
-                    const keyToSearch = key;
-                    // If searchQuery is empty (just ! was typed), return all items
-                    if (searchQuery === '') {
-                        return true;
-                    }
-                    return keyToSearch.toLowerCase().includes(searchQuery.toLowerCase());
-                })
-                .map((key, index) => ({
-                    type: 'textReplacement',
-                    name: key,
-                    description: window.optionsData?.textReplacements[key],
-                    placeholder: key, // The placeholder name like !NAME or !NAME~
-                    // If we searched with ~ suffix, ensure the result preserves it
-                    displayName: hasPickSuffix ? `${key}~` : key,
-                    serviceOrder: index === 0 ? -1 : 10000, // Text replacements come first
-                    resultOrder: index,
-                    serviceName: 'textReplacements'
-                }));
-
-            // Add text replacements to the result collection
-            if (textReplacementResults.length > 0) {
-                searchResultsByService.set('textReplacements', textReplacementResults);
+            // Initialize text replacement service for text replacement searches
+            searchServices.set('textReplacements', 'stalled');
+            searchServices.set('spellcheck', 'stalled');
+            updateSearchStatusDisplay();
+            
+            // Perform text replacement search via WebSocket
+            if (window.wsClient && window.wsClient.isConnected()) {
+                try {
+                    await window.wsClient.searchCharacters(query, manualModel.value);
+                } catch (wsError) {
+                    console.error('WebSocket text replacement search failed:', wsError);
+                    searchServices.set('textReplacements', 'error');
+                    updateSearchStatusDisplay();
+                }
             }
         }
+        
+        // Start frequent spellcheck for all non-Text: searches
+        if (!isTextPrefixSearch) {
+            requestFrequentSpellCheck(query, target);
+        }
+        
+        // Note: Text replacements are now handled server-side via WebSocket
+        // The server will send status updates for the textReplacements service
         // For "Text:" searches, extract the text after the prefix for spell checking
         if (isTextPrefixSearch) {
             searchQuery = searchQuery.substring(5).trim(); // Remove "Text:" prefix
+            
+            // Initialize spellcheck service as stalled, then mark as searching
+            searchServices.set('spellcheck', 'stalled');
+            updateSearchStatusDisplay();
+            
+            setTimeout(() => {
+                searchServices.set('spellcheck', 'searching');
+                updateSearchStatusDisplay();
+            }, 100);
             
             // For "Text:" searches, send the full query to trigger spell checking
             if (window.wsClient && window.wsClient.isConnected()) {
@@ -1334,11 +1724,22 @@ async function searchCharacters(query, target) {
                     const responseData = await window.wsClient.searchCharacters(query, manualModel.value);
                     spellCheckData = responseData.spellCheck || null;
                     
+                    // Mark spellcheck service as completed or completed-none based on results
+                    if (spellCheckData && spellCheckData.hasErrors && spellCheckData.misspelled && spellCheckData.misspelled.length > 0) {
+                        searchServices.set('spellcheck', 'completed');
+                    } else {
+                        searchServices.set('spellcheck', 'completed-noerrors');
+                    }
+                    updateSearchStatusDisplay();
+                    
                     // For "Text:" searches, we only want spell check results
                     // Clear any other search results
                     searchResults = [];
                 } catch (wsError) {
                     console.error('WebSocket spell check failed:', wsError);
+                    // Mark spellcheck service as error
+                    searchServices.set('spellcheck', 'error');
+                    updateSearchStatusDisplay();
                     // Continue without spell check
                 }
             }
@@ -1368,6 +1769,9 @@ async function searchCharacters(query, target) {
             completedServices: 0,
             isComplete: false
         };
+        
+        // Reset services initialization flag for next autofill session
+        servicesInitialized = false;
     }
 }
 
@@ -1380,6 +1784,7 @@ function createAutocompleteItem(result) {
         // Handle text replacement results
         item.dataset.type = 'textReplacement';
         item.dataset.placeholder = result.placeholder;
+        item.dataset.replacementValue = result.replacementValue || result.description;
 
         // Use displayName if available, otherwise use placeholder
         let displayName = result.displayName || result.placeholder;
@@ -1545,13 +1950,12 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
     // Show all results if expanded, otherwise show only first 5 items
     const limitedResults = autocompleteExpanded ? displayResults : displayResults.slice(0, 5);
 
-    // Populate character autocomplete list
-    characterAutocompleteList.innerHTML = '';
+    // Clear only the results section, not the entire list
+    // This preserves the search status display
+    const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .no-results, .more-indicator');
+    existingResults.forEach(item => item.remove());
 
-    // Show search status if we're currently searching
-    if (isSearching && searchServices.size > 0) {
-        updateSearchStatusDisplay();
-    }
+    // Note: Search status will be added at the bottom after results
 
     // Handle spell check using the new system
     let currentSpellCheckData = null;
@@ -1663,13 +2067,12 @@ function updateAutocompleteDisplay(results, target) {
 
 // New function to rebuild the autocomplete display
 function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckResult, target) {    
-    // Clear the current display
-    characterAutocompleteList.innerHTML = '';
-    
-    // Show search status if we're currently searching
-    if (isSearching && searchServices.size > 0) {
-        updateSearchStatusDisplay();
-    }
+        // Clear only the results section, not the entire list
+    // This preserves the search status display
+    const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .no-results, .more-indicator');
+    existingResults.forEach(item => item.remove());
+
+    // Note: Search status will be added at the bottom after results
 
     // Handle spell check from the merged results system
     let currentSpellCheckData = null;
@@ -1721,6 +2124,11 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
             `;
             characterAutocompleteList.appendChild(moreItem);
         }
+    }
+    
+    // Add search status at the bottom if we're currently searching
+    if (isSearching && searchServices.size > 0) {
+        updateSearchStatusDisplay();
     }
 }
 
@@ -1797,8 +2205,9 @@ function applySpellCorrection(target, originalWord, suggestion) {
     const textPrefixIndex = currentValue.lastIndexOf('Text:');
     const isTextQuery = textPrefixIndex >= 0;
     
-    // Use a more robust word finding approach
-    const wordRegex = new RegExp(`\\b${originalWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+    // Use a more flexible word finding approach that doesn't require strict word boundaries
+    // This handles cases where there are no spaces on both sides of the word
+    const wordRegex = new RegExp(`${originalWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'gi');
     let match;
     let closestDistance = Infinity;
     let closestMatch = null;
@@ -1848,7 +2257,7 @@ function applySpellCorrection(target, originalWord, suggestion) {
         const event = new Event('input', { bubbles: true });
         target.dispatchEvent(event);
         
-        // Hide autocomplete to show new results
+        // Hide autocomplete and mark as not expanded to fix keyboard navigation issue
         hideCharacterAutocomplete();
     } else {
         // Fallback: if we can't find the word, try the old method
@@ -1888,7 +2297,7 @@ function applySpellCorrection(target, originalWord, suggestion) {
             const event = new Event('input', { bubbles: true });
             target.dispatchEvent(event);
             
-            // Hide autocomplete to show new results
+            // Hide autocomplete and mark as not expanded to fix keyboard navigation issue
             hideCharacterAutocomplete();
         }
     }
@@ -2026,7 +2435,7 @@ function selectTextReplacement(placeholder) {
     );
     const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
 
-    // Get the text after the cursor
+    // Get the text before the cursor
     const textAfterCursor = currentValue.substring(cursorPosition);
 
     // Build the new prompt
@@ -2057,10 +2466,10 @@ function selectTextReplacement(placeholder) {
     // Add comma and space after tag unless at end of emphasis or brace block
     if (textAfter && !isAtEndOfEmphasis && !isAtEndOfBrace) {
         // Check if we should add a comma after the inserted text
-        if (shouldAddCommaAfter(currentValue, cursorPosition)) {
+        if (shouldAddCommaBefore(currentValue, cursorPosition)) {
             newPrompt += ', ' + textAfter;
         } else {
-            newPrompt += ', ' + textAfter;
+            newPrompt += textAfter;
         }
     } else if (textAfter) {
         // At end of emphasis or brace block, don't add comma
@@ -2074,7 +2483,7 @@ function selectTextReplacement(placeholder) {
     const newCursorPosition = newPrompt.length - textAfter.length;
     target.setSelectionRange(newCursorPosition, newCursorPosition);
 
-    // Hide character autocomplete
+    // Hide character autocomplete and mark as not expanded to fix keyboard navigation issue
     hideCharacterAutocomplete();
 
     // Focus back on the target field
@@ -2180,7 +2589,7 @@ function selectTag(tagName) {
     );
     const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
 
-    // Get the text after the cursor
+    // Get the text before the cursor
     const textAfterCursor = currentValue.substring(cursorPosition);
 
     // Build the new prompt
@@ -2213,7 +2622,7 @@ function selectTag(tagName) {
         if (shouldAddCommaAfter(currentValue, cursorPosition)) {
             newPrompt += ', ' + textAfter;
         } else {
-            newPrompt += ', ' + textAfter;
+            newPrompt += textAfter;
         }
     } else if (textAfter) {
         // At end of emphasis or brace block, don't add comma
@@ -2227,7 +2636,7 @@ function selectTag(tagName) {
     const newCursorPosition = newPrompt.length - textAfter.length;
     target.setSelectionRange(newCursorPosition, newCursorPosition);
 
-    // Hide character autocomplete
+    // Hide character autocomplete and mark as not expanded to fix keyboard navigation issue
     hideCharacterAutocomplete();
 
     // Focus back on the target field
@@ -2301,7 +2710,7 @@ function selectTextReplacementFullText(placeholder) {
     const newCursorPosition = newPrompt.length - textAfter.length;
     target.setSelectionRange(newCursorPosition, newCursorPosition);
 
-    // Hide character autocomplete
+    // Hide character autocomplete and mark as not expanded to fix keyboard navigation issue
     hideCharacterAutocomplete();
 
     // Focus back on the target field
@@ -2381,7 +2790,7 @@ function selectCharacterWithoutEnhancers(character) {
         const newCursorPosition = newPrompt.length - textAfter.length;
         target.setSelectionRange(newCursorPosition, newCursorPosition);
 
-        // Hide character autocomplete
+        // Hide character autocomplete and mark as not expanded to fix keyboard navigation issue
         hideCharacterAutocomplete();
 
         // Focus back on the target field
@@ -2923,6 +3332,16 @@ function hideCharacterAutocomplete() {
     lastSearchText = ''; // Clear last search text so retyping works
     window.currentSpellCheckData = null; // Clear spell check data when hiding
     
+    // Clear spellcheck timers
+    if (spellCheckTimer) {
+        clearTimeout(spellCheckTimer);
+        spellCheckTimer = null;
+    }
+    if (spellCheckInputTimer) {
+        clearTimeout(spellCheckInputTimer);
+        spellCheckInputTimer = null;
+    }
+    
     // Reset persistent state
     searchResultsByService.clear();
     persistentSpellCheckData = null;
@@ -2930,6 +3349,9 @@ function hideCharacterAutocomplete() {
     
     // Clear search state
     lastSearchQuery = '';
+    
+    // Reset services initialization flag for next autofill session
+    servicesInitialized = false;
     
     updateEmphasisTooltipVisibility();
 }
@@ -3167,9 +3589,9 @@ function handleDynamicResultsUpdate(serviceName, results) {
     }
     
     // Update text replacement results
-    const textReplacementResults = results.filter(result => result.type === 'textReplacement');
-    if (textReplacementResults.length > 0) {
-        textReplacementResults.set(serviceName, textReplacementResults);
+    const textReplacementResultsArray = results.filter(result => result.type === 'textReplacement');
+    if (textReplacementResultsArray.length > 0) {
+        textReplacementResults.set(serviceName, textReplacementResultsArray);
     }
     
     // Rebuild and display results to show the updated dynamic content
@@ -3242,11 +3664,6 @@ function clearDynamicResults() {
     spellCheckResults.clear();
     textReplacementResults.clear();
     persistentSpellCheckData = null;
-}
-
-// Check if we have any dynamic results
-function hasDynamicResults() {
-    return spellCheckResults.size > 0 || textReplacementResults.size > 0;
 }
 
 // Calculate string similarity score for better ranking
@@ -3429,12 +3846,19 @@ function deduplicateResults(results) {
         finalResults.push(result);
     }
     
-    // Log dual matches
+    // Log dual matches and add dual-match service status
     let dualMatchCount = 0;
     for (const result of tagMap.values()) {
         if (result.isDualMatch) {
             dualMatchCount++;
         }
+    }
+    
+    // Add dual-match service status if we have dual matches
+    if (dualMatchCount > 0 && searchServices.has('dual-match') === false) {
+        searchServices.set('dual-match', 'completed');
+    } else {
+        searchServices.set('dual-match', 'completed-none');
     }
     
     return finalResults;
@@ -3861,17 +4285,11 @@ function addToFavorites(selectedItem) {
 
 // Auto-detect if text is a tag and show appropriate dialog
 async function showAddToFavoritesDialog(selectedText) {
-    console.log('🔍 Analyzing selected text:', selectedText);
     const isTag = await detectIfTag(selectedText);
-    console.log('📋 Detection result - isTag:', isTag);
     
     if (isTag) {
-        console.log('🏷️ Showing tag confirmation dialog');
-        // Show simple confirmation for tags
         await showTagConfirmationDialog(selectedText);
     } else {
-        console.log('📝 Showing text replacement dialog');
-        // Show redesigned dialog for text replacements
         await showTextReplacementDialog(selectedText);
     }
 }
@@ -4062,22 +4480,16 @@ function extractFirstTag(text) {
 
 // Show redesigned dialog for text replacements using popup system
 async function showTextReplacementDialog(selectedText) {
-    console.log('💬 Creating text replacement dialog for:', selectedText);
-    
-    // Extract first tag for placeholder
     const defaultName = extractFirstTag(selectedText);
-    console.log('🏷️ Extracted default name:', defaultName);
     
     // Create custom dialog using confirmation dialog system
     return new Promise((resolve) => {
         // Remove any existing dialog
         const existingDialog = document.querySelector('.favorites-dialog, .favorites-text-replacement-dialog');
         if (existingDialog) {
-            console.log('🗑️ Removing existing dialog');
             existingDialog.remove();
         }
         
-        console.log('🏗️ Creating new dialog element');
         const dialog = document.createElement('div');
         dialog.className = 'confirmation-dialog favorites-text-replacement-dialog';
         dialog.innerHTML = `
@@ -4102,14 +4514,11 @@ async function showTextReplacementDialog(selectedText) {
             </div>
         `;
         
-        console.log('📎 Appending dialog to body');
         document.body.appendChild(dialog);
         
-        console.log('📍 Positioning and showing dialog');
         // Position and show dialog
         positionCustomDialog(dialog);
         dialog.style.display = 'block';
-        console.log('✅ Dialog should now be visible');
         
         // Get elements
         const nameInput = dialog.querySelector('#replacementName');
@@ -4185,5 +4594,10 @@ async function showTextReplacementDialog(selectedText) {
     });
 }
 
-// Functions are automatically available in global scope
-
+if (window.wsClient) {
+    window.wsClient.registerInitStep(85, 'Setting up autocomplete', async () => {
+        window.wsClient.on('search_status_update', handleSearchStatusUpdate);
+        window.wsClient.on('search_results_update', handleSearchResultsUpdate);
+        window.wsClient.on('search_results_complete', handleSearchResultsComplete);
+    });
+}

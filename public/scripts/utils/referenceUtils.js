@@ -16,7 +16,7 @@ function fileToBase64(file) {
 // Get workspace display name
 function getWorkspaceDisplayName(workspaceId) {
     const workspace = workspaces[workspaceId];
-    return workspace ? workspace.name : 'Default';
+    return workspace ? workspace.name.charAt(0).toUpperCase() + workspace.name.slice(1) : 'Default';
 }
 
 // Show comment dialog
@@ -27,7 +27,7 @@ function showCommentDialog(comment, title) {
         <div class="modal-content">
             <div class="modal-header">
                 <h3><i class="fas fa-comment"></i> ${title}</h3>
-                <button class="close-dialog" onclick="this.closest('.comment-dialog').remove()">
+                <button class="btn-secondary btn-small" onclick="this.closest('.comment-dialog').remove()">
                     <i class="nai-cross"></i>
                 </button>
             </div>
@@ -62,7 +62,7 @@ function showVibesCommentsDialog(vibes) {
         <div class="modal-content">
             <div class="modal-header">
                 <h3><i class="fas fa-comments"></i> Vibe Comments</h3>
-                <button class="close-dialog" onclick="this.closest('.comment-dialog').remove()">
+                <button class="btn-secondary btn-small" onclick="this.closest('.comment-dialog').remove()">
                     <i class="nai-cross"></i>
                 </button>
             </div>
