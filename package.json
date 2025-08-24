@@ -1,7 +1,8 @@
 {
-  "name": "staticforge",
+  "name": "dreamscape",
   "version": "1.0.0",
   "dependencies": {
+    "@mdi/font": "^7.4.47",
     "@sctg/sentencepiece-js": "^1.3.3",
     "adm-zip": "^0.5.10",
     "canvas": "^3.1.2",

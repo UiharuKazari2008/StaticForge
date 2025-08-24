@@ -41,8 +41,6 @@ const {
     renameWorkspace,
     updateWorkspaceColor,
     updateWorkspaceBackgroundColor,
-    updateWorkspaceBackgroundImage,
-    updateWorkspaceBackgroundOpacity,
     deleteWorkspace,
     dumpWorkspace,
     moveFilesToWorkspace,
@@ -81,11 +79,16 @@ const {
     getCachedMetadata,
     getAllMetadata,
     getMultipleMetadata,
-    updateImageMetadata,
+    addReceiptMetadata,
     addUnattributedReceipt,
     broadcastReceiptNotification
 } = require('./modules/metadataCache.js');
 const imageCounter = require('./modules/imageCounter');
+const { generatePreview, generateBlurredPreview } = require('./modules/previewUtils');
+// Example usage in WebSocket handler or main server
+const { setContext: setImageGenContext, handleGeneration, buildOptions } = require('./modules/imageGeneration');
+const { setContext: setUpscaleContext, upscaleImage } = require('./modules/imageUpscaling');
+
 // Initialize NovelAI client
 const client = new NovelAI({ 
     token: config.apiKey,
@@ -143,6 +146,13 @@ async function refreshBalance(force = false) {
     try {
         const now = Date.now();
         if (now - lastBalanceCheck >= (BALANCE_REFRESH_INTERVAL / 2) || force) {
+            // Check if there are active WebSocket clients connected
+            const wsServer = getGlobalWsServer();
+            if (wsServer && wsServer.getConnectionCount() === 0) {
+                console.log('⏭️ Skipping balance update - no active WebSocket clients connected');
+                return;
+            }
+            
             console.log('🔄 Refreshing account balance...');
             const newBalanceData = await getBalance();
             
@@ -271,6 +281,7 @@ app.get('/', (req, res) => {
     if (req.session && req.session.authenticated) {
         res.redirect('/app');
     } else {
+        generateLoginSpriteSheet();
         res.sendFile(path.join(__dirname, 'public', 'index.html'));
     }
 });
@@ -281,79 +292,6 @@ app.get('/app', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'app.html'));
     } else {
         res.redirect('/');
-    }
-});
-
-// DEPRECATED: This endpoint has been migrated to WebSocket. Kept for fallback compatibility.
-app.options('/app', authMiddleware, async (req, res) => {
-    try {
-        const currentPromptConfig = loadPromptConfig();
-        const cacheStatus = getCacheStatus();
-        
-        // Filter out _INP models and use pretty names
-        const modelEntries = Object.keys(Model)
-            .filter(key => !key.endsWith('_INP'))
-            .map(key => [key, getModelDisplayName(key)]);
-        const modelEntriesShort = Object.keys(Model)
-            .filter(key => !key.endsWith('_INP'))
-            .map(key => [key, getModelDisplayName(key,true)]);
-
-        const queueStatus = getQueueStatus();
-        const imageCount = imageCounter.getCount();
-
-        // Helper to extract relevant preset info
-        const extractPresetInfo = (name, preset) => ({
-            name,
-            model: preset.model || 'Default',
-            upscale: preset.upscale || false,
-            allow_paid: preset.allow_paid || false,
-            variety: preset.variety || false,
-            character_prompts: preset.character_prompts || false,
-            base_image: preset.base_image || false,
-            resolution: preset.resolution || 'Default',
-            steps: preset.steps || 25,
-            guidance: preset.guidance || 5.0,
-            rescale: preset.rescale || 0.0,
-            sampler: preset.sampler || null,
-            noiseScheduler: preset.noiseScheduler || null,
-            image: !!(preset.image || null),
-            strength: preset.strength || 0.8,
-            noise: preset.noise || 0.1,
-            image_bias: preset.image_bias || null,
-            mask_compressed: !!(preset.mask_compressed || null),
-        });
-
-        // Build detailed preset info
-        const detailedPresets = Object.entries(currentPromptConfig.presets || {}).map(
-            ([name, preset]) => extractPresetInfo(name, preset)
-        );
-        const options = {
-            ok: true,
-            user: accountData,
-            balance: accountBalance,
-            presets: detailedPresets,
-            queue_status: queueStatus,
-            image_count: imageCount,
-            models: Object.fromEntries(modelEntries),
-            modelsShort: Object.fromEntries(modelEntriesShort),
-            actions: Object.fromEntries(Object.keys(Action).map(key => [key, Action[key]])),
-            samplers: Object.fromEntries(Object.keys(Sampler).map(key => [key, Sampler[key]])),
-            noiseSchedulers: Object.fromEntries(Object.keys(Noise).map(key => [key, Noise[key]])),
-            resolutions: Object.fromEntries(Object.keys(Resolution).map(key => [key, Resolution[key]])),
-            textReplacements: currentPromptConfig.text_replacements || {},
-            datasets: currentPromptConfig.datasets || [],
-            quality_presets: currentPromptConfig.quality_presets || {},
-            uc_presets: currentPromptConfig.uc_presets || {},
-            cache: {
-                enabled: true,
-                ttl: "30 minutes",
-                entries: cacheStatus.totalEntries
-            }
-        }
-        res.json(options);
-    } catch(e) {
-        console.error('❌ Error occurred:', e);
-        res.status(500).json({ ok: false, error: e.message });
     }
 });
 
@@ -393,6 +331,273 @@ app.use(express.static('public'));
 app.use('/cache', express.static(cacheDir));
 app.use('/temp', express.static(path.join(cacheDir, 'tempDownload')));
 
+// Generate login page sprite sheet (single sheet with normal + blurred images)
+async function generateLoginSpriteSheet() {
+    try {
+        const spritePath = path.join(previewsDir, 'login_image.jpg');
+        const metadataPath = path.join(previewsDir, 'login_sprite_metadata.json');
+        
+        // Check if sprite sheet exists and is less than 1 hour old
+        if (fs.existsSync(spritePath)) {
+            const stats = fs.statSync(spritePath);
+            const ageInHours = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60);
+            if (ageInHours < 1) {
+                return;
+            }
+        }
+        
+        const pinnedImages = await getPinnedImages();
+        const randomImages = await getRandomWorkspaceImages();
+        
+        console.log(`📊 Image selection: ${pinnedImages.length} pinned + ${randomImages.length} random available`);
+        
+        // Ensure we have at least some images to work with
+        if (pinnedImages.length === 0 && randomImages.length === 0) {
+            console.log('⚠️ No images found for sprite sheet, skipping generation');
+            return;
+        }
+        
+        // If no pinned images, use more random images to fill the quota
+        let selectedImages;
+        if (pinnedImages.length === 0) {
+            console.log('📌 No pinned images found, using random workspace images only');
+            selectedImages = randomImages.slice(0, 20);
+        } else if (pinnedImages.length < 20) {
+            console.log(`📌 Found ${pinnedImages.length} pinned images, supplementing with random images`);
+            const remainingSlots = 20 - pinnedImages.length;
+            selectedImages = [...pinnedImages, ...randomImages.slice(0, remainingSlots)];
+        } else {
+            console.log(`📌 Found ${pinnedImages.length} pinned images, using only pinned images`);
+            selectedImages = pinnedImages.slice(0, 20);
+        }
+        
+        if (selectedImages.length === 0) {
+            console.log('⚠️ No valid images found for sprite sheet');
+            return;
+        }
+        
+        // Create single sprite sheet: width = image count * 1024px, height = 2 * 1024px (normal + blurred)
+        const spriteWidth = 1024 * selectedImages.length;
+        const spriteHeight = 2048; // 2 rows: normal images (top) + blurred images (bottom)
+        
+        // Generate single combined sprite sheet with both normal and blurred images
+        console.log('🖼️ Step 3: Generating combined sprite sheet...');
+        await generateCombinedSpriteSheet(selectedImages, spritePath, spriteWidth, spriteHeight);
+        
+        // Save metadata for frontend use
+        console.log('💾 Step 4: Saving metadata...');
+        const metadata = {
+            imageCount: selectedImages.length,
+            spriteWidth: spriteWidth,
+            spriteHeight: spriteHeight,
+            generatedAt: Date.now(),
+            images: selectedImages.map(img => img.filename)
+        };
+        
+        fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+        
+        console.log('✅ Login sprite sheet generated successfully');
+        
+    } catch (error) {
+        console.error('❌ Error generating login sprite sheet:', error);
+        // Don't throw the error, just log it so the server can continue
+    }
+}
+
+// Get pinned/favorited images from workspaces
+async function getPinnedImages() {
+    try {
+        const workspaces = getWorkspaces();
+        console.log(`🔍 Found ${Object.keys(workspaces).length} workspaces`);
+        
+        if (!workspaces || typeof workspaces !== 'object') {
+            console.warn('⚠️ Workspaces is not a valid object:', typeof workspaces);
+            return [];
+        }
+        
+        // Log workspace structure for debugging
+        console.log('📋 Workspace keys:', Object.keys(workspaces));
+        
+        // Validate workspace structure
+        if (Object.keys(workspaces).length === 0) {
+            console.warn('⚠️ No workspaces found');
+            return [];
+        }
+        
+        const pinnedImages = [];
+        
+        // workspaces is an object with workspace IDs as keys, so we need to iterate over its values
+        Object.entries(workspaces).forEach(([workspaceId, workspace]) => {
+            if (!workspace || typeof workspace !== 'object') {
+                console.warn(`⚠️ Invalid workspace object for ID: ${workspaceId}`);
+                return;
+            }
+            
+            console.log(`🔍 Checking workspace: ${workspaceId}`, {
+                name: workspace.name || 'Unnamed',
+                hasPinned: !!workspace.pinned,
+                pinnedType: typeof workspace.pinned,
+                pinnedLength: Array.isArray(workspace.pinned) ? workspace.pinned.length : 'N/A'
+            });
+            
+            if (workspace.pinned && Array.isArray(workspace.pinned) && workspace.pinned.length > 0) {
+                console.log(`📌 Workspace "${workspace.name || 'Unnamed'}" (${workspaceId}) has ${workspace.pinned.length} pinned images`);
+                
+                // Select only 1 pinned image from this workspace for variety
+                const randomPinnedIndex = Math.floor(Math.random() * workspace.pinned.length);
+                const pinnedFile = workspace.pinned[randomPinnedIndex];
+                
+                if (!pinnedFile || typeof pinnedFile !== 'string') {
+                    console.warn(`  ⚠️ Invalid pinned file entry:`, pinnedFile);
+                    return;
+                }
+                
+                const imagePath = path.join(imagesDir, pinnedFile);
+                if (fs.existsSync(imagePath) && pinnedFile.match(/\.(png|jpg|jpeg)$/i)) {
+                    pinnedImages.push({
+                        filename: pinnedFile,
+                        path: imagePath,
+                        workspace: workspace.name || workspaceId
+                    });
+                    console.log(`  ✅ Added 1 pinned image from "${workspace.name || 'Unnamed'}": ${pinnedFile}`);
+                } else {
+                    console.log(`  ⚠️ Skipped pinned image (not found or invalid): ${pinnedFile}`);
+                }
+            } else {
+                console.log(`⚠️ Workspace ${workspaceId} has no pinned images or invalid pinned property`);
+            }
+        });
+        
+        console.log(`📌 Total pinned images found: ${pinnedImages.length}`);
+        return pinnedImages;
+    } catch (error) {
+        console.error('❌ Error getting pinned images:', error);
+        return [];
+    }
+}
+
+// Get random workspace images
+async function getRandomWorkspaceImages() {
+    try {
+        // Check if images directory exists
+        if (!fs.existsSync(imagesDir)) {
+            console.warn('⚠️ Images directory does not exist:', imagesDir);
+            return [];
+        }
+        
+        const imageFiles = fs.readdirSync(imagesDir)
+            .filter(file => file.match(/\.(png|jpg|jpeg)$/i))
+            .map(file => ({
+                filename: file,
+                path: path.join(imagesDir, file)
+            }));
+        
+        console.log(`🖼️ Found ${imageFiles.length} total images in workspace`);
+        
+        if (imageFiles.length === 0) {
+            console.warn('⚠️ No image files found in images directory');
+            return [];
+        }
+        
+        // Shuffle and return random images
+        return imageFiles.sort(() => 0.5 - Math.random());
+    } catch (error) {
+        console.error('❌ Error getting random workspace images:', error);
+        return [];
+    }
+}
+
+// Generate combined sprite sheet with both normal and blurred images
+async function generateCombinedSpriteSheet(images, outputPath, width, height) {
+    try {
+        if (!images || images.length === 0) {
+            throw new Error('No images provided for sprite sheet generation');
+        }
+        
+        console.log(`🖼️ Generating combined sprite sheet with ${images.length} images...`);
+        
+        // Create a canvas-like structure using sharp
+        const spriteCanvas = sharp({
+            create: {
+                width: width,
+                height: height,
+                channels: 3,
+                background: { r: 0, g: 0, b: 0 }
+            }
+        });
+        
+        const composites = [];
+        let processedCount = 0;
+        
+        for (let i = 0; i < images.length; i++) {
+            const image = images[i];
+            const x = i * 1024;
+            
+            try {
+                if (!image.path || !fs.existsSync(image.path)) {
+                    console.warn(`⚠️ Skipping invalid image: ${image.filename || 'unknown'}`);
+                    continue;
+                }
+                
+                // Process normal image (top row) - crop to point of interest
+                const normalImage = sharp(image.path)
+                    .resize(1024, 1024, { 
+                        fit: 'cover',
+                        position: 'attention' // This focuses on the most interesting part of the image
+                    });
+                
+                const normalBuffer = await normalImage.jpeg({ quality: 90 }).toBuffer();
+                
+                composites.push({
+                    input: normalBuffer,
+                    left: x,
+                    top: 0 // Top row for normal images
+                });
+                
+                // Process blurred image (bottom row) - crop to point of interest
+                const blurredImage = sharp(image.path)
+                    .resize(1024, 1024, { 
+                        fit: 'cover',
+                        position: 'attention' // This focuses on the most interesting part of the image
+                    })
+                    .blur(15);
+                
+                const blurredBuffer = await blurredImage.jpeg({ quality: 90 }).toBuffer();
+                
+                composites.push({
+                    input: blurredBuffer,
+                    left: x,
+                    top: 1024 // Bottom row for blurred images
+                });
+                
+                processedCount++;
+                
+            } catch (error) {
+                console.error(`❌ Error processing image ${image.filename}:`, error.message);
+                // Continue with other images instead of failing completely
+            }
+        }
+        
+        if (composites.length === 0) {
+            throw new Error('No images could be processed for sprite sheet');
+        }
+        
+        console.log(`✅ Processed ${processedCount}/${images.length} images for combined sprite sheet`);
+        
+        // Composite all images onto the sprite sheet
+        await spriteCanvas
+            .composite(composites)
+            .jpeg({ quality: 90 })
+            .toFile(outputPath);
+            
+        console.log(`💾 Saved combined sprite sheet to ${outputPath}`);
+            
+    } catch (error) {
+        console.error(`❌ Error generating combined sprite sheet:`, error);
+        throw error;
+    }
+}
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -425,25 +630,6 @@ const cacheUpload = multer({
     storage: multer.memoryStorage()
 });
 
-// Helper: get preview filename
-function getPreviewFilename(baseName) {
-    return `${baseName}.jpg`;
-}
-
-// Generate a preview for an image
-async function generatePreview(imagePath, previewPath) {
-    try {
-        await sharp(imagePath)
-            .resize(256, 256, { fit: 'cover' })
-            .jpeg({ quality: 70 })
-            .toFile(previewPath);
-        return true;
-    } catch (e) {
-        console.error('Failed to generate preview for', imagePath, e.message);
-        return false;
-    }
-}
-
 // On startup: generate missing previews and clean up orphans
 async function syncPreviews() {
     const files = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
@@ -458,100 +644,43 @@ async function syncPreviews() {
     }
     // Generate missing previews
     for (const base in baseMap) {
-        const previewFile = getPreviewFilename(base);
+        const previewFile = `${base}.jpg`
+        const imgFile = baseMap[base].original || baseMap[base].upscaled;
         const previewPath = path.join(previewsDir, previewFile);
-        if (!fs.existsSync(previewPath)) {
-            // Prefer upscaled, then original
-            const imgFile = baseMap[base].upscaled || baseMap[base].original;
-            if (imgFile) {
-                const imgPath = path.join(imagesDir, imgFile);
+        const blurPreviewFile = `${base}_blur.jpg`;
+        const blurPreviewPath = path.join(previewsDir, blurPreviewFile);
+        if (imgFile) {
+            const imgPath = path.join(imagesDir, imgFile);
+            if (!fs.existsSync(previewPath)) {
                 await generatePreview(imgPath, previewPath);
+            }
+            if (!fs.existsSync(blurPreviewPath)) {
+                await generateBlurredPreview(imgPath, blurPreviewPath);
             }
         }
     }
-    // Remove orphan previews
+    // Remove orphan previews (both regular and blur)
     for (const preview of previews) {
-        const base = preview.replace(/\.jpg$/, '');
+        // Handle both regular previews (.jpg) and blur previews (_blur.jpg)
+        let base;
+        if (preview.endsWith('_blur.jpg')) {
+            // For blur previews, extract the base name by removing '_blur.jpg'
+            base = preview.replace(/_blur\.jpg$/, '');
+        } else if (preview.endsWith('.jpg')) {
+            // For regular previews, extract the base name by removing '.jpg'
+            base = preview.replace(/\.jpg$/, '');
+        } else {
+            // Skip non-jpg files
+            continue;
+        }
+        
+        // Check if the base image still exists
         if (!baseMap[base]) {
-            fs.unlinkSync(path.join(previewsDir, preview));
+            const previewPath = path.join(previewsDir, preview);
+            fs.unlinkSync(previewPath);
+            console.log(`🧹 Removed orphan preview: ${preview}`);
         }
     }
-}
-
-// Call on startup
-syncPreviews();
-
-// Direct NovelAI vibe encoding function
-async function encodeVibeDirect(imageBase64, informationExtracted, model) {
-    const correlationId = crypto.randomBytes(3).toString('hex').toUpperCase();
-    const body = {
-        image: imageBase64,
-        model: model || "nai-diffusion-4-5-curated",
-        information_extracted: informationExtracted || 1
-    };
-    
-    return new Promise((resolve, reject) => {
-        const postData = JSON.stringify(body);
-        
-        const options = {
-            hostname: 'image.novelai.net',
-            port: 443,
-            path: '/ai/encode-vibe',
-            method: 'POST',
-            headers: {
-                "accept": "*/*",
-                "accept-language": "en-US,en;q=0.9,en-GB;q=0.8",
-                "authorization": `Bearer ${config.apiKey}`,
-                "content-type": "application/json",
-                "content-length": Buffer.byteLength(postData),
-                "priority": "u=1, i",
-                "dnt": "1",
-                "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Microsoft Edge\";v=\"138\"",
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": "\"macOS\"",
-                "sec-fetch-dest": "empty",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-site": "same-site",
-                "x-correlation-id": crypto.randomBytes(3).toString('hex').toUpperCase(),
-                "x-initiated-at": new Date().toISOString(),
-                "referer": "https://novelai.net/",
-                "origin": "https://novelai.net",
-                "sec-gpc": "1",
-                "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
-              }
-        };
-        
-        const req = https.request(options, (res) => {
-            let data = [];
-            
-            res.on('data', chunk => data.push(chunk));
-            
-            res.on('end', () => {
-                const buffer = Buffer.concat(data);
-                
-                if (res.statusCode === 200) {
-                    // Return the buffer as base64 string
-                    resolve(buffer.toString('base64'));
-                } else {
-                    try {
-                        const errorResponse = JSON.parse(buffer.toString());
-                        reject(new Error(`Error encoding vibe: ${errorResponse.statusCode || res.statusCode} ${errorResponse.message || 'Unknown error'}`));
-                    } catch (e) {
-                        reject(new Error(`Error encoding vibe: HTTP ${res.statusCode}`));
-                    }
-                }
-            });
-        });
-        
-        req.on('error', (error) => {
-            error.correlationId = correlationId;
-            console.error('Vibe encoding error:', error);
-            reject(error);
-        });
-        
-        req.write(postData);
-        req.end();
-    });
 }
 
 async function getBalance() {
@@ -713,511 +842,6 @@ async function getUserData() {
     }
 }
 
-// Updated /images endpoint with workspace filtering
-app.get('/images', async (req, res) => {
-    try {
-        // Extract session ID from request
-        const sessionId = req.session?.id;
-        
-        // Check if scraps, pinned, or upscaled are requested
-        const isScraps = req.query.scraps === 'true';
-        const isPinned = req.query.pinned === 'true';
-        const isUpscaled = req.query.upscaled === 'true';
-        
-        let files;
-        if (isScraps) {
-            // Get scraps for active workspace (includes default + active workspace)
-            files = getActiveWorkspaceScraps(sessionId);
-        } else if (isPinned) {
-            // Get pinned images for active workspace
-            files = getActiveWorkspacePinned(sessionId);
-        } else if (isUpscaled) {
-            // Get files for active workspace (includes default + active workspace)
-            files = getActiveWorkspaceFiles(sessionId);
-            
-            // Also include wallpaper and large resolution images from metadata cache
-            const allMetadata = getAllMetadata();
-            
-            // Find large resolution images (area > 1024x1024)
-            const specialImages = [];
-            for (const [filename, metadata] of Object.entries(allMetadata)) {
-                if (metadata.width && metadata.height) {
-                    if (isImageLarge(metadata.width, metadata.height)) {
-                        // Check if this image is in the current workspace
-                        const workspace = getActiveWorkspace(sessionId);
-                        const workspaceData = getWorkspace(workspace);
-                        if (workspaceData && workspaceData.files && workspaceData.files.includes(filename)) {
-                            specialImages.push(filename);
-                        }
-                    }
-                }
-            }
-            if (specialImages.length > 0)
-                files = [...new Set([...files, ...specialImages])];
-        } else {
-            files = getActiveWorkspaceFiles(sessionId);
-        }
-        
-        const baseMap = {};
-        for (const file of files) {
-            const base = getBaseName(file);
-            if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
-            if (file.includes('_upscaled')) baseMap[base].upscaled = file;
-            else baseMap[base].original = file;
-        }
-        const gallery = [];
-        for (const base in baseMap) {
-            const { original, upscaled} = baseMap[base];
-            
-            if (isUpscaled) {
-                // For upscaled view, include images that have upscaled versions OR are wallpaper/large
-                const file = upscaled || original;
-                if (!file) continue;
-                
-                const filePath = path.join(imagesDir, file);
-                // Check if file exists before trying to get stats
-                try {
-                    const stats = fs.statSync(filePath);
-                    const preview = getPreviewFilename(base);
-                    
-                    // Get metadata to determine if image is large
-                    const metadata = getCachedMetadata(file);
-                    const isLarge = metadata?.width && metadata?.height ? 
-                        isImageLarge(metadata.width, metadata.height) : false;
-                    
-                    // Include if it's upscaled OR if it's large resolution
-                    const shouldInclude = upscaled || isLarge;
-                    
-                    if (shouldInclude) {
-                        gallery.push({
-                            base,
-                            original,
-                            upscaled,
-                            preview,
-                            mtime: stats.mtime.valueOf(),
-                            size: stats.size,
-                            isLarge: isLarge
-                        });
-                    }
-                } catch (error) {
-                    // File doesn't exist, skip it (it will be cleaned up by syncWorkspaceFiles)
-                    console.warn(`Skipping non-existent file: ${file}`);
-                    continue;
-                }
-            } else {
-                // For other views, prefer upscaled, then original
-                const file = upscaled || original;
-                if (!file) continue;
-                const filePath = path.join(imagesDir, file);
-                // Check if file exists before trying to get stats
-                try {
-                    const stats = fs.statSync(filePath);
-                    const preview = getPreviewFilename(base);
-                    
-                    // Get metadata to determine if image is large
-                    const metadata = getCachedMetadata(file);
-                    const isLarge = metadata?.width && metadata?.height ? 
-                        isImageLarge(metadata.width, metadata.height) : false;
-                    
-                    gallery.push({
-                        base,
-                        original,
-                        upscaled,
-                        preview,
-                        mtime: stats.mtime.valueOf(),
-                        size: stats.size,
-                        isLarge: isLarge
-                    });
-                } catch (error) {
-                    // File doesn't exist, skip it (it will be cleaned up by syncWorkspaceFiles)
-                    console.warn(`Skipping non-existent file: ${file}`);
-                    continue;
-                }
-            }
-        }
-        // Sort by newest first
-        gallery.sort((a, b) => b.mtime - a.mtime);
-        res.json(gallery);
-    } catch (error) {
-        console.error('Error reading images directory:', error);
-        res.status(500).json({ error: 'Failed to load images' });
-    }
-});
-
-// GET /images/all (get all images without workspace filtering)
-app.get('/images/all', async (req, res) => {
-    try {
-        // Get all image files from the images directory
-        const allFiles = fs.readdirSync(imagesDir)
-            .filter(f => f.match(/\.(png|jpg|jpeg)$/i))
-            .filter(f => !f.startsWith('.'));
-        
-        const baseMap = {};
-        for (const file of allFiles) {
-            const base = getBaseName(file);
-            if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
-            if (file.includes('_upscaled')) baseMap[base].upscaled = file;
-            else baseMap[base].original = file;
-        }
-        const gallery = [];
-        for (const base in baseMap) {
-            const { original, upscaled } = baseMap[base];
-            // Prefer upscaled, then original
-            const file = upscaled || original;
-            if (!file) continue;
-            const filePath = path.join(imagesDir, file);
-            const stats = fs.statSync(filePath);
-            const preview = getPreviewFilename(base);
-            gallery.push({
-                base,
-                original,
-                upscaled,
-                preview,
-                mtime: stats.mtime.valueOf(),
-                size: stats.size
-            });
-        }
-        // Sort by newest first
-        gallery.sort((a, b) => b.mtime - a.mtime);
-        res.json(gallery);
-    } catch (error) {
-        console.error('Error reading all images directory:', error);
-        res.status(500).json({ error: 'Failed to load all images' });
-    }
-});
-
-// DELETE /images/bulk (bulk delete multiple images)
-app.delete('/images/bulk', authMiddleware, async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const { filenames } = req.body;
-
-        if (!filenames || !Array.isArray(filenames) || filenames.length === 0) {
-            return res.status(400).json({ error: 'Filenames array is required' });
-        }
-
-        const results = [];
-        const errors = [];
-
-        for (const filename of filenames) {
-            try {
-                const filePath = path.join(imagesDir, filename);
-
-                if (!fs.existsSync(filePath)) {
-                    errors.push({ filename, error: 'File not found' });
-                    continue;
-                }
-
-                // Get the base name to find related files
-                const baseName = getBaseName(filename);
-                const previewFile = getPreviewFilename(baseName);
-                const previewPath = path.join(previewsDir, previewFile);
-
-                // Always delete both the base and upscaled version
-                const filesToDelete = [];
-                const filenamesToRemoveFromWorkspaces = [];
-
-                // Determine base/original and upscaled filenames
-                let originalFilename, upscaledFilename;
-                if (filename.includes('_upscaled')) {
-                    upscaledFilename = filename;
-                    originalFilename = filename.replace('_upscaled.png', '.png');
-                } else {
-                    originalFilename = filename;
-                    upscaledFilename = filename.replace('.png', '_upscaled.png');
-                }
-
-                // Add original file if exists
-                const originalPath = path.join(imagesDir, originalFilename);
-                if (fs.existsSync(originalPath)) {
-                    filesToDelete.push({ path: originalPath, type: 'original' });
-                    filenamesToRemoveFromWorkspaces.push(originalFilename);
-                }
-
-                // Add upscaled file if exists
-                const upscaledPath = path.join(imagesDir, upscaledFilename);
-                if (fs.existsSync(upscaledPath)) {
-                    filesToDelete.push({ path: upscaledPath, type: 'upscaled' });
-                    filenamesToRemoveFromWorkspaces.push(upscaledFilename);
-                }
-
-
-                // Add the preview file
-                if (fs.existsSync(previewPath)) {
-                    filesToDelete.push({ path: previewPath, type: 'preview' });
-                }
-
-                // Remove files from workspaces first
-                if (filenamesToRemoveFromWorkspaces.length > 0) {
-                    removeFilesFromWorkspaces(filenamesToRemoveFromWorkspaces);
-                }
-
-                // Remove metadata from cache
-                removeImageMetadata(filenamesToRemoveFromWorkspaces);
-
-                // Delete all related files
-                const deletedFiles = [];
-                for (const file of filesToDelete) {
-                    try {
-                        fs.unlinkSync(file.path);
-                        deletedFiles.push(file.type);
-                    } catch (error) {
-                        console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
-                    }
-                }
-
-                results.push({ filename, deletedFiles });
-                console.log(`🗑️ Bulk deleted: ${filename} (${deletedFiles.join(', ')})`);
-
-            } catch (error) {
-                errors.push({ filename, error: error.message });
-            }
-        }
-
-        // Sync workspace files to remove any remaining references to deleted files
-        syncWorkspaceFiles();
-
-        console.log(`✅ Bulk delete completed: ${results.length} successful, ${errors.length} failed`);
-        res.json({
-            success: true,
-            message: `Bulk delete completed`,
-            results: results,
-            errors: errors,
-            totalProcessed: filenames.length,
-            successful: results.length,
-            failed: errors.length
-        });
-
-    } catch (error) {
-        console.error('Bulk delete error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// PUT /images/bulk/preset (bulk update preset names for multiple images)
-app.put('/images/bulk/preset', authMiddleware, async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const { filenames, presetName } = req.body;
-
-        if (!filenames || !Array.isArray(filenames) || filenames.length === 0) {
-            return res.status(400).json({ error: 'Filenames array is required' });
-        }
-
-        const results = [];
-        const errors = [];
-
-        for (const filename of filenames) {
-            try {
-                const filePath = path.join(imagesDir, filename);
-
-                if (!fs.existsSync(filePath)) {
-                    errors.push({ filename, error: 'File not found' });
-                    continue;
-                }
-
-                // Read the current image and extract metadata
-                const imageBuffer = fs.readFileSync(filePath);
-                const metadata = readMetadata(imageBuffer);
-
-                if (!metadata) {
-                    errors.push({ filename, error: 'Failed to read metadata' });
-                    continue;
-                }
-
-                // Update the preset name in the metadata
-                if (!metadata.forge_data) {
-                    metadata.forge_data = {};
-                }
-
-                if (presetName === null || presetName === '') {
-                    // Remove preset name
-                    delete metadata.forge_data.preset_name;
-                } else {
-                    // Set new preset name
-                    metadata.forge_data.preset_name = presetName;
-                }
-
-                // Update the image with new metadata
-                const updatedImageBuffer = updateMetadata(imageBuffer, metadata.forge_data);
-
-                // Write the updated image back to disk
-                fs.writeFileSync(filePath, updatedImageBuffer);
-
-                results.push({ filename, presetName: presetName || 'removed' });
-                console.log(`✏️ Updated preset name for ${filename}: ${presetName || 'removed'}`);
-
-            } catch (error) {
-                errors.push({ filename, error: error.message });
-                console.error(`Failed to update preset name for ${filename}:`, error);
-            }
-        }
-
-        console.log(`✅ Bulk preset update completed: ${results.length} successful, ${errors.length} failed`);
-        res.json({
-            success: true,
-            message: `Bulk preset update completed`,
-            results: results,
-            errors: errors,
-            totalProcessed: filenames.length,
-            updatedCount: results.length,
-            failed: errors.length
-        });
-
-    } catch (error) {
-        console.error('Bulk preset update error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /images/send-to-sequenzia (move selected images to sequenzia folder)
-app.post('/images/send-to-sequenzia', authMiddleware, async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const { filenames } = req.body;
-        
-        if (!filenames || !Array.isArray(filenames) || filenames.length === 0) {
-            return res.status(400).json({ error: 'Filenames array is required' });
-        }
-        
-        // Check if sequenzia folder is configured
-        if (!config.sequenziaFolder) {
-            return res.status(500).json({ error: 'Sequenzia folder not configured in config.json' });
-        }
-        
-        // Create sequenzia folder if it doesn't exist
-        if (!fs.existsSync(config.sequenziaFolder)) {
-            try {
-                fs.mkdirSync(config.sequenziaFolder, { recursive: true });
-                console.log(`📁 Created sequenzia folder: ${config.sequenziaFolder}`);
-            } catch (error) {
-                return res.status(500).json({ error: `Failed to create sequenzia folder: ${error.message}` });
-            }
-        }
-        
-        const results = [];
-        const errors = [];
-        
-        for (const filename of filenames) {
-            try {
-                const sourcePath = path.join(imagesDir, filename);
-                
-                if (!fs.existsSync(sourcePath)) {
-                    errors.push({ filename, error: 'File not found' });
-                    continue;
-                }
-                
-                // Get the base name to find related files
-                const baseName = getBaseName(filename);
-                const previewFile = getPreviewFilename(baseName);
-                const previewPath = path.join(previewsDir, previewFile);
-                
-                // Determine which files to move and which to delete
-                const filesToMove = [];
-                const filesToDelete = [];
-                const filenamesToRemoveFromWorkspaces = [];
-                
-                // Check if there's an upscaled version - if so, only move that and delete the base
-                if (filename.includes('_upscaled')) {
-                    // This is an upscaled file, move it and delete the base
-                    filesToMove.push({ source: sourcePath, type: 'upscaled' });
-                    
-                    // Find and delete the base version
-                    const baseFilename = filename.replace('_upscaled.png', '.png');
-                    const basePath = path.join(imagesDir, baseFilename);
-                    if (fs.existsSync(basePath)) {
-                        filesToDelete.push({ path: basePath, type: 'base' });
-                        filenamesToRemoveFromWorkspaces.push(baseFilename);
-                    }
-                } else {
-                    // This is a base file, check if there's an upscaled version
-                    const upscaledFilename = filename.replace('.png', '_upscaled.png');
-                    const upscaledPath = path.join(imagesDir, upscaledFilename);
-                    
-                    if (fs.existsSync(upscaledPath)) {
-                        // Move the upscaled version instead of the base
-                        filesToMove.push({ source: upscaledPath, type: 'upscaled' });
-                        // Delete the base version
-                        filesToDelete.push({ path: sourcePath, type: 'base' });
-                        filenamesToRemoveFromWorkspaces.push(filename);
-                    } else {
-                        // No upscaled version, move the base
-                        filesToMove.push({ source: sourcePath, type: 'base' });
-                        filenamesToRemoveFromWorkspaces.push(filename);
-                    }
-                }
-                
-                // Add preview to delete list
-                if (fs.existsSync(previewPath)) {
-                    filesToDelete.push({ path: previewPath, type: 'preview' });
-                }
-                
-                // Remove files from workspaces first
-                if (filenamesToRemoveFromWorkspaces.length > 0) {
-                    removeFilesFromWorkspaces(filenamesToRemoveFromWorkspaces);
-                }
-                
-                // Move files to sequenzia folder
-                const movedFiles = [];
-                for (const file of filesToMove) {
-                    try {
-                        const destPath = path.join(config.sequenziaFolder, path.basename(file.source));
-                        fs.copyFileSync(file.source, destPath);
-                        movedFiles.push(file.type);
-                        console.log(`📁 Moved to sequenzia: ${path.basename(file.source)}`);
-                    } catch (error) {
-                        console.error(`Failed to move ${file.type}: ${path.basename(file.source)}`, error.message);
-                    }
-                }
-                
-                // Delete files from original location
-                const deletedFiles = [];
-                for (const file of filesToDelete) {
-                    try {
-                        fs.unlinkSync(file.path);
-                        deletedFiles.push(file.type);
-                    } catch (error) {
-                        console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
-                    }
-                }
-                
-                results.push({ filename, movedFiles, deletedFiles });
-                console.log(`✅ Sent to sequenzia: ${filename} (moved: ${movedFiles.join(', ')}, deleted: ${deletedFiles.join(', ')})`);
-                
-            } catch (error) {
-                errors.push({ filename, error: error.message });
-            }
-        }
-        
-        // Sync workspace files to remove any remaining references to deleted files
-        syncWorkspaceFiles();
-        
-        console.log(`✅ Send to sequenzia completed: ${results.length} successful, ${errors.length} failed`);
-        res.json({ 
-            success: true, 
-            message: `Images sent to sequenzia successfully`,
-            results: results,
-            errors: errors,
-            totalProcessed: filenames.length,
-            successful: results.length,
-            failed: errors.length
-        });
-        
-    } catch (error) {
-        console.error('Send to sequenzia error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
 // GET /previews/:preview (serve preview images)
 app.get('/previews/:preview', (req, res) => {
     const previewFile = req.params.preview;
@@ -1227,68 +851,6 @@ app.get('/previews/:preview', (req, res) => {
     }
     res.setHeader('Content-Type', 'image/jpeg');
     res.sendFile(previewFile, { root: previewsDir });
-});
-
-// POST /images/:filename/upscale (upscale an image)
-app.post('/images/:filename/upscale', authMiddleware, async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const filename = req.params.filename;
-        const filePath = path.join(imagesDir, filename);
-        const workspaceId = req.body.workspace || null;
-        
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'Image not found' });
-        }
-        
-        // Read the image
-        const imageBuffer = fs.readFileSync(filePath);
-        
-        // Get image dimensions
-        const { width, height } = await getImageDimensions(imageBuffer);
-        
-        // Upscale the image
-        const upscaledBuffer = await upscaleImage(imageBuffer, 4, width, height);
-        
-        // Add forge metadata for upscaled image
-        const upscaledForgeData = {
-            upscale_ratio: 4,
-            upscaled_at: Date.now(),
-            generation_type: 'upscaled'
-        };
-        const updatedUpscaledBuffer = updateMetadata(upscaledBuffer, upscaledForgeData);
-        
-        // Save upscaled image
-        const upscaledFilename = filename.replace('.png', '_upscaled.png');
-        const upscaledPath = path.join(imagesDir, upscaledFilename);
-        fs.writeFileSync(upscaledPath, updatedUpscaledBuffer);
-        console.log(`💾 Saved upscaled: ${upscaledFilename}`);
-
-        // Add upscaled file to workspace
-        const targetWorkspaceId = workspaceId || getActiveWorkspace(req.session?.id);
-        addToWorkspaceArray('files', upscaledFilename, targetWorkspaceId);
-        
-        // Generate preview for the base image (if not exists)
-        const baseName = getBaseName(filename);
-        const previewFile = getPreviewFilename(baseName);
-        const previewPath = path.join(previewsDir, previewFile);
-        
-        if (!fs.existsSync(previewPath)) {
-            await generatePreview(upscaledPath, previewPath);
-            console.log(`📸 Generated preview: ${previewFile}`);
-        }
-        
-        // Return the upscaled image
-        res.setHeader('Content-Type', 'image/png');
-        res.send(updatedUpscaledBuffer);
-        
-    } catch (error) {
-        console.error('Upscaling error:', error);
-        res.status(500).json({ error: error.message });
-    }
 });
 
 // GET /images/:filename (serve individual image files)
@@ -1317,958 +879,6 @@ app.get('/images/:filename', (req, res) => {
     
     // Send the file
     res.sendFile(filePath);
-});
-
-// GET /images/:filename/metadata (get image metadata)
-app.get('/images/:filename/metadata', authMiddleware, async (req, res) => {
-    try {
-        const filename = req.params.filename;
-        const metadata = getCachedMetadata(filename);
-        
-        if (!metadata) {
-            return res.status(404).json({ error: 'Metadata not found for image' });
-        }
-        
-        res.json(metadata);
-    } catch (error) {
-        console.error('Error getting image metadata:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// GET /metadata (get all metadata)
-app.get('/metadata', authMiddleware, async (req, res) => {
-    try {
-        const metadata = getAllMetadata();
-        res.json({ images: metadata });
-    } catch (error) {
-        console.error('Error getting all metadata:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /metadata/scan (force metadata scan)
-app.post('/metadata/scan', authMiddleware, async (req, res) => {
-    try {
-        const result = await scanAndUpdateMetadata(imagesDir);
-        res.json({
-            success: true,
-            message: 'Metadata scan completed',
-            ...result
-        });
-    } catch (error) {
-        console.error('Error scanning metadata:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /vibe/encode (encode image for vibe transfer)
-app.post('/vibe/encode', authMiddleware, async (req, res) => {
-    try {
-        const { image, cacheFile, id, informationExtraction, model, workspace } = req.body;
-        
-        // Validate required parameters
-        if (!informationExtraction || typeof informationExtraction !== 'number' || informationExtraction < 0 || informationExtraction > 1) {
-            return res.status(400).json({ error: 'informationExtraction must be a number between 0 and 1' });
-        }
-        
-        if (!model) {
-            return res.status(400).json({ error: 'model is required' });
-        }
-        
-        if (!image && !cacheFile && !id) {
-            return res.status(400).json({ error: 'Either image (base64), cacheFile, or id must be provided' });
-        }
-        
-        let imageBuffer;
-        let imageHash = null;
-        let originalSource = null;
-        let originalBase64 = null;
-        let existingVibeData = null;
-        
-        // Handle image input
-        if (id) {
-            // ID provided - load existing vibe data
-            const jsonPath = path.join(vibeCacheDir, `${id}.json`);
-            if (!fs.existsSync(jsonPath)) {
-                return res.status(404).json({ error: 'Vibe file not found with provided id' });
-            }
-            
-            existingVibeData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-            
-            // Get the original image data based on the vibe file type
-            if (existingVibeData.type === 'base64' && existingVibeData.image) {
-                // Reconstruct from base64
-                imageBuffer = Buffer.from(existingVibeData.image, 'base64');
-                imageHash = existingVibeData.preview;
-                originalSource = 'base64';
-                originalBase64 = existingVibeData.image;
-            } else if (existingVibeData.type === 'cache' && existingVibeData.image) {
-                // Load from cache file
-                const cachePath = path.join(uploadCacheDir, existingVibeData.image);
-                if (!fs.existsSync(cachePath)) {
-                    return res.status(404).json({ error: 'Original cache file not found' });
-                }
-                imageBuffer = fs.readFileSync(cachePath);
-                imageHash = existingVibeData.preview;
-                originalSource = 'cache';
-            } else {
-                return res.status(400).json({ error: 'Invalid vibe file format' });
-            }
-            
-            console.log(`🔄 Using existing vibe file with id: ${id}`);
-        } else if (image) {
-            // Extract base64 data
-            imageBuffer = Buffer.from(image, 'base64');
-            imageHash = crypto.createHash('md5').update(imageBuffer).digest('hex');
-            originalSource = 'base64';
-            originalBase64 = image;
-
-            // Generate preview for base64 image
-            const previewPath = path.join(previewCacheDir, `${imageHash}.webp`);
-            if (!fs.existsSync(previewPath)) {
-                await sharp(imageBuffer)
-                    .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
-                    .webp({ quality: 80 })
-                    .toFile(previewPath);
-                console.log(`📸 Generated preview for vibe image: ${imageHash}.webp`);
-            }
-        } else {
-            // Cache file provided
-            const cachePath = path.join(uploadCacheDir, cacheFile);
-            if (!fs.existsSync(cachePath)) {
-                return res.status(404).json({ error: 'Cache file not found' });
-            }
-            
-            imageBuffer = fs.readFileSync(cachePath);
-            originalSource = 'cache';
-        }
-        
-        // Generate SHA256 hash for the JSON file
-        const sha256Hash = crypto.createHash('sha256').update(imageBuffer).digest('hex');
-        
-        // Check if JSON file already exists or use existing vibe data
-        const jsonFilename = `${sha256Hash}.json`;
-        const jsonPath = path.join(vibeCacheDir, jsonFilename);
-        
-        let vibeData = null;
-        if (existingVibeData) {
-            // Use existing vibe data when ID is provided
-            vibeData = existingVibeData;
-            console.log(`✅ Using existing vibe data from id: ${id}`);
-        } else if (fs.existsSync(jsonPath)) {
-            // Load existing JSON data
-            vibeData = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-            console.log(`✅ Using existing vibe data: ${jsonFilename}`);
-        } else {
-            // Create new vibe data structure
-            vibeData = {
-                version: 1,
-                type: originalSource,
-                preview: imageHash || cacheFile || null,
-                image: originalBase64 || cacheFile || null,
-                id: sha256Hash,
-                encodings: {}
-            };
-        }
-        
-        // Check if encoding already exists for this model and extraction value (case-insensitive lookup)
-        const extractionValueStr = informationExtraction.toString();
-        const modelKey = Object.keys(vibeData.encodings || {}).find(key => key.toUpperCase() === model.toUpperCase());
-        if (modelKey && vibeData.encodings[modelKey] && vibeData.encodings[modelKey][extractionValueStr]) {
-            console.log(`✅ Using existing encoding for model ${modelKey} and extraction ${extractionValueStr}`);
-            
-            // Add to workspace if provided
-            if (workspace) {
-                addToWorkspaceArray('vibeImages', jsonFilename, workspace);
-            }
-            
-            res.json({
-                success: true,
-                filename: jsonFilename,
-                model: modelKey,
-                informationExtraction: informationExtraction
-            });
-            return;
-        }
-        
-        // Encode the image using NovelAI API
-        console.log(`🔄 Encoding image for vibe transfer: ${sha256Hash} with extraction ${informationExtraction} for model ${model}`);
-        
-        try {
-            // Resize image to longest edge 1024 and convert to PNG
-            const resizedImageBuffer = await sharp(imageBuffer)
-                .resize(1024, 1024, { 
-                    fit: 'inside', 
-                    withoutEnlargement: true 
-                })
-                .png()
-                .toBuffer();
-            
-            console.log(`📏 Resized image to longest edge 1024px and converted to PNG`);
-            
-            // Get balance before vibe encoding
-            const previousBalance = { ...accountBalance };
-            // Encode vibe using direct NovelAI API call
-            const base64Image = resizedImageBuffer.toString('base64');
-            const vibeToken = await encodeVibeDirect(base64Image, informationExtraction, Model[model.toUpperCase()]);
-            
-            // Get new balance and calculate credit usage
-            const vibeCreditUsage = await calculateCreditUsage(previousBalance);
-            
-            if (vibeCreditUsage.totalUsage > 0) {
-                console.log(`💰 Vibe encoding credits used: ${vibeCreditUsage.totalUsage} ${vibeCreditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
-            }
-            
-            // Initialize model encodings if it doesn't exist
-            if (!vibeData.encodings[model]) {
-                vibeData.encodings[model] = {};
-            }
-            
-            // Store the encoding as base64 text
-            vibeData.encodings[model][extractionValueStr] = vibeToken;
-            
-            // Save the JSON file (use existing filename if ID was provided)
-            const saveFilename = existingVibeData ? `${id}.json` : jsonFilename;
-            const savePath = path.join(vibeCacheDir, saveFilename);
-            fs.writeFileSync(savePath, JSON.stringify(vibeData, null, 2));
-            console.log(`💾 Saved vibe encoding: ${saveFilename}`);
-            
-            // Add to workspace if provided
-            if (workspace) {
-                addToWorkspaceArray('vibeImages', saveFilename, workspace);
-            }
-            
-            // Add unattributed receipt for vibe encoding
-            if (vibeCreditUsage.totalUsage > 0) {
-                addUnattributedReceipt({
-                    type: 'vibe_encoding',
-                    cost: vibeCreditUsage.totalUsage,
-                    creditType: vibeCreditUsage.usageType,
-                    date: Date.now().valueOf()
-                });
-            }
-            
-            res.json({
-                success: true,
-                filename: saveFilename,
-                model: model,
-                informationExtraction: informationExtraction
-            });
-            
-        } catch (encodingError) {
-            console.error('Vibe encoding API error:', encodingError);
-            res.status(500).json({ error: `Vibe encoding failed: ${encodingError.message}` });
-        }
-        
-    } catch (error) {
-        console.error('Vibe transfer encoding error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// Helper to collect vibe image details from a list of filenames and workspaceId
-function collectVibeImageDetails(filenames, workspaceId) {
-    const vibeImageDetails = [];
-    for (const filename of filenames) {
-        const filePath = path.join(vibeCacheDir, filename);
-        if (fs.existsSync(filePath)) {
-            const stats = fs.statSync(filePath);
-            try {
-                const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                const previewPath = path.join(previewCacheDir, `${vibeData.preview}.webp`);
-                // Get all encodings for this file
-                const encodings = [];
-                for (const [model, modelEncodings] of Object.entries(vibeData.encodings || {})) {
-                    for (const [extractionValue, encoding] of Object.entries(modelEncodings)) {
-                        encodings.push({
-                            model,
-                            informationExtraction: parseFloat(extractionValue),
-                            encoding: encoding
-                        });
-                    }
-                }
-                vibeImageDetails.push({
-                    filename,
-                    id: vibeData.id,
-                    preview: fs.existsSync(previewPath) ? `${vibeData.preview}.webp` : null,
-                    mtime: stats.mtime.valueOf(),
-                    size: stats.size,
-                    encodings: encodings,
-                    type: vibeData.type === 'base64' ? 'base64' : 'cache',
-                    source: vibeData.image,
-                    workspaceId: workspaceId,
-                    comment: vibeData.comment || null,
-                    importedFrom: vibeData.importedFrom || null,
-                    originalName: vibeData.originalName || null
-                });
-            } catch (parseError) {
-                console.error(`Error parsing vibe file ${filename}:`, parseError);
-                continue;
-            }
-        }
-    }
-    return vibeImageDetails;
-}
-// GET /vibe/images (get vibe images for workspace or all)
-app.get('/vibe/images', authMiddleware, async (req, res) => {
-    try {
-        if (!req.query.workspace) {
-            // Return all vibe images across all workspaces
-            const allVibeImageDetails = [];
-            const workspaces = getWorkspaces();
-            for (const [workspaceId, workspace] of Object.entries(workspaces)) {
-                const vibeImages = workspace.vibeImages || [];
-                const details = collectVibeImageDetails(vibeImages, workspaceId);
-                allVibeImageDetails.push(...details);
-            }
-            // Sort by newest first
-            allVibeImageDetails.sort((a, b) => b.mtime - a.mtime);
-            return res.json(allVibeImageDetails);
-        }
-        // Existing behavior: return for specific workspace (and default if not default)
-        const workspaceId = req.query.workspace || getActiveWorkspace(req.session?.id);
-        const workspace = getWorkspace(workspaceId);
-        if (!workspace) {
-            return res.status(404).json({ error: 'Workspace not found' });
-        }
-        let vibeImageDetails = collectVibeImageDetails(workspace.vibeImages || [], workspaceId);
-        // Get vibes from default workspace (if current workspace is not default)
-        if (workspaceId !== 'default' && !req.query?.workspace) {
-            const defaultWorkspace = getWorkspace('default');
-            if (defaultWorkspace) {
-                vibeImageDetails = vibeImageDetails.concat(
-                    collectVibeImageDetails(defaultWorkspace.vibeImages || [], 'default')
-                );
-            }
-        }
-        // Sort by newest first
-        vibeImageDetails.sort((a, b) => b.mtime - a.mtime);
-        res.json(vibeImageDetails);
-    } catch (error) {
-        console.error('Error getting vibe images:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// GET /vibe/images/:filename (serve individual vibe image data)
-app.get('/vibe/images/:filename', authMiddleware, (req, res) => {
-    try {
-        const filename = req.params.filename + '.json';
-        const filePath = path.join(vibeCacheDir, filename);
-        
-        // Check if file exists
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'Vibe image not found' });
-        }
-        
-        // Parse and return JSON data
-        const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        
-        // Handle download request
-        if (req.query.download === 'true') {
-            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        }
-        
-        res.json(vibeData);
-        
-    } catch (error) {
-        console.error('Error serving vibe image:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// DELETE /vibe/images/:id (delete vibe image by ID)
-app.delete('/vibe/images/:id', authMiddleware, async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const vibeId = req.params.id;
-        const workspaceId = req.query.workspace || getActiveWorkspace(req.session?.id);
-        
-        // Find the vibe file by ID
-        const workspace = getWorkspace(workspaceId);
-        if (!workspace) {
-            return res.status(404).json({ error: 'Workspace not found' });
-        }
-        
-        const vibeFiles = workspace.vibeImages || [];
-        let foundFilename = null;
-        
-        // Find the filename that contains this vibe ID
-        for (const filename of vibeFiles) {
-            const filePath = path.join(vibeCacheDir, filename);
-            if (fs.existsSync(filePath)) {
-                try {
-                    const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                    if (vibeData.id === vibeId) {
-                        foundFilename = filename;
-                        break;
-                    }
-                } catch (parseError) {
-                    console.error(`Error parsing vibe file ${filename}:`, parseError);
-                    continue;
-                }
-            }
-        }
-        
-        if (!foundFilename) {
-            return res.status(404).json({ error: 'Vibe image not found' });
-        }
-        
-        const filePath = path.join(vibeCacheDir, foundFilename);
-        
-        // Remove from workspace
-        removeFromWorkspaceArray('vibeImages', foundFilename, workspaceId);
-        
-        // Delete the file
-        fs.unlinkSync(filePath);
-        console.log(`🗑️ Deleted vibe image: ${foundFilename} (ID: ${vibeId})`);
-        
-        res.json({ success: true, message: 'Vibe image deleted successfully' });
-        
-    } catch (error) {
-        console.error('Error deleting vibe image:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// DELETE /vibe/images/:id/encodings (delete specific encodings from vibe image)
-app.delete('/vibe/images/:id/encodings', authMiddleware, async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const vibeId = req.params.id;
-        const workspaceId = req.query.workspace || getActiveWorkspace(req.session?.id);
-        const { encodings } = req.body;
-        
-        if (!encodings || !Array.isArray(encodings)) {
-            return res.status(400).json({ error: 'encodings array is required' });
-        }
-        
-        // Find the vibe file by ID
-        const workspace = getWorkspace(workspaceId);
-        if (!workspace) {
-            return res.status(404).json({ error: 'Workspace not found' });
-        }
-        
-        const vibeFiles = workspace.vibeImages || [];
-        let foundFilename = null;
-        
-        // Find the filename that contains this vibe ID
-        for (const filename of vibeFiles) {
-            const filePath = path.join(vibeCacheDir, filename);
-            if (fs.existsSync(filePath)) {
-                try {
-                    const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                    if (vibeData.id === vibeId) {
-                        foundFilename = filename;
-                        break;
-                    }
-                } catch (parseError) {
-                    console.error(`Error parsing vibe file ${filename}:`, parseError);
-                    continue;
-                }
-            }
-        }
-        
-        if (!foundFilename) {
-            return res.status(404).json({ error: 'Vibe image not found' });
-        }
-        
-        const filePath = path.join(vibeCacheDir, foundFilename);
-        
-        // Read the vibe data
-        const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        
-        if (!vibeData.encodings || !Array.isArray(vibeData.encodings)) {
-            return res.status(400).json({ error: 'No encodings found in vibe image' });
-        }
-        
-        // Remove specified encodings
-        const originalCount = vibeData.encodings.length;
-        vibeData.encodings = vibeData.encodings.filter(encoding => {
-            return !encodings.some(toDelete => 
-                toDelete.model === encoding.model && 
-                toDelete.informationExtraction === encoding.informationExtraction
-            );
-        });
-        
-        const deletedCount = originalCount - vibeData.encodings.length;
-        
-        if (deletedCount === 0) {
-            return res.status(400).json({ error: 'No matching encodings found to delete' });
-        }
-        
-        // If no encodings left, delete the entire vibe image
-        if (vibeData.encodings.length === 0) {
-            removeFromWorkspaceArray('vibeImages', foundFilename, workspaceId);
-            fs.unlinkSync(filePath);
-            console.log(`🗑️ Deleted entire vibe image (no encodings left): ${foundFilename} (ID: ${vibeId})`);
-            res.json({ success: true, message: 'Vibe image deleted (no encodings remaining)' });
-        } else {
-            // Update the file with remaining encodings
-            fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
-            console.log(`🗑️ Deleted ${deletedCount} encodings from vibe image: ${foundFilename} (ID: ${vibeId})`);
-            res.json({ success: true, message: `${deletedCount} encodings deleted successfully` });
-        }
-        
-    } catch (error) {
-        console.error('Error deleting vibe encodings:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /vibe/images/bulk-delete (bulk delete vibe images and encodings)
-app.post('/vibe/images/bulk-delete', authMiddleware, async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const workspaceId = req.body.workspace || getActiveWorkspace(req.session?.id);
-        const { vibesToDelete, encodingsToDelete } = req.body;
-        
-        if (!vibesToDelete && !encodingsToDelete) {
-            return res.status(400).json({ error: 'Either vibesToDelete or encodingsToDelete is required' });
-        }
-        
-        const results = {
-            deletedVibes: [],
-            deletedEncodings: [],
-            errors: []
-        };
-        
-        // Get workspace and vibe files
-        const workspace = getWorkspace(workspaceId);
-        if (!workspace) {
-            return res.status(404).json({ error: 'Workspace not found' });
-        }
-        
-        const vibeFiles = workspace.vibeImages || [];
-        
-        // Delete entire vibe images
-        if (vibesToDelete && Array.isArray(vibesToDelete)) {
-            for (const vibeId of vibesToDelete) {
-                try {
-                    // Find the filename that contains this vibe ID
-                    let foundFilename = null;
-                    for (const filename of vibeFiles) {
-                        const filePath = path.join(vibeCacheDir, filename);
-                        if (fs.existsSync(filePath)) {
-                            try {
-                                const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                                if (vibeData.id === vibeId) {
-                                    foundFilename = filename;
-                                    break;
-                                }
-                            } catch (parseError) {
-                                console.error(`Error parsing vibe file ${filename}:`, parseError);
-                                continue;
-                            }
-                        }
-                    }
-                    
-                    if (foundFilename) {
-                        const filePath = path.join(vibeCacheDir, foundFilename);
-                        removeFromWorkspaceArray('vibeImages', foundFilename, workspaceId);
-                        fs.unlinkSync(filePath);
-                        results.deletedVibes.push(vibeId);
-                        console.log(`🗑️ Bulk deleted vibe image: ${foundFilename} (ID: ${vibeId})`);
-                    } else {
-                        results.errors.push(`Vibe image not found: ${vibeId}`);
-                    }
-                } catch (error) {
-                    results.errors.push(`Failed to delete vibe ${vibeId}: ${error.message}`);
-                }
-            }
-        }
-        
-        // Delete specific encodings
-        if (encodingsToDelete && Array.isArray(encodingsToDelete)) {
-            // Group encodings by vibe image
-            const encodingsByVibe = {};
-            encodingsToDelete.forEach(encodingData => {
-                // encodingData should be { vibeId, model, informationExtraction }
-                if (encodingData.vibeId && encodingData.model && encodingData.informationExtraction !== undefined) {
-                    if (!encodingsByVibe[encodingData.vibeId]) {
-                        encodingsByVibe[encodingData.vibeId] = [];
-                    }
-                    encodingsByVibe[encodingData.vibeId].push(encodingData);
-                }
-            });
-            
-            // Process each vibe image
-            for (const [vibeId, encodingsToRemove] of Object.entries(encodingsByVibe)) {
-                try {
-                    // Find the filename that contains this vibe ID
-                    let foundFilename = null;
-                    for (const filename of vibeFiles) {
-                        const filePath = path.join(vibeCacheDir, filename);
-                        if (fs.existsSync(filePath)) {
-                            try {
-                                const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                                if (vibeData.id === vibeId) {
-                                    foundFilename = filename;
-                                    break;
-                                }
-                            } catch (parseError) {
-                                console.error(`Error parsing vibe file ${filename}:`, parseError);
-                                continue;
-                            }
-                        }
-                    }
-                    
-                    if (!foundFilename) {
-                        results.errors.push(`Vibe image not found: ${vibeId}`);
-                        continue;
-                    }
-                    
-                    const filePath = path.join(vibeCacheDir, foundFilename);
-                    
-                    // Read the vibe data
-                    const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                    
-                    if (!vibeData.encodings || !Array.isArray(vibeData.encodings)) {
-                        results.errors.push(`No encodings found in vibe: ${vibeId}`);
-                        continue;
-                    }
-                    
-                    // Remove specified encodings
-                    const originalCount = vibeData.encodings.length;
-                    vibeData.encodings = vibeData.encodings.filter(encoding => {
-                        return !encodingsToRemove.some(toDelete => 
-                            toDelete.model === encoding.model && 
-                            toDelete.informationExtraction === encoding.informationExtraction
-                        );
-                    });
-                    
-                    const deletedCount = originalCount - vibeData.encodings.length;
-                    
-                    if (deletedCount > 0) {
-                        // If no encodings left, delete the entire vibe image
-                        if (vibeData.encodings.length === 0) {
-                            removeFromWorkspaceArray('vibeImages', foundFilename, workspaceId);
-                            fs.unlinkSync(filePath);
-                            results.deletedVibes.push(vibeId);
-                            console.log(`🗑️ Bulk deleted entire vibe image (no encodings left): ${foundFilename} (ID: ${vibeId})`);
-                        } else {
-                            // Update the file with remaining encodings
-                            fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
-                            results.deletedEncodings.push(...encodingsToRemove);
-                            console.log(`🗑️ Bulk deleted ${deletedCount} encodings from vibe: ${foundFilename} (ID: ${vibeId})`);
-                        }
-                    }
-                    
-                } catch (error) {
-                    results.errors.push(`Failed to delete encodings from vibe ${vibeId}: ${error.message}`);
-                }
-            }
-        }
-        
-        const success = results.deletedVibes.length > 0 || results.deletedEncodings.length > 0;
-        const message = success ? 
-            `Deleted ${results.deletedVibes.length} vibe(s) and ${results.deletedEncodings.length} encoding(s)` :
-            'No items were deleted';
-        
-        res.json({
-            success,
-            message,
-            ...results
-        });
-        
-    } catch (error) {
-        console.error('Error bulk deleting vibe items:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// PUT /vibe/images/:id/move (move vibe image to workspace)
-app.put('/vibe/images/:id/move', authMiddleware, async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const vibeId = req.params.id;
-        const { targetWorkspace } = req.body;
-        const sourceWorkspace = req.query.workspace || getActiveWorkspace(req.session?.id);
-        
-        if (!targetWorkspace) {
-            return res.status(400).json({ error: 'targetWorkspace is required' });
-        }
-        
-        // Find the vibe file by ID
-        const workspace = getWorkspace(sourceWorkspace);
-        if (!workspace) {
-            return res.status(404).json({ error: 'Source workspace not found' });
-        }
-        
-        const vibeFiles = workspace.vibeImages || [];
-        let foundFilename = null;
-        
-        // Find the filename that contains this vibe ID
-        for (const filename of vibeFiles) {
-            const filePath = path.join(vibeCacheDir, filename);
-            if (fs.existsSync(filePath)) {
-                try {
-                    const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                    if (vibeData.id === vibeId) {
-                        foundFilename = filename;
-                        break;
-                    }
-                } catch (parseError) {
-                    console.error(`Error parsing vibe file ${filename}:`, parseError);
-                    continue;
-                }
-            }
-        }
-        
-        if (!foundFilename) {
-            return res.status(404).json({ error: 'Vibe image not found' });
-        }
-        
-        // Move to target workspace
-        moveToWorkspaceArray('vibeImages', foundFilename, targetWorkspace, sourceWorkspace);
-        
-        console.log(`📁 Moved vibe image ${foundFilename} (ID: ${vibeId}) from workspace ${sourceWorkspace} to ${targetWorkspace}`);
-        
-        res.json({ success: true, message: 'Vibe image moved successfully' });
-        
-    } catch (error) {
-        console.error('Error moving vibe image:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// POST /vibe/images/bulk-move (bulk move vibe images to workspace)
-app.post('/vibe/images/bulk-move', authMiddleware, async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const { imageIds, targetWorkspace, sourceWorkspace } = req.body;
-        const workspaceId = sourceWorkspace || getActiveWorkspace(req.session?.id);
-        
-        if (!targetWorkspace) {
-            return res.status(400).json({ error: 'targetWorkspace is required' });
-        }
-        
-        if (!imageIds || !Array.isArray(imageIds)) {
-            return res.status(400).json({ error: 'imageIds array is required' });
-        }
-        
-        const results = {
-            movedImages: [],
-            errors: []
-        };
-        
-        // Get source workspace and vibe files
-        const workspace = getWorkspace(workspaceId);
-        if (!workspace) {
-            return res.status(404).json({ error: 'Source workspace not found' });
-        }
-        
-        const vibeFiles = workspace.vibeImages || [];
-        
-        for (const imageId of imageIds) {
-            try {
-                // Find the filename that contains this vibe ID
-                let foundFilename = null;
-                for (const filename of vibeFiles) {
-                    const filePath = path.join(vibeCacheDir, filename);
-                    if (fs.existsSync(filePath)) {
-                        try {
-                            const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                            if (vibeData.id === imageId) {
-                                foundFilename = filename;
-                                break;
-                            }
-                        } catch (parseError) {
-                            console.error(`Error parsing vibe file ${filename}:`, parseError);
-                            continue;
-                        }
-                    }
-                }
-                
-                if (foundFilename) {
-                    // Move to target workspace
-                    moveToWorkspaceArray('vibeImages', foundFilename, targetWorkspace, workspaceId);
-                    results.movedImages.push(imageId);
-                    console.log(`📁 Bulk moved vibe image ${foundFilename} (ID: ${imageId}) from workspace ${workspaceId} to ${targetWorkspace}`);
-                } else {
-                    results.errors.push(`Vibe image not found: ${imageId}`);
-                }
-            } catch (error) {
-                results.errors.push(`Failed to move vibe ${imageId}: ${error.message}`);
-            }
-        }
-        
-        const success = results.movedImages.length > 0;
-        const message = success ? 
-            `Moved ${results.movedImages.length} vibe image(s) successfully` :
-            'No images were moved';
-        
-        res.json({
-            success,
-            message,
-            ...results
-        });
-        
-    } catch (error) {
-        console.error('Error bulk moving vibe images:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// OPTIONS /images/:filename (get metadata)
-app.options('/images/:filename', authMiddleware, async (req, res) => {
-    try {
-        const filename = req.params.filename;
-        const filePath = path.join(imagesDir, filename);
-        
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'Image not found' });
-        }
-        
-        // Get metadata from cache first
-        let cachedMetadata = getCachedMetadata(filename);
-        
-        // If not in cache, extract and update cache
-        if (!cachedMetadata) {
-            console.log(`🔄 Metadata not found in cache for ${filename}, extracting...`);
-            cachedMetadata = await getImageMetadata(filename, imagesDir);
-            if (!cachedMetadata) {
-                return res.status(404).json({ error: 'Failed to extract metadata' });
-            }
-        }
-        
-        // Get the metadata object (PNG embedded metadata)
-        let metadata = cachedMetadata.metadata;
-        
-        // If this is an upscaled image and has a parent, get the parent's metadata
-        if (cachedMetadata.upscaled && cachedMetadata.parent) {
-            const parentMetadata = getCachedMetadata(cachedMetadata.parent);
-            if (parentMetadata) {
-                metadata = parentMetadata.metadata;
-                console.log(`📋 Using parent metadata for upscaled image: ${cachedMetadata.parent}`);
-            } else {
-                console.log(`⚠️ Parent metadata not found for: ${cachedMetadata.parent}`);
-            }
-        }
-        
-        if (!metadata) {
-            return res.status(404).json({ error: 'No NovelAI metadata found' });
-        }
-        
-        // If upscaled, try to match preset using metadata dimensions
-        let matchedPreset = null;
-        const isUpscaled = metadata.forge_data?.upscale_ratio !== null && metadata.forge_data?.upscale_ratio !== undefined;
-        if (isUpscaled) {
-            const currentPromptConfig = loadPromptConfig();
-            matchedPreset = matchOriginalResolution(metadata, currentPromptConfig.resolutions || {});
-        }
-        
-        const result = await extractRelevantFields(metadata, filename);
-        if (matchedPreset) result.matchedPreset = matchedPreset;
-        
-        res.json(result);
-    } catch (error) {
-        console.error('Error in options endpoint:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// DELETE /images/:filename (delete image and upscaled/base versions)
-app.delete('/images/:filename', authMiddleware, async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const filename = req.params.filename;
-        const filePath = path.join(imagesDir, filename);
-
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'Image not found' });
-        }
-
-        // Get the base name to find related files
-        const baseName = getBaseName(filename);
-        const previewFile = getPreviewFilename(baseName);
-        const previewPath = path.join(previewsDir, previewFile);
-
-        // Always delete both the base and upscaled version
-        const filesToDelete = [];
-        const filenamesToRemoveFromWorkspaces = [];
-
-        // Determine base/original and upscaled filenames
-        let originalFilename, upscaledFilename;
-        if (filename.includes('_upscaled')) {
-            upscaledFilename = filename;
-            originalFilename = filename.replace('_upscaled.png', '.png');
-        } else {
-            originalFilename = filename;
-            upscaledFilename = filename.replace('.png', '_upscaled.png');
-        }
-
-        // Add original file if exists
-        const originalPath = path.join(imagesDir, originalFilename);
-        if (fs.existsSync(originalPath)) {
-            filesToDelete.push({ path: originalPath, type: 'original' });
-            filenamesToRemoveFromWorkspaces.push(originalFilename);
-        }
-
-        // Add upscaled file if exists
-        const upscaledPath = path.join(imagesDir, upscaledFilename);
-        if (fs.existsSync(upscaledPath)) {
-            filesToDelete.push({ path: upscaledPath, type: 'upscaled' });
-            filenamesToRemoveFromWorkspaces.push(upscaledFilename);
-        }
-
-        // Add the preview file
-        if (fs.existsSync(previewPath)) {
-            filesToDelete.push({ path: previewPath, type: 'preview' });
-        }
-
-        // Remove files from workspaces first
-        if (filenamesToRemoveFromWorkspaces.length > 0) {
-            removeFilesFromWorkspaces(filenamesToRemoveFromWorkspaces);
-        }
-
-        // Remove metadata from cache
-        removeImageMetadata(filenamesToRemoveFromWorkspaces);
-
-        // Delete all related files
-        const deletedFiles = [];
-        for (const file of filesToDelete) {
-            try {
-                fs.unlinkSync(file.path);
-                deletedFiles.push(file.type);
-                console.log(`🗑️ Deleted ${file.type}: ${path.basename(file.path)}`);
-            } catch (error) {
-                console.error(`Failed to delete ${file.type}: ${path.basename(file.path)}`, error.message);
-            }
-        }
-
-        // Sync workspace files to remove any remaining references to deleted files
-        syncWorkspaceFiles();
-
-        console.log(`✅ Deleted image and related files: ${deletedFiles.join(', ')}`);
-        res.json({
-            success: true,
-            message: `Image deleted successfully`,
-            deletedFiles: deletedFiles
-        });
-
-    } catch (error) {
-        console.error('Delete error:', error);
-        res.status(500).json({ error: error.message });
-    }
 });
 
 // Common request logging middleware
@@ -2329,1065 +939,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// Build options for image generation
-const buildOptions = async (model, body, preset = null, queryParams = {}) => {
-    const resolution = body.resolution || preset?.resolution;
-    const allowPaid = body.allow_paid !== undefined ? body.allow_paid : preset?.allow_paid;
-    
-    let width, height;
-    if (resolution && Resolution[resolution.toUpperCase()]) {
-        if ((resolution.startsWith('LARGE_') || resolution.startsWith('WALLPAPER_'))) { 
-            if (!allowPaid) {
-                throw new Error(`Resolution "${resolution}" requires Opus credits. Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
-            }
-        }
-    } else {
-        width = body.width || preset?.width || 1024;
-        height = body.height || preset?.height || 1024;
-        if ((width > 1024 || height > 1024) && !allowPaid) {
-            throw new Error(`Custom dimensions ${width}x${height} exceed maximum of 1024. Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
-        }
-    }
-
-    const steps = body.steps || preset?.steps || 24;
-    if (steps > 28 && !allowPaid) {
-        throw new Error(`Steps value ${steps} exceeds maximum of 28. Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
-    }
-    
-    const currentPromptConfig = loadPromptConfig();
-    const presetName = preset ? Object.keys(currentPromptConfig.presets).find(key => currentPromptConfig.presets[key] === preset) : null;
-    const rawPrompt = (body.prompt !== undefined && body.prompt !== null) ? body.prompt : preset?.prompt;
-    const rawNegativePrompt = (body.uc !== undefined && body.uc !== null) ? body.uc : preset?.uc;
-    
-    // Handle upscale override from query parameters
-    let upscaleValue = (body.upscale !== undefined && body.upscale !== null) ? body.upscale : preset?.upscale;
-    if (queryParams.upscale !== undefined) {
-        if (queryParams.upscale === 'true') {
-            upscaleValue = true; // Default to 4x
-    } else {
-            const parsedUpscale = parseFloat(queryParams.upscale);
-            if (!isNaN(parsedUpscale) && parsedUpscale > 0) {
-                upscaleValue = parsedUpscale;
-            } else {
-                throw new Error('Invalid upscale value. Use ?upscale=true for default 4x or ?upscale=<number> for custom multiplier.');
-            }
-        }
-    }
-    
-    try {
-        let processedPrompt = applyTextReplacements(rawPrompt, presetName, model);
-        let processedNegativePrompt = applyTextReplacements(rawNegativePrompt, presetName, model);
-        
-        // Process NSFW removal from negative prompt
-        if (processedNegativePrompt && processedNegativePrompt.startsWith("nsfw")) {
-            let j = processedNegativePrompt.slice(4);
-            let A = "nsfw";
-            if (j.startsWith(", ")) {
-                j = j.slice(2);
-                A += ", ";
-            }
-            
-            // Remove NSFW from the beginning of the negative prompt
-            processedNegativePrompt = j;
-        }
-        
-        const usedPromptReplacements = getUsedReplacements(rawPrompt, model);
-        const usedNegativeReplacements = getUsedReplacements(rawNegativePrompt, model);
-        
-        if (usedPromptReplacements.length > 0 || usedNegativeReplacements.length > 0) {
-            console.log(`🔄 Text replacements: ${[...usedPromptReplacements, ...usedNegativeReplacements].join(', ')}`);
-        }
-
-        // Process character prompts with text replacements
-        let processedCharacterPrompts = body.allCharacterPrompts || preset?.allCharacterPrompts || undefined;
-        if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
-            processedCharacterPrompts = processedCharacterPrompts.map(char => {
-                // Apply text replacements to character prompt and UC
-                const processedPrompt = applyTextReplacements(char.prompt, presetName, model);
-                const processedUC = applyTextReplacements(char.uc, presetName, model);
-                
-                return {
-                    ...char,
-                    prompt: processedPrompt,
-                    uc: processedUC
-                };
-            });
-            
-            // Log text replacements used in character prompts
-            const usedCharacterReplacements = [];
-            (body.allCharacterPrompts || preset?.allCharacterPrompts).forEach(char => {
-                const promptReplacements = getUsedReplacements(char.prompt, model);
-                const ucReplacements = getUsedReplacements(char.uc, model);
-                if (promptReplacements.length > 0 || ucReplacements.length > 0) {
-                    usedCharacterReplacements.push(...promptReplacements, ...ucReplacements);
-                }
-            });
-            
-            if (usedCharacterReplacements.length > 0) {
-                console.log(`🔄 Character prompt text replacements: ${usedCharacterReplacements.join(', ')}`);
-            }
-        }
-
-        // Handle dataset prepending (exclude for V3 models)
-        const isV3Model = model === 'v3' || model === 'v3_furry';
-        if (!isV3Model && body.dataset_config && body.dataset_config.include && Array.isArray(body.dataset_config.include) && body.dataset_config.include.length > 0) {
-            // Build dataset mappings dynamically from config
-            const datasetMappings = {};
-            if (currentPromptConfig.datasets) {
-                currentPromptConfig.datasets.forEach(dataset => {
-                    datasetMappings[dataset.value] = `${dataset.value} dataset`;
-                });
-            }
-            
-            const datasetPrepends = [];
-            
-            body.dataset_config.include.forEach(dataset => {
-                if (datasetMappings[dataset]) {
-                    let datasetText = datasetMappings[dataset];
-                    
-                    // Add bias if > 1.0
-                    if (body.dataset_config.bias && body.dataset_config.bias[dataset] !== undefined) {
-                        datasetText = `${parseFloat(parseFloat(body.dataset_config.bias[dataset].toString()).toFixed(2)).toString()}::${dataset} dataset::`;
-                    }
-                    
-                    datasetPrepends.push(datasetText);
-                    
-                    // Add sub-toggle values for the dataset if enabled
-                    if (body.dataset_config.settings && body.dataset_config.settings[dataset]) {
-                        const datasetSettings = body.dataset_config.settings[dataset];
-                        Object.keys(datasetSettings).forEach(settingId => {
-                            const setting = datasetSettings[settingId];
-                            if (setting.enabled && setting.value) {
-                                const settingText = (setting.bias && setting.bias !== undefined) ? 
-                                    `${setting.bias}::${setting.value}::` : setting.value;
-                                datasetPrepends.push(settingText);
-                            }
-                        });
-                    }
-                }
-            });
-            
-            if (datasetPrepends.length > 0) {
-                const datasetString = datasetPrepends.join(', ');
-                processedPrompt = datasetString + ', ' + processedPrompt;
-                console.log(`🗂️ Applied dataset prepends: ${datasetString}`);
-            }
-        }
-
-        // Handle enhanced preset selections
-        let selectedQualityId = null;
-        let selectedUcId = null;
-
-        // Handle append_quality with enhanced preset selection
-        if (body.append_quality && currentPromptConfig.quality_presets) {
-            const modelKey = model.toLowerCase();
-            const combinedPrompt = processedPrompt + (processedCharacterPrompts ? processedCharacterPrompts.map(c => c.prompt).join(', ') : '');
-            const selectedQuality = selectPresetItem(currentPromptConfig.quality_presets, modelKey, combinedPrompt, body.append_quality_id);
-            
-            if (selectedQuality) {
-                // Check if prompt contains "Text:" and handle accordingly
-                if (processedPrompt.includes('Text:')) {
-                    // Find the first instance of "Text:" and insert quality before it
-                    const textIndex = processedPrompt.indexOf('Text:');
-                    const beforeText = processedPrompt.substring(0, textIndex).trim();
-                    const afterText = processedPrompt.substring(textIndex);
-                    
-                    if (beforeText) {
-                        // If there's content before "Text:", add quality with ", " separator
-                        processedPrompt = beforeText + ', ' + selectedQuality.value + ' ' + afterText;
-                    } else {
-                        // If "Text:" is at the beginning, just add quality before it
-                        processedPrompt = selectedQuality.value + ' ' + afterText;
-                    }
-                } else {
-                    // Original logic for prompts without "Text:"
-                    // Split prompt by "|", add quality to end of first group, then rejoin with " | "
-                    const groups = processedPrompt.split('|').map(group => group.trim());
-                    if (groups.length > 0) {
-                        groups[0] = groups[0] + ', ' + selectedQuality.value;
-                        processedPrompt = groups.join(' | ');
-                    } else {
-                        processedPrompt = processedPrompt + ', ' + selectedQuality.value;
-                    }
-                }
-                selectedQualityId = selectedQuality.id;
-                console.log(`🎨 Applied quality preset for ${modelKey}: ${selectedQuality.value} (ID: ${selectedQuality.id})`);
-            }
-        }
-
-        // Handle append_uc with enhanced preset selection
-        if (body.append_uc !== undefined && body.append_uc > 0 && currentPromptConfig.uc_presets) {
-            const modelKey = model.toLowerCase();
-            const combinedPrompt = processedPrompt + (processedCharacterPrompts ? processedCharacterPrompts.map(c => c.prompt).join(', ') : '');
-            const selectedUc = selectPresetItem(currentPromptConfig.uc_presets, modelKey, combinedPrompt, body.append_uc_id || body.append_uc);
-            
-            if (selectedUc) {
-                // Add UC preset to the start of the UC and separate the original UC with ", "
-                processedNegativePrompt = selectedUc.value + (processedNegativePrompt ? ', ' + processedNegativePrompt : '');
-                selectedUcId = selectedUc.id;
-                console.log(`🚫 Applied UC preset for ${modelKey}: ${selectedUc.value} (ID: ${selectedUc.id})`);
-            }
-        }
-
-    // Check if this is an img2img request
-    const baseOptions = {
-        prompt: processedPrompt,
-        negative_prompt: processedNegativePrompt,
-        input_prompt: rawPrompt,
-        input_uc: rawNegativePrompt,
-        model: Model[model.toUpperCase() + ((body.mask || body.mask_compressed) && body.image && !model.toUpperCase().includes('_INP') ? '_INP' : '')],
-        steps: parseInt(body.steps || preset?.steps || '24'),
-        scale: parseFloat((body.guidance || preset?.guidance || '5.5').toString()),
-        cfg_rescale: parseFloat((body.rescale || preset?.rescale || '0.0').toString()),
-        skip_cfg_above_sigma: (body?.variety || preset?.variety || queryParams?.variety === 'true') ? 58 : undefined,
-        sampler: body.sampler ? Sampler[body.sampler.toUpperCase()] : (preset?.sampler ? Sampler[preset.sampler.toUpperCase()] : Sampler.EULER_ANC),
-        noise_schedule: body.noiseScheduler ? Noise[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? Noise[preset.noiseScheduler.toUpperCase()] : Noise.KARRAS),
-        no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
-        qualityToggle: false,
-        ucPreset: 4,
-        dynamicThresholding: body.dynamicThresholding || preset?.dynamicThresholding,
-        seed: parseInt((body.seed || preset?.seed || '0').toString()),
-        upscale: upscaleValue,
-        characterPrompts: body.characterPrompts || preset?.characterPrompts || undefined,
-        allCharacterPrompts: processedCharacterPrompts || undefined,
-        input_character_prompts: body.allCharacterPrompts || preset?.allCharacterPrompts || undefined,
-        dataset_config: body.dataset_config || preset?.dataset_config || undefined,
-        append_quality: body.append_quality !== undefined ? body.append_quality : preset?.append_quality,
-        append_uc: body.append_uc !== undefined ? body.append_uc : preset?.append_uc,
-        append_quality_id: selectedQualityId,
-        append_uc_id: selectedUcId,
-        vibe_transfer: body.vibe_transfer !== undefined ? body.vibe_transfer : (preset && preset.vibe_transfer ? preset.vibe_transfer : undefined),
-        normalize_vibes: body.normalize_vibes !== undefined ? body.normalize_vibes : (preset && preset.normalize_vibes !== undefined ? preset.normalize_vibes : true),
-    };
-
-    if (baseOptions.upscale && baseOptions.upscale > 1 && !allowPaid) {
-        throw new Error(`Upscaling with scale ${baseOptions.upscale} requires Opus credits. Set "allow_paid": true to confirm you accept using Opus credits for upscaling.`);
-    }
-
-    if (body.width && body.height) {
-        baseOptions.width = parseInt(body.width.toString());
-        baseOptions.height = parseInt(body.height.toString());
-    } else if (resolution && Resolution[resolution.toUpperCase()]) {
-        baseOptions.resPreset = Resolution[resolution.toUpperCase()];
-    } else {
-        baseOptions.resPreset = "NORMAL_SQUARE";
-    }
-    
-    if (!!body.image) {
-        if (!body.image.includes(":")) throw new Error(`No Image Format Passed`);
-
-        let imageBuffer;
-        let originalSource = body.image;
-        const [imageType, imageIdentifier] = body.image.split(':', 2);
-
-        switch (imageType) {
-            case 'cache':
-                const cachedImagePath = path.join(uploadCacheDir, imageIdentifier);
-                if (!fs.existsSync(cachedImagePath)) throw new Error(`Cached image not found: ${imageIdentifier}`);
-                imageBuffer = fs.readFileSync(cachedImagePath);
-                break;
-            case 'file':
-                const filePath = path.join(imagesDir, imageIdentifier);
-                if (!fs.existsSync(filePath)) throw new Error(`Image not found: ${imageIdentifier}`);
-                imageBuffer = fs.readFileSync(filePath);
-                break;
-            case 'data': // For new uploads from client, not yet cached.
-                imageBuffer = Buffer.from(imageIdentifier, 'base64');
-                originalSource = 'data:base64'; // Don't store full base64 in metadata
-                break;
-            default:
-                throw new Error(`Unsupported image type: ${imageType}`);
-        }
-        imageBuffer = stripPngTextChunks(imageBuffer);
-        let targetDims = { width: baseOptions.width, height: baseOptions.height };
-        if (!targetDims.width || !targetDims.height) {
-            const dims = getDimensionsFromResolution(baseOptions.resPreset?.toLowerCase() || "");
-            console.log('dims', dims);
-            if (dims) {
-                targetDims.width = dims.width;
-                targetDims.height = dims.height;
-            }
-        }
-        
-        if (!targetDims.width || !targetDims.height) {
-            console.error('Invalid target dimensions:', targetDims);
-            throw new Error('Invalid target dimensions');
-        }
-        
-        if (targetDims.width && targetDims.height) {
-            imageBuffer = await processDynamicImage(imageBuffer, targetDims, body.image_bias);
-            console.log(`📏 Resized base image to ${targetDims.width}x${targetDims.height} with bias ${body.image_bias}`);
-        }
-
-        baseOptions.action = (body.mask || body.mask_compressed) ? Action.INPAINT : Action.IMG2IMG;
-        baseOptions.color_correct = false;
-        if (body.mask_compressed && targetDims.width && targetDims.height) {
-            try {
-                // Process the compressed mask to target resolution
-                const maskBuffer = Buffer.from(body.mask_compressed, 'base64');
-                const processedMaskBuffer = await resizeMaskWithCanvas(maskBuffer, targetDims.width, targetDims.height);
-                body.mask = processedMaskBuffer.toString('base64');
-                baseOptions.mask_compressed = body.mask_compressed;
-                console.log(`🎭 Processed compressed mask to ${targetDims.width}x${targetDims.height}`);
-            } catch (error) {
-                console.error('❌ Failed to process compressed mask:', error.message);
-                // Continue without mask if processing fails
-                body.mask_compressed = null;
-            }
-        }
-        
-        // Auto-convert standard mask to compressed mask if no compressed mask exists
-        if (body.mask && !body.mask_compressed && targetDims.width && targetDims.height) {
-            try {
-                // Convert standard mask to compressed format (1/8 scale)
-                const compressedWidth = Math.floor(targetDims.width / 8);
-                const compressedHeight = Math.floor(targetDims.height / 8);
-                
-                // Create a temporary canvas to resize the mask
-                const { createCanvas, loadImage } = require('canvas');
-                const maskBuffer = Buffer.from(body.mask, 'base64');
-                const maskImage = await loadImage(maskBuffer);
-                
-                const tempCanvas = createCanvas(compressedWidth, compressedHeight);
-                const tempCtx = tempCanvas.getContext('2d');
-                
-                // Fill with black background
-                tempCtx.fillStyle = 'black';
-                tempCtx.fillRect(0, 0, compressedWidth, compressedHeight);
-                
-                // Disable image smoothing for nearest neighbor scaling
-                tempCtx.imageSmoothingEnabled = false;
-                
-                // Draw the mask scaled down to compressed size
-                tempCtx.drawImage(maskImage, 0, 0, compressedWidth, compressedHeight);
-                
-                // Binarize the image data to ensure crisp 1-bit mask
-                const imageData = tempCtx.getImageData(0, 0, compressedWidth, compressedHeight);
-                const data = imageData.data;
-                
-                for (let i = 0; i < data.length; i += 4) {
-                    const r = data[i];
-                    const g = data[i + 1];
-                    const b = data[i + 2];
-                    
-                    // If pixel is not black (has been drawn on), make it pure white
-                    if (r > 0 || g > 0 || b > 0) {
-                        data[i] = 255;     // Red
-                        data[i + 1] = 255; // Green
-                        data[i + 2] = 255; // Blue
-                        data[i + 3] = 255; // Alpha
-                    } else {
-                        // Black pixels (background) stay pure black
-                        data[i] = 0;       // Red
-                        data[i + 1] = 0;   // Green
-                        data[i + 2] = 0;   // Blue
-                        data[i + 3] = 255; // Alpha
-                    }
-                }
-                
-                // Put the binarized image data back
-                tempCtx.putImageData(imageData, 0, 0);
-                
-                // Convert to base64 and store as compressed mask
-                const compressedMaskBase64 = tempCanvas.toBuffer('image/png').toString('base64');
-                body.mask_compressed = compressedMaskBase64;
-                baseOptions.mask_compressed = compressedMaskBase64;
-                
-                console.log(`🔄 Auto-converted standard mask to compressed format (${compressedWidth}x${compressedHeight})`);
-            } catch (error) {
-                console.error('❌ Failed to auto-convert standard mask to compressed:', error.message);
-                // Continue with original mask if conversion fails
-            }
-        }
-        
-        if (body.mask) {
-            // Process compressed mask if available, otherwise use regular mask
-            baseOptions.mask = body.mask;
-            baseOptions.strength = parseFloat((body.inpainting_strength || body.strength || "1").toString());
-            baseOptions.noise = 0.0;
-        } else {
-            baseOptions.strength = parseFloat((body.strength || 0.8).toString());
-            baseOptions.noise = parseFloat((body.noise || 0.1).toString());
-        }
-
-        baseOptions.image = imageBuffer.toString('base64');
-        baseOptions.image_source = originalSource;
-        baseOptions.image_bias = body.image_bias;
-    }
-
-    // Process vibe transfer data if present (disabled when mask is provided for inpainting)
-    if (baseOptions.vibe_transfer && Array.isArray(baseOptions.vibe_transfer) && baseOptions.vibe_transfer.length > 0) {
-        if (baseOptions.mask) {
-            console.log(`⚠️ Vibe transfers disabled due to inpainting mask presence`);
-        } else {
-            try {
-                // Load vibe references from the vibe cache directory
-                const vibeCacheDir = path.join(cacheDir, 'vibe');
-                const referenceImageMultiple = [];
-                const referenceStrengthMultiple = [];
-                
-                if (fs.existsSync(vibeCacheDir)) {
-                    for (const vibeTransfer of baseOptions.vibe_transfer) {
-                        // Directly access the vibe file using the ID as filename
-                        const vibeFilePath = path.join(vibeCacheDir, `${vibeTransfer.id}.json`);
-                        
-                        if (fs.existsSync(vibeFilePath)) {
-                            try {
-                                const vibeData = JSON.parse(fs.readFileSync(vibeFilePath, 'utf8'));
-                                
-                                // Get the encoding for the specific model and IE (case-insensitive lookup)
-                                const modelKey = Object.keys(vibeData.encodings || {}).find(key => key.toUpperCase() === model.toUpperCase());
-                                if (vibeData.encodings && 
-                                    modelKey && 
-                                    vibeData.encodings[modelKey] && 
-                                    vibeData.encodings[modelKey][vibeTransfer.ie.toString()]) {
-                                    
-                                    const encoding = vibeData.encodings[modelKey][vibeTransfer.ie.toString()];
-                                    referenceImageMultiple.push(encoding);
-                                    referenceStrengthMultiple.push(vibeTransfer.strength);
-                                    console.log(`🎨 Found encoding for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} and strength ${vibeTransfer.strength} (model: ${modelKey})`);
-                                } else {
-                                    console.warn(`⚠️ No encoding found for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} for model ${model}`);
-                                }
-                            } catch (parseError) {
-                                console.warn(`⚠️ Failed to parse vibe file ${vibeTransfer.id}.json:`, parseError.message);
-                            }
-                        } else {
-                            console.warn(`⚠️ Vibe file not found: ${vibeTransfer.id}.json`);
-                        }
-                    }
-                }
-                
-                // Add to baseOptions if we found encodings
-                if (referenceImageMultiple.length > 0) {
-                    baseOptions.reference_image_multiple = referenceImageMultiple;
-                    baseOptions.reference_strength_multiple = referenceStrengthMultiple;
-                    baseOptions.normalize_reference_strength_multiple = baseOptions.normalize_vibes;
-                    console.log(`🎨 Applied ${referenceImageMultiple.length} vibe transfers with normalize: ${baseOptions.normalize_vibes}`);
-                } else {
-                    console.warn(`⚠️ No valid encodings found for any vibe transfers`);
-                }
-            } catch (error) {
-                console.error('❌ Failed to process vibe transfers:', error.message);
-                // Continue without vibe transfers if processing fails
-            }
-        }
-    }
-
-    if (!allowPaid) {
-        try {
-            const cost_opus = calculateCost(baseOptions, true);
-            if (cost_opus > 0) {
-                throw new Error(`Request requires Opus credits (cost: ${cost_opus}). Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
-            }
-        } catch (error) {
-                if (error.message.includes('requires Opus credits')) throw error;
-        }
-    }
-
-    return baseOptions;
-    } catch (error) {
-        throw error;
-}
-};
-
-async function handleGeneration(opts, returnImage = false, presetName = null, workspaceId = null) {
-    const seed = opts.seed || Math.floor(0x100000000 * Math.random() - 1);
-    const layer1Seed = opts.layer1Seed || null;
-    
-    opts.n_samples = 1;
-    opts.seed = seed;
-    if (opts.action === Action.INPAINT) {
-        opts.add_original_image = false;
-        opts.extra_noise_seed = seed;
-    } else if (opts.action === Action.IMG2IMG) {
-        opts.color_correct = false;
-    }
-    console.log(`🚀 Starting image generation (seed: ${seed})...`);
-    
-    let img;
-    
-    // Create a clean copy of opts for the API call, removing custom properties
-    const apiOpts = { ...opts };
-    delete apiOpts.upscale;
-    delete apiOpts.no_save;
-    delete apiOpts.layer1Seed;
-    delete apiOpts.allCharacterPrompts;
-    delete apiOpts.original_filename;
-    delete apiOpts.image_bias;
-    delete apiOpts.mask_bias;
-    delete apiOpts.image_source;
-    delete apiOpts.mask_compressed;
-    delete apiOpts.dataset_config;
-    delete apiOpts.append_quality;
-    delete apiOpts.append_uc;
-    delete apiOpts.input_prompt;
-    delete apiOpts.input_uc;
-    delete apiOpts.input_character_prompts;
-    delete apiOpts.vibe_transfer;
-    delete apiOpts.normalize_vibes;
-
-    // Process character prompts: only enabled characters go to API, all characters go to forge_data
-    if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts)) {
-        // Post-process character prompts: replace 1girl/1boy with girl/boy
-        const processedCharacterPrompts = opts.allCharacterPrompts.map(char => ({
-            ...char,
-            prompt: char.prompt.replace(/1girl/g, "girl").replace(/1boy/g, "boy")
-        }));
-        
-        // Filter enabled characters for API request
-        const enabledCharacters = processedCharacterPrompts.filter(char => char.enabled);
-        
-        // Convert to API format: remove chara_name and use_coords from individual characters
-        const apiCharacters = enabledCharacters.map(char => ({
-            prompt: char.prompt,
-            uc: char.uc,
-            center: char.center,
-            enabled: char.enabled
-        }));
-        
-        if (apiCharacters.length > 0) {
-            apiOpts.characterPrompts = apiCharacters;
-        }
-    }
-    
-    // Get balance before generation
-    const previousBalance = { ...accountBalance };
-    let creditUsage;
-    
-    try {
-        imageCounter.logGeneration();
-        [img] = await client.generateImage(apiOpts, false, true, true);
-        console.log('✅ Image generation completed');
-        
-        // Get new balance and calculate credit usage
-        creditUsage = await calculateCreditUsage(previousBalance);
-        
-        if (creditUsage.totalUsage > 0) {
-            console.log(`💰 Image Generation Cost: ${creditUsage.totalUsage} ${creditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
-        }
-        
-    } catch (error) {
-        throw new Error(`❌ Image generation failed: ${error.message}`);
-    }
-    
-    const timestamp = Date.now().toString();
-    let namePrefix = presetName || 'generated';
-    
-    // Generate filename based on standard generation
-    let name;
-    name = `${timestamp}_${namePrefix}_${seed}.png`;
-    
-    const shouldSave = opts.no_save !== true;
-    
-    if (returnImage) {
-        let buffer = Buffer.from(img.data);
-        
-        // Prepare forge metadata
-        const forgeData = {
-            date_generated: Date.now(),
-            request_type: 'preset',
-            generation_type: 'regular',
-            upscale_ratio: null,
-            upscaled_at: null
-        };
-        
-        // Add disabled characters and character names to forge metadata if present
-
-        if (opts.input_character_prompts) {
-            forgeData.allCharacters = opts.input_character_prompts;
-            forgeData.use_coords = opts.use_coords;
-        } else if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts) && opts.allCharacterPrompts.length > 0) {
-            // Post-process character prompts for forge metadata: replace 1girl/1boy with girl/boy
-            const processedCharacterPrompts = opts.allCharacterPrompts.map(char => ({
-                ...char,
-                prompt: char.prompt.replace(/1girl/g, "girl").replace(/1boy/g, "boy")
-            }));
-            
-            const disabledCharacters = [];
-            const characterNames = [];
-            
-            processedCharacterPrompts.forEach((char, index) => {
-                characterNames.push(char.chara_name);
-                if (!char.enabled) {
-                    disabledCharacters.push({
-                        index: index,
-                        prompt: char.prompt,
-                        uc: char.uc,
-                        center: char.center,
-                        chara_name: char.chara_name
-                    });
-                }
-            });
-            
-            if (disabledCharacters.length > 0) {
-                forgeData.disabledCharacters = disabledCharacters;
-            }
-            if (characterNames.length > 0) {
-                forgeData.characterNames = characterNames;
-            }
-            
-            forgeData.use_coords = opts.use_coords;
-        }
-        
-        // Preserve existing preset_name if it exists, otherwise set new one
-        if (presetName) {
-            forgeData.preset_name = presetName;
-        }
-        
-        if (layer1Seed !== null) {
-            forgeData.layer1_seed = layer1Seed;
-        }
-
-        // Add image source info if applicable
-        if ((opts.action === Action.IMG2IMG || opts.action === Action.INPAINT) && opts.image) {
-            forgeData.generation_type = 'img2img';
-            if (opts.image_source) {
-                forgeData.image_source = opts.image_source;
-            }
-            if (opts.image_bias !== undefined) {
-                forgeData.image_bias = opts.image_bias;
-            }
-            if (opts.mask_compressed !== undefined) {
-                forgeData.mask_compressed = opts.mask_compressed;
-            } else if (opts.mask !== undefined) {
-                forgeData.mask = opts.mask;
-            }
-            if (opts.mask_bias !== undefined ) {
-                forgeData.mask_bias = opts.mask_bias;
-            }
-            if (opts.strength !== undefined) {
-                forgeData.img2img_strength = opts.strength;
-            }
-            if (opts.noise !== undefined) {
-                forgeData.img2img_noise = opts.noise;
-            }
-        }
-        
-        // Save unprocessed input values
-        if (opts.input_prompt !== undefined) {
-            forgeData.input_prompt = opts.input_prompt;
-        }
-        if (opts.input_uc !== undefined) {
-            forgeData.input_uc = opts.input_uc;
-        }
-        // Add new parameters to forge data
-        if (opts.dataset_config !== undefined) {
-            forgeData.dataset_config = opts.dataset_config;
-        }
-        if (opts.append_quality !== undefined) {
-            forgeData.append_quality = opts.append_quality;
-        }
-        if (opts.append_uc !== undefined) {
-            forgeData.append_uc = opts.append_uc;
-        }
-        
-        // Add vibe transfer data to forge data
-        if (opts.vibe_transfer !== undefined) {
-            forgeData.vibe_transfer = opts.vibe_transfer;
-        }
-        if (opts.normalize_vibes !== undefined) {
-            forgeData.normalize_vibes = opts.normalize_vibes;
-        }
-        
-        // Update buffer with forge metadata
-        buffer = updateMetadata(buffer, forgeData);
-        const targetWorkspaceId = workspaceId || getActiveWorkspace(req.session?.id);
-        
-        if (shouldSave) {
-            fs.writeFileSync(path.join(imagesDir, name), buffer);
-            console.log(`💾 Saved: ${name}`);
-            
-            // Add file to workspace
-            addToWorkspaceArray('files', name, targetWorkspaceId);
-            
-            // Update metadata cache
-            const receiptData = {
-                type: 'generation',
-                cost: creditUsage.totalUsage,
-                creditType: creditUsage.usageType,
-                date: Date.now().valueOf()
-            };
-            await updateImageMetadata(name, imagesDir, receiptData);
-            
-            // Broadcast receipt notification
-            broadcastReceiptNotification(receiptData);
-            
-            // Generate preview
-            const baseName = getBaseName(name);
-            const previewFile = getPreviewFilename(baseName);
-            const previewPath = path.join(previewsDir, previewFile);
-            await generatePreview(path.join(imagesDir, name), previewPath);
-            console.log(`📸 Generated preview: ${previewFile}`);
-        }
-        
-        if (opts.upscale !== undefined) {
-            const scale = opts.upscale === true ? 4 : opts.upscale;
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            // Get balance before upscaling
-            const previousBalance = { ...accountBalance };
-            
-            const { width: upscaleWidth, height: upscaleHeight } = await getImageDimensions(buffer);
-            const scaledBuffer = await upscaleImage(buffer, scale, upscaleWidth, upscaleHeight);
-            
-            // Get new balance and calculate credit usage for upscaling
-            const upscaleCreditUsage = await calculateCreditUsage(previousBalance);
-            
-            if (upscaleCreditUsage.totalUsage > 0) {
-                console.log(`💰 Upscaling Cost: ${upscaleCreditUsage.totalUsage} ${upscaleCreditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
-            }
-            
-            // Update upscaled buffer with additional forge metadata
-            const upscaledForgeData = {
-                upscale_ratio: scale,
-                upscaled_at: Date.now(),
-                generation_type: 'upscaled'
-            };
-            const updatedScaledBuffer = updateMetadata(scaledBuffer, upscaledForgeData);
-        
-            if (shouldSave) {
-                const upscaledName = name.replace('.png', '_upscaled.png');
-                fs.writeFileSync(path.join(imagesDir, upscaledName), updatedScaledBuffer);
-                console.log(`💾 Saved: ${upscaledName}`);
-                
-                // Add upscaled file to workspace
-                addToWorkspaceArray('files', upscaledName, targetWorkspaceId);
-                
-                // Update metadata cache for upscaled image
-                const upscaledReceiptData = {
-                    type: 'upscaling',
-                    cost: upscaleCreditUsage.totalUsage,
-                    creditType: upscaleCreditUsage.usageType,
-                    date: Date.now().valueOf()
-                };
-                // Attach receipt to parent image instead of upscaled image
-                await updateImageMetadata(name, imagesDir, upscaledReceiptData);
-                
-                // Broadcast receipt notification
-                broadcastReceiptNotification(upscaledReceiptData);
-                
-                // Update preview with upscaled version
-                const baseName = getBaseName(name);
-                const previewFile = getPreviewFilename(baseName);
-                const previewPath = path.join(previewsDir, previewFile);
-                await generatePreview(path.join(imagesDir, upscaledName), previewPath);
-                console.log(`📸 Updated preview with upscaled version: ${previewFile}`);
-            }
-            
-            // Return result with appropriate seed information
-            const result = { buffer: updatedScaledBuffer, filename: name, saved: shouldSave, seed: seed };
-            return result;
-        }
-        
-        // Return result with appropriate seed information
-        const finalResult = { buffer, filename: name, saved: shouldSave, seed: seed };
-        return finalResult;
-    } else {
-        // Save image and return filename only (legacy behavior)
-        if (shouldSave) {
-            const filePath = path.join(imagesDir, name);
-            await img.save(filePath);
-            console.log(`💾 Saved: ${name}`);
-            
-            // Generate preview
-            const baseName = getBaseName(name);
-            const previewFile = getPreviewFilename(baseName);
-            const previewPath = path.join(previewsDir, previewFile);
-            await generatePreview(path.join(imagesDir, name), previewPath);
-            console.log(`📸 Generated preview: ${previewFile}`);
-        }
-        
-        // Return result with appropriate seed information
-        const result = { filename: name, saved: shouldSave, seed: seed };
-        return result;
-    }
-}
-
-const upscaleImage = async (imageBuffer, scale = 4, width, height) => {
-    const actualScale = scale === true ? 4 : scale;
-    if (actualScale <= 1) {
-        console.log('📏 No upscaling needed (scale <= 1)');
-        return imageBuffer;
-    }
-    
-    
-    // Simple delay for upscaling requests (1 second)
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-        try {
-            const payload = {
-                height,
-                image: imageBuffer.toString('base64'),
-                scale: actualScale,
-                width
-            };
-            
-            const postData = JSON.stringify(payload);
-            const options = {
-                hostname: 'api.novelai.net',
-                port: 443,
-                path: '/ai/upscale',
-                method: 'POST',
-                headers: {
-                    "accept": "*/*",
-                    "accept-language": "en-US,en;q=0.9,en-GB;q=0.8",
-                    "authorization": `Bearer ${config.apiKey}`,
-                    "content-type": "application/json",
-                    "content-length": Buffer.byteLength(postData),
-                    "priority": "u=1, i",
-                    "dnt": "1",
-                    "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Microsoft Edge\";v=\"138\"",
-                    "sec-ch-ua-mobile": "?0",
-                    "sec-ch-ua-platform": "\"macOS\"",
-                    "sec-fetch-dest": "empty",
-                    "sec-fetch-mode": "cors",
-                    "sec-fetch-site": "same-site",
-                    "x-correlation-id": crypto.randomBytes(3).toString('hex').toUpperCase(),
-                    "x-initiated-at": new Date().toISOString(),
-                    "referer": "https://novelai.net/",
-                    "origin": "https://novelai.net",
-                    "sec-gpc": "1",
-                    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
-                }
-            };
-            
-            const zipBuffer = await new Promise((resolve, reject) => {
-                const req = https.request(options, (res) => {
-                    let data = [];
-                    res.on('data', chunk => data.push(chunk));
-                    res.on('end', () => {
-                        const buffer = Buffer.concat(data);
-                        if (res.statusCode === 200) {
-                            resolve(buffer);
-                        } else {
-                            try {
-                                const errorResponse = JSON.parse(buffer.toString());
-                                reject(new Error(`Upscale API error: ${errorResponse.error || 'Unknown error'}`));
-                            } catch (e) {
-                                reject(new Error(`Upscale API error: HTTP ${res.statusCode}`));
-        }
-                        }
-                    });
-                });
-                
-                req.on('error', error => {
-                    console.error('❌ Upscale API request error:', error.message);
-                    reject(error);
-                });
-                
-                req.write(postData);
-                req.end();
-            });
-            
-            // Extract the first file from the ZIP
-            const AdmZip = require('adm-zip');
-            const zip = new AdmZip(zipBuffer);
-            const zipEntries = zip.getEntries();
-            
-            if (zipEntries.length === 0) {
-                throw new Error('ZIP file is empty');
-        }
-        
-            // Get the first file (should be the upscaled PNG)
-            const firstEntry = zipEntries[0];
-            
-            const upscaledBuffer = firstEntry.getData();
-        return upscaledBuffer;
-    } catch (error) {
-        console.error('❌ Upscaling failed:', error.message);
-        return imageBuffer;
-    }
-};
-
-// Helper function for common endpoint logic
-const handleImageRequest = async (req, res, opts, presetName = null) => {
-    const workspaceId = req.body.workspace || req.query.workspace || null;
-    const result = await handleGeneration(opts, true, presetName, workspaceId);
-    
-    // Check if optimization is requested
-    const optimize = req.query.optimize === 'true';
-    
-    let finalBuffer = result.buffer;
-    let contentType = 'image/png';
-    
-    if (optimize) {
-        try {
-            finalBuffer = await sharp(result.buffer)
-                .jpeg({ quality: 75 })
-                .toBuffer();
-            contentType = 'image/jpeg';
-        } catch (error) {
-            console.error('❌ Image optimization failed:', error.message);
-        }
-    }
-    
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename, X-Seed');
-    
-    if (result && result.filename) {
-        res.setHeader('X-Generated-Filename', result.filename);
-    } else {
-        console.error('❌ No filename available in result:', result);
-    }
-    
-    // Add seed to response header
-    if (result && result.seed !== undefined) {
-        res.setHeader('X-Seed', result.seed.toString());
-    }
-    if (req.query.download === 'true') {
-        const extension = optimize ? 'jpg' : 'png';
-        const optimizedFilename = result.filename.replace('.png', `.${extension}`);
-        res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
-    }
-    res.send(finalBuffer);
-}; 
-
-// Enhanced preset handling functions
-function selectPresetItem(presetConfig, modelKey, combinedPrompt, providedId = null) {
-    if (!presetConfig || !presetConfig[modelKey]) {
-        return null;
-    }
-    
-    const modelPresets = presetConfig[modelKey];
-    
-    // Handle simple string/array format (backward compatibility)
-    if (typeof modelPresets === 'string' || (Array.isArray(modelPresets) && typeof modelPresets[0] === 'string')) {
-        if (typeof modelPresets === 'string') {
-            return { value: modelPresets, id: 'default' };
-        } else {
-            const index = Math.min(Math.max(providedId - 1, 0), modelPresets.length - 1) || 0;
-            return { value: modelPresets[index], id: index + 1 };
-        }
-    }
-    
-    // Handle new enhanced format with sub-items
-    if (Array.isArray(modelPresets) && modelPresets.length > 0 && typeof modelPresets[0] === 'object') {
-        // If specific ID provided, find it
-        if (providedId) {
-            const foundItem = modelPresets.find(item => item.id === providedId);
-            if (foundItem) {
-                return { value: foundItem.value, id: foundItem.id, name: foundItem.name };
-            }
-        }
-        
-        // Automatic selection based on tag matching
-        const lowerCombinedPrompt = combinedPrompt.toLowerCase();
-        
-        for (const item of modelPresets) {
-            if (item.match && Array.isArray(item.match)) {
-                for (const matchTag of item.match) {
-                    if (lowerCombinedPrompt.includes(matchTag.toLowerCase())) {
-                        return { value: item.value, id: item.id, name: item.name };
-                    }
-                }
-            }
-        }
-        
-        // Default to first item if no matches found
-        const defaultItem = modelPresets[0];
-        return { value: defaultItem.value, id: defaultItem.id, name: defaultItem.name };
-    }
-    
-    return null;
-}
-
 app.get('/preset/:name', authMiddleware, async (req, res) => {
-    try {
-    const currentPromptConfig = loadPromptConfig();
-    const p = currentPromptConfig.presets[req.params.name];
-    if (!p) {
-        return res.status(404).json({ error: 'Preset not found' });
-    }
-    
-    // Check if force generation is requested
-    const forceGenerate = req.query.forceGenerate === 'true';
-    
-    if (!forceGenerate) {
-        // Try to get cached image
-        const cacheKey = getPresetCacheKey(req.params.name, req.query);
-        const cached = getCachedPreset(cacheKey);
-        
-        if (cached) {
-            console.log('📤 Returning cached image');
-                
-                // Read the cached file from disk
-                const filePath = path.join(imagesDir, cached.filename);
-                const fileBuffer = fs.readFileSync(filePath);
-            
-            // Check if optimization is requested
-            const optimize = req.query.optimize === 'true';
-                let finalBuffer = fileBuffer;
-            let contentType = 'image/png';
-            
-            if (optimize) {
-                try {
-                        finalBuffer = await sharp(fileBuffer)
-                        .jpeg({ quality: 75 })
-                        .toBuffer();
-                    contentType = 'image/jpeg';
-                } catch (error) {
-                    console.error('❌ Image optimization failed:', error.message);
-                }
-            }
-            
-            res.setHeader('Content-Type', contentType);
-            res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename');
-            if (cached && cached.filename) {
-                res.setHeader('X-Generated-Filename', cached.filename);
-            }
-            if (req.query.download === 'true') {
-                const extension = optimize ? 'jpg' : 'png';
-                const optimizedFilename = cached.filename.replace('.png', `.${extension}`);
-                res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
-            }
-            res.send(finalBuffer);
-            return;
-        }
-    }
-    
-    // Build options for generation
-    const opts = await buildOptions(p.model, {}, p, req.query);
-    const workspaceId = req.body.workspace || req.query.workspace || null;
-    let result = await handleGeneration(opts, true, req.params.name, workspaceId);
-    // Cache the result if generation was successful
-    if (!forceGenerate) {
-        const cacheKey = getPresetCacheKey(req.params.name, req.query);
-            setCachedPreset(cacheKey, result.filename);
-    }
-    // Check if optimization is requested
-    const optimize = req.query.optimize === 'true';
-    let finalBuffer = result.buffer;
-    let contentType = 'image/png';
-    if (optimize) {
-        try {
-            finalBuffer = await sharp(result.buffer)
-                .jpeg({ quality: 75 })
-                .toBuffer();
-            contentType = 'image/jpeg';
-        } catch (error) {
-            console.error('❌ Image optimization failed:', error.message);
-            // Fall back to original PNG if optimization fails
-        }
-    }
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename');
-    if (result && result.filename) {
-        res.setHeader('X-Generated-Filename', result.filename);
-    }
-    if (req.query.download === 'true') {
-        const extension = optimize ? 'jpg' : 'png';
-        const optimizedFilename = result.filename.replace('.png', `.${extension}`);
-        res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
-    }
-    res.send(finalBuffer);
-    } catch(e) {
-        console.error('❌ Error occurred:', e);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.options('/preset/:name', authMiddleware, async (req, res) => {
     try {
         const currentPromptConfig = loadPromptConfig();
         const p = currentPromptConfig.presets[req.params.name];
@@ -3395,251 +947,88 @@ app.options('/preset/:name', authMiddleware, async (req, res) => {
             return res.status(404).json({ error: 'Preset not found' });
         }
         
-        // Return the raw preset data without processing text replacements
-        res.json({
-            name: req.params.name,
-            prompt: (p.prompt !== undefined ? p.prompt : ''),
-            uc: (p.uc !== undefined ? p.uc : ''),
-            model: (p.model !== undefined ? p.model : 'v4_5'),
-            resolution: (p.resolution !== undefined ? p.resolution : 'normal_portrait'),
-            steps: (p.steps !== undefined ? p.steps : 25),
-            guidance: (p.guidance !== undefined ? p.guidance : 5.0),
-            rescale: (p.rescale !== undefined ? p.rescale : 0.0),
-            seed: p.seed || undefined,
-            sampler: p.sampler || undefined,
-            noiseScheduler: p.noiseScheduler || undefined,
-            upscale: (p.upscale !== undefined ? p.upscale : false),
-            allow_paid: (p.allow_paid !== undefined ? p.allow_paid : false),
-            variety: (p.variety !== undefined ? p.variety : false),
-            image: p.image || undefined,
-            strength: (p.strength !== undefined ? p.strength : undefined),
-            noise: (p.noise !== undefined ? p.noise : undefined),
-            image_bias: (p.image_bias !== undefined ? p.image_bias : undefined),
-            mask: p.mask || undefined,
-            mask_compressed: p.mask_compressed || undefined,
-            mask_bias: (p.mask_bias !== undefined ? p.mask_bias : undefined),
-            characterPrompts: (p.characterPrompts !== undefined ? p.characterPrompts : []),
-            allCharacterPrompts: (p.allCharacterPrompts !== undefined ? p.allCharacterPrompts : []),
-            use_coords: p.use_coords || false,
-            width: (p.width !== undefined ? p.width : undefined),
-            height: (p.height !== undefined ? p.height : undefined),
-            image_source: (p.image_source !== undefined ? p.image_source : undefined)
-        });
-    } catch(e) {
-        console.error('❌ Error occurred:', e);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.put('/preset/:name', authMiddleware, async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const presetName = req.params.name;
-        const presetData = req.body;
-
-        if (!presetName || !presetData.prompt || !presetData.model) {
-            return res.status(400).json({ error: 'Preset name, prompt, and model are required' });
-        }
-
-        const currentPromptConfig = loadPromptConfig();
-
-        // Only set default if value is missing (null or undefined)
-        function withDefault(val, def) {
-            return (val === undefined || val === null) ? def : val;
-        }
-
-        currentPromptConfig.presets[presetName] = {
-            prompt: presetData.prompt,
-            uc: withDefault(presetData.uc, ''),
-            model: presetData.model,
-            resolution: withDefault(presetData.resolution, ''),
-            steps: withDefault(presetData.steps, 25),
-            guidance: withDefault(presetData.guidance, 5.0),
-            rescale: withDefault(presetData.rescale, 0.0),
-            seed: withDefault(presetData.seed, undefined),
-            sampler: withDefault(presetData.sampler, undefined),
-            noiseScheduler: withDefault(presetData.noiseScheduler, undefined),
-            upscale: withDefault(presetData.upscale, undefined),
-            allow_paid: withDefault(presetData.allow_paid, false),
-            variety: withDefault(presetData.variety, false),
-            image: withDefault(presetData.image, undefined),
-            strength: withDefault(presetData.strength, 0.8),
-            noise: withDefault(presetData.noise, 0.1),
-            image_bias: withDefault(presetData.image_bias, undefined),
-            mask: withDefault(presetData.mask, undefined),
-            mask_compressed: withDefault(presetData.mask_compressed, undefined),
-            characterPrompts: withDefault(presetData.allCharacterPrompts, withDefault(presetData.characterPrompts, [])),
-            use_coords: withDefault(presetData.use_coords, false),
-            width: withDefault(presetData.width, undefined),
-            height: withDefault(presetData.height, undefined),
-            image_source: withDefault(presetData.image_source, undefined)
-        };
-
-        fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
-
-        console.log(`💾 Saved new preset: ${presetName}`);
-
-        res.json({ success: true, message: `Preset "${presetName}" saved successfully` });
-
-    } catch(e) {
-        console.error('❌ Error occurred in preset save:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.get('/preset/:name/:resolution', authMiddleware, async (req, res) => {
-    try {
-    const currentPromptConfig = loadPromptConfig();
-    const p = currentPromptConfig.presets[req.params.name];
-    if (!p) {
-        return res.status(404).json({ error: 'Preset not found' });
-    }
-    
-    const resolution = req.params.resolution;
-    if (!Resolution[resolution.toUpperCase()]) {
-        return res.status(400).json({ error: 'Invalid resolution' });
-    }
-    
-    // Check if force generation is requested
-    const forceGenerate = req.query.forceGenerate === 'true';
-    
-    if (!forceGenerate) {
-        // Try to get cached image
-        const cacheKey = getPresetCacheKey(req.params.name, { ...req.query, resolution });
-        const cached = getCachedPreset(cacheKey);
+        // Check if force generation is requested
+        const forceGenerate = req.query.forceGenerate === 'true';
         
-        if (cached) {
-            console.log('📤 Returning cached image');
-                
+        if (!forceGenerate) {
+            // Try to get cached image
+            const cacheKey = getPresetCacheKey(req.params.name, req.query);
+            const cached = getCachedPreset(cacheKey);
+            
+            if (cached) {
+                console.log('📤 Returning cached image');
+                    
                 // Read the cached file from disk
                 const filePath = path.join(imagesDir, cached.filename);
                 const fileBuffer = fs.readFileSync(filePath);
-            
-            // Check if optimization is requested
-            const optimize = req.query.optimize === 'true';
-                let finalBuffer = fileBuffer;
-            let contentType = 'image/png';
-            
-            if (optimize) {
-                try {
+                
+                // Check if optimization is requested
+                const optimize = req.query.optimize === 'true';
+                    let finalBuffer = fileBuffer;
+                let contentType = 'image/png';
+                
+                if (optimize) {
+                    try {
                         finalBuffer = await sharp(fileBuffer)
                         .jpeg({ quality: 75 })
                         .toBuffer();
-                    contentType = 'image/jpeg';
-                } catch (error) {
-                    console.error('❌ Image optimization failed:', error.message);
+                        contentType = 'image/jpeg';
+                    } catch (error) {
+                        console.error('❌ Image optimization failed:', error.message);
+                    }
                 }
+                
+                res.setHeader('Content-Type', contentType);
+                res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename');
+                if (cached && cached.filename) {
+                    res.setHeader('X-Generated-Filename', cached.filename);
+                }
+                if (req.query.download === 'true') {
+                    const extension = optimize ? 'jpg' : 'png';
+                    const optimizedFilename = cached.filename.replace('.png', `.${extension}`);
+                    res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+                }
+                res.send(finalBuffer);
+                return;
             }
-            
-            res.setHeader('Content-Type', contentType);
-            res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename');
-            if (cached && cached.filename) {
-                res.setHeader('X-Generated-Filename', cached.filename);
+        }
+        
+        console.log('🔍 Building options for preset:', p);
+        const opts = await buildOptions(p, null, req.query);
+        const workspaceId = req.body.workspace || req.query.workspace || null;
+        let result = await handleGeneration(opts, true, req.params.name, workspaceId);
+        // Cache the result if generation was successful
+        if (!forceGenerate) {
+            const cacheKey = getPresetCacheKey(req.params.name, req.query);
+        setCachedPreset(cacheKey, result.filename);
+        }
+        
+        // Check if optimization is requested
+        const optimize = req.query.optimize === 'true';
+        let finalBuffer = result.buffer;
+        let contentType = 'image/png';
+        if (optimize) {
+            try {
+                finalBuffer = await sharp(result.buffer)
+                    .jpeg({ quality: 75 })
+                    .toBuffer();
+                contentType = 'image/jpeg';
+            } catch (error) {
+                console.error('❌ Image optimization failed:', error.message);
+                // Fall back to original PNG if optimization fails
             }
-            if (req.query.download === 'true') {
-                const extension = optimize ? 'jpg' : 'png';
-                const optimizedFilename = cached.filename.replace('.png', `.${extension}`);
-                res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
-            }
-            res.send(finalBuffer);
-            return;
         }
-    }
-    
-    const bodyOverrides = { resolution };
-    // Build options for generation
-    const opts = await buildOptions(p.model, bodyOverrides, p, req.query);
-    const workspaceId = req.body.workspace || req.query.workspace || null;
-    let result = await handleGeneration(opts, true, req.params.name, workspaceId);
-    // Cache the result if generation was successful
-    if (!forceGenerate) {
-        const cacheKey = getPresetCacheKey(req.params.name, { ...req.query, resolution });
-            setCachedPreset(cacheKey, result.filename);
-    }
-    // Check if optimization is requested
-    const optimize = req.query.optimize === 'true';
-    let finalBuffer = result.buffer;
-    let contentType = 'image/png';
-    if (optimize) {
-        try {
-            finalBuffer = await sharp(result.buffer)
-                .jpeg({ quality: 75 })
-                .toBuffer();
-            contentType = 'image/jpeg';
-        } catch (error) {
-            console.error('❌ Image optimization failed:', error.message);
-            // Fall back to original PNG if optimization fails
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename');
+        if (result && result.filename) {
+            res.setHeader('X-Generated-Filename', result.filename);
         }
-    }
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename');
-    if (result && result.filename) {
-        res.setHeader('X-Generated-Filename', result.filename);
-    }
-    if (req.query.download === 'true') {
-        const extension = optimize ? 'jpg' : 'png';
-        const optimizedFilename = result.filename.replace('.png', `.${extension}`);
-        res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
-    }
-    res.send(finalBuffer);
-    } catch(e) {
-        console.error('❌ Error occurred:', e);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-
-// GET /balance (get balance information)
-app.get('/balance', authMiddleware, async (req, res) => {
-    try {
-        const balance = await getBalance();
-        res.json(balance);
-    } catch(e) {
-        console.error('❌ Error getting balance:', e);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// POST /:model/prompt (direct model, body)
-app.post('/:model/prompt', authMiddleware, async (req, res) => {
-    try {
-    const key = req.params.model.toLowerCase();
-    const model = Model[key.toUpperCase()];
-    if (!model) return res.status(400).json({ error: 'Invalid model' });
-    const opts = await buildOptions(key, req.body, null, req.query);
-    res.json({ prompt: opts.prompt, uc: opts.negative_prompt });
-    } catch(e) {
-        console.error('❌ Error occurred:', e);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// POST /:model/generate (direct model generation)
-app.post('/:model/generate', authMiddleware, queueMiddleware, async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const key = req.params.model.toLowerCase();
-        const model = Model[key.toUpperCase()];
-        if (!model) {
-            return res.status(400).json({ error: 'Invalid model' });
+        if (req.query.download === 'true') {
+            const extension = optimize ? 'jpg' : 'png';
+            const optimizedFilename = result.filename.replace('.png', `.${extension}`);
+            res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
         }
-
-        let body = req.body;
-        let baseFilename = null;
-
-        const opts = await buildOptions(key, body, null, req.query);
-        // Add original filename for metadata tracking if this is img2img and not a frontend upload
-        if (body.image && !body.is_frontend_upload) {
-            opts.original_filename = baseFilename;
-        }
-        const presetName = req.body.preset || null;
-        await handleImageRequest(req, res, opts, presetName);
+        res.send(finalBuffer);
     } catch(e) {
         console.error('❌ Error occurred:', e);
         res.status(500).json({ error: e.message });
@@ -3673,6 +1062,9 @@ async function initializeCache() {
         console.error('❌ Error loading tag suggestions cache:', error.message);
         process.exit(1);
     }
+
+    console.log('🔄 Syncing previews...');
+    await syncPreviews();
 
     // Initialize account data
     await initializeAccountData();
@@ -3795,11 +1187,17 @@ app.post('/workspaces/:id/images', authMiddleware, upload.array('images', 10), a
                 
                 // Generate preview
                 const baseName = getBaseName(filename);
-                const previewFile = getPreviewFilename(baseName);
+                const previewFile = `${baseName}.jpg`
+                const blurPreviewFile = `${baseName}_blur.jpg`;
                 const previewPath = path.join(previewsDir, previewFile);
+                const blurPreviewPath = path.join(previewsDir, blurPreviewFile);
                 
                 await generatePreview(filePath, previewPath);
                 console.log(`📸 Generated preview: ${previewFile}`);
+                
+                // Generate blurred preview
+                await generateBlurredPreview(filePath, blurPreviewPath);
+                console.log(`📸 Generated blurred preview: ${blurPreviewFile}`);
                 
                 // Add basic forge metadata for uploaded image
                 const imageBuffer = fs.readFileSync(filePath);
@@ -3849,252 +1247,6 @@ app.post('/workspaces/:id/images', authMiddleware, upload.array('images', 10), a
     }
 });
 
-// List cache files for browsing with workspace filtering
-app.options('/references', authMiddleware, (req, res) => {
-    try {
-        // Get cache files for active workspace (includes default + active workspace)
-        const sessionId = req.session?.id;
-        const workspaceCacheFiles = getActiveWorkspaceCacheFiles(null, sessionId);
-        
-        // Get all files in cache directory
-        const allFiles = fs.readdirSync(uploadCacheDir);
-        
-        // Filter to only include files that belong to the current workspace
-        const files = allFiles.filter(file => workspaceCacheFiles.includes(file));
-        
-        const cacheFiles = [];
-        
-        for (const file of files) {
-            const filePath = path.join(uploadCacheDir, file);
-            const stats = fs.statSync(filePath);
-            const previewPath = path.join(previewCacheDir, `${file}.webp`);
-            
-            // Determine which workspace this file belongs to
-            const workspaces = getWorkspacesData();
-            const activeWorkspaceId = getActiveWorkspace(sessionId);
-            let workspaceId = 'default';
-            if (activeWorkspaceId !== 'default' && workspaces[activeWorkspaceId] && workspaces[activeWorkspaceId].cacheFiles.includes(file)) {
-                workspaceId = activeWorkspaceId;
-            }
-            
-            cacheFiles.push({
-                hash: file,
-                filename: file,
-                mtime: stats.mtime.valueOf(),
-                size: stats.size,
-                hasPreview: fs.existsSync(previewPath),
-                workspaceId: workspaceId
-            });
-        }
-        
-        // Sort by newest first
-        cacheFiles.sort((a, b) => b.mtime - a.mtime);
-        res.json(cacheFiles);
-    } catch (error) {
-        console.error('Error reading cache directory:', error);
-        res.status(500).json({ error: 'Failed to load cache files' });
-    }
-});
-// List cache files for browsing with workspace filtering
-app.options('/workspaces/:id/references', authMiddleware, (req, res) => {
-    try {
-        // Get cache files for active workspace (includes default + active workspace)
-        const workspaceCacheFiles = getActiveWorkspaceCacheFiles(req.params.id);
-        
-        // Get all files in cache directory
-        const allFiles = fs.readdirSync(uploadCacheDir);
-        
-        // Filter to only include files that belong to the current workspace
-        const files = allFiles.filter(file => workspaceCacheFiles.includes(file));
-        
-        const cacheFiles = [];
-        
-        for (const file of files) {
-            const filePath = path.join(uploadCacheDir, file);
-            const stats = fs.statSync(filePath);
-            const previewPath = path.join(previewCacheDir, `${file}.webp`);
-            
-            cacheFiles.push({
-                hash: file,
-                filename: file,
-                mtime: stats.mtime.valueOf(),
-                size: stats.size,
-                hasPreview: fs.existsSync(previewPath)
-            });
-        }
-        
-        // Sort by newest first
-        cacheFiles.sort((a, b) => b.mtime - a.mtime);
-        res.json(cacheFiles);
-    } catch (error) {
-        console.error('Error reading cache directory:', error);
-        res.status(500).json({ error: 'Failed to load cache files' });
-    }
-});
-// Delete cache file
-app.delete('/workspaces/:id/references/:hash', authMiddleware, (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const hash = req.params.hash;
-        const filePath = path.join(uploadCacheDir, hash);
-        const previewPath = path.join(previewCacheDir, `${hash}.webp`);
-        
-        // Check if file exists
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: 'Cache file not found' });
-        }
-        
-        // Delete main file
-        fs.unlinkSync(filePath);
-        
-        // Delete preview if it exists
-        if (fs.existsSync(previewPath)) {
-            fs.unlinkSync(previewPath);
-        }
-
-        removeFromWorkspaceArray('cacheFiles', hash, req.params.id);
-        
-        res.json({ success: true });
-        console.log(`✅ Cache file deleted: ${hash}\n`);
-    } catch(e) {
-        console.error('❌ Error occurred:', e);
-        res.status(500).json({ error: e.message });
-    }
-});
-// PUT /workspaces/:id/references (move cache files to workspace)
-app.put('/workspaces/:id/references', authMiddleware, (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        const { id } = req.params;
-        const { hashes } = req.body;
-        
-        if (!Array.isArray(hashes) || hashes.length === 0) {
-            return res.status(400).json({ error: 'Hashes array is required' });
-        }
-        
-        const movedCount = moveToWorkspaceArray('cacheFiles', hashes, id);
-        res.json({ success: true, message: `Moved ${movedCount} cache files to workspace`, movedCount });
-    } catch (error) {
-        console.error('❌ Error moving cache files to workspace:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-// POST /upload/:id/references (upload base image to cache)
-app.post('/workspaces/:id/references', authMiddleware, cacheUpload.single('image'), async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    const { id } = req.params;
-    try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No image file provided' });
-        }
-
-        const imageBuffer = req.file.buffer;
-        const hash = crypto.createHash('md5').update(imageBuffer).digest('hex');
-        const uploadPath = path.join(uploadCacheDir, hash);
-        const previewPath = path.join(previewCacheDir, `${hash}.webp`);
-
-        // Check if file already exists
-        if (fs.existsSync(uploadPath) && fs.existsSync(previewPath)) {
-            console.log(`✅ Cache hit for uploaded image: ${hash}`);
-            return res.json({ success: true, hash: hash });
-        }
-
-        // Save original image to upload cache
-        fs.writeFileSync(uploadPath, imageBuffer);
-        console.log(`💾 Saved to upload cache: ${hash}`);
-
-        // Add cache file to workspace
-        addToWorkspaceArray('cacheFiles', hash, id);
-
-        // Generate and save preview
-        await sharp(imageBuffer)
-            .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
-            .webp({ quality: 80 })
-            .toFile(previewPath);
-        console.log(`📸 Generated cached preview: ${hash}.webp`);
-        
-        res.json({ success: true, hash: hash });
-
-    } catch (e) {
-        console.error('❌ Base image upload error:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// POST /workspaces/:id/references/copy (copy existing image to cache)
-app.post('/workspaces/:id/references/copy', authMiddleware, async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    const { id } = req.params;
-    const { filename } = req.body;
-    
-    try {
-        if (!filename) {
-            return res.status(400).json({ error: 'Filename is required' });
-        }
-
-        // Determine the source image path
-        let sourcePath;
-        if (filename.includes('_upscaled')) {
-            // This is an upscaled image
-            sourcePath = path.join(upscaledDir, filename);
-        } else {
-            // This is a regular generated image
-            sourcePath = path.join(imagesDir, filename);
-        }
-
-        // Check if source file exists
-        if (!fs.existsSync(sourcePath)) {
-            return res.status(404).json({ error: 'Source image not found' });
-        }
-
-        // Read the image file
-        const imageBuffer = fs.readFileSync(sourcePath);
-        const hash = crypto.createHash('md5').update(imageBuffer).digest('hex');
-        const uploadPath = path.join(uploadCacheDir, hash);
-        const previewPath = path.join(previewCacheDir, `${hash}.webp`);
-
-        // Check if file already exists in cache
-        if (fs.existsSync(uploadPath) && fs.existsSync(previewPath)) {
-            console.log(`✅ Cache hit for copied image: ${hash}`);
-            // Still add to workspace if not already there
-            addToWorkspaceArray('cacheFiles', hash, id);
-            return res.json({ success: true, hash: hash });
-        }
-
-        // Copy original image to upload cache
-        fs.writeFileSync(uploadPath, imageBuffer);
-        console.log(`💾 Copied to upload cache: ${hash}`);
-
-        // Add cache file to workspace
-        addToWorkspaceArray('cacheFiles', hash, id);
-
-        // Generate and save preview
-        await sharp(imageBuffer)
-            .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
-            .webp({ quality: 80 })
-            .toFile(previewPath);
-        console.log(`📸 Generated cached preview: ${hash}.webp`);
-        
-        res.json({ success: true, hash: hash });
-
-    } catch (e) {
-        console.error('❌ Base image copy error:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
 // Create context object for search functionality
 const searchContext = {
     Model: Model,
@@ -4115,6 +1267,23 @@ const wsServer = new WebSocketServer(server, sessionStore, async (ws, message, c
     await wsMessageHandlers.handleMessage(ws, message, clientInfo, wsServer);
 });
 setGlobalWsServer(wsServer);
+
+
+// Set context with all required functions
+setImageGenContext({
+    client,
+    calculateCreditUsage: calculateCreditUsage,
+    addToWorkspaceArray: addToWorkspaceArray,
+    addReceiptMetadata: addReceiptMetadata,
+    broadcastReceiptNotification: broadcastReceiptNotification,
+    getActiveWorkspace: getActiveWorkspace
+});
+
+setUpscaleContext({
+    config,
+    addToWorkspaceArray: addToWorkspaceArray,
+    getActiveWorkspace: getActiveWorkspace
+});
 
 // Start ping interval with server data callback
 wsServer.startPingInterval(() => {
@@ -4159,6 +1328,15 @@ function clearTempDownloads() {
     
     // Clear temp downloads on startup
     clearTempDownloads();
+    
+    // Generate login sprite sheet on startup
+    try {
+        console.log('🎨 Generating login sprite sheet on startup...');
+        await generateLoginSpriteSheet();
+    } catch (error) {
+        console.error('❌ Failed to generate login sprite sheet on startup:', error.message);
+        console.log('⚠️ Server will continue without sprite sheet, it will be generated on first login access');
+    }
     
     server.listen(config.port, () => console.log(`Server running on port ${config.port}`));
 })();
