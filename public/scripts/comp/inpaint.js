@@ -1198,7 +1198,7 @@ function openMaskEditor() {
     }
 
     // Show the dialog
-    maskEditorDialog.style.display = 'block';
+    maskEditorDialog.style.display = 'flex';
 
     // Add global event listeners for continuous drawing
     document.addEventListener('mouseup', handleGlobalMouseUp);

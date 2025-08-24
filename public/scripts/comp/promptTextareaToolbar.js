@@ -89,6 +89,13 @@ class PromptTextareaToolbar {
         if (toolbar) {
             toolbar.classList.remove('hidden');
             this.updateTokenCount(textarea);
+            
+            // Add direct emphasis keyboard listener if not already added
+            if (!toolbar.hasAttribute('data-direct-emphasis-listener-added')) {
+                this.addDirectEmphasisKeyboardListener(textarea, toolbar);
+                toolbar.setAttribute('data-direct-emphasis-listener-added', 'true');
+            }
+            
             // Adjust container height to account for toolbar
             if (window.autoResizeTextarea) {
                 setTimeout(() => window.autoResizeTextarea(textarea), 10);
@@ -1185,7 +1192,7 @@ class PromptTextareaToolbar {
         }
     }
 
-    addEmphasisKeyboardListener(textarea, toolbar) {
+    addEmphasisKeyboardListener(textarea, toolbar) {        
         const keydownHandler = (e) => {
             // Only handle keys when in emphasis mode
             if (!toolbar.classList.contains('emphasis-mode')) {
@@ -1214,7 +1221,7 @@ class PromptTextareaToolbar {
                     e.preventDefault();
                     const integerValue = parseInt(e.key);
                     if (window.emphasisEditingValue !== undefined) {
-                        window.emphasisEditingValue = integerValue.toFixed(1);
+                        window.emphasisEditingValue = integerValue;
                         this.updateEmphasisDisplay(toolbar);
                     }
                     break;
@@ -1253,12 +1260,169 @@ class PromptTextareaToolbar {
         toolbar.emphasisKeydownHandler = keydownHandler;
         textarea.addEventListener('keydown', keydownHandler);
     }
+    
+    addDirectEmphasisKeyboardListener(textarea, toolbar) {        
+        // Add a separate listener for direct emphasis application when NOT in emphasis mode
+        const directEmphasisHandler = (e) => {
+            // Early return for non-numeric keys to improve efficiency
+            if (e.key < '0' || e.key > '9' || (e.altKey && (e.key === '™' || e.key === '¡'))) {
+                return;
+            }
+            
+            // Only handle when NOT in emphasis mode and textarea is focused
+            if (toolbar.classList.contains('emphasis-mode') || document.activeElement !== textarea) {
+                return;
+            }
+            
+            // Check if there's selected text and apply emphasis directly
+            if (textarea && textarea.selectionStart !== textarea.selectionEnd) {
+                e.preventDefault(); // Only prevent default when we're actually doing something
+                
+                // Handle alt + number for negative values
+                const isAltPressed = e.altKey;
+                
+                let numericValue = (e.key === '™') ? 1 : (e.key === '¡') ? 2 : parseInt(e.key);
+                
+                // Check for second number input within 500ms for decimal values
+                const now = Date.now();
+                const lastNumberTime = toolbar.lastNumberTime || 0;
+                const lastNumberValue = toolbar.lastNumberValue || 0;
+                
+                if (now - lastNumberTime < 500 && lastNumberValue >= 0 && lastNumberValue <= 9) {
+                    // Second number within 500ms - use as decimal
+                    numericValue = lastNumberValue + (numericValue / 10);
+                }
+                
+                // Apply alt modifier for negative values
+                if (isAltPressed) {
+                    numericValue = -numericValue;
+                }
+                
+                // Store current number for potential decimal input
+                toolbar.lastNumberTime = now;
+                toolbar.lastNumberValue = parseInt(e.key);
+                
+                // Clear decimal state after 500ms
+                setTimeout(() => {
+                    if (toolbar.lastNumberTime === now) {
+                        toolbar.lastNumberValue = null;
+                    }
+                }, 500);
+                                
+                if (window.applyEmphasisDirectly) {
+                    // Auto-detect emphasis mode based on context
+                    const currentMode = this.detectEmphasisMode(textarea, textarea.selectionStart, textarea.selectionEnd);
+                    const result = window.applyEmphasisDirectly(textarea, numericValue, currentMode);
+
+                    if (result && result.success) {
+                        // Update the emphasis value for future use
+                        window.emphasisEditingValue = numericValue;
+                        this.updateEmphasisDisplay(toolbar);
+                        
+                        // Reselect the emphasized text so user can see what was emphasized
+                        setTimeout(() => {
+                            if (result.start !== undefined && result.end !== undefined) {
+                                textarea.setSelectionRange(result.start, result.end);
+                            }
+                        }, 10);
+                        
+                        return;
+                    }
+                }
+            }
+            // If no text selected, don't prevent default - allow normal typing
+        };
+        
+        // Store the handler reference for cleanup
+        toolbar.directEmphasisKeydownHandler = directEmphasisHandler;
+        textarea.addEventListener('keydown', directEmphasisHandler);
+    }
+    
+    detectEmphasisMode(textarea, selectionStart, selectionEnd) {
+        const value = textarea.value;
+        
+        // Find the current tag boundaries (separated by commas)
+        const beforeSelection = value.substring(0, selectionStart);
+        const afterSelection = value.substring(selectionEnd);
+        
+        // Find the start of the current tag (look backwards for comma or start of line)
+        let tagStart = selectionStart;
+        while (tagStart > 0) {
+            const char = value[tagStart - 1];
+            if (char === ',') {
+                break;
+            }
+            tagStart--;
+        }
+        
+        // Find the end of the current tag (look forwards for comma or end of line)
+        let tagEnd = selectionEnd;
+        while (tagEnd < value.length) {
+            const char = value[tagEnd];
+            if (char === ',') {
+                break;
+            }
+            tagEnd++;
+        }
+        
+        // Extract the current tag content
+        const currentTag = value.substring(tagStart, tagEnd).trim();
+        
+        // Check if the current tag already has emphasis or braces
+        const hasExistingEmphasis = /(-?\d+\.\d+)::/.test(currentTag);
+        const hasExistingBraces = /\{|\[|\}|\]/.test(currentTag);
+        
+        if (hasExistingEmphasis) {
+            return 'normal';
+        }
+        
+        if (hasExistingBraces) {
+            return 'brace';
+        }
+        
+        // Check if we're inside an existing emphasis block (but only within the current tag)
+        const emphasisPattern = /(-?\d+\.\d+)::([^:]+)::/g;
+        let emphasisMatch;
+        
+        while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
+            const emphasisStart = emphasisMatch.index;
+            const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
+            
+            // Only check if emphasis block is within our current tag
+            if (emphasisStart >= tagStart && emphasisEnd <= tagEnd) {
+                // Check if our selection overlaps with this emphasis block
+                if (selectionStart < emphasisEnd && selectionEnd > emphasisStart) {
+                    return 'normal';
+                }
+            }
+        }
+        
+        // Check if we're inside brace blocks (but only within the current tag)
+        const bracePattern = /\{([^}]*)\}|\[([^\]]*)\]/g;
+        let braceMatch;
+        
+        while ((braceMatch = bracePattern.exec(value)) !== null) {
+            const braceStart = braceMatch.index;
+            const braceEnd = braceMatch.index + braceMatch[0].length;
+            
+            // Only check if brace block is within our current tag
+            if (braceStart >= tagStart && braceEnd <= tagEnd) {
+                // Check if our selection overlaps with this brace block
+                if (selectionStart < braceEnd && selectionEnd > braceStart) {
+                    return 'brace';
+                }
+            }
+        }
+        
+        // Default to normal mode - only use brace mode if explicitly needed
+        return 'normal';
+    }
 
     closeEmphasisMode(toolbar) {
         // Remove emphasis mode class
         toolbar.classList.remove('emphasis-mode');
         
-        // Remove keyboard listener
+        // Remove emphasis mode keyboard listener only
         if (toolbar.emphasisKeydownHandler) {
             const textarea = this.getTextareaFromToolbar(toolbar);
             if (textarea) {

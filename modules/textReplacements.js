@@ -1,9 +1,14 @@
 const fs = require('fs');
 const path = require('path');
-const { getPresetCacheKey, getCachedPreset } = require('./cache');
+const crypto = require('crypto');
 const SpellChecker = require('./spellChecker');
 const FurryTagSearch = require('./furryTagSearch');
 const AnimeTagSearch = require('./animeTagSearch');
+
+// Generate UUID for presets
+function generateUUID() {
+    return crypto.randomUUID();
+}
 
 // Load character data for auto-complete
 let characterDataArray = [];
@@ -38,6 +43,28 @@ function loadPromptConfig() {
             const configData = fs.readFileSync(promptConfigPath, 'utf8');
             promptConfig = JSON.parse(configData);
             promptConfigLastModified = stats.mtime.getTime();
+            
+            // Ensure all presets have UUIDs and target_workspace
+            if (promptConfig.presets) {
+                let configChanged = false;
+                Object.keys(promptConfig.presets).forEach(presetName => {
+                    const preset = promptConfig.presets[presetName];
+                    if (!preset.uuid) {
+                        preset.uuid = generateUUID();
+                        configChanged = true;
+                    }
+                    if (!preset.target_workspace) {
+                        preset.target_workspace = 'default';
+                        configChanged = true;
+                    }
+                });
+                
+                // Save the updated config if changes were made
+                if (configChanged) {
+                    console.log('🔧 Updating presets with UUIDs and target_workspace...');
+                    savePromptConfig(promptConfig);
+                }
+            }
         } catch (error) {
             console.error('❌ Error reloading prompt config:', error.message);
             if (!promptConfig) {
@@ -151,7 +178,6 @@ const getUsedReplacements = (text, model = null) => {
     
     return usedKeys;
 };
-
 // Search functionality module
 class SearchService {
     constructor(context = {}) {
@@ -159,17 +185,254 @@ class SearchService {
         this.furryTagSearch = new FurryTagSearch();
         this.animeTagSearch = new AnimeTagSearch();
         this.context = context;
-        this.lastRequestTime = 0;
-        this.requestQueue = [];
-        this.isProcessingQueue = false;
+        
+        // Session-based rate limiting with rolling window
+        this.sessionRateLimiters = new Map(); // Track rate limiters by session ID
+        this.requestThrottleMs = 1000; // 1000ms between completed requests
+        
+        // Start cleanup timer for old session rate limiters
+        setInterval(() => {
+            this.cleanupOldSessionRateLimiters();
+        }, 60000); // Clean up every minute
     }
 
     setContext(context) {
         this.context = context;
     }
+    
+    // Session+Model-based rate limiting with rolling window
+    getOrCreateSessionModelRateLimiter(sessionId, model) {
+        const key = `${sessionId}_${model}`;
+        if (!this.sessionRateLimiters.has(key)) {
+            this.sessionRateLimiters.set(key, {
+                sessionId,
+                model,
+                lastCompletedRequest: 0,
+                isProcessing: false,
+                latestQuery: null,
+                pendingRequest: null // Only track the latest pending request
+            });
+        }
+        return this.sessionRateLimiters.get(key);
+    }
+
+    // Simple rate limiting: Only process the last request, discard expired ones
+    async throttleTagRequest(sessionId, query, model, requestId, ws = null) {
+        // Validate sessionId
+        if (!sessionId || sessionId === 'null' || sessionId === 'undefined' || !ws) {
+            console.error(`❌ Invalid sessionId: ${sessionId} for query "${query}" on model ${model}`);
+            throw new Error('Invalid session ID provided');
+        }
+
+        const rateLimiter = this.getOrCreateSessionModelRateLimiter(sessionId, model);
+        const now = Date.now();
+        
+        // Update the latest query for this session+model combination
+        if (rateLimiter.latestQuery !== query) {
+            console.log(`🔄 Updating latest query for ${model}: "${rateLimiter.latestQuery || 'none'}" → "${query}"`);
+        }
+        rateLimiter.latestQuery = query;
+        
+        // Cancel any existing pending request for this session+model combination
+        if (rateLimiter.pendingRequest) {
+            console.log(`❌ Cancelling expired request for ${model}: "${rateLimiter.pendingRequest.query}" (newer query: "${query}")`);
+            rateLimiter.pendingRequest.abortController.abort();
+            rateLimiter.pendingRequest = null;
+        }
+        
+        // Cancel any existing stalled request for this session+model combination
+        if (rateLimiter.stalledAbortController) {
+            rateLimiter.stalledAbortController.abort();
+            if (rateLimiter.pendingReject) {
+                rateLimiter.pendingReject(new Error('Request was superseded by a newer search'));
+            }
+            // Clean up stalled request info
+            rateLimiter.stalledAbortController = null;
+            rateLimiter.pendingResolve = null;
+            rateLimiter.pendingReject = null;
+            rateLimiter.pendingQuery = null;
+            rateLimiter.pendingWs = null;
+            rateLimiter.pendingRequestId = null;
+        }
+        
+        // Check if we can process this request immediately
+        const timeSinceLastCompleted = now - rateLimiter.lastCompletedRequest;
+        const canProcessImmediately = !rateLimiter.isProcessing && timeSinceLastCompleted >= this.requestThrottleMs;
+        
+        if (canProcessImmediately) {
+            // Can process immediately
+            console.log(`🚀 Processing latest request for ${model}: "${query}" (no delay needed)`);
+            rateLimiter.isProcessing = true;
+            rateLimiter.pendingRequest = {
+                requestId,
+                query,
+                model,
+                timestamp: now,
+                abortController: new AbortController()
+            };
+            
+            return rateLimiter.pendingRequest.abortController.signal;
+        } else {
+            // Cannot process immediately - wait for the required delay
+            // This ensures we only process the last request after the delay
+            const delay = this.requestThrottleMs - timeSinceLastCompleted;
+            console.log(`⏳ Delaying latest request for ${model}: "${query}" (${delay}ms delay)`);
+            
+            // Create an AbortController for this request
+            const abortController = new AbortController();
+            
+            // Wait for the delay, then check if this is still the latest request
+            await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    // Check if this request is still the latest one
+                    if (rateLimiter.latestQuery === query) {
+                        console.log(`✅ Processing delayed latest request for ${model}: "${query}" (still the latest)`);
+                        resolve();
+                    } else {
+                        console.log(`❌ Discarding expired delayed request for ${model}: "${query}" (newer query: "${rateLimiter.latestQuery}")`);
+                        reject(new Error('Request was superseded by a newer search'));
+                    }
+                }, delay);
+                
+                // Listen for abort signal
+                abortController.signal.addEventListener('abort', () => {
+                    clearTimeout(timeout);
+                    reject(new Error('Request was superseded by a newer search'));
+                });
+            });
+            
+            // Now create the actual pending request
+            rateLimiter.isProcessing = true;
+            rateLimiter.pendingRequest = {
+                requestId,
+                query,
+                model,
+                timestamp: Date.now(),
+                abortController: new AbortController()
+            };
+            
+            return rateLimiter.pendingRequest.abortController.signal;
+        }
+    }
+    
+    // Mark a request as completed and check if there's a pending stalled request
+    markRequestCompleted(sessionId, model, requestId) {
+        const key = `${sessionId}_${model}`;
+        const rateLimiter = this.sessionRateLimiters.get(key);
+        if (!rateLimiter) return;
+        
+        // Remove completed request
+        if (rateLimiter.pendingRequest && rateLimiter.pendingRequest.requestId === requestId) {
+            rateLimiter.pendingRequest = null;
+        }
+        
+        // Mark as not processing
+        rateLimiter.isProcessing = false;
+        rateLimiter.lastCompletedRequest = Date.now();
+    }
+    
+    // Clean up old session+model rate limiters
+    cleanupOldSessionRateLimiters() {
+        const now = Date.now();
+        const maxAge = 300000; // 5 minutes
+        
+        for (const [key, rateLimiter] of this.sessionRateLimiters.entries()) {
+            // Clean up old pending requests
+            if (rateLimiter.pendingRequest && (now - rateLimiter.pendingRequest.timestamp > maxAge)) {
+                if (rateLimiter.pendingRequest.abortController) {
+                    rateLimiter.pendingRequest.abortController.abort();
+                }
+                rateLimiter.pendingRequest = null;
+                hasOldRequests = true;
+            }
+            
+            // Remove session+model if no active requests
+            if (!rateLimiter.pendingRequest) {
+                this.sessionRateLimiters.delete(key);
+            }
+        }
+    }
+    
+    // Get rate limiting statistics for a specific session+model
+    getSessionRateLimitingStats(sessionId, model) {
+        const key = `${sessionId}_${model}`;
+        const rateLimiter = this.sessionRateLimiters.get(key);
+        if (!rateLimiter) {
+            return {
+                sessionId,
+                model,
+                hasRateLimiter: false,
+                message: 'No rate limiter found for this session+model combination'
+            };
+        }
+        
+        const now = Date.now();
+        return {
+            sessionId,
+            model,
+            hasRateLimiter: true,
+            lastCompletedRequest: rateLimiter.lastCompletedRequest,
+            timeSinceLastCompleted: now - rateLimiter.lastCompletedRequest,
+            isProcessing: rateLimiter.isProcessing,
+            latestQuery: rateLimiter.latestQuery,
+            pendingRequestCount: rateLimiter.pendingRequest ? 1 : 0,
+            requestThrottleMs: this.requestThrottleMs,
+            canProcessNext: (now - rateLimiter.lastCompletedRequest) >= this.requestThrottleMs
+        };
+    }
+    
+    // Get rate limiting statistics
+    getRateLimitingStats() {
+        const now = Date.now();
+        const sessionModelStats = {};
+        
+        for (const [key, rateLimiter] of this.sessionRateLimiters.entries()) {
+            sessionModelStats[key] = this.getSessionRateLimitingStats(rateLimiter.sessionId, rateLimiter.model);
+        }
+        
+        return {
+            totalSessionModels: this.sessionRateLimiters.size,
+            requestThrottleMs: this.requestThrottleMs,
+            sessionModelStats
+        };
+    }
+    
+    // Cancel pending requests for a specific session+model combination
+    cancelSessionPendingRequests(sessionId, model) {
+        const key = `${sessionId}_${model}`;
+        const rateLimiter = this.sessionRateLimiters.get(key);
+        if (!rateLimiter) return 0;
+        
+        let cancelledCount = 0;
+        
+        // Cancel pending request
+        if (rateLimiter.pendingRequest) {
+            if (rateLimiter.pendingRequest.abortController) {
+                rateLimiter.pendingRequest.abortController.abort();
+            }
+            rateLimiter.pendingRequest = null;
+            cancelledCount++;
+        }
+        
+        // Mark as not processing
+        rateLimiter.isProcessing = false;
+        
+        return cancelledCount;
+    }
+    
+    // Cancel all pending requests across all session+model combinations
+    cancelAllPendingRequests() {
+        let totalCancelled = 0;
+        
+        for (const [key, rateLimiter] of this.sessionRateLimiters.entries()) {
+            totalCancelled += this.cancelSessionPendingRequests(rateLimiter.sessionId, rateLimiter.model);
+        }
+        
+        return totalCancelled;
+    }
 
     // Search for characters and tags
-    async searchCharacters(query, model, ws = null) {
+    async searchCharacters(query, model, ws = null, sessionId = null) {
         try {
             // Check if query starts with ! - only return text replacements in this case
             const isTextReplacementSearch = query.startsWith('!');
@@ -187,7 +450,7 @@ class SearchService {
                 const characterPromise = this.performCharacterSearch(query, model, ws);
                 
                 // Start tag search as independent service
-                const tagPromise = this.performTagSearch(query, model, ws);
+                const tagPromise = this.performTagSearch(query, model, ws, sessionId);
                 
                 // Start spellcheck as independent service
                 const spellcheckPromise = this.performSpellCheckAsync(query, ws);
@@ -414,9 +677,6 @@ class SearchService {
             if (!this.context.config) {
                 throw new Error('Config not available in context');
             }
-            if (!this.context.tagSuggestionsCache) {
-                throw new Error('Tag suggestions cache not available in context');
-            }
             if (!characterDataArray) {
                 throw new Error('Character data array not available in context');
             }
@@ -430,10 +690,8 @@ class SearchService {
             const searchTerm = query.trim().toLowerCase();
             const queryHash = this.generateQueryHash(searchTerm, model);
             
-            // Get caches from context
-            const tagSuggestionsCache = this.context.tagSuggestionsCache;
-            
-            if (!tagSuggestionsCache || !characterDataArray) {
+            // Cache is available as instance property
+            if (!characterDataArray) {
                 return [];
             }
 
@@ -488,75 +746,6 @@ class SearchService {
                     services: [{ name: 'characters', status: 'completed' }]
                 }));
             }
-
-            // Initialize model in cache if not exists
-            if (!tagSuggestionsCache.queries[model]) {
-                tagSuggestionsCache.queries[model] = {};
-            }
-            
-            // Check cache for this query
-            let tagSuggestions = [];
-            let cacheHit = false;
-            
-            if (tagSuggestionsCache.queries[model][queryHash]) {
-                // Get tags from cache using stored objects (key, model, confidence)
-                const tagObjs = tagSuggestionsCache.queries[model][queryHash];
-                tagSuggestions = tagObjs.map(obj => {
-                    const tag = tagSuggestionsCache.tags[obj.key];
-                    if (tag) {
-                        return {
-                            ...tag,
-                            model: obj.model,
-                            searchModel: obj.searchModel,
-                            confidence: obj.confidence
-                        };
-                    }
-                    return null;
-                }).filter(Boolean);
-                cacheHit = true;
-                
-                // Send cached tag results as individual model services (not as a single cached_tags service)
-                if (ws && tagSuggestions.length > 0) {
-                    // Group results by model
-                    const resultsByModel = {};
-                    tagSuggestions.forEach(tag => {
-                        if (!resultsByModel[tag.model]) {
-                            resultsByModel[tag.model] = [];
-                        }
-                        resultsByModel[tag.model].push(tag);
-                    });
-                    
-                    // Send each model's results separately
-                    Object.entries(resultsByModel).forEach(([modelName, modelResults], modelIndex) => {
-                        const tagResults = modelResults.map((tag, index) => ({
-                            type: 'tag',
-                            name: tag.tag,
-                            count: tag.count,
-                            confidence: tag.confidence,
-                            model: tag.model,
-                            searchModel: tag.searchModel,
-                            serviceOrder: modelIndex,
-                            resultOrder: index,
-                            serviceName: tag.model
-                        }));
-                        
-                        ws.send(JSON.stringify({
-                            type: 'search_results_update',
-                            service: modelName,
-                            results: tagResults,
-                            serviceOrder: modelIndex,
-                            isComplete: false
-                        }));
-                    });
-                }
-            }
-            
-            // Only make API requests if no cache hit
-            let apiResults = [];
-            if (!cacheHit) {
-                apiResults = await this.makeTagRequests(query, model, tagSuggestionsCache, queryHash, ws);
-                tagSuggestions = apiResults;
-            }
             
             // Return character results (tags are sent via WebSocket)
             return characterResults;
@@ -572,7 +761,7 @@ class SearchService {
             type: 'tag',
             name: tag.tag,
             count: tag.count,
-            confidence: parseInt(((1 - tag.confidence) * 100).toFixed(0)),
+            confidence: parseInt((tag.confidence * 100).toFixed(0)),
             model: tag.model,
             serviceOrder: 0,
             resultOrder: index,
@@ -607,21 +796,31 @@ class SearchService {
         return [...tagResults, ...characterResults];
     }
 
-    async makeTagRequests(query, model, tagSuggestionsCache, queryHash, ws = null) {
+    async makeTagRequests(query, model, queryHash, ws = null, sessionId = null) {
         const https = require('https');
         const config = this.context.config;
         
         const makeTagRequest = async (apiModel) => {
-            // Rate limiting: only allow one request every 500ms
-            const now = Date.now();
-            const timeSinceLastRequest = now - this.lastRequestTime;
-            
-            if (timeSinceLastRequest < 500) {
-                const delay = 500 - timeSinceLastRequest;
-                await new Promise(resolve => setTimeout(resolve, delay));
+            // Check cache first for this specific model
+            if (this.context.tagSuggestionsCache.isQueryCached(query, apiModel)) {
+                const cachedTags = this.context.tagSuggestionsCache.getCachedQuery(query, apiModel);
+                return {
+                    tags: cachedTags.map(tag => ({
+                        tag: tag.tag,
+                        count: tag.count,
+                        confidence: tag.confidence || 0.95
+                    }))
+                };
             }
             
-            this.lastRequestTime = Date.now();
+            // Use enhanced rate limiting with rolling window for API calls
+            const requestId = `${apiModel}_${Date.now()}`;
+            const abortSignal = await this.throttleTagRequest(sessionId, query, apiModel, requestId, ws);
+            
+            // Check if this request was aborted while waiting
+            if (!abortSignal || abortSignal?.aborted) {
+                throw new Error('Request was superseded by a newer search');
+            }
             
             const url = `https://image.novelai.net/ai/generate-image/suggest-tags?model=${apiModel}&prompt=${encodeURIComponent(query)}`;
             const options = {
@@ -649,6 +848,18 @@ class SearchService {
             };
 
             return new Promise((resolve, reject) => {
+                // Check if request was aborted before starting
+                if (!abortSignal || abortSignal?.aborted) {
+                    reject(new Error('Request was superseded by a newer search'));
+                    return;
+                }
+                
+                // Double-check abort signal is still valid
+                if (abortSignal.aborted) {
+                    reject(new Error('Request was superseded by a newer search'));
+                    return;
+                }
+                
                 const urlObj = new URL(url);
                 const req = https.request({
                     hostname: urlObj.hostname,
@@ -658,17 +869,50 @@ class SearchService {
                     headers: options.headers
                 }, (res) => {
                     let data = [];
-                    res.on('data', chunk => data.push(chunk));
+                    res.on('data', chunk => {
+                        // Check if request was aborted before processing data
+                        if (abortSignal.aborted) {
+                            // Request was aborted, no need to process data
+                            return;
+                        }
+                        data.push(chunk);
+                    });
+                    
+                    res.on('error', (error) => {
+                        // Check if request was aborted before handling response error
+                        if (abortSignal.aborted) {
+                            // Request was aborted, no need to handle response error
+                            return;
+                        }
+                        // Clean up pending request
+                        this.markRequestCompleted(sessionId, apiModel, requestId);
+                        reject(new Error(`Response error: ${error.message}`));
+                    });
+                    
                     res.on('end', () => {
+                        // Check if request was aborted before processing response
+                        if (abortSignal.aborted) {
+                            // Request was aborted, no need to process response
+                            return;
+                        }
+                        
                         const buffer = Buffer.concat(data);
                         if (res.statusCode === 200) {
                             try {
                                 const response = JSON.parse(buffer.toString());
+                                // Clean up pending request
+                                this.markRequestCompleted(sessionId, apiModel, requestId);
                                 resolve(response);
                             } catch (e) {
+                                // Clean up pending request
+                                this.markRequestCompleted(sessionId, apiModel, requestId);
+                                console.log(`❌ Request for ${apiModel} failed: Invalid JSON response`);
                                 reject(new Error('Invalid JSON response from NovelAI API'));
                             }
                         } else {
+                            // Clean up pending request
+                            this.markRequestCompleted(sessionId, apiModel, requestId);
+                            console.log(`❌ Request for ${apiModel} failed: HTTP ${res.statusCode}`);
                             reject(new Error(`Tag suggestion API error: HTTP ${res.statusCode}`));
                         }
                     });
@@ -676,17 +920,47 @@ class SearchService {
 
                 // Timeout after 5 seconds
                 const timeout = setTimeout(() => {
+                    // Check if request was aborted before destroying
+                    if (abortSignal.aborted) {
+                        // Request was already aborted, no need to destroy or reject
+                        return;
+                    }
                     req.destroy();
+                    // Clean up pending request
+                    this.markRequestCompleted(sessionId, apiModel, requestId);
+                    console.log(`⏰ Request for ${apiModel} timed out after 5 seconds`);
                     reject(new Error('Tag suggestion API request timed out after 5 seconds'));
                 }, 5000);
 
                 req.on('error', error => {
                     clearTimeout(timeout);
+                    // Check if this was an abort error
+                    if (abortSignal.aborted) {
+                        // Request was aborted, no need to reject or clean up
+                        return;
+                    }
+                    // Clean up pending request
+                    this.markRequestCompleted(sessionId, apiModel, requestId);
                     reject(error);
                 });
 
                 req.on('close', () => {
                     clearTimeout(timeout);
+                    // Check if this was an abort close
+                    if (abortSignal.aborted) {
+                        // Request was aborted, no need to clean up
+                        return;
+                    }
+                    // Request closed normally, no action needed
+                });
+                
+                // Listen for abort signal
+                abortSignal.addEventListener('abort', () => {
+                    clearTimeout(timeout);
+                    req.destroy();
+                    // Clean up pending request
+                    this.markRequestCompleted(sessionId, apiModel, requestId);
+                    reject(new Error('Request was superseded by a newer search'));
                 });
 
                 req.end();
@@ -697,25 +971,49 @@ class SearchService {
             // Determine models to query
             const currentModel = this.context.Model[model.toUpperCase()] || 'nai-diffusion-4-5-full';
 
-            // Always start furry local search as a separate service (no caching)
-            this.makeLocalFurryTagRequests(query, currentModel, tagSuggestionsCache, queryHash, ws);
-
-            // Always start anime local search as a separate service (no caching)
-            this.makeLocalAnimeTagRequests(query, currentModel, tagSuggestionsCache, queryHash, ws);
-
-            // Get models to query
+            // Get models to query for API calls
             let models = [currentModel];
             if (currentModel !== 'nai-diffusion-furry-3') {
                 models.push('nai-diffusion-furry-3');
             }
                         
-            // Send initial status update for API models
+            // Send initial status update for all services (API + local)
             if (ws) {
+                const allServices = [
+                    ...models.map(m => ({ name: m, status: 'stalled' })),
+                    { name: 'furry-local', status: 'searching' },
+                    { name: 'anime-local', status: 'searching' }
+                ];
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
-                    services: models.map(m => ({ name: m, status: 'stalled' }))
+                    services: allServices
                 }));
             }
+            
+            // Start local services immediately (they're fast and don't need rate limiting)
+            const localServices = [
+                { name: 'furry-local', method: () => this.makeLocalFurryTagRequests(query, currentModel, queryHash, ws) },
+                { name: 'anime-local', method: () => this.makeLocalAnimeTagRequests(query, currentModel, queryHash, ws) }
+            ];
+            
+            // Run local services concurrently
+            const localPromises = localServices.map(async (service) => {
+                try {
+                    const results = await service.method();
+                    // Local services handle their own WebSocket communication
+                    return results;
+                } catch (error) {
+                    console.error(`❌ Local ${service.name} search error:`, error);
+                    // Send error status for local service
+                    if (ws) {
+                        ws.send(JSON.stringify({
+                            type: 'search_status_update',
+                            services: [{ name: service.name, status: 'error', error: error.message }]
+                        }));
+                    }
+                    return [];
+                }
+            });
             
             // Start all API calls concurrently - no sequential waiting
             const allTags = [];
@@ -736,48 +1034,53 @@ class SearchService {
                     const response = await makeTagRequest(apiModel);
                     
                     if (response && response.tags) {
+                        const modelTagIds = []; // Collect tag IDs for this model
+                        
                         response.tags.forEach(tag => {
-                            const tagKey = this.generateTagKey(tag.tag);
+                            // Store tag in new cache system
+                            // NovelAI API returns confidence where lower = more confident, so we invert it
+                            // Store the inverted confidence (0-1 range) in cache
+                            const invertedConfidence = 1 - tag.confidence;
+                            const tagData = {
+                                tag: tag.tag,
+                                count: tag.count,
+                                confidence: invertedConfidence,
+                                model: apiModel
+                            };
                             
-                            // Update or create tag in cache
-                            if (!tagSuggestionsCache.tags[tagKey]) {
-                                tagSuggestionsCache.tags[tagKey] = {
-                                    tag: tag.tag,
-                                    models: [],
-                                    count: tag.count
-                                };
-                            }
+                            const tagId = this.context.tagSuggestionsCache.addTag(apiModel, tagData);
+                            modelTagIds.push(tagId); // Collect the tag ID
                             
-                            // Add model if not already present
-                            if (!tagSuggestionsCache.tags[tagKey].models.some(m => m.model === apiModel)) {
-                                tagSuggestionsCache.tags[tagKey].models.push({
-                                    model: apiModel,
-                                    count: tag.count,
-                                    confidence: parseInt(((1 - tag.confidence) * 100).toFixed(0))
-                                });
-                            }
+                            // Store object with tag data for later processing
+                            // Use the inverted confidence (0-100 range) for display
+                            queryTagObjs.push({ 
+                                tag: tag.tag,
+                                count: tag.count,
+                                confidence: parseInt((invertedConfidence * 100).toFixed(0)),
+                                model: apiModel,
+                                searchModel: apiModel
+                            });
                             
-                            // Update count to highest
-                            tagSuggestionsCache.tags[tagKey].count = Math.max(tagSuggestionsCache.tags[tagKey].count, tag.count);
-                            
-                            // Store object with key, model, and confidence
-                            queryTagObjs.push({ key: tagKey, model: apiModel, searchModel: apiModel, confidence: parseInt(((1 - tag.confidence) * 100).toFixed(0)) });
                             allTags.push({
                                 ...tag,
                                 model: apiModel,
-                                searchModel: apiModel,
-                                tagKey: tagKey
+                                searchModel: apiModel
                             });
                         });
+                        
+                        // Store query results for this model immediately
+                        if (modelTagIds.length > 0) {
+                            this.context.tagSuggestionsCache.storeQueryResults(query, apiModel, modelTagIds);
+                        }
                     }
                     
                     // Send results for this model immediately with ordering info
-                    if (ws && response && response.tags) {
-                        const modelResults = response.tags.map((tag, index) => ({
+                    if (ws) {
+                        const modelResults = response?.tags?.map((tag, index) => ({
                             type: 'tag',
                             name: tag.tag,
                             count: tag.count,
-                            confidence: parseInt(((1 - tag.confidence) * 100).toFixed(0)),
+                            confidence: parseInt((tag.confidence * 100).toFixed(0)),
                             model: apiModel,
                             searchModel: apiModel,
                             serviceOrder: i, // Order of service (0 = first, 1 = second, etc.)
@@ -803,6 +1106,16 @@ class SearchService {
                     }
                     
                 } catch (error) {
+                    // Check if this was a cancellation due to being superseded
+                    if (error && error.message === 'Request was superseded by a newer search') {
+                        console.log(`⏸️ Request for ${apiModel} was superseded by newer search - query: "${query}"`);
+                        
+                        // Don't send stalled status - just skip this request
+                        // The newer request will handle the results
+                        continue;
+                    }
+                    
+                    // Handle actual API errors
                     console.error(`❌ Tag suggestion API error for ${apiModel}:`, error.message);
                     
                     // Send error status for this model
@@ -815,43 +1128,48 @@ class SearchService {
                 }
             }
             
-            // Send final completion signal for API services
+            // Wait for local services to complete
+            const localResults = await Promise.all(localPromises);
+            
+            // Send final completion signal for all services
             if (ws) {
+                const totalServices = models.length + localServices.length;
                 ws.send(JSON.stringify({
                     type: 'search_results_complete',
-                    totalServices: models.length,
-                    completedServices: models.length
+                    totalServices: totalServices,
+                    completedServices: totalServices
                 }));
             }
             
-            // Store query in cache as array of objects (API results only)
-            tagSuggestionsCache.queries[model][queryHash] = [...queryTagObjs];
+            // Query results are already stored in cache per model above
             
-            // Mark cache as dirty and schedule save
-            if (this.context.cacheDirty !== undefined) {
-                this.context.cacheDirty = true;
-                if (this.context.scheduleCacheSave) {
-                    this.context.scheduleCacheSave();
-                }
+            // Combine API and local results
+            const combinedResults = [...allTags, ...localResults.flat()];
+            return combinedResults;
+        } catch (error) {
+            // Check if this was a cancellation due to being superseded
+            if (error && error.message === 'Request was superseded by a newer search') {
+                console.log(`⏸️ Main tag request was superseded by newer search - query: "${query}"`);
+                
+                // Return empty results since the request was cancelled
+                // The newer request will handle the results
+                return [];
             }
             
-            return allTags;
-        } catch (error) {
+            // Handle actual API errors
             console.error('❌ Tag suggestion API error:', error.message);
             return [];
         }
     }
 
-    generateTagKey(tagName) {
-        return tagName.toLowerCase().replace(/[^a-z0-9]/g, '');
-    }
+
 
     generateQueryHash(query, model) {
         const crypto = require('crypto');
         return crypto.createHash('md5').update(`${query.toLowerCase()}_${model.toLowerCase()}`).digest('hex');
     }
 
-    async makeLocalFurryTagRequests(query, model, tagSuggestionsCache, queryHash, ws = null) {
+    async makeLocalFurryTagRequests(query, model, queryHash, ws = null) {
         try {
             // Send initial status update
             if (ws) {
@@ -864,55 +1182,14 @@ class SearchService {
             // Use local furry tag search
             const furryResults = this.furryTagSearch.searchTags(query);
             const allTags = [];
-            const queryTagObjs = [];
             
             if (furryResults.length > 0) {
                 furryResults.forEach((tag, index) => {
-                    const tagKey = this.generateTagKey(tag.tag);
-                    
-                    // Update or create tag in cache
-                    if (!tagSuggestionsCache.tags[tagKey]) {
-                        tagSuggestionsCache.tags[tagKey] = {
-                            tag: tag.tag,
-                            searchModel: 'nai-diffusion-furry-3',
-                            models: ['nai-diffusion-furry-3'],
-                            count: tag.n_count,
-                            category: tag.e_category,
-                            e_count: tag.e_count,
-                        };
-                    }
-                    
-                    // Add model if not already present
-                    if (!tagSuggestionsCache.tags[tagKey].models.some(m => m.model === 'furry-local')) {
-                        tagSuggestionsCache.tags[tagKey].models.push({
-                            model: 'furry-local',
-                            searchModel: 'nai-diffusion-furry-3',
-                            count: tag.n_count,
-                            confidence: tag.confidence,
-                            category: tag.e_category,
-                            e_count: tag.e_count,
-                        });
-                    }
-                    
-                    // Update count to highest
-                    tagSuggestionsCache.tags[tagKey].count = Math.max(tagSuggestionsCache.tags[tagKey].count, tag.e_count);
-                    
-                    // Store object with key, model, and confidence
-                    queryTagObjs.push({ 
-                        key: tagKey, 
-                        model: 'furry-local', 
-                        searchModel: model,
-                        confidence: tag.confidence,
-                        category: tag.e_category,
-                        n_count: tag.n_count,
-                        e_count: tag.e_count,
-                    });
                     allTags.push({
                         tag: tag.tag,
                         count: tag.n_count,
                         confidence: tag.confidence,
                         model: 'furry-local',
-                        tagKey: tagKey,
                         searchModel: model,
                         category: tag.e_category,
                         e_count: tag.e_count,
@@ -952,13 +1229,6 @@ class SearchService {
                     type: 'search_status_update',
                     services: [{ name: 'furry-local', status: 'completed' }]
                 }));
-                
-                // Send final completion signal for furry service
-                ws.send(JSON.stringify({
-                    type: 'search_results_complete',
-                    totalServices: 1,
-                    completedServices: 1
-                }));
             }
             
             return allTags;
@@ -978,7 +1248,7 @@ class SearchService {
         }
     }
 
-    async makeLocalAnimeTagRequests(query, model, tagSuggestionsCache, queryHash, ws = null) {
+    async makeLocalAnimeTagRequests(query, model, queryHash, ws = null) {
         try {
             // Send initial status update
             if (ws) {
@@ -991,55 +1261,14 @@ class SearchService {
             // Use local anime tag search
             const animeResults = this.animeTagSearch.searchTags(query);
             const allTags = [];
-            const queryTagObjs = [];
             
             if (animeResults.length > 0) {
                 animeResults.forEach((tag, index) => {
-                    const tagKey = this.generateTagKey(tag.tag);
-                    
-                    // Update or create tag in cache
-                    if (!tagSuggestionsCache.tags[tagKey]) {
-                        tagSuggestionsCache.tags[tagKey] = {
-                            tag: tag.tag,
-                            searchModel: 'nai-diffusion-3',
-                            models: ['nai-diffusion-3'],
-                            count: tag.n_count,
-                            category: tag.d_category,
-                            d_count: tag.d_count,
-                        };
-                    }
-                    
-                    // Add model if not already present
-                    if (!tagSuggestionsCache.tags[tagKey].models.some(m => m.model === 'anime-local')) {
-                        tagSuggestionsCache.tags[tagKey].models.push({
-                            model: 'anime-local',
-                            searchModel: 'nai-diffusion-3',
-                            count: tag.n_count,
-                            confidence: tag.confidence,
-                            category: tag.d_category,
-                            d_count: tag.d_count,
-                        });
-                    }
-                    
-                    // Update count to highest
-                    tagSuggestionsCache.tags[tagKey].count = Math.max(tagSuggestionsCache.tags[tagKey].count, tag.d_count);
-                    
-                    // Store object with key, model, and confidence
-                    queryTagObjs.push({ 
-                        key: tagKey, 
-                        model: 'anime-local', 
-                        searchModel: model,
-                        confidence: tag.confidence,
-                        category: tag.d_category,
-                        n_count: tag.n_count,
-                        d_count: tag.d_count,
-                    });
                     allTags.push({
                         tag: tag.tag,
                         count: tag.n_count,
                         confidence: tag.confidence,
                         model: 'anime-local',
-                        tagKey: tagKey,
                         searchModel: model,
                         category: tag.d_category,
                         d_count: tag.d_count,
@@ -1078,13 +1307,6 @@ class SearchService {
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
                     services: [{ name: 'anime-local', status: 'completed' }]
-                }));
-                
-                // Send final completion signal for anime service
-                ws.send(JSON.stringify({
-                    type: 'search_results_complete',
-                    totalServices: 1,
-                    completedServices: 1
                 }));
             }
             
@@ -1241,41 +1463,15 @@ class SearchService {
     }
 
     // New helper method for independent tag search
-    async performTagSearch(query, model, ws = null) {
+    async performTagSearch(query, model, ws = null, sessionId = null) {
         try {
             if (!query || query.trim().length < 2) {
                 return [];
             }
 
-            // Get tag results from the tag suggestions cache or API calls
-            let tagResults = [];
-            const queryHash = this.generateQueryHash(query.trim().toLowerCase(), model);
-            const tagSuggestionsCache = this.context.tagSuggestionsCache;
-            
-            if (tagSuggestionsCache.queries[model] && tagSuggestionsCache.queries[model][queryHash]) {
-                // Use cached tag results
-                const tagObjs = tagSuggestionsCache.queries[model][queryHash];
-                tagResults = tagObjs.map(obj => {
-                    const tag = tagSuggestionsCache.tags[obj.key];
-                    if (tag) {
-                        return {
-                            type: 'tag',
-                            name: tag.tag,
-                            count: tag.count,
-                            confidence: obj.confidence,
-                            model: obj.model,
-                            serviceOrder: 0,
-                            resultOrder: 0,
-                            serviceName: obj.model
-                        };
-                    }
-                    return null;
-                }).filter(Boolean);
-            } else {
-                // Make API requests for tags
-                tagResults = await this.makeTagRequests(query, model, tagSuggestionsCache, queryHash, ws);
-            }
-            
+            // Always make API requests for tags (cache checking happens in each makeTagRequest)
+            const queryHash = this.generateQueryHash(query.trim().toLowerCase(), model);            
+            const tagResults = await this.makeTagRequests(query, model, queryHash, ws, sessionId);
             return tagResults;
         } catch (error) {
             console.error('Tag search error:', error);
@@ -1349,5 +1545,6 @@ module.exports = {
     getReplacementValue,
     applyTextReplacements,
     getUsedReplacements,
+    generateUUID,
     SearchService
 }; 

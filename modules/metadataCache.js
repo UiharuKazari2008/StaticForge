@@ -337,6 +337,13 @@ function getCachedMetadata(filename) {
 /**
  * Get all cached metadata
  */
+function getImagesMetadata() {
+    return metadataCache.images || {};
+}
+
+/**
+ * Get all cached metadata
+ */
 function getAllMetadata() {
     return metadataCache.images;
 }
@@ -359,7 +366,7 @@ function getMultipleMetadata(filenames) {
 /**
  * Update metadata for an image (e.g., after generation)
  */
-async function updateImageMetadata(filename, imagesDir, receiptData = null) {
+async function addReceiptMetadata(filename, imagesDir, receiptData = null) {
     const metadata = await getImageMetadata(filename, imagesDir);
     
     if (metadata && receiptData) {
@@ -394,8 +401,9 @@ module.exports = {
     removeImageMetadata,
     getCachedMetadata,
     getAllMetadata,
+    getImagesMetadata,
     getMultipleMetadata,
-    updateImageMetadata,
+    addReceiptMetadata,
     addUnattributedReceipt,
     getUnattributedReceipts,
     broadcastReceiptNotification

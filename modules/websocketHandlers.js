@@ -19,8 +19,6 @@ const {
     removeFromWorkspaceArray,
     updateWorkspaceColor,
     updateWorkspaceBackgroundColor,
-    updateWorkspaceBackgroundImage,
-    updateWorkspaceBackgroundOpacity,
     updateWorkspaceSettings,
     updateWorkspacePrimaryFont,
     updateWorkspaceTextareaFont,
@@ -40,11 +38,13 @@ const {
     getWorkspacesData, 
     getActiveWorkspaceData
 } = require('./workspace');
-const { getCachedMetadata, getAllMetadata, scanAndUpdateMetadata, removeImageMetadata, addUnattributedReceipt, getImageMetadata: getImageMetadataFromCache } = require('./metadataCache');
+const { getCachedMetadata, getAllMetadata, getImagesMetadata, scanAndUpdateMetadata, removeImageMetadata, addUnattributedReceipt, getImageMetadata: getImageMetadataFromCache } = require('./metadataCache');
 const { isImageLarge, matchOriginalResolution } = require('./imageTools');
 const { readMetadata, updateMetadata, getImageMetadata, extractRelevantFields, getModelDisplayName, extractMetadataSummary } = require('./pngMetadata');
 const { getStatus } = require('./queue');
 const imageCounter = require('./imageCounter');
+const { generateImageWebSocket } = require('./imageGeneration');
+const { upscaleImageWebSocket } = require('./imageUpscaling');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -59,6 +59,30 @@ const previewCacheDir = path.join(cacheDir, 'preview');
 const vibeCacheDir = path.join(cacheDir, 'vibe');
 const imagesDir = path.resolve(__dirname, '../images');
 const previewsDir = path.resolve(__dirname, '../.previews');
+
+/*
+ * WebSocket Response Format Standards for Workspace Operations:
+ * 
+ * All workspace operations should return responses with:
+ * - type: 'operation_response' (e.g., 'workspace_create_response')
+ * - requestId: matching the client's request
+ * - data: {
+ *     success: true/false,
+ *     message: descriptive text,
+ *     ...operation-specific data
+ *   }
+ * - timestamp: ISO timestamp
+ * 
+ * Broadcast messages should include:
+ * - type: 'workspace_updated'
+ * - data: {
+ *     action: 'operation_type' (e.g., 'created', 'deleted', 'dumped'),
+ *     ...relevant data for efficient client updates
+ *   }
+ * - timestamp: ISO timestamp
+ * 
+ * This ensures clients can efficiently update local state without full reloads.
+ */
 
 // WebSocket message handlers
 class WebSocketMessageHandlers {
@@ -77,6 +101,11 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('Failed to initialize DatasetTagService:', error);
         }
+    }
+
+    // Generate UUID for presets
+    generateUUID() {
+        return crypto.randomUUID();
     }
 
     // Set dependencies
@@ -158,13 +187,19 @@ class WebSocketMessageHandlers {
             'delete_vibe_image',
             'delete_vibe_encodings',
             'bulk_delete_vibe_images',
+            'import_vibe_bundle',
+            'encode_vibe',
             'move_vibe_image',
             'bulk_move_vibe_images',
             'favorites_remove',
             'favorites_add',
             'save_preset',
+            'generate_preset',
+            'delete_preset',
             'save_text_replacements',
-            'spellcheck_add_word'
+            'spellcheck_add_word',
+            'generate_image',
+            'upscale_image'
         ];
         return destructiveOperations.includes(messageType);
     }
@@ -188,6 +223,26 @@ class WebSocketMessageHandlers {
                 await this.handleSavePreset(ws, message, clientInfo, wsServer);
                 break;
                 
+            case 'generate_preset':
+                await this.handleGeneratePreset(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'delete_preset':
+                await this.handleDeletePreset(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_presets':
+                await this.handleGetPresets(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'update_preset':
+                await this.handleUpdatePreset(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'regenerate_preset_uuid':
+                await this.handleRegeneratePresetUuid(ws, message, clientInfo, wsServer);
+                break;
+                
             case 'search_dataset_tags':
                 await this.handleDatasetTagSearch(ws, message, clientInfo, wsServer);
                 break;
@@ -198,6 +253,10 @@ class WebSocketMessageHandlers {
                 
             case 'search_tags':
                 await this.handleSearchTags(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'search_files':
+                await this.handleFileSearch(ws, message, clientInfo, wsServer);
                 break;
                 
             case 'spellcheck_add_word':
@@ -258,7 +317,22 @@ class WebSocketMessageHandlers {
                 await this.handleGetAppOptions(ws, message, clientInfo, wsServer);
                 break;
                 
-            // Workspace handlers
+            case 'get_rate_limiting_stats':
+                await this.handleGetRateLimitingStats(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_session_rate_limiting_stats':
+                await this.handleGetSessionRateLimitingStats(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'cancel_pending_requests':
+                await this.handleCancelPendingRequests(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'cancel_session_pending_requests':
+                await this.handleCancelSessionPendingRequests(ws, message, clientInfo, wsServer);
+                break;
+                
             case 'workspace_list':
                 await this.handleWorkspaceList(ws, message, clientInfo, wsServer);
                 break;
@@ -367,14 +441,6 @@ class WebSocketMessageHandlers {
                 await this.handleWorkspaceUpdateBackgroundColor(ws, message, clientInfo, wsServer);
                 break;
                 
-            case 'workspace_update_background_image':
-                await this.handleWorkspaceUpdateBackgroundImage(ws, message, clientInfo, wsServer);
-                break;
-                
-            case 'workspace_update_background_opacity':
-                await this.handleWorkspaceUpdateBackgroundOpacity(ws, message, clientInfo, wsServer);
-                break;
-                
             case 'workspace_update_settings':
                 await this.handleWorkspaceUpdateSettings(ws, message, clientInfo, wsServer);
                 break;
@@ -419,6 +485,10 @@ class WebSocketMessageHandlers {
             // References and Vibes WebSocket handlers
             case 'get_references':
                 await this.handleGetReferences(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_references_by_ids':
+                await this.handleGetReferencesByIds(ws, message, clientInfo, wsServer);
                 break;
                 
             case 'get_workspace_references':
@@ -493,6 +563,14 @@ class WebSocketMessageHandlers {
                 this.handleSubscribe(ws, message, clientInfo, wsServer);
                 break;
                 
+            case 'generate_image':
+                await this.handleImageGeneration(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'upscale_image':
+                await this.handleImageUpscaling(ws, message, clientInfo, wsServer);
+                break;
+                
             default:
                 this.sendError(ws, 'Unknown message type', message.type);
         }
@@ -517,7 +595,7 @@ class WebSocketMessageHandlers {
             });
             
             // Perform search with WebSocket for realtime updates
-            const result = await this.searchService.searchCharacters(query, model, ws);
+            const result = await this.searchService.searchCharacters(query, model, ws, clientInfo.sessionId);
             
             // Send final complete response
             this.sendToClient(ws, {
@@ -576,33 +654,8 @@ class WebSocketMessageHandlers {
 
             // Return the raw preset data without processing text replacements
             const presetData = {
-                name: presetName,
-                prompt: (preset.prompt !== undefined ? preset.prompt : ''),
-                uc: (preset.uc !== undefined ? preset.uc : ''),
-                model: (preset.model !== undefined ? preset.model : 'v4_5'),
-                resolution: (preset.resolution !== undefined ? preset.resolution : 'normal_portrait'),
-                steps: (preset.steps !== undefined ? preset.steps : 25),
-                guidance: (preset.guidance !== undefined ? preset.guidance : 5.0),
-                rescale: (preset.rescale !== undefined ? preset.rescale : 0.0),
-                seed: preset.seed || undefined,
-                sampler: preset.sampler || undefined,
-                noiseScheduler: preset.noiseScheduler || undefined,
-                upscale: (preset.upscale !== undefined ? preset.upscale : false),
-                allow_paid: (preset.allow_paid !== undefined ? preset.allow_paid : false),
-                variety: (preset.variety !== undefined ? preset.variety : false),
-                image: preset.image || undefined,
-                strength: (preset.strength !== undefined ? preset.strength : undefined),
-                noise: (preset.noise !== undefined ? preset.noise : undefined),
-                image_bias: (preset.image_bias !== undefined ? preset.image_bias : undefined),
-                mask: preset.mask || undefined,
-                mask_compressed: preset.mask_compressed || undefined,
-                mask_bias: (preset.mask_bias !== undefined ? preset.mask_bias : undefined),
-                characterPrompts: (preset.characterPrompts !== undefined ? preset.characterPrompts : []),
-                allCharacterPrompts: (preset.allCharacterPrompts !== undefined ? preset.allCharacterPrompts : []),
-                use_coords: preset.use_coords || false,
-                width: (preset.width !== undefined ? preset.width : undefined),
-                height: (preset.height !== undefined ? preset.height : undefined),
-                image_source: preset.image_source || undefined
+                ...preset,
+                preset_name: presetName,
             };
             
             this.sendToClient(ws, {
@@ -628,38 +681,20 @@ class WebSocketMessageHandlers {
 
         try {
             const currentPromptConfig = loadPromptConfig();
-
-            // Only set default if value is missing (null or undefined)
-            function withDefault(val, def) {
-                return (val === undefined || val === null) ? def : val;
+            
+            // Generate UUID if not present
+            if (!config.uuid) {
+                config.uuid = this.generateUUID();
             }
-
-            currentPromptConfig.presets[presetName] = {
-                prompt: config.prompt,
-                uc: withDefault(config.uc, ''),
-                model: config.model,
-                resolution: withDefault(config.resolution, ''),
-                steps: withDefault(config.steps, 25),
-                guidance: withDefault(config.guidance, 5.0),
-                rescale: withDefault(config.rescale, 0.0),
-                seed: withDefault(config.seed, undefined),
-                sampler: withDefault(config.sampler, undefined),
-                noiseScheduler: withDefault(config.noiseScheduler, undefined),
-                upscale: withDefault(config.upscale, undefined),
-                allow_paid: withDefault(config.allow_paid, false),
-                variety: withDefault(config.variety, false),
-                image: withDefault(config.image, undefined),
-                strength: withDefault(config.strength, 0.8),
-                noise: withDefault(config.noise, 0.1),
-                image_bias: withDefault(config.image_bias, undefined),
-                mask: withDefault(config.mask, undefined),
-                mask_compressed: withDefault(config.mask_compressed, undefined),
-                characterPrompts: withDefault(config.allCharacterPrompts, withDefault(config.characterPrompts, [])),
-                use_coords: withDefault(config.use_coords, false),
-                width: withDefault(config.width, undefined),
-                height: withDefault(config.height, undefined),
-                image_source: withDefault(config.image_source, undefined)
-            };
+            
+            // Preserve existing target_workspace if present
+            if (currentPromptConfig.presets[presetName] && currentPromptConfig.presets[presetName].target_workspace) {
+                config.target_workspace = currentPromptConfig.presets[presetName].target_workspace;
+            } else if (!config.target_workspace) {
+                config.target_workspace = 'default';
+            }
+            
+            currentPromptConfig.presets[presetName] = config;
 
             fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
 
@@ -671,9 +706,315 @@ class WebSocketMessageHandlers {
                 data: { success: true, message: `Preset "${presetName}" saved successfully` },
                 timestamp: new Date().toISOString()
             });
+
+            // Broadcast preset update to all connected clients
+            wsServer.clients.forEach(client => {
+                if (client.readyState === 1) {
+                    this.sendToClient(client, {
+                        type: 'preset_updated',
+                        data: { 
+                            action: 'saved',
+                            presetName: presetName,
+                            message: `Preset "${presetName}" has been updated`
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            });
         } catch (error) {
             console.error('Preset save error:', error);
             this.sendError(ws, 'Failed to save preset', error.message, message.requestId);
+        }
+    }
+
+    // Handle get presets requests
+    async handleGetPresets(ws, message, clientInfo, wsServer) {
+        const { page = 1, itemsPerPage = 15, searchTerm = '' } = message;
+        
+        try {
+            const currentPromptConfig = loadPromptConfig();
+            const presets = currentPromptConfig.presets || {};
+            
+            // Filter presets by search term if provided
+            let filteredPresets = presets;
+            if (searchTerm) {
+                filteredPresets = {};
+                Object.keys(presets).forEach(presetName => {
+                    const preset = presets[presetName];
+                    if (presetName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        (preset.prompt && preset.prompt.toLowerCase().includes(searchTerm.toLowerCase()))) {
+                        filteredPresets[presetName] = preset;
+                    }
+                });
+            }
+            
+            // Calculate pagination
+            const presetKeys = Object.keys(filteredPresets);
+            const totalItems = presetKeys.length;
+            const totalPages = Math.ceil(totalItems / itemsPerPage);
+            const startIndex = (page - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            const pageKeys = presetKeys.slice(startIndex, endIndex);
+            
+            // Create page data
+            const pagePresets = {};
+            pageKeys.forEach(key => {
+                pagePresets[key] = filteredPresets[key];
+            });
+            
+            this.sendToClient(ws, {
+                type: 'get_presets_response',
+                requestId: message.requestId,
+                data: {
+                    presets: pagePresets,
+                    pagination: {
+                        currentPage: page,
+                        totalPages: totalPages,
+                        totalItems: totalItems,
+                        itemsPerPage: itemsPerPage,
+                        hasNextPage: page < totalPages,
+                        hasPrevPage: page > 1
+                    },
+                    searchTerm: searchTerm
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Get presets error:', error);
+            this.sendError(ws, 'Failed to get presets', error.message, message.requestId);
+        }
+    }
+
+    // Handle update preset requests - supports partial updates for name, target_workspace, resolution, and scale
+    async handleUpdatePreset(ws, message, clientInfo, wsServer) {
+        const { presetName, name, target_workspace, resolution, request_upscale } = message;
+        
+        if (!presetName) {
+            this.sendError(ws, 'Missing required parameters', 'Preset name is required', message.requestId);
+            return;
+        }
+
+        try {
+            const currentPromptConfig = loadPromptConfig();
+            
+            if (!currentPromptConfig.presets[presetName]) {
+                this.sendError(ws, 'Preset not found', `Preset "${presetName}" does not exist`, message.requestId);
+                return;
+            }
+            
+            // Get existing preset data
+            const existingPreset = currentPromptConfig.presets[presetName];
+            
+            // Preserve existing UUID
+            const uuid = existingPreset.uuid || this.generateUUID();
+            
+            // If the name is changing, we need to handle the key change
+            if (name && name !== presetName) {
+                // Create new preset with new name
+                currentPromptConfig.presets[name] = {
+                    ...existingPreset,
+                    name: name,
+                    target_workspace: target_workspace !== undefined ? target_workspace : existingPreset.target_workspace || 'default',
+                    resolution: resolution !== undefined ? resolution : existingPreset.resolution || '',
+                    request_upscale: request_upscale !== undefined ? request_upscale : existingPreset.request_upscale || false,
+                    uuid: uuid
+                };
+                
+                // Delete the old preset
+                delete currentPromptConfig.presets[presetName];
+            } else {
+                // Update existing preset in place
+                currentPromptConfig.presets[presetName] = {
+                    ...existingPreset,
+                    name: name !== undefined ? name : existingPreset.name,
+                    target_workspace: target_workspace !== undefined ? target_workspace : existingPreset.target_workspace || 'default',
+                    resolution: resolution !== undefined ? resolution : existingPreset.resolution || '',
+                    request_upscale: request_upscale !== undefined ? request_upscale : existingPreset.request_upscale || false,
+                    uuid: uuid
+                };
+            }
+
+            fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
+
+            console.log(`💾 Updated preset: ${presetName} -> ${name} with UUID: ${uuid}`);
+
+            this.sendToClient(ws, {
+                type: 'update_preset_response',
+                requestId: message.requestId,
+                data: { success: true, message: `Preset "${presetName}" updated successfully`, uuid },
+                timestamp: new Date().toISOString()
+            });
+
+            // Broadcast preset update to all connected clients
+            wsServer.clients.forEach(client => {
+                if (client.readyState === 1) {
+                    this.sendToClient(client, {
+                        type: 'preset_updated',
+                        data: { 
+                            action: 'updated',
+                            presetName: name, // Use new name for broadcast
+                            message: `Preset "${presetName}" has been updated to "${name}"`
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            });
+        } catch (error) {
+            console.error('Update preset error:', error);
+            this.sendError(ws, 'Failed to update preset', error.message, message.requestId);
+        }
+    }
+
+    // Handle preset UUID regeneration requests
+    async handleRegeneratePresetUuid(ws, message, clientInfo, wsServer) {
+        const { presetName } = message;
+        
+        if (!presetName) {
+            this.sendError(ws, 'Missing presetName parameter', 'regenerate_preset_uuid');
+            return;
+        }
+
+        try {
+            const currentPromptConfig = loadPromptConfig();
+            
+            if (!currentPromptConfig.presets[presetName]) {
+                this.sendError(ws, 'Preset not found', `Preset "${presetName}" does not exist`, message.requestId);
+                return;
+            }
+            
+            // Generate new UUID
+            const newUuid = this.generateUUID();
+            
+            // Update the preset with new UUID
+            currentPromptConfig.presets[presetName].uuid = newUuid;
+            
+            // Save the updated config
+            fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
+
+            console.log(`🔄 Regenerated UUID for preset: ${presetName} -> ${newUuid}`);
+
+            this.sendToClient(ws, {
+                type: 'regenerate_preset_uuid_response',
+                requestId: message.requestId,
+                data: { success: true, message: `UUID regenerated for preset "${presetName}"`, uuid: newUuid },
+                timestamp: new Date().toISOString()
+            });
+
+            // Broadcast preset update to all connected clients
+            wsServer.clients.forEach(client => {
+                if (client.readyState === 1) {
+                    this.sendToClient(client, {
+                        type: 'preset_updated',
+                        data: { 
+                            action: 'uuid_regenerated',
+                            presetName: presetName,
+                            message: `UUID regenerated for preset "${presetName}"`
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            });
+        } catch (error) {
+            console.error('Regenerate preset UUID error:', error);
+            this.sendError(ws, 'Failed to regenerate preset UUID', error.message, message.requestId);
+        }
+    }
+
+    // Handle preset deletion requests
+    async handleDeletePreset(ws, message, clientInfo, wsServer) {
+        const { presetName } = message;
+        
+        if (!presetName) {
+            this.sendError(ws, 'Missing presetName parameter', 'delete_preset');
+            return;
+        }
+
+        try {
+            const currentPromptConfig = loadPromptConfig();
+            
+            if (!currentPromptConfig.presets[presetName]) {
+                this.sendError(ws, 'Preset not found', `Preset "${presetName}" does not exist`, message.requestId);
+                return;
+            }
+
+            // Delete the preset
+            delete currentPromptConfig.presets[presetName];
+            fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
+
+            console.log(`🗑️ Deleted preset: ${presetName}`);
+
+            this.sendToClient(ws, {
+                type: 'delete_preset_response',
+                requestId: message.requestId,
+                data: { success: true, message: `Preset "${presetName}" deleted successfully` },
+                timestamp: new Date().toISOString()
+            });
+
+            // Broadcast preset deletion to all connected clients
+            wsServer.clients.forEach(client => {
+                if (client.readyState === 1) {
+                    this.sendToClient(client, {
+                        type: 'preset_updated',
+                        data: { 
+                            action: 'deleted',
+                            presetName: presetName,
+                            message: `Preset "${presetName}" has been deleted`
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            });
+        } catch (error) {
+            console.error('Preset deletion error:', error);
+            this.sendError(ws, 'Failed to delete preset', error.message, message.requestId);
+        }
+    }
+
+    // Handle preset generation requests
+    async handleGeneratePreset(ws, message, clientInfo, wsServer) {
+        const { presetName, workspace } = message;
+        
+        if (!presetName) {
+            this.sendError(ws, 'Missing presetName parameter', 'generate_preset');
+            return;
+        }
+
+        try {
+            const currentPromptConfig = loadPromptConfig();
+            const preset = currentPromptConfig.presets[presetName];
+            
+            if (!preset) {
+                this.sendError(ws, 'Preset not found', `Preset "${presetName}" does not exist`, message.requestId);
+                return;
+            }
+
+            // Use target_workspace from preset if no workspace specified (for REST API calls)
+            const targetWorkspace = workspace || preset.target_workspace || 'default';
+            
+            // Generate image using the preset
+            const result = await generateImageWebSocket({
+                ...preset,
+                workspace: targetWorkspace,
+                presetName: presetName
+            }, clientInfo.userType, clientInfo.sessionId);
+            
+            // Send generation response
+            this.sendToClient(ws, {
+                type: 'generate_preset_response',
+                requestId: message.requestId,
+                data: {
+                    filename: result.filename,
+                    seed: result.seed,
+                    saved: result.saved,
+                    presetName: presetName,
+                    message: `Generation completed for preset "${presetName}"`
+                },
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            console.error('Preset generation error:', error);
+            this.sendError(ws, 'Failed to generate preset', error.message, message.requestId);
         }
     }
 
@@ -772,6 +1113,98 @@ class WebSocketMessageHandlers {
             requestId: message.requestId,
             timestamp: new Date().toISOString()
         });
+    }
+    
+    // Handle rate limiting stats request
+    async handleGetRateLimitingStats(ws, message, clientInfo, wsServer) {
+        try {
+            if (this.searchService && typeof this.searchService.getRateLimitingStats === 'function') {
+                const stats = this.searchService.getRateLimitingStats();
+                this.sendToClient(ws, {
+                    type: 'rate_limiting_stats_response',
+                    requestId: message.requestId,
+                    data: stats,
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                this.sendError(ws, 'Rate limiting stats not available', 'get_rate_limiting_stats');
+            }
+        } catch (error) {
+            console.error('Rate limiting stats error:', error);
+            this.sendError(ws, 'Failed to get rate limiting stats', error.message, message.requestId);
+        }
+    }
+    
+    // Handle cancel pending requests
+    async handleCancelPendingRequests(ws, message, clientInfo, wsServer) {
+        try {
+            if (this.searchService && typeof this.searchService.cancelAllPendingRequests === 'function') {
+                const cancelledCount = this.searchService.cancelAllPendingRequests();
+                this.sendToClient(ws, {
+                    type: 'cancel_pending_requests_response',
+                    requestId: message.requestId,
+                    data: { cancelledCount },
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                this.sendError(ws, 'Cancel pending requests not available', 'cancel_pending_requests');
+            }
+        } catch (error) {
+            console.error('Cancel pending requests error:', error);
+            this.sendError(ws, 'Failed to cancel pending requests', error.message, message.requestId);
+        }
+    }
+    
+    // Handle get session rate limiting stats
+    async handleGetSessionRateLimitingStats(ws, message, clientInfo, wsServer) {
+        try {
+            const { model } = message;
+            if (!model) {
+                this.sendError(ws, 'Missing model parameter', 'get_session_rate_limiting_stats');
+                return;
+            }
+            
+            if (this.searchService && typeof this.searchService.getSessionRateLimitingStats === 'function') {
+                const stats = this.searchService.getSessionRateLimitingStats(clientInfo.sessionId, model);
+                this.sendToClient(ws, {
+                    type: 'session_rate_limiting_stats_response',
+                    requestId: message.requestId,
+                    data: stats,
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                this.sendError(ws, 'Session rate limiting stats not available', 'get_session_rate_limiting_stats');
+            }
+        } catch (error) {
+            console.error('Session rate limiting stats error:', error);
+            this.sendError(ws, 'Failed to get session rate limiting stats', error.message, message.requestId);
+        }
+    }
+    
+    // Handle cancel session pending requests
+    async handleCancelSessionPendingRequests(ws, message, clientInfo, wsServer) {
+        try {
+            const { model } = message;
+            if (!model) {
+                this.sendError(ws, 'Missing model parameter', 'cancel_session_pending_requests');
+                return;
+            }
+            
+            if (this.searchService && typeof this.searchService.cancelSessionPendingRequests === 'function') {
+                const cancelledCount = this.searchService.cancelSessionPendingRequests(clientInfo.sessionId, model);
+                this.sendToClient(ws, {
+                    type: 'cancel_session_pending_requests_response',
+                    requestId: message.requestId,
+                    data: { cancelledCount },
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                this.sendError(ws, 'Cancel session pending requests not available', 'cancel_session_pending_requests');
+            }
+        } catch (error) {
+            console.error('Cancel session pending requests error:', error);
+            this.sendError(ws, 'Failed to cancel session pending requests', error.message, message.requestId);
+        }
     }
 
     // Handle subscription messages
@@ -1224,23 +1657,29 @@ class WebSocketMessageHandlers {
             // Helper to extract relevant preset info
             const extractPresetInfo = (name, preset) => ({
                 name,
-                model: preset.model || 'Default',
-                upscale: preset.upscale || false,
+                model: preset.model || 'V4_5',
+                upscale: preset.upscale || preset.request_upscale || false,
                 allow_paid: preset.allow_paid || false,
                 variety: preset.variety || false,
-                character_prompts: preset.character_prompts || false,
+                character_prompts: preset.characterPrompts ? preset.characterPrompts.length : 0,
                 base_image: preset.base_image || false,
-                resolution: preset.resolution || 'Default',
+                resolution: preset.resolution || null,
                 steps: preset.steps || 25,
                 guidance: preset.guidance || 5.0,
                 rescale: preset.rescale || 0.0,
                 sampler: preset.sampler || null,
                 noiseScheduler: preset.noiseScheduler || null,
-                image: !!(preset.image || null),
-                strength: preset.strength || 0.8,
-                noise: preset.noise || 0.1,
+                image: !!(preset.image || preset.image_source|| null),
+                strength: preset.strength || 0.0,
+                noise: preset.noise || 0.0,
                 image_bias: preset.image_bias || null,
                 mask_compressed: !!(preset.mask_compressed || null),
+                dataset_config: preset.dataset_config || null,
+                append_quality: preset.append_quality || false,
+                append_uc: preset.append_uc !== undefined && preset.append_uc !== null ? preset.append_uc : null,
+                vibe_transfer: preset.vibe_transfer ? preset.vibe_transfer.length : 0,
+                request_upscale: preset.request_upscale || false,
+                target_workspace: preset.target_workspace || null,
             });
 
             // Build detailed preset info
@@ -1297,8 +1736,6 @@ class WebSocketMessageHandlers {
                 name: workspace.name,
                 color: workspace.color || '#124',
                 backgroundColor: workspace.backgroundColor,
-                backgroundImage: workspace.backgroundImage,
-                backgroundOpacity: workspace.backgroundOpacity || 0.3,
                 primaryFont: typeof workspace.primaryFont !== 'undefined' ? workspace.primaryFont : null,
                 textareaFont: typeof workspace.textareaFont !== 'undefined' ? workspace.textareaFont : null,
                 sort: workspace.sort || 0, // Include sort field
@@ -1342,8 +1779,6 @@ class WebSocketMessageHandlers {
                     name: workspace.name,
                     color: workspace.color || '#124',
                     backgroundColor: workspace.backgroundColor,
-                    backgroundImage: workspace.backgroundImage,
-                    backgroundOpacity: workspace.backgroundOpacity || 0.3,
                     primaryFont: typeof workspace.primaryFont !== 'undefined' ? workspace.primaryFont : null,
                     textareaFont: typeof workspace.textareaFont !== 'undefined' ? workspace.textareaFont : null,
                     sort: workspace.sort || 0, // Include sort field
@@ -1379,17 +1814,30 @@ class WebSocketMessageHandlers {
             
             const workspaceId = createWorkspace(name.trim(), color ? color.trim() : null);
             
+            // Get the complete workspace object to return to client
+            const workspace = getWorkspace(workspaceId);
+            
             this.sendToClient(ws, {
                 type: 'workspace_create_response',
                 requestId: message.requestId,
-                data: { success: true, id: workspaceId, name: name.trim() },
+                data: { 
+                    success: true, 
+                    id: workspaceId, 
+                    name: name.trim(),
+                    workspace: workspace // Include complete workspace object
+                },
                 timestamp: new Date().toISOString()
             });
             
-            // Broadcast workspace update to all clients
+            // Broadcast workspace update to all clients with complete data
             wsServer.broadcast({
                 type: 'workspace_updated',
-                data: { action: 'created', workspaceId, name: name.trim() },
+                data: { 
+                    action: 'created', 
+                    workspaceId, 
+                    name: name.trim(),
+                    workspace: workspace // Include complete workspace object
+                },
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
@@ -1432,19 +1880,37 @@ class WebSocketMessageHandlers {
         try {
             const { id } = message;
             
-            deleteWorkspace(id);
+            // Get workspace info before deletion for broadcast
+            const workspace = getWorkspace(id);
+            if (!workspace) {
+                this.sendError(ws, 'Workspace not found', 'workspace_delete', message.requestId);
+                return;
+            }
+            
+            const movedCount = deleteWorkspace(id);
             
             this.sendToClient(ws, {
                 type: 'workspace_delete_response',
                 requestId: message.requestId,
-                data: { success: true, message: 'Workspace deleted and items moved to default' },
+                data: { 
+                    success: true, 
+                    message: `Workspace deleted and ${movedCount} items moved to default`,
+                    deletedWorkspaceId: id,
+                    deletedWorkspaceName: workspace.name,
+                    movedCount: movedCount
+                },
                 timestamp: new Date().toISOString()
             });
             
-            // Broadcast workspace update to all clients
+            // Broadcast workspace update to all clients with complete data
             wsServer.broadcast({
                 type: 'workspace_updated',
-                data: { action: 'deleted', workspaceId: id },
+                data: { 
+                    action: 'deleted', 
+                    workspaceId: id,
+                    deletedWorkspaceName: workspace.name,
+                    movedCount: movedCount
+                },
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
@@ -1487,19 +1953,43 @@ class WebSocketMessageHandlers {
                 return;
             }
             
-            dumpWorkspace(sourceId, targetId);
+            // Get workspace info before dump for broadcast
+            const sourceWorkspace = getWorkspace(sourceId);
+            const targetWorkspace = getWorkspace(targetId);
+            
+            if (!sourceWorkspace || !targetWorkspace) {
+                this.sendError(ws, 'Source or target workspace not found', 'workspace_dump', message.requestId);
+                return;
+            }
+            
+            const result = dumpWorkspace(sourceId, targetId);
             
             this.sendToClient(ws, {
                 type: 'workspace_dump_response',
                 requestId: message.requestId,
-                data: { success: true, message: 'Workspace dumped successfully' },
+                data: { 
+                    success: true, 
+                    message: 'Workspace dumped successfully',
+                    sourceWorkspaceId: sourceId,
+                    sourceWorkspaceName: sourceWorkspace.name,
+                    targetWorkspaceId: targetId,
+                    targetWorkspaceName: targetWorkspace.name,
+                    movedCount: result || 0
+                },
                 timestamp: new Date().toISOString()
             });
             
-            // Broadcast workspace update to all clients
+            // Broadcast workspace update to all clients with complete data
             wsServer.broadcast({
                 type: 'workspace_updated',
-                data: { action: 'dumped', sourceId, targetId },
+                data: { 
+                    action: 'dumped', 
+                    sourceId, 
+                    targetId,
+                    sourceWorkspaceName: sourceWorkspace.name,
+                    targetWorkspaceName: targetWorkspace.name,
+                    movedCount: result || 0
+                },
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
@@ -1569,6 +2059,16 @@ class WebSocketMessageHandlers {
                 return;
             }
             
+            // Get source workspace info if provided
+            let sourceWorkspace = null;
+            if (sourceWorkspaceId) {
+                sourceWorkspace = getWorkspace(sourceWorkspaceId);
+                if (!sourceWorkspace) {
+                    this.sendError(ws, `Source workspace ${sourceWorkspaceId} not found`, 'workspace_move_files', message.requestId);
+                    return;
+                }
+            }
+            
             // Use the appropriate move function based on moveType
             let movedCount;
             switch (moveType) {
@@ -1587,14 +2087,31 @@ class WebSocketMessageHandlers {
             this.sendToClient(ws, {
                 type: 'workspace_move_files_response',
                 requestId: message.requestId,
-                data: { success: true, message: `Moved ${movedCount} files to workspace`, movedCount },
+                data: { 
+                    success: true, 
+                    message: `Moved ${movedCount} files to workspace`, 
+                    movedCount,
+                    targetWorkspaceId: id,
+                    targetWorkspaceName: workspace.name,
+                    sourceWorkspaceId: sourceWorkspaceId || null,
+                    sourceWorkspaceName: sourceWorkspace ? sourceWorkspace.name : null,
+                    moveType: moveType
+                },
                 timestamp: new Date().toISOString()
             });
             
-            // Broadcast workspace update to all clients
+            // Broadcast workspace update to all clients with complete data
             wsServer.broadcast({
                 type: 'workspace_updated',
-                data: { action: 'files_moved', workspaceId: id, movedCount },
+                data: { 
+                    action: 'files_moved', 
+                    workspaceId: id, 
+                    movedCount,
+                    targetWorkspaceName: workspace.name,
+                    sourceWorkspaceId: sourceWorkspaceId || null,
+                    sourceWorkspaceName: sourceWorkspace ? sourceWorkspace.name : null,
+                    moveType: moveType
+                },
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
@@ -2176,61 +2693,6 @@ class WebSocketMessageHandlers {
         }
     }
 
-    async handleWorkspaceUpdateBackgroundImage(ws, message, clientInfo, wsServer) {
-        try {
-            const { id, backgroundImage } = message;
-            
-            updateWorkspaceBackgroundImage(id, backgroundImage);
-            
-            this.sendToClient(ws, {
-                type: 'workspace_update_background_image_response',
-                requestId: message.requestId,
-                data: { success: true, message: 'Workspace background image updated' },
-                timestamp: new Date().toISOString()
-            });
-            
-            // Broadcast workspace update to all clients
-            wsServer.broadcast({
-                type: 'workspace_updated',
-                data: { action: 'background_image_updated', workspaceId: id, backgroundImage },
-                timestamp: new Date().toISOString()
-            });
-        } catch (error) {
-            console.error('Workspace update background image error:', error);
-            this.sendError(ws, 'Failed to update workspace background image', error.message, message.requestId);
-        }
-    }
-
-    async handleWorkspaceUpdateBackgroundOpacity(ws, message, clientInfo, wsServer) {
-        try {
-            const { id, backgroundOpacity } = message;
-            
-            if (typeof backgroundOpacity !== 'number' || backgroundOpacity < 0 || backgroundOpacity > 1) {
-                this.sendError(ws, 'Background opacity must be a number between 0 and 1', 'workspace_update_background_opacity', message.requestId);
-                return;
-            }
-            
-            updateWorkspaceBackgroundOpacity(id, backgroundOpacity);
-            
-            this.sendToClient(ws, {
-                type: 'workspace_update_background_opacity_response',
-                requestId: message.requestId,
-                data: { success: true, message: 'Workspace background opacity updated' },
-                timestamp: new Date().toISOString()
-            });
-            
-            // Broadcast workspace update to all clients
-            wsServer.broadcast({
-                type: 'workspace_updated',
-                data: { action: 'background_opacity_updated', workspaceId: id, backgroundOpacity },
-                timestamp: new Date().toISOString()
-            });
-        } catch (error) {
-            console.error('Workspace update background opacity error:', error);
-            this.sendError(ws, 'Failed to update workspace background opacity', error.message, message.requestId);
-        }
-    }
-
     async handleWorkspaceUpdatePrimaryFont(ws, message, clientInfo, wsServer) {
         try {
             const { id, primaryFont } = message;
@@ -2292,13 +2754,6 @@ class WebSocketMessageHandlers {
                 const colorRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
                 if (!colorRegex.test(settings.color.trim())) {
                     this.sendError(ws, 'Invalid color format. Use hex format (e.g., #ff4500)', 'workspace_update_settings', message.requestId);
-                    return;
-                }
-            }
-            // Validate opacity if provided
-            if (typeof settings.backgroundOpacity !== 'undefined') {
-                if (typeof settings.backgroundOpacity !== 'number' || settings.backgroundOpacity < 0 || settings.backgroundOpacity > 1) {
-                    this.sendError(ws, 'Background opacity must be a number between 0 and 1', 'workspace_update_settings', message.requestId);
                     return;
                 }
             }
@@ -2921,6 +3376,169 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('Get references error:', error);
             this.sendError(ws, 'Failed to get references', error.message, message.requestId);
+        }
+    }
+
+    async handleGetReferencesByIds(ws, message, clientInfo, wsServer) {
+        try {
+            const { references } = message;
+            
+            if (!references || !Array.isArray(references)) {
+                this.sendError(ws, 'Invalid references array', 'References must be an array of objects with type and id', message.requestId);
+                return;
+            }
+
+            const results = [];
+            
+            for (const ref of references) {
+                const { type, id } = ref;
+                
+                if (!type || !id) {
+                    console.warn(`Invalid reference object: ${JSON.stringify(ref)}`);
+                    continue;
+                }
+
+                try {
+                    if (type === 'vibe') {
+                        // Get vibe image data
+                        const vibeData = await this.getVibeImageData(id);
+                        if (vibeData) {
+                            results.push({
+                                type: 'vibe',
+                                id: id,
+                                data: vibeData
+                            });
+                        }
+                    } else if (type === 'cache') {
+                        // Get cache image data
+                        const cacheData = await this.getCacheImageData(id);
+                        if (cacheData) {
+                            results.push({
+                                type: 'cache',
+                                id: id,
+                                data: cacheData
+                            });
+                        }
+                    } else {
+                        console.warn(`Unknown reference type: ${type}`);
+                    }
+                } catch (error) {
+                    console.error(`Error getting reference ${type}:${id}:`, error);
+                    // Continue with other references
+                }
+            }
+
+            this.sendToClient(ws, {
+                type: 'get_references_by_ids_response',
+                requestId: message.requestId,
+                data: { 
+                    success: true, 
+                    data: {
+                        references: results
+                    }
+                },
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            console.error('Get references by IDs error:', error);
+            this.sendError(ws, 'Failed to get references by IDs', error.message, message.requestId);
+        }
+    }
+
+    // Helper method to get vibe image data by ID
+    async getVibeImageData(vibeId) {
+        try {
+            // Search through all workspaces to find the vibe
+            const workspaces = getWorkspaces();
+            
+            for (const [workspaceId, workspace] of Object.entries(workspaces)) {
+                const vibeFiles = workspace.vibeImages || [];
+                
+                for (const filename of vibeFiles) {
+                    const filePath = path.join(vibeCacheDir, filename);
+                    if (fs.existsSync(filePath)) {
+                        try {
+                            const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                            if (vibeData.id === vibeId) {
+                                // Transform encodings from object format to array format
+                                if (vibeData.encodings && typeof vibeData.encodings === 'object') {
+                                    const transformedEncodings = [];
+                                    
+                                    for (const [model, ieValues] of Object.entries(vibeData.encodings)) {
+                                        for (const [ie, encoding] of Object.entries(ieValues)) {
+                                            transformedEncodings.push({
+                                                model: model,
+                                                informationExtraction: parseFloat(ie),
+                                                encoding: encoding
+                                            });
+                                        }
+                                    }
+                                    
+                                    vibeData.encodings = transformedEncodings;
+                                }
+                                
+                                // Process preview field to add .webp extension if it exists
+                                if (vibeData.preview) {
+                                    const previewPath = path.join(previewCacheDir, `${vibeData.preview}.webp`);
+                                    vibeData.preview = fs.existsSync(previewPath) ? `${vibeData.preview}.webp` : null;
+                                }
+                                
+                                // Add workspace info to the vibe data
+                                return {
+                                    ...vibeData,
+                                    workspaceId: workspaceId
+                                };
+                            }
+                        } catch (parseError) {
+                            console.error(`Error parsing vibe file ${filename}:`, parseError);
+                            continue;
+                        }
+                    }
+                }
+            }
+            
+            return null; // Vibe not found
+        } catch (error) {
+            console.error(`Error getting vibe image data for ${vibeId}:`, error);
+            return null;
+        }
+    }
+
+    // Helper method to get cache image data by hash
+    async getCacheImageData(cacheHash) {
+        try {
+            const filePath = path.join(uploadCacheDir, cacheHash);
+            const previewPath = path.join(previewCacheDir, `${cacheHash}.webp`);
+            
+            if (!fs.existsSync(filePath)) {
+                return null; // Cache file not found
+            }
+            
+            const stats = fs.statSync(filePath);
+            
+            // Find which workspace owns this cache file
+            const workspaces = getWorkspaces();
+            let workspaceId = 'default';
+            
+            for (const [wsId, workspace] of Object.entries(workspaces)) {
+                if (workspace.cacheFiles && workspace.cacheFiles.includes(cacheHash)) {
+                    workspaceId = wsId;
+                    break;
+                }
+            }
+            
+            return {
+                hash: cacheHash,
+                filename: cacheHash,
+                mtime: stats.mtime.valueOf(),
+                size: stats.size,
+                hasPreview: fs.existsSync(previewPath),
+                workspaceId: workspaceId
+            };
+        } catch (error) {
+            console.error(`Error getting cache image data for ${cacheHash}:`, error);
+            return null;
         }
     }
 
@@ -5373,6 +5991,15 @@ class WebSocketMessageHandlers {
                 console.log(`📸 Generated preview: ${hash}`);
             }
             
+            // Generate blurred background preview
+            const blurPreviewPath = path.join(previewsDir, `${filename.split('.').slice(0, -1).join('.')}_blur.jpg`);
+            await sharp(imageBuffer)
+                .resize(128, 128, { fit: 'cover' })
+                .blur(20) // Heavy blur effect
+                .jpeg({ quality: 60 })
+                .toFile(blurPreviewPath);
+            console.log(`📸 Generated blurred preview: ${hash}`);
+            
             // Add to workspace files
             addToWorkspaceArray('files', finalFilename, workspaceId);
             
@@ -5505,6 +6132,1228 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('URL upload metadata request error:', error);
             this.sendError(ws, 'Failed to load URL upload metadata', error.message, message.requestId);
+        }
+    }
+
+    // Handle file search requests
+    async handleFileSearch(ws, message, clientInfo, wsServer) {
+        try {
+            const { query, viewType = 'images', action = 'search' } = message;
+            
+            if (action === 'start') {
+                // Initialize search cache for the session
+                await this.initializeSearchCache(clientInfo.sessionId, viewType);
+                wsServer.sendToClient(ws, {
+                    type: 'search_files_response',
+                    data: {
+                        status: 'cache_ready',
+                        viewType: viewType,
+                        timestamp: new Date().toISOString()
+                    },
+                    requestId: message.requestId
+                });
+                return;
+            }
+            
+            if (action === 'stop') {
+                // Clean up search cache for the session
+                this.cleanupSearchCache(clientInfo.sessionId);
+                wsServer.sendToClient(ws, {
+                    type: 'search_files_response',
+                    data: {
+                        status: 'cache_cleared',
+                        timestamp: new Date().toISOString()
+                    },
+                    requestId: message.requestId
+                });
+                return;
+            }
+            
+            if (action === 'suggestions') {
+                // Get tag suggestions without performing full search
+                const contextTags = message.contextTags || [];
+                
+                let tagSuggestions;
+                if (contextTags.length > 0) {
+                    // For context-aware suggestions, get tags only from files that match the context
+                    tagSuggestions = this.getContextAwareSuggestions(query || '', 20, contextTags);
+                } else {
+                    // For regular suggestions, use the normal method
+                    tagSuggestions = this.getTagSuggestions(query || '', 20);
+                }
+                                
+                wsServer.sendToClient(ws, {
+                    type: 'search_files_response',
+                    data: {
+                        status: 'suggestions',
+                        query: query || '',
+                        viewType: viewType,
+                        tagSuggestions: tagSuggestions,
+                        timestamp: new Date().toISOString()
+                    },
+                    requestId: message.requestId
+                });
+                return;
+            }
+            
+            if (!query || query.trim() === '') {
+                this.sendError(ws, 'Missing query parameter', 'search_files');
+                return;
+            }
+            
+            // File search request received
+            
+            // Perform the tag-based search using cached data
+            const searchResults = await this.searchFilesByTags(query, viewType, clientInfo.sessionId);
+            
+            // Search complete
+            
+            // Send search results (only one response)
+            wsServer.sendToClient(ws, {
+                type: 'search_files_response',
+                data: {
+                    status: 'complete',
+                    query: query,
+                    viewType: viewType,
+                    results: searchResults.results,
+                    count: searchResults.results.length,
+                    tagSuggestions: searchResults.tagSuggestions,
+                    timestamp: new Date().toISOString()
+                },
+                requestId: message.requestId
+            });
+            
+        } catch (error) {
+            console.error('File search error:', error);
+            this.sendError(ws, 'Search failed', error.message, message.requestId);
+        }
+    }
+    
+    // Search cache storage
+    searchCache = new Map();
+    
+    // Initialize search cache for a session
+    async initializeSearchCache(sessionId, viewType) {
+        try {
+            // Initialize search cache for this session and view
+            
+            // Get the active workspace for this session
+            const { getActiveWorkspace, getWorkspace } = require('./workspace');
+            const activeWorkspaceId = getActiveWorkspace(sessionId);
+            const activeWorkspace = getWorkspace(activeWorkspaceId);
+            
+            if (!activeWorkspace) {
+                throw new Error(`Active workspace not found for session ${sessionId}`);
+            }
+            
+            // Get all metadata from cache
+            const allMetadata = getImagesMetadata();
+            if (!allMetadata || Object.keys(allMetadata).length === 0) {
+                console.log('⚠️ No metadata available for search');
+                return;
+            }
+            
+            // Get files for the current view type from the active workspace
+            let workspaceFiles = [];
+            switch (viewType) {
+                case 'scraps':
+                    workspaceFiles = activeWorkspace.scraps || [];
+                    break;
+                case 'pinned':
+                    workspaceFiles = activeWorkspace.pinned || [];
+                    break;
+                case 'upscaled':
+                    // For upscaled, get all files and filter by upscaled status
+                    workspaceFiles = Object.keys(allMetadata).filter(filename => {
+                        const metadata = allMetadata[filename];
+                        return metadata && metadata.upscaled;
+                    });
+                    break;
+                default: // 'images'
+                    workspaceFiles = activeWorkspace.files || [];
+                    break;
+            }
+            
+            // Filter metadata to only include files from the current workspace view
+            const filteredMetadata = {};
+            workspaceFiles.forEach(filename => {
+                if (allMetadata[filename]) {
+                    filteredMetadata[filename] = allMetadata[filename];
+                }
+            });
+            
+            // Build tag index from the filtered metadata
+            this.buildTagIndex(filteredMetadata);
+            
+            // Store in cache
+            this.searchCache.set(sessionId, {
+                viewType,
+                metadata: filteredMetadata,
+                files: workspaceFiles,
+                timestamp: Date.now(),
+                workspaceId: activeWorkspaceId
+            });
+            
+            console.log(`✅ Search cache initialized for session ${sessionId}: ${Object.keys(filteredMetadata).length} files, view: ${viewType}, ${this.tagIndex.size} tags indexed`);
+            
+        } catch (error) {
+            console.error('❌ Error initializing search cache:', error);
+            throw error;
+        }
+    }
+    
+    // Clean up search cache for a session
+    cleanupSearchCache(sessionId) {
+        if (this.searchCache.has(sessionId)) {
+            const cacheInfo = this.searchCache.get(sessionId);
+            console.log(`🧹 Cleaning up search cache for session ${sessionId}: ${Object.keys(cacheInfo.metadata).length} files`);
+            this.searchCache.delete(sessionId);
+        }
+    }
+    
+    // Perform the actual file search using cached data
+    async performFileSearch(query, viewType, sessionId) {
+        const searchTerm = query.toLowerCase().trim();
+        const results = [];
+        
+        try {
+            // Get cached data for this session
+            const cacheData = this.searchCache.get(sessionId);
+            if (!cacheData) {
+                throw new Error('Search cache not initialized. Call search_files with action="start" first.');
+            }
+            
+            if (cacheData.viewType !== viewType) {
+                throw new Error(`View type mismatch. Cache initialized for ${cacheData.viewType}, but searching in ${viewType}`);
+            }
+            
+            const filteredMetadata = cacheData.metadata;
+            const imageFiles = Object.keys(filteredMetadata);
+            
+            // Searching cached data
+            
+            // Search through each file's metadata
+            for (const filename of imageFiles) {
+                const metadata = filteredMetadata[filename];
+                if (!metadata) continue;
+                
+                let matchScore = 0;
+                let matchDetails = [];
+                
+                // Search in PNG metadata (prompts, character prompts, etc.)
+                if (metadata.metadata) {
+                    const pngMeta = metadata.metadata;
+                    
+                    // Search in main prompt
+                    if (pngMeta.prompt && pngMeta.prompt.toLowerCase().includes(searchTerm)) {
+                        matchScore += 10;
+                        matchDetails.push({
+                            field: 'prompt',
+                            value: pngMeta.prompt,
+                            highlight: this.highlightSearchTerm(pngMeta.prompt, searchTerm)
+                        });
+                    }
+                    
+                    // Search in character prompts from forge_data
+                    if (pngMeta.forge_data) {
+                        const forgeData = pngMeta.forge_data;
+                        
+                        // Search in allCharacters (enabled characters)
+                        if (forgeData.allCharacters && Array.isArray(forgeData.allCharacters)) {
+                            for (const charPrompt of forgeData.allCharacters) {
+                                if (charPrompt.chara_name && charPrompt.chara_name.toLowerCase().includes(searchTerm)) {
+                                    matchScore += 15;
+                                    matchDetails.push({
+                                        field: 'character_name',
+                                        value: charPrompt.chara_name,
+                                        highlight: this.highlightSearchTerm(charPrompt.chara_name, searchTerm)
+                                    });
+                                }
+                            }
+                        }
+                        
+                        // Search in disabledCharacters
+                        if (forgeData.disabledCharacters && Array.isArray(forgeData.disabledCharacters)) {
+                            for (const charPrompt of forgeData.disabledCharacters) {
+                                if (charPrompt.prompt && charPrompt.prompt.toLowerCase().includes(searchTerm)) {
+                                    matchScore += 12;
+                                    matchDetails.push({
+                                        field: 'character_prompt',
+                                        value: charPrompt.prompt,
+                                        highlight: this.highlightSearchTerm(charPrompt.prompt, searchTerm),
+                                        character: charPrompt.chara_name || 'Unnamed'
+                                    });
+                                }
+                                
+                                if (charPrompt.chara_name && charPrompt.chara_name.toLowerCase().includes(searchTerm)) {
+                                    matchScore += 15;
+                                    matchDetails.push({
+                                        field: 'character_name',
+                                        value: charPrompt.chara_name,
+                                        highlight: this.highlightSearchTerm(charPrompt.chara_name, searchTerm)
+                                    });
+                                }
+                            }
+                        }
+                        
+                        // Search in characterNames array
+                        if (forgeData.characterNames && Array.isArray(forgeData.characterNames)) {
+                            for (const charName of forgeData.characterNames) {
+                                if (charName && charName.toLowerCase().includes(searchTerm)) {
+                                    matchScore += 15;
+                                    matchDetails.push({
+                                        field: 'character_name',
+                                        value: charName,
+                                        highlight: this.highlightSearchTerm(charName, searchTerm)
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Search in v4_prompt character captions (fully compiled values)
+                    if (pngMeta.v4_prompt && pngMeta.v4_prompt.caption && pngMeta.v4_prompt.caption.char_captions) {
+                        const charCaptions = pngMeta.v4_prompt.caption.char_captions;
+                        
+                        for (const caption of charCaptions) {
+                            if (caption.char_caption && caption.char_caption.toLowerCase().includes(searchTerm)) {
+                                matchScore += 14; // Higher score for compiled prompts
+                                matchDetails.push({
+                                    field: 'v4_character_caption',
+                                    value: caption.char_caption,
+                                    highlight: this.highlightSearchTerm(caption.char_caption, searchTerm),
+                                    character: 'v4_character',
+                                    center: caption.centers ? caption.centers[0] : null
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Search in preset name
+                    if (pngMeta.preset_name && pngMeta.preset_name.toLowerCase().includes(searchTerm)) {
+                        matchScore += 7;
+                        matchDetails.push({
+                            field: 'preset',
+                            value: pngMeta.preset_name,
+                            highlight: this.highlightSearchTerm(pngMeta.preset_name, searchTerm)
+                        });
+                    }
+                }
+                
+                // If we found matches, add to results
+                if (matchScore > 0) {
+                    results.push({
+                        filename: filename,
+                        matchScore: matchScore,
+                        matchDetails: matchDetails,
+                        metadata: {
+                            width: metadata.width,
+                            height: metadata.height,
+                            upscaled: metadata.upscaled,
+                            size: metadata.size,
+                            mtime: metadata.mtime
+                        }
+                    });
+                }
+            }
+            
+            // Sort results by match score (highest first)
+            results.sort((a, b) => b.matchScore - a.matchScore);
+            
+            return results;
+            
+        } catch (error) {
+            console.error('Error performing file search:', error);
+            throw error;
+        }
+    }
+    
+    // Helper method to highlight search terms in text
+    highlightSearchTerm(text, searchTerm) {
+        if (!text || !searchTerm) return text;
+        
+        const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        return text.replace(regex, '<span class="search-highlight">$1</span>');
+    }
+
+    // Search cache storage
+    searchCache = new Map();
+    
+    // Tag index for fast tag-based searching
+    tagIndex = new Map();
+    
+    // Extract tags from text with their weights
+    extractTagsFromText(text) {
+        if (!text || typeof text !== 'string') return [];
+        
+        const tags = [];
+        const fullTextEntries = [];
+        const lines = text.split('\n');
+        
+        for (const line of lines) {
+            // Split by | to handle group separators
+            const groups = line.split('|');
+            
+            for (const group of groups) {
+                const trimmedGroup = group.trim();
+                if (!trimmedGroup) continue;
+                
+                // Check if this group starts with a weight prefix and ends with ::
+                let groupWeight = 1.0;
+                let groupContent = trimmedGroup;
+                
+                const weightMatch = trimmedGroup.match(/^(-?\d+(?:\.\d+)?)::(.+)::$/);
+                if (weightMatch) {
+                    groupWeight = parseFloat(weightMatch[1]);
+                    groupContent = weightMatch[2].trim();
+                }
+                
+                // Process the group content (which may contain nested groups)
+                this.processTagGroup(groupContent, groupWeight, tags, fullTextEntries);
+            }
+        }
+        
+        return { tags, fullTextEntries };
+    }
+    
+    processTagGroup(content, baseWeight, tags, fullTextEntries) {
+        if (!content || content.length < 2) return;
+        
+        // Split by comma to get individual tags
+        const tagParts = content.split(',');
+        
+        for (const tagPart of tagParts) {
+            const trimmedTag = tagPart.trim();
+            if (!trimmedTag || trimmedTag.length < 2) continue;
+            
+            let tag = trimmedTag;
+            let weight = baseWeight;
+            let tagType = 'normal';
+            
+            // Check for nested brace emphasis {tag} - positive weight multiplier
+            if (trimmedTag.startsWith('{') && trimmedTag.endsWith('}')) {
+                const braceLevel = (trimmedTag.match(/\{/g) || []).length;
+                weight = baseWeight * (1.0 + (braceLevel * 0.1));
+                tag = trimmedTag.replace(/^\{+/, '').replace(/\}+$/, '').trim();
+                tagType = 'brace';
+            }
+            // Check for nested bracket emphasis [tag] - negative weight multiplier
+            else if (trimmedTag.startsWith('[') && trimmedTag.endsWith(']')) {
+                const bracketLevel = (trimmedTag.match(/\[/g) || []).length;
+                weight = baseWeight * (1.0 - (bracketLevel * 0.1));
+                tag = trimmedTag.replace(/^\[+/, '').replace(/\]+$/, '').trim();
+                tagType = 'bracket';
+            }
+            // Check for nested weight groups (e.g., 2::{tag}::)
+            else if (trimmedTag.includes('::')) {
+                const nestedWeightMatch = trimmedTag.match(/^(-?\d+(?:\.\d+)?)::(.+)::$/);
+                if (nestedWeightMatch) {
+                    const nestedWeight = parseFloat(nestedWeightMatch[1]);
+                    const nestedContent = nestedWeightMatch[2].trim();
+                    // Recursively process nested group with combined weight
+                    this.processTagGroup(nestedContent, baseWeight * nestedWeight, tags, fullTextEntries);
+                    continue;
+                }
+            }
+            
+            // Skip if tag is too short or contains invalid characters
+            if (tag.length < 2 || /[<>]/.test(tag)) continue;
+            
+            // Clean up the tag (remove extra spaces, etc.)
+            tag = tag.replace(/\s+/g, ' ').trim();
+            
+            if (tag.length >= 2) {
+                // Check if this is display text (starts with "Text:")
+                if (tag.startsWith('Text:')) {
+                    const displayText = tag.substring(5).trim();
+                    if (displayText.length > 0) {
+                        fullTextEntries.push({
+                            text: displayText.toLowerCase(),
+                            originalText: displayText,
+                            weight: weight,
+                            type: 'display_text'
+                        });
+                    }
+                    continue;
+                }
+                
+                // Check if tag is longer than 5 words - treat as full text
+                const wordCount = tag.split(/\s+/).length;
+                if (wordCount > 5) {
+                    fullTextEntries.push({
+                        text: tag.toLowerCase(),
+                        originalText: tag,
+                        weight: weight,
+                        type: 'long_tag'
+                    });
+                    continue;
+                }
+                
+                // Regular tag
+                tags.push({
+                    tag: tag.toLowerCase(),
+                    originalTag: tag,
+                    weight: weight,
+                    type: tagType
+                });
+            }
+        }
+    }
+    
+    // Build tag index from metadata
+    buildTagIndex(metadata) {
+        this.tagIndex.clear();
+        this.fullTextIndex = new Map();
+        this.presetIndex = new Map();
+        this.characterIndex = new Map();
+        this.modelIndex = new Map();
+        
+        for (const [filename, fileData] of Object.entries(metadata)) {
+            if (!fileData.metadata) continue;
+            
+            const pngMeta = fileData.metadata;
+            const fileTags = [];
+            const fileFullText = [];
+            
+            // Extract tags and full text from main prompt
+            if (pngMeta.prompt) {
+                const promptData = this.extractTagsFromText(pngMeta.prompt);
+                fileTags.push(...promptData.tags.map(t => ({ ...t, source: 'prompt' })));
+                fileFullText.push(...promptData.fullTextEntries.map(t => ({ ...t, source: 'prompt' })));
+            }
+            
+            // Extract tags and full text from character prompts
+            if (pngMeta.forge_data) {
+                const forgeData = pngMeta.forge_data;
+                
+                if (forgeData.disabledCharacters && Array.isArray(forgeData.disabledCharacters)) {
+                    for (const charPrompt of forgeData.disabledCharacters) {
+                        if (charPrompt.prompt) {
+                            const charData = this.extractTagsFromText(charPrompt.prompt);
+                            fileTags.push(...charData.tags.map(t => ({ ...t, source: 'character_prompt', character: charPrompt.chara_name })));
+                            fileFullText.push(...charData.fullTextEntries.map(t => ({ ...t, source: 'character_prompt', character: charPrompt.chara_name })));
+                        }
+                    }
+                }
+            }
+            
+            // Extract tags and full text from v4 prompts
+            if (pngMeta.v4_prompt && pngMeta.v4_prompt.caption && pngMeta.v4_prompt.caption.char_captions) {
+                for (const caption of pngMeta.v4_prompt.caption.char_captions) {
+                    if (caption.char_caption) {
+                        const v4Data = this.extractTagsFromText(caption.char_caption);
+                        fileTags.push(...v4Data.tags.map(t => ({ ...t, source: 'v4_character_caption', character: 'v4_character' })));
+                        fileFullText.push(...v4Data.fullTextEntries.map(t => ({ ...t, source: 'v4_character_caption', character: 'v4_character' })));
+                    }
+                }
+            }
+            
+            // Index preset names
+            if (pngMeta.preset_name) {
+                const presetKey = pngMeta.preset_name.toLowerCase();
+                if (!this.presetIndex.has(presetKey)) {
+                    this.presetIndex.set(presetKey, {
+                        name: pngMeta.preset_name,
+                        files: new Map(),
+                        occurrenceCount: 0
+                    });
+                }
+                this.presetIndex.get(presetKey).files.set(filename, {
+                    filename: filename,
+                    source: 'preset',
+                    metadata: {
+                        width: fileData.width,
+                        height: fileData.height,
+                        upscaled: fileData.upscaled,
+                        size: fileData.size,
+                        mtime: fileData.mtime
+                    }
+                });
+                this.presetIndex.get(presetKey).occurrenceCount++;
+            }
+            
+            // Index character names
+            if (pngMeta.forge_data) {
+                const forgeData = pngMeta.forge_data;
+                
+                if (forgeData.characterNames && Array.isArray(forgeData.characterNames)) {
+                    for (const charName of forgeData.characterNames) {
+                        if (charName && charName.trim()) {
+                            const charKey = charName.toLowerCase().trim();
+                            if (!this.characterIndex.has(charKey)) {
+                                this.characterIndex.set(charKey, {
+                                    name: charName.trim(),
+                                    files: new Map(),
+                                    occurrenceCount: 0
+                                });
+                            }
+                            this.characterIndex.get(charKey).files.set(filename, {
+                                filename: filename,
+                                source: 'character_name',
+                                metadata: {
+                                    width: fileData.width,
+                                    height: fileData.height,
+                                    upscaled: fileData.upscaled,
+                                    size: fileData.size,
+                                    mtime: fileData.mtime
+                                }
+                            });
+                            this.characterIndex.get(charKey).occurrenceCount++;
+                        }
+                    }
+                }
+            }
+            
+            // Index each tag
+            for (const tagData of fileTags) {
+                const tagKey = tagData.tag;
+                
+                if (!this.tagIndex.has(tagKey)) {
+                    this.tagIndex.set(tagKey, {
+                        tag: tagKey,
+                        originalTag: tagData.originalTag,
+                        files: new Map(),
+                        totalWeight: 0,
+                        occurrenceCount: 0
+                    });
+                }
+                
+                const tagInfo = this.tagIndex.get(tagKey);
+                
+                // Add file to tag index
+                if (!tagInfo.files.has(filename)) {
+                    tagInfo.files.set(filename, {
+                        filename: filename,
+                        weight: tagData.weight,
+                        source: tagData.source,
+                        character: tagData.character,
+                        metadata: {
+                            width: fileData.width,
+                            height: fileData.height,
+                            upscaled: fileData.upscaled,
+                            size: fileData.size,
+                            mtime: fileData.mtime
+                        }
+                    });
+                    
+                    tagInfo.totalWeight += tagData.weight;
+                    tagInfo.occurrenceCount++;
+                }
+            }
+            
+            // Index full text entries
+            for (const textData of fileFullText) {
+                const textKey = textData.text;
+                
+                if (!this.fullTextIndex.has(textKey)) {
+                    this.fullTextIndex.set(textKey, {
+                        text: textKey,
+                        originalText: textData.originalText,
+                        files: new Map(),
+                        totalWeight: 0,
+                        occurrenceCount: 0,
+                        type: textData.type
+                    });
+                }
+                
+                const textInfo = this.fullTextIndex.get(textKey);
+                
+                // Add file to full text index
+                if (!textInfo.files.has(filename)) {
+                    textInfo.files.set(filename, {
+                        filename: filename,
+                        weight: textData.weight,
+                        source: textData.source,
+                        character: textData.character,
+                        metadata: {
+                            width: fileData.width,
+                            height: fileData.height,
+                            upscaled: fileData.upscaled,
+                            size: fileData.size,
+                            mtime: fileData.mtime
+                        }
+                    });
+                    
+                    textInfo.totalWeight += textData.weight;
+                    textInfo.occurrenceCount++;
+                }
+            }
+        }
+        
+        console.log(`✅ Tag index built: ${this.tagIndex.size} unique tags, ${this.fullTextIndex.size} full text entries, ${this.presetIndex.size} presets, ${this.characterIndex.size} characters, ${this.modelIndex.size} models indexed`);
+    }
+    
+    // Get tag suggestions based on query
+    getTagSuggestions(query, limit = 20, contextTags = []) {
+        const suggestions = [];
+        const pushDedup = (arr, item, keyFn) => {
+            const key = keyFn(item);
+            if (!arr._set) arr._set = new Set();
+            if (arr._set.has(key)) return;
+            arr._set.add(key);
+            arr.push(item);
+        };
+
+        const cleanLabel = (str) => {
+            if (!str) return '';
+            let s = String(str).trim();
+            // Remove weight prefixes like "2::tag" or "3.0::tag"
+            s = s.replace(/^(-?\d+(?:\.\d+)?)::/, '');
+            // Remove orphan trailing ::
+            s = s.replace(/::+$/, '');
+            return s.trim();
+        };
+
+        // Empty query: return top results
+        if (!query || query.length === 0) {
+            // Top tags by occurrence + weight
+            for (const [tagKey, tagInfo] of this.tagIndex) {
+                const original = cleanLabel(tagInfo.originalTag || tagKey);
+                
+                if (original && original.length > 0) {
+                    const suggestion = {
+                        type: 'tag',
+                        tag: tagKey,
+                        originalTag: original,
+                        occurrenceCount: tagInfo.occurrenceCount,
+                        totalWeight: tagInfo.totalWeight,
+                        files: Array.from(tagInfo.files.values())
+                    };
+                    
+                    pushDedup(suggestions, suggestion, (it) => `tag:${it.originalTag.toLowerCase()}`);
+                }
+            }
+
+            // Include some top full text entries as TEXT suggestions
+            for (const [textKey, textInfo] of this.fullTextIndex) {
+                const original = cleanLabel(textInfo.originalText || textKey);
+                if (original && original.length > 0) {
+                    pushDedup(suggestions, {
+                        type: 'full_text',
+                        tag: textKey,
+                        originalTag: original,
+                        fullText: textInfo.originalText,
+                        occurrenceCount: textInfo.occurrenceCount,
+                        totalWeight: textInfo.totalWeight,
+                        files: Array.from(textInfo.files.values())
+                    }, (it) => `text:${(it.originalTag || '').toLowerCase()}`);
+                }
+            }
+
+            // Sort and return top N
+            suggestions.sort((a, b) => {
+                const scoreA = a.occurrenceCount + Math.abs(a.totalWeight || 0);
+                const scoreB = b.occurrenceCount + Math.abs(b.totalWeight || 0);
+                if (scoreA !== scoreB) return scoreB - scoreA;
+                return (a.originalTag || a.tag).localeCompare(b.originalTag || b.tag);
+            });
+            
+            return suggestions.slice(0, limit);
+        }
+
+        const queryLower = query.toLowerCase();
+
+        // Search in tags
+        for (const [tagKey, tagInfo] of this.tagIndex) {
+            if (tagKey.includes(queryLower)) {
+                pushDedup(suggestions, {
+                    type: 'tag',
+                    tag: tagKey,
+                    originalTag: cleanLabel(tagInfo.originalTag || tagKey),
+                    occurrenceCount: tagInfo.occurrenceCount,
+                    totalWeight: tagInfo.totalWeight,
+                    files: Array.from(tagInfo.files.values())
+                }, (it) => `tag:${it.originalTag.toLowerCase()}`);
+            }
+        }
+
+        // Search in full text entries
+        for (const [textKey, textInfo] of this.fullTextIndex) {
+            if (textKey.includes(queryLower)) {
+                // Find a specific word/phrase that matches
+                const words = (textInfo.originalText || '').split(/\s+/);
+                const matchingWord = words.find(word => word.toLowerCase().includes(queryLower)) || textKey;
+                pushDedup(suggestions, {
+                    type: 'full_text',
+                    tag: matchingWord.toLowerCase(),
+                    originalTag: matchingWord,
+                    fullText: textInfo.originalText,
+                    occurrenceCount: textInfo.occurrenceCount,
+                    totalWeight: textInfo.totalWeight,
+                    files: Array.from(textInfo.files.values())
+                }, (it) => `text:${it.originalTag.toLowerCase()}`);
+            }
+        }
+
+        // Search in presets
+        for (const [presetKey, presetInfo] of this.presetIndex) {
+            if (presetKey.includes(queryLower)) {
+                pushDedup(suggestions, {
+                    type: 'preset',
+                    tag: presetKey,
+                    originalTag: presetInfo.name,
+                    occurrenceCount: presetInfo.occurrenceCount,
+                    totalWeight: 0,
+                    files: Array.from(presetInfo.files.values())
+                }, (it) => `preset:${it.originalTag.toLowerCase()}`);
+            }
+        }
+
+        // Search in character names
+        for (const [charKey, charInfo] of this.characterIndex) {
+            if (charKey.includes(queryLower)) {
+                pushDedup(suggestions, {
+                    type: 'character',
+                    tag: charKey,
+                    originalTag: charInfo.name,
+                    occurrenceCount: charInfo.occurrenceCount,
+                    totalWeight: 0,
+                    files: Array.from(charInfo.files.values())
+                }, (it) => `character:${it.originalTag.toLowerCase()}`);
+            }
+        }
+
+        // Apply context-aware ranking if context tags are provided
+        if (contextTags && contextTags.length > 0) {
+            console.log('🔍 Backend: Applying context-aware ranking with tags:', contextTags);
+            suggestions.forEach(suggestion => {
+                let contextScore = 0;
+                
+                // Check if this suggestion appears in the same prompts as context tags
+                for (const contextTag of contextTags) {
+                    const contextTagLower = contextTag.toLowerCase();
+                    
+                    // Look for files that contain both the context tag and this suggestion
+                    if (suggestion.files && Array.isArray(suggestion.files)) {
+                        for (const fileInfo of suggestion.files) {
+                            // Check if this file also contains context tags
+                            const fileMetadata = this.getFileMetadata(fileInfo.filename || fileInfo.original || fileInfo.upscaled);
+                            if (fileMetadata) {
+                                const fileText = this.extractSearchableText(fileMetadata).toLowerCase();
+                                if (fileText.includes(contextTagLower)) {
+                                    contextScore += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Boost score for context-relevant suggestions
+                suggestion.contextScore = contextScore;
+                suggestion.boostedScore = (suggestion.occurrenceCount + Math.abs(suggestion.totalWeight || 0)) + (contextScore * 10);
+            });
+            
+            console.log('🔍 Backend: Context scores applied, sorting by boosted scores');
+            
+            // Sort by boosted score (context relevance + original score)
+            suggestions.sort((a, b) => {
+                const scoreA = a.boostedScore || (a.occurrenceCount + Math.abs(a.totalWeight || 0));
+                const scoreB = b.boostedScore || (b.occurrenceCount + Math.abs(b.totalWeight || 0));
+                if (scoreA !== scoreB) return scoreB - scoreA;
+                return (a.originalTag || a.tag).localeCompare(b.originalTag || b.tag);
+            });
+        } else {
+            console.log('🔍 Backend: No context tags, using original sorting');
+            // Original sorting for non-context queries
+            suggestions.sort((a, b) => {
+                const scoreA = a.occurrenceCount + Math.abs(a.totalWeight || 0);
+                const scoreB = b.occurrenceCount + Math.abs(b.totalWeight || 0);
+                if (scoreA !== scoreB) return scoreB - scoreA;
+                return (a.originalTag || a.tag).localeCompare(b.originalTag || b.tag);
+            });
+        }
+
+        return suggestions.slice(0, limit);
+    }
+    
+    // Get context-aware suggestions - only tags from files that contain the context tags
+    getContextAwareSuggestions(query, limit = 20, contextTags = []) {
+        if (!contextTags || contextTags.length === 0) {
+            return this.getTagSuggestions(query, limit);
+        }
+        
+        console.log('🔍 Backend: Getting context-aware suggestions for tags:', contextTags);
+        
+        // First, find all files that contain ALL context tags
+        const contextMatchingFiles = new Set();
+        let firstContextTerm = true;
+        
+        for (const contextTag of contextTags) {
+            const contextTagLower = contextTag.toLowerCase();
+            const termSuggestions = this.getTagSuggestions(contextTagLower, 100);
+            const termFiles = new Set();
+            
+            // Collect files that match this context tag
+            for (const suggestion of termSuggestions) {
+                for (const fileInfo of suggestion.files) {
+                    const filename = fileInfo.filename || fileInfo.original || fileInfo.upscaled;
+                    if (filename) {
+                        termFiles.add(filename);
+                    }
+                }
+            }
+            
+            if (firstContextTerm) {
+                // Initialize with first term's files
+                contextMatchingFiles.add(...termFiles);
+                firstContextTerm = false;
+            } else {
+                // Keep only files that match ALL context tags (AND condition)
+                const currentFiles = new Set(contextMatchingFiles);
+                for (const filename of currentFiles) {
+                    if (!termFiles.has(filename)) {
+                        contextMatchingFiles.delete(filename);
+                    }
+                }
+            }
+        }
+        
+        console.log(`🔍 Backend: Found ${contextMatchingFiles.size} files matching all context tags`);
+        
+        // Now get suggestions, but only include tags from files that match the context
+        const suggestions = [];
+        const pushDedup = (arr, item, keyFn) => {
+            const key = keyFn(item);
+            if (!arr._set) arr._set = new Set();
+            if (arr._set.has(key)) return;
+            arr._set.add(key);
+            arr.push(item);
+        };
+
+        const cleanLabel = (str) => {
+            if (!str) return '';
+            let s = String(str).trim();
+            s = s.replace(/^(-?\d+(?:\.\d+)?)::/, '');
+            s = s.replace(/::+$/, '');
+            return s.trim();
+        };
+
+        if (!query || query.length === 0) {
+            // Get all tags from context-matching files
+            for (const [tagKey, tagInfo] of this.tagIndex) {
+                const original = cleanLabel(tagInfo.originalTag || tagKey);
+                
+                if (original && original.length > 0) {
+                    // Only include tags that appear in context-matching files
+                    const contextRelevantFiles = [];
+                    for (const fileInfo of tagInfo.files.values()) {
+                        const filename = fileInfo.filename || fileInfo.original || fileInfo.upscaled;
+                        if (filename && contextMatchingFiles.has(filename)) {
+                            contextRelevantFiles.push(fileInfo);
+                        }
+                    }
+                    
+                    if (contextRelevantFiles.length > 0) {
+                        const suggestion = {
+                            type: 'tag',
+                            tag: tagKey,
+                            originalTag: original,
+                            occurrenceCount: contextRelevantFiles.length,
+                            totalWeight: contextRelevantFiles.reduce((sum, fi) => sum + (fi.weight || 0), 0),
+                            files: contextRelevantFiles
+                        };
+                        pushDedup(suggestions, suggestion, (it) => `tag:${it.originalTag.toLowerCase()}`);
+                    }
+                }
+            }
+        } else {
+            // Search for specific query within context-matching files
+            const queryLower = query.toLowerCase();
+            
+            for (const [tagKey, tagInfo] of this.tagIndex) {
+                if (tagKey.includes(queryLower)) {
+                    const original = cleanLabel(tagInfo.originalTag || tagKey);
+                    
+                    // Only include tags that appear in context-matching files
+                    const contextRelevantFiles = [];
+                    for (const fileInfo of tagInfo.files.values()) {
+                        const filename = fileInfo.filename || fileInfo.original || fileInfo.upscaled;
+                        if (filename && contextMatchingFiles.has(filename)) {
+                            contextRelevantFiles.push(fileInfo);
+                        }
+                    }
+                    
+                    if (contextRelevantFiles.length > 0) {
+                        pushDedup(suggestions, {
+                            type: 'tag',
+                            tag: tagKey,
+                            originalTag: original,
+                            occurrenceCount: contextRelevantFiles.length,
+                            totalWeight: contextRelevantFiles.reduce((sum, fi) => sum + (fi.weight || 0), 0),
+                            files: contextRelevantFiles
+                        }, (it) => `tag:${it.originalTag.toLowerCase()}`);
+                    }
+                }
+            }
+        }
+        
+        // Sort by occurrence count and weight
+        suggestions.sort((a, b) => {
+            const scoreA = a.occurrenceCount + Math.abs(a.totalWeight || 0);
+            const scoreB = b.occurrenceCount + Math.abs(b.totalWeight || 0);
+            if (scoreA !== scoreB) return scoreB - scoreA;
+            return (a.originalTag || a.tag).localeCompare(b.originalTag || b.tag);
+        });
+        
+        console.log(`🔍 Backend: Generated ${suggestions.length} context-aware suggestions`);
+        return suggestions.slice(0, limit);
+    }
+    
+    // Helper method to get file metadata
+    getFileMetadata(filename) {
+        try {
+            const { getImagesMetadata } = require('./metadataCache');
+            const allMetadata = getImagesMetadata();
+            return allMetadata[filename] || null;
+        } catch (error) {
+            console.error('Error getting file metadata:', error);
+            return null;
+        }
+    }
+    
+    // Helper method to extract searchable text from metadata
+    extractSearchableText(metadata) {
+        if (!metadata) return '';
+        
+        const textParts = [];
+        
+        // Extract from various metadata fields
+        if (metadata.prompt) textParts.push(metadata.prompt);
+        if (metadata.uc) textParts.push(metadata.uc);
+        if (metadata.characterPrompts) textParts.push(metadata.characterPrompts);
+        if (metadata.v4_prompt && metadata.v4_prompt.caption) {
+            if (metadata.v4_prompt.caption.char_captions) {
+                textParts.push(metadata.v4_prompt.caption.char_captions);
+            }
+            if (metadata.v4_prompt.caption.text) {
+                textParts.push(metadata.v4_prompt.caption.text);
+            }
+        }
+        if (metadata.v4_negative_prompt && metadata.v4_negative_prompt.caption) {
+            if (metadata.v4_negative_prompt.caption.char_captions) {
+                textParts.push(metadata.v4_negative_prompt.caption.char_captions);
+            }
+            if (metadata.v4_negative_prompt.caption.text) {
+                textParts.push(metadata.v4_negative_prompt.caption.text);
+            }
+        }
+        if (metadata.forge_data) {
+            if (metadata.forge_data.allCharacters) textParts.push(metadata.forge_data.allCharacters);
+            if (metadata.forge_data.disabledCharacters) textParts.push(metadata.forge_data.disabledCharacters);
+            if (metadata.forge_data.characterNames) textParts.push(metadata.forge_data.characterNames);
+        }
+        if (metadata.preset_name) textParts.push(metadata.preset_name);
+        if (metadata.model) textParts.push(metadata.model);
+        
+        return textParts.join(' ').toLowerCase();
+    }
+    
+    // Search files by tags
+    searchFilesByTags(query, viewType, sessionId) {
+        const searchTerms = query.toLowerCase().trim().split(',').map(term => term.trim()).filter(term => term.length > 0);
+        console.log('🔍 Search: Processing search terms:', searchTerms);
+        
+        try {
+            // Get cached data for this session
+            const cacheData = this.searchCache.get(sessionId);
+            if (!cacheData) {
+                throw new Error('Search cache not initialized. Call search_files with action="start" first.');
+            }
+            
+            if (cacheData.viewType !== viewType) {
+                throw new Error(`View type mismatch. Cache initialized for ${cacheData.viewType}, but searching in ${viewType}`);
+            }
+            
+            // Get tag suggestions for the first term (for display purposes)
+            const tagSuggestions = searchTerms.length > 0 ? this.getTagSuggestions(searchTerms[0], 20) : [];
+            
+            // Find files that contain ALL search terms (AND condition)
+            const matchingFiles = new Map();
+            
+            // Process each search term
+            for (const searchTerm of searchTerms) {
+                console.log(`🔍 Search: Processing term "${searchTerm}"`);
+                const termSuggestions = this.getTagSuggestions(searchTerm, 100); // Get more suggestions for comprehensive search
+                const termFiles = new Set();
+                
+                // Collect all files that match this term
+                for (const suggestion of termSuggestions) {
+                    for (const fileInfo of suggestion.files) {
+                        // Handle different file info structures
+                        const filename = fileInfo.filename || fileInfo.original || fileInfo.upscaled;
+                        if (filename) {
+                            termFiles.add(filename);
+                        }
+                    }
+                }
+                
+                console.log(`🔍 Search: Term "${searchTerm}" matches ${termFiles.size} files`);
+                
+                // If this is the first term, initialize matching files
+                if (searchTerms.indexOf(searchTerm) === 0) {
+                    for (const filename of termFiles) {
+                        matchingFiles.set(filename, {
+                            filename: filename,
+                            matchScore: 0,
+                            matchDetails: [],
+                            matchedTags: [],
+                            metadata: null
+                        });
+                    }
+                    console.log(`🔍 Search: Initialized with ${matchingFiles.size} files from first term`);
+                } else {
+                    // For subsequent terms, only keep files that match ALL terms (AND condition)
+                    const currentMatchingFiles = new Set(matchingFiles.keys());
+                    let removedCount = 0;
+                    for (const filename of currentMatchingFiles) {
+                        if (!termFiles.has(filename)) {
+                            matchingFiles.delete(filename);
+                            removedCount++;
+                        }
+                    }
+                    console.log(`🔍 Search: After AND filter for term "${searchTerm}": ${matchingFiles.size} files remain (removed ${removedCount})`);
+                }
+            }
+            
+            // Now calculate scores for remaining files (those that match ALL terms)
+            for (const [filename, fileResult] of matchingFiles) {
+                // Get metadata for the file
+                const fileData = cacheData.metadata[filename];
+                if (fileData) {
+                    fileResult.metadata = {
+                        width: fileData.width,
+                        height: fileData.height,
+                        upscaled: fileData.upscaled,
+                        size: fileData.size,
+                        mtime: fileData.mtime
+                    };
+                }
+                
+                // Calculate score based on how well each term matches
+                for (const searchTerm of searchTerms) {
+                    const termSuggestions = this.getTagSuggestions(searchTerm, 100);
+                    
+                    for (const suggestion of termSuggestions) {
+                        for (const fileInfo of suggestion.files) {
+                            // Handle different file info structures
+                            const fileInfoFilename = fileInfo.filename || fileInfo.original || fileInfo.upscaled;
+                            if (fileInfoFilename === filename) {
+                                const tagScore = Math.abs(fileInfo.weight || 0) * 10; // Base score from weight
+                                const occurrenceBonus = suggestion.occurrenceCount * 2; // Bonus for popular tags
+                                const termMatchBonus = 5; // Bonus for matching each term
+                                
+                                fileResult.matchScore += tagScore + occurrenceBonus + termMatchBonus;
+                                fileResult.matchedTags.push({
+                                    tag: suggestion.originalTag,
+                                    weight: fileInfo.weight || 0,
+                                    source: fileInfo.source || 'unknown',
+                                    character: fileInfo.character || null
+                                });
+                                
+                                fileResult.matchDetails.push({
+                                    field: fileInfo.source || 'unknown',
+                                    value: suggestion.originalTag,
+                                    highlight: this.highlightSearchTerm(suggestion.originalTag, searchTerm),
+                                    weight: fileInfo.weight || 0,
+                                    character: fileInfo.character || null
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Convert to array and sort by score
+            const results = Array.from(matchingFiles.values());
+            results.sort((a, b) => b.matchScore - a.matchScore);
+            
+            console.log(`🔍 Search: Final results: ${results.length} files match ALL terms (AND condition)`);
+            
+            return {
+                results: results,
+                tagSuggestions: tagSuggestions,
+                query: query
+            };
+            
+        } catch (error) {
+            console.error('Error performing tag-based file search:', error);
+            throw error;
+        }
+    }
+
+    // Handle image generation requests
+    async handleImageGeneration(ws, message, clientInfo, wsServer) {
+        try {
+            const { requestId, ...data } = message;
+            console.log(`🚀 Processing image generation request: ${requestId}`);
+            console.log('📋 Generation data:', data);
+            
+            // Call the WebSocket-native image generation function directly
+            const result = await generateImageWebSocket(
+                data, 
+                clientInfo.userType, 
+                clientInfo.sessionId
+            );
+            
+            // Send success response with image data using _response pattern
+            this.sendToClient(ws, {
+                type: 'image_generation_response',
+                requestId: requestId,
+                data: {
+                    image: result.buffer.toString('base64'),
+                    filename: result.filename,
+                    seed: result.seed || null
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('❌ Image generation error:', error);
+            this.sendToClient(ws, {
+                type: 'image_generation_error',
+                requestId: message.requestId,
+                data: null,
+                error: error.message || 'Image generation failed',
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+        // Handle image upscaling requests
+    async handleImageUpscaling(ws, message, clientInfo, wsServer) {
+        try {
+            const { requestId, ...data } = message;
+            console.log(`📏 Processing image upscaling request: ${requestId}`);
+            console.log('📋 Upscaling data:', data);
+
+            // Call the WebSocket-native upscaling function directly
+            const result = await upscaleImageWebSocket(
+                data.filename, 
+                data.workspace, 
+                clientInfo.userType, 
+                clientInfo.sessionId
+            );
+            
+            // Send success response with upscaled image data using _response pattern
+            this.sendToClient(ws, {
+                type: 'image_upscaling_response',
+                requestId: requestId,
+                data: {
+                    image: result.buffer.toString('base64'),
+                    filename: result.filename
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('❌ Image upscaling error:', error);
+            this.sendToClient(ws, {
+                type: 'image_upscaling_error',
+                requestId: message.requestId,
+                data: null,
+                error: error.message || 'Image upscaling failed',
+                timestamp: new Date().toISOString()
+            });
         }
     }
 }

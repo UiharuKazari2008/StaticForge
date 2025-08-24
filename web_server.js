@@ -12,82 +12,20 @@ const crypto = require('crypto');
 
 // Import modules
 const { authMiddleware } = require('./modules/auth');
-const { loadPromptConfig, applyTextReplacements, getUsedReplacements } = require('./modules/textReplacements');
-const { getPresetCacheKey, getCachedPreset, setCachedPreset, getCacheStatus } = require('./modules/cache');
-const { queueMiddleware, getStatus: getQueueStatus } = require('./modules/queue');
+const { loadPromptConfig, setContext } = require('./modules/textReplacements');
+const { tagSuggestionsCache } = require('./modules/cache');
+const { queueMiddleware, getStatus: getQueueStatus, broadcastQueueStatusImmediate, getDetailedStatus } = require('./modules/queue');
 const { WebSocketServer, setGlobalWsServer, getGlobalWsServer } = require('./modules/websocket');
 const { WebSocketMessageHandlers } = require('./modules/websocketHandlers');
-const { 
-    readMetadata,
-    updateMetadata, 
-    stripPngTextChunks, 
-    extractRelevantFields, 
-    getModelDisplayName,
-    getBaseName
-} = require('./modules/pngMetadata');
-const { 
-    getImageDimensions, 
-    getDimensionsFromResolution, 
-    matchOriginalResolution, 
-    processDynamicImage, 
-    resizeMaskWithCanvas, 
-    isImageLarge
-} = require('./modules/imageTools');
-const { 
-    initializeWorkspaces,
-    getWorkspaces,
-    getWorkspace,
-    createWorkspace,
-    renameWorkspace,
-    updateWorkspaceColor,
-    updateWorkspaceBackgroundColor,
-    deleteWorkspace,
-    dumpWorkspace,
-    moveFilesToWorkspace,
-    movePinnedToWorkspace,
-    getActiveWorkspace,
-    setActiveWorkspace,
-    getActiveWorkspaceFiles,
-    addToWorkspaceArray,
-    removeFromWorkspaceArray,
-    moveToWorkspaceArray,
-    getActiveWorkspaceCacheFiles,
-    removeFilesFromWorkspaces,
-    getActiveWorkspaceScraps,
-    getActiveWorkspacePinned,
-    syncWorkspaceFiles,
-    getWorkspacesData,
-    getActiveWorkspaceData,
-    // Group management functions
-    createGroup,
-    getGroup,
-    getWorkspaceGroups,
-    addImagesToGroup,
-    removeImagesFromGroup,
-    renameGroup,
-    deleteGroup,
-    getGroupsForImage,
-    getActiveWorkspaceGroups
-} = require('./modules/workspace');
-const { 
-    loadMetadataCache,
-    saveMetadataCache,
-    getImageMetadata,
-    scanAndUpdateMetadata,
-    addReceipt,
-    removeImageMetadata,
-    getCachedMetadata,
-    getAllMetadata,
-    getMultipleMetadata,
-    addReceiptMetadata,
-    addUnattributedReceipt,
-    broadcastReceiptNotification
-} = require('./modules/metadataCache.js');
+const { updateMetadata, getBaseName } = require('./modules/pngMetadata');
+const { processDynamicImage } = require('./modules/imageTools');
+const { initializeWorkspaces, getWorkspaces, getActiveWorkspace, addToWorkspaceArray } = require('./modules/workspace');
+const { saveMetadataCache, addReceiptMetadata, addUnattributedReceipt, broadcastReceiptNotification } = require('./modules/metadataCache.js');
 const imageCounter = require('./modules/imageCounter');
 const { generatePreview, generateBlurredPreview } = require('./modules/previewUtils');
 // Example usage in WebSocket handler or main server
 const { setContext: setImageGenContext, handleGeneration, buildOptions } = require('./modules/imageGeneration');
-const { setContext: setUpscaleContext, upscaleImage } = require('./modules/imageUpscaling');
+const { setContext: setUpscaleContext } = require('./modules/imageUpscaling');
 
 // Initialize NovelAI client
 const client = new NovelAI({ 
@@ -270,8 +208,6 @@ const previewsDir = path.resolve(__dirname, '.previews');
     }
 });
 
-const cacheFile = path.join(cacheDir, 'tag_cache.json');
-
 // Initialize workspace system
 initializeWorkspaces();
 
@@ -297,6 +233,30 @@ app.get('/app', (req, res) => {
 
 app.options('/ping', authMiddleware, (req, res) => {
     res.json({ ok: true, date: Date.now().valueOf() });
+});
+
+// Manual queue status update endpoint (for testing)
+app.post('/queue/status/update', authMiddleware, (req, res) => {
+    try {
+        const success = broadcastQueueStatusImmediate();
+        res.json({ 
+            success, 
+            message: success ? 'Queue status broadcasted' : 'Failed to broadcast queue status',
+            timestamp: Date.now().valueOf()
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get detailed queue status
+app.get('/queue/status', authMiddleware, (req, res) => {
+    try {
+        const status = getDetailedStatus();
+        res.json(status);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // Login endpoint
@@ -415,9 +375,6 @@ async function getPinnedImages() {
             return [];
         }
         
-        // Log workspace structure for debugging
-        console.log('📋 Workspace keys:', Object.keys(workspaces));
-        
         // Validate workspace structure
         if (Object.keys(workspaces).length === 0) {
             console.warn('⚠️ No workspaces found');
@@ -432,13 +389,6 @@ async function getPinnedImages() {
                 console.warn(`⚠️ Invalid workspace object for ID: ${workspaceId}`);
                 return;
             }
-            
-            console.log(`🔍 Checking workspace: ${workspaceId}`, {
-                name: workspace.name || 'Unnamed',
-                hasPinned: !!workspace.pinned,
-                pinnedType: typeof workspace.pinned,
-                pinnedLength: Array.isArray(workspace.pinned) ? workspace.pinned.length : 'N/A'
-            });
             
             if (workspace.pinned && Array.isArray(workspace.pinned) && workspace.pinned.length > 0) {
                 console.log(`📌 Workspace "${workspace.name || 'Unnamed'}" (${workspaceId}) has ${workspace.pinned.length} pinned images`);
@@ -491,8 +441,6 @@ async function getRandomWorkspaceImages() {
                 filename: file,
                 path: path.join(imagesDir, file)
             }));
-        
-        console.log(`🖼️ Found ${imageFiles.length} total images in workspace`);
         
         if (imageFiles.length === 0) {
             console.warn('⚠️ No image files found in images directory');
@@ -939,69 +887,20 @@ app.use((req, res, next) => {
     next();
 });
 
-app.get('/preset/:name', authMiddleware, async (req, res) => {
+app.get('/preset/:uuid', authMiddleware, queueMiddleware, async (req, res) => {
     try {
         const currentPromptConfig = loadPromptConfig();
-        const p = currentPromptConfig.presets[req.params.name];
+        // Find preset by UUID instead of name
+        const p = Object.entries(currentPromptConfig.presets).find(([key, preset]) => preset.uuid === req.params.uuid).map(p => ({...p[1], name: p[0]}));
         if (!p) {
             return res.status(404).json({ error: 'Preset not found' });
         }
         
-        // Check if force generation is requested
-        const forceGenerate = req.query.forceGenerate === 'true';
-        
-        if (!forceGenerate) {
-            // Try to get cached image
-            const cacheKey = getPresetCacheKey(req.params.name, req.query);
-            const cached = getCachedPreset(cacheKey);
-            
-            if (cached) {
-                console.log('📤 Returning cached image');
-                    
-                // Read the cached file from disk
-                const filePath = path.join(imagesDir, cached.filename);
-                const fileBuffer = fs.readFileSync(filePath);
-                
-                // Check if optimization is requested
-                const optimize = req.query.optimize === 'true';
-                    let finalBuffer = fileBuffer;
-                let contentType = 'image/png';
-                
-                if (optimize) {
-                    try {
-                        finalBuffer = await sharp(fileBuffer)
-                        .jpeg({ quality: 75 })
-                        .toBuffer();
-                        contentType = 'image/jpeg';
-                    } catch (error) {
-                        console.error('❌ Image optimization failed:', error.message);
-                    }
-                }
-                
-                res.setHeader('Content-Type', contentType);
-                res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename');
-                if (cached && cached.filename) {
-                    res.setHeader('X-Generated-Filename', cached.filename);
-                }
-                if (req.query.download === 'true') {
-                    const extension = optimize ? 'jpg' : 'png';
-                    const optimizedFilename = cached.filename.replace('.png', `.${extension}`);
-                    res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
-                }
-                res.send(finalBuffer);
-                return;
-            }
-        }
-        
         console.log('🔍 Building options for preset:', p);
         const opts = await buildOptions(p, null, req.query);
-        const workspaceId = req.body.workspace || req.query.workspace || null;
-        let result = await handleGeneration(opts, true, req.params.name, workspaceId);
-        // Cache the result if generation was successful
-        if (!forceGenerate) {
-            const cacheKey = getPresetCacheKey(req.params.name, req.query);
-        setCachedPreset(cacheKey, result.filename);
-        }
+        // Use target_workspace from preset if no workspace specified (for REST API calls)
+        const workspaceId = req?.query?.workspace || p?.target_workspace || 'default';
+        let result = await handleGeneration(opts, true, p.name || 'unknown', workspaceId);
         
         // Check if optimization is requested
         const optimize = req.query.optimize === 'true';
@@ -1023,6 +922,8 @@ app.get('/preset/:name', authMiddleware, async (req, res) => {
         if (result && result.filename) {
             res.setHeader('X-Generated-Filename', result.filename);
         }
+        res.setHeader('X-Preset-UUID', p.uuid);
+        res.setHeader('X-Preset-Name', p.name);
         if (req.query.download === 'true') {
             const extension = optimize ? 'jpg' : 'png';
             const optimizedFilename = result.filename.replace('.png', `.${extension}`);
@@ -1035,34 +936,8 @@ app.get('/preset/:name', authMiddleware, async (req, res) => {
     }
 });
 
-// Load character data for auto-complete
-
-// Tag suggestions cache management
-let tagSuggestionsCache = { tags: {}, queries: {} };
-let cacheDirty = false;
-let saveTimer = null;
-
 // Initialize cache at startup
 async function initializeCache() {
-    try {
-        if (fs.existsSync(cacheFile)) {
-            const loadedCache = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
-            // Handle migration from old cache format
-            if (loadedCache.tags && loadedCache.queries) {
-                tagSuggestionsCache = loadedCache;
-            } else {
-                console.log('🔄 Migrating cache to new format...');
-                tagSuggestionsCache = { tags: {}, queries: {} };
-            }
-            console.log(`✅ Loaded tag suggestions cache with ${Object.keys(tagSuggestionsCache.tags).length} tags`);
-        } else {
-            console.log('📝 Creating new tag suggestions cache');
-        }
-    } catch (error) {
-        console.error('❌ Error loading tag suggestions cache:', error.message);
-        process.exit(1);
-    }
-
     console.log('🔄 Syncing previews...');
     await syncPreviews();
 
@@ -1072,54 +947,6 @@ async function initializeCache() {
     // Set up periodic refreshes
     setInterval(() => initializeAccountData(), ACCOUNT_DATA_REFRESH_INTERVAL); // Check every 4 hours
     setInterval(() => refreshBalance(), BALANCE_REFRESH_INTERVAL); // Check every 15 minutes
-}
-
-// Delayed save function with atomic file operations
-function scheduleCacheSave() {
-    if (!cacheDirty) return;
-    
-    // Clear existing timer
-    if (saveTimer) {
-        clearTimeout(saveTimer);
-    }
-    
-    // Schedule save in 5 minutes
-    saveTimer = setTimeout(() => {
-        saveCacheAtomic();
-    }, 5 * 60 * 1000); // 5 minutes
-}
-
-function saveCacheAtomic() {
-    if (!cacheDirty) return;
-    
-    const tempFile = `${cacheFile}.tmp`;
-    
-    try {
-        // Write to temporary file first
-        fs.writeFileSync(tempFile, JSON.stringify(tagSuggestionsCache, null, 2));
-        
-        // Delete old file if it exists
-        if (fs.existsSync(cacheFile)) {
-            fs.unlinkSync(cacheFile);
-        }
-        
-        // Rename temp file to final name
-        fs.renameSync(tempFile, cacheFile);
-        
-        cacheDirty = false;
-        console.log(`💾 Tag suggestions cache saved atomically (${Object.keys(tagSuggestionsCache.tags).length} tags)`);
-    } catch (error) {
-        console.error('❌ Error saving tag suggestions cache:', error.message);
-        
-        // Clean up temp file if it exists
-        if (fs.existsSync(tempFile)) {
-            try {
-                fs.unlinkSync(tempFile);
-            } catch (cleanupError) {
-                console.error('❌ Error cleaning up temp cache file:', cleanupError.message);
-            }
-        }
-    }
 }
 
 // Test bias adjustment endpoint
@@ -1247,20 +1074,23 @@ app.post('/workspaces/:id/images', authMiddleware, upload.array('images', 10), a
     }
 });
 
-// Create context object for search functionality
-const searchContext = {
-    Model: Model,
-    config: config,
-    tagSuggestionsCache: tagSuggestionsCache,
-    cacheDirty: cacheDirty,
-    scheduleCacheSave,
-    calculateCreditUsage,
-    accountData: () => accountData,
-    accountBalance: () => accountBalance
-};
+// Cache save scheduling function
+function scheduleCacheSave() {
+    if (tagSuggestionsCache.isDirty) {
+        tagSuggestionsCache.markDirty();
+    }
+}
 
 // Initialize WebSocket message handlers
-const wsMessageHandlers = new WebSocketMessageHandlers(searchContext);
+const wsMessageHandlers = new WebSocketMessageHandlers({
+    Model: Model,
+    config: config,
+    scheduleCacheSave,
+    calculateCreditUsage,
+    tagSuggestionsCache,
+    accountData: () => accountData,
+    accountBalance: () => accountBalance
+});
 
 // Initialize WebSocket server with session store and message handler
 const wsServer = new WebSocketServer(server, sessionStore, async (ws, message, clientInfo, wsServer) => {
@@ -1294,6 +1124,9 @@ wsServer.startPingInterval(() => {
         server_time: Date.now().valueOf()
     };
 });
+
+// Start queue status broadcasting
+wsServer.startQueueStatusInterval();
 
 // Clear temp downloads on server boot
 function clearTempDownloads() {
@@ -1349,12 +1182,14 @@ function gracefulShutdown() {
     if (wsServer) {
         console.log('🛑 Stopping WebSocket ping interval...');
         wsServer.stopPingInterval();
+        console.log('🛑 Stopping WebSocket queue status interval...');
+        wsServer.stopQueueStatusInterval();
     }
     
-    // Save cache immediately if dirty
-    if (cacheDirty) {
-        console.log('💾 Saving cache before shutdown...');
-        saveCacheAtomic();
+    // Save tag cache immediately if dirty
+    if (tagSuggestionsCache.isDirty) {
+        console.log('💾 Saving tag cache before shutdown...');
+        tagSuggestionsCache.saveCache();
     }
     
     // Save metadata cache

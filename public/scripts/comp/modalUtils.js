@@ -16,7 +16,7 @@ function closeModal(modal) {
     modal.style.display = 'none';
     // Only remove modal-open if no other modals (excluding the current one) are open
     const openModals = Array.from(document.querySelectorAll('.modal')).filter(m => m !== modal);
-    const anyOpen = openModals.some(m => m.style.display === 'flex');
+    const anyOpen = openModals.some(m => m.style.display && m.style.display !== 'none')
     if (!anyOpen) {
         document.body.classList.remove('modal-open');
     }

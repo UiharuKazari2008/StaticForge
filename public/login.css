@@ -14,7 +14,7 @@ body {
 }
 
 /* Bokeh background (reuse from styles.css) */
-.bokeh-background {
+.page-background {
     height: 100vh;
     width: 100vw;
     position: fixed;
@@ -26,52 +26,19 @@ body {
     z-index: -2;
     will-change: opacity, background-color, background-image;
 }
-.bokeh {
-    height: 130vh;
-    width: 130vw;
-    position: fixed;
-    top: -15vh;
-    left: -15vw;
-    transform: translateZ(0);
-    backface-visibility: hidden;
-    z-index: -1;
-    transition: background-color 3s ease-in-out;
-}
-.bokeh circle {
-  animation: rotate 120s linear infinite;
-  fill: #124;
-  opacity: 0.43;
-  transform-origin: 50%;
-  filter: blur(0.04px);
-  transition: fill 3s ease-in-out, opacity 3s ease-in-out, transform 0.6s ease-in-out;
-}
-.bokeh circle:nth-child(2n) { fill: #614; transform-origin: 20% 110%; animation-delay: -60s; animation-duration: 82.632s; opacity: 0.2; }
-.bokeh circle:nth-child(3n) { opacity: 0.65; fill: #469; transform-origin: 70% 30%; animation-delay: -30s; animation-duration: 159.996s; }
-.bokeh circle:nth-child(4n) { fill: #c63; transform-origin: 110% 70%; animation-delay: -40s; animation-duration: 95.5992s; }
-.bokeh circle:nth-child(5n) { fill: #266; transform-origin: 30% 40%; }
-.bokeh circle:nth-child(6n) { fill: #124; transform-origin: -10% 80%; animation-delay: -156s; }
-.bokeh circle:nth-child(7n) { fill: #614; transform-origin: 70% -10%; }
-.bokeh circle:nth-child(8n) { fill: #c63; transform-origin: -30% 50%; animation-delay: -48s; }
-.bokeh circle:nth-child(9n) { fill: #469; transform-origin: 40% 90%; animation-delay: -72s; }
-.bokeh circle:nth-child(10n) { fill: #614; transform-origin: 90% 20%; animation-delay: -36s; }
-.bokeh circle:nth-child(11n) { fill: #124; transform-origin: 20% 10%; animation-delay: -84s; }
-.bokeh circle:nth-child(12n) { fill: #c63; transform-origin: 85% 80%; animation-delay: -54s; }
-.bokeh circle:nth-child(13n) { fill: #266; transform-origin: 10% 60%; animation-delay: -66s; }
-@keyframes rotate { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
 /* Product name top left */
 .login-product-name {
-    position: fixed;
-    top: 24px;
-    left: 32px;
-    z-index: 10;
+    position: absolute;
+    left: 0;
+    top: 0;
+    padding: 25px;
+    font-size: 2em;
+    text-shadow: 0 0 10px #000000;
     display: flex;
     align-items: center;
-    font-size: 2rem;
-    font-weight: 700;
-    color: #fff;
-    gap: 12px;
-    pointer-events: none;
-    opacity: 0.25;
+    justify-content: flex-start;
+    gap: 0.25em;
 }
 .login-product-name i {
     color: #667eea;

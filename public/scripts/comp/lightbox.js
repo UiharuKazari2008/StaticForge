@@ -387,16 +387,16 @@ function updateLightboxControls(image) {
     }
     lightboxScrapBtn.style.display = 'inline-block';
     if (currentGalleryView === 'scraps') {
-        lightboxScrapBtn.innerHTML = '<i class="nai-undo"></i>';
+        lightboxScrapBtn.innerHTML = '<i class="mdi mdi-1-5 mdi-archive-arrow-up"></i>';
         lightboxScrapBtn.title = 'Remove from scraps';
     } else {
-        lightboxScrapBtn.innerHTML = '<i class="nai-image-tool-sketch"></i>';
+        lightboxScrapBtn.innerHTML = '<i class="mdi mdi-1-25 mdi-archive"></i>';
         lightboxScrapBtn.title = 'Move to scraps';
     }
     
     // Show pin button for all views
     lightboxPinBtn.style.display = 'inline-block';
-    lightboxPinBtn.innerHTML = '<i class="nai-heart-disabled"></i>';
+    lightboxPinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
     lightboxPinBtn.title = 'Pin/Unpin image';
     
     // Update pin button appearance based on pin status
@@ -442,10 +442,10 @@ async function updateLightboxPinButtonAppearance(filename) {
     try {
         const isPinned = await checkIfImageIsPinned(filename);
         if (isPinned) {
-            lightboxPinBtn.innerHTML = '<i class="nai-heart-enabled"></i>';
+            lightboxPinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
             lightboxPinBtn.title = 'Unpin image';
         } else {
-            lightboxPinBtn.innerHTML = '<i class="nai-heart-disabled"></i>';
+            lightboxPinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
             lightboxPinBtn.title = 'Pin image';
         }
     } catch (error) {

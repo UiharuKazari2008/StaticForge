@@ -254,16 +254,14 @@ function showImagePreview(imageSrc, imageAlt = 'Preview Image') {
     };
     
     // Show modal
-    imagePreviewModal.style.display = 'block';
-    document.body.classList.add('modal-open');
+    openModal(imagePreviewModal);
 }
 
 // Hide image preview modal
 function hideImagePreview() {
     if (!imagePreviewModal) return;
     
-    imagePreviewModal.style.display = 'none';
-    document.body.classList.remove('modal-open');
+    closeModal(imagePreviewModal);
     
     // Reset zoom and pan
     resetImagePreviewZoom();

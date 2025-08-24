@@ -9,14 +9,19 @@ class LoginPage {
         this.pinDisplay = document.querySelector('.pin-display');
         this.pinButtons = document.querySelectorAll('.pin-button');
         this.loginContainer = document.querySelector('.login-container');
+        this.currentImageIndex = 0;
+        this.totalImages = 20;
+        this.backgroundOpacityLow = 0.05;
+        this.backgroundOpacityHigh = 0.3;
         this.init();
     }
 
     init() {
         this.setupKeyboardListener();
         this.setupPinPadListener();
-        this.startBokehBackground();
+        this.startBackground();
         this.updatePinDisplay();
+        this.setupInitialBackground();
     }
 
     setupKeyboardListener() {
@@ -109,12 +114,10 @@ class LoginPage {
                 window.location.href = '/app';
             } else {
                 this.showPinError();
-                this.flashRedOrb();
                 this.clearPin();
             }
         } catch (error) {
             this.showPinError();
-            this.flashRedOrb();
             this.clearPin();
         } finally {
             this.isLoading = false;
@@ -136,26 +139,9 @@ class LoginPage {
             dot.classList.remove('error');
         });
     }
-    
-    // Flash a red orb in the background for error
-    flashRedOrb() {
-        const bokeh = document.querySelector('.bokeh');
-        if (!bokeh) return;
-        // Create a red orb
-        const orb = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        orb.setAttribute('cx', '50%');
-        orb.setAttribute('cy', '50%');
-        orb.setAttribute('r', '40%');
-        orb.setAttribute('fill', '#dc3545');
-        orb.setAttribute('opacity', '0.7');
-        orb.style.transition = 'opacity 0.5s';
-        bokeh.appendChild(orb);
-        setTimeout(() => { orb.setAttribute('opacity', '0'); }, 200);
-        setTimeout(() => { bokeh.removeChild(orb); }, 800);
-    }
-    
-    // Animate bokeh background (reuse from app, but static color for login)
-    startBokehBackground() {
+
+    // Animate background (reuse from app, but static color for login)
+    startBackground() {
         const background = document.querySelector('.block-container');
         const blocks = [];
         
@@ -167,12 +153,23 @@ class LoginPage {
             block.style.animationDelay = `-${randomDelay}s`;
             
             // Add random opacity adjustment
-            const randomOpacity = 0.3 + Math.random() * 0.5; // Random opacity between 0.3 and 1.0
+            const randomOpacity = this.backgroundOpacityLow + Math.random() * (this.backgroundOpacityHigh - this.backgroundOpacityLow); // Random opacity between 0.3 and 1.0
             block.style.opacity = randomOpacity;
             
-            // Store block reference and position for wave effect
+            // Calculate block's position in the grid and set CSS custom properties
             const row = Math.floor(i / 20);
             const col = i % 20;
+            
+            // Calculate the percentage offset for this block within the current image
+            // Each block represents 1/20th of the image width and height
+            // With 20 blocks, each block takes up 5% of the image (100% / 20 = 5%)
+            const blockXOffset = (5 / 20) * (col + 1); // 0%, 5%, 10%, 15%, etc.
+            const blockYOffset = (50 / 20) * (row + 1); // 0%, 5%, 10%, 15%, etc.
+            
+            block.style.setProperty('--block-x-offset', `${blockXOffset}%`);
+            block.style.setProperty('--block-y-offset', `${blockYOffset}%`);
+            
+            // Store block reference and position for wave effect
             blocks.push({ element: block, row, col });
             
             background.appendChild(block);
@@ -202,12 +199,15 @@ class LoginPage {
                 
                 // Return to random opacity after wave passes
                 setTimeout(() => {
-                    const randomOpacity = 0.3 + Math.random() * 0.7;
+                    const randomOpacity = this.backgroundOpacityLow + Math.random() * (this.backgroundOpacityHigh - this.backgroundOpacityLow);
                     element.style.opacity = randomOpacity;
                 }, 500);
             }, delay);
         });
-        
+        setTimeout(() => {
+            this.rotateBackgroundImage();
+        }, 750);
+
         // Repeat the wave effect every 15 seconds
         setTimeout(() => {
             this.createOpacityWave(blocks);
@@ -223,12 +223,61 @@ class LoginPage {
             
             for (let i = 0; i < numBlocks; i++) {
                 const block = shuffled[i];
-                const randomOpacity = 0.2 + Math.random() * 0.8; // Random opacity between 0.2 and 1.0
+                const randomOpacity = this.backgroundOpacityLow + Math.random() * (this.backgroundOpacityHigh - this.backgroundOpacityLow); // Random opacity between 0.2 and 1.0
                 block.element.style.transition = 'opacity 0.8s ease-in-out';
                 block.element.style.opacity = randomOpacity;
             }
         }, 2000); // Adjust every 2 seconds
     }
+
+    // Rotate to next background image
+    rotateBackgroundImage() {
+        const nextIndex = (this.currentImageIndex + 1) % this.totalImages;
+        this.transitionToImage(nextIndex);
+    }
+
+    // Transition to specific image using crossfade
+    transitionToImage(imageIndex) {
+        const bgLayer = document.getElementById('bg-layer');
+        const blurLayer = document.getElementById('blur-layer');
+        const backgroundContainer = document.querySelector('.background-container');
+        
+        if (!bgLayer || !blurLayer || !backgroundContainer) return;
+        
+        // Calculate X offset as percentage
+        // With background-size: 2000% 200%, we have 20 images horizontally
+        // Each image takes up: 2000% / 20 = 100% of the container width
+        // To convert to 0-100% range: (imageIndex * 100) / 20 = imageIndex * 5%
+        const imageStep = 100 / (this.totalImages - 1); // 5%
+        const imageX = imageIndex * imageStep; // Each image at 0%, 5%, 10%, etc.
+        
+        // Step 1: Change blur layer to next image and fade it in
+        backgroundContainer.style.setProperty('--blur-x-pos', `${imageX}%`);
+        blurLayer.classList.add('transitioning'); // Fade in
+        
+        // Step 2: After blur layer is visible, change normal layer underneath
+        setTimeout(() => {
+            backgroundContainer.style.setProperty('--bg-x-pos', `${imageX}%`);
+        }, 150); // Wait for fade-in to be mostly complete
+        
+        // Step 3: Fade out blur layer to complete transition
+        setTimeout(() => {
+            blurLayer.classList.remove('transitioning');
+        }, 650); // Wait for normal layer change (150ms) + fade-out duration (500ms)
+        
+        // Update current index
+        this.currentImageIndex = imageIndex;
+    }
+
+    // Setup initial background positioning
+    setupInitialBackground() {
+        // Set initial background for the first image
+        this.transitionToImage(0);
+    }
+
 }
 
-document.addEventListener('DOMContentLoaded', () => { new LoginPage(); }); 
+// Create the login page instance
+document.addEventListener('DOMContentLoaded', () => { 
+    new LoginPage(); 
+}); 

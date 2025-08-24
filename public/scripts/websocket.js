@@ -84,10 +84,8 @@ class WebSocketClient {
         // Check if step with same message already exists
         const existingStepIndex = this.initSteps.findIndex(step => step.message === message);
         if (existingStepIndex !== -1) {
-            console.log(`🔄 Updating existing init step: ${message}`);
             this.initSteps[existingStepIndex] = { priority, message, stepFunction };
         } else {
-            console.log(`📝 Registering new init step: ${message} (priority: ${priority})`);
             this.initSteps.push({ priority, message, stepFunction });
         }
         
@@ -100,7 +98,6 @@ class WebSocketClient {
     removeInitStep(message) {
         const index = this.initSteps.findIndex(step => step.message === message);
         if (index !== -1) {
-            console.log(`🗑️ Removing init step: ${message}`);
             this.initSteps.splice(index, 1);
             this.totalInitSteps = this.initSteps.length;
             return true;
@@ -110,7 +107,6 @@ class WebSocketClient {
 
     // Method to clear all initialization steps
     clearInitSteps() {
-        console.log('🗑️ Clearing all initialization steps');
         this.initSteps = [];
         this.totalInitSteps = 0;
         this.initializationCompleted = false;
@@ -135,7 +131,6 @@ class WebSocketClient {
     // Method to manually trigger initialization (useful for testing or manual refresh)
     async manualInit() {
         if (this.initializationCompleted) {
-            console.log('🔄 Resetting initialization for manual trigger');
             this.initializationCompleted = false;
         }
         return this.executeInitSteps();
@@ -144,14 +139,12 @@ class WebSocketClient {
     async executeInitSteps() {
         // Prevent duplicate initialization on reconnection
         if (this.initializationCompleted) {
-            console.log('🔄 Skipping initialization steps - already completed');
             this.hideLoadingOverlay();
             return;
         }
         
         // Safety check for empty init steps
         if (!this.initSteps || this.initSteps.length === 0) {
-            console.log('ℹ️ No initialization steps registered');
             this.initializationCompleted = true;
             this.hideLoadingOverlay();
             return;
@@ -159,29 +152,22 @@ class WebSocketClient {
         
         this.currentInitStep = 0;
         this.totalInitSteps = this.initSteps.length;
-        
-        console.log(`🚀 Starting initialization with ${this.totalInitSteps} steps`);
-        
+                
         try {
             for (const step of this.initSteps) {
                 this.currentInitStep++;
                 const progress = (this.currentInitStep / this.totalInitSteps) * 100;
                 this.updateLoadingProgress(step.message, progress);
-                
-                console.log(`📋 Executing init step ${this.currentInitStep}/${this.totalInitSteps}: ${step.message}`);
-                
+                                
                 try {
                     await step.stepFunction();
-                    console.log(`✅ Completed init step: ${step.message}`);
                 } catch (error) {
                     console.error(`❌ Error in init step "${step.message}":`, error);
-                    // Continue with next step even if one fails
                 }
             }
             
             // Mark initialization as completed
             this.initializationCompleted = true;
-            console.log('🎉 All initialization steps completed successfully');
             
             // Hide overlay after all steps complete
             setTimeout(() => {
@@ -297,10 +283,8 @@ class WebSocketClient {
                 
                 // Execute initialization steps only if not already completed
                 if (!this.initializationCompleted) {
-                    console.log('🚀 Executing initialization steps for new connection');
                     this.executeInitSteps();
                 } else {
-                    console.log('✅ Initialization already completed, skipping');
                     this.hideLoadingOverlay();
                 }
             };
@@ -389,7 +373,6 @@ class WebSocketClient {
     }
 
     disconnect() {
-        console.log('🔌 Disconnecting WebSocket...');
         this.isManualClose = true;
         this.stopPingInterval();
         
@@ -398,18 +381,15 @@ class WebSocketClient {
         this.updatePendingRequestsSpinner();
         
         if (this.ws) {
-            console.log('🔌 Closing WebSocket connection');
             this.ws.close(1000, 'Manual disconnect');
             this.ws = null;
         } else {
-            console.log('ℹ️ WebSocket already closed or null');
         }
     }
 
     reconnect() {
         if (this.isManualClose || this.reconnectAttempts >= this.maxReconnectAttempts) {
             if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-                console.log(`❌ Max reconnection attempts (${this.maxReconnectAttempts}) reached, stopping reconnection`);
                 if (typeof showGlassToast === 'function' && typeof updateGlassToast === 'function') {
                     try {
                         if (window.websocketToastId) {
@@ -422,8 +402,6 @@ class WebSocketClient {
                         window.websocketToastId = null;
                     }
                 }
-            } else {
-                console.log('🔄 Manual close detected, skipping reconnection');
             }
             return;
         }
@@ -431,21 +409,15 @@ class WebSocketClient {
         this.reconnectAttempts++;
         const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
         
-        console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-        
         setTimeout(() => {
             if (!this.isManualClose) {
-                console.log(`🔄 Executing reconnection attempt ${this.reconnectAttempts}`);
                 this.connect();
-            } else {
-                console.log('🔄 Manual close detected during reconnection delay, aborting');
             }
         }, delay);
     }
 
     // Method to force reconnect (used after authentication)
     forceReconnect() {
-        console.log('🔄 Force reconnecting WebSocket...');
         this.isManualClose = false;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
@@ -458,7 +430,6 @@ class WebSocketClient {
 
     // Method to reset initialization flag (useful for manual page refresh scenarios)
     resetInitialization() {
-        console.log('🔄 Resetting initialization flag');
         this.initializationCompleted = false;
     }
 
@@ -471,7 +442,6 @@ class WebSocketClient {
     async executeSpecificStep(stepName) {
         const step = this.initSteps.find(s => s.message === stepName);
         if (step) {
-            console.log(`🔄 Executing specific init step: ${stepName}`);
             try {
                 await step.stepFunction();
                 return true;
@@ -618,6 +588,14 @@ class WebSocketClient {
             case 'workspace_activated':
                 this.handleWorkspaceActivation(message.data);
                 break;
+
+            case 'preset_updated':
+                this.handlePresetUpdate(message.data);
+                break;
+
+            case 'queue_update':
+                this.handleQueueUpdate(message.data);
+                break;
                 
             default:
                 // Handle custom message types
@@ -638,14 +616,12 @@ class WebSocketClient {
         if (typeof window.showPinModal === 'function') {
             window.showPinModal().then(() => {
                 // After successful login, reconnect WebSocket
-                console.log('🔄 Reconnecting WebSocket after authentication...');
                 this.forceReconnect();
             }).catch((error) => {
                 console.error('❌ PIN modal error:', error);
             });
         } else {
             // Fallback: redirect to login page
-            console.log('🔄 Redirecting to login page...');
             window.location.href = '/';
         }
     }
@@ -678,6 +654,29 @@ class WebSocketClient {
         document.dispatchEvent(event);
     }
 
+    handlePresetUpdate(data) {
+        // Dispatch custom event for preset updates
+        const event = new CustomEvent('presetUpdated', {
+            detail: data
+        });
+        document.dispatchEvent(event);
+    }
+
+    handleQueueUpdate(data) {
+        // Trigger queue update event
+        this.triggerEvent('queue_update', data);
+        
+        // Update global queue status for the app
+        if (window.optionsData) {
+            window.optionsData.queue_status = data.value;
+        }
+        
+        // Update generation button state if the function exists
+        if (typeof updateManualGenerateBtnState === 'function') {
+            updateManualGenerateBtnState();
+        }
+    }
+
     // Method to request image generation via WebSocket
     generateImage(generationParams, requestId = null) {
         if (!this.isConnected()) {
@@ -695,6 +694,36 @@ class WebSocketClient {
 
         this.send(message);
         return id;
+    }
+
+    // Method to request image upscaling via WebSocket
+    async upscaleImage(upscaleParams, requestId = null) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        try {
+            const result = await this.sendMessage('upscale_image', upscaleParams);
+            return result;
+        } catch (error) {
+            console.error('Upscale image error:', error);
+            throw error;
+        }
+    }
+
+    // Method to request image generation via WebSocket
+    async generateImage(generationParams, requestId = null) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        try {
+            const result = await this.sendMessage('generate_image', generationParams);
+            return result;
+        } catch (error) {
+            console.error('Generate image error:', error);
+            throw error;
+        }
     }
 
     // Method to request gallery data via WebSocket
@@ -808,6 +837,26 @@ class WebSocketClient {
         return this.sendMessageWithRequestId('save_preset', this.generateRequestId(), { presetName, config });
     }
 
+    async deletePreset(presetName) {
+        return this.sendMessageWithRequestId('delete_preset', this.generateRequestId(), { presetName });
+    }
+
+    async generatePreset(presetName, workspace = null) {
+        return this.sendMessageWithRequestId('generate_preset', this.generateRequestId(), { presetName, workspace });
+    }
+
+    async getPresets(page = 1, itemsPerPage = 15, searchTerm = '') {
+        return this.sendMessageWithRequestId('get_presets', this.generateRequestId(), { page, itemsPerPage, searchTerm });
+    }
+
+    async updatePreset(presetName, presetData) {
+        return this.sendMessageWithRequestId('update_preset', this.generateRequestId(), { presetName, ...presetData });
+    }
+
+    async regeneratePresetUuid(presetName) {
+        return this.sendMessageWithRequestId('regenerate_preset_uuid', this.generateRequestId(), { presetName });
+    }
+
     async searchDatasetTags(query, path = []) {
         try {
             const result = await this.sendMessage('search_dataset_tags', { query, path });
@@ -844,6 +893,98 @@ class WebSocketClient {
             return result;
         } catch (error) {
             showGlassToast('error', 'Add word to dictionary error', error.message, false);
+            throw error;
+        }
+    }
+
+    // Search files by metadata (prompts, characters, etc.)
+    async searchFiles(query, viewType = 'images') {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        try {
+            const result = await this.sendMessage('search_files', { 
+                query, 
+                viewType,
+                action: 'search'
+            });
+            return result;
+        } catch (error) {
+            console.error('Search files error:', error);
+            throw error;
+        }
+    }
+    
+    // Get tag suggestions without performing full search
+    async getTagSuggestions(query, viewType = 'images', contextTags = []) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        try {
+            const result = await this.sendMessage('search_files', { 
+                query, 
+                viewType,
+                action: 'suggestions',
+                contextTags: contextTags
+            });
+            return result;
+        } catch (error) {
+            console.error('Tag suggestions error:', error);
+            throw error;
+        }
+    }
+    
+    // Initialize search cache for a view type
+    async initializeSearchCache(viewType = 'images') {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        try {
+            const result = await this.sendMessage('search_files', { 
+                action: 'start',
+                viewType: viewType
+            });
+            return result;
+        } catch (error) {
+            console.error('Cache initialization error:', error);
+            throw error;
+        }
+    }
+    
+    // Clean up search cache
+    async cleanupSearchCache() {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        try {
+            const result = await this.sendMessage('search_files', { 
+                action: 'stop'
+            });
+            return result;
+        } catch (error) {
+            console.error('Cache cleanup error:', error);
+            throw error;
+        }
+    }
+    
+    // Request fresh gallery data for search filtering
+    async requestGalleryData(viewType = 'images') {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        try {
+            const result = await this.sendMessage('request_gallery', { 
+                viewType: viewType,
+                includeMetadata: false // We only need the image list for filtering
+            });
+            return result;
+        } catch (error) {
+            console.error('Gallery data request error:', error);
             throw error;
         }
     }
@@ -957,14 +1098,6 @@ class WebSocketClient {
         return this.sendMessage('workspace_update_background_color', { id, backgroundColor });
     }
 
-    async updateWorkspaceBackgroundImage(id, backgroundImage) {
-        return this.sendMessage('workspace_update_background_image', { id, backgroundImage });
-    }
-
-    async updateWorkspaceBackgroundOpacity(id, backgroundOpacity) {
-        return this.sendMessage('workspace_update_background_opacity', { id, backgroundOpacity });
-    }
-
     async updateWorkspacePrimaryFont(id, primaryFont) {
         return this.sendMessage('workspace_update_primary_font', { id, primaryFont });
     }
@@ -1011,6 +1144,10 @@ class WebSocketClient {
         return this.sendMessage('get_references');
     }
 
+    async getReferencesByIds(references) {
+        return this.sendMessage('get_references_by_ids', { references });
+    }
+
     async getWorkspaceReferences(workspaceId) {
         return this.sendMessage('get_workspace_references', { workspaceId });
     }
@@ -1024,7 +1161,19 @@ class WebSocketClient {
     }
 
     async downloadUrlFile(url) {
-        return this.sendMessage('download_url_file', { url });
+        try {
+            // Add a timeout to prevent hanging
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Download timeout - server took too long to respond')), 10000); // 10 second timeout
+            });
+            
+            const downloadPromise = this.sendMessage('download_url_file', { url });
+            
+            return await Promise.race([downloadPromise, timeoutPromise]);
+        } catch (error) {
+            console.error('❌ WebSocket downloadUrlFile error:', error);
+            throw error;
+        }
     }
 
     async fetchUrlInfo(url, options = {}, responseType = 'json') {
@@ -1176,13 +1325,25 @@ class WebSocketClient {
             throw new Error('WebSocket not connected');
         }
 
-        const message = {
-            type,
-            requestId,
-            ...data
-        };
+        return new Promise((resolve, reject) => {
+            // Store the promise for later resolution
+            if (!this.pendingRequests) {
+                this.pendingRequests = new Map();
+            }
+            
+            this.pendingRequests.set(requestId, { resolve, reject });
+            
+            // Increment pending requests count
+            this.incrementPendingRequests();
 
-        this.send(message);
+            const message = {
+                type,
+                requestId,
+                ...data
+            };
+
+            this.send(message);
+        });
     }
 
     // Set callback for a specific request ID
@@ -1215,16 +1376,16 @@ class WebSocketClient {
     // Update pending requests spinner
     updatePendingRequestsSpinner() {
         if (!this.pendingRequestsSpinner) {
-            this.pendingRequestsSpinner = document.getElementById('pendingRequestsSpinner');
-            this.pendingRequestsBadge = document.getElementById('pendingRequestsBadge');
+            this.pendingRequestsSpinner = document.querySelectorAll('#pendingRequestsSpinner, #manualPendingRequestsSpinner');
+            this.pendingRequestsBadge = document.querySelectorAll('#pendingRequestsBadge, #manualPendingRequestsBadge');
         }
         
         if (this.pendingRequestsSpinner && this.pendingRequestsBadge) {
             if (this.pendingRequestsCount > 0) {
-                this.pendingRequestsSpinner.classList.remove('hidden');
-                this.pendingRequestsBadge.textContent = this.pendingRequestsCount;
+                this.pendingRequestsSpinner.forEach(spinner => spinner.classList.remove('hidden'));
+                this.pendingRequestsBadge.forEach(badge => badge.textContent = this.pendingRequestsCount);
             } else {
-                this.pendingRequestsSpinner.classList.add('hidden');
+                this.pendingRequestsSpinner.forEach(spinner => spinner.classList.add('hidden'));
             }
         }
     }

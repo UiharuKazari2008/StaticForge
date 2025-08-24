@@ -91,16 +91,31 @@ let cacheShowAllReferences = false;
 
 // Toggle show all references functionality for cache browser
 async function toggleShowAllReferences() {
-    cacheShowAllReferences = !cacheShowAllReferences;
-    
-    // Update button state
-    if (showAllReferencesBtn) {
-        showAllReferencesBtn.setAttribute('data-state', cacheShowAllReferences ? 'on' : 'off');
+    // Show loading overlay
+    if (cacheBrowserLoadingContainer) {
+        cacheBrowserLoadingContainer.style.display = '';
     }
     
-    // Reload images with new filter
-    await loadCacheImages();
-    displayCacheImagesContainer();
+    try {
+        cacheShowAllReferences = !cacheShowAllReferences;
+        
+        // Update button state
+        if (showAllReferencesBtn) {
+            showAllReferencesBtn.setAttribute('data-state', cacheShowAllReferences ? 'on' : 'off');
+        }
+        
+        // Reload images with new filter
+        await loadCacheImages();
+        displayCacheImagesContainer();
+    } catch (error) {
+        console.error('Error toggling show all references:', error);
+        showError('Failed to toggle show all references');
+    } finally {
+        // Hide loading overlay
+        if (cacheBrowserLoadingContainer) {
+            cacheBrowserLoadingContainer.style.display = 'none';
+        }
+    }
 }
 
 // Combined Vibe Encoding Modal Variables
@@ -133,7 +148,7 @@ async function showCacheBrowser() {
 
     // Set active panel to cache browser
     previewSection.setAttribute('data-active-panel', 'cache-browser');
-    cacheBrowserLoadingContainer.style.display = 'flex';
+    cacheBrowserLoadingContainer.style.display = '';
     cacheGalleryContainer.innerHTML = '';
 
     if (window.innerWidth <= 1400) {
@@ -187,6 +202,11 @@ async function refreshReferenceBrowserIfOpen() {
 // Unified function to load reference images for both cache browser and manager
 async function loadReferenceImages(workspace = null, showAll = false) {
     try {
+        // Show loading overlay for reference image loading
+        if (cacheBrowserLoadingContainer && cacheBrowserContainer && cacheBrowserContainer.style.display !== 'none') {
+            cacheBrowserLoadingContainer.style.display = '';
+        }
+        
         // Load unified references (cache images and vibe images together)
         let response;
         if (showAll) {
@@ -240,33 +260,48 @@ async function loadReferenceImages(workspace = null, showAll = false) {
                 }
             });
             
-            // Convert map to array and sort by newest first
-            const combinedImages = Array.from(cacheMap.values());
-            
-            // Sort by mtime (newest first)
-            combinedImages.sort((a, b) => {
-                const aTime = a.mtime || 0;
-                const bTime = b.mtime || 0;
-                return bTime - aTime;
-            });
-            
-            return combinedImages;
-        } else {
-            throw new Error('Failed to load references');
-        }
-    } catch (error) {
-        console.error('Error loading reference images:', error);
-        throw error;
+                    // Convert map to array and sort by newest first
+        const combinedImages = Array.from(cacheMap.values());
+        
+        // Sort by mtime (newest first)
+        combinedImages.sort((a, b) => {
+            const aTime = a.mtime || 0;
+            const bTime = b.mtime || 0;
+            return bTime - aTime;
+        });
+        
+        return combinedImages;
+    } else {
+        throw new Error('Failed to load references');
     }
+} catch (error) {
+    console.error('Error loading reference images:', error);
+    throw error;
+} finally {
+    // Hide loading overlay for reference image loading
+    if (cacheBrowserLoadingContainer && cacheBrowserContainer && cacheBrowserContainer.style.display !== 'none') {
+        cacheBrowserLoadingContainer.style.display = 'none';
+    }
+}
 }
 
 async function loadCacheImages() {
+    // Show loading overlay if cache browser is open
+    if (cacheBrowserContainer && cacheBrowserContainer.style.display !== 'none' && cacheBrowserLoadingContainer) {
+        cacheBrowserLoadingContainer.style.display = '';
+    }
+    
     try {
         const images = await loadReferenceImages(null, cacheShowAllReferences);
         cacheImages = images;
     } catch (error) {
         console.error('Error loading cache images:', error);
         throw error;
+    } finally {
+        // Hide loading overlay
+        if (cacheBrowserLoadingContainer) {
+            cacheBrowserLoadingContainer.style.display = 'none';
+        }
     }
 }
 
@@ -495,23 +530,6 @@ function createCacheGalleryItem(cacheImage) {
         }
     }
 
-    // Create vibe encode button (always show to allow adding more IEs)
-    const vibeEncodeBtn = document.createElement('button');
-    vibeEncodeBtn.type = 'button';
-    vibeEncodeBtn.className = 'btn-secondary btn-small';
-    vibeEncodeBtn.innerHTML = '<i class="nai-plus"></i> <span>IE</span>';
-    vibeEncodeBtn.title = cacheImage.hasVibes ? 'Add Another Vibe Encoding' : 'Create Vibe Encoding';
-    vibeEncodeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (cacheImage.hasVibes && cacheImage.vibes.length > 0) {
-            // Use 'ie' mode to add additional IEs to existing vibe
-            showVibeEncodingModal('ie', cacheImage.vibes[0]);
-        } else {
-            // Use 'reference' mode to create new vibe from cache image
-            showVibeEncodingModal('reference', cacheImage);
-        }
-    });
-
     // Create preview button
     if (cacheImage.hasPreview) {
         const previewBtn = document.createElement('button');
@@ -549,8 +567,26 @@ function createCacheGalleryItem(cacheImage) {
 
         buttonsContainer.appendChild(previewBtn);
     }
-    
-    buttonsContainer.appendChild(vibeEncodeBtn);
+
+    // Create vibe encode button (always show to allow adding more IEs)
+    if (!cacheImage.locked) {
+        const vibeEncodeBtn = document.createElement('button');
+        vibeEncodeBtn.type = 'button';
+        vibeEncodeBtn.className = 'btn-secondary btn-small';
+        vibeEncodeBtn.innerHTML = `<i class="${cacheImage.hasVibes ? 'mdi mdi-data-matrix-plus' : 'mdi mdi-data-matrix-scan'}"></i> <span>IE</span>`;
+        vibeEncodeBtn.title = cacheImage.hasVibes ? 'Add Another Vibe Encoding' : 'Create Vibe Encoding';
+        vibeEncodeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (cacheImage.hasVibes && cacheImage.vibes.length > 0) {
+                // Use 'ie' mode to add additional IEs to existing vibe
+                showVibeEncodingModal('ie', cacheImage.vibes[0]);
+            } else {
+                // Use 'reference' mode to create new vibe from cache image
+                showVibeEncodingModal('reference', cacheImage);
+            }
+        });
+        buttonsContainer.appendChild(vibeEncodeBtn);
+    }
 
     overlay.appendChild(info);
     overlay.appendChild(actionButtonsContainer);
@@ -700,6 +736,40 @@ function refreshVibeReferencesDisplay() {
             item.parentNode.replaceChild(newItem, item);
         }
     });
+}
+
+// Function to refresh reference manager after vibe operations
+async function refreshReferenceManagerAfterVibeOperation() {
+    try {
+        // Show loading overlay for cache browser if it's open
+        if (cacheBrowserContainer && cacheBrowserContainer.style.display !== 'none' && cacheBrowserLoadingContainer) {
+            cacheBrowserLoadingContainer.style.display = '';
+        }
+        
+        // Show loading overlay for cache manager if it's open
+        if (cacheManagerModal && cacheManagerModal.classList.contains('modal-open') && cacheManagerLoading) {
+            cacheManagerLoading.style.display = '';
+        }
+        
+        // Refresh cache images to get the latest vibe data
+        await loadCacheImages();
+        
+        // Refresh the reference browser if it's open
+        await refreshReferenceBrowserIfOpen();
+        
+        // Refresh vibe references display if they exist
+        refreshVibeReferencesDisplay();
+    } catch (error) {
+        console.error('Error refreshing reference manager after vibe operation:', error);
+    } finally {
+        // Hide loading overlays
+        if (cacheBrowserLoadingContainer) {
+            cacheBrowserLoadingContainer.style.display = 'none';
+        }
+        if (cacheManagerLoading) {
+            cacheManagerLoading.style.display = 'none';
+        }
+    }
 }
 
 function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null) {
@@ -1076,8 +1146,8 @@ async function addAsVibeReference(cacheImage) {
             return;
         }
 
-        // Add to vibe references container
-        await addVibeReferenceToContainer(vibeRef.id);
+        // Add to vibe references container with default IE and strength values
+        await addVibeReferenceToContainer(vibeRef.id, vibeRef.ie || 'default', 0.7);
 
         // Close cache browser
         hideCacheBrowser();
@@ -1100,7 +1170,7 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
         return;
     }
 
-    // Find the vibe reference in the cache images array
+    // First, try to find the vibe reference in the cacheImages array
     let vibeRef = null;
     for (const cacheImage of cacheImages) {
         if (cacheImage.vibes) {
@@ -1109,12 +1179,25 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
                 vibeRef = foundVibe;
                 break;
             }
-            }
         }
+    }
 
-        if (!vibeRef) {
-            console.error(`Vibe reference with ID ${vibeId} not found`);
+    // If not found in cacheImages, make WebSocket request
+    if (!vibeRef) {
+        try {
+            const response = await wsClient.getReferencesByIds([{ type: 'vibe', id: vibeId }]);
+            
+            if (!response.success || !response.data || !response.data.references || response.data.references.length === 0) {
+                console.error(`Vibe reference with ID ${vibeId} not found on server`);
+                return;
+            }
+
+            vibeRef = response.data.references[0].data;
+        } catch (error) {
+            console.error(`Error getting vibe reference ${vibeId} from server:`, error);
+            showError('Failed to get vibe reference from server');
             return;
+        }
     }
 
     if (!vibeReferencesContainer) return;
@@ -1309,6 +1392,9 @@ async function deleteReferenceImage(cacheImage, workspace = null, refreshCallbac
         if (refreshCallback) {
             await refreshCallback();
         }
+        
+        // Ensure reference manager is refreshed after delete operation
+        await refreshReferenceManagerAfterVibeOperation();
 
         showGlassToast('success', null, 'Reference deleted');
     } catch (error) {
@@ -1444,12 +1530,23 @@ function setupCacheManagerWorkspaceDropdown() {
         menu: cacheManagerWorkspaceDropdownMenu,
         selected: cacheManagerWorkspaceSelected,
         getCurrentWorkspace: () => cacheManagerCurrentWorkspace,
-        onWorkspaceChange: (workspace) => {
+        onWorkspaceChange: async (workspace) => {
             if (workspace.id !== cacheManagerCurrentWorkspace) {
-                cacheManagerCurrentWorkspace = workspace.id;
-                loadCacheManagerImages();
-                if (cacheManagerWorkspaceSelected) {
-                    cacheManagerWorkspaceSelected.textContent = workspace.name;
+                // Show loading overlay for workspace change
+                if (cacheManagerLoading) cacheManagerLoading.style.display = '';
+                
+                try {
+                    cacheManagerCurrentWorkspace = workspace.id;
+                    await loadCacheManagerImages();
+                    if (cacheManagerWorkspaceSelected) {
+                        cacheManagerWorkspaceSelected.textContent = workspace.name;
+                    }
+                } catch (error) {
+                    console.error('Error changing workspace:', error);
+                    showError('Failed to change workspace');
+                } finally {
+                    // Hide loading overlay
+                    if (cacheManagerLoading) cacheManagerLoading.style.display = 'none';
                 }
             }
         }
@@ -1473,7 +1570,7 @@ function renderCacheManagerWorkspaceDropdown() {
 }
 
 async function loadCacheManagerImages() {
-    if (cacheManagerLoading) cacheManagerLoading.style.display = 'flex';
+    if (cacheManagerLoading) cacheManagerLoading.style.display = '';
     if (cacheManagerGallery) cacheManagerGallery.innerHTML = '';
 
     try {
@@ -1524,7 +1621,7 @@ function createCacheManagerGalleryItem(cacheImage) {
     // Create move button
     const moveBtn = document.createElement('button');
     moveBtn.className = 'btn-secondary btn-small';
-    moveBtn.innerHTML = '<i class="fas fa-copy"></i>';
+    moveBtn.innerHTML = '<i class="mdi mdi-1-5 mdi-folder-move"></i>';
     moveBtn.title = 'Move image';
     moveBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1592,22 +1689,24 @@ function createCacheManagerGalleryItem(cacheImage) {
         buttonsContainerBottom.appendChild(previewBtn);
     }
 
-    // Create vibe encode button (always show to allow adding more IEs)
-    const vibeBtn = document.createElement('button');
-    vibeBtn.className = 'btn-secondary btn-small';
-    vibeBtn.innerHTML = '<i class="nai-vibe-transfer"></i>';
-    vibeBtn.title = cacheImage.hasVibes ? 'Add Another Vibe Encoding' : 'Create Vibe Encoding';
-    vibeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (cacheImage.hasVibes && cacheImage.vibes.length > 0) {
-            // Use 'ie' mode to add additional IEs to existing vibe
-            showVibeEncodingModal('ie', cacheImage.vibes[0]);
-        } else {
-            // Use 'reference' mode to create new vibe from cache image
-            showVibeEncodingModal('reference', cacheImage);
-        }
-    });
-    buttonsContainerBottom.appendChild(vibeBtn);
+    if (!cacheImage.locked) {
+        // Create vibe encode button (always show to allow adding more IEs)
+        const vibeBtn = document.createElement('button');
+        vibeBtn.className = 'btn-secondary btn-small';
+        vibeBtn.innerHTML = `<i class="${cacheImage.hasVibes ? 'mdi mdi-data-matrix-plus' : 'mdi mdi-data-matrix-scan'}"></i>`;
+        vibeBtn.title = cacheImage.hasVibes ? 'Add Another Vibe Encoding' : 'Create Vibe Encoding';
+        vibeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (cacheImage.hasVibes && cacheImage.vibes.length > 0) {
+                // Use 'ie' mode to add additional IEs to existing vibe
+                showVibeEncodingModal('ie', cacheImage.vibes[0]);
+            } else {
+                // Use 'reference' mode to create new vibe from cache image
+                showVibeEncodingModal('reference', cacheImage);
+            }
+        });
+        buttonsContainerBottom.appendChild(vibeBtn);
+    }
 
     // Create delete button
     const deleteBtn = document.createElement('button');
@@ -1907,7 +2006,7 @@ function updateUnifiedUploadMode() {
             if (unifiedUploadCurrentMode === 'reference') {
                 unifiedUploadModalTitle.innerHTML = '<i class="nai-img2img"></i> <span>Upload Reference</span>';
             } else if (unifiedUploadCurrentMode === 'vibe') {
-                unifiedUploadModalTitle.innerHTML = '<i class="nai-vibe-transfer"></i> <span>Encode Vibe</span>';
+                unifiedUploadModalTitle.innerHTML = '<i class="mdi mdi-data-matrix"></i> <span>Encode Vibe</span>';
             } else if (unifiedUploadCurrentMode === 'blueprint') {
                 unifiedUploadModalTitle.innerHTML = '<i class="nai-import"></i> <span>Import Image</span>';
             }
@@ -2127,7 +2226,6 @@ async function handleUnifiedUploadOpenInEditor() {
             if (unifiedUploadDownloadedFile && unifiedUploadDownloadedFile.type === 'image') {
                 // For URL uploads, check if we already have the metadata
                 if (unifiedUploadDownloadedFile.metadata && unifiedUploadDownloadedFile.isBlueprint) {
-                    console.log('Debug: Using metadata from downloaded file');
                     metadata = unifiedUploadDownloadedFile.metadata;
                 } else if (unifiedUploadDownloadedFile.filename) {
                     // Fallback: get metadata from server
@@ -2142,25 +2240,16 @@ async function handleUnifiedUploadOpenInEditor() {
             } else if (unifiedUploadFiles.length > 0) {
                 // For file uploads, try to get metadata from multiple sources
                 let currentMetadata = null;
-                
-                console.log('Debug: unifiedUploadFiles length:', unifiedUploadFiles.length);
-                console.log('Debug: unifiedUploadCurrentIndex:', unifiedUploadCurrentIndex);
-                console.log('Debug: unifiedUploadFileMetadata length:', unifiedUploadFileMetadata.length);
-                console.log('Debug: Current file:', unifiedUploadFiles[unifiedUploadCurrentIndex]);
-                
                 // First try to get from unifiedUploadFileMetadata array
                 if (unifiedUploadFileMetadata.length > 0 && unifiedUploadCurrentIndex < unifiedUploadFileMetadata.length) {
                     currentMetadata = unifiedUploadFileMetadata[unifiedUploadCurrentIndex];
-                    console.log('Debug: Found metadata in array:', currentMetadata);
                     if (currentMetadata && currentMetadata.valid && currentMetadata.metadata) {
                         metadata = currentMetadata.metadata;
-                        console.log('Debug: Using metadata from array');
                     }
                 }
                 
                 // Check if there's metadata in the window object (from blueprint processing)
                 if (!metadata && window.currentBlueprintMetadata) {
-                    console.log('Debug: Found metadata in window.currentBlueprintMetadata');
                     metadata = window.currentBlueprintMetadata;
                 }
                 
@@ -2168,14 +2257,12 @@ async function handleUnifiedUploadOpenInEditor() {
                 if (!metadata && unifiedUploadFiles[unifiedUploadCurrentIndex]) {
                     try {
                         const currentFile = unifiedUploadFiles[unifiedUploadCurrentIndex];
-                        console.log('Extracting metadata from file:', currentFile.name);
                         metadata = await extractPNGMetadata(currentFile);
                         
                         // Check if it's a valid NovelAI image
                         if (!metadata || !metadata.source || !metadata.source.includes('NovelAI')) {
                             throw new Error('No NovelAI metadata found in file');
                         }
-                        console.log('Debug: Successfully extracted metadata from file');
                     } catch (error) {
                         console.error('Failed to extract metadata from file:', error);
                         showError('Failed to extract metadata from file: ' + error.message);
@@ -2188,9 +2275,7 @@ async function handleUnifiedUploadOpenInEditor() {
                 showError('No valid metadata found to open in editor');
                 return;
             }
-            
-            console.log('Metadata found for editor:', metadata);
-            
+
             // Prepare image data for preview
             let imageData = null;
             let finalMetadata = metadata;
@@ -2199,7 +2284,6 @@ async function handleUnifiedUploadOpenInEditor() {
                 // For URL uploads, transform raw metadata to the format expected by the manual form
                 // The raw metadata has fields nested under metadata.forge_data, metadata.v4_prompt, etc.
                 finalMetadata = transformRawMetadataForEditor(metadata);
-                console.log('Transformed raw metadata for URL upload:', finalMetadata);
                 
                 imageData = {
                     filename: unifiedUploadDownloadedFile.originalFilename || 'downloaded_image.png',
@@ -2211,7 +2295,6 @@ async function handleUnifiedUploadOpenInEditor() {
             } else if (unifiedUploadFiles.length > 0 && unifiedUploadFiles[unifiedUploadCurrentIndex]) {
                 // For file uploads, transform metadata to the format expected by the manual form
                 finalMetadata = transformMetadataForEditor(metadata);
-                console.log('Transformed metadata for file upload:', finalMetadata);
                 
                 const currentFile = unifiedUploadFiles[unifiedUploadCurrentIndex];
                 imageData = {
@@ -2254,8 +2337,6 @@ async function handleUnifiedUploadOpenInEditor() {
 function transformRawMetadataForEditor(metadata) {
     // Create a copy of the metadata to avoid modifying the original
     const transformed = { ...metadata };
-    
-    console.log('Debug: Raw metadata for transformation:', metadata);
     
     // Extract fields from the nested structure
     if (metadata.forge_data) {
@@ -2308,7 +2389,6 @@ function transformRawMetadataForEditor(metadata) {
         
         // Extract character prompts
         if (forgeData.allCharacters && Array.isArray(forgeData.allCharacters)) {
-            console.log('Debug: Found allCharacters in forge_data:', forgeData.allCharacters);
             // Transform the allCharacters format to match what loadCharacterPrompts expects
             const characterPrompts = forgeData.allCharacters.map(character => ({
                 prompt: character.prompt || character.input_prompt || '',
@@ -2319,18 +2399,15 @@ function transformRawMetadataForEditor(metadata) {
             }));
             transformed.allCharacterPrompts = characterPrompts;
             transformed.use_coords = forgeData.use_coords || false;
-            console.log('Debug: Transformed allCharacters to:', characterPrompts);
         }
     }
     
     // Extract fields from v4_prompt if available
     if (metadata.v4_prompt && !transformed.allCharacterPrompts) {
         const v4Prompt = metadata.v4_prompt;
-        console.log('Debug: Found v4_prompt:', v4Prompt);
         
         if (v4Prompt.caption && v4Prompt.caption.char_captions) {
             const charCaptions = v4Prompt.caption.char_captions;
-            console.log('Debug: Found char_captions in v4_prompt:', charCaptions);
             if (Array.isArray(charCaptions) && charCaptions.length > 0) {
                 // Convert v4_prompt character data to the format expected by the form
                 const characterPrompts = charCaptions.map(caption => ({
@@ -2344,7 +2421,6 @@ function transformRawMetadataForEditor(metadata) {
                 // Handle negative prompts if available
                 if (metadata.v4_negative_prompt && metadata.v4_negative_prompt.caption && metadata.v4_negative_prompt.caption.char_captions) {
                     const negativeCaptions = metadata.v4_negative_prompt.caption.char_captions;
-                    console.log('Debug: Found v4_negative_prompt:', negativeCaptions);
                     negativeCaptions.forEach((caption, index) => {
                         if (characterPrompts[index] && caption.char_caption) {
                             characterPrompts[index].uc = caption.char_caption;
@@ -2355,7 +2431,6 @@ function transformRawMetadataForEditor(metadata) {
                 // Set allCharacterPrompts from v4_prompt (since we don't have them from forge_data)
                 transformed.allCharacterPrompts = characterPrompts;
                 transformed.use_coords = v4Prompt.use_coords || false;
-                console.log('Debug: Set allCharacterPrompts from v4_prompt:', characterPrompts);
             }
         }
     }
@@ -2390,10 +2465,8 @@ function transformRawMetadataForEditor(metadata) {
                 default:
                     transformed.model = 'v4_5'; // Default fallback
             }
-            console.log('Debug: Extracted model from source using determineModelFromMetadata:', metadata.source, '->', detectedModel, '->', transformed.model);
         } else {
             transformed.model = 'v4_5'; // Default fallback
-            console.log('Debug: Could not determine model from source, using default:', metadata.source);
         }
     }
     
@@ -2419,9 +2492,6 @@ function transformRawMetadataForEditor(metadata) {
         transformed.skip_cfg_above_sigma = metadata.skip_cfg_above_sigma;
     }
     
-    console.log('Debug: Final transformed metadata:', transformed);
-    console.log('Debug: allCharacterPrompts:', transformed.allCharacterPrompts);
-    console.log('Debug: use_coords:', transformed.use_coords);
     return transformed;
 }
 
@@ -2429,8 +2499,6 @@ function transformRawMetadataForEditor(metadata) {
 function transformMetadataForEditor(metadata) {
     // Create a copy of the metadata to avoid modifying the original
     const transformed = { ...metadata };
-    
-    console.log('Debug: Original metadata for transformation:', metadata);
     
     // Map fields to match what loadIntoManualForm expects
     if (transformed.characterPrompts && Array.isArray(transformed.characterPrompts)) {
@@ -2583,10 +2651,8 @@ function transformMetadataForEditor(metadata) {
                 default:
                     transformed.model = 'v4_5'; // Default fallback
             }
-            console.log('Debug: Extracted model from source using determineModelFromMetadata:', transformed.source, '->', detectedModel, '->', transformed.model);
         } else {
             transformed.model = 'v4_5'; // Default fallback
-            console.log('Debug: Could not determine model from source, using default:', transformed.source);
         }
     }
     
@@ -2615,7 +2681,6 @@ function transformMetadataForEditor(metadata) {
         }
     }
     
-    console.log('Debug: Transformed metadata:', transformed);
     return transformed;
 }
 
@@ -2689,7 +2754,7 @@ async function importUnifiedBlueprint(file) {
         console.error('Error importing blueprint:', error);
         removeGlassToast(toastId);
         hideGalleryMoveRightPanelCover();
-        showError('Blueprint import failed: ' + error.message);
+        showGlassToast('error', null, 'Blueprint import failed: ' + (error.message || 'Unknown error'));
     }
 }
 
@@ -2773,13 +2838,16 @@ async function uploadUnifiedReferenceImages() {
         }
         await refreshReferenceBrowserIfOpen();
         
+        // Ensure reference manager is refreshed after vibe operation
+        await refreshReferenceManagerAfterVibeOperation();
+        
         // Close modal
         hideUnifiedUploadModal();
         
     } catch (error) {
         removeGlassToast(toastId);
         hideGalleryMoveRightPanelCover();
-        showError('Upload failed: ' + error.message);
+        showGlassToast('error', null, 'Upload failed: ' + (error.message || 'Unknown error'));
     }
 }
 
@@ -2801,7 +2869,7 @@ async function handleJsonFileImport(files) {
             }
         }
         if (!targetWorkspace) {
-            showError('No workspace selected. Please select a workspace first.');
+            showGlassToast('error', null, 'No workspace selected. Please select a workspace first.');
             hideGalleryMoveRightPanelCover();
             return;
         }
@@ -2870,11 +2938,15 @@ async function handleJsonFileImport(files) {
             await loadCacheImages();
         }
         await refreshReferenceBrowserIfOpen();
+        
+        // Ensure reference manager is refreshed after vibe operation
+        await refreshReferenceManagerAfterVibeOperation();
+        
         hideUnifiedUploadModal();
     } catch (error) {
         removeGlassToast(toastId);
         hideGalleryMoveRightPanelCover();
-        showError('Import failed: ' + error.message);
+        showGlassToast('error', null, 'Import failed: ' + (error.message || 'Unknown error'));
     }
 }
 
@@ -2884,13 +2956,13 @@ async function uploadUnifiedVibeImage(file) {
     
     // Add model validation
     if (!model || !window.optionsData?.models?.[model]) {
-        showError('Please select a valid model for vibe encoding');
+        showGlassToast('error', null, 'Please select a valid model for vibe encoding');
         return;
     }
     
     // Validate IE value
     if (isNaN(informationExtraction) || informationExtraction < 0 || informationExtraction > 1) {
-        showError('Information Extraction value must be between 0 and 1');
+        showGlassToast('error', null, 'Information Extraction value must be between 0 and 1');
         return;
     }
     
@@ -2912,7 +2984,7 @@ async function uploadUnifiedVibeImage(file) {
     
     // Validate workspace
     if (!targetWorkspace) {
-        showError('No workspace selected. Please select a workspace first.');
+        showGlassToast('error', null, 'No workspace selected. Please select a workspace first.');
         return;
     }
     
@@ -2923,18 +2995,18 @@ async function uploadUnifiedVibeImage(file) {
     // Validate file type for vibe encoding
     if (isDownloadedFile) {
         if (unifiedUploadDownloadedFile.type !== 'image' && unifiedUploadDownloadedFile.type !== 'vibe_bundle') {
-            showError('Only image files and vibe bundles can be used for vibe encoding');
+            showGlassToast('error', null, 'Only image files and vibe bundles can be used for vibe encoding');
             return;
         }
     } else if (!isImageFile) {
-        showError('Please select a valid image file for vibe encoding');
+        showGlassToast('error', null, 'Please select a valid image file for vibe encoding');
         return;
     }
     
     // Update cover message for vibe encoding
     showGalleryMoveRightPanelCover('Generating Vibe Encoding...');
     
-    let toastId = showGlassToast('info', 'Vibe Encoding', 'Generating vibe...', true, false, '<i class="nai-vibe-transfer"></i>');
+    let toastId = showGlassToast('info', 'Vibe Encoding', 'Generating vibe...', true, false, '<i class="mdi mdi-data-matrix-scan"></i>');
     
     // Start progress tracking
     startVibeEncodingProgress(toastId);
@@ -2949,8 +3021,8 @@ async function uploadUnifiedVibeImage(file) {
             // Handle downloaded file
             if (unifiedUploadDownloadedFile.type === 'vibe_bundle') {
                 // For vibe bundles, we need to handle them differently
-                showError('Vibe bundles should be imported, not encoded. Please use the import functionality.');
-                return;
+                showGlassToast('error', null, 'Vibe bundles should be imported, not encoded. Please use the import functionality.');
+            return;
             } else {
                 // Use the downloaded file temp filename
                 response = await wsClient.encodeVibe({
@@ -2992,6 +3064,9 @@ async function uploadUnifiedVibeImage(file) {
             await loadCacheImages();
             await addVibeReferenceToContainer(response.vibeData.id, informationExtraction, 0.7);
         }
+        
+        // Ensure reference manager is refreshed after vibe operation
+        await refreshReferenceManagerAfterVibeOperation();
         
         // Close modal
         hideUnifiedUploadModal();
@@ -3047,7 +3122,7 @@ async function importDownloadedVibeBundle() {
         }
         
         if (!targetWorkspace) {
-            showError('No workspace selected. Please select a workspace first.');
+            showGlassToast('error', null, 'No workspace selected. Please select a workspace first.');
             return;
         }
         
@@ -3071,6 +3146,9 @@ async function importDownloadedVibeBundle() {
             await loadCacheImages();
         }
         await refreshReferenceBrowserIfOpen();
+        
+        // Ensure reference manager is refreshed after vibe operation
+        await refreshReferenceManagerAfterVibeOperation();
         
         // Close modal
         hideUnifiedUploadModal();
@@ -3260,6 +3338,9 @@ async function moveCacheManagerImages() {
                 await loadCacheImages();
             }
             await refreshReferenceBrowserIfOpen();
+            
+            // Ensure reference manager is refreshed after move operation
+            await refreshReferenceManagerAfterVibeOperation();
         } else {
             throw new Error(`Failed to move image: ${response.message}`);
         }
@@ -3296,7 +3377,7 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
     // Configure modal based on mode
     switch (mode) {
         case 'upload':
-            if (vibeEncodingModalTitle) vibeEncodingModalTitle.innerHTML = '<i class="nai-vibe-transfer"></i> <span>Upload & Encode Vibe Image</span>';
+            if (vibeEncodingModalTitle) vibeEncodingModalTitle.innerHTML = '<i class="mdi mdi-data-matrix"></i> <span>Upload & Encode Vibe Image</span>';
             if (vibeEncodingConfirmText) vibeEncodingConfirmText.textContent = 'Upload';
             if (vibeEncodingUploadSection) vibeEncodingUploadSection.style.display = '';
             if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = true;
@@ -3305,7 +3386,7 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
             break;
             
         case 'gallery':
-            if (vibeEncodingModalTitle) vibeEncodingModalTitle.innerHTML = '<i class="nai-vibe-transfer"></i> <span>Encode Image as Vibe</span>';
+            if (vibeEncodingModalTitle) vibeEncodingModalTitle.innerHTML = '<i class="mdi mdi-data-matrix"></i> <span>Encode Image as Vibe</span>';
             if (vibeEncodingConfirmText) vibeEncodingConfirmText.textContent = 'Encode';
             if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = false;
             if (backgroundImage && window.galleryToolbarVibeImage) {
@@ -3317,8 +3398,8 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
         case 'ie':
             // Set title based on whether we have a target model
             const ieTitle = targetModel 
-                ? `<i class="nai-vibe-transfer"></i> <span>Request IE for ${window.optionsData?.models?.[targetModel] || targetModel}</span>`
-                : '<i class="nai-vibe-transfer"></i> <span>Request New IE</span>';
+                ? `<i class="mdi mdi-data-matrix-plus"></i> <span>Request IE for ${window.optionsData?.models?.[targetModel] || targetModel}</span>`
+                : '<i class="mdi mdi-data-matrix-plus"></i> <span>Request New IE</span>';
             if (vibeEncodingModalTitle) vibeEncodingModalTitle.innerHTML = ieTitle;
             if (vibeEncodingConfirmText) vibeEncodingConfirmText.textContent = 'Encode';
             if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = false;
@@ -3330,7 +3411,7 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
             break;
             
         case 'reference':
-            if (vibeEncodingModalTitle) vibeEncodingModalTitle.innerHTML = '<i class="nai-vibe-transfer"></i> <span>Create Vibe from Reference</span>';
+            if (vibeEncodingModalTitle) vibeEncodingModalTitle.innerHTML = '<i class="mdi mdi-data-matrix-plus"></i> <span>Create Vibe from Reference</span>';
             if (vibeEncodingConfirmText) vibeEncodingConfirmText.textContent = 'Encode';
             if (vibeEncodingReferenceSection) vibeEncodingReferenceSection.style.display = 'none'; // Hide the preview section
             if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = false;
@@ -3393,6 +3474,9 @@ async function hideVibeEncodingModal() {
         await loadCacheImages();
     }
     await refreshReferenceBrowserIfOpen();
+    
+    // Ensure reference manager is refreshed after vibe operation
+    await refreshReferenceManagerAfterVibeOperation();
 }
 
 function populateVibeEncodingModelDropdown() {
@@ -3477,7 +3561,7 @@ async function handleVibeEncodingConfirm() {
                 const file = vibeEncodingFileInput.files[0];
                 const base64 = await fileToBase64(file);
                 
-                toastId = showGlassToast('info', 'Vibe Encoding', 'Generating vibe from image...', true, false, '<i class="fas fa-binary"></i>');
+                toastId = showGlassToast('info', 'Vibe Encoding', 'Generating vibe from image...', true, false, '<i class="mdi mdi-data-matrix-scan"></i>');
                 
                 requestParams.image = base64;
                 break;
@@ -3488,7 +3572,7 @@ async function handleVibeEncodingConfirm() {
                     return;
                 }
                 
-                toastId = showGlassToast('info', 'Vibe Encoding', 'Generating vibe from gallery image...', true, false, '<i class="fas fa-binary"></i>');
+                toastId = showGlassToast('info', 'Vibe Encoding', 'Generating vibe from gallery image...', true, false, '<i class="mdi mdi-data-matrix-scan"></i>');
                 
                 requestParams.image = window.galleryToolbarVibeImage;
                 break;
@@ -3499,7 +3583,7 @@ async function handleVibeEncodingConfirm() {
                     return;
                 }
                 
-                toastId = showGlassToast('info', 'Requesting IE', 'Processing new Information Extraction...', true, false, '<i class="fas fa-binary"></i>');
+                toastId = showGlassToast('info', 'Requesting IE', 'Processing new Information Extraction...', true, false, '<i class="mdi mdi-data-matrix-scan"></i>');
                 
                 requestParams.id = vibeEncodingCurrentVibeImage.id;
                 
@@ -3515,7 +3599,7 @@ async function handleVibeEncodingConfirm() {
                     return;
                 }
                 
-                toastId = showGlassToast('info', 'Vibe Encoding', 'Generating vibe from reference image...', true, false, '<i class="fas fa-binary"></i>');
+                toastId = showGlassToast('info', 'Vibe Encoding', 'Generating vibe from reference image...', true, false, '<i class="mdi mdi-data-matrix-scan"></i>');
                 
                 requestParams.cacheFile = vibeEncodingCurrentCacheImage.hash;
                 
@@ -3550,6 +3634,9 @@ async function handleVibeEncodingConfirm() {
                 await loadCacheImages();
             }
             await refreshReferenceBrowserIfOpen();
+            
+            // Ensure reference manager is refreshed after vibe operation
+            await refreshReferenceManagerAfterVibeOperation();
         } else {
             throw new Error(response.message || 'Failed to process vibe encoding');
         }
@@ -3573,7 +3660,7 @@ function displayVibeManagerImages() {
     if (vibeManagerImages.length === 0) {
         vibeManagerGallery.innerHTML = `
         <div class="no-images">
-            <i class="fas fa-binary-slash"></i>
+            <i class="mdi mdi-data-matrix-remove"></i>
             <span>No Vibe encodings found in this workspace</span>
         </div>
     `;
@@ -3604,7 +3691,7 @@ function createVibeManagerGalleryItem(vibeImage) {
     // Create move button
     const moveBtn = document.createElement('button');
     moveBtn.className = 'btn-secondary btn-small';
-    moveBtn.innerHTML = '<i class="fas fa-copy"></i>';
+    moveBtn.innerHTML = '<i class="mdi mdi-1-5 mdi-folder-move"></i>';
     moveBtn.title = 'Move vibe image';
     moveBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -3892,6 +3979,9 @@ async function moveVibeManagerImages() {
                 await loadCacheImages();
             }
             await refreshReferenceBrowserIfOpen();
+            
+            // Ensure reference manager is refreshed after vibe operation
+            await refreshReferenceManagerAfterVibeOperation();
         } else {
             throw new Error(`Failed to move vibe image: ${response.message}`);
         }
@@ -3926,6 +4016,10 @@ async function deleteBaseImage(cacheImage) {
         const response = await wsClient.deleteReference(cacheImage.hash, cacheManagerCurrentWorkspace);
         if (response.success) {
             displayCacheManagerImages();
+            
+            // Ensure reference manager is refreshed after delete operation
+            await refreshReferenceManagerAfterVibeOperation();
+            
             return true;
         } else {
             throw new Error(response.message || 'Failed to delete base image');
@@ -3947,6 +4041,10 @@ async function deleteVibeImage(vibeImage) {
             }
             displayVibeManagerImages();
             await refreshReferenceBrowserIfOpen();
+            
+            // Ensure reference manager is refreshed after vibe operation
+            await refreshReferenceManagerAfterVibeOperation();
+            
             showGlassToast('success', null, 'Vibe encoding deleted');
             return true;
         } else {
@@ -4045,6 +4143,9 @@ async function handleVibeManagerDeleteConfirm() {
         }
         displayVibeManagerImages();
         await refreshReferenceBrowserIfOpen();
+        
+        // Ensure reference manager is refreshed after vibe operation
+        await refreshReferenceManagerAfterVibeOperation();
         
         // Show success message
         if (deletedCount > 0) {
@@ -4657,7 +4758,7 @@ function showBlueprintPreview(metadata) {
             let text = 'Anime'
             if (metadata.forge_data.dataset_config !== undefined && metadata.forge_data.dataset_config?.include?.length > 0) {
                 if (metadata.forge_data.dataset_config?.include?.includes('furry')) {
-                    icon = '<i class="nai-furry"></i>';
+                    icon = '<i class="nai-paw"></i>';
                     text = 'Furry';
                 } else if (metadata.forge_data.dataset_config?.include?.includes('background')) {
                     icon = '<i class="fa-solid fa-mountain-city"></i>';
@@ -4874,7 +4975,7 @@ function showVibeBundlePreview(vibes) {
         
         // Add buttons for vibes missing thumbnails or source images
         const buttonsContainer = document.createElement('div');
-        buttonsContainer.style.display = 'flex';
+        buttonsContainer.style.display = '';
         buttonsContainer.style.gap = '8px';
         buttonsContainer.style.margin = '8px 0';
         
@@ -5106,11 +5207,28 @@ function initializeCacheManager() {
     if (closeCacheManagerBtn) {
         closeCacheManagerBtn.addEventListener('click', hideCacheManagerModal);
     }
+    
+    // Cache browser refresh button
+    const cacheBrowserRefreshBtn = document.getElementById('cacheBrowserRefreshBtn');
+    if (cacheBrowserRefreshBtn) {
+        cacheBrowserRefreshBtn.addEventListener('click', refreshCacheBrowser);
+    }
 
     // Reference manager refresh button
     if (cacheManagerRefreshBtn) {
-        cacheManagerRefreshBtn.addEventListener('click', () => {
-            loadCacheManagerImages();
+        cacheManagerRefreshBtn.addEventListener('click', async () => {
+            // Show loading overlay for refresh
+            if (cacheManagerLoading) cacheManagerLoading.style.display = '';
+            
+            try {
+                await loadCacheManagerImages();
+            } catch (error) {
+                console.error('Error refreshing cache manager:', error);
+                showError('Failed to refresh cache manager');
+            } finally {
+                // Hide loading overlay
+                if (cacheManagerLoading) cacheManagerLoading.style.display = 'none';
+            }
         });
     }
 
@@ -5283,20 +5401,6 @@ function formatResolution(resolution, width, height) {
     
     // If we have a resolution string, try to match it first
     if (resolution) {
-        const RESOLUTIONS = [
-            { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768, aspect: 0.667 },
-            { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512, aspect: 1.5 },
-            { value: 'small_square', display: 'Small Square', width: 640, height: 640, aspect: 1.0 },
-            { value: 'normal_portrait', display: 'Normal Portrait', width: 832, height: 1216, aspect: 0.684 },
-            { value: 'normal_landscape', display: 'Normal Landscape', width: 1216, height: 832, aspect: 1.462 },
-            { value: 'normal_square', display: 'Normal Square', width: 1024, height: 1024, aspect: 1.0 },
-            { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536, aspect: 0.667 },
-            { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024, aspect: 1.5 },
-            { value: 'large_square', display: 'Large Square', width: 1472, height: 1472, aspect: 1.0 },
-            { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920, aspect: 0.567 },
-            { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088, aspect: 1.765 }
-        ];
-        
         // Handle custom resolution format: custom_1024x768
         if (resolution.startsWith('custom_')) {
             const dimensions = resolution.replace('custom_', '');
@@ -5322,23 +5426,9 @@ function formatResolution(resolution, width, height) {
     // If no resolution string but we have dimensions, match by aspect ratio
     if (width && height) {
         const aspect = width / height;
-        const tolerance = 0.05; // 5% tolerance for aspect ratio matching
-        
-        const RESOLUTIONS = [
-            { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768, aspect: 0.667 },
-            { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512, aspect: 1.5 },
-            { value: 'small_square', display: 'Small Square', width: 640, height: 640, aspect: 1.0 },
-            { value: 'normal_portrait', display: 'Normal Portrait', width: 832, height: 1216, aspect: 0.684 },
-            { value: 'normal_landscape', display: 'Normal Landscape', width: 1216, height: 832, aspect: 1.462 },
-            { value: 'normal_square', display: 'Normal Square', width: 1024, height: 1024, aspect: 1.0 },
-            { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536, aspect: 0.667 },
-            { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024, aspect: 1.5 },
-            { value: 'large_square', display: 'Large Square', width: 1472, height: 1472, aspect: 1.0 },
-            { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920, aspect: 0.567 },
-            { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088, aspect: 1.765 }
-        ];
-        
+        const tolerance = 0.05; // 5% 
         const exactMatch = RESOLUTIONS.find(r => r.width === width && r.height === height);
+        
         if (exactMatch) {
             return exactMatch.display;
         }
@@ -5378,12 +5468,26 @@ async function getFileInfoFromUrl(url) {
         }
         
         // First, try HEAD method to get basic info
-        console.log('🌐 Sending WebSocket HEAD request for URL:', url);
-        const headResponse = await wsClient.fetchUrlInfo(url, {
-            method: 'HEAD',
-            timeout: 3000
-        }, 'text');
-        console.log('📡 WebSocket HEAD response received:', headResponse);
+        let headResponse;
+        try {
+            headResponse = await wsClient.fetchUrlInfo(url, {
+                method: 'HEAD',
+                timeout: 3000
+            }, 'text');
+        } catch (error) {
+            console.error('❌ WebSocket HEAD request failed:', error);
+            // Return error info without throwing
+            return `
+                <div class="form-group">
+                    <label>URL</label>
+                    <div class="meta-value">${url}</div>
+                </div>
+                <div class="form-group">
+                    <label>Error</label>
+                    <div class="meta-value">Failed to connect to server: ${error.message || 'Unknown error'}</div>
+                </div>
+            `;
+        }
         
         if (headResponse.success) {
             // Extract file size from content-length header
@@ -5409,11 +5513,18 @@ async function getFileInfoFromUrl(url) {
                 try {
                     // Request first 1KB of the file for type and size detection
                     // The server will stop accepting data after 1KB and cancel the request
-                    const typeDetectionResponse = await wsClient.fetchUrlInfo(url, {
-                        method: 'GET',
-                        timeout: 5000,
-                        maxBytes: 1024 // Server will limit response to this many bytes
-                    }, 'arraybuffer');
+                    let typeDetectionResponse;
+                    try {
+                        typeDetectionResponse = await wsClient.fetchUrlInfo(url, {
+                            method: 'GET',
+                            timeout: 5000,
+                            maxBytes: 1024 // Server will limit response to this many bytes
+                        }, 'arraybuffer');
+                    } catch (wsError) {
+                        console.warn('⚠️ WebSocket GET request failed for type detection:', wsError);
+                        // Continue without type detection
+                        typeDetectionResponse = { success: false };
+                    }
                     
                     if (typeDetectionResponse.success && typeDetectionResponse.data) {
                         // Convert base64 data back to Uint8Array for analysis
@@ -5839,9 +5950,63 @@ async function handlePendingUrlDownload() {
         }
         
         // Download the file via websocket
-        const response = await wsClient.downloadUrlFile(unifiedUploadPendingUrl);
-        
-        console.log('Download response:', response);
+        let response;
+        try {
+            response = await wsClient.downloadUrlFile(unifiedUploadPendingUrl);
+            
+            // Check if the response indicates failure even without throwing an error
+            if (!response || response.error) {
+                throw new Error(response?.error || 'Download failed with no response');
+            }
+        } catch (error) {
+            console.error('❌ WebSocket download error:', error);
+            console.error('Error details:', {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            });
+            
+            // Hide cover overlay on error
+            hideGalleryMoveRightPanelCover();
+            
+            // Reset confirm button
+            if (confirmBtn) {
+                confirmBtn.innerHTML = '<i class="fas fa-download"></i> Load File';
+                confirmBtn.disabled = false;
+            }
+            
+            // Show error toast
+            showGlassToast('error', null, (error.message || 'Failed to download file from URL'));
+            
+            // Reset to initial state on error
+            showInitialUploadOptions();
+            
+            // Clear pending URL
+            unifiedUploadPendingUrl = null;
+            
+            // Hide URL preview
+            hideUrlPreview();
+            
+            // Hide subtitle
+            const subtitle = document.getElementById('unifiedUploadModalSubtitle');
+            if (subtitle) {
+                subtitle.classList.add('hidden');
+            }
+            
+            // Hide footer actions
+            const footerActions = document.querySelector('.gallery-move-actions');
+            if (footerActions) {
+                footerActions.style.display = 'none';
+            }
+            
+            // Hide site domain display
+            const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
+            if (siteDomainDisplay) {
+                siteDomainDisplay.style.display = 'none';
+            }
+            
+            return;
+        }
         
         if (response.success) {
             // Store downloaded file info
@@ -5855,8 +6020,6 @@ async function handlePendingUrlDownload() {
                 type: response.type,
                 ...response
             };
-            
-            console.log('Stored downloaded file info:', unifiedUploadDownloadedFile);
             
             // Clear pending URL
             unifiedUploadPendingUrl = null;
@@ -5910,8 +6073,6 @@ async function handlePendingUrlDownload() {
             
             // Process metadata based on file type and update UI accordingly
             if (unifiedUploadDownloadedFile.type === 'image' && unifiedUploadDownloadedFile.isBlueprint) {
-                // Show blueprint preview if it's a PNG with NovelAI metadata
-                console.log('Processing blueprint image with metadata:', unifiedUploadDownloadedFile.metadata);
                 showBlueprintMode();
                 
                 // Ensure metadata is properly structured before showing preview
@@ -5978,19 +6139,38 @@ async function handlePendingUrlDownload() {
             hideGalleryMoveRightPanelCover();
             
         } else {
-            showError('Download failed: ' + (response.error || 'Unknown error'));
+            // Show error toast for server-side errors
+            showGlassToast('error', null, (response.error || response.message || 'Download failed'));
             
             // Hide cover overlay on failure
             hideGalleryMoveRightPanelCover();
             
             // Reset confirm button
             if (confirmBtn) {
-                confirmBtn.innerHTML = '<i class="fas fa-download"></i> Download';
+                confirmBtn.innerHTML = '<i class="fas fa-download"></i> Load File';
                 confirmBtn.disabled = false;
             }
             
             // Reset to initial state on failure
             showInitialUploadOptions();
+            
+            // Clear pending URL
+            unifiedUploadPendingUrl = null;
+            
+            // Hide URL preview
+            hideUrlPreview();
+            
+            // Hide subtitle
+            const subtitle = document.getElementById('unifiedUploadModalSubtitle');
+            if (subtitle) {
+                subtitle.classList.add('hidden');
+            }
+            
+            // Hide footer actions
+            const footerActions = document.querySelector('.gallery-move-actions');
+            if (footerActions) {
+                footerActions.style.display = 'none';
+            }
             
             // Hide site domain display on failure
             const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
@@ -6000,8 +6180,8 @@ async function handlePendingUrlDownload() {
         }
         
     } catch (error) {
-        console.error('Error downloading URL:', error);
-        showError('Download failed: ' + error.message);
+        // Show error toast
+        showGlassToast('error', null, 'Download failed: ' + (error.message || 'Unknown error'));
         
         // Hide cover overlay on error
         hideGalleryMoveRightPanelCover();
@@ -6009,12 +6189,30 @@ async function handlePendingUrlDownload() {
         // Reset confirm button
         const confirmBtn = document.getElementById('unifiedUploadConfirmBtn');
         if (confirmBtn) {
-            confirmBtn.innerHTML = '<i class="fas fa-download"></i> Download';
+            confirmBtn.innerHTML = '<i class="fas fa-download"></i> Load File';
             confirmBtn.disabled = false;
         }
         
         // Reset to initial state on error
         showInitialUploadOptions();
+        
+        // Clear pending URL
+        unifiedUploadPendingUrl = null;
+        
+        // Hide URL preview
+        hideUrlPreview();
+        
+        // Hide subtitle
+        const subtitle = document.getElementById('unifiedUploadModalSubtitle');
+        if (subtitle) {
+            subtitle.classList.add('hidden');
+        }
+        
+        // Hide footer actions
+        const footerActions = document.querySelector('.gallery-move-actions');
+        if (footerActions) {
+            footerActions.style.display = 'none';
+        }
         
         // Hide site domain display on error
         const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
@@ -6051,13 +6249,6 @@ async function handleUnifiedUploadClipboard() {
                             writable: false
                         });
                         
-                        console.log('Clipboard file created:', {
-                            name: file.name,
-                            type: file.type,
-                            size: file.size,
-                            blobSize: blob.size
-                        });
-                        
                         // Process as a file upload
                         await handleClipboardFile(file);
                         return;
@@ -6065,8 +6256,7 @@ async function handleUnifiedUploadClipboard() {
                 }
             }
         } catch (clipboardError) {
-            // Clipboard.read() failed, try reading text instead
-            console.log('Clipboard.read() failed, falling back to text:', clipboardError);
+            console.warn('Clipboard.read() failed, falling back to text:', clipboardError);
         }
 
         // Read clipboard text (for URLs)
@@ -6111,7 +6301,7 @@ async function handleUnifiedUploadClipboard() {
                 `<i class="fas fa-lock"></i> ${domain}` : 
                 `<i class="fas fa-fa-exclamation-triangle"></i> ${domain}`;
             siteDomainText.innerHTML = domainDisplay;
-            siteDomainDisplay.style.display = 'flex';
+            siteDomainDisplay.style.display = '';
         }
         
         // Show URL preview in main content area
@@ -6131,7 +6321,7 @@ async function handleUnifiedUploadClipboard() {
         
         // Update confirm button to show download state
         if (unifiedUploadConfirmBtn) {
-            unifiedUploadConfirmBtn.innerHTML = '<i class="fas fa-download"></i> Download';
+            unifiedUploadConfirmBtn.innerHTML = '<i class="fas fa-download"></i> Load File';
             unifiedUploadConfirmBtn.disabled = false;
         }
         
@@ -6148,7 +6338,7 @@ async function handleUnifiedUploadClipboard() {
         }
     } catch (error) {
         console.error('Clipboard download error:', error);
-        showError('Failed to download file from clipboard: ' + error.message);
+        showGlassToast('error', null, 'Failed to download file from clipboard: ' + (error.message || 'Unknown error'));
     } finally {
 
     }
@@ -6415,3 +6605,34 @@ function getCurrentWorkspaceId() {
     // Default fallback
     return 'default';
 }
+
+// Function to refresh cache browser with loading overlay
+async function refreshCacheBrowser() {
+    if (!cacheBrowserContainer || cacheBrowserContainer.style.display === 'none') return;
+    
+    // Show loading overlay
+    if (cacheBrowserLoadingContainer) {
+        cacheBrowserLoadingContainer.style.display = '';
+    }
+    
+    try {
+        await loadCacheImages();
+        displayCacheImagesContainer();
+    } catch (error) {
+        console.error('Error refreshing cache browser:', error);
+        showError('Failed to refresh cache browser');
+    } finally {
+        // Hide loading overlay
+        if (cacheBrowserLoadingContainer) {
+            cacheBrowserLoadingContainer.style.display = 'none';
+        }
+    }
+}
+
+// Expose functions globally
+window.addAsBaseImage = addAsBaseImage;
+window.refreshCacheBrowser = refreshCacheBrowser;
+
+window.wsClient.registerInitStep(93, 'Initializing reference manager', async () => {
+    await initializeCacheManager();
+});

@@ -68,20 +68,22 @@ async function renderImageBiasDropdown(selectedVal) {
             await updateImageBiasDisplay('custom');
         }
     } else {
-        // Aspect ratios are the same or very close - hide the dropdown but keep custom bias button if it exists
+        // Aspect ratios are the same or very close - hide the dropdown but keep the bias section visible
+        imageBiasGroup.style.display = '';
+        
+        // Hide the dropdown menu since aspect ratios are similar
+        if (imageBiasDropdownMenu) {
+            imageBiasDropdownMenu.style.display = 'none';
+        }
+        
+        // If we have dynamic bias, update the display to show custom bias
         if (hasDynamicBias) {
-            // Keep the group visible for custom bias button, but hide the dropdown
-            imageBiasGroup.style.display = 'flex';
-            // Hide the dropdown menu
-            if (imageBiasDropdownMenu) {
-                imageBiasDropdownMenu.style.display = 'none';
-            }
-            // Update the display to show custom bias
             await updateImageBiasDisplay('custom');
         } else {
-            // No dynamic bias, hide the entire group
-            imageBiasGroup.style.display = 'none';
+            // For regular bias, show center bias by default
+            await updateImageBiasDisplay('2');
         }
+        
         return;
     }
     imageBiasDropdownMenu.innerHTML = '';
@@ -1804,3 +1806,7 @@ function initializeImageBiasAdjustment() {
         console.warn('Image bias group not found, cannot set up observer');
     }
 }
+
+window.wsClient.registerInitStep(94, 'Initializing Image Bias System', async () => {
+    await initializeImageBiasAdjustment();
+});

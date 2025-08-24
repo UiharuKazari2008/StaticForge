@@ -5,8 +5,8 @@ const manualGenerateBtn = document.getElementById('manualGenerateBtn');
 const manualForm = document.getElementById('manualForm');
 const closeManualBtn = document.getElementById('closeManualBtn');
 const manualPreviewCloseBtn = document.getElementById('manualPreviewCloseBtn');
-const manualBtn = document.getElementById('manualBtn');
-const generateBtn = document.getElementById('generateBtn');
+const openGenEditorBtn = document.getElementById('openGenEditorBtn');
+const generatePresetBtn = document.getElementById('generatePresetBtn');
 const presetSelect = document.getElementById('presetSelect');
 const gallery = document.getElementById('gallery');
 const bulkSelectAllBtn = document.getElementById('bulkSelectAllBtn');
@@ -28,6 +28,8 @@ const manualPresetName = document.getElementById('manualPresetName');
 const manualUpscale = document.getElementById('manualUpscale');
 const clearSeedBtn = document.getElementById('clearSeedBtn');
 const editSeedBtn = document.getElementById('editSeedBtn');
+let savedGalleryPosition = null;
+let galleryClearTimeout = null;
 const manualNoiseSchedulerDropdown = document.getElementById('manualNoiseSchedulerDropdown');
 const manualNoiseSchedulerDropdownBtn = document.getElementById('manualNoiseSchedulerDropdownBtn');
 const manualNoiseSchedulerDropdownMenu = document.getElementById('manualNoiseSchedulerDropdownMenu');
@@ -51,12 +53,7 @@ const customPresetDropdown = document.getElementById('customPresetDropdown');
 const customPresetDropdownBtn = document.getElementById('customPresetDropdownBtn');
 const customPresetDropdownMenu = document.getElementById('customPresetDropdownMenu');
 const customPresetSelected = document.getElementById('customPresetSelected');
-// Mobile/compact preset dropdown (shared setup)
-const customPresetDropdown2 = document.getElementById('customPresetDropdown2');
-const customPresetDropdownBtn2 = document.getElementById('customPresetDropdownBtn2');
-const customPresetDropdownMenu2 = document.getElementById('customPresetDropdownMenu2');
-const customPresetSelected2 = document.getElementById('customPresetSelected2');
-const generateBtn2 = document.getElementById('generateBtn2');
+const clearPresetBtn = document.getElementById('clearPresetBtn');
 let selectedPreset = '';
 const manualSamplerDropdown = document.getElementById('manualSamplerDropdown');
 const manualSamplerDropdownBtn = document.getElementById('manualSamplerDropdownBtn');
@@ -72,6 +69,8 @@ const manualModelHidden = document.getElementById('manualModel');
 const customWidth = document.getElementById('manualCustomWidth');
 const customHeight = document.getElementById('manualCustomHeight');
 let manualSelectedModel = '';
+const manualPresetDeleteBtn = document.getElementById('manualDeleteBtn');
+const searchToggleBtn = document.getElementById('searchToggleBtn');
 const presetAutocompleteOverlay = document.getElementById('presetAutocompleteOverlay');
 const presetAutocompleteList = document.querySelector('.preset-autocomplete-list');
 const metadataDialog = document.getElementById('metadataDialog');
@@ -98,6 +97,25 @@ const manualStrengthOverlay = manualStrengthValue?.parentElement?.querySelector(
 const manualNoiseValue = document.getElementById('manualNoiseValue');
 const manualNoiseOverlay = manualNoiseValue?.parentElement?.querySelector('.percentage-input-overlay');
 const paidRequestToggle = document.getElementById('paidRequestToggle');
+const previewContainer = document.getElementById('manualPreviewContainer');
+const previewStars = document.getElementById('previewStars');
+const previewBackgroundLines = document.getElementById('previewBackgroundLines');
+const previewForegroundLines = document.getElementById('previewForegroundLines');
+
+// Global background update state tracking
+const backgroundUpdateState = {
+    isAnimating: false,
+    pendingRequest: null,
+    lastRequest: null,
+    animationPromise: null,
+    callCount: 0,
+    lastCallTime: 0
+};
+
+// Global debounced background update function
+const updateBlurredBackground = createAnimationAwareDebounce(async (imageUrl) => {
+    await updateManualPreviewBlurredBackground(imageUrl);
+}, 300);
 const manualPresetToggleBtn = document.getElementById('manualPresetToggleBtn');
 const manualPresetToggleText = document.getElementById('manualPresetToggleText');
 const manualPresetToggleIcon = document.getElementById('manualPresetToggleIcon');
@@ -134,7 +152,9 @@ const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
 const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
 const transformationRow = document.getElementById('transformationRow');
 const manualPreviewOriginalImage = document.getElementById('manualPreviewOriginalImage');
-let sproutSeedBtn = document.getElementById('sproutSeedBtn');
+const sproutSeedBtn = document.getElementById('sproutSeedBtn');
+
+let generationAnimationActive = false;
 
 // Manual preview zoom and pan functionality
 let manualPreviewZoom = 1;
@@ -202,17 +222,17 @@ const NOISE_MAP = [
   { meta: 'polyexponential', display: 'Polyexponental', request: 'POLYEXPONENTIAL' }
 ];
 const RESOLUTIONS = [
-    { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768 },
-    { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512 },
-    { value: 'small_square', display: 'Small Square', width: 640, height: 640 },
-    { value: 'normal_portrait', display: 'Normal Portrait', width: 832, height: 1216 },
-    { value: 'normal_landscape', display: 'Normal Landscape', width: 1216, height: 832 },
-    { value: 'normal_square', display: 'Normal Square', width: 1024, height: 1024 },
-    { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536 },
-    { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024 },
-    { value: 'large_square', display: 'Large Square', width: 1472, height: 1472 },
-    { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920 },
-    { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088 }
+    { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768, aspect: 0.667 },
+    { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512, aspect: 1.5 },
+    { value: 'small_square', display: 'Small Square', width: 640, height: 640, aspect: 1.0 },
+    { value: 'normal_portrait', display: 'Normal Portrait', width: 832, height: 1216, aspect: 0.684 },
+    { value: 'normal_landscape', display: 'Normal Landscape', width: 1216, height: 832, aspect: 1.462 },
+    { value: 'normal_square', display: 'Normal Square', width: 1024, height: 1024, aspect: 1.0 },
+    { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536, aspect: 0.667 },
+    { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024, aspect: 1.5 },
+    { value: 'large_square', display: 'Large Square', width: 1472, height: 1472, aspect: 1.0 },
+    { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920, aspect: 0.567 },
+    { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088, aspect: 1.765 }
 ];
 const resolutions = RESOLUTIONS.map(r => r.value);
 const RESOLUTION_GROUPS = [
@@ -355,41 +375,29 @@ function updateV3ModelVisibility() {
     // Store the V3 state for later use
     isV3ModelSelected = isV3Selected;
 }
-
-// Helper function to update save button state based on preset name
-function updateSaveButtonState() {
-    if (manualSaveBtn && manualPresetName) {
-        const hasPresetName = manualPresetName.value.trim().length > 0;
-        manualSaveBtn.disabled = !hasPresetName;
-
-        if (hasPresetName) {
-            manualSaveBtn.classList.remove('disabled');
-        } else {
-            manualSaveBtn.classList.add('disabled');
-        }
-    }
-}
-
 // Helper function to update load button state based on preset name validation
-function updateLoadButtonState() {
-    if (!manualLoadBtn || !manualPresetName) return;
+function updatePresetLoadSaveState() {
+    if (!manualLoadBtn || !manualSaveBtn || !manualPresetName) return;
 
     const presetName = manualPresetName.value.trim();
-    if (!presetName) {
-        manualLoadBtn.disabled = true;
-        manualLoadBtn.classList.add('disabled');
-        return;
-    }
-
     // Check if preset exists in available presets
-    const isValidPreset = window.optionsData.presets && window.optionsData.presets.includes(presetName);
-
-    manualLoadBtn.disabled = !isValidPreset;
-
-    if (isValidPreset) {
-        manualLoadBtn.classList.remove('disabled');
+    const hasPresetName = manualPresetName.value.trim().length > 0;
+    manualSaveBtn.disabled = !hasPresetName;
+    if (hasPresetName) {
+        const isValidPreset = hasPresetName && window.optionsData.presets && window.optionsData.presets.filter(e => e.name === presetName).length > 0;
+        manualLoadBtn.disabled = !isValidPreset;
+        manualSaveBtn.classList.remove('disabled');
+        if (isValidPreset) {
+            manualLoadBtn.classList.remove('disabled');
+            manualPresetDeleteBtn.classList.remove('hidden');
+        } else {
+            manualLoadBtn.classList.add('disabled');
+            manualPresetDeleteBtn.classList.add('hidden');
+        }
     } else {
+        manualSaveBtn.classList.add('disabled');
         manualLoadBtn.classList.add('disabled');
+        manualPresetDeleteBtn.classList.add('hidden');
     }
 }
 
@@ -398,8 +406,7 @@ let presetValidationTimeout = null;
 function validatePresetWithTimeout() {
     clearTimeout(presetValidationTimeout);
     presetValidationTimeout = setTimeout(() => {
-        updateLoadButtonState();
-        updateSaveButtonState();
+        updatePresetLoadSaveState();
     }, 300); // 300ms delay
 }
 
@@ -434,89 +441,271 @@ function getNoiseMeta(meta) {
   return NOISE_MAP.find(n => n.meta.toLowerCase() === meta.toLowerCase());
 }
 
-// Custom Preset Dropdown Functions
-function getPresetDropdownElements(slot = 1) {
-    if (slot === 2) {
-        return {
-            container: customPresetDropdown2,
-            button: customPresetDropdownBtn2,
-            menu: customPresetDropdownMenu2,
-            selectedLabel: customPresetSelected2,
-            generateButton: generateBtn2,
-        };
-    }
-    return {
-        container: customPresetDropdown,
-        button: customPresetDropdownBtn,
-        menu: customPresetDropdownMenu,
-        selectedLabel: customPresetSelected,
-        generateButton: generateBtn,
-    };
-}
-
-async function renderCustomPresetDropdown(selectedVal, slot = 1) {
-    const { menu } = getPresetDropdownElements(slot);
-    if (!menu) return;
-    menu.innerHTML = '';
+async function renderCustomPresetDropdown(selectedVal) {
+    if (!customPresetDropdownMenu) return;
+    customPresetDropdownMenu.innerHTML = '';
 
     // Use global presets loaded from /options
     if (Array.isArray(window.optionsData.presets) && window.optionsData.presets.length > 0) {
-        // Presets group header
-        const presetsGroupHeader = document.createElement('div');
-        presetsGroupHeader.className = 'custom-dropdown-group';
-        presetsGroupHeader.innerHTML = '<i class="nai-heart-enabled"></i> Presets';
-        customPresetDropdownMenu.appendChild(presetsGroupHeader);
-
         for (const preset of window.optionsData.presets) {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option' + (selectedVal === `preset:${preset.name}` ? ' selected' : '');
-            option.tabIndex = 0;
-            option.dataset.value = `preset:${preset.name}`;
-            option.dataset.type = 'preset';
-            option.innerHTML = `
-                <div class="preset-option-content">
-                    <div class="preset-name">${preset.name}</div>
-                    <div class="preset-details">
-                        <span class="preset-model">${window.optionsData?.modelsShort[preset.model.toUpperCase()] || preset.model || 'Default'}</span>
-                        <div class="preset-icons">
-                            ${preset.upscale ? '<i class="nai-upscale" title="Upscale enabled"></i>' : ''}
-                            ${preset.allow_paid ? '<i class="nai-anla" title="Allow paid"></i>' : ''}
-                            ${preset.variety ? '<i class="nai-wand-sparkles" title="Variety enabled"></i>' : ''}
-                            ${preset.character_prompts ? '<i class="fas fa-users" title="Character prompts"></i>' : ''}
-                            ${preset.base_image ? '<i class="fas fa-image" title="Has base image"></i>' : ''}
-                        </div>
-                        <span class="preset-resolution">${preset.resolution || 'Default'}</span>
-                    </div>
-                </div>
-            `;
-            option.addEventListener('click', (e) => {
-                e.preventDefault();
-                selectCustomPreset(`preset:${preset.name}`, slot);
-                closeCustomPresetDropdown(slot);
-            });
-            option.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    selectCustomPreset(`preset:${preset.name}`, slot);
-                    closeCustomPresetDropdown(slot);
+            try {
+                // Skip invalid presets
+                if (!preset || !preset.name) {
+                    console.warn('Skipping invalid preset:', preset);
+                    continue;
                 }
-            });
-            menu.appendChild(option);
+                
+                // Debug logging for troubleshooting
+                // console.log('Processing preset:', preset.name, 'with data:', preset);
+                
+                const option = document.createElement('div');
+                option.className = 'custom-dropdown-option' + (selectedVal === `preset:${preset.name}` ? ' selected' : '');
+                option.tabIndex = 0;
+                option.dataset.value = `preset:${preset.name}`;
+                option.dataset.type = 'preset';
+                
+                // Create compact preset option with same icons as createPresetItem
+                const presetName = document.createElement('div');
+                presetName.className = 'preset-name';
+                presetName.textContent = preset.name;
+                
+                const presetIcons = document.createElement('div');
+                presetIcons.className = 'preset-icons';
+                
+                // Paid requests
+                if (preset.allow_paid === true) {
+                    const icon = document.createElement('i');
+                    icon.className = 'nai-anla';
+                    icon.title = 'Paid Requests Enabled';
+                    presetIcons.appendChild(icon);
+                }
+                
+                // Character prompts
+                if (preset.character_prompts) {
+                    const icon = document.createElement('i');
+                    icon.className = 'fas fa-users';
+                    icon.title = `${preset.character_prompts} Character Prompt${preset.character_prompts > 1 ? 's' : ''}`;
+                    presetIcons.appendChild(icon);
+                    
+                    // Uses Character Coordinates
+                    if (preset.use_coords) {
+                        const icon = document.createElement('i');
+                        icon.className = 'fas fa-location-crosshairs';
+                        icon.title = 'Using Character Coordinates';
+                        presetIcons.appendChild(icon);
+                    }
+                }
+                
+                // Upscale
+                if (preset.upscale === true) {
+                    const icon = document.createElement('i');
+                    icon.className = 'fas fa-high-definition';
+                    icon.title = 'Upscale enabled';
+                    presetIcons.appendChild(icon);
+                }
+                
+                // Image to image
+                if (preset.image || preset.image_source) {
+                    const icon = document.createElement('i');
+                    icon.className = 'fas fa-image';
+                    icon.title = 'Image to Image';
+                    presetIcons.appendChild(icon);
+
+                    // Image Bias
+                    if (preset.image_bias) {
+                        const icon = document.createElement('i');
+                        icon.className = 'fas fa-crop';
+                        icon.title = 'Image Bias';
+                        presetIcons.appendChild(icon);
+                    }
+                }
+                
+                
+                // Inpaint
+                if ((preset.image || preset.image_source) && preset.mask_compressed) {
+                    const icon = document.createElement('i');
+                    icon.className = 'nai-inpaint';
+                    icon.title = 'Selective Masking (Inpaint)';
+                    presetIcons.appendChild(icon);
+                } else 
+                // Vibe transfer
+                if (preset.vibe_transfer) {
+                    const icon = document.createElement('i');
+                    icon.className = 'nai-vibe-transfer';
+                    icon.title = `${preset.vibe_transfer} Vibe Transfer${preset.vibe_transfer > 1 ? 's' : ''}`;
+                    presetIcons.appendChild(icon);
+                }
+                
+                // Variety
+                if (preset.variety === true) {
+                    const icon = document.createElement('i');
+                    icon.className = 'fas fa-sparkle';
+                    icon.title = 'Variety+ Enabled';
+                    presetIcons.appendChild(icon);
+                }
+
+                // Dataset info (priority: furry > backgrounds > anime)
+                const datasetIcon = document.createElement('i');
+                if (preset.dataset_config && preset.dataset_config.include && Array.isArray(preset.dataset_config.include) && preset.dataset_config.include.length > 0) {
+                    
+                    if (preset.dataset_config.include.includes('furry')) {
+                        datasetIcon.className = 'nai-paw';
+                    } else if (preset.dataset_config.include.includes('backgrounds')) {
+                        datasetIcon.className = 'fas fa-tree';
+                    } else {
+                        datasetIcon.className = 'nai-sakura';
+                    }
+                } else {
+                    datasetIcon.className = 'nai-sakura';
+                }
+                datasetIcon.title = 'Dataset enabled';
+                presetIcons.appendChild(datasetIcon);
+                
+                // Quality preset info
+                if (preset.append_quality === true) {
+                    const icon = document.createElement('i');
+                    icon.className = 'fas fa-crown';
+                    icon.title = 'Quality Preset Enabled';
+                    presetIcons.appendChild(icon);
+                }
+                
+                // UC boxes
+                const boxes = document.createElement('div');
+                boxes.className = 'uc-boxes';
+                if (preset.append_uc !== undefined && preset.append_uc !== null) {
+                    boxes.dataset.ucLevel = preset.append_uc.toString();
+                } else {
+                    boxes.dataset.ucLevel = '0';
+                }
+                for (let i = 1; i <= 3; i++) {
+                    const box = document.createElement('div');
+                    box.className = 'uc-box';
+                    box.dataset.level = i.toString();
+                    boxes.appendChild(box);
+                }
+                presetIcons.appendChild(boxes);
+                
+                // Create two-row layout
+                const presetContent = document.createElement('div');
+                presetContent.className = 'preset-option-content-two-rows';
+                
+                // First row: name only
+                const firstRow = document.createElement('div');
+                firstRow.className = 'preset-option-row-1';
+                firstRow.appendChild(presetName);
+                
+                // Second row: model/resolution on left, icons on right
+                const secondRow = document.createElement('div');
+                secondRow.className = 'preset-option-row-2';
+                
+                // Left side: model and resolution info
+                const leftSide = document.createElement('div');
+                leftSide.className = 'preset-option-left';
+                
+                // Model info
+                const modelSpan = document.createElement('span');
+                let group = null;
+                for (const g of modelGroups) {
+                    const found = g.options.find(o => o.value === preset.model.toLowerCase());
+                    if (found) {
+                    group = g.group;
+                    break;
+                    }
+                }
+                const groupObj = modelGroups.find(g => g.group === group);
+                const optObj = groupObj ? groupObj.options.find(o => o.value === preset.model.toLowerCase()) : null;
+                if (optObj) {
+                    if (optObj.badge_full) {
+                        modelSpan.innerHTML = [
+                            `<span>${optObj.display}</span>`,
+                            `<span>${optObj.badge_full}</span>`,
+                        ].filter(Boolean).join(' ');
+                    } else if (optObj.badge) {
+                        modelSpan.innerHTML = [
+                            `<span>${optObj.display}</span>`,
+                            `<span>${optObj.badge}</span>`,
+                        ].filter(Boolean).join(' ');
+                    } else {
+                        modelSpan.textContent = preset.model || 'V4.5?';
+                    }
+                    modelSpan.className = `preset-model ${optObj.badge_class}`;
+                } else {
+                    modelSpan.textContent = preset.model || 'V4.5?';
+                    modelSpan.className = 'preset-model';
+                }
+                leftSide.appendChild(modelSpan);
+                
+                // Resolution info
+                const resSpan = document.createElement('span');
+                resSpan.className = 'preset-resolution';
+    
+                // Get proper resolution display name and check if it's large/wallpaper
+                let resolutionDisplay = (preset.resolution.toLowerCase() || 'normal_portrait?').split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1));
+                
+                if (resolutionDisplay[0] !== 'Normal') {
+                    const resolutionText = document.createElement('span');
+                    const resolutionTextInner = document.createElement('span');
+                    if (resolutionDisplay[0] === 'Large' || resolutionDisplay[0] === 'Wallpaper') {
+                        const dollarIcon = document.createElement('i');
+                        dollarIcon.className = 'fas fa-dollar-sign';
+                        dollarIcon.style.fontSize = '0.8em';
+                        resolutionText.appendChild(dollarIcon);
+                    }
+                    resolutionTextInner.textContent = resolutionDisplay[0];
+                    resolutionText.appendChild(resolutionTextInner);
+                    resSpan.appendChild(resolutionText);
+                    const resolutionText2 = document.createElement('span');
+                    resolutionText2.textContent = resolutionDisplay[1];
+                    resSpan.appendChild(resolutionText2);
+                } else {
+                    resSpan.textContent = resolutionDisplay[1];
+                }
+                
+                leftSide.appendChild(resSpan);
+                
+                secondRow.appendChild(leftSide);
+                secondRow.appendChild(presetIcons);
+                
+                presetContent.appendChild(firstRow);
+                presetContent.appendChild(secondRow);
+                
+                option.appendChild(presetContent);
+                
+                // Debug logging for troubleshooting
+                // console.log('Created preset option for:', preset.name, 'with icons:', presetIcons.children.length);
+                
+                option.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    selectCustomPreset(`preset:${preset.name}`);
+                    closeCustomPresetDropdown();
+                });
+                option.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        selectCustomPreset(`preset:${preset.name}`);
+                        closeCustomPresetDropdown();
+                    }
+                });
+                customPresetDropdownMenu.appendChild(option);
+            } catch (error) {
+                console.error('Error processing preset:', preset?.name || 'unknown', error);
+                continue;
+            }
         }
     }
 }
 
-function selectCustomPreset(value, slot = 1) {
+function selectCustomPreset(value) {
     selectedPreset = value;
 
     // Update button display
     if (value.startsWith('preset:')) {
         const presetName = value.replace('preset:', '');
-        const { selectedLabel } = getPresetDropdownElements(slot);
-        if (selectedLabel) selectedLabel.innerHTML = `<i class="nai-heart-enabled"></i> ${presetName}`;
+        customPresetSelected.innerHTML = `<i class="fa-light fa-wand-magic-sparkles"></i> ${presetName}`;
+        clearPresetBtn.classList.remove('hidden');
     } else {
-        const { selectedLabel } = getPresetDropdownElements(slot);
-        if (selectedLabel) selectedLabel.innerHTML = '<i class="nai-pen-tip-light"></i> Select Preset';
+        customPresetSelected.innerHTML = '<i class="fa-light fa-book-spells"></i> Spellbook';
+        clearPresetBtn.classList.add('hidden');
     }
 
     // Sync with hidden select for compatibility
@@ -526,27 +715,141 @@ function selectCustomPreset(value, slot = 1) {
     if (typeof updateGenerateButton === 'function') updateGenerateButton();
 }
 
-function closeCustomPresetDropdown(slot = 1) {
-    const { menu, button } = getPresetDropdownElements(slot);
-    if (menu && button) closeDropdown(menu, button);
+function closeCustomPresetDropdown() {
+    if (customPresetDropdownMenu && customPresetDropdownBtn) closeDropdown(customPresetDropdownMenu, customPresetDropdownBtn);
 }
 
-// Shared setup for both desktop (slot 1) and mobile/compact (slot 2)
-function setupPresetDropdown(slot = 1) {
-    const { container, button, menu } = getPresetDropdownElements(slot);
-    if (!container || !button || !menu) return;
-    setupDropdown(
-        container,
-        button,
-        menu,
-        (sel) => renderCustomPresetDropdown(sel, slot),
-        () => selectedPreset,
-        { preventFocusTransfer: true }
+// Function to generate image from a preset
+async function generateFromPreset(presetName) {
+    isGenerating = true;
+    isInModal = false;
+
+    let toastId;
+    let progressInterval;
+    
+    toastId = showGlassToast('info', 'Generating Image', 'Generating image...', true, false, '<i class="nai-sparkles"></i>');
+    
+    // Start progress animation (1% per second)
+    let progress = 0;
+    progressInterval = setInterval(() => {
+        progress += 1;
+        updateGlassToastProgress(toastId, progress);
+    }, 1000);
+
+    try {
+        // Generate image using WebSocket
+        const result = await window.wsClient.generatePreset(presetName);
+        
+        // Extract data from the standard response format
+        const filename = result.filename;
+        const seed = result.seed;
+
+        console.log('📋 Generation result:', { result, filename, seed });
+
+        // Hide the generating toast first
+        if (toastId) {
+            removeGlassToast(toastId);
+        }
+        createConfetti();
+        await loadGallery(true);
+        
+        // Find the generated image in the gallery
+        const found = allImages.find(img => img.original === filename || img.upscaled === filename);
+        if (found) {
+            // Construct proper image object with filename property
+            const imageToShow = {
+                filename: filename,
+                base: found.base,
+                original: found.original,
+                upscaled: found.upscaled
+            };
+            showLightbox(imageToShow);
+        } else {
+            showGlassToast('info', 'Image Generated', 'Image generated successfully and added to gallery');
+        }
+
+    } catch (error) {
+        console.error('Generation error:', error);
+        showGlassToast('error', 'Generation Failed', error.message);
+    } finally {
+        // Reset generating state
+        isGenerating = false;
+        
+        // Clear progress and loading states
+        if (toastId) {
+            removeGlassToast(toastId);
+        }
+        if (progressInterval) {
+            clearInterval(progressInterval);
+        }
+        if (isInModal) {
+            showManualLoading(false);
+        }
+    }
+}
+
+// Handle preset updates (save/delete)
+async function handlePresetUpdate(data) {
+    console.log('🔄 Handling preset update:', data);
+    
+    // Refresh the preset dropdown
+    await loadOptions();
+    
+    await renderCustomPresetDropdown(selectedPreset);
+    
+    // Show notification
+    if (data.message) {
+        showGlassToast('info', null, data.message);
+    }
+}
+
+// Delete a preset
+async function deletePreset(presetName) {
+    if (!presetName) {
+        showError('No preset name provided');
+        return;
+    }
+
+    // Use confirmation dialog instead of confirm()
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to delete the preset "${presetName}"?`,
+        [
+            { text: 'Delete', value: true, className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ]
     );
-}
 
-setupPresetDropdown(1);
-setupPresetDropdown(2);
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        selectCustomPreset('');
+        // Use WebSocket for preset deletion
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        const result = await window.wsClient.deletePreset(presetName);
+        
+        // Show success message
+        if (result && result.data && result.data.message) {
+            showGlassToast('success', null, result.data.message);
+        } else {
+            showGlassToast('success', null, `Preset "${presetName}" deleted successfully`);
+        }
+        
+        // Clear the manual preset name input and hide delete button
+        if (manualPresetName) {
+            manualPresetName.value = '';
+            updatePresetLoadSaveState();
+        }
+
+    } catch (error) {
+        console.error('Error deleting preset:', error);
+        showError('Failed to delete preset: ' + error.message);
+    }
+}
 
 function generateResolutionOptions() {
     // Populate resolutions using global RESOLUTIONS array
@@ -629,14 +932,42 @@ async function selectManualResolution(value, group, skipPostProcess = false) {
     }
 }
 
-setupDropdown(
-    manualResolutionDropdown,
-    manualResolutionDropdownBtn,
-    manualResolutionDropdownMenu,
-    renderManualResolutionDropdown,
-    () => manualSelectedResolution,
-    { preventFocusTransfer: true }
-);
+// Convert preset format to metadata format for compatibility
+function convertPresetToMetadataFormat(presetData) {
+    console.log('🔄 Converting preset data:', presetData);
+    
+    // Create a copy to avoid modifying the original
+    const metadata = { ...presetData };
+
+    // Handle resolution case conversion
+    if (metadata.resolution) {
+        metadata.resolution = metadata.resolution.toLowerCase();
+    }
+    
+    // Handle model case conversion
+    if (metadata.model) {
+        metadata.model = metadata.model.toUpperCase();
+    }
+    
+    // Convert image field to image_source for compatibility
+    if (metadata.image && !metadata.image_source) {
+        metadata.image_source = metadata.image;
+    }
+    
+    // Convert sampler values to expected format
+    if (metadata.sampler) {
+        metadata.sampler = SAMPLER_MAP.find(s => s.request === metadata.sampler)?.meta || metadata.sampler;
+    }
+    
+    // Convert noise scheduler values to expected format
+    if (metadata.noiseScheduler) {
+        metadata.noiseScheduler = NOISE_MAP.find(s => s.request === metadata.noiseScheduler)?.meta || metadata.noiseScheduler;
+    }
+    
+    console.log('✅ Converted metadata:', metadata);
+    return metadata;
+}
+
 // Replace the three function definitions with the new combined function
 async function loadIntoManualForm(source, image = null) {
     
@@ -672,18 +1003,28 @@ async function loadIntoManualForm(source, image = null) {
                     throw new Error('WebSocket not connected');
                 }
                 
-                data = await window.wsClient.loadPreset(presetName);
+                const response = await window.wsClient.loadPreset(presetName);
+                
+                // Extract preset data from WebSocket response
+                // The WebSocket client returns the data directly, not wrapped in a data property
+                if (response) {
+                    data = response;
+                    data = convertPresetToMetadataFormat(data);
+                } else {
+                    console.error('❌ Invalid response structure:', response);
+                    throw new Error(`Invalid preset response format. Response: ${JSON.stringify(response)}`);
+                }
             } else {
                 throw new Error('Invalid type');
             }
 
             // Preprocess sampler and noiseScheduler
-            if (data.sampler) {
-                const samplerObj = getSamplerMeta(data.sampler) || getSamplerMeta(data.sampler);
+            if (data.sampler && data.sampler !== undefined) {
+                const samplerObj = getSamplerMeta(data.sampler);
                 data.sampler = samplerObj ? samplerObj.meta : 'k_euler_ancestral';
             }
-            if (data.noiseScheduler || data.noise_schedule) {
-                const noiseObj = getNoiseMeta(data.noiseScheduler || data.noise_schedule) || getNoiseMeta(data.noiseScheduler || data.noise_schedule);
+            if ((data.noiseScheduler && data.noiseScheduler !== undefined) || (data.noise_schedule && data.noise_schedule !== undefined)) {
+                const noiseObj = getNoiseMeta(data.noiseScheduler || data.noise_schedule);
                 data.noiseScheduler = noiseObj ? noiseObj.meta : 'karras';
             }
 
@@ -701,12 +1042,12 @@ async function loadIntoManualForm(source, image = null) {
             }
 
             // Handle sampler and noise
-            if (data.sampler) {
+            if (data.sampler && data.sampler !== undefined) {
                 const samplerObj = getSamplerMeta(data.sampler);
                 data.sampler = samplerObj ? samplerObj.meta : 'k_euler_ancestral';
             }
 
-            if (data.noise_schedule) {
+            if (data.noise_schedule && data.noise_schedule !== undefined) {
                 const noiseObj = getNoiseMeta(data.noise_schedule);
                 data.noiseScheduler = noiseObj ? noiseObj.meta : 'karras';
             }
@@ -797,11 +1138,13 @@ async function loadIntoManualForm(source, image = null) {
         }
         if (manualSteps) manualSteps.value = data.steps || 25;
         if (manualGuidance) {
-            const guidanceValue = data.scale ?? data.guidance ?? 5.0;
+            // Handle both preset (guidance) and metadata (scale) formats
+            const guidanceValue = data.guidance ?? data.scale ?? 5.0;
             manualGuidance.value = guidanceValue !== undefined ? Number(guidanceValue).toFixed(1) : '';
         }
         if (manualRescale) {
-            const rescaleValue = data.cfg_rescale ?? data.rescale ?? 0.0;
+            // Handle both preset (rescale) and metadata (cfg_rescale) formats
+            const rescaleValue = data.rescale ?? data.cfg_rescale ?? 0.0;
             manualRescale.value = rescaleValue !== undefined ? Number(rescaleValue).toFixed(2) : '';
         }
         
@@ -809,15 +1152,23 @@ async function loadIntoManualForm(source, image = null) {
         updatePercentageOverlays();
         if (manualSeed) manualSeed.value = ''; // Do not autofill for metadata, undefined for others
         if (data.seed) {
-            window.lastGeneratedSeed = data.layer2_seed || data.seed;
+            // Handle both preset (seed) and metadata (layer2_seed) formats
+            window.lastGeneratedSeed = data.seed;
             manualPreviewSeedNumber.textContent = parseInt(window.lastGeneratedSeed);
+            sproutSeedBtn.classList.add('available');
             updateSproutSeedButtonFromPreviewSeed();
         }
-        selectManualSampler(data.sampler || 'k_euler_ancestral');
-        selectManualNoiseScheduler(data.noiseScheduler || 'karras');
+        // Ensure sampler and noiseScheduler have valid values before calling select functions
+        const samplerValue = (data.sampler && data.sampler !== undefined && data.sampler !== null) ? data.sampler : 'k_euler_ancestral';
+        const noiseValue = (data.noiseScheduler && data.noiseScheduler !== undefined && data.noiseScheduler !== null) ? data.noiseScheduler : 'karras';
+        
+        selectManualSampler(samplerValue);
+        selectManualNoiseScheduler(noiseValue);
         if (document.getElementById('varietyBtn')) {
             const varietyBtn = document.getElementById('varietyBtn');
-            varietyEnabled = data.skip_cfg_above_sigma !== null && data.skip_cfg_above_sigma !== undefined;
+            // Handle both preset (variety) and metadata (skip_cfg_above_sigma) formats
+            const varietyEnabled = data.variety !== null && data.variety !== undefined ? data.variety : 
+                                 (data.skip_cfg_above_sigma !== null && data.skip_cfg_above_sigma !== undefined);
             varietyBtn.setAttribute('data-state', varietyEnabled ? 'on' : 'off');
         }
 
@@ -999,12 +1350,15 @@ async function loadIntoManualForm(source, image = null) {
                 previewUrl = `/images/${identifier}`;
             }
             if (previewUrl) {
-                await new Promise((resolve) => {
+                await new Promise((resolve, reject) => {
                     const tempImg = new Image();
                     tempImg.onload = () => {
                         window.uploadedImageData.width = tempImg.width;
                         window.uploadedImageData.height = tempImg.height;
                         resolve();
+                    };
+                    tempImg.onerror = () => {
+                        reject(new Error(`Failed to load preview image from: ${previewUrl}`));
                     };
                     tempImg.src = previewUrl;
                 })
@@ -1013,7 +1367,9 @@ async function loadIntoManualForm(source, image = null) {
                 updateImageBiasOrientation();
                 
                 if (variationImage) {
-                    // Image is always visible now, just set the source
+                    // Set the preview image source
+                    variationImage.src = previewUrl;
+                    variationImage.style.display = 'block';
                 }
                 // Show transformation section content
                 if (transformationRow) {
@@ -1022,8 +1378,18 @@ async function loadIntoManualForm(source, image = null) {
                 document.getElementById('manualImg2ImgGroup').style.display = '';
             }
             // Ensure preview is updated with bias/crop
-            await cropImageToResolution();
-            await refreshImageBiasState();
+            try {
+                await cropImageToResolution();
+            } catch (error) {
+                console.warn('Failed to crop image to resolution:', error);
+                // Continue without cropping - the image will still be displayed
+            }
+            try {
+                await refreshImageBiasState();
+            } catch (error) {
+                console.warn('Failed to refresh image bias state:', error);
+                // Continue without bias state update
+            }
 
             if (data.mask_compressed !== undefined && data.mask_compressed !== null) {
                 // Store the compressed mask data for later use
@@ -1141,24 +1507,16 @@ async function loadIntoManualForm(source, image = null) {
                         imageToShow = image.original;
                     }
                     if (imageToShow) {
-                        // Find the index of this image using WebSocket
-                        try {
-                            const viewType = currentGalleryView || 'images';
-                            const result = await window.wsClient.findImageIndex(imageToShow, viewType);
-                            const index = result.index >= 0 ? result.index : 0;
-                            await updateManualPreview(index);
-                        } catch (error) {
-                            console.warn('Failed to find image index, using 0:', error);
-                            await updateManualPreview(0);
-                        }
+                        // When editing an existing image, don't try to show it in the manual preview
+                        // The image will be shown in the variation image section instead
+                        console.log('Skipping manual preview update for edit mode - image will be shown in variation section');
                     }
                 }
             }
         }
 
         updateManualPriceDisplay(true);
-        updateSaveButtonState();
-        updateLoadButtonState();
+        updatePresetLoadSaveState();
         updateManualPresetToggleBtn();
 
         // Restore the preset name that was entered by the user
@@ -1211,9 +1569,8 @@ async function loadTempImagePreview(previewUrl, imageData) {
                 previewPlaceholder.style.display = 'block';
                 previewPlaceholder.innerHTML = `
                     <div class="manual-preview-placeholder">
-                        <i class="fas fa-exclamation-triangle"></i>
+                        <i class="mdi mdi-1-5 mdi-image-broken"></i>
                         <p>Failed to load image preview</p>
-                        <small>Image: ${imageData.filename}</small>
                     </div>
                 `;
             }
@@ -1291,7 +1648,7 @@ async function updateCustomResolutionValue() {
 
 function isValidPresetName(name) {
     if (!name) return false;
-    return window.optionsData.presets && window.optionsData.presets.includes(name);
+    return window.optionsData.presets && window.optionsData.presets.filter(e => e.name === name).length > 0;
 }
 
 function updateManualPresetToggleBtn() {
@@ -1306,7 +1663,7 @@ function updateManualPresetToggleBtn() {
         manualPresetToggleText.style.display = 'none';
         manualPresetToggleBtn.setAttribute('data-state', 'off');
         if (manualPresetToggleIcon) manualPresetToggleIcon.style.display = '';
-    } else if (valid) {
+    } else {
         // Hide the group, show the toggle button with value
         manualPresetGroup.style.display = 'none';
         manualPresetToggleBtn.style.display = '';
@@ -1314,14 +1671,6 @@ function updateManualPresetToggleBtn() {
         manualPresetToggleBtn.classList.add('hover-show');
         manualPresetToggleText.textContent = presetName;
         manualPresetToggleText.style.display = '';
-        if (manualPresetToggleIcon) manualPresetToggleIcon.style.display = 'none';
-    } else {
-        // Show the group, hide the toggle button
-        manualPresetGroup.style.display = '';
-        manualPresetToggleBtn.style.display = 'none';
-        manualPresetToggleBtn.classList.add('toggle-btn');
-        manualPresetToggleBtn.classList.remove('hover-show');
-        manualPresetToggleText.style.display = 'none';
         if (manualPresetToggleIcon) manualPresetToggleIcon.style.display = 'none';
     }
 }
@@ -1905,7 +2254,7 @@ async function removeFromScraps(image) {
         
         await window.wsClient.removeScrap(activeWorkspace, filename);
 
-        showGlassToast('success', null, 'Image removed from scraps', false, 3000, '<i class="nai-undo"></i>');
+        showGlassToast('success', null, 'Image removed from scraps', false, 3000, '<i class="mdi mdi-1-5 mdi-archive-arrow-up"></i>');
 
         // If currently viewing scraps, reload them
         switchGalleryView(currentGalleryView, true);
@@ -1934,7 +2283,7 @@ async function togglePinImage(image, pinBtn = null) {
             }
             
             await window.wsClient.removePinned(activeWorkspace, filename);
-            showGlassToast('success', null, 'Image unpinned', false, 5000, '<i class="nai-heart-disabled"></i>');
+            showGlassToast('success', null, 'Image unpinned', false, 5000, '<i class="fa-regular fa-star"></i>');
         } else {
             // Add to pinned
             if (!window.wsClient || !window.wsClient.isConnected()) {
@@ -1942,7 +2291,7 @@ async function togglePinImage(image, pinBtn = null) {
             }
             
             await window.wsClient.addPinned(activeWorkspace, filename);
-            showGlassToast('success', null, 'Image pinned', false, 5000, '<i class="nai-heart-enabled"></i>');
+            showGlassToast('success', null, 'Image pinned', false, 5000, '<i class="fa-solid fa-star"></i>');
         }
 
         // Update the specific pin button that was clicked
@@ -1958,13 +2307,13 @@ async function togglePinImage(image, pinBtn = null) {
         }
         
         // Update the local gallery data to reflect the pin status change
-        if (window.allImages && Array.isArray(window.allImages)) {
-            const imageIndex = window.allImages.findIndex(img => {
+        if (allImages && Array.isArray(allImages)) {
+            const imageIndex = allImages.findIndex(img => {
                 const imgFilename = img.filename || img.original || img.upscaled;
                 return imgFilename === filename;
             });
             if (imageIndex !== -1) {
-                window.allImages[imageIndex].isPinned = !isPinned;
+                allImages[imageIndex].isPinned = !isPinned;
             }
         }
         
@@ -1980,8 +2329,8 @@ async function togglePinImage(image, pinBtn = null) {
 async function checkIfImageIsPinned(filename) {
     try {
         // First try to get pin status from current gallery data if available
-        if (window.allImages && Array.isArray(window.allImages)) {
-            const image = window.allImages.find(img => {
+        if (allImages && Array.isArray(allImages)) {
+            const image = allImages.find(img => {
                 const imgFilename = img.filename || img.original || img.upscaled;
                 return imgFilename === filename;
             });
@@ -2025,10 +2374,10 @@ async function updatePinButtonAppearance(pinBtn, filename) {
     try {
         const isPinned = await checkIfImageIsPinned(filename);
         if (isPinned) {
-            pinBtn.innerHTML = '<i class="nai-heart-enabled"></i>';
+            pinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
             pinBtn.title = 'Unpin image';
         } else {
-            pinBtn.innerHTML = '<i class="nai-heart-disabled"></i>';
+            pinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
             pinBtn.title = 'Pin image';
         }
     } catch (error) {
@@ -2067,10 +2416,10 @@ function updateGalleryPinButtons(filename, isPinned) {
             const pinBtn = item.querySelector('.btn-secondary[title*="Pin"], .btn-secondary[title*="Unpin"]');
             if (pinBtn) {
                 if (isPinned) {
-                    pinBtn.innerHTML = '<i class="nai-heart-enabled"></i>';
+                    pinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
                     pinBtn.title = 'Unpin image';
                 } else {
-                    pinBtn.innerHTML = '<i class="nai-heart-disabled"></i>';
+                    pinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
                     pinBtn.title = 'Pin image';
                 }
             }
@@ -2125,22 +2474,6 @@ async function loadOptions() {
             showErrorSubHeader(window.optionsData.user.error, 'error', 0);
         }
 
-        updateBalanceDisplay(window.optionsData?.balance);
-        
-        // Handle queue status
-        if (window.optionsData?.queue_status === 2) {
-            isQueueStopped = true;
-            isQueueProcessing = false;
-        } else if (window.optionsData?.queue_status === 1) {
-            isQueueStopped = false;
-            isQueueProcessing = true;
-        } else {
-            isQueueStopped = false;
-            isQueueProcessing = false;
-        }
-        updateManualGenerateBtnState();
-        
-        // Check for subscription notifications after page load
 updateSubscriptionNotifications().catch(error => {
     console.error('Error checking subscription notifications:', error);
 });
@@ -2771,7 +3104,7 @@ function setupEventListeners() {
     }
 
     // Manual modal events
-    manualBtn.addEventListener('click', (e) => {
+    openGenEditorBtn.addEventListener('click', (e) => {
         e.preventDefault();
         showManualModal();
     });
@@ -2792,17 +3125,14 @@ function setupEventListeners() {
 
     // Update save button state when preset name changes
     manualPresetName.addEventListener('input', () => {
-        updateSaveButtonState();
         validatePresetWithTimeout();
         manualPresetToggleText.textContent = manualPresetName.value.trim();
     });
     manualPresetName.addEventListener('keyup', () => {
-        updateSaveButtonState();
         validatePresetWithTimeout();
         manualPresetToggleText.textContent = manualPresetName.value.trim();
     });
     manualPresetName.addEventListener('change', () => {
-        updateSaveButtonState();
         validatePresetWithTimeout();
         manualPresetToggleText.textContent = manualPresetName.value.trim();
     });
@@ -2815,11 +3145,19 @@ function setupEventListeners() {
             loadPresetIntoForm(presetName);
         }
     });
-    manualForm.addEventListener('submit', handleManualGeneration);
+    manualPresetDeleteBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const presetName = manualPresetName.value.trim();
+        if (presetName) {
+            deletePreset(presetName);
+        }
+    });
     manualSaveBtn.addEventListener('click', (e) => {
         e.preventDefault();
         handleManualSave();
     });
+
+    manualForm.addEventListener('submit', handleManualGeneration);
 
     // Manual preview control events
     manualPreviewDownloadBtn.addEventListener('click', (e) => {
@@ -2937,7 +3275,7 @@ function setupEventListeners() {
             setSeedInputGroupState(true);
             
             // Check if sprout seed button is active and update it
-            if (sproutSeedBtn && sproutSeedBtn.getAttribute('data-state') === 'on') {
+            if (sproutSeedBtn && sproutSeedBtn.getAttribute('data-state') === 'off') {
                 window.lastLoadedSeed = window.lastGeneratedSeed;
                 manualSeed.value = window.lastLoadedSeed;
             }
@@ -2982,6 +3320,14 @@ function setupEventListeners() {
         e.preventDefault();
         toggleSubMenu();
     });
+
+    // Search toggle button
+    if (searchToggleBtn) {
+        searchToggleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleSearchContainer();
+        });
+    }
 
     // Clear seed button
     clearSeedBtn.addEventListener('click', (e) => {
@@ -3136,28 +3482,17 @@ function setupEventListeners() {
     // Generation controls
     presetSelect.addEventListener('change', updateGenerateButton);
     // Mirror desktop generate button click to compact one
-    if (generateBtn2) {
-        generateBtn2.addEventListener('click', (e) => generateImage(e));
-    }
-    generateBtn.addEventListener('click', (e) => {
+    generatePresetBtn.addEventListener('click', (e) => {
         e.preventDefault();
         generateImage(e);
     });
 
     // Upload functionality
     const uploadBtn = document.getElementById('uploadBtn');
-    const uploadBarBtn = document.getElementById('uploadBarBtn');
     const imageUploadInput = document.getElementById('imageUploadInput');
 
     if (uploadBtn) {
         uploadBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            showUnifiedUploadModal();
-            closeSubMenu();
-        });
-    }
-    if (uploadBarBtn) {
-        uploadBarBtn.addEventListener('click', (e) => {
             e.preventDefault();
             showUnifiedUploadModal();
             closeSubMenu();
@@ -3614,18 +3949,18 @@ function setupEventListeners() {
         // If there is a valid preset name, do nothing (button is not a toggle)
     });
 
-    galleryColumnsInput?.addEventListener('input', (e) => {
-        e.preventDefault();
-        setGalleryColumns(e.target.value);
-    });
-    galleryColumnsInput?.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? -1 : 1;
-        const currentValue = parseInt(this.value) || 3;
-        const newValue = Math.max(3, Math.min(10, currentValue + delta));
-        this.value = newValue;
-        setGalleryColumns(newValue);
-    });
+    // Gallery columns scroll wheel functionality
+    const galleryToggleGroup = document.getElementById('galleryToggleGroup');
+    if (galleryToggleGroup) {
+        galleryToggleGroup.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -1 : 1;
+            const currentColumns = parseInt(galleryToggleGroup.dataset.columns) || 5;
+            const newColumns = Math.max(3, Math.min(10, currentColumns + delta));
+            galleryToggleGroup.dataset.columns = newColumns;
+            setGalleryColumns(newColumns);
+        });
+    }
 
     // Sort order toggle button
     const sortOrderToggleBtn = document.getElementById('sortOrderToggleBtn');
@@ -3688,6 +4023,40 @@ function setupEventListeners() {
         }, 250); // Debounce resize events
     });
 
+
+    if (clearPresetBtn) {
+        clearPresetBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            selectCustomPreset('', 1);
+        });
+    }
+
+    // Set up preset generation handlers
+    sproutSeedBtn.addEventListener('click', toggleSproutSeed);
+    updateSproutSeedButton();
+
+    const varietyBtn = document.getElementById('varietyBtn');
+    if (varietyBtn) {
+        varietyBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            varietyEnabled = !varietyEnabled;
+            if (varietyEnabled) {
+                this.setAttribute('data-state', 'on');
+            } else {
+                this.setAttribute('data-state', 'off');
+            }
+        });
+    }
+    
+    setupDropdown(
+        manualResolutionDropdown,
+        manualResolutionDropdownBtn,
+        manualResolutionDropdownMenu,
+        renderManualResolutionDropdown,
+        () => manualSelectedResolution,
+        { preventFocusTransfer: true }
+    );
+    
     setupDropdown(manualSamplerDropdown, manualSamplerDropdownBtn, manualSamplerDropdownMenu, renderManualSamplerDropdown, () => manualSelectedSampler, { preventFocusTransfer: true });
     
     setupDropdown(manualNoiseSchedulerDropdown, manualNoiseSchedulerDropdownBtn, manualNoiseSchedulerDropdownMenu, renderManualNoiseSchedulerDropdown, () => manualSelectedNoiseScheduler, { preventFocusTransfer: true });
@@ -3701,7 +4070,11 @@ function setupEventListeners() {
     setupDropdown(subTogglesDropdown, subTogglesBtn, subTogglesDropdownMenu, renderSubTogglesDropdown, () => selectedDatasets, { preventFocusTransfer: true });
 
     setupDropdown(ucPresetsDropdown, ucPresetsDropdownBtn, ucPresetsDropdownMenu, renderUcPresetsDropdown, () => selectedUcPreset, { preventFocusTransfer: true });
+
+    setupDropdown(customPresetDropdown, customPresetDropdownBtn, customPresetDropdownMenu, (sel) => renderCustomPresetDropdown(sel), () => selectedPreset, { preventFocusTransfer: true });
     
+    updatePresetLoadSaveState();
+
     setupTransformationDropdownListeners();
 }
 // Tab switching functionality for prompt/UC tabs (Manual Generation Model)
@@ -3864,18 +4237,90 @@ function syncCharacterPromptTabsShowBoth() {
 }
 
 function toggleSubMenu() {
-    const menu = document.getElementById('subMenu');
+    const menu = document.querySelectorAll('.sub-menu-toggle');
     if (menu) {
-        menu.classList.toggle('hidden');
+        menu.forEach(menu => {
+            menu.classList.toggle('hidden');
+        });
     }
 }
 
 function closeSubMenu() {
-    const menu = document.getElementById('subMenu');
+    const menu = document.querySelectorAll('.sub-menu-toggle');
     if (menu) {
-        menu.classList.add('hidden');
+        menu.forEach(menu => {
+            menu.classList.add('hidden');
+        });
     }
 }
+
+function toggleSearchContainer() {
+    const searchContainer = document.querySelector('#main-menu-bar .file-search-container');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    const mainMenuContents = document.querySelector('#main-menu-bar .main-menu-contents');
+    
+    if (searchContainer) {
+        const isClosed = searchContainer.classList.contains('closed');
+        
+        if (isClosed) {
+            // Opening search - close submenu and open search
+            closeSubMenu();
+            searchContainer.classList.remove('closed');
+            if (clearSearchBtn) {
+                clearSearchBtn.classList.remove('hidden');
+            }
+            if (searchToggleBtn) {
+                searchToggleBtn.classList.add('active');
+            }
+            // Hide main menu contents when search is open
+            if (mainMenuContents) {
+                mainMenuContents.style.display = 'none';
+            }
+            // Focus the search input
+            const searchInput = document.getElementById('fileSearchInput');
+            if (searchInput) {
+                setTimeout(() => searchInput.focus(), 100);
+            }
+        } else {
+            // Closing search - return to main menu mode
+            closeSearchContainer();
+        }
+    }
+}
+
+function closeSearchContainer() {
+    const searchContainer = document.querySelector('.file-search-container');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
+    const searchInput = document.getElementById('fileSearchInput');
+    const mainMenuContents = document.querySelector('.main-menu-contents');
+    
+    if (searchContainer) {
+        searchContainer.classList.add('closed');
+        if (clearSearchBtn) {
+            clearSearchBtn.classList.add('hidden');
+        }
+        if (searchToggleBtn) {
+            searchToggleBtn.classList.remove('active');
+        }
+        // Show main menu contents again when search is closed
+        if (mainMenuContents) {
+            mainMenuContents.style.display = 'flex';
+        }
+        // Clear search input and hide autofill
+        if (searchInput) {
+            searchInput.value = '';
+            searchInput.blur();
+        }
+        // Clear search results if fileSearch instance exists
+        if (window.fileSearch) {
+            window.fileSearch.clearSearch(true, true);
+        }
+    }
+}
+
+// Make functions globally accessible
+window.toggleSearchContainer = toggleSearchContainer;
+window.closeSearchContainer = closeSearchContainer;
 
 // Show both panes functionality for manual generation model
 function toggleManualShowBoth() {
@@ -3947,25 +4392,29 @@ function syncCharacterPromptTabsShowBoth() {
 
 // Update balance display
 function updateBalanceDisplay(balance) {
-    const balanceDisplay = document.getElementById('balanceDisplay');
-    const balanceAmount = document.getElementById('balanceAmount');
-    const balanceIcon = balanceDisplay.querySelector('i');
-
+    const balanceDisplay = document.querySelectorAll('.balanceDisplay');
+    const balanceAmount = document.querySelectorAll('.balanceAmount');
+    
     if (!balanceDisplay || !balanceAmount) return;
+
+    const balanceIcon = balanceDisplay[0].querySelector('i');
+
 
     const totalCredits = balance?.totalCredits || -1;
     const fixedCredits = balance?.fixedTrainingStepsLeft || -1;
     const purchasedCredits = balance?.purchasedTrainingSteps || -1;
 
     // Update amount
-    balanceAmount.textContent = totalCredits;
+    balanceAmount.forEach(amount => {
+        amount.textContent = totalCredits;
+    });
 
     // Update tooltip with detailed breakdown
     const tooltip = `Free Credits: ${fixedCredits}\nPaid Credits: ${purchasedCredits}`;
-    balanceDisplay.title = tooltip;
-
-    // Update styling based on credit levels
-    balanceDisplay.classList.remove('low-credits');
+    balanceDisplay.forEach(display => {
+        display.title = tooltip;
+        display.classList.remove('low-credits');
+    });
 
     if (totalCredits !== -1) {
         currentBalance = totalCredits;
@@ -3973,19 +4422,27 @@ function updateBalanceDisplay(balance) {
 
     if (totalCredits === -1) {
         balanceIcon.className = 'nai-anla';
-        balanceAmount.textContent = 'Error';
-        balanceDisplay.classList.add('low-credits');
+        balanceAmount.forEach(amount => {
+            amount.textContent = 'Error';
+        });
+        balanceDisplay.forEach(display => {
+            display.classList.add('low-credits');
+        });
     } else if (totalCredits === 0) {
         // No credits - show dollar sign and warning styling
         balanceIcon.className = 'nai-anla';
-        balanceDisplay.classList.add('low-credits');
+        balanceDisplay.forEach(display => {
+            display.classList.add('low-credits');
+        });
     } else if (fixedCredits === 0) {
         // No free credits - show dollar sign
         balanceIcon.className = 'nai-anla';
     } else if (totalCredits < 5000) {
         // Low credits - show warning triangle and orange styling
         balanceIcon.className = 'fas fa-exclamation-triangle';
-        balanceDisplay.classList.add('low-credits');
+        balanceDisplay.forEach(display => {
+            display.classList.add('low-credits');
+        });
     } else {
         // Normal credits - show coin icon
         balanceIcon.className = 'nai-anla';
@@ -4215,6 +4672,7 @@ async function rerollImage(image) {
         const headerSeed = generateResponse.headers.get('X-Seed');
         if (headerSeed) {
             window.lastGeneratedSeed = parseInt(headerSeed);
+            sproutSeedBtn.classList.add('available');
             manualPreviewSeedNumber.textContent = parseInt(headerSeed);
             updateSproutSeedButtonFromPreviewSeed();
         }
@@ -4290,6 +4748,17 @@ async function rerollImage(image) {
 // Reroll an image with editable settings
 async function rerollImageWithEdit(image) {
     try {
+        // Close lightbox
+        if (lightboxModal.style.display === 'flex') {
+            hideLightbox();
+        }
+        
+        openModal(manualModal);
+        
+        if (!document.body.classList.contains('editor-open')) {
+            document.body.classList.add('editor-open');
+        }
+
         let metadata;
         
         // Check if this is a temp file (from blueprint upload)
@@ -4311,14 +4780,16 @@ async function rerollImageWithEdit(image) {
             }
         }
 
-        // Close lightbox
-        if (lightboxModal.style.display === 'flex') {
-            hideLightbox();
-        }
 
         // Store metadata and image
         window.currentEditMetadata = metadata;
         window.currentEditImage = image;
+
+        // Ensure the metadata has the image_source for preview functionality
+        if (!metadata.image_source && image.filename) {
+            // If no image_source in metadata, create one from the filename
+            metadata.image_source = `file:${image.filename}`;
+        }
 
         await loadIntoManualForm(metadata, image);
 
@@ -4328,10 +4799,6 @@ async function rerollImageWithEdit(image) {
 
         // Determine types
         const isVariation = metadata.base_image === true;
-
-        // Set initial state
-        const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
-        const saveButton = document.getElementById('manualSaveBtn');
 
         if (isVariation) {
             window.currentRequestType = 'reroll';
@@ -4356,35 +4823,65 @@ async function rerollImageWithEdit(image) {
             variationImage.style.display = 'block';
             updateInpaintButtonState();
             renderImageBiasDropdown((typeof metadata.image_bias === 'number' ? metadata.image_bias : 2).toString());
-
-            if (presetNameGroup) presetNameGroup.style.display = 'block';
-            if (saveButton) saveButton.style.display = 'inline-block';
         } else {
             window.currentRequestType = null;
             // Clear transformation type
             updateTransformationDropdownState();
-
-            if (presetNameGroup) presetNameGroup.style.display = 'block';
-            if (saveButton) saveButton.style.display = 'inline-block';
         }
 
         // Only call cropImageToResolution if uploadedImageData is available
         if (window.uploadedImageData?.image_source) {
-            await cropImageToResolution();
+            try {
+                // Wait a bit for the image to load before cropping
+                await new Promise(resolve => setTimeout(resolve, 100));
+                await cropImageToResolution();
+            } catch (error) {
+                console.warn('Failed to crop image to resolution:', error);
+                // Continue without cropping - the image will still be displayed
+            }
         }
-        manualLoadingOverlay.classList.remove('hidden');
-        manualLoadingOverlay.classList.add('return');
+        
+        // Set up preview to show the image being edited
+        if (allImages && Array.isArray(allImages)) {
+            const filename = image.filename || image.upscaled || image.original;
+            if (filename) {
+                const galleryIndex = allImages.findIndex(img => {
+                    const imgFilename = img.filename || img.original || img.upscaled;
+                    return imgFilename === filename;
+                });
+                if (galleryIndex >= 0) {
+                    await updateManualPreview(galleryIndex);
+                }
+            }
+        }
+        
+        // OLD SYSTEM: manualLoadingOverlay.classList.remove('hidden');
+        // OLD SYSTEM: manualLoadingOverlay.classList.add('return');
         manualPreviewOriginalImage.classList.add('hidden');
         
-        openModal(manualModal);
-        manualPrompt.focus();
+        // Save current gallery position
+        console.log('🔓 Modal opening, saving gallery position...');
+        const firstNonPlaceholder = document.querySelector('.gallery-item:not(.gallery-placeholder)');
+        if (firstNonPlaceholder) {
+            savedGalleryPosition = parseInt(firstNonPlaceholder.dataset.index);
+            console.log('📍 Saved gallery position:', savedGalleryPosition);
+        } else {
+            // If no real items found, save position 0
+            savedGalleryPosition = 0;
+            console.log('📍 No gallery items found, saved position 0');
+        }
+        
+        // Clear gallery after 5 seconds
+        galleryClearTimeout = setTimeout(() => {
+            if (manualModal.style.display !== 'none') {
+                console.log('🧹 Clearing gallery after 5 seconds...');
+                clearGallery();
+            }
+        }, 5000);
 
         // Auto-resize textareas after modal is shown
         autoResizeTextareasAfterModalShow();
-        
-        if (!document.body.classList.contains('editor-open')) {
-            document.body.classList.add('editor-open');
-        }
+        manualPrompt.focus();
 
     } catch (error) {
         console.error('Reroll with edit error:', error);
@@ -4420,57 +4917,56 @@ async function upscaleImage(image, event = null) {
             updateGlassToastProgress(toastId, progress);
         }, 1000);
     } else {
-        // Use existing modal loading overlay when in modal
+        // Use preview animation when in modal for upscaling
         showManualLoading(true, 'Upscaling image...');
     }
 
     try {
-        const upscaleResponse = await fetchWithAuth(`/images/${image.original}/upscale`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
+        // Prepare upscaling parameters
+        const upscaleParams = {
+            filename: image.original,
+            workspace: activeWorkspace || null
+        };
+
+        // Upscale image via WebSocket
+        try {
+            const result = await window.wsClient.upscaleImage(upscaleParams);
+            
+            if (result) {
+                const { image: upscaledImage, filename } = result;
+
+                // Show success message
+                if (!isInModal) {
+                    clearInterval(progressInterval);
+                    updateGlassToastProgress(toastId, 100);
+                    updateGlassToast(toastId, 'success', 'Upscale Complete', 'Image upscaled successfully!');
+                } else {
+                    showGlassToast('success', 'Upscale Complete', 'Image upscaled successfully!');
+                }
+
+                // Use the universal image handling function
+                const byteCharacters = atob(upscaledImage);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: 'image/png' });
+
+                // Use the universal handleImageResult function
+                await handleImageResult(blob, 'Image upscaled successfully!', undefined, undefined, null);
+            } else {
+                throw new Error('Invalid response from WebSocket');
             }
-        });
-
-        if (!upscaleResponse.ok) {
-            throw new Error(`Upscaling failed: ${upscaleResponse.statusText}`);
-        }
-
-        const blob = await upscaleResponse.blob();
-        const imageUrl = URL.createObjectURL(blob);
-
-        // Show success message
-        if (!isInModal) {
-            clearInterval(progressInterval);
-            updateGlassToastProgress(toastId, 100);
-            updateGlassToast(toastId, 'success', 'Upscale Complete', 'Image upscaled successfully!');
-        } else {
-            showGlassToast('success', 'Upscale Complete', 'Image upscaled successfully!');
-        }
-
-        // Reload gallery to show new upscaled image
-        await loadGallery();
-
-        // Find the upscaled image in the gallery and show it in lightbox
-        let upscaledFilename = image.original.replace('.png', '_upscaled.png');
-        let upscaledImage = allImages.find(img =>
-            img.original === upscaledFilename ||
-            img.upscaled === upscaledFilename
-        );
-
-        if (upscaledImage) {
-            // Determine which filename to show based on what's available
-            let filenameToShow = upscaledImage.original;
-            if (upscaledImage.upscaled) {
-                filenameToShow = upscaledImage.upscaled;
+            
+        } catch (error) {
+            console.error('Upscaling error:', error);
+            if (!isInModal) {
+                clearInterval(progressInterval);
+                updateGlassToast(toastId, 'error', 'Upscale Failed', 'Image upscaling failed. Please try again.');
+            } else {
+                showError('Image upscaling failed. Please try again.');
             }
-
-            const imageToShow = {
-                filename: filenameToShow,
-                base: upscaledImage.base,
-                upscaled: upscaledImage.upscaled
-            };
-            showLightbox(imageToShow);
         }
 
     } catch (error) {
@@ -4507,9 +5003,16 @@ async function handleLogout() {
     }
 }
 // Show manual modal
-async function showManualModal() {
+async function showManualModal(presetName = null) {
     // Prevent body scrolling when modal is open
-    document.body.style.overflow = 'hidden';
+    if (!document.body.classList.contains('editor-open')) {
+        document.body.classList.add('editor-open');
+    }
+    
+    // Stop any existing preview animation when opening modal
+    if (generationAnimationActive) {
+        stopPreviewAnimation();
+    }
     
     // Show loading overlay for manual modal opening
     const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
@@ -4523,10 +5026,6 @@ async function showManualModal() {
     }
 
     // Close editor if open
-    if (!document.body.classList.contains('editor-open')) {
-        document.body.classList.add('editor-open');
-    }
-
     manualLoadingOverlay.classList.remove('hidden');
     manualLoadingOverlay.classList.add('return');
     manualPreviewOriginalImage.classList.add('hidden');
@@ -4535,7 +5034,10 @@ async function showManualModal() {
 
     // Check if a preset is selected for editing
     const selectedValue = presetSelect.value;
-    if (selectedValue) {
+    if (presetName) {
+        // Load preset for editing
+        await loadIntoManualForm('preset:' + presetName);
+    } else if (selectedValue) {
         // Load preset for editing
         await loadIntoManualForm(selectedValue);
     } else {
@@ -4545,15 +5047,13 @@ async function showManualModal() {
 
     // Auto-resize textareas after modal is shown
     autoResizeTextareasAfterModalShow();
-
-    // Update save button state
-    updateSaveButtonState();
     
     // Update prompt status icons
     updatePromptStatusIcons();
 
     // Update load button state
-    updateLoadButtonState();
+    updatePresetLoadSaveState();
+    updateManualPresetToggleBtn();
 
     // Update button state
     updateManualGenerateBtnState();
@@ -4581,8 +5081,21 @@ async function showManualModal() {
         }, 300); // Match the transition duration
     }
     
-    // Make function available globally for other modules
-    window.showManualModal = showManualModal;
+    // Save current gallery position
+    const firstNonPlaceholder = document.querySelector('.gallery-item:not(.gallery-placeholder)');
+    if (firstNonPlaceholder) {
+        savedGalleryPosition = parseInt(firstNonPlaceholder.dataset.index);
+    } else {
+        // If no real items found, save position 0
+        savedGalleryPosition = 0;
+    }
+    
+    // Clear gallery after 5 seconds
+    galleryClearTimeout = setTimeout(() => {
+        if (manualModal.style.display !== 'none') {
+            clearGallery();
+        }
+    }, 5000);
 }
 
 // Hide manual modal
@@ -4590,9 +5103,7 @@ function hideManualModal(e, preventModalReset = false) {
     // Restore body scrolling when modal is closed
     document.body.style.overflow = '';
     
-    const isManualModalOpen = manualModal && manualModal.style.display === 'flex';
-
-    if (!preventModalReset || !isManualModalOpen) {
+    if (!preventModalReset) {
         // Handle loading overlay when modal is closed
         const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
         if (manualLoadingOverlay && !manualLoadingOverlay.classList.contains('hidden')) {
@@ -4600,6 +5111,11 @@ function hideManualModal(e, preventModalReset = false) {
             const loadingMessage = manualLoadingOverlay.querySelector('p')?.textContent || 'Generating your image...';
             manualLoadingOverlay.classList.add('hidden', 'return');
             showManualLoading(true, loadingMessage);
+        }
+
+        // Stop preview animation if it's running when modal is closed
+        if (generationAnimationActive) {
+            stopPreviewAnimation();
         }
 
         if (previewSection) {
@@ -4631,6 +5147,12 @@ function hideManualModal(e, preventModalReset = false) {
         // Reset random prompt state
         savedRandomPromptState = null;
         lastPromptState = null;
+        
+        // Reset background update state
+        backgroundUpdateState.isAnimating = false;
+        backgroundUpdateState.pendingRequest = null;
+        backgroundUpdateState.lastRequest = null;
+        backgroundUpdateState.animationPromise = null;
 
         // Reset random prompt buttons and icons
         const toggleBtn = document.getElementById('randomPromptToggleBtn');
@@ -4662,6 +5184,99 @@ function hideManualModal(e, preventModalReset = false) {
         
         // Update button state
         updateManualGenerateBtnState();
+    }
+    
+    // Always clear gallery clear timeout and restore gallery when modal is closed
+    // regardless of whether preventModalReset is true or not
+    console.log('🔒 Modal closing, clearing timeout and restoring gallery...');
+    clearTimeout(galleryClearTimeout);
+
+    // Restore gallery from saved position
+    if (savedGalleryPosition !== null) {
+        console.log('📍 Saved position found:', savedGalleryPosition);
+        loadGalleryFromIndex(savedGalleryPosition);
+        savedGalleryPosition = null;
+    } else {
+        console.log('⚠️ No saved position found');
+        loadGalleryFromIndex(0);
+    }
+}
+
+// Clear gallery when manual modal is open
+function clearGallery() {
+    if (gallery) {
+        gallery.innerHTML = '';
+    }
+}
+
+// Load gallery from specific index and scroll to it
+async function loadGalleryFromIndex(index) {
+    try {
+        console.log('🔄 Restoring gallery from index:', index);
+        
+        // Load gallery data if needed
+        if (allImages.length === 0) {
+            console.log('📁 Loading gallery data...');
+            await loadGallery();
+        }
+        
+        // Reset infinite scroll state but set custom start position
+        console.log('🔄 Resetting infinite scroll with custom position...');
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        
+        // Set the display range to include our target index
+        const itemHeight = 256;
+        const itemsPerCol = Math.floor(window.innerHeight / itemHeight);
+        const buffer = Math.ceil(itemsPerCol * 0.15);
+        // Get gallery columns from gallery element or fallback to 5
+        const cols = window.realGalleryColumns || parseInt(gallery?.style?.gridTemplateColumns?.match(/repeat\((\d+),/)?.[1]) || 5;
+        const itemsPerPage = (itemsPerCol + buffer) * cols;
+        
+        // Calculate which "page" our target index is on
+        const pageNumber = Math.floor(index / itemsPerPage);
+        const startIndex = pageNumber * itemsPerPage;
+        
+        // Set the infinite scroll state to display the correct range
+        displayedStartIndex = startIndex;
+        displayedEndIndex = Math.min(startIndex + itemsPerPage, allImages.length);
+        
+        // Update scroll state variables
+        isLoadingMore = false;
+        hasMoreImages = displayedEndIndex < allImages.length;
+        hasMoreImagesBefore = displayedStartIndex > 0;
+        
+        console.log(`🖼️ Displaying gallery range ${displayedStartIndex}-${displayedEndIndex} (target: ${index})`);
+        
+        // Display gallery with the calculated range
+        displayGalleryFromStartIndex(displayedStartIndex);
+        
+        // Wait for DOM to update, then find and scroll to target
+        setTimeout(() => {
+            const targetItem = document.querySelector(`[data-index="${index}"]`);
+            if (targetItem) {
+                console.log('🎯 Found target item, scrolling to position...');
+                // Scroll to the item with offset to avoid triggering upper placeholders
+                const itemRect = targetItem.getBoundingClientRect();
+                const scrollTop = window.pageYOffset + itemRect.top - 100; // 100px offset from top
+                window.scrollTo({ top: scrollTop, behavior: 'instant' });
+            } else {
+                console.log('⚠️ Target item not found, scrolling to calculated position');
+                // Calculate approximate scroll position based on index
+                const approximateScrollTop = (index / cols) * itemHeight;
+                window.scrollTo({ top: approximateScrollTop - 100, behavior: 'instant' });
+            }
+            console.log('✅ Gallery restoration complete');
+        }, 200); // Give DOM time to render
+        
+    } catch (error) {
+        console.error('❌ Error restoring gallery from index:', error);
+        // Fallback to normal gallery display
+        try {
+            resetInfiniteScroll();
+            displayCurrentPageOptimized();
+        } catch (fallbackError) {
+            console.error('❌ Fallback gallery display also failed:', fallbackError);
+        }
     }
 }
 // Auto-resize textareas after modal is shown
@@ -4799,8 +5414,7 @@ function clearManualForm() {
 
     // Reset sprout seed button state
     if (sproutSeedBtn) {
-        sproutSeedBtn.setAttribute('data-state', 'off');
-        sproutSeedBtn.classList.remove('active');
+        sproutSeedBtn.setAttribute('data-state', 'on');
         manualSeed.disabled = false;
     }
 
@@ -4822,6 +5436,7 @@ function clearManualForm() {
         previewMode: 'css' // Default to CSS view
     };
     window.lastGeneratedSeed = null;
+    sproutSeedBtn.classList.remove('available');
     manualPreviewSeedNumber.textContent = '---'
     updateSproutSeedButtonFromPreviewSeed();
 
@@ -4841,11 +5456,7 @@ function clearManualForm() {
     hideCharacterAutocomplete();
     hidePresetAutocomplete();
 
-    // Update save button state after clearing form
-    updateSaveButtonState();
-
-    // Update load button state after clearing form
-    updateLoadButtonState();
+    updatePresetLoadSaveState();
 }
 
 // Handle manual generation
@@ -5006,6 +5617,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
     
     if (seed !== null) {
         window.lastGeneratedSeed = seed;
+        sproutSeedBtn.classList.add('available');
         manualPreviewSeedNumber.textContent = parseInt(seed);
         updateSproutSeedButtonFromPreviewSeed();
     }
@@ -5015,6 +5627,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
         const headerSeed = response.headers.get('X-Seed');
         if (headerSeed) {
             window.lastGeneratedSeed = parseInt(headerSeed);
+            sproutSeedBtn.classList.add('available');
             manualPreviewSeedNumber.textContent = parseInt(headerSeed);
             updateSproutSeedButtonFromPreviewSeed();
         }
@@ -5040,11 +5653,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
     img.onload = async function() {
         createConfetti();
 
-        // Check if we're in wide viewport mode and manual modal is open
-        const manualModal = document.getElementById('manualModal');
-        const isManualModalOpen = manualModal.style.display === 'flex';
-
-        if (isManualModalOpen) {
+        if (manualModal.style.display !== 'none') {
             // Update manual modal preview instead of opening lightbox
             // Don't clear context when modal is open in wide viewport mode
 
@@ -5052,6 +5661,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
                 element.classList.remove('swapped');
             });
 
+            // Only update allImages array, don't update gallery display
             await loadGallery(true);
             await updateManualPreview(0, response);
         } else {
@@ -5078,6 +5688,242 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
     img.src = imageUrl;
 }
 
+// Debounce function to limit function calls
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Enhanced debouncing system for background updates that tracks animation state
+function createAnimationAwareDebounce(func, wait) {
+    let timeout;
+    let lastCallTime = 0;
+    let lastCallArgs = null;
+    
+    return function executedFunction(...args) {
+        const now = Date.now();
+        const argsString = JSON.stringify(args);
+        
+        // Prevent duplicate calls with the same arguments within a short time window
+        if (now - lastCallTime < 100 && argsString === lastCallArgs) {
+            return;
+        }
+        
+        // Also check global state to prevent rapid successive calls
+        if (now - backgroundUpdateState.lastCallTime < 50) {
+            return;
+        }
+        
+        // If we're currently animating, store this as the pending request
+        if (backgroundUpdateState.isAnimating) {
+            backgroundUpdateState.pendingRequest = args;
+            return;
+        }
+        
+        // If we have a pending request and it's different from current, update it
+        if (backgroundUpdateState.pendingRequest && JSON.stringify(backgroundUpdateState.pendingRequest) !== argsString) {
+            backgroundUpdateState.pendingRequest = args;
+        }
+        
+        // Update tracking variables
+        lastCallTime = now;
+        lastCallArgs = argsString;
+        
+        // Track global call statistics
+        backgroundUpdateState.callCount++;
+        backgroundUpdateState.lastCallTime = now;
+        
+        const later = async () => {
+            clearTimeout(timeout);
+            
+            try {
+                // Set animation state to true before starting the animation
+                backgroundUpdateState.isAnimating = true;
+                backgroundUpdateState.lastRequest = args;
+                
+                // Wait for the animation to complete
+                backgroundUpdateState.animationPromise = func(...args);
+                await backgroundUpdateState.animationPromise;
+            } finally {
+                // Always reset animation state when done
+                backgroundUpdateState.isAnimating = false;
+                backgroundUpdateState.animationPromise = null;
+                
+                // If there's a pending request, process it immediately
+                if (backgroundUpdateState.pendingRequest) {
+                    const nextRequest = backgroundUpdateState.pendingRequest;
+                    backgroundUpdateState.pendingRequest = null;
+                    // Process the pending request without delay
+                    executedFunction(...nextRequest);
+                }
+            }
+        };
+        
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Utility functions for background update management
+function canUpdateBackground() {
+    return !backgroundUpdateState.isAnimating;
+}
+
+function getPendingBackgroundRequest() {
+    return backgroundUpdateState.pendingRequest;
+}
+
+function forceBackgroundUpdate(imageUrl) {
+    // Cancel any pending animation and force immediate update
+    if (backgroundUpdateState.animationPromise) {
+        // We can't cancel the promise, but we can mark it as no longer needed
+        backgroundUpdateState.pendingRequest = null;
+    }
+    
+    // Clear any pending requests and force immediate execution
+    backgroundUpdateState.pendingRequest = null;
+    backgroundUpdateState.isAnimating = false;
+    
+    // Call the function directly for immediate update
+    return updateManualPreviewBlurredBackground(imageUrl);
+}
+
+function cancelPendingBackgroundUpdates() {
+    // Clear any pending background update requests
+    backgroundUpdateState.pendingRequest = null;
+    // Note: We can't cancel the current animation, but we can prevent new ones from queuing
+}
+
+function isBackgroundUpdateInProgress() {
+    return backgroundUpdateState.isAnimating || !!backgroundUpdateState.pendingRequest;
+}
+
+function waitForBackgroundUpdateComplete() {
+    if (backgroundUpdateState.animationPromise) {
+        return backgroundUpdateState.animationPromise;
+    }
+    return Promise.resolve();
+}
+
+function getBackgroundUpdateStats() {
+    return {
+        totalCalls: backgroundUpdateState.callCount,
+        lastCallTime: backgroundUpdateState.lastCallTime,
+        isAnimating: backgroundUpdateState.isAnimating,
+        hasPending: !!backgroundUpdateState.pendingRequest,
+        lastRequest: backgroundUpdateState.lastRequest,
+        pendingRequest: backgroundUpdateState.pendingRequest
+    };
+}
+
+function resetBackgroundUpdateStats() {
+    backgroundUpdateState.callCount = 0;
+    backgroundUpdateState.lastCallTime = 0;
+}
+
+// Function to update blurred background for manual preview
+async function updateManualPreviewBlurredBackground(imageUrl) {
+    try {
+        // Extract filename from imageUrl
+        const filename = imageUrl.split('/').pop();
+        const baseName = filename.replace(/\.(png|jpg|jpeg)$/i, '');
+        
+        // Get the blurred preview URL - encode the baseName to handle spaces and special characters
+        const blurPreviewUrl = `/previews/${encodeURIComponent(baseName)}_blur.jpg`;
+        
+        // Check if the blurred preview exists
+        try {
+            const response = await fetch(blurPreviewUrl, { method: 'HEAD' });
+            if (!response.ok) {
+                // Blurred preview doesn't exist, hide backgrounds
+                const bg1 = document.getElementById('manualPreviewBlurBackground1');
+                const bg2 = document.getElementById('manualPreviewBlurBackground2');
+                if (bg1) bg1.style.opacity = '0';
+                if (bg2) bg2.style.opacity = '0';
+                return;
+            }
+        } catch (error) {
+            // Blurred preview doesn't exist, hide backgrounds
+            const bg1 = document.getElementById('manualPreviewBlurBackground1');
+            const bg2 = document.getElementById('manualPreviewBlurBackground2');
+            if (bg1) bg1.style.opacity = '0';
+            if (bg2) bg2.style.opacity = '0';
+            return;
+        }
+        
+        // Get the two background containers
+        const bg1 = document.getElementById('manualPreviewBlurBackground1');
+        const bg2 = document.getElementById('manualPreviewBlurBackground2');
+        
+        if (!bg1 || !bg2) return;
+        
+        // Preload the image before applying it to prevent flashing
+        const preloadImage = new Image();
+        preloadImage.crossOrigin = 'anonymous';
+        
+        // Wait for the image to load completely
+        await new Promise((resolve, reject) => {
+            preloadImage.onload = resolve;
+            preloadImage.onerror = reject;
+            preloadImage.src = blurPreviewUrl;
+        });
+        
+        // Determine which background is currently active
+        // Check if either background has opacity > 0 (is visible)
+        const bg1Opacity = parseFloat(bg1.style.opacity) || 0;
+        const bg2Opacity = parseFloat(bg2.style.opacity) || 0;
+        const activeBg = bg1Opacity > 0 ? bg1 : bg2;
+        const inactiveBg = bg1Opacity > 0 ? bg2 : bg1;
+        
+
+        
+        // Set the new image on the inactive background
+        inactiveBg.style.backgroundImage = `url(${blurPreviewUrl})`;
+        
+        // Ensure the inactive background starts completely transparent
+        inactiveBg.style.opacity = '0';
+        
+        // Force a reflow to ensure the background image is applied before transition
+        inactiveBg.offsetHeight;
+        
+        // Start the CSS transition by changing opacity values
+        // The CSS transition: opacity 0.5s ease-in-out will handle the animation
+        activeBg.style.opacity = '0';
+        inactiveBg.style.opacity = '0.45';
+        
+
+        
+        // Return a promise that resolves when the CSS transition completes
+        return new Promise((resolve) => {
+            // Wait for the CSS transition duration (500ms) plus a small buffer
+            setTimeout(() => {
+                // Clean up the old background image
+                if (parseFloat(activeBg.style.opacity) === 0) {
+                    activeBg.style.backgroundImage = 'none';
+    
+                }
+                resolve();
+            }, 550); // 500ms transition + 50ms buffer
+        });
+        
+    } catch (error) {
+        console.warn('Failed to update blurred background:', error);
+        // On error, hide backgrounds to prevent showing broken images
+        const bg1 = document.getElementById('manualPreviewBlurBackground1');
+        const bg2 = document.getElementById('manualPreviewBlurBackground2');
+        if (bg1) bg1.style.opacity = '0';
+        if (bg2) bg2.style.opacity = '0';
+        throw error; // Re-throw to maintain promise rejection
+    }
+}
+
 // Function to update manual modal preview
 async function updateManualPreview(index = 0, response = null, metadata = null) {
     const previewImage = document.getElementById('manualPreviewImage');
@@ -5090,6 +5936,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const seedBtn = document.getElementById('manualPreviewSeedBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
+    
 
     if (previewImage && previewPlaceholder) {
         // Get the image at the specified index
@@ -5141,6 +5988,10 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             img.onerror = () => reject(new Error('Failed to load image'));
             img.src = imageUrl;
         });
+
+        // Update blurred background with debouncing
+        // Always use the debounced version to prevent duplicate calls
+        updateBlurredBackground(imageUrl);
 
         // Check if we have initialEdit data for side-by-side preview
         if (window.initialEdit && window.initialEdit.image) {
@@ -5266,10 +6117,10 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             scrapBtn.style.display = 'flex';
             // Update scrap button based on current view
             if (currentGalleryView === 'scraps') {
-                scrapBtn.innerHTML = '<i class="nai-undo"></i>';
+                scrapBtn.innerHTML = '<i class="mdi mdi-1-5 mdi-archive-arrow-up"></i>';
                 scrapBtn.title = 'Remove from scraps';
             } else {
-                scrapBtn.innerHTML = '<i class="nai-image-tool-sketch"></i>';
+                scrapBtn.innerHTML = '<i class="mdi mdi-1-25 mdi-archive"></i>';
                 scrapBtn.title = 'Move to scraps';
             }
         }
@@ -5285,10 +6136,12 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
         if (currentManualPreviewImage && currentManualPreviewImage.metadata && currentManualPreviewImage.metadata.seed !== undefined) {
             manualPreviewSeedNumber.textContent = currentManualPreviewImage.metadata.seed;
             window.lastGeneratedSeed = currentManualPreviewImage.metadata.seed;
+            sproutSeedBtn.classList.add('available');
             updateSproutSeedButtonFromPreviewSeed();
         } else {
             manualPreviewSeedNumber.textContent = '---';
             window.lastGeneratedSeed = null;
+            sproutSeedBtn.classList.remove('available');
             updateSproutSeedButtonFromPreviewSeed();
         }
 
@@ -5309,9 +6162,13 @@ function swapManualPreviewImages() {
     if (Array.from(imageContainers).some(container => container.classList.contains('swapped'))) {
         // Switch back to generated image
         if (window.lastGeneration && window.lastGeneration.filename) {
-            previewImage.src = `/images/${window.lastGeneration.filename}`;
+            const generatedImageUrl = `/images/${window.lastGeneration.filename}`;
+            previewImage.src = generatedImageUrl;
             manualPreviewSeedNumber.textContent = window.lastGeneration.seed;
             updateSproutSeedButtonFromPreviewSeed();
+            
+            // Update blurred background
+            updateBlurredBackground(generatedImageUrl);
         }
         imageContainers.forEach(container => {
             container.classList.remove('swapped');
@@ -5323,6 +6180,9 @@ function swapManualPreviewImages() {
             previewImage.src = originalImageUrl;
             manualPreviewSeedNumber.textContent = window.initialEdit.source.seed;
             updateSproutSeedButtonFromPreviewSeed();
+            
+            // Update blurred background
+            updateBlurredBackground(originalImageUrl);
         }
         imageContainers.forEach(container => {
             container.classList.add('swapped');
@@ -5382,11 +6242,45 @@ function resetManualPreview() {
         window.lastGeneratedSeed = null;
         window.lastGeneration = null;
         manualPreviewSeedNumber.textContent = '---';
+        sproutSeedBtn.classList.remove('available');
         updateSproutSeedButtonFromPreviewSeed();
         currentManualPreviewImage = null;
+        
+        // Reset blurred backgrounds
+        const bg1 = document.getElementById('manualPreviewBlurBackground1');
+        const bg2 = document.getElementById('manualPreviewBlurBackground2');
+        if (bg1) {
+            bg1.style.backgroundImage = 'none';
+            bg1.style.opacity = '0';
+        }
+        if (bg2) {
+            bg2.style.backgroundImage = 'none';
+            bg2.style.opacity = '0';
+        }
 
         // Disable navigation buttons
         updateManualPreviewNavigation();
+
+        // Force preview animation back to default state
+        if (generationAnimationActive) {
+            stopPreviewAnimation();
+        }
+        // Ensure animation container is reset to default state
+        if (previewContainer) {
+            previewContainer.classList.remove('preview-animation-active', 'preview-fade-out');
+        }
+        if (previewStars) {
+            previewStars.style.display = 'none';
+            previewStars.style.opacity = '0';
+        }
+        if (previewBackgroundLines) {
+            previewBackgroundLines.style.display = 'none';
+            previewBackgroundLines.classList.remove('fadeOut');
+        }
+        if (previewForegroundLines) {
+            previewForegroundLines.style.display = 'none';
+            previewForegroundLines.classList.remove('fadeOut');
+        }
     }
 }
 
@@ -5508,7 +6402,11 @@ function restoreOriginalImage() {
         
         if (previewImage && originalImage) {
             // Restore the original image to the main preview
-            previewImage.src = `/images/${window.navigationOriginalImage.image.original || window.navigationOriginalImage.image.filename}`;
+            const imageUrl = `/images/${window.navigationOriginalImage.image.original || window.navigationOriginalImage.image.filename}`;
+            previewImage.src = imageUrl;
+            
+            // Update blurred background
+            updateBlurredBackground(imageUrl);
             
             // Update the seed display to show the original image's seed
             const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
@@ -5516,8 +6414,10 @@ function restoreOriginalImage() {
                 manualPreviewSeedNumber.textContent = window.navigationOriginalImage.seed || '---';
                 if (window.navigationOriginalImage.seed) {
                     window.lastGeneratedSeed = window.navigationOriginalImage.seed;
+                    sproutSeedBtn.classList.add('available');
                 } else {
                     window.lastGeneratedSeed = null;
+                    sproutSeedBtn.classList.remove('available');
                 }
                 updateSproutSeedButtonFromPreviewSeed();
             }
@@ -5560,31 +6460,32 @@ async function handleManualGeneration(e) {
         return true;
     }
 
+    // Validate required fields for both paths
+    if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
+
+    // Prepare base requestBody (shared between both paths)
+    const requestBody = {
+        prompt: values.prompt,
+        steps: values.steps,
+        guidance: values.guidance,
+        rescale: values.rescale,
+        allow_paid: forcePaidRequest,
+        workspace: activeWorkspace
+    };
+
+    // Process resolution to determine if it's custom or predefined
+    const resolutionData = processResolutionValue(values.resolutionValue);
+    if (resolutionData.isCustom) {
+        requestBody.width = resolutionData.width;
+        requestBody.height = resolutionData.height;
+    } else {
+        requestBody.resolution = resolutionData.resolution;
+    }
+
+    // Add img2img specific parameters if applicable
     if (isImg2Img) {
-        // Img2Img / Variation Edit/Reroll
-        if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
-
-        // Prepare requestBody
-        const requestBody = {
-            strength: parseFloat(manualStrengthValue.value) || 0.8,
-            noise: parseFloat(manualNoiseValue.value) || 0.1,
-            prompt: values.prompt,
-            steps: values.steps,
-            guidance: values.guidance,
-            rescale: values.rescale,
-            allow_paid: forcePaidRequest,
-            workspace: activeWorkspace
-        };
-
-        // Process resolution to determine if it's custom or predefined
-        const resolutionData = processResolutionValue(values.resolutionValue);
-        // Add resolution or width/height based on type
-        if (resolutionData.isCustom) {
-            requestBody.width = resolutionData.width;
-            requestBody.height = resolutionData.height;
-        } else {
-            requestBody.resolution = resolutionData.resolution;
-        }
+        requestBody.strength = parseFloat(manualStrengthValue.value) || 0.8;
+        requestBody.noise = parseFloat(manualNoiseValue.value) || 0.1;
 
         // Handle uploaded image data
         if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
@@ -5609,113 +6510,78 @@ async function handleManualGeneration(e) {
                 requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
             }
         }
+    }
 
-        addSharedFieldsToRequestBody(requestBody, values);
+    // Add shared fields and preset name
+    addSharedFieldsToRequestBody(requestBody, values);
+    if (values.presetName) requestBody.preset = values.presetName;
 
-        // Add preset name if available
-        if (values.presetName) requestBody.preset = values.presetName;
-
-        // Check if this requires paid credits and user hasn't already allowed paid
-        const cost = calculateCreditCost(requestBody);
-        if (cost > 0 && !forcePaidRequest) {
-            const confirmed = await showCreditCostDialog(cost, e);
-            
-            if (!confirmed) {
-                return;
-            }
-            
-            // Set allow_paid to true for this request only (don't change UI)
-            requestBody.allow_paid = true;
-            forcePaidRequest = true;
-            paidRequestToggle.setAttribute('data-state', 'on');
-        }
-
-        hideManualModal(undefined, true);
-        showManualLoading(true, 'Generating Image...');
-
-        try {
-            const url = `/${values.model.toLowerCase()}/generate`;
-            const response = await fetchWithAuth(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody)
-            });
-
-            if (!response.ok) throw new Error(`Variation generation failed: ${response.statusText}`);
-            const blob = await response.blob();
-            await handleImageResult(blob, 'Variation generated successfully!', () => { }, values.seed, response);
-        } catch (error) {
-            hideManualModal(undefined, true);
-            console.error('Variation generation error:', error);
-            showError('Variation generation failed. Please try again.');
-        } finally {
-            showManualLoading(false);
-        }
-    } else {
-        // Regular manual generation or reroll
-        if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
-
-        const requestBody = {
-            prompt: values.prompt,
-            steps: values.steps,
-            guidance: values.guidance,
-            rescale: values.rescale,
-            allow_paid: forcePaidRequest,
-            workspace: activeWorkspace
-        };
-
-        // Process resolution to determine if it's custom or predefined
-        const resolutionData = processResolutionValue(values.resolutionValue);
-        // Add resolution or width/height based on type
-        if (resolutionData.isCustom) {
-            requestBody.width = resolutionData.width;
-            requestBody.height = resolutionData.height;
-        } else {
-            requestBody.resolution = resolutionData.resolution;
-        }
-        if (values.presetName) requestBody.preset = values.presetName;
-
-        addSharedFieldsToRequestBody(requestBody, values);
-    
     // Check if this requires paid credits and user hasn't already allowed paid
-        const cost = calculateCreditCost(requestBody);
-        if (cost > 0 && !forcePaidRequest) {
-            const confirmed = await showCreditCostDialog(cost, e);
-            
-            if (!confirmed) {
-                return;
-            }
-            
-            // Set allow_paid to true for this request only (don't change UI)
-            requestBody.allow_paid = true;
-            forcePaidRequest = true;
-            paidRequestToggle.setAttribute('data-state', 'on');
-        }
-
-        showManualLoading(true, 'Generating Image...');
-
-        hideManualModal(undefined, true);
+    const cost = calculateCreditCost(requestBody);
+    if (cost > 0 && !forcePaidRequest) {
+        const confirmed = await showCreditCostDialog(cost, e);
         
-        try {
-            const url = `/${values.model.toLowerCase()}/generate`;
-            const response = await fetchWithAuth(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody)
-            });
-
-            if (!response.ok) throw new Error(`Generation failed: ${response.statusText}`);
-            const blob = await response.blob();
-            await handleImageResult(blob, 'Image generated successfully!', undefined, values.seed, response);
-        } catch (error) {
-            hideManualModal(undefined, true);
-            console.error('Manual generation error:', error);
-            showError('Image generation failed. Please try again.');
-        } finally {
-            showManualLoading(false);
-            isGenerating = false;
-            updateManualGenerateBtnState();
+        if (!confirmed) {
+            return;
         }
+        
+        // Set allow_paid to true for this request only (don't change UI)
+        requestBody.allow_paid = true;
+        forcePaidRequest = true;
+        paidRequestToggle.setAttribute('data-state', 'on');
+    }
+
+    // Show loading and hide modal
+    hideManualModal(undefined, true);
+    showManualLoading(true, 'Generating Image...');
+
+
+    const generationParams = {
+        model: values.model.toLowerCase(),
+        ...requestBody
+    };
+
+    try {
+        // Use WebSocket for image generation
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        const result = await window.wsClient.generateImage(generationParams);
+        
+        if (result) {
+            const { image, filename, seed } = result;
+            
+            // Convert base64 to blob
+            const byteCharacters = atob(image);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'image/png' });
+
+            // Extract seed if available
+            if (seed) {
+                window.lastGeneratedSeed = parseInt(seed);
+                sproutSeedBtn.classList.add('available');
+            }
+
+            // Use the universal handleImageResult function
+            await handleImageResult(blob, 'Image generated successfully!', undefined, seed || values.seed);
+        } else {
+            throw new Error('Invalid response from WebSocket');
+        }
+            
+    } catch (error) {
+        hideManualModal(undefined, true);
+        console.error(`Image generation error:`, error);
+        showError(`Image generation failed. Please try again.`);
+    } finally {
+        stopPreviewAnimation();
+        showManualLoading(false);
+        isGenerating = false;
+        updateManualGenerateBtnState();
     }
 }
 
@@ -5728,17 +6594,20 @@ async function saveManualPreset(presetName, config) {
         }
 
         const result = await window.wsClient.savePreset(presetName, config);
-        showGlassToast('success', null, result.message);
+        
+        // Handle the response properly
+        if (result && result.data && result.data.message) {
+            showGlassToast('success', null, result.data.message);
+        } else if (result && result.message) {
+            showGlassToast('success', null, result.message);
+        } else {
+            showGlassToast('success', null, `Preset "${presetName}" saved successfully`);
+        }
 
         // Refresh the preset list
         await loadOptions();
 
-        // Select the newly saved preset
-        presetSelect.value = presetName;
         updateGenerateButton();
-
-        // Close the manual modal
-        hideManualModal(undefined, true);
     } catch (error) {
         console.error('Error saving preset:', error);
         showError('Failed to save preset: ' + error.message);
@@ -5753,108 +6622,89 @@ async function handleManualSave() {
         return;
     }
 
-    // Validate required fields
-    const model = manualModel.value;
-    const prompt = manualPrompt.value.trim();
+    const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
+    const values = collectManualFormValues();
 
-    if (!model || !prompt) {
-        showError('Please fill in all required fields (Model, Prompt)');
-        return;
+    // Helper: Validate required fields
+    function validateFields(requiredFields, msg) {
+        for (const field of requiredFields) {
+            if (field === 'resolutionValue') {
+                // Special handling for resolution: check for either resolutionValue or custom dimensions
+                if (!values[field] && (!values.width || !values.height)) {
+                    showError(msg);
+                    return false;
+                }
+            } else if (!values[field]) {
+                showError(msg);
+                return false;
+            }
+        }
+        return true;
     }
 
-    // Build preset data with all available parameters
-    const presetData = {
-        prompt: prompt,
-        uc: manualUc.value.trim(),
-        model: model,
-        resolution: manualResolution.value,
-        steps: parseInt(manualSteps.value) || 25,
-        guidance: parseFloat(manualGuidance.value) || 5.0,
-        rescale: parseFloat(manualRescale.value) || 0.0,
-        upscale: manualUpscale.getAttribute('data-state') === 'on',
+    // Validate required fields for both paths
+    if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
+
+    // Prepare base requestBody (shared between both paths)
+    const requestBody = {
+        prompt: values.prompt,
+        steps: values.steps,
+        guidance: values.guidance,
+        rescale: values.rescale,
         allow_paid: forcePaidRequest,
-        characterPrompts: getCharacterPrompts()
+        workspace: activeWorkspace
     };
 
-    // Set auto position button state
-    const autoPositionBtn = document.getElementById('autoPositionBtn');
-    presetData.use_coords = autoPositionBtn.getAttribute('data-state') === 'off';
-
-    // Add variety setting if enabled
-    if (typeof varietyEnabled !== "undefined" && varietyEnabled) {
-        presetData.variety = true;
+    // Process resolution to determine if it's custom or predefined
+    const resolutionData = processResolutionValue(values.resolutionValue);
+    if (resolutionData.isCustom) {
+        requestBody.width = resolutionData.width;
+        requestBody.height = resolutionData.height;
+    } else {
+        requestBody.resolution = resolutionData.resolution;
     }
 
-    // Add optional fields if they have values
-    if (manualSeed.value.trim()) {
-        presetData.seed = parseInt(manualSeed.value);
-    }
+    // Add img2img specific parameters if applicable
+    if (isImg2Img) {
+        requestBody.strength = parseFloat(manualStrengthValue.value) || 0.8;
+        requestBody.noise = parseFloat(manualNoiseValue.value) || 0.1;
 
-    if (manualSampler.value) {
-        const samplerObj = getSamplerMeta(manualSampler.value);
-        presetData.sampler = samplerObj ? samplerObj.request : manualSampler.value;
-    }
+        // Handle uploaded image data
+        if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
+            requestBody.image = window.uploadedImageData.image_source;
+        } else if (window.currentEditMetadata && window.currentEditMetadata.sourceFilename) {
+            requestBody.image = `file:${window.currentEditMetadata.sourceFilename}`;
+        }
+        requestBody.image_bias = window.uploadedImageData.image_bias || window.uploadedImageData.bias;
 
-    if (manualNoiseScheduler.value) {
-        const noiseObj = getNoiseMeta(manualNoiseScheduler.value);
-        presetData.noiseScheduler = noiseObj ? noiseObj.request : manualNoiseScheduler.value;
-    }
+        if (!requestBody.image) {
+            showError('No source image found for variation');
+            return;
+        }
 
-    // Add custom dimensions if resolution is custom
-    if (manualResolution.value === 'custom') {
-        if (customWidth && customHeight) {
-            presetData.width = parseInt(customWidth.value) || undefined;
-            presetData.height = parseInt(customHeight.value) || undefined;
+        // Add mask data if it exists
+        if (window.currentMaskCompressed) {
+            requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
+        } else if (window.currentMaskData) {
+            // Add compressed mask for server processing
+            const compressedMask = saveMaskCompressed();
+            if (compressedMask) {
+                requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
+            }
         }
     }
 
-    // Check if this is an img2img with base image
-    if (window.uploadedImageData && window.uploadedImageData.image_source) {
-        // Add image source in the correct format type:value
-        presetData.image_source = window.uploadedImageData.image_source;
+    // Add shared fields and preset name
+    addSharedFieldsToRequestBody(requestBody, values);
+    if (values.presetName) requestBody.preset = values.presetName;
 
-        presetData.strength = parseFloat(manualStrengthValue.value) || 0.8;
-        presetData.noise = parseFloat(manualNoiseValue.value) || 0.1;
-
-        // Add image bias if available
-        const imageBiasHidden = document.getElementById('manualImageBias');
-        if (window.uploadedImageData && window.uploadedImageData.image_bias) {
-            presetData.image_bias = window.uploadedImageData.image_bias;
-        } else if (imageBiasHidden && imageBiasHidden.value) {
-            presetData.image_bias = parseInt(imageBiasHidden.value);
-        }
-    }
-
-    // Include mask data if it exists
-    if (window.currentMaskCompressed) {
-        presetData.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
-    } else if (window.currentMaskData) {
-        const maskCompressed = saveMaskCompressed();
-        presetData.mask_compressed = maskCompressed.replace('data:image/png;base64,', '');
-    }
-
-    // Add new parameters to preset data
-    presetData.dataset_config = {
-        include: selectedDatasets,
-        bias: {},
-        settings: {}
+    const generationParams = {
+        model: values.model.toLowerCase(),
+        ...requestBody
     };
+    
 
-    // Add dataset settings from window.datasetSettings if available
-    if (window.datasetSettings) {
-        presetData.dataset_config.settings = window.datasetSettings;
-    }
-
-    // Add bias values for datasets with bias > 1.0
-    selectedDatasets.forEach(dataset => {
-        if (datasetBias[dataset] > 1.0) {
-            presetData.dataset_config.bias[dataset] = datasetBias[dataset];
-        }
-    });
-    presetData.append_quality = appendQuality;
-    presetData.append_uc = selectedUcPreset;
-
-    await saveManualPreset(presetName, presetData);
+    await saveManualPreset(presetName, generationParams);
 }
 
 // Preset autocomplete functions
@@ -5921,7 +6771,7 @@ async function searchPresets(query, target) {
             throw new Error('WebSocket not connected');
         }
 
-        if (presetResults.length > 0) {
+        if (presetResults && Array.isArray(presetResults) && presetResults.length > 0) {
             showPresetAutocompleteSuggestions(presetResults, target);
         } else {
             hidePresetAutocomplete();
@@ -6016,23 +6866,26 @@ function updateGenerateButton() {
     const selectedValue = presetSelect.value;
 
     if (!selectedValue) {
-        if (generateBtn) generateBtn.disabled = true;
-        if (generateBtn2) generateBtn2.disabled = true;
+        generatePresetBtn.disabled = true;
         return;
     }
 
     if (selectedValue.startsWith('preset:')) {
-        if (generateBtn) generateBtn.disabled = false;
-        if (generateBtn2) generateBtn2.disabled = false;
+        generatePresetBtn.disabled = false;
     } else {
-        if (generateBtn) generateBtn.disabled = true;
-        if (generateBtn2) generateBtn2.disabled = true;
+        generatePresetBtn.disabled = true;
     }   
 }
 
 // Generate image
 async function generateImage(event = null) {
     closeSubMenu();
+    
+    // Check if queue is blocked
+    if (isQueueStopped || isQueueProcessing) {
+        showGlassToast('warning', 'Queue Blocked', 'Generation is currently blocked. Please wait for the queue to clear.', false, 5000);
+        return;
+    }
     
     // Set generating state
     isGenerating = true;
@@ -6087,103 +6940,62 @@ async function generateImage(event = null) {
     }
 
     try {
-        let url;
-        if (selectedValue.startsWith('preset:')) {
-            const params = new URLSearchParams({ forceGenerate: 'true' });
-            if (activeWorkspace) params.append('workspace', activeWorkspace);
+        // Generate image using WebSocket
+        const result = await window.wsClient.generatePreset(presetName, window.currentWorkspace || null);
+        
+        // Extract data from the standard response format
+        const filename = result.filename;
+        const seed = result.seed;
 
-            url = `/preset/${selectedValue.replace('preset:', '')}?${params.toString()}`;
-        } else {
-            throw new Error('Invalid selection type');
-        }
+        console.log('📋 Generation result:', { result, filename, seed });
 
-        const response = await fetchWithAuth(url);
-
-        if (!response.ok) {
-            throw new Error(`Generation failed: ${response.statusText}`);
-        }
-
-        const blob = await response.blob();
-        const imageUrl = URL.createObjectURL(blob);
-
-        // Get the generated filename from the response header
-        const generatedFilename = response.headers.get('X-Generated-Filename');
-        if (!generatedFilename) {
-            showError('No generated filename returned by server.');
-            return;
-        }
-
-        // Extract seed from response header if available
-        const headerSeed = response.headers.get('X-Seed');
-        if (headerSeed) {
-            window.lastGeneratedSeed = parseInt(headerSeed);
-            manualPreviewSeedNumber.textContent = parseInt(headerSeed);
-            updateSproutSeedButtonFromPreviewSeed();
-        }
-
-        // Fetch metadata for the generated image
-        try {
-            const metadata = await getImageMetadata(generatedFilename);
-            window.lastGeneration = metadata;
-            window.lastGeneration.filename = generatedFilename;
-            manualPreviewOriginalImage.classList.remove('hidden');
-        } catch (error) {
-            console.warn('Failed to fetch metadata for generated image:', error);
+        // Hide the generating toast first
+        if (toastId) {
+            removeGlassToast(toastId);
         }
         
-        // Wait for the image to load, then insert into gallery and reindex
-        const img = new Image();
-        img.onload = async function() {
-            createConfetti();
-
-            await loadGallery(true);
-
-            // Find the image in the gallery by filename
-            const found = allImages.find(img => img.original === generatedFilename || img.upscaled === generatedFilename);
-            if (found) {
-                // Construct proper image object with filename property
-                const imageToShow = {
-                    filename: generatedFilename,
-                    base: found.base,
-                    original: found.original,
-                    upscaled: found.upscaled
-                };
-                showLightbox(imageToShow);
-            } else {
-                showError('Generated image not found in gallery.');
-            }
-        };
-        img.src = imageUrl;
-
-        // Show success message
-        if (!isInModal) {
-            clearInterval(progressInterval);
-            updateGlassToastProgress(toastId, 100);
-            updateGlassToast(toastId, 'success', 'Generation Complete', 'Image generated successfully!');
+        // Create confetti effect
+        createConfetti();
+        
+        // Refresh gallery to show the new image
+        await loadGallery(true);
+        
+        // Find the generated image in the gallery
+        const found = allImages.find(img => img.original === filename || img.upscaled === filename);
+        if (found) {
+            // Construct proper image object with filename property
+            const imageToShow = {
+                filename: filename,
+                base: found.base,
+                original: found.original,
+                upscaled: found.upscaled
+            };
+            showLightbox(imageToShow);
         } else {
-            showGlassToast('success', 'Generation Complete', 'Image generated successfully!');
-            document.querySelectorAll('.manual-preview-image-container, #manualPanelSection').forEach(element => {
-                element.classList.remove('swapped');
-            });
+            showGlassToast('info', 'Image Generated', 'Image generated successfully and added to gallery');
         }
 
     } catch (error) {
         console.error('Generation error:', error);
-        if (!isInModal) {
-            clearInterval(progressInterval);
-            updateGlassToast(toastId, 'error', 'Generation Failed', 'Image generation failed. Please try again.');
-        } else {
-            showError('Image generation failed. Please try again.');
-        }
+        showGlassToast('error', 'Generation Failed', error.message);
     } finally {
+        // Reset generating state
+        isGenerating = false;
+        updateManualGenerateBtnState();
+        
+        // Clear progress and loading states
+        if (toastId) {
+            removeGlassToast(toastId);
+        }
+        if (progressInterval) {
+            clearInterval(progressInterval);
+        }
         if (isInModal) {
             showManualLoading(false);
         }
-        // Clear generating state
-        isGenerating = false;
-        updateManualGenerateBtnState();
     }
 }
+
 function initializeManualPreviewZoom() {
     const imageContainer = document.querySelector('.manual-preview-image-container');
     const image = document.getElementById('manualPreviewImage');
@@ -6602,11 +7414,20 @@ async function deleteManualPreviewImage() {
 
 // Create confetti effect
 function createConfetti() {
-    const colors = ['#ff4500', '#ff6347', '#ff8c00', '#ffa500', '#ff6b35', '#ff7f50', '#ff4500', '#ff6347'];
+    // Multi-colored confetti palette with vibrant colors
+    const colors = [
+        '#ff4500', '#ff6347', '#ff8c00', '#ffa500', '#ff6b35', '#ff7f50', // Orange/Red variants
+        '#ff1493', '#ff69b4', '#ffb6c1', '#ffc0cb', '#db7093', '#c71585', // Pink variants
+        '#00ff00', '#32cd32', '#90ee90', '#98fb98', '#00fa9a', '#00ff7f', // Green variants
+        '#4169e1', '#1e90ff', '#00bfff', '#87ceeb', '#87cefa', '#b0e0e6', // Blue variants
+        '#9370db', '#8a2be2', '#9932cc', '#ba55d3', '#da70d6', '#ee82ee', // Purple variants
+        '#ffff00', '#ffd700', '#ffeb3b', '#f0e68c', '#bdb76b', '#f4a460', // Yellow/Gold variants
+        '#ff4500', '#ff6347', '#ff8c00', '#ffa500', '#ff6b35', '#ff7f50'  // Additional orange/red
+    ];
     const shapes = ['rect', 'circle', 'triangle'];
 
     // Increase the number of confetti pieces for more intensity
-    const totalPieces = 150;
+    const totalPieces = 175; // Added 25 more pieces
 
     for (let i = 0; i < totalPieces; i++) {
         setTimeout(() => {
@@ -6616,7 +7437,7 @@ function createConfetti() {
             // Random position across the entire screen width
             confetti.style.left = Math.random() * 100 + 'vw';
 
-            // Random color
+            // Random color from expanded palette
             const color = colors[Math.floor(Math.random() * colors.length)];
             confetti.style.backgroundColor = color;
 
@@ -6641,9 +7462,9 @@ function createConfetti() {
             // Random rotation
             confetti.style.transform = `rotate(${Math.random() * 360}deg)`;
 
-            // Random animation duration and delay for more natural movement
-            const duration = 2.5 + Math.random() * 2; // 2.5 to 4.5 seconds
-            const delay = Math.random() * 0.5; // 0 to 0.5 seconds delay
+            // Slower animation duration and longer delay for more screen time
+            const duration = 4.5 + Math.random() * 3; // 4.5 to 7.5 seconds (slower)
+            const delay = Math.random() * 1.5; // 0 to 1.5 seconds delay (longer)
             confetti.style.animationDuration = duration + 's';
             confetti.style.animationDelay = delay + 's';
 
@@ -6662,17 +7483,27 @@ function createConfetti() {
                     confetti.parentNode.removeChild(confetti);
                 }
             }, (duration + delay) * 1000 + 1000); // Extra 1 second buffer
-        }, i * 20); // Reduced delay between pieces for more density
+        }, i * 25); // Slightly increased delay between pieces for better distribution
     }
 }
 
 // Show manual modal loading overlay
 function showManualLoading(show, message = 'Generating Image...') {
-    // Check if manual modal is open and screen is wide enough for preview section
-    const isManualModalOpen = manualModal.style.display !== 'none';
+    if (manualModal.style.display !== 'none' && show && isPreviewAnimationAvailable()) {
+        // Start preview animation for image generation
+        startPreviewAnimation();
+        return;
+    } else if (show && isPreviewAnimationAvailable()) {
+        // Stop preview animation when generation completes
+        stopPreviewAnimation();
+        return;
+    }
 
+    // OLD SYSTEM: Use manual loading overlay for other operations (commented out but preserved)
+    // This serves as a fallback if the new animation system fails
+    /*
     // Use manual loading overlay for wide screens with modal open
-    if (isManualModalOpen) {
+    if (manualModal.style.display !== 'none') {
         manualLoadingOverlay.classList.remove('hidden');
         if (previewSection && window.innerWidth <= 1400) {
             if (!previewSection.classList.contains('show')) {
@@ -6722,6 +7553,20 @@ function showManualLoading(show, message = 'Generating Image...') {
                 loadingOverlay.classList.add('hidden');
             });
         }, 1000);
+    }
+    */
+    
+    // FALLBACK: If animation system fails, use manual loading overlay for critical operations
+    if (manualModal.style.display !== 'none' && !isPreviewAnimationAvailable()) {
+        console.warn('Animation system not available, using manual loading overlay');
+        if (manualLoadingOverlay) {
+            manualLoadingOverlay.classList.remove('hidden');
+            manualLoadingOverlay.classList.remove('return');
+            const loadingText = manualLoadingOverlay.querySelector('p');
+            if (loadingText) {
+                loadingText.textContent = message;
+            }
+        }
     }
 }
 
@@ -6846,7 +7691,8 @@ async function handleResize() {
     resizeTimeout = setTimeout(() => {
         // Recalculate rows based on new viewport dimensions
         const newRows = calculateGalleryRows();
-        const newImagesPerPage = galleryColumnsInput.value * newRows;
+        const galleryToggleGroup = document.getElementById('galleryToggleGroup');
+        const newImagesPerPage = parseInt(galleryToggleGroup?.dataset?.columns || 5) * newRows;
 
         // Only update if the number of images per page has changed
         if (newImagesPerPage !== imagesPerPage || newRows !== galleryRows) {
@@ -7095,9 +7941,8 @@ function clearSeed() {
         manualSeed.focus();
         
         // Reset sprout seed button state if it was active
-        if (sproutSeedBtn && sproutSeedBtn.getAttribute('data-state') === 'on') {
-            sproutSeedBtn.setAttribute('data-state', 'off');
-            sproutSeedBtn.classList.remove('active');
+        if (sproutSeedBtn && sproutSeedBtn.getAttribute('data-state') === 'off') {
+            sproutSeedBtn.setAttribute('data-state', 'on');
             manualSeed.disabled = false;
         }
         
@@ -7145,7 +7990,7 @@ function updateSproutSeedButton() {
         } else {
             sproutSeedBtn.classList.add('hidden');
             // Reset toggle state when no seed is available
-            sproutSeedBtn.setAttribute('data-state', 'off');
+            sproutSeedBtn.setAttribute('data-state', 'on');
             // Update placeholder to show "Random"
             if (manualSeed) {
                 manualSeed.placeholder = 'Randomize';
@@ -7170,21 +8015,19 @@ function updateSproutSeedButtonFromPreviewSeed() {
             
             // Check if the button is currently in 'on' state
             const currentState = sproutSeedBtn.getAttribute('data-state');
-            if (currentState === 'on') {
+            if (currentState === 'off') {
                 // If button is active, update the seed input value
                 if (manualSeed) {
                     manualSeed.value = window.lastLoadedSeed;
                 }
             } else {
                 // Reset button state to off initially
-                sproutSeedBtn.setAttribute('data-state', 'off');
-                sproutSeedBtn.classList.remove('active');
+                sproutSeedBtn.setAttribute('data-state', 'on');
             }
         } else {
             // Hide the button when no seed is available
             sproutSeedBtn.classList.add('hidden');
-            sproutSeedBtn.setAttribute('data-state', 'off');
-            sproutSeedBtn.classList.remove('active');
+            sproutSeedBtn.setAttribute('data-state', 'on');
             // Clear the lastLoadedSeed
             window.lastLoadedSeed = null;
             
@@ -7204,12 +8047,11 @@ function toggleSproutSeed() {
 
     sproutSeedBtn.setAttribute('data-state', newState);
 
-    if (newState === 'on') {
+    if (newState === 'off') {
         // Set the seed value and disable the field
         manualSeed.value = window.lastLoadedSeed;
         setSeedInputGroupState(true);
         manualSeed.disabled = true;
-        sproutSeedBtn.classList.add('active');
         // Hide the clear seed button
         if (clearSeedBtn) clearSeedBtn.classList.add('hidden');
         // Update placeholder to show the seed value
@@ -7220,7 +8062,6 @@ function toggleSproutSeed() {
         // Clear the seed value and enable the field, but don't hide the sprout button
         manualSeed.value = '';
         manualSeed.disabled = false;
-        sproutSeedBtn.classList.remove('active');
         // Show the clear seed button
         if (clearSeedBtn) clearSeedBtn.classList.remove('hidden');
         // Don't call setSeedInputGroupState(false) here as it would hide the sprout button
@@ -7229,25 +8070,6 @@ function toggleSproutSeed() {
             manualSeed.placeholder = window.lastLoadedSeed || 'Randomize';
         }
     }
-}
-
-if (manualSeed && document.getElementById('sproutSeedBtn')) {
-    sproutSeedBtn = document.getElementById('sproutSeedBtn');
-    sproutSeedBtn.addEventListener('click', toggleSproutSeed);
-    // Initialize button state
-    updateSproutSeedButton();
-}
-
-if (document.getElementById('varietyBtn')) {
-    document.getElementById('varietyBtn').addEventListener('click', function(e) {
-        e.preventDefault();
-        varietyEnabled = !varietyEnabled;
-        if (varietyEnabled) {
-            this.setAttribute('data-state', 'on');
-        } else {
-            this.setAttribute('data-state', 'off');
-        }
-    });
 }
 
 // Add event listener for manualSampler to auto-set noise scheduler
@@ -7457,8 +8279,6 @@ function updateGlassToastProgress(toastId, progress) {
 
 // Test functions for toast system
 let testProgressIntervals = new Map();
-
-// Vibe encoding progress tracking
 let vibeEncodingProgressIntervals = new Map();
 
 function testToastSuccess() {
@@ -7695,7 +8515,7 @@ async function uploadImages(files) {
                 currentIndex: index,
                 totalCount: files.length
             };
-            return wsClient.uploadWorkspaceImage(base64, activeWorkspace, file.name, batchInfo);
+            return window.wsClient.uploadWorkspaceImage(base64, activeWorkspace, file.name, batchInfo);
         });
 
         const results = await Promise.all(uploadPromises);
@@ -7946,6 +8766,7 @@ async function handleBulkUnpin(event = null) {
         switchGalleryView(currentGalleryView, true);
     }
 }
+
 async function handleBulkPin(event = null) {
     if (selectedImages.size === 0) {
         showError('No images selected');
@@ -8371,10 +9192,10 @@ function addCharacterPrompt() {
                                         </button>
                                         <div class="divider"></div>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                                            <i class="fas fa-weight-hanging"></i>
+                                            <i class="fas fa-scale-unbalanced-flip"></i>
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
-                                            <i class="fas fa-highlighter-line"></i>
+                                            <i class="fas fa-search"></i>
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
                                             <i class="fas fa-book-skull"></i>
@@ -8414,10 +9235,10 @@ function addCharacterPrompt() {
                                         </button>
                                         <div class="divider"></div>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                                            <i class="fas fa-weight-hanging"></i>
+                                            <i class="fas fa-scale-unbalanced-flip"></i>
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
-                                            <i class="fas fa-highlighter-line"></i>
+                                            <i class="fas fa-search"></i>
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
                                             <i class="fas fa-book-skull"></i>
@@ -8704,6 +9525,7 @@ function confirmPosition() {
         hidePositionDialog();
     }
 }
+
 function getCharacterPrompts() {
     const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
     const characterPrompts = [];
@@ -8846,10 +9668,10 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                                         </button>
                                         <div class="divider"></div>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                                            <i class="fas fa-weight-hanging"></i>
+                                            <i class="fas fa-scale-unbalanced-flip"></i>
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
-                                            <i class="fas fa-highlighter-line"></i>
+                                            <i class="fas fa-search"></i>
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
                                             <i class="fas fa-book-skull"></i>
@@ -8889,10 +9711,10 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                                         </button>
                                         <div class="divider"></div>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                                            <i class="fas fa-weight-hanging"></i>
+                                            <i class="fas fa-scale-unbalanced-flip"></i>
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
-                                            <i class="fas fa-highlighter-line"></i>
+                                            <i class="fas fa-search"></i>
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
                                             <i class="fas fa-book-skull"></i>
@@ -9282,10 +10104,12 @@ function updateManualPriceDisplay(bypass = false) {
                 // Paid request
                 priceList.textContent = `${cost}`;
                 priceDisplay.classList.remove('free');
+                paidRequestToggle.classList.add('active');
             } else {
                 // Free request
                 priceList.textContent = '0';
                 priceDisplay.classList.add('free');
+                paidRequestToggle.classList.remove('active');
             }
 
             // Show the price display
@@ -9595,9 +10419,6 @@ async function initializeSessionValidation() {
     }, 15000);
 }
 
-// Start session validation after a short delay to allow WebSocket to connect
-setTimeout(initializeSessionValidation, 1000);
-
 // Bulk operations with WebSocket support
 async function handleBulkMoveToWorkspace() {
     if (selectedImages.size === 0) {
@@ -9622,6 +10443,7 @@ async function handleBulkMoveToWorkspace() {
         clearSelection();
     }
 }
+
 async function moveBulkImagesToWorkspace(workspaceId) {
     try {
         const isScrapsView = currentGalleryView === 'scraps';
@@ -9659,7 +10481,7 @@ async function moveBulkImagesToWorkspace(workspaceId) {
             itemType = 'images';
         }
 
-        showGlassToast('success', null, `Moved ${validFilenames.length} ${itemType} to ${workspace.name}`, false, 5000, '<i class="fas fa-copy"></i>');
+        showGlassToast('success', null, `Moved ${validFilenames.length} ${itemType} to ${workspace.name}`, false, 5000, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
     } catch (error) {
         console.error('Error moving items to workspace:', error);
         showError('Failed to move items: ' + error.message);
@@ -9912,6 +10734,167 @@ function disableReadOnlyFeatures() {
     console.log('🔒 Read-only mode: Destructive features disabled');
 }
 
+function startPreviewAnimation() {
+    if (generationAnimationActive) return;
+    
+    // Safety check: ensure all required elements exist
+    if (!previewContainer || !previewStars || !previewBackgroundLines || !previewForegroundLines) {
+        console.warn('Preview animation elements not found, falling back to manual loading overlay');
+        return;
+    }
+    
+    try {
+        generationAnimationActive = true;
+        const toggleBtn = document.getElementById('previewAnimationToggle');
+        if (toggleBtn) {
+            toggleBtn.innerHTML = '<i class="fas fa-stop"></i>';
+            toggleBtn.title = 'Stop Preview Animation';
+        }
+        
+        // Show animation layers
+        previewStars.style.display = 'block';
+        previewBackgroundLines.style.display = 'block';
+        previewForegroundLines.style.display = 'block';
+        
+        // Add active class for CSS animations
+        previewContainer.classList.add('preview-animation-active');
+        
+        // Fade in stars (0.25s)
+        setTimeout(() => {
+            if (previewStars) {
+                previewStars.style.opacity = '1';
+            }
+        }, 10);
+        
+        // Start lines rising
+        const lines = document.querySelectorAll('.preview-line');
+        lines.forEach((line, index) => {
+            line.style.animationPlayState = 'running';
+            line.style.transition = 'opacity 0.3s ease-out, visibility 0.3s ease-out';
+            line.style.opacity = '1';
+            line.style.visibility = 'visible';
+        });
+        
+        // Debug: ensure background lines are visible
+        console.log('Animation started - Background lines:', previewBackgroundLines.children.length);
+    } catch (error) {
+        console.error('Error starting preview animation:', error);
+        generationAnimationActive = false;
+        // Fall back to manual loading overlay if animation fails
+        if (manualLoadingOverlay) {
+            manualLoadingOverlay.classList.remove('hidden');
+            manualLoadingOverlay.classList.remove('return');
+        }
+    }
+}
+
+function stopPreviewAnimation() {
+    if (!generationAnimationActive) return;
+    
+    // Safety check: ensure all required elements exist
+    if (!previewContainer || !previewStars || !previewBackgroundLines || !previewForegroundLines) {
+        console.warn('Preview animation elements not found during stop');
+        generationAnimationActive = false;
+        return;
+    }
+    
+    try {
+        generationAnimationActive = false;
+        const toggleBtn = document.getElementById('previewAnimationToggle');
+        if (toggleBtn) {
+            toggleBtn.innerHTML = '<i class="fas fa-magic"></i>';
+            toggleBtn.title = 'Toggle Preview Animation';
+        }
+        
+        // Add fade out class to pause animations
+        previewContainer.classList.add('preview-fade-out');
+        
+        // Fade out the entire line containers
+        previewBackgroundLines.classList.add('fadeOut');
+        previewForegroundLines.classList.add('fadeOut');
+        
+        // Fade out stars after lines start fading (1.5s)
+        setTimeout(() => {
+            if (previewStars) {
+                previewStars.style.opacity = '0';
+            }
+        }, 1500);
+        
+        // Hide everything after fade out completes (2.5s total)
+        setTimeout(() => {
+            if (previewContainer) {
+                previewContainer.classList.remove('preview-animation-active', 'preview-fade-out');
+            }
+            if (previewStars) {
+                previewStars.style.display = 'none';
+            }
+            if (previewBackgroundLines) {
+                previewBackgroundLines.style.display = 'none';
+                previewBackgroundLines.classList.remove('fadeOut');
+            }
+            if (previewForegroundLines) {
+                previewForegroundLines.style.display = 'none';
+                previewForegroundLines.classList.remove('fadeOut');
+            }
+            
+            // Reset line states
+            const lines = document.querySelectorAll('.preview-line');
+            lines.forEach(line => {
+                line.style.opacity = '1';
+                line.style.visibility = 'visible';
+            });
+        }, 2500);
+    } catch (error) {
+        console.error('Error stopping preview animation:', error);
+        // Force reset animation state
+        forceStopPreviewAnimation();
+    }
+}
+
+// Check if preview animation system is available
+function isPreviewAnimationAvailable() {
+    return !!(previewContainer && previewStars && previewBackgroundLines && previewForegroundLines);
+}
+
+// Force stop preview animation (utility function for emergency stops)
+function forceStopPreviewAnimation() {
+    if (generationAnimationActive) {
+        generationAnimationActive = false;
+    }
+    
+    // Reset button state
+    const toggleBtn = document.getElementById('previewAnimationToggle');
+    if (toggleBtn) {
+        toggleBtn.innerHTML = '<i class="fas fa-magic"></i>';
+        toggleBtn.title = 'Toggle Preview Animation';
+    }
+    
+    // Force reset all animation states
+    if (previewContainer) {
+        previewContainer.classList.remove('preview-animation-active', 'preview-fade-out');
+    }
+    if (previewStars) {
+        previewStars.style.display = 'none';
+        previewStars.style.opacity = '0';
+    }
+    if (previewBackgroundLines) {
+        previewBackgroundLines.style.display = 'none';
+        previewBackgroundLines.classList.remove('fadeOut');
+    }
+    if (previewForegroundLines) {
+        previewForegroundLines.style.display = 'none';
+        previewForegroundLines.classList.remove('fadeOut');
+    }
+    
+    // Reset line states
+    const lines = document.querySelectorAll('.preview-line');
+    lines.forEach(line => {
+        line.style.opacity = '1';
+        line.style.visibility = 'visible';
+        line.style.animationPlayState = 'paused';
+    });
+}
+
 // Register main app initialization steps with WebSocket client
 if (window.wsClient) {
     // Handle WebSocket connection events
@@ -9979,10 +10962,9 @@ if (window.wsClient) {
 
     // Handle gallery updates
     wsClient.on('galleryUpdated', (data) => {
-        console.log('🖼️ Gallery updated:', data);
         // Refresh the current gallery view if it matches the updated view type
         if (data.data && data.data.viewType) {
-            window.allImages = data.data.gallery;
+            allImages = data.data.gallery;
             
             // Apply current sort order to the updated gallery data
             if (window.sortGalleryData && typeof window.sortGalleryData === 'function') {
@@ -10076,11 +11058,85 @@ if (window.wsClient) {
                 }
             }
         }
+    });        
+    
+    window.wsClient.on('presetUpdated', (message) => {
+        console.log('🔄 Preset updated:', message.data);
+        handlePresetUpdate(message.data);
+    });
+
+    window.wsClient.on('queue_update', (data) => {
+        console.log('🔄 Queue status updated:', data);
+        
+        // Update global queue status
+        if (window.optionsData) {
+            window.optionsData.queue_status = data.value;
+        }
+        
+        // Update queue state variables
+        if (data.value === 2) {
+            isQueueStopped = true;
+            isQueueProcessing = false;
+        } else if (data.value === 1) {
+            isQueueStopped = false;
+            isQueueProcessing = true;
+        } else {
+            isQueueStopped = false;
+            isQueueProcessing = false;
+        }
+        
+        // Update generation button state
+        updateManualGenerateBtnState();
+        
+        // Show notification if queue is blocked
+        if (data.value === 2) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('warning', 'Queue Blocked', 'Generation is currently blocked. Please wait.', false, 5000);
+            }
+        } else if (data.value === 0 && (isQueueStopped || isQueueProcessing)) {
+            // Queue was unblocked
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('success', 'Queue Unblocked', 'Generation is now available.', false, 3000);
+            }
+        }
+    });
+
+    // Listen for queue status requests from other modules
+    document.addEventListener('requestQueueStatus', (event) => {
+        const queueStatus = {
+            isBlocked: isQueueStopped || isQueueProcessing,
+            isQueueStopped,
+            isQueueProcessing,
+            value: isQueueStopped ? 2 : (isQueueProcessing ? 1 : 0)
+        };
+        
+        // Dispatch response event
+        const responseEvent = new CustomEvent('queueStatusResponse', {
+            detail: queueStatus
+        });
+        document.dispatchEvent(responseEvent);
     });
     
     // Priority 5: Initialize main app components
     window.wsClient.registerInitStep(1, 'Loading Application Data', async () => {
         await loadOptions();
+    });
+
+    window.wsClient.registerInitStep(2, 'Configuring Application', async () => {
+        updateBalanceDisplay(window.optionsData?.balance);
+        // Handle queue status
+        if (window.optionsData?.queue_status === 2) {
+            isQueueStopped = true;
+            isQueueProcessing = false;
+        } else if (window.optionsData?.queue_status === 1) {
+            isQueueStopped = false;
+            isQueueProcessing = true;
+        } else {
+            isQueueStopped = false;
+            isQueueProcessing = false;
+        }
+        
+        updateManualGenerateBtnState();
         generateSamplerOptions();
         generateResolutionOptions();
         generateModelOptions();
@@ -10090,7 +11146,7 @@ if (window.wsClient) {
         renderManualResolutionDropdown(manualSelectedResolution);
         renderManualNoiseSchedulerDropdown(manualSelectedNoiseScheduler);
         renderManualModelDropdown(manualSelectedModel);
-        await renderCustomPresetDropdown(selectedPreset);
+        await renderCustomPresetDropdown('');
         renderDatasetDropdown();
 
         selectManualSampler('k_euler_ancestral');
@@ -10105,16 +11161,12 @@ if (window.wsClient) {
     });
 
     // Priority 5: Initialize main app components
-    window.wsClient.registerInitStep(19, 'Loading Workspaces', async () => {
-        await loadWorkspaces();
-        loadActiveWorkspaceColor();
-        await loadCacheImages();
-    });
 
     // Priority 7: Load gallery and finalize UI
     window.wsClient.registerInitStep(90, 'Loading Gallery', async () => {
         galleryRows = calculateGalleryRows();
-        imagesPerPage = galleryColumnsInput.value * galleryRows;
+        const galleryToggleGroup = document.getElementById('galleryToggleGroup');
+        imagesPerPage = parseInt(galleryToggleGroup?.dataset?.columns || 5) * galleryRows;
         galleryToggleGroup.setAttribute('data-active', currentGalleryView);
 
         await loadGallery();
@@ -10125,17 +11177,10 @@ if (window.wsClient) {
     window.wsClient.registerInitStep(100, 'Finalizing', async () => {
         updateGenerateButton();
 
-        // Initialize image bias adjustment functionality
-        await initializeImageBiasAdjustment();
-
         // Initialize background gradient
         await setupEventListeners();
-        
-        // Initialize cache manager
-        await initializeCacheManager();
-            
-        // Initialize keyboard shortcuts for manual modal
-        await initializeManualModalShortcuts();
+
+        initializeSessionValidation();
         
         // Initialize emphasis highlighting for manual fields
         await initializeEmphasisOverlay(manualPrompt);

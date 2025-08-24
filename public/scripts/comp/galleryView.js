@@ -41,7 +41,7 @@ let selectedImages = new Set();
 let isSelectionMode = false;
 let lastSelectedGalleryIndex = null; // Track last selected index for range selection
 let infiniteScrollLoading = document.getElementById('infiniteScrollLoading');
-const galleryColumnsInput = document.getElementById('galleryColumnsInput');
+
 const galleryToggleGroup = document.getElementById('galleryToggleGroup');
 
 // Gallery view state
@@ -54,7 +54,7 @@ let gallerySortOrder = 'desc'; // 'desc' for newest first, 'asc' for oldest firs
 window.gallerySortOrder = gallerySortOrder;
 
 // Gallery layout variables
-let galleryColumns = parseInt(galleryColumnsInput?.value) || 5;
+let galleryColumns = parseInt(galleryToggleGroup?.dataset?.columns) || 5;
 let realGalleryColumns = galleryColumns;
 let galleryRows = 5;
 let debounceGalleryTimeout = null;
@@ -68,8 +68,19 @@ let pendingPlaceholderAdditions = {
 
 // Global images array (shared with main app)
 let allImages = [];
-// Make it globally accessible for pin status checking
-window.allImages = allImages;
+
+// Apply a provided image list to the gallery without fetching from server (used by search)
+window.applyFilteredImages = function(images) {
+	try {
+		allImages = Array.isArray(images) ? images : [];
+		resetInfiniteScroll();
+		sortGalleryData();
+		displayCurrentPageOptimized();
+		updateGalleryPlaceholders();
+	} catch (e) {
+		console.error('Error applying filtered images:', e);
+	}
+};
 
 // Switch between gallery views
 function switchGalleryView(view, force = false) {
@@ -80,6 +91,9 @@ function switchGalleryView(view, force = false) {
         console.log('🔄 Skipping gallery view switch during workspace transition');
         return;
     }
+    
+    // Don't switch gallery view if manual modal is open (unless forced)
+    if (manualModal.style.display !== 'none') return;
     
     currentGalleryView = view;
     // Update global variable for WebSocket event handlers
@@ -97,23 +111,19 @@ function switchGalleryView(view, force = false) {
     // Handle view-specific logic
     switch (view) {
         case 'scraps':
-            document.querySelector('.bokeh-background.current-bg')?.classList.add('scraps-grayscale');
-            document.querySelector('.bokeh')?.classList.add('scraps-grayscale');
+            document.body.classList.add('scraps-grayscale');
             loadScraps();
             break;
         case 'images':
-            document.querySelector('.bokeh')?.classList.remove('scraps-grayscale');
-            document.querySelectorAll('.bokeh-background').forEach(el => el.classList.remove('scraps-grayscale'));
+            document.body.classList.remove('scraps-grayscale');
             loadGallery();
             break;
         case 'pinned':
-            document.querySelector('.bokeh')?.classList.remove('scraps-grayscale');
-            document.querySelectorAll('.bokeh-background').forEach(el => el.classList.remove('scraps-grayscale'));
+            document.body.classList.remove('scraps-grayscale');
             loadPinned();
             break;
         case 'upscaled':
-            document.querySelector('.bokeh')?.classList.remove('scraps-grayscale');
-            document.querySelectorAll('.bokeh-background').forEach(el => el.classList.remove('scraps-grayscale'));
+            document.body.classList.remove('scraps-grayscale');
             loadUpscaled();
             break;
     }
@@ -127,7 +137,6 @@ async function loadScraps() {
             const scrapsImageData = await window.wsClient.requestGalleryView('scraps');
             // Update display
             allImages = scrapsImageData.gallery || scrapsImageData;
-            window.allImages = allImages;
             
             // Apply current sort order to the loaded data
             sortGalleryData();
@@ -140,9 +149,8 @@ async function loadScraps() {
     } catch (error) {
         console.error('Error loading scraps:', error);
         allImages = [];
-        window.allImages = allImages;
         resetInfiniteScroll();
-        displayCurrentPageOptimized();
+            displayCurrentPageOptimized();
     }
 }
 
@@ -154,7 +162,6 @@ async function loadPinned() {
             const pinnedImageData = await window.wsClient.requestGalleryView('pinned');
             // Update display
             allImages = pinnedImageData.gallery || pinnedImageData;
-            window.allImages = allImages;
             
             // Apply current sort order to the loaded data
             sortGalleryData();
@@ -167,9 +174,8 @@ async function loadPinned() {
     } catch (error) {
         console.error('Error loading pinned images:', error);
         allImages = [];
-        window.allImages = allImages;
         resetInfiniteScroll();
-        displayCurrentPageOptimized();
+            displayCurrentPageOptimized();
     }
 }
 
@@ -181,7 +187,6 @@ async function loadUpscaled() {
             const upscaledImageData = await window.wsClient.requestGalleryView('upscaled');
             // Update display
             allImages = upscaledImageData.gallery || upscaledImageData;
-            window.allImages = allImages;
             
             // Apply current sort order to the loaded data
             sortGalleryData();
@@ -194,9 +199,8 @@ async function loadUpscaled() {
     } catch (error) {
         console.error('Error loading upscaled images:', error);
         allImages = [];
-        window.allImages = allImages;
         resetInfiniteScroll();
-        displayCurrentPageOptimized();
+            displayCurrentPageOptimized();
     }
 }
 
@@ -210,21 +214,23 @@ async function loadGallery(addLatest) {
 
             // Check if images have actually changed to avoid unnecessary updates
             if (JSON.stringify(allImages) === JSON.stringify(galleryData)) {
-                return; // No changes, skip update
+                return;
             }
 
             allImages = galleryData;
-            window.allImages = allImages;
 
             // Apply current sort order to the loaded data
             sortGalleryData();
 
-            // Reset infinite scroll state and display initial batch
-            if (!addLatest) {
-                resetInfiniteScroll();
-                displayCurrentPageOptimized();
-            } else {
-                await addNewGalleryItemAfterGeneration(galleryData[0]);
+            // Only update gallery display if manual modal is not open
+            if (manualModal.style.display === 'none') {
+                // Reset infinite scroll state and display initial batch
+                if (!addLatest) {
+                    resetInfiniteScroll();
+                    displayCurrentPageOptimized();
+                } else {
+                    await addNewGalleryItemAfterGeneration(galleryData[0]);
+                }
             }
         } else {
             throw new Error('WebSocket not connected');
@@ -233,13 +239,19 @@ async function loadGallery(addLatest) {
         console.error('Error loading gallery:', error);
         // Don't throw error for gallery loading failure
         allImages = [];
-        window.allImages = allImages;
-        displayCurrentPageOptimized();
+        
+        // Only update gallery display if manual modal is not open
+        if (manualModal.style.display === 'none') {
+            displayCurrentPageOptimized();
+        }
     }
 }
 
 // Add a new gallery item after generation with fade-in and slide-in animations
 async function addNewGalleryItemAfterGeneration(newImage) {
+    // Don't add new gallery items if manual modal is open
+    if (manualModal.style.display !== 'none') return;
+    
     // Add placeholder with fade-in
     const placeholder = document.createElement('div');
     placeholder.className = 'gallery-placeholder fade-in';
@@ -300,7 +312,12 @@ function calculateGalleryRows() {
 function setGalleryColumns(cols) {
     galleryColumns = Math.max(3, Math.min(10, parseInt(cols) || 5));
     gallery.style.gridTemplateColumns = `repeat(${galleryColumns}, 1fr)`;
-    galleryColumnsInput.value = galleryColumns;
+    
+    // Update the gallery toggle group data attribute
+    const galleryToggleGroup = document.getElementById('galleryToggleGroup');
+    if (galleryToggleGroup) {
+        galleryToggleGroup.dataset.columns = galleryColumns;
+    }
 
     // Recalculate rows based on new column count
     galleryRows = calculateGalleryRows();
@@ -316,6 +333,10 @@ function setGalleryColumns(cols) {
 
 function updateGalleryPlaceholders() {
     if (!gallery) return;
+    
+    // Don't update gallery if manual modal is open
+    if (manualModal.style.display !== 'none') return;
+    
     // Remove old placeholders
     Array.from(gallery.querySelectorAll('.gallery-placeholder')).forEach(el => el.remove());
 
@@ -324,6 +345,9 @@ function updateGalleryPlaceholders() {
 }
 
 function updateGalleryItemToolbars() {
+    // Don't update gallery if manual modal is open
+    if (manualModal.style.display !== 'none') return;
+    
     const items = document.querySelectorAll('.gallery-item');
     let i = 0;
     function updateNext() {
@@ -362,6 +386,9 @@ function updateGalleryItemToolbars() {
 // Optimized display function for infinite scroll using document fragment
 function displayCurrentPageOptimized() {
     if (!gallery) return;
+    
+    // Don't update gallery if manual modal is open
+    if (manualModal.style.display !== 'none') return;
 
     // Clear gallery
     gallery.innerHTML = '';
@@ -492,9 +519,9 @@ function createGalleryItem(image, index) {
         }
     });
 
-    // Use preview image
+    // Use preview image - encode the preview name to handle spaces and special characters
     const img = document.createElement('img');
-    img.src = `/previews/${image.preview}`;
+    img.src = `/previews/${encodeURIComponent(image.preview)}`;
     img.alt = image.base;
     img.loading = 'lazy';
 
@@ -568,7 +595,7 @@ function createGalleryItem(image, index) {
     const rerollEditBtn = document.createElement('button');
     rerollEditBtn.type = 'button';
     rerollEditBtn.className = 'btn-secondary round-button';
-    rerollEditBtn.innerHTML = '<i class="nai-penwriting"></i>';
+    rerollEditBtn.innerHTML = '<i class="mdi mdi-1-25 mdi-text-box-edit-outline"></i>';
     rerollEditBtn.title = 'Reroll with Edit';
     rerollEditBtn.onclick = (e) => {
         e.stopPropagation();
@@ -601,14 +628,14 @@ function createGalleryItem(image, index) {
     // Set initial pin button state from WebSocket data if available
     if (image.isPinned !== undefined) {
         if (image.isPinned) {
-            pinBtn.innerHTML = '<i class="nai-heart-enabled"></i>';
+            pinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
             pinBtn.title = 'Unpin image';
         } else {
-            pinBtn.innerHTML = '<i class="nai-heart-disabled"></i>';
+            pinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
             pinBtn.title = 'Pin image';
         }
     } else {
-        pinBtn.innerHTML = '<i class="nai-heart-disabled"></i>';
+        pinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
         pinBtn.title = 'Pin/Unpin image';
         // Update pin button appearance based on pin status (fallback to API)
         updatePinButtonAppearance(pinBtn, filename);
@@ -678,6 +705,9 @@ function reindexGallery() {
 }
 
 function scheduleDeferredPlaceholderAddition(direction) {
+    // Don't schedule placeholder additions if manual modal is open
+    if (manualModal.style.display !== 'none') return;
+    
     pendingPlaceholderAdditions[direction] = true;
     
     if (deferredPlaceholderTimeout) {
@@ -698,6 +728,9 @@ function scheduleDeferredPlaceholderAddition(direction) {
 
 function addPlaceholdersAbove() {
     if (!gallery || isLoadingMore) return;
+    
+    // Don't add placeholders if manual modal is open
+    if (manualModal.style.display !== 'none') return;
     
     const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
     const bufferRows = 8;
@@ -743,6 +776,9 @@ function addPlaceholdersAbove() {
 function addPlaceholdersBelow() {
     if (!gallery || isLoadingMore) return;
     
+    // Don't add placeholders if manual modal is open
+    if (manualModal.style.display !== 'none') return;
+    
     const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
     const bufferRows = 8;
     const itemsPerRow = realGalleryColumns;
@@ -787,6 +823,9 @@ function addPlaceholdersBelow() {
 // Improved infinite scroll handler with percentage-based triggers
 function handleInfiniteScroll() {
     if (isLoadingMore) return;
+    
+    // Don't handle infinite scroll if manual modal is open
+    if (manualModal.style.display !== 'none') return;
 
     const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
     const windowHeight = window.innerHeight;
@@ -839,6 +878,9 @@ function handleInfiniteScroll() {
 // Load more images for infinite scroll (scroll down) with dynamic batch sizing
 async function loadMoreImages() {
     if (isLoadingMore || !hasMoreImages) return;
+    
+    // Don't load more images if manual modal is open
+    if (manualModal.style.display !== 'none') return;
     isLoadingMore = true;
     if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'flex';
     
@@ -881,6 +923,9 @@ async function loadMoreImages() {
 // Load more images before for infinite scroll (scroll up) with dynamic batch sizing
 async function loadMoreImagesBefore() {
     if (isLoadingMore || !hasMoreImagesBefore) return;
+    
+    // Don't load more images if manual modal is open
+    if (manualModal.style.display !== 'none') return;
     isLoadingMore = true;
     if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'flex';
     
@@ -988,6 +1033,9 @@ function calculateTrueItemsPerRow() {
 }
 // Update gallery columns based on true layout
 function updateGalleryColumnsFromLayout() {
+    // Don't update gallery if manual modal is open
+    if (manualModal.style.display !== 'none') return;
+    
     const trueColumns = calculateTrueItemsPerRow();
     if (trueColumns !== realGalleryColumns) {
         realGalleryColumns = trueColumns;
@@ -1020,6 +1068,9 @@ function updateVisibleItems() {
 // Virtual scroll: replace far-away items with placeholders
 function updateVirtualScroll() {
     if (!gallery) return;
+    
+    // Don't update virtual scroll if manual modal is open
+    if (manualModal.style.display !== 'none') return;
 
     // First, update visible items tracking
     updateVisibleItems();
@@ -1243,6 +1294,9 @@ function updateVirtualScroll() {
 
 // Remove image from gallery and add placeholder at the end
 function removeImageFromGallery(image) {
+    // Don't update gallery if manual modal is open
+    if (manualModal.style.display !== 'none') return;
+    
     try {
         const filename = image.filename || image.original || image.upscaled;
         if (!filename) {
@@ -1347,6 +1401,9 @@ function removeImageFromGallery(image) {
 
 // Remove multiple images from gallery and add placeholders at the end
 function removeMultipleImagesFromGallery(images) {
+    // Don't update gallery if manual modal is open
+    if (manualModal.style.display !== 'none') return;
+    
     try {
         if (!Array.isArray(images) || images.length === 0) {
             console.warn('No images provided for bulk removal');
@@ -1613,10 +1670,10 @@ function toggleGallerySortOrder() {
         const icon = sortOrderBtn.querySelector('i');
         if (icon) {
             if (gallerySortOrder === 'desc') {
-                icon.className = 'fas fa-sort-amount-down';
+                icon.className = 'fa-light fa-sort-amount-down';
                 sortOrderBtn.title = 'Sort Order: Newest First';
             } else {
-                icon.className = 'fas fa-sort-amount-up';
+                icon.className = 'fa-light fa-sort-amount-up';
                 sortOrderBtn.title = 'Sort Order: Oldest First';
             }
         }
@@ -1644,9 +1701,56 @@ function sortGalleryData() {
             return timeA - timeB; // Oldest first
         }
     });
+}
+
+// Display gallery starting from a specific index
+function displayGalleryFromStartIndex(startIndex) {
+    if (!gallery) return;
     
-    // Update the global reference
-    window.allImages = allImages;
+    // Clear gallery
+    gallery.innerHTML = '';
+
+    // If no images, show empty state
+    if (allImages.length === 0) {
+        return;
+    }
+
+    // Calculate how many items to display
+    const itemHeight = 256;
+    const itemsPerCol = Math.floor(window.innerHeight / itemHeight);
+    const buffer = Math.ceil(itemsPerCol * 0.15);
+    const totalItems = Math.min((itemsPerCol + buffer) * realGalleryColumns, allImages.length - startIndex);
+    
+    const endIndex = Math.min(startIndex + totalItems, allImages.length);
+
+    const fragment = document.createDocumentFragment();
+    for (let i = startIndex; i < endIndex; i++) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'gallery-placeholder initial-placeholder';
+        placeholder.style.height = '256px';
+        placeholder.style.width = '100%';
+        placeholder.dataset.index = i;
+        placeholder.dataset.filename = allImages[i]?.filename || allImages[i]?.original || allImages[i]?.upscaled || '';
+        placeholder.dataset.time = allImages[i]?.mtime || 0;
+        fragment.appendChild(placeholder);
+    }
+    gallery.appendChild(fragment);
+
+    // Fade in placeholders one by one
+    const placeholders = gallery.querySelectorAll('.gallery-placeholder.initial-placeholder');
+    placeholders.forEach((el, idx) => {
+        setTimeout(() => {
+            el.classList.add('fade-in');
+            el.addEventListener('animationend', function handler() {
+                el.classList.remove('fade-in');
+                el.removeEventListener('animationend', handler);
+            });
+        }, idx * 60);
+    });
+
+    updateVirtualScroll();
+    updateGalleryItemToolbars();
+    updateGalleryPlaceholders();
 }
 
 // Function to trigger gallery move modal with selected images
@@ -1669,3 +1773,10 @@ function triggerGalleryMoveWithSelection() {
         showGalleryMoveModal(null);
     }
 }
+
+// Make necessary functions and variables globally accessible for app.js
+window.loadGallery = loadGallery;
+window.resetInfiniteScroll = resetInfiniteScroll;
+window.displayCurrentPageOptimized = displayCurrentPageOptimized;
+window.displayGalleryFromStartIndex = displayGalleryFromStartIndex;
+window.realGalleryColumns = realGalleryColumns;

@@ -1,18 +1,35 @@
 // workspaceUtils.js
 // Workspace management utilities for StaticForge frontend
+//
+// OPTIMIZATION NOTES:
+// - Uses WebSocket response data to update local state instead of blind reloads
+// - Only regenerates workspace styles when necessary (first load or specific updates)
+// - Selective UI updates based on what's currently visible
+// - Efficient single-workspace style updates for color/background changes
+// - Prevents unnecessary gallery/cache refreshes when components aren't visible
+// - Maintains local state consistency with WebSocket events
+// - Uses response.success flags to ensure operations completed before updating UI
+//
+// WORKSPACE STYLE OPTIMIZATION STRATEGY:
+// - generateAllWorkspaceStyles(): Only called on first load or when workspace data actually changes
+// - generateWorkspaceStyles(workspaceId): Used for single workspace updates (color, background changes)
+// - loadWorkspaces(): Only regenerates styles when workspace data has changed (not on every call)
+// - switchWorkspaceTheme(): Applies existing styles without regenerating them
+// - WebSocket events: Use single workspace updates when possible, avoid full reloads
 
 // Workspace state
-let workspaceTabs = document.getElementById('workspaceTabs');
 let workspaces = {};
 let activeWorkspace = 'default';
 let currentWorkspaceOperation = null;
-let activeWorkspaceColor = '#124'; // Default color
-let activeWorkspaceBackgroundColor = null; // Can be null for auto-generation
-let activeWorkspaceBackgroundImage = null; // Can be null for no background image
-let activeWorkspaceBackgroundOpacity = 0.3; // Default opacity
-let selectedBackgroundImage = null;
 let isWorkspaceSwitching = false; // Flag to prevent duplicate calls during workspace switching
 let workspaceStyleElement = null; // Global style element for all workspace styles
+
+// Automatic background system
+let automaticBackgroundInterval = null;
+let currentBackgroundImage = null;
+let nextBackgroundImage = null;
+let backgroundTransitionInProgress = false;
+
 // Fonts available for selection (match loaded @font-face names in fonts.css)
 const AVAILABLE_PRIMARY_FONTS = [
     { value: '', label: 'Default', fontFamily: "var(--font-primary)" },
@@ -100,8 +117,56 @@ html.disable-blur [data-workspace="${workspaceId}"] {
         // Add to style element
         workspaceStyleElement.textContent += workspaceCSS;
     });
+}
 
-    console.log('🎨 Generated styles for', Object.keys(workspaces).length, 'workspaces');
+// Generate styles for a specific workspace only (more efficient for single updates)
+function generateWorkspaceStyles(workspaceId) {
+    const workspace = workspaces[workspaceId];
+    if (!workspace) return;
+
+    // Ensure style element exists
+    if (!workspaceStyleElement) {
+        workspaceStyleElement = document.createElement('style');
+        workspaceStyleElement.id = 'workspace-styles';
+        document.head.appendChild(workspaceStyleElement);
+    }
+
+    const workspaceColor = workspace.color || '#124';
+    const workspaceBackgroundColor = workspace.backgroundColor || '#0a1a2a';
+    
+    // Resolve fonts: inherit from default workspace if not set
+    const defaultWorkspace = workspaces['default'];
+    const resolvedPrimaryFont =
+        (workspace.primaryFont && workspace.primaryFont.trim())
+            ? workspace.primaryFont
+            : (workspaceId !== 'default' && defaultWorkspace && defaultWorkspace.primaryFont) ? defaultWorkspace.primaryFont : '';
+    const resolvedTextareaFont =
+        (workspace.textareaFont && workspace.textareaFont.trim())
+            ? workspace.textareaFont
+            : (workspaceId !== 'default' && defaultWorkspace && defaultWorkspace.textareaFont) ? defaultWorkspace.textareaFont : '';
+    
+    // Generate CSS variables for this workspace
+    const cssVariables = generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor, resolvedPrimaryFont, resolvedTextareaFont, false);
+    const cssVariablesDark = generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor, resolvedPrimaryFont, resolvedTextareaFont, true);
+    
+    // Create CSS rule for this workspace
+    const workspaceCSS = `
+[data-workspace="${workspaceId}"] {
+    ${cssVariables}
+}
+
+html.disable-blur [data-workspace="${workspaceId}"] {
+    ${cssVariablesDark}
+}
+        `;
+    
+    // Remove existing styles for this workspace if they exist
+    const existingStyle = workspaceStyleElement.textContent;
+    const workspaceRegex = new RegExp(`\\[data-workspace="${workspaceId}"\\][\\s\\S]*?\\}\\s*\\}\\s*`, 'g');
+    const updatedStyle = existingStyle.replace(workspaceRegex, '');
+    
+    // Add new styles
+    workspaceStyleElement.textContent = updatedStyle + workspaceCSS;
 }
 
 // Generate CSS variables for a specific workspace
@@ -126,24 +191,21 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
     const ROUND_SECONDARY_LIGHTNESS = 3; // Round secondary button lightness
     const ROUND_SECONDARY_SATURATION = 85; // Round secondary button saturation   
     
-    // Convert workspace color to RGB for transparency
-    const r = parseInt(workspaceColor.slice(1, 3), 16);
-    const g = parseInt(workspaceColor.slice(3, 5), 16);
-    const b = parseInt(workspaceColor.slice(5, 7), 16);
-    
+    // Convert workspace color to HSL for direct manipulation
     const workspaceHsl = hexToHsl(workspaceColor);
+    const workspaceBackgroundHsl = hexToHsl(workspaceBackgroundColor);
 
     // Generate all CSS variables
     const variables = [
-        `--primary-color: ${workspaceColor};`,
-        `--primary-color-light: ${hslToHex(workspaceHsl.h, Math.min(100, workspaceHsl.s + 5), Math.min(100, workspaceHsl.l + 15))};`,
-        `--primary-color-dark: ${hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 10), Math.max(0, workspaceHsl.l - 15))};`,
-        `--primary-gradient: linear-gradient(45deg, ${workspaceColor}, ${hslToHex(workspaceHsl.h, Math.min(100, workspaceHsl.s + 5), Math.min(100, workspaceHsl.l + 15))});`,
-        `--primary-glass-color: ${hslToHex(workspaceHsl.h, 100, 35)}b8;`,
-        `--primary-glass-border: ${hslToHex(workspaceHsl.h, 100, 50)}94;`,
-        `--border-primary: ${workspaceColor};`,
-        `--text-accent: ${workspaceColor};`,
-        `--shadow-primary: rgba(${r}, ${g}, ${b}, 0.3);`
+        `--primary-color: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}%);`,
+        `--primary-color-light: hsl(${workspaceHsl.h} ${Math.min(100, workspaceHsl.s + 5)}% ${Math.min(100, workspaceHsl.l + 15)}%);`,
+        `--primary-color-dark: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 10)}% ${Math.max(0, workspaceHsl.l - 15)}%);`,
+        `--primary-gradient: linear-gradient(45deg, hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}%), hsl(${workspaceHsl.h} ${Math.min(100, workspaceHsl.s + 5)}% ${Math.min(100, workspaceHsl.l + 15)}%));`,
+        `--primary-glass-color: hsl(${workspaceHsl.h} 100% 35% / 72%);`,
+        `--primary-glass-border: hsl(${workspaceHsl.h} 100% 50% / 58%);`,
+        `--border-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}%);`,
+        `--text-accent: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}%);`,
+        `--shadow-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 30%);`
     ];
 
     // Fonts: if provided, set per-workspace font variables used by styles.css
@@ -155,149 +217,110 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
     }
 
     // Set button hover and shadow colors with workspace theming
-    const brightenedColor = brightenColor(workspaceColor, 1.3); // 30% brighter
-    const brightenedRgb = hexToRgb(brightenedColor);
+    const brightenedHsl = {
+        h: workspaceHsl.h,
+        s: workspaceHsl.s,
+        l: Math.min(100, workspaceHsl.l * 1.3) // 30% brighter
+    };
     
     variables.push(
-        `--btn-hover-bg-primary: rgba(${brightenedRgb.r}, ${brightenedRgb.g}, ${brightenedRgb.b}, 0.84);`,
-        `--btn-hover-border-primary: ${brightenedColor}cc;`,
+        `--btn-hover-bg-primary: radial-gradient(hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 38%), hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 84%));`,
+        `--btn-hover-border-primary: hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 80%);`,
         `--btn-hover-text-primary: #ffffff;`,
-        `--btn-shadow-primary: rgba(${r}, ${g}, ${b}, 0.89);`,
-        `--btn-shadow-primary-glow: 0 2px 16px rgba(${r}, ${g}, ${b}, 0.89);`
+        `--btn-shadow-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 89%);`,
+        `--btn-shadow-primary-glow: 0 2px 16px hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 89%);`
     );
 
     // Set secondary button hover using workspace background color
-    const bgRgb = hexToRgb(workspaceBackgroundColor);
-    const bgTintedR = Math.round(255 * 0.95 + bgRgb.r * 0.05);
-    const bgTintedG = Math.round(255 * 0.95 + bgRgb.g * 0.05);
-    const bgTintedB = Math.round(255 * 0.95 + bgRgb.b * 0.05);
+    const bgTintedHsl = {
+        h: workspaceBackgroundHsl.h,
+        s: Math.max(0, workspaceBackgroundHsl.s * 0.05), // Much reduced saturation
+        l: Math.min(100, 95 + workspaceBackgroundHsl.l * 0.05) // Very light
+    };
     
     variables.push(
-        `--btn-hover-bg-secondary: rgba(${bgTintedR}, ${bgTintedG}, ${bgTintedB}, 0.8);`,
-        `--btn-shadow-secondary-glow: 0 8px 20px rgba(${bgTintedR}, ${bgTintedG}, ${bgTintedB}, 0.33);`
+        `--btn-hover-bg-secondary: radial-gradient(hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 45%), hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 65%));`,
+        `--btn-shadow-secondary-glow: 0 8px 20px hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 33%);`
     );
 
     // Set hover-show active colors using workspace color with original saturation and lightness
     const originalSaturation = 86; // Original orange saturation
     const originalLightness = 43;   // Original orange lightness
     
-    const adjustedColor = hslToHex(workspaceHsl.h, originalSaturation, originalLightness);
-    const adjustedRgb = hexToRgb(adjustedColor);
-    
     variables.push(
-        `--hover-show-active-bg: rgba(${adjustedRgb.r}, ${adjustedRgb.g}, ${adjustedRgb.b}, 0.66);`,
-        `--hover-show-active-border: rgba(${adjustedRgb.r}, ${adjustedRgb.g}, ${adjustedRgb.b}, 0.2);`,
-        `--hover-show-active-shadow: 0 8px 20px rgba(${adjustedRgb.r}, ${adjustedRgb.g}, ${adjustedRgb.b}, 0.55);`
+        `--hover-show-active-bg: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 66%);`,
+        `--hover-show-active-border: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 20%);`,
+        `--hover-show-active-shadow: 0 8px 20px hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 55%);`
     );
 
     // Set dropdown hover and selected colors using workspace background color
-    const dropdownBgRgb = hexToRgb(workspaceBackgroundColor);
     variables.push(
-        `--dropdown-hover-bg: rgba(${dropdownBgRgb.r}, ${dropdownBgRgb.g}, ${dropdownBgRgb.b}, 0.5);`,
-        `--dropdown-selected-bg: rgba(${dropdownBgRgb.r}, ${dropdownBgRgb.g}, ${dropdownBgRgb.b}, 0.903);`,
-        `--dropdown-keyboard-selected-bg: rgba(${r}, ${g}, ${b}, 0.8);`,
-        `--dropdown-keyboard-selected-border: ${workspaceColor};`
+        `--dropdown-hover-bg: hsl(${workspaceBackgroundHsl.h} ${workspaceBackgroundHsl.s}% ${workspaceBackgroundHsl.l}% / 50%);`,
+        `--dropdown-selected-bg: hsl(${workspaceBackgroundHsl.h} ${workspaceBackgroundHsl.s}% ${workspaceBackgroundHsl.l}% / 90.3%);`,
+        `--dropdown-keyboard-selected-bg: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 80%);`,
+        `--dropdown-keyboard-selected-border: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}%);`
     );
 
     // Set badge colors using workspace background color
-    const badgeBgRgb = hexToRgb(adjustedColor);
     variables.push(
-        `--badge-bg: rgba(${badgeBgRgb.r}, ${badgeBgRgb.g}, ${badgeBgRgb.b}, 0.8);`,
+        `--badge-bg: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 80%);`,
         `--badge-text: #ffffff;`,
-        `--badge-shadow: 0 1px 3px rgba(${badgeBgRgb.r}, ${badgeBgRgb.g}, ${badgeBgRgb.b}, 0.3);`
+        `--badge-shadow: 0 1px 3px hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 30%);`
     );
 
     // Set custom dropdown badge colors using workspace background color with darker values
-    const badgeBgHsl = hexToHsl(workspaceColor);
-    
-    const badgeColor1 = hslToHex(badgeBgHsl.h, badgeBgHsl.s, BADGE_LIGHTNESS_1);
-    const badgeColor2 = hslToHex(badgeBgHsl.h, badgeBgHsl.s, BADGE_LIGHTNESS_2);
-    
     variables.push(
-        `--custom-dropdown-badge-bg: linear-gradient(45deg, ${badgeColor1}, ${badgeColor2});`,
+        `--custom-dropdown-badge-bg: linear-gradient(45deg, hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${BADGE_LIGHTNESS_1}%), hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${BADGE_LIGHTNESS_2}%));`,
         `--custom-dropdown-badge-text: #ffffff;`
     );
 
     // Set hover-show colored text using workspace color with consistent lightness
-    const coloredTextHsl = hexToHsl(workspaceColor);
-    const coloredTextColor = hslToHex(coloredTextHsl.h, 100, HOVER_SHOW_COLORED_LIGHTNESS);
-    
-    variables.push(`--hover-show-colored-text: ${coloredTextColor};`);
+    variables.push(`--hover-show-colored-text: hsl(${workspaceHsl.h} 100% ${HOVER_SHOW_COLORED_LIGHTNESS}%);`);
     
     // Set toggle button colors using workspace color with consistent lightness
-    const toggleHsl = hexToHsl(workspaceColor);
-    const toggleOnColor = hslToHex(toggleHsl.h, TOGGLE_ON_SATURATION, TOGGLE_ON_LIGHTNESS);
-    const toggleOnHoverColor = hslToHex(toggleHsl.h, TOGGLE_ON_HOVER_SATURATION, TOGGLE_ON_HOVER_LIGHTNESS);
-    
     variables.push(
-        `--toggle-on-bg: ${toggleOnColor};`,
-        `--toggle-on-hover-bg: ${toggleOnHoverColor};`
+        `--toggle-on-bg: hsl(${workspaceHsl.h} ${TOGGLE_ON_SATURATION}% ${TOGGLE_ON_LIGHTNESS}%);`,
+        `--toggle-on-hover-bg: hsl(${workspaceHsl.h} ${TOGGLE_ON_HOVER_SATURATION}% ${TOGGLE_ON_HOVER_LIGHTNESS}%);`
     );
     
     // Set toggle button shadow colors maintaining original hue offset and lightness differences
-    const toggleShadowColor1 = hslToHex(toggleHsl.h, TOGGLE_SHADOW_SATURATION, TOGGLE_SHADOW_LIGHTNESS);
-    const toggleShadowColor2 = hslToHex(toggleHsl.h, Math.max(0, TOGGLE_SHADOW_SATURATION - 20), Math.min(100, TOGGLE_SHADOW_LIGHTNESS + 15));
-    
-    const toggleShadow1Rgb = hexToRgb(toggleShadowColor1);
-    const toggleShadow2Rgb = hexToRgb(toggleShadowColor2);
-    
     variables.push(
-        `--toggle-shadow-color-58: rgba(${toggleShadow1Rgb.r}, ${toggleShadow1Rgb.g}, ${toggleShadow1Rgb.b}, 0.58);`,
-        `--toggle-shadow-color-19: rgba(${toggleShadow2Rgb.r}, ${toggleShadow2Rgb.g}, ${toggleShadow2Rgb.b}, 0.19);`
+        `--toggle-shadow-color-58: hsl(${workspaceHsl.h} ${TOGGLE_SHADOW_SATURATION}% ${TOGGLE_SHADOW_LIGHTNESS}% / 58%);`,
+        `--toggle-shadow-color-19: hsl(${workspaceHsl.h} ${Math.max(0, TOGGLE_SHADOW_SATURATION - 20)}% ${Math.min(100, TOGGLE_SHADOW_LIGHTNESS + 15)}% / 19%);`
     );
     
     // Set round button secondary background with dark tint
-    const roundSecondaryColor = hslToHex(toggleHsl.h, ROUND_SECONDARY_SATURATION, ROUND_SECONDARY_LIGHTNESS);
-    variables.push(`--round-secondary-bg: ${roundSecondaryColor};`);
+    variables.push(`--round-secondary-bg: hsl(${workspaceHsl.h} ${ROUND_SECONDARY_SATURATION}% ${ROUND_SECONDARY_LIGHTNESS}%);`);
 
-    // Convert workspace background color to HSL and create glass tint
-    const glassBgHsl = hexToHsl(workspaceBackgroundColor);
-    const glassTintH = glassBgHsl.h;
+    // Create glass tint using workspace background HSL
+    const glassTintH = workspaceBackgroundHsl.h;
     const glassTintS = GLASS_TINT_SATURATION;
-    const glassTintL = Math.max(GLASS_TINT_MIN_LIGHTNESS, glassBgHsl.l * GLASS_TINT_LIGHTNESS_FACTOR);
-    
-    const glassTintRgb = hslToHex(glassTintH, glassTintS, glassTintL);
-    const glassTintR = parseInt(glassTintRgb.slice(1, 3), 16);
-    const glassTintG = parseInt(glassTintRgb.slice(3, 5), 16);
-    const glassTintB = parseInt(glassTintRgb.slice(5, 7), 16);
+    const glassTintL = Math.max(GLASS_TINT_MIN_LIGHTNESS, workspaceBackgroundHsl.l * GLASS_TINT_LIGHTNESS_FACTOR);
     
     // Match the exact transparency levels from the CSS file for all glass layers
     if (isBlurDisabled) {
         // For blur-disabled mode, use higher opacity for better readability while keeping darker colors for contrast
-        const glassTintLightH = glassBgHsl.h;
-        const glassTintLightS = Math.max(0, glassBgHsl.s - 40); // Less reduction in saturation
-        const glassTintLightL = Math.max(GLASS_TINT_MIN_LIGHTNESS, glassBgHsl.l * 0.15); // Lower lightness for better contrast
-        
-        const glassTintLightRgb = hslToHex(glassTintLightH, glassTintLightS, glassTintLightL);
-        const glassTintLightR = parseInt(glassTintLightRgb.slice(1, 3), 16);
-        const glassTintLightG = parseInt(glassTintLightRgb.slice(3, 5), 16);
-        const glassTintLightB = parseInt(glassTintLightRgb.slice(5, 7), 16);
+        const glassTintLightH = workspaceBackgroundHsl.h;
+        const glassTintLightS = Math.max(0, workspaceBackgroundHsl.s - 40); // Less reduction in saturation
+        const glassTintLightL = Math.max(GLASS_TINT_MIN_LIGHTNESS, workspaceBackgroundHsl.l * 0.15); // Lower lightness for better contrast
 
-        const glassTintLightRgb2 = hslToHex(glassTintLightH, 25, 20);
-        const glassTintLightR2 = parseInt(glassTintLightRgb2.slice(1, 3), 16);
-        const glassTintLightG2 = parseInt(glassTintLightRgb2.slice(3, 5), 16);
-        const glassTintLightB2 = parseInt(glassTintLightRgb2.slice(5, 7), 16);
-
-        const mutedColor = hexToHsl(workspaceColor);
-        const mutedColorHex = hslToHex(mutedColor.h, 25, 60);
-        
         variables.push(
-            `--text-muted: ${mutedColorHex};`,
-            `--glass-layer-dark-5: rgb(${glassTintLightR} ${glassTintLightG} ${glassTintLightB} / 97%);`,
-            `--glass-layer-dark-4: rgb(${glassTintLightR} ${glassTintLightG} ${glassTintLightB} / 95%);`,
-            `--glass-layer-dark-3: rgb(${glassTintLightR} ${glassTintLightG} ${glassTintLightB} / 90%);`,
-            `--glass-layer-dark-2: rgb(${glassTintLightR} ${glassTintLightG} ${glassTintLightB} / 85%);`,
-            `--glass-layer-dark-1: rgb(${glassTintLightR} ${glassTintLightG} ${glassTintLightB} / 80%);`,
-            `--glass-windows-bg:   rgba(${glassTintLightR2} ${glassTintLightG2} ${glassTintLightB2} / 0.94);`
+            `--text-muted: hsl(${workspaceHsl.h} 25% 60%);`,
+            `--glass-layer-dark-5: hsl(${glassTintLightH} ${glassTintLightS}% ${glassTintLightL}% / 97%);`,
+            `--glass-layer-dark-4: hsl(${glassTintLightH} ${glassTintLightS}% ${glassTintLightL}% / 95%);`,
+            `--glass-layer-dark-3: hsl(${glassTintLightH} ${glassTintLightS}% ${glassTintLightL}% / 90%);`,
+            `--glass-layer-dark-2: hsl(${glassTintLightH} ${glassTintLightS}% ${glassTintLightL}% / 85%);`,
+            `--glass-layer-dark-1: hsl(${glassTintLightH} ${glassTintLightS}% ${glassTintLightL}% / 80%);`,
+            `--glass-windows-bg: hsl(${glassTintLightH} 25% 20% / 94%);`
         );
     } else {
         // Original glass tint generation
         variables.push(
-            `--glass-layer-dark-5: rgb(${glassTintR} ${glassTintG} ${glassTintB} / 66%);`,
-            `--glass-layer-dark-4: rgb(${glassTintR} ${glassTintG} ${glassTintB} / 44%);`,
-            `--glass-layer-dark-3: rgb(${glassTintR} ${glassTintG} ${glassTintB} / 33%);`,
-            `--glass-layer-dark-2: rgb(${glassTintR} ${glassTintG} ${glassTintB} / 22%);`,
-            `--glass-layer-dark-1: rgb(${glassTintR} ${glassTintG} ${glassTintB} / 13%);`
+            `--glass-layer-dark-5: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 66%);`,
+            `--glass-layer-dark-4: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 44%);`,
+            `--glass-layer-dark-3: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 33%);`,
+            `--glass-layer-dark-2: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 22%);`,
+            `--glass-layer-dark-1: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 13%);`
         );
     }
 
@@ -314,113 +337,71 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
     // When blur is disabled, use higher opacity for better readability while keeping darker colors for contrast
     if (isBlurDisabled) {
         // For accessibility with white text, use higher opacity and darker, more neutral colors
-        // Also generate fully opaque versions for all 5, considering the source color and original opacity
-
-        const glassLayer1 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 75), 40);
-        const glassLayer2 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 65), 45);
-        const glassLayer3 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 60), 50);
-        const glassLayer4 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 55), 55);
-        const glassLayer5 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 50), 70);
-        const glassLayerOverlay = hslToHex(workspaceHsl.h, 20, 75);
-
-        const glassLayer1Rgb = hexToRgb(glassLayer1);
-        const glassLayer2Rgb = hexToRgb(glassLayer2);
-        const glassLayer3Rgb = hexToRgb(glassLayer3);
-        const glassLayer4Rgb = hexToRgb(glassLayer4);
-        const glassLayer5Rgb = hexToRgb(glassLayer5);
-        const glassLayerOverlayRgb = hexToRgb(glassLayerOverlay);
-
-        // Opacities for each glass layer
-        const glassLayerOpacities = [0.15, 0.325, 0.35, 0.45, 0.5];
-
-        // Source color (workspace color) in RGB
-        const workspaceRgb = hexToRgb(workspaceColor);
-
-        // Generate fully opaque versions by blending the glass color over the workspace color using the original opacity
-        const glassLayer1Opaque = blendColors(glassLayer1Rgb, workspaceRgb, glassLayerOpacities[0]);
-        const glassLayer2Opaque = blendColors(glassLayer2Rgb, workspaceRgb, glassLayerOpacities[1]);
-        const glassLayer3Opaque = blendColors(glassLayer3Rgb, workspaceRgb, glassLayerOpacities[2]);
-        const glassLayer4Opaque = blendColors(glassLayer4Rgb, workspaceRgb, glassLayerOpacities[3]);
-        const glassLayer5Opaque = blendColors(glassLayer5Rgb, workspaceRgb, glassLayerOpacities[4]);
+        // Glass layer HSL values
+        const glassLayer1H = workspaceHsl.h;
+        const glassLayer2H = workspaceHsl.h;
+        const glassLayer3H = workspaceHsl.h;
+        const glassLayer4H = workspaceHsl.h;
+        const glassLayer5H = workspaceHsl.h;
+        
+        const glassLayer1S = Math.max(0, workspaceHsl.s - 75);
+        const glassLayer2S = Math.max(0, workspaceHsl.s - 65);
+        const glassLayer3S = Math.max(0, workspaceHsl.s - 60);
+        const glassLayer4S = Math.max(0, workspaceHsl.s - 55);
+        const glassLayer5S = Math.max(0, workspaceHsl.s - 50);
 
         variables.push(
-            `--glass-layer-1: rgba(${glassLayer1Rgb.r}, ${glassLayer1Rgb.g}, ${glassLayer1Rgb.b}, 0.15);`,
-            `--glass-layer-2: rgba(${glassLayer2Rgb.r}, ${glassLayer2Rgb.g}, ${glassLayer2Rgb.b}, 0.325);`,
-            `--glass-layer-3: rgba(${glassLayer3Rgb.r}, ${glassLayer3Rgb.g}, ${glassLayer3Rgb.b}, 0.35);`,
-            `--glass-layer-4: rgba(${glassLayer4Rgb.r}, ${glassLayer4Rgb.g}, ${glassLayer4Rgb.b}, 0.45);`,
-            `--glass-layer-5: rgba(${glassLayer5Rgb.r}, ${glassLayer5Rgb.g}, ${glassLayer5Rgb.b}, 0.5);`,
-            `--glass-overlay-bg: rgba(${glassLayerOverlayRgb.r}, ${glassLayerOverlayRgb.g}, ${glassLayerOverlayRgb.b}, 0.95);`,
+            `--glass-layer-1: hsl(${glassLayer1H} ${glassLayer1S}% 40% / 15%);`,
+            `--glass-layer-2: hsl(${glassLayer2H} ${glassLayer2S}% 45% / 32.5%);`,
+            `--glass-layer-3: hsl(${glassLayer3H} ${glassLayer3S}% 50% / 35%);`,
+            `--glass-layer-4: hsl(${glassLayer4H} ${glassLayer4S}% 55% / 45%);`,
+            `--glass-layer-5: hsl(${glassLayer5H} ${glassLayer5S}% 70% / 50%);`,
+            `--glass-overlay-bg: hsl(${workspaceHsl.h} 20% 75% / 95%);`,
 
-            // Fully opaque versions, blended with the workspace color
-            `--glass-layer-1-opaque: rgb(${glassLayer1Opaque.r}, ${glassLayer1Opaque.g}, ${glassLayer1Opaque.b});`,
-            `--glass-layer-2-opaque: rgb(${glassLayer2Opaque.r}, ${glassLayer2Opaque.g}, ${glassLayer2Opaque.b});`,
-            `--glass-layer-3-opaque: rgb(${glassLayer3Opaque.r}, ${glassLayer3Opaque.g}, ${glassLayer3Opaque.b});`,
-            `--glass-layer-4-opaque: rgb(${glassLayer4Opaque.r}, ${glassLayer4Opaque.g}, ${glassLayer4Opaque.b});`,
-            `--glass-layer-5-opaque: rgb(${glassLayer5Opaque.r}, ${glassLayer5Opaque.g}, ${glassLayer5Opaque.b});`
+            // Fully opaque versions - for blur disabled, we use simpler direct HSL
+            `--glass-layer-1-opaque: hsl(${glassLayer1H} ${glassLayer1S}% 40%);`,
+            `--glass-layer-2-opaque: hsl(${glassLayer2H} ${glassLayer2S}% 45%);`,
+            `--glass-layer-3-opaque: hsl(${glassLayer3H} ${glassLayer3S}% 50%);`,
+            `--glass-layer-4-opaque: hsl(${glassLayer4H} ${glassLayer4S}% 55%);`,
+            `--glass-layer-5-opaque: hsl(${glassLayer5H} ${glassLayer5S}% 70%);`
         );
         
-        const glassLayerDark1 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 95), 25);
-        const glassLayerDark2 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 85), 20);
-        const glassLayerDark3 = hslToHex(workspaceHsl.h, 40, 15);
-        const glassLayerDark4 = hslToHex(workspaceHsl.h, 50, 10);
-        const glassLayerDark5 = hslToHex(workspaceHsl.h, 60, 5);
-        
-        const glassLayerDark1Rgb = hexToRgb(glassLayerDark1);
-        const glassLayerDark2Rgb = hexToRgb(glassLayerDark2);
-        const glassLayerDark3Rgb = hexToRgb(glassLayerDark3);
-        const glassLayerDark4Rgb = hexToRgb(glassLayerDark4);
-        const glassLayerDark5Rgb = hexToRgb(glassLayerDark5);
-
         // Generate more opaque glass layer variants
         variables.push(
-            `--glass-layer-alt-1: rgba(${glassLayerDark1Rgb.r}, ${glassLayerDark1Rgb.g}, ${glassLayerDark1Rgb.b}, 0.8);`,
-            `--glass-layer-alt-2: rgba(${glassLayerDark2Rgb.r}, ${glassLayerDark2Rgb.g}, ${glassLayerDark2Rgb.b}, 0.85);`,
-            `--glass-layer-alt-3: rgba(${glassLayerDark3Rgb.r}, ${glassLayerDark3Rgb.g}, ${glassLayerDark3Rgb.b}, 0.9);`,
-            `--glass-layer-alt-4: rgba(${glassLayerDark4Rgb.r}, ${glassLayerDark4Rgb.g}, ${glassLayerDark4Rgb.b}, 0.95);`,
-            `--glass-layer-alt-5: rgba(${glassLayerDark5Rgb.r}, ${glassLayerDark5Rgb.g}, ${glassLayerDark5Rgb.b}, 1);`
+            `--glass-layer-alt-1: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 95)}% 25% / 80%);`,
+            `--glass-layer-alt-2: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 85)}% 20% / 85%);`,
+            `--glass-layer-alt-3: hsl(${workspaceHsl.h} 40% 15% / 90%);`,
+            `--glass-layer-alt-4: hsl(${workspaceHsl.h} 50% 10% / 95%);`,
+            `--glass-layer-alt-5: hsl(${workspaceHsl.h} 60% 5%);`
         );
     } else {
         // Original glass layer generation
-        const glassLayer1 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 80), Math.min(100, workspaceHsl.l + 45));
-        const glassLayer2 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 70), Math.min(100, workspaceHsl.l + 40));
-        const glassLayer3 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 60), Math.min(100, workspaceHsl.l + 35));
-        const glassLayer4 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 50), Math.min(100, workspaceHsl.l + 30));
-        const glassLayer5 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 40), Math.min(100, workspaceHsl.l + 25));
-        const glassLayerOverlay = hslToHex(workspaceHsl.h, 18, 70);
-
-        const glassLayer1Rgb = hexToRgb(glassLayer1);
-        const glassLayer2Rgb = hexToRgb(glassLayer2);
-        const glassLayer3Rgb = hexToRgb(glassLayer3);
-        const glassLayer4Rgb = hexToRgb(glassLayer4);
-        const glassLayer5Rgb = hexToRgb(glassLayer5);
-        const glassLayerOverlayRgb = hexToRgb(glassLayerOverlay);
-
-        // Opacities for each glass layer
-        const glassLayerOpacities = [0.05, 0.1, 0.2, 0.3, 0.4];
-        // Get workspace color as rgb
-        const workspaceRgb = hexToRgb(workspaceColor);
-
-        // Generate fully opaque versions by blending the glass color over the workspace color using the original opacity
-        const glassLayer1Opaque = blendColors(glassLayer1Rgb, workspaceRgb, glassLayerOpacities[0]);
-        const glassLayer2Opaque = blendColors(glassLayer2Rgb, workspaceRgb, glassLayerOpacities[1]);
-        const glassLayer3Opaque = blendColors(glassLayer3Rgb, workspaceRgb, glassLayerOpacities[2]);
-        const glassLayer4Opaque = blendColors(glassLayer4Rgb, workspaceRgb, glassLayerOpacities[3]);
-        const glassLayer5Opaque = blendColors(glassLayer5Rgb, workspaceRgb, glassLayerOpacities[4]);
+        const glassLayer1S = Math.max(0, workspaceHsl.s - 80);
+        const glassLayer2S = Math.max(0, workspaceHsl.s - 70);
+        const glassLayer3S = Math.max(0, workspaceHsl.s - 60);
+        const glassLayer4S = Math.max(0, workspaceHsl.s - 50);
+        const glassLayer5S = Math.max(0, workspaceHsl.s - 40);
+        
+        const glassLayer1L = Math.min(100, workspaceHsl.l + 45);
+        const glassLayer2L = Math.min(100, workspaceHsl.l + 40);
+        const glassLayer3L = Math.min(100, workspaceHsl.l + 35);
+        const glassLayer4L = Math.min(100, workspaceHsl.l + 30);
+        const glassLayer5L = Math.min(100, workspaceHsl.l + 25);
 
         variables.push(
-            `--glass-layer-1: rgba(${glassLayer1Rgb.r}, ${glassLayer1Rgb.g}, ${glassLayer1Rgb.b}, 0.05);`,
-            `--glass-layer-2: rgba(${glassLayer2Rgb.r}, ${glassLayer2Rgb.g}, ${glassLayer2Rgb.b}, 0.1);`,
-            `--glass-layer-3: rgba(${glassLayer3Rgb.r}, ${glassLayer3Rgb.g}, ${glassLayer3Rgb.b}, 0.2);`,
-            `--glass-layer-4: rgba(${glassLayer4Rgb.r}, ${glassLayer4Rgb.g}, ${glassLayer4Rgb.b}, 0.3);`,
-            `--glass-layer-5: rgba(${glassLayer5Rgb.r}, ${glassLayer5Rgb.g}, ${glassLayer5Rgb.b}, 0.4);`,
-            `--glass-overlay-bg: rgba(${glassLayerOverlayRgb.r}, ${glassLayerOverlayRgb.g}, ${glassLayerOverlayRgb.b}, 0.85);`,
+            `--glass-layer-1: hsl(${workspaceHsl.h} ${glassLayer1S}% ${glassLayer1L}% / 5%);`,
+            `--glass-layer-2: hsl(${workspaceHsl.h} ${glassLayer2S}% ${glassLayer2L}% / 10%);`,
+            `--glass-layer-3: hsl(${workspaceHsl.h} ${glassLayer3S}% ${glassLayer3L}% / 20%);`,
+            `--glass-layer-4: hsl(${workspaceHsl.h} ${glassLayer4S}% ${glassLayer4L}% / 30%);`,
+            `--glass-layer-5: hsl(${workspaceHsl.h} ${glassLayer5S}% ${glassLayer5L}% / 40%);`,
+            `--glass-overlay-bg: hsl(${workspaceHsl.h} 18% 70% / 85%);`,
 
-            // Fully opaque versions, blended with the workspace color
-            `--glass-layer-1-opaque: rgb(${glassLayer1Opaque.r}, ${glassLayer1Opaque.g}, ${glassLayer1Opaque.b});`,
-            `--glass-layer-2-opaque: rgb(${glassLayer2Opaque.r}, ${glassLayer2Opaque.g}, ${glassLayer2Opaque.b});`,
-            `--glass-layer-3-opaque: rgb(${glassLayer3Opaque.r}, ${glassLayer3Opaque.g}, ${glassLayer3Opaque.b});`,
-            `--glass-layer-4-opaque: rgb(${glassLayer4Opaque.r}, ${glassLayer4Opaque.g}, ${glassLayer4Opaque.b});`,
-            `--glass-layer-5-opaque: rgb(${glassLayer5Opaque.r}, ${glassLayer5Opaque.g}, ${glassLayer5Opaque.b});`
+            // Fully opaque versions - for non-blur, we use simpler direct HSL
+            `--glass-layer-1-opaque: hsl(${workspaceHsl.h} ${glassLayer1S}% ${glassLayer1L}%);`,
+            `--glass-layer-2-opaque: hsl(${workspaceHsl.h} ${glassLayer2S}% ${glassLayer2L}%);`,
+            `--glass-layer-3-opaque: hsl(${workspaceHsl.h} ${glassLayer3S}% ${glassLayer3L}%);`,
+            `--glass-layer-4-opaque: hsl(${workspaceHsl.h} ${glassLayer4S}% ${glassLayer4L}%);`,
+            `--glass-layer-5-opaque: hsl(${workspaceHsl.h} ${glassLayer5S}% ${glassLayer5L}%);`
         );
     }
 
@@ -429,150 +410,82 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
     if (isBlurDisabled) {
     
         // Generate 5-level shadow color system tinted to workspace
-        const shadowHsl = hexToHsl(workspaceColor);
-        const shadowColor1 = hslToHex(shadowHsl.h, 100, 5);
-        const shadowColor2 = hslToHex(shadowHsl.h, 100, 10);
-        const shadowColor3 = hslToHex(shadowHsl.h, 100, 12.5);
-        const shadowColor4 = hslToHex(shadowHsl.h, 100, 13);
-        const shadowColor5 = hslToHex(shadowHsl.h, 100, 15);
-        
-        const workspaceShadow1Rgb = hexToRgb(shadowColor1);
-        const workspaceShadow2Rgb = hexToRgb(shadowColor2);
-        const workspaceShadow3Rgb = hexToRgb(shadowColor3);
-        const workspaceShadow4Rgb = hexToRgb(shadowColor4);
-        const workspaceShadow5Rgb = hexToRgb(shadowColor5);
-        
         variables.push(
-            `--shadow-color-1: rgba(${workspaceShadow1Rgb.r}, ${workspaceShadow1Rgb.g}, ${workspaceShadow1Rgb.b}, 0.9);`,
-            `--shadow-color-2: rgba(${workspaceShadow2Rgb.r}, ${workspaceShadow2Rgb.g}, ${workspaceShadow2Rgb.b}, 0.8);`,
-            `--shadow-color-3: rgba(${workspaceShadow3Rgb.r}, ${workspaceShadow3Rgb.g}, ${workspaceShadow3Rgb.b}, 0.7);`,
-            `--shadow-color-4: rgba(${workspaceShadow4Rgb.r}, ${workspaceShadow4Rgb.g}, ${workspaceShadow4Rgb.b}, 0.6);`,
-            `--shadow-color-5: rgba(${workspaceShadow5Rgb.r}, ${workspaceShadow5Rgb.g}, ${workspaceShadow5Rgb.b}, 0.5);`
+            `--shadow-color-1: hsl(${workspaceHsl.h} 100% 5% / 90%);`,
+            `--shadow-color-2: hsl(${workspaceHsl.h} 100% 10% / 80%);`,
+            `--shadow-color-3: hsl(${workspaceHsl.h} 100% 12.5% / 70%);`,
+            `--shadow-color-4: hsl(${workspaceHsl.h} 100% 13% / 60%);`,
+            `--shadow-color-5: hsl(${workspaceHsl.h} 100% 15% / 50%);`
         );
         
-        const glassBorder1 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 80), 40);
-        const glassBorder2 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 75), 45);
-        const glassBorder3 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 70), 50);
-        const glassBorder4 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 65), 55);
-        const glassBorder5 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 60), 60);
-        
-        const glassBorder1Rgb = hexToRgb(glassBorder1);
-        const glassBorder2Rgb = hexToRgb(glassBorder2);
-        const glassBorder3Rgb = hexToRgb(glassBorder3);
-        const glassBorder4Rgb = hexToRgb(glassBorder4);
-        const glassBorder5Rgb = hexToRgb(glassBorder5);
-        
-        const glassBorderColor = hslToHex(workspaceHsl.h, 100, 30);
-        const glassBorderColorRgb = hexToRgb(glassBorderColor);
-        
         variables.push(
-            `--glass-border-saturated: rgba(${glassBorderColorRgb.r}, ${glassBorderColorRgb.g}, ${glassBorderColorRgb.b}, 0.45);`,
-            `--glass-border-1: rgba(${glassBorder1Rgb.r}, ${glassBorder1Rgb.g}, ${glassBorder1Rgb.b}, 0.25);`,
-            `--glass-border-2: rgba(${glassBorder2Rgb.r}, ${glassBorder2Rgb.g}, ${glassBorder2Rgb.b}, 0.35);`,
-            `--glass-border-3: rgba(${glassBorder3Rgb.r}, ${glassBorder3Rgb.g}, ${glassBorder3Rgb.b}, 0.45);`,
-            `--glass-border-4: rgba(${glassBorder4Rgb.r}, ${glassBorder4Rgb.g}, ${glassBorder4Rgb.b}, 0.55);`,
-            `--glass-border-5: rgba(${glassBorder5Rgb.r}, ${glassBorder5Rgb.g}, ${glassBorder5Rgb.b}, 0.65);`
+            `--glass-border-saturated: hsl(${workspaceHsl.h} 100% 35% / 45%);`,
+            `--glass-border-1: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 80)}% 40% / 25%);`,
+            `--glass-border-2: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 75)}% 45% / 35%);`,
+            `--glass-border-3: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 70)}% 50% / 45%);`,
+            `--glass-border-4: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 65)}% 55% / 55%);`,
+            `--glass-border-5: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 60)}% 60% / 65%);`
         );
     } else {
         // Original glass border generation
-        const glassBorder1 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 75), Math.min(100, workspaceHsl.l + 50));
-        const glassBorder2 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 65), Math.min(100, workspaceHsl.l + 45));
-        const glassBorder3 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 55), Math.min(100, workspaceHsl.l + 40));
-        const glassBorder4 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 45), Math.min(100, workspaceHsl.l + 35));
-        const glassBorder5 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 35), Math.min(100, workspaceHsl.l + 30));
-        
-        const glassBorder1Rgb = hexToRgb(glassBorder1);
-        const glassBorder2Rgb = hexToRgb(glassBorder2);
-        const glassBorder3Rgb = hexToRgb(glassBorder3);
-        const glassBorder4Rgb = hexToRgb(glassBorder4);
-        const glassBorder5Rgb = hexToRgb(glassBorder5);
-        
         variables.push(
-            `--glass-border-1: rgba(${glassBorder1Rgb.r}, ${glassBorder1Rgb.g}, ${glassBorder1Rgb.b}, 0.08);`,
-            `--glass-border-2: rgba(${glassBorder2Rgb.r}, ${glassBorder2Rgb.g}, ${glassBorder2Rgb.b}, 0.10);`,
-            `--glass-border-3: rgba(${glassBorder3Rgb.r}, ${glassBorder3Rgb.g}, ${glassBorder3Rgb.b}, 0.15);`,
-            `--glass-border-4: rgba(${glassBorder4Rgb.r}, ${glassBorder4Rgb.g}, ${glassBorder4Rgb.b}, 0.20);`,
-            `--glass-border-5: rgba(${glassBorder5Rgb.r}, ${glassBorder5Rgb.g}, ${glassBorder5Rgb.b}, 0.25);`
+            `--glass-border-1: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 75)}% ${Math.min(100, workspaceHsl.l + 50)}% / 8%);`,
+            `--glass-border-2: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 65)}% ${Math.min(100, workspaceHsl.l + 45)}% / 10%);`,
+            `--glass-border-3: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 55)}% ${Math.min(100, workspaceHsl.l + 40)}% / 15%);`,
+            `--glass-border-4: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 45)}% ${Math.min(100, workspaceHsl.l + 35)}% / 20%);`,
+            `--glass-border-5: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 35)}% ${Math.min(100, workspaceHsl.l + 30)}% / 25%);`
         );
     }
     // Generate glass-inset-bg-* variables with 1-3% workspace color tinting
     // When blur is disabled, use higher opacity for better readability while keeping darker colors for contrast
     if (isBlurDisabled) {
-        const glassInsetBg1 = hslToHex(workspaceHsl.h, 75, 35);
-        const glassInsetBg2 = hslToHex(workspaceHsl.h, 70, 30);
-        const glassInsetBg3 = hslToHex(workspaceHsl.h, 65, 25);
-        const glassInsetBg4 = hslToHex(workspaceHsl.h, 60, 20);
-        const glassInsetBg5 = hslToHex(workspaceHsl.h, 55, 15);
-        
-        const glassInsetBg1Rgb = hexToRgb(glassInsetBg1);
-        const glassInsetBg2Rgb = hexToRgb(glassInsetBg2);
-        const glassInsetBg3Rgb = hexToRgb(glassInsetBg3);
-        const glassInsetBg4Rgb = hexToRgb(glassInsetBg4);
-        const glassInsetBg5Rgb = hexToRgb(glassInsetBg5);
-        
         variables.push(
-            `--glass-inset-bg-1: rgba(${glassInsetBg1Rgb.r}, ${glassInsetBg1Rgb.g}, ${glassInsetBg1Rgb.b}, 0.25);`,
-            `--glass-inset-bg-2: rgba(${glassInsetBg2Rgb.r}, ${glassInsetBg2Rgb.g}, ${glassInsetBg2Rgb.b}, 0.35);`,
-            `--glass-inset-bg-3: rgba(${glassInsetBg3Rgb.r}, ${glassInsetBg3Rgb.g}, ${glassInsetBg3Rgb.b}, 0.45);`,
-            `--glass-inset-bg-4: rgba(${glassInsetBg4Rgb.r}, ${glassInsetBg4Rgb.g}, ${glassInsetBg4Rgb.b}, 0.55);`,
-            `--glass-inset-bg-5: rgba(${glassInsetBg5Rgb.r}, ${glassInsetBg5Rgb.g}, ${glassInsetBg5Rgb.b}, 0.65);`
+            `--glass-inset-bg-1: hsl(${workspaceHsl.h} 75% 35% / 25%);`,
+            `--glass-inset-bg-2: hsl(${workspaceHsl.h} 70% 30% / 35%);`,
+            `--glass-inset-bg-3: hsl(${workspaceHsl.h} 65% 25% / 45%);`,
+            `--glass-inset-bg-4: hsl(${workspaceHsl.h} 60% 20% / 55%);`,
+            `--glass-inset-bg-5: hsl(${workspaceHsl.h} 55% 15% / 65%);`
         );
     } else {
         // Original glass inset background generation
-        const glassInsetBg1 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 80), Math.min(100, workspaceHsl.l + 50));
-        const glassInsetBg2 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 75), Math.min(100, workspaceHsl.l + 45));
-        const glassInsetBg3 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 70), Math.min(100, workspaceHsl.l + 40));
-        const glassInsetBg4 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 65), Math.min(100, workspaceHsl.l + 35));
-        const glassInsetBg5 = hslToHex(workspaceHsl.h, Math.max(0, workspaceHsl.s - 60), Math.min(100, workspaceHsl.l + 30));
-        
-        const glassInsetBg1Rgb = hexToRgb(glassInsetBg1);
-        const glassInsetBg2Rgb = hexToRgb(glassInsetBg2);
-        const glassInsetBg3Rgb = hexToRgb(glassInsetBg3);
-        const glassInsetBg4Rgb = hexToRgb(glassInsetBg4);
-        const glassInsetBg5Rgb = hexToRgb(glassInsetBg5);
-        
         variables.push(
-            `--glass-inset-bg-1: rgba(${glassInsetBg1Rgb.r}, ${glassInsetBg1Rgb.g}, ${glassInsetBg1Rgb.b}, 0.05);`,
-            `--glass-inset-bg-2: rgba(${glassInsetBg2Rgb.r}, ${glassInsetBg2Rgb.g}, ${glassInsetBg2Rgb.b}, 0.08);`,
-            `--glass-inset-bg-3: rgba(${glassInsetBg3Rgb.r}, ${glassInsetBg3Rgb.g}, ${glassInsetBg3Rgb.b}, 0.12);`,
-            `--glass-inset-bg-4: rgba(${glassInsetBg4Rgb.r}, ${glassInsetBg4Rgb.g}, ${glassInsetBg4Rgb.b}, 0.15);`,
-            `--glass-inset-bg-5: rgba(${glassInsetBg5Rgb.r}, ${glassInsetBg5Rgb.g}, ${glassInsetBg5Rgb.b}, 0.2);`
+            `--glass-inset-bg-1: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 80)}% ${Math.min(100, workspaceHsl.l + 50)}% / 5%);`,
+            `--glass-inset-bg-2: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 75)}% ${Math.min(100, workspaceHsl.l + 45)}% / 8%);`,
+            `--glass-inset-bg-3: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 70)}% ${Math.min(100, workspaceHsl.l + 40)}% / 12%);`,
+            `--glass-inset-bg-4: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 65)}% ${Math.min(100, workspaceHsl.l + 35)}% / 15%);`,
+            `--glass-inset-bg-5: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 60)}% ${Math.min(100, workspaceHsl.l + 30)}% / 20%);`
         );
     }
 
     // Generate header color variables
-    const headerRgb = hexToRgb(workspaceColor);
+    // For blur-disabled mode, use more opaque, saturated, and darker header colors for better readability
+    const headerDarkS = Math.min(100, Math.max(60, workspaceHsl.s + 20));
+    const headerDarkL = Math.min(20, Math.max(workspaceHsl.l - 20, 10));
+    const headerDarkBorderS = Math.min(100, workspaceHsl.s + 20);
     
     if (isBlurDisabled) {
-        // For blur-disabled mode, use more opaque, saturated, and darker header colors for better readability
-        const headerHsl = hexToHsl(workspaceColor);
-        const headerDarkColor = hslToHex(headerHsl.h, Math.min(100, headerHsl.s + 20), 20);
-        const headerDarkRgb = hexToRgb(headerDarkColor);
-        const headerDarkBorderColor = hslToHex(headerHsl.h, Math.min(100, headerHsl.s + 20), 50);
-        const headerDarkBorderRgb = hexToRgb(headerDarkBorderColor);
-        
         variables.push(
-            `--header-bg: rgba(${headerDarkRgb.r}, ${headerDarkRgb.g}, ${headerDarkRgb.b}, 0.95);`,
-            `--header-border: rgba(${headerDarkBorderRgb.r}, ${headerDarkBorderRgb.g}, ${headerDarkBorderRgb.b}, 0.3);`
+            `--header-bg: hsl(${workspaceHsl.h} ${headerDarkS}% ${headerDarkL}% / 90%);`,
+            `--header-border: hsl(${workspaceHsl.h} ${headerDarkBorderS}% 50% / 50%);`
         );
     } else {
         // Original header color generation
         variables.push(
-            `--header-bg: rgba(${headerRgb.r}, ${headerRgb.g}, ${headerRgb.b}, 0.15);`,
-            `--header-border: rgba(${headerRgb.r}, ${headerRgb.g}, ${headerRgb.b}, 0.3);`
+            `--header-bg: hsl(${workspaceHsl.h} 100% 25% / 40%);`,
+            `--header-border: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 30%);`
         );
     }
     
     if (isBlurDisabled) {
         variables.push(
-            `--active-tab-bg: ${workspaceColor}f0;`,
-            `--active-tab-border: ${workspaceColor}d8;`,
+            `--active-tab-bg: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 90%);`,
+            `--active-tab-border: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 85%);`,
             `--active-tab-text: #ffffff;`
         );
     } else {
         variables.push(
-            `--active-tab-bg: ${workspaceColor}89;`,
-            `--active-tab-border: ${workspaceColor}88;`,
+            `--active-tab-bg: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 54%);`,
+            `--active-tab-border: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 53%);`,
             `--active-tab-text: #ffffff;`
         );
     }
@@ -583,8 +496,7 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
 // Switch workspace theme using dataset attribute with smooth transition
 function switchWorkspaceTheme(workspaceId) {
     closeSubMenu();
-    
-    const body = document.body;
+
     const workspace = workspaces[workspaceId];
     
     if (!workspace) {
@@ -592,33 +504,11 @@ function switchWorkspaceTheme(workspaceId) {
         return;
     }
 
-    // Add transition class for smooth color blending
-    body.classList.add('workspace-transitioning');
-    
-    // Set the workspace dataset attribute
-    body.setAttribute('data-workspace', workspaceId);
-    
-    // Update workspace-specific variables
-    activeWorkspaceColor = workspace.color || '#124';
-    activeWorkspaceBackgroundColor = workspace.backgroundColor;
-    activeWorkspaceBackgroundImage = workspace.backgroundImage;
-    activeWorkspaceBackgroundOpacity = workspace.backgroundOpacity || 0.3;
-    // Apply font variables by regenerating styles (already handled by generateAllWorkspaceStyles)
-    
-    // Header colors are now generated in CSS variables
-    
-    // Remove transition class after animation completes
+    document.body.classList.add('workspace-transitioning');
+    document.body.setAttribute('data-workspace', workspaceId);
     setTimeout(() => {
-        body.classList.remove('workspace-transitioning');
+        document.body.classList.remove('workspace-transitioning');
     }, 300);
-    
-    // Ensure fonts inherit from default when unset
-    const defaultWorkspace = workspaces['default'];
-    const resolvedPrimaryFont = (workspace.primaryFont && workspace.primaryFont.trim()) ? workspace.primaryFont : (workspaceId !== 'default' && defaultWorkspace && defaultWorkspace.primaryFont) ? defaultWorkspace.primaryFont : '';
-    const resolvedTextareaFont = (workspace.textareaFont && workspace.textareaFont.trim()) ? workspace.textareaFont : (workspaceId !== 'default' && defaultWorkspace && defaultWorkspace.textareaFont) ? defaultWorkspace.textareaFont : '';
-    // Regenerate styles with resolved fonts
-    generateAllWorkspaceStyles();
-    console.log('🎨 Switched to workspace theme:', workspaceId, 'with color:', activeWorkspaceColor, 'fonts:', resolvedPrimaryFont, resolvedTextareaFont);
 }
 
 // Reference workspace move functions
@@ -690,7 +580,7 @@ function showCacheMoveToWorkspaceModal(cacheImage) {
         item.innerHTML = `
             <div class="workspace-move-info">
                 <span class="workspace-name">${workspace.name}</span>
-                ${workspace.isActive ? '<span class="badge-active"><i class="fas fa-check"></i></span>' : ''}
+                ${workspace.id === activeWorkspace ? '<span class="badge-active"><i class="fas fa-check"></i></span>' : ''}
             </div>
         `;
 
@@ -732,287 +622,359 @@ async function moveCacheToWorkspace(cacheImage, workspaceId) {
 // Workspace API functions
 async function loadWorkspaces() {
     try {
-        
         // Use WebSocket API if available, otherwise fall back to HTTP
         if (window.wsClient && window.wsClient.isConnected()) {
             const data = await window.wsClient.getWorkspaces();
             
-            // Convert array response back to object structure for consistency
-            workspaces = {};
+            // Check if workspaces have actually changed
+            const newWorkspaces = {};
             data.workspaces.forEach(workspace => {
-                workspaces[workspace.id] = workspace;
+                newWorkspaces[workspace.id] = workspace;
             });
             
+            const workspacesChanged = JSON.stringify(workspaces) !== JSON.stringify(newWorkspaces);
+            const isFirstLoad = Object.keys(workspaces).length === 0;
+            
+            // Update workspaces
+            workspaces = newWorkspaces;
             activeWorkspace = data.activeWorkspace;
+            
+            // Only generate styles if this is the first load or if workspaces actually changed
+            if (isFirstLoad || workspacesChanged) {
+                generateAllWorkspaceStyles();
+            }
         } else {
             showError('Failed to load workspaces: WebSocket not connected');
             throw new Error('Failed to load workspaces');
         }
 
-        // Update active workspace color
-        const activeWorkspaceData = workspaces[activeWorkspace];
-        if (activeWorkspaceData) {
-            activeWorkspaceColor = activeWorkspaceData.color || '#124';
-            activeWorkspaceBackgroundColor = activeWorkspaceData.backgroundColor || null;
-            activeWorkspaceBackgroundImage = activeWorkspaceData.backgroundImage || null;
-            activeWorkspaceBackgroundOpacity = activeWorkspaceData.backgroundOpacity || 0.3;
-            updateBokehBackground();
-        }
-
-        // Generate all workspace styles in a single style element
-        generateAllWorkspaceStyles();
+        // Update background
+        updateBackground();
         
         // Set initial workspace theme
         switchWorkspaceTheme(activeWorkspace);
 
         renderWorkspaceDropdown();
         updateActiveWorkspaceDisplay();
+        
+        // Mark styles as initialized
+        window.workspaceStylesInitialized = true;
     } catch (error) {
         showError('Failed to load workspaces: ' + error.message);
     }
 }
 
-// Initialize background layers with default color
-function initializeBokehBackgrounds() {
-    const currentBg = document.querySelector('.current-bg');
-    const nextBg = document.querySelector('.next-bg');
-    const bokeh = document.querySelector('.bokeh');
+// Initialize background layers
+function initializeBackgrounds() {
+    // Create background layers if they don't exist
+    if (!document.querySelector('.page-background')) {
+        // Create background container
+        const backgroundContainer = document.createElement('div');
+        backgroundContainer.className = 'background-container';
+        backgroundContainer.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        `;
+        
+        // Create current background layer
+        const currentBg = document.createElement('div');
+        currentBg.className = 'page-background current-bg';
+        currentBg.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            transition: opacity 0.3s ease-in-out;
+            opacity: 1;
+        `;
+        
+        // Create next background layer
+        const nextBg = document.createElement('div');
+        nextBg.className = 'page-background next-bg';
+        nextBg.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            transition: opacity 0.3s ease-in-out;
+            opacity: 0;
+        `;
+        
+        // Add layers to container
+        backgroundContainer.appendChild(currentBg);
+        backgroundContainer.appendChild(nextBg);
+        
+        // Insert at the beginning of body
+        document.body.insertBefore(backgroundContainer, document.body.firstChild);
+    }
+    
+    // Start automatic background system
+    startAutomaticBackgroundSystem();
+}
 
-    if (currentBg) {
-        currentBg.style.backgroundColor = 'transparent';
+// Start automatic background system that cycles through gallery images
+function startAutomaticBackgroundSystem() {
+    // Clear any existing interval
+    if (automaticBackgroundInterval) {
+        clearInterval(automaticBackgroundInterval);
     }
-    if (nextBg) {
-        nextBg.style.opacity = '0';
-        nextBg.style.backgroundColor = 'transparent';
-    }
-    if (bokeh) {
-        bokeh.style.backgroundColor = addTransparency('#124', 0.5);
+    
+    // Set up interval to change background every 10 seconds
+    automaticBackgroundInterval = setInterval(async () => {
+        await updateAutomaticBackground();
+    }, 10000); // 10 seconds
+    
+    // Initial background update - but only if gallery is ready
+    if (isGalleryReady()) {
+        updateAutomaticBackground();
+    } else {
+        console.log('🔄 Gallery not ready yet, will retry background setup when available');
+        // Set up a retry mechanism to wait for gallery
+        setupBackgroundRetry();
     }
 }
 
-// Load active workspace color for bokeh background
-async function loadActiveWorkspaceColor() {
+// Check if gallery is ready with images
+function isGalleryReady() {
+    return allImages && Array.isArray(allImages) && allImages.length > 0;
+}
+
+// Set up retry mechanism for when gallery isn't ready
+function setupBackgroundRetry() {
+    // Check every 500ms if gallery is ready
+    const retryInterval = setInterval(() => {
+        if (isGalleryReady()) {
+            clearInterval(retryInterval);
+            // Now start the background system
+            updateAutomaticBackground();
+        }
+    }, 500);
+    
+    // Give up after 30 seconds to prevent infinite retries
+    setTimeout(() => {
+        clearInterval(retryInterval);
+        console.warn('⚠️ Gallery not ready after 30 seconds, background system may not work properly');
+    }, 30000);
+}
+
+// Update automatic background with next gallery image
+async function updateAutomaticBackground() {
+    if (backgroundTransitionInProgress) return;
+    
     try {
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                const data = await window.wsClient.getWorkspace();
-                if (data) {
-                    activeWorkspaceColor = data.color || '#124';
-                    activeWorkspaceBackgroundColor = data.backgroundColor;
-                    activeWorkspaceBackgroundImage = data.backgroundImage;
-                    activeWorkspaceBackgroundOpacity = data.backgroundOpacity || 0.3;
-                }
-            } catch (wsError) {
-                // Fall back to using the workspace data we already have
-                const activeWorkspaceData = workspaces[activeWorkspace];
-                if (activeWorkspaceData) {
-                    activeWorkspaceColor = activeWorkspaceData.color || '#124';
-                    activeWorkspaceBackgroundColor = activeWorkspaceData.backgroundColor;
-                    activeWorkspaceBackgroundImage = activeWorkspaceData.backgroundImage;
-                    activeWorkspaceBackgroundOpacity = activeWorkspaceData.backgroundOpacity || 0.3;
-                } else {
-                    // Use default values if no workspace data available
-                    activeWorkspaceColor = '#124';
-                    activeWorkspaceBackgroundColor = null;
-                    activeWorkspaceBackgroundImage = null;
-                    activeWorkspaceBackgroundOpacity = 0.3;
-                }
-            }
-        } else {
-            activeWorkspaceColor = '#124';
-            activeWorkspaceBackgroundColor = null;
-            activeWorkspaceBackgroundImage = null;
-            activeWorkspaceBackgroundOpacity = 0.3;
-            showError('Failed to load workspace settings: WebSocket not connected');
-            throw new Error('Failed to load workspace settings');
+        // Get the first non-placeholder image from the gallery
+        const firstImage = getFirstGalleryImage();
+        if (!firstImage) {
+            return;
         }
         
-        updateBokehBackground();
-        switchWorkspaceTheme(activeWorkspace);
+        // Get the blur preview image - encode the preview name to handle spaces and special characters
+        const blurPreviewUrl = `/previews/${encodeURIComponent(firstImage.preview.replace('.jpg', '_blur.jpg'))}`;
+        
+        // Preload the image to ensure smooth transition
+        await preloadImage(blurPreviewUrl);
+        
+        // Perform crossfade transition
+        await performBackgroundTransition(blurPreviewUrl);
+        
     } catch (error) {
-        showError('Failed to load workspace settings: ' + error.message);
-        // Use default values on error
-        activeWorkspaceColor = '#124';
-        activeWorkspaceBackgroundColor = null;
-        activeWorkspaceBackgroundImage = null;
-        activeWorkspaceBackgroundOpacity = 0.3;
-        updateBokehBackground();
-        // Use new workspace theme switching system
-        switchWorkspaceTheme(activeWorkspace);
+        console.warn('Failed to update automatic background:', error);
     }
 }
 
-// Apply workspace color tint to header
-function updateHeaderTint() {
-    const header = document.querySelector('.header');
-    if (!header) return;
-
-    // Convert hex color to RGB for transparency
-    const hexColor = activeWorkspaceColor || '#124';
-    const r = parseInt(hexColor.slice(1, 3), 16);
-    const g = parseInt(hexColor.slice(3, 5), 16);
-    const b = parseInt(hexColor.slice(5, 7), 16);
-
-    // Apply a solid subtle tint to the header background
-    // Use a very low opacity (0.1) to keep it subtle
-    header.style.background = `rgba(${r}, ${g}, ${b}, 0.15)`;
+// Get the first non-placeholder image from the gallery
+function getFirstGalleryImage() {
+    if (!allImages || !Array.isArray(allImages) || allImages.length === 0) {
+        return null;
+    }
     
-    // Also add a subtle border tint
-    header.style.borderColor = `rgba(${r}, ${g}, ${b}, 0.3)`;
+    // Find first image that has a preview (non-placeholder)
+    for (const image of allImages) {
+        if (image.preview && image.preview !== 'placeholder.jpg') {
+            return image;
+        }
+    }
+    
+    return null;
 }
 
-// Animate workspace transition with bokeh circle movement
-async function animateWorkspaceTransition() {
-    const bokeh = document.querySelector('.bokeh');
-    const currentBg = document.querySelector('.current-bg');
-    const nextBg = document.querySelector('.next-bg');
-
-    if (!bokeh || !currentBg || !nextBg) return;
-
-
-    // Step 1: Move all circles off-screen (0.3s)
-    console.log('🎬 Starting workspace transition animation');
-
-    // Preload background image if it exists to prevent flickering
-    if (activeWorkspaceBackgroundImage) {
+// Preload image to ensure smooth transition
+function preloadImage(url) {
+    return new Promise((resolve, reject) => {
         const img = new Image();
-        img.src = `/images/${activeWorkspaceBackgroundImage}`;
-        new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-            // Timeout after 2 seconds to prevent hanging
-            setTimeout(resolve, 2000);
-        }).catch(() => {
-            console.warn('Failed to preload background image:', activeWorkspaceBackgroundImage);
-        });
-    }
-
-    // Step 2: Update background with fade transition
-    updateBokehBackgroundWithFade();
+        img.onload = () => resolve(url);
+        img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
+        img.src = url;
+        
+        // Timeout after 5 seconds
+        setTimeout(() => reject(new Error('Image preload timeout')), 5000);
+    });
 }
 
-// Update bokeh background with fade transition between layers
-async function updateBokehBackgroundWithFade() {
+// Perform crossfade transition between background layers
+async function performBackgroundTransition(newImageUrl) {
+    if (backgroundTransitionInProgress || currentBackgroundImage === newImageUrl) return;
+    
+    backgroundTransitionInProgress = true;
+    
+    try {
+        const currentBg = document.querySelector('.current-bg');
+        const nextBg = document.querySelector('.next-bg');
+        
+        if (!currentBg || !nextBg) {
+            throw new Error('Background elements not found');
+        }
+        
+        // Set the new image on the next background layer
+        nextBg.style.backgroundImage = `url(${newImageUrl})`;
+        nextBg.style.backgroundSize = 'cover';
+        nextBg.style.backgroundPosition = 'center';
+        nextBg.style.backgroundRepeat = 'no-repeat';
+        
+        // Start crossfade transition
+        nextBg.style.opacity = '1';
+        
+        // Wait for transition to complete (3 seconds as per CSS)
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // Swap the layers
+        currentBg.style.backgroundImage = nextBg.style.backgroundImage;
+        currentBg.style.backgroundSize = nextBg.style.backgroundSize;
+        currentBg.style.backgroundPosition = nextBg.style.backgroundPosition;
+        currentBg.style.backgroundRepeat = nextBg.style.backgroundRepeat;
+        
+        // Reset next background
+        nextBg.style.opacity = '0';
+        nextBg.style.backgroundImage = 'none';
+        
+        // Update current background tracking
+        currentBackgroundImage = newImageUrl;
+        
+    } catch (error) {
+        console.error('Background transition failed:', error);
+    } finally {
+        backgroundTransitionInProgress = false;
+    }
+}
+
+// Stop automatic background system
+function stopAutomaticBackgroundSystem() {
+    if (automaticBackgroundInterval) {
+        clearInterval(automaticBackgroundInterval);
+        automaticBackgroundInterval = null;
+    }
+}
+
+// Simple workspace transition
+async function animateWorkspaceTransition() {
     const currentBg = document.querySelector('.current-bg');
     const nextBg = document.querySelector('.next-bg');
-    const bokeh = document.querySelector('.bokeh');
 
-    if (!currentBg || !nextBg || !bokeh) return;
+    if (!currentBg || !nextBg) return;
 
-    // Generate color variations based on the workspace color
-    const baseColor = activeWorkspaceColor;
-    const colorVariations = generateColorVariations(baseColor);
+    // Ensure we have an initial background image for the new workspace
+    await ensureInitialBackgroundImage();
 
-    // Update the bokeh circles with new colors and opacity using requestAnimationFrame
-    const circles = bokeh.querySelectorAll('circle');
-    let i = 0;
-    function updateCircle() {
-        if (i >= circles.length) return;
-        const circle = circles[i];
-        const colorIndex = i % colorVariations.length;
-        const color = colorVariations[colorIndex];
-        // Make circles more opaque than background
-        const circleOpacity = Math.min(1, activeWorkspaceBackgroundOpacity + 0.3);
-        circle.style.fill = color;
-        circle.style.opacity = circleOpacity;
-        i++;
-        requestAnimationFrame(updateCircle);
-    }
-    updateCircle();
-
-    workspaceTabs.classList.remove('inactive');
-
-    // Set up the bokeh background color with transparency
-    const backgroundColor = activeWorkspaceBackgroundColor || generateBackgroundColor(baseColor);
-    const transparentColor = addTransparency(backgroundColor, 0.25); // 25% transparency
-    bokeh.style.backgroundColor = transparentColor;
-    // Set up the next background layer for images only
-    if (activeWorkspaceBackgroundImage) {
-        // Set background image on the div
-        nextBg.style.backgroundImage = `url('/images/${activeWorkspaceBackgroundImage}')`;
-        nextBg.style.backgroundSize = 'cover';
-        nextBg.style.backgroundPosition = 'top center';
-        nextBg.style.backgroundRepeat = 'no-repeat';
-        nextBg.style.backgroundColor = 'transparent';
-    } else {
-        // No background image
-        nextBg.style.backgroundImage = 'none';
-        nextBg.style.backgroundColor = 'transparent';
-    }
-
-    // Fade from current to next background
-    nextBg.style.opacity = '1';
-
-    // Wait for the fade transition to complete
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    // Swap the layers - copy all properties to ensure no flickering
-    currentBg.style.backgroundImage = nextBg.style.backgroundImage;
-    currentBg.style.backgroundSize = nextBg.style.backgroundSize;
-    currentBg.style.backgroundPosition = nextBg.style.backgroundPosition;
-    currentBg.style.backgroundRepeat = nextBg.style.backgroundRepeat;
-    currentBg.style.backgroundColor = nextBg.style.backgroundColor;
-    currentBg.style.backgroundBlendMode = nextBg.style.backgroundBlendMode || 'normal';
-
-    // Reset next background - ensure it's completely transparent
-    nextBg.style.opacity = '0';
-    nextBg.style.backgroundImage = 'none';
-    nextBg.style.backgroundColor = 'transparent';
-    nextBg.style.backgroundBlendMode = 'normal';
+    // Update background with simple fade transition
+    updateBackgroundWithFade();
 }
 
-// Update bokeh background with workspace color (for initial load and non-animated updates)
-function updateBokehBackground() {
-    const currentBg = document.querySelector('.current-bg');
-    const bokeh = document.querySelector('.bokeh');
-    if (!currentBg || !bokeh) return;
-
-    // Generate color variations based on the workspace color
-    const baseColor = activeWorkspaceColor;
-    const colorVariations = generateColorVariations(baseColor);
-
-    // Update the bokeh circles with new colors and opacity using requestAnimationFrame
-    const circles = bokeh.querySelectorAll('circle');
-    let i = 0;
-    function updateCircle() {
-        if (i >= circles.length) return;
-        const circle = circles[i];
-        const colorIndex = i % colorVariations.length;
-        const color = colorVariations[colorIndex];
-        // Make circles more opaque than background
-        const circleOpacity = Math.min(1, activeWorkspaceBackgroundOpacity + 0.3);
-        circle.style.fill = color;
-        circle.style.opacity = circleOpacity;
-        i++;
-        requestAnimationFrame(updateCircle);
+// Ensure we have an initial background image when switching workspaces
+async function ensureInitialBackgroundImage() {
+    try {
+        // Get the first non-placeholder image from the current gallery
+        const firstImage = getFirstGalleryImage();
+        if (!firstImage) {            // Wait for gallery to be ready
+            await waitForGallery();
+            // Try again
+            const retryImage = getFirstGalleryImage();
+            if (!retryImage) {
+                console.log('❌ Still no gallery images available after waiting');
+                return;
+            }
+            // Use the retry image
+            const blurPreviewUrl = `/previews/${encodeURIComponent(retryImage.preview.replace('.jpg', '_blur.jpg'))}`;
+            await setBackgroundImage(blurPreviewUrl);
+        } else {
+            // Get the blur preview image
+            const blurPreviewUrl = `/previews/${encodeURIComponent(firstImage.preview.replace('.jpg', '_blur.jpg'))}`;
+            await setBackgroundImage(blurPreviewUrl);
+        }
+        
+    } catch (error) {
+        console.warn('Failed to set initial background image:', error);
     }
-    updateCircle();
+}
 
-    // Update the bokeh background color with transparency
-    const backgroundColor = activeWorkspaceBackgroundColor || generateBackgroundColor(baseColor);
-    const transparentColor = addTransparency(backgroundColor, 0.25); // 25% transparency
-    bokeh.style.backgroundColor = transparentColor;
-
-    // Update the current background layer for images only
-    if (activeWorkspaceBackgroundImage) {
-        // Set background image on the div
-        currentBg.style.backgroundImage = `url('/images/${activeWorkspaceBackgroundImage}')`;
-        currentBg.style.backgroundSize = 'cover';
-        currentBg.style.backgroundPosition = 'top center';
-        currentBg.style.backgroundRepeat = 'no-repeat';
-        currentBg.style.backgroundColor = 'transparent';
-    } else {
-        // No background image
-        currentBg.style.backgroundImage = 'none';
-        currentBg.style.backgroundColor = 'transparent';
-    }
-
-    console.log('🎨 Updated bokeh background:', {
-        color: baseColor,
-        backgroundColor: transparentColor,
-        backgroundImage: activeWorkspaceBackgroundImage,
-        opacity: activeWorkspaceBackgroundOpacity
+// Wait for gallery to be ready
+function waitForGallery() {
+    return new Promise((resolve) => {
+        if (isGalleryReady()) {
+            resolve();
+            return;
+        }
+        
+        // Check every 100ms if gallery is ready
+        const checkInterval = setInterval(() => {
+            if (isGalleryReady()) {
+                clearInterval(checkInterval);
+                resolve();
+            }
+        }, 100);
+        
+        // Give up after 10 seconds
+        setTimeout(() => {
+            clearInterval(checkInterval);
+            resolve(); // Resolve anyway to prevent hanging
+        }, 10000);
     });
+}
+
+// Set background image with proper styling
+async function setBackgroundImage(blurPreviewUrl) {
+    // Preload the image to ensure smooth display
+    await preloadImage(blurPreviewUrl);
+
+    // Set the initial background image on the current background layer
+    const currentBg = document.querySelector('.current-bg');
+    if (currentBg) {
+        currentBg.style.backgroundImage = `url(${blurPreviewUrl})`;
+        currentBg.style.backgroundSize = 'cover';
+        currentBg.style.backgroundPosition = 'center';
+        currentBg.style.backgroundRepeat = 'no-repeat';
+        
+        // Update current background tracking
+        currentBackgroundImage = blurPreviewUrl;
+    }
+}
+
+// Update background with workspace color (for initial load and non-animated updates)
+async function updateBackground() {
+    const currentBg = document.querySelector('.current-bg');
+    if (!currentBg) return;
+
+    // The automatic background system handles image updates
+    // This function now only handles color transitions
+    currentBg.style.backgroundColor = 'transparent';
+    
+    // If this is the initial load and we don't have a background image yet,
+    // set an initial one
+    if (!currentBackgroundImage) {
+        await ensureInitialBackgroundImage();
+    }
 }
 
 // Generate color variations for bokeh circles with more variety
@@ -1185,15 +1147,33 @@ async function createWorkspace(name) {
     try {
         // Use WebSocket API if available, otherwise fall back to HTTP
         if (window.wsClient && window.wsClient.isConnected()) {
-            await window.wsClient.createWorkspace(name);
+            const result = await window.wsClient.createWorkspace(name);
+            
+            // Use the response data to update local state instead of reloading everything
+            if (result && result.workspace) {
+                // Add the new workspace to local state
+                workspaces[result.workspace.id] = result.workspace;
+                
+                // Only regenerate styles if this affects the current theme
+                if (result.workspace.id === activeWorkspace) {
+                    generateAllWorkspaceStyles();
+                    switchWorkspaceTheme(activeWorkspace);
+                }
+                
+                // Update UI components that need the new workspace
+                renderWorkspaceDropdown();
+                updateActiveWorkspaceDisplay();
+                
+                // Only refresh cache if it's currently visible and needs updating
+                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
+                    await loadCacheImages();
+                }
+            }
         } else {
             showError('Failed to create workspace: WebSocket not connected');
             throw new Error('Failed to create workspace');
         }
 
-        await loadWorkspaces();
-        switchGalleryView(currentGalleryView, true);
-        await loadCacheImages(); // Refresh cache browser to show new workspace filtering
         showGlassToast('success', null, `Workspace "${name}" created!`);
     } catch (error) {
         console.error('Error creating workspace:', error);
@@ -1222,15 +1202,38 @@ async function deleteWorkspace(id) {
     try {
         // Use WebSocket API if available, otherwise fall back to HTTP
         if (window.wsClient && window.wsClient.isConnected()) {
-            await window.wsClient.deleteWorkspace(id);
+            const result = await window.wsClient.deleteWorkspace(id);
+            
+            // Use the response data to update local state efficiently
+            if (result && result.success) {
+                // Remove the deleted workspace from local state
+                delete workspaces[id];
+                
+                // If the deleted workspace was active, switch to default
+                if (id === activeWorkspace) {
+                    activeWorkspace = 'default';
+                    switchWorkspaceTheme(activeWorkspace);
+                }
+                
+                // Update UI components
+                renderWorkspaceDropdown();
+                updateActiveWorkspaceDisplay();
+                
+                // Only refresh gallery if it's currently visible
+                if (document.getElementById('gallery')?.style.display !== 'none') {
+                    switchGalleryView(currentGalleryView, true);
+                }
+                
+                // Only refresh cache if it's currently visible
+                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
+                    await loadCacheImages();
+                }
+            }
         } else {
             showError('Failed to delete workspace: WebSocket not connected');
             throw new Error('Failed to delete workspace');
         }
 
-        await loadWorkspaces();
-        switchGalleryView(currentGalleryView, true);
-        await loadCacheImages(); // Refresh cache browser to show updated filtering
         showGlassToast('success', null, 'Workspace deleted', false, 5000, '<i class="fas fa-trash"></i>');
     } catch (error) {
         console.error('Error deleting workspace:', error);
@@ -1242,15 +1245,36 @@ async function dumpWorkspace(sourceId, targetId) {
     try {
         // Use WebSocket API if available, otherwise fall back to HTTP
         if (window.wsClient && window.wsClient.isConnected()) {
-            await window.wsClient.dumpWorkspace(sourceId, targetId);
+            const result = await window.wsClient.dumpWorkspace(sourceId, targetId);
+            
+            // Use the response data to update local state efficiently
+            if (result && result.success) {
+                // Update file counts for affected workspaces
+                if (workspaces[sourceId]) {
+                    workspaces[sourceId].fileCount = (workspaces[sourceId].fileCount || 0) - (result.movedCount || 0);
+                }
+                if (workspaces[targetId]) {
+                    workspaces[targetId].fileCount = (workspaces[targetId].fileCount || 0) + (result.movedCount || 0);
+                }
+                
+                // Update UI components
+                renderWorkspaceDropdown();
+                
+                // Only refresh gallery if it's currently visible
+                if (document.getElementById('gallery')?.style.display !== 'none') {
+                    switchGalleryView(currentGalleryView, true);
+                }
+                
+                // Only refresh cache if it's currently visible
+                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
+                    await loadCacheImages();
+                }
+            }
         } else {
             showError('Failed to dump workspace: WebSocket not connected');
             throw new Error('Failed to dump workspace');
         }
 
-        await loadWorkspaces();
-        switchGalleryView(currentGalleryView, true);
-        await loadCacheImages(); // Refresh cache browser
         showGlassToast('success', null, 'Workspace Dumped');
     } catch (error) {
         console.error('Error dumping workspace:', error);
@@ -1304,17 +1328,8 @@ async function setActiveWorkspace(id) {
 
         activeWorkspace = id;
 
-        // Update workspace settings immediately
-        const workspace = workspaces[activeWorkspace];
-        if (workspace) {
-            activeWorkspaceColor = workspace.color || '#124';
-            activeWorkspaceBackgroundColor = workspace.backgroundColor;
-            activeWorkspaceBackgroundImage = workspace.backgroundImage;
-            activeWorkspaceBackgroundOpacity = workspace.backgroundOpacity || 0.3;
-
-            // Use new workspace theme switching system with smooth transition
-            switchWorkspaceTheme(activeWorkspace);
-        }
+        // Don't call switchWorkspaceTheme here - let the WebSocket event handle it
+        // This prevents duplicate theme switching
     } catch (error) {
         console.error('Error setting active workspace:', error);
         showError('Failed to set active workspace: ' + error.message);
@@ -1333,7 +1348,6 @@ async function setActiveWorkspace(id) {
         // Clear the workspace switching flag on error
         isWorkspaceSwitching = false;
         window.isWorkspaceSwitching = false;
-        workspaceTabs.classList.add('inactive');
     }
 }
 
@@ -1344,17 +1358,53 @@ async function moveFilesToWorkspace(filenames, targetWorkspaceId) {
         // Use WebSocket API if available, otherwise fall back to HTTP
         if (window.wsClient && window.wsClient.isConnected()) {
             result = await window.wsClient.moveFilesToWorkspace(filenames, targetWorkspaceId);
+            
+            // Use the response data to update local state efficiently
+            if (result && result.success) {
+                // Update file counts for affected workspaces
+                if (workspaces[targetWorkspaceId]) {
+                    workspaces[targetWorkspaceId].fileCount = (workspaces[targetWorkspaceId].fileCount || 0) + (result.movedCount || 0);
+                }
+                
+                // Update UI components
+                renderWorkspaceDropdown();
+                
+                // Only refresh gallery if it's currently visible
+                if (document.getElementById('gallery')?.style.display !== 'none') {
+                    switchGalleryView(currentGalleryView, true);
+                }
+            }
         } else {
             showError('Failed to move files: WebSocket not connected');
             throw new Error('Failed to move files');
         }
 
-        switchGalleryView(currentGalleryView, true);
-        showGlassToast('success', null, `Moved ${result.movedCount} files to workspace`, false, 5000, '<i class="fas fa-copy"></i>');
+        showGlassToast('success', null, `Moved ${result.movedCount} files to workspace`, false, 5000, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
     } catch (error) {
         console.error('Error moving files to workspace:', error);
         showError('Failed to move files: ' + error.message);
     }
+}
+
+// Efficiently update workspace data from WebSocket responses
+function updateWorkspaceData(workspaceId, updates) {
+    if (!workspaces[workspaceId]) return;
+    
+    // Update local workspace data
+    Object.assign(workspaces[workspaceId], updates);
+    
+    // Only regenerate styles if this affects the current theme
+    if (workspaceId === activeWorkspace) {
+        // For color/background changes, use the more efficient single workspace update
+        if (updates.color || updates.backgroundColor) {
+            generateWorkspaceStyles(workspaceId);
+            switchWorkspaceTheme(activeWorkspace);
+        }
+    }
+    
+    // Update UI components
+    renderWorkspaceDropdown();
+    updateActiveWorkspaceDisplay();
 }
 
 // Update workspace color
@@ -1362,24 +1412,15 @@ async function updateWorkspaceColor(id, color) {
     try {
         // Use WebSocket API if available, otherwise fall back to HTTP
         if (window.wsClient && window.wsClient.isConnected()) {
-            await window.wsClient.updateWorkspaceColor(id, color);
+            const result = await window.wsClient.updateWorkspaceColor(id, color);
+            
+            // Use response data to update local state efficiently
+            if (result && result.success) {
+                updateWorkspaceData(id, { color });
+            }
         } else {
             showError('Failed to update workspace color: WebSocket not connected');
             throw new Error('Failed to update workspace color');
-        }
-        
-        // Update workspace data locally
-        if (workspaces[id]) {
-            workspaces[id].color = color;
-        }
-        
-        // Regenerate all workspace styles
-        generateAllWorkspaceStyles();
-        
-        // Update theme if this is the active workspace
-        if (id === activeWorkspace) {
-            activeWorkspaceColor = color;
-            switchWorkspaceTheme(activeWorkspace);
         }
     } catch (error) {
         console.error('Error updating workspace color:', error);
@@ -1392,61 +1433,19 @@ async function updateWorkspaceBackgroundColor(id, backgroundColor) {
     try {
         // Use WebSocket API if available, otherwise fall back to HTTP
         if (window.wsClient && window.wsClient.isConnected()) {
-            await window.wsClient.updateWorkspaceBackgroundColor(id, backgroundColor);
+            const result = await window.wsClient.updateWorkspaceBackgroundColor(id, backgroundColor);
+            
+            // Use response data to update local state efficiently
+            if (result && result.success) {
+                updateWorkspaceData(id, { backgroundColor });
+            }
         } else {
             showError('Failed to update workspace background color: WebSocket not connected');
             throw new Error('Failed to update workspace background color');
         }
-        
-        // Update workspace data locally
-        if (workspaces[id]) {
-            workspaces[id].backgroundColor = backgroundColor;
-        }
-        
-        // Regenerate all workspace styles
-        generateAllWorkspaceStyles();
-        
-        // Update theme if this is the active workspace
-        if (id === activeWorkspace) {
-            activeWorkspaceBackgroundColor = backgroundColor;
-            // Use new workspace theme switching system
-            switchWorkspaceTheme(activeWorkspace);
-        }
     } catch (error) {
         console.error('Error updating workspace background color:', error);
         showError('Failed to update workspace background color: ' + error.message);
-    }
-}
-
-// Update workspace background image
-async function updateWorkspaceBackgroundImage(id, backgroundImage) {
-    try {
-        // Use WebSocket API if available, otherwise fall back to HTTP
-        if (window.wsClient && window.wsClient.isConnected()) {
-            await window.wsClient.updateWorkspaceBackgroundImage(id, backgroundImage);
-        } else {
-            showError('Failed to update workspace background image: WebSocket not connected');
-            throw new Error('Failed to update workspace background image');
-        }
-    } catch (error) {
-        console.error('Error updating workspace background image:', error);
-        showError('Failed to update workspace background image: ' + error.message);
-    }
-}
-
-// Update workspace background opacity
-async function updateWorkspaceBackgroundOpacity(id, backgroundOpacity) {
-    try {
-        // Use WebSocket API if available, otherwise fall back to HTTP
-        if (window.wsClient && window.wsClient.isConnected()) {
-            await window.wsClient.updateWorkspaceBackgroundOpacity(id, backgroundOpacity);
-        } else {
-            showError('Failed to update workspace background opacity: WebSocket not connected');
-            throw new Error('Failed to update workspace background opacity');
-        }
-    } catch (error) {
-        console.error('Error updating workspace background opacity:', error);
-        showError('Failed to update workspace background opacity: ' + error.message);
     }
 }
 
@@ -1462,7 +1461,9 @@ function renderWorkspaceDropdown(selectedVal) {
 
     sortedWorkspaces.forEach(workspace => {
         const option = document.createElement('div');
-        option.className = 'custom-dropdown-option' + (workspace.isActive ? ' selected' : '');
+        // Use activeWorkspace variable instead of workspace.isActive property
+        const isActive = workspace.id === activeWorkspace;
+        option.className = 'custom-dropdown-option' + (isActive ? ' selected' : '');
         option.tabIndex = 0;
         option.dataset.value = workspace.id;
 
@@ -1475,7 +1476,7 @@ function renderWorkspaceDropdown(selectedVal) {
         `;
 
         const action = () => {
-            if (!workspace.isActive) {
+            if (!isActive) {
                 setActiveWorkspace(workspace.id);
             }
             closeWorkspaceDropdown();
@@ -1490,9 +1491,6 @@ function renderWorkspaceDropdown(selectedVal) {
 
         workspaceMenu.appendChild(option);
     });
-
-    // Update desktop workspace tabs
-    renderWorkspaceTabs();
 }
 
 function updateActiveWorkspaceDisplay() {
@@ -1503,9 +1501,6 @@ function updateActiveWorkspaceDisplay() {
     if (activeWorkspaceData) {
         workspaceSelected.textContent = activeWorkspaceData.name;
     }
-
-    // Update desktop workspace tabs
-    renderWorkspaceTabs();
 }
 function openWorkspaceDropdown() {
     openDropdown(document.getElementById('workspaceDropdownMenu'), document.getElementById('workspaceDropdownBtn'));
@@ -1515,80 +1510,14 @@ function closeWorkspaceDropdown() {
     closeDropdown(document.getElementById('workspaceDropdownMenu'), document.getElementById('workspaceDropdownBtn'));
 }
 
-// Desktop workspace tabs functionality
-function renderWorkspaceTabs() {
-    if (!workspaceTabs) return;
-
-    workspaceTabs.innerHTML = '';
-
-    // Sort workspaces by their sort order - workspaces is an object, not an array
-    const sortedWorkspaces = Object.values(workspaces).sort((a, b) => (a.sort || 0) - (b.sort || 0));
-
-    sortedWorkspaces.forEach(workspace => {
-        const tab = document.createElement('div');
-        tab.className = 'workspace-tab' + (workspace.isActive ? ' active' : '');
-        tab.dataset.workspaceId = workspace.id;
-
-        tab.innerHTML = `
-            <span class="workspace-name">${workspace.name}</span>
-        `;
-
-        const action = () => {
-            if (!workspace.isActive) {
-                workspaceTabs.classList.add('inactive');
-                setActiveWorkspace(workspace.id);
-            }
-        };
-
-        tab.addEventListener('click', action);
-        workspaceTabs.appendChild(tab);
-    });
-
-    // Add new workspace management button as a tab
-    const workspaceNewTab = document.createElement('div');
-    workspaceNewTab.className = 'workspace-tab workspace-options-tab';
-    workspaceNewTab.title = 'New Workspace';
-    workspaceNewTab.innerHTML = '<i class="fas fa-plus"></i>';
-    workspaceNewTab.addEventListener('click', () => {
-        showAddWorkspaceModal();
-    });
-    workspaceTabs.appendChild(workspaceNewTab);
-
-    // Add workspace management button as a tab
-    const workspaceManageTab = document.createElement('div');
-    workspaceManageTab.className = 'workspace-tab workspace-options-tab';
-    workspaceManageTab.title = 'Manage Workspaces';
-    workspaceManageTab.innerHTML = '<i class="fas fa-cog"></i>';
-    workspaceManageTab.addEventListener('click', () => {
-        showWorkspaceManagementModal();
-    });
-    workspaceTabs.appendChild(workspaceManageTab);
-
-    // Add reference manager button as a tab
-    const cacheManagerTab = document.createElement('div');
-    cacheManagerTab.className = 'workspace-tab workspace-options-tab';
-    cacheManagerTab.title = 'Reference Manager';
-    cacheManagerTab.innerHTML = '<i class="fas fa-swatchbook"></i>';
-    cacheManagerTab.addEventListener('click', () => {
-        if (typeof showCacheManagerModal === 'function') {
-            showCacheManagerModal();
-        }
-    });
-    workspaceTabs.appendChild(cacheManagerTab);
-}
-
 function renderWorkspaceManagementList() {
     const list = document.getElementById('workspaceManageList');
     if (!list) return;
-
-    console.log('🔄 Rendering workspace management list...');
-    console.log('📊 Current workspaces:', Object.values(workspaces).map(w => ({ id: w.id, name: w.name, sort: w.sort })));
 
     list.innerHTML = '';
 
     // Sort workspaces by their sort order - workspaces is an object, not an array
     const sortedWorkspaces = Object.values(workspaces).sort((a, b) => (a.sort || 0) - (b.sort || 0));
-    console.log('📊 Sorted workspaces:', sortedWorkspaces.map(w => ({ id: w.id, name: w.name, sort: w.sort })));
 
     sortedWorkspaces.forEach(workspace => {
         const item = document.createElement('div');
@@ -1602,7 +1531,7 @@ function renderWorkspaceManagementList() {
             <div class="workspace-manage-info">
                 <div class="workspace-header">
                     <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#124'}"></div>
-                    <h5>${workspace.name} ${workspace.isActive ? '<span class="badge-active"><i class="fas fa-check"></i></span>' : ''}</h5>
+                    <h5>${workspace.name} ${workspace.id === activeWorkspace ? '<span class="badge-active"><i class="fas fa-check"></i></span>' : ''}</h5>
                 </div>
                 <span class="workspace-manage-counts">${workspace.fileCount} files, ${workspace.cacheFileCount} references</span>
             </div>
@@ -1612,7 +1541,7 @@ function renderWorkspaceManagementList() {
                 </button>
                 ${!workspace.isDefault ? `
                     <button type="button" class="btn-secondary" onclick="showDumpWorkspaceModal('${workspace.id}', '${workspace.name}')" title="Dump">
-                        <i class="fas fa-copy"></i>
+                        <i class="mdi mdi-1-5 mdi-folder-move"></i>
                     </button>
                     <button type="button" class="btn-secondary text-danger" onclick="confirmDeleteWorkspace('${workspace.id}', '${workspace.name}')" title="Delete">
                         <i class="fas fa-trash"></i>
@@ -1623,8 +1552,6 @@ function renderWorkspaceManagementList() {
 
         list.appendChild(item);
     });
-
-    console.log('✅ Workspace management list rendered with', sortedWorkspaces.length, 'items');
 
     // Initialize drag and drop functionality
     initializeWorkspaceDragAndDrop();
@@ -1640,10 +1567,7 @@ function showWorkspaceManagementModal() {
 function hideWorkspaceManagementModal() {
     const modal = document.getElementById('workspaceManageModal');
     if (modal) closeModal(modal);
-    // Regenerate styles and re-apply active theme
-    generateAllWorkspaceStyles();
     switchWorkspaceTheme(activeWorkspace);
-    // Don't refresh immediately - wait for server response for reorder operations
 }
 
 function showAddWorkspaceModal() {
@@ -1652,15 +1576,9 @@ function showAddWorkspaceModal() {
     document.getElementById('workspaceNameInput').style.display = 'block';
     document.getElementById('workspaceColorInput').style.display = 'block';
     document.getElementById('workspaceBackgroundColorInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundImageInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundOpacityInput').style.display = 'block';
     document.getElementById('workspaceNameInput').value = '';
     document.getElementById('workspaceColorInput').value = '#124';
     document.getElementById('workspaceBackgroundColorInput').value = '#0a1a2a';
-    document.getElementById('workspaceBackgroundImageInput').value = '';
-    document.getElementById('workspaceBackgroundImageInput').placeholder = 'No background image selected';
-    document.getElementById('workspaceBackgroundOpacityInput').value = '0.3';
-    document.getElementById('workspaceBackgroundOpacityInput').textContent = '30';
     const modal = document.getElementById('workspaceEditModal');
     openModal(modal);
 }
@@ -1673,8 +1591,6 @@ async function editWorkspaceSettings(id) {
     document.getElementById('workspaceNameInput').style.display = 'block';
     document.getElementById('workspaceColorInput').style.display = 'block';
     document.getElementById('workspaceBackgroundColorInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundImageInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundOpacityInput').style.display = 'block';
 
     // Get workspace data
     const workspace = workspaces[id];
@@ -1683,27 +1599,13 @@ async function editWorkspaceSettings(id) {
         document.getElementById('workspaceNameInput').value = workspace.name;
         document.getElementById('workspaceColorInput').value = workspace.color || '#124';
         document.getElementById('workspaceBackgroundColorInput').value = workspace.backgroundColor || '#0a1a2a';
-        document.getElementById('workspaceBackgroundOpacityInput').value = workspace.backgroundOpacity || 0.3;
         // Set font dropdown labels
         const primaryFontSelected = document.getElementById('workspacePrimaryFontSelected');
         const textareaFontSelected = document.getElementById('workspaceTextareaFontSelected');
         if (primaryFontSelected) primaryFontSelected.textContent = workspace.primaryFont || 'Default';
         if (textareaFontSelected) textareaFontSelected.textContent = workspace.textareaFont || 'Default';
 
-        // Update opacity display
-        const opacityValue = document.getElementById('workspaceBackgroundOpacityInput');
-        if (opacityValue) {
-            opacityValue.textContent = Math.round((workspace.backgroundOpacity || 0.3) * 100);
-        }
 
-        // Background images will be loaded when the modal is opened
-
-        // Set background image if exists
-        const backgroundImageInput = document.getElementById('workspaceBackgroundImageInput');
-        if (backgroundImageInput) {
-            backgroundImageInput.value = workspace.backgroundImage || '';
-            backgroundImageInput.placeholder = workspace.backgroundImage ? workspace.backgroundImage : 'No background image selected';
-        }
         // Ensure color pickers reflect the loaded values visually
         try {
             const colorInputEl = document.getElementById('workspaceColorInput');
@@ -1733,15 +1635,9 @@ function hideWorkspaceEditModal() {
     document.getElementById('workspaceNameInput').style.display = 'block';
     document.getElementById('workspaceColorInput').style.display = 'block';
     document.getElementById('workspaceBackgroundColorInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundImageInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundOpacityInput').style.display = 'block';
     document.getElementById('workspaceNameInput').value = '';
     document.getElementById('workspaceColorInput').value = '#124';
     document.getElementById('workspaceBackgroundColorInput').value = '#0a1a2a';
-    document.getElementById('workspaceBackgroundImageInput').value = '';
-    document.getElementById('workspaceBackgroundImageInput').placeholder = 'No background image selected';
-    document.getElementById('workspaceBackgroundOpacityInput').value = '0.3';
-    document.getElementById('workspaceBackgroundOpacityInput').textContent = '30%';
 
     currentWorkspaceOperation = null;
 }
@@ -1813,6 +1709,17 @@ function initializeWorkspaceSystem() {
         });
     }
 
+    // Workspace selected click event
+    const workspaceSelected = document.getElementById('workspaceSelected');
+    if (workspaceSelected) {
+        workspaceSelected.addEventListener('click', (e) => {
+            e.preventDefault();
+            showWorkspaceManagementModal();
+        });
+        workspaceSelected.style.cursor = 'pointer';
+        workspaceSelected.title = 'Manage Workspaces';
+    }
+
     // Modal close events
     document.getElementById('closeWorkspaceManageBtn')?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1835,24 +1742,16 @@ function initializeWorkspaceSystem() {
         hideWorkspaceDumpModal();
     });
 
-    // Background image modal close events
-    document.getElementById('closeBackgroundImageModalBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        hideBackgroundImageModal();
-    });
-    document.getElementById('backgroundImageCancelBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        hideBackgroundImageModal();
-    });
+
 
     // Bulk change preset modal events
     document.getElementById('closeBulkChangePresetBtn')?.addEventListener('click', (e) => {
         e.preventDefault();
-        document.getElementById('bulkChangePresetModal').style.display = 'none';
+        closeModal(document.getElementById('bulkChangePresetModal'));
     });
     document.getElementById('bulkChangePresetCancelBtn')?.addEventListener('click', (e) => {
         e.preventDefault();
-        document.getElementById('bulkChangePresetModal').style.display = 'none';
+        closeModal(document.getElementById('bulkChangePresetModal'));
     });
     document.getElementById('bulkChangePresetConfirmBtn')?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1867,8 +1766,6 @@ function initializeWorkspaceSystem() {
                 const name = document.getElementById('workspaceNameInput').value.trim();
                 const color = document.getElementById('workspaceColorInput').value.trim();
                 const backgroundColor = document.getElementById('workspaceBackgroundColorInput').value.trim();
-                const backgroundImage = document.getElementById('workspaceBackgroundImageInput').value.trim();
-                const backgroundOpacity = parseFloat(document.getElementById('workspaceBackgroundOpacityInput').value);
                 const primaryFont = (workspaces[activeWorkspace]?.primaryFont) || null;
                 const textareaFont = (workspaces[activeWorkspace]?.textareaFont) || null;
 
@@ -1878,15 +1775,12 @@ function initializeWorkspaceSystem() {
                 }
                 // Create workspace then push all settings at once
                 await createWorkspace(name);
-                await loadWorkspaces();
                 const newWorkspace = Object.values(workspaces).find(w => w.name === name);
                 if (newWorkspace) {
                     await window.wsClient.updateWorkspaceSettings(newWorkspace.id, {
                         name,
                         color,
                         backgroundColor: backgroundColor || null,
-                        backgroundImage: backgroundImage || null,
-                        backgroundOpacity,
                         primaryFont,
                         textareaFont
                     });
@@ -1903,8 +1797,6 @@ function initializeWorkspaceSystem() {
                 const name = document.getElementById('workspaceNameInput').value.trim();
                 const color = document.getElementById('workspaceColorInput').value.trim();
                 const backgroundColor = document.getElementById('workspaceBackgroundColorInput').value.trim();
-                const backgroundImage = document.getElementById('workspaceBackgroundImageInput').value.trim();
-                const backgroundOpacity = parseFloat(document.getElementById('workspaceBackgroundOpacityInput').value);
                 const primaryFont = (workspaces[currentWorkspaceOperation.id]?.primaryFont) || null;
                 const textareaFont = (workspaces[currentWorkspaceOperation.id]?.textareaFont) || null;
 
@@ -1918,21 +1810,13 @@ function initializeWorkspaceSystem() {
                     name,
                     color,
                     backgroundColor: backgroundColor || null,
-                    backgroundImage: backgroundImage || null,
-                    backgroundOpacity,
                     primaryFont,
                     textareaFont
                 });
                 await loadWorkspaces();
 
-                // Update bokeh background if this is the active workspace
+                // Update background if this is the active workspace
                 if (currentWorkspaceOperation.id === activeWorkspace) {
-                    activeWorkspaceBackgroundOpacity = backgroundOpacity;
-                    activeWorkspaceBackgroundImage = backgroundImage;
-                    activeWorkspaceBackgroundColor = backgroundColor;
-                    activeWorkspaceColor = color;
-                    // Regenerate styles to include latest fonts and colors
-                    generateAllWorkspaceStyles();
                     switchWorkspaceTheme(activeWorkspace);
                 }
             }
@@ -1958,43 +1842,21 @@ function initializeWorkspaceSystem() {
         hideWorkspaceDumpModal();
         hideWorkspaceManagementModal();
     });
-
-    // Add wheel event for workspace background opacity input
-    const opacityInput = document.getElementById('workspaceBackgroundOpacityInput');
-    if (opacityInput) {
-        opacityInput.addEventListener('wheel', function(e) {
-            e.preventDefault();
-            const step = parseFloat(opacityInput.step) || 0.01;
-            let value = parseFloat(opacityInput.value) || 0.3;
-            if (e.deltaY < 0) {
-                value += step;
-            } else {
-                value -= step;
-            }
-            value = Math.max(0, Math.min(1, Math.round(value * 100) / 100));
-            opacityInput.value = value;
-            opacityInput.dispatchEvent(new Event('input', { bubbles: true }));
-        }, { passive: false });
-    }
     
     // Generate all workspace styles and set initial theme
     if (Object.keys(workspaces).length > 0) {
         generateAllWorkspaceStyles();
         switchWorkspaceTheme(activeWorkspace);
+    } else {
+        document.body.setAttribute('data-workspace', 'default');
     }
+    
+    // Set up a flag to track if styles have been initialized
+    window.workspaceStylesInitialized = true;
 }
 
 // Initialize workspace settings form event listeners
 function initializeWorkspaceSettingsForm() {
-    // Background image selection button
-    const selectBackgroundImageBtn = document.getElementById('selectBackgroundImageBtn');
-    if (selectBackgroundImageBtn) {
-        selectBackgroundImageBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            showBackgroundImageModal();
-        });
-    }
-
     // Live styling for color pickers themselves (apply chosen color to their background and border)
     const colorInput = document.getElementById('workspaceColorInput');
     const bgColorInput = document.getElementById('workspaceBackgroundColorInput');
@@ -2113,229 +1975,208 @@ function initializeWorkspaceSettingsForm() {
     }
 }
 
-async function showBackgroundImageModal() {
-    const modal = document.getElementById('backgroundImageModal');
-    const grid = document.getElementById('backgroundImageGrid');
-    const loading = document.getElementById('backgroundImageLoading');
-    const searchInput = document.getElementById('backgroundImageSearchInput');
-
-    if (!modal || !grid || !loading) return;
-
-    // Show modal
-    openModal(modal);
-
-    // Show loading
-    loading.style.display = 'flex';
-    grid.innerHTML = '';
-
-    try {
-        // Get current workspace images
-        const workspaceImages = await getWorkspaceImages();
-
-        // Hide loading
-        loading.style.display = 'none';
-
-        // Populate grid
-        populateBackgroundImageGrid(workspaceImages);
-
-        // Set up search functionality
-        setupBackgroundImageSearch(searchInput, workspaceImages);
-
-        // Set up selection handlers
-        setupBackgroundImageSelection();
-
-    } catch (error) {
-        console.error('Error loading background images:', error);
-        loading.style.display = 'none';
-        grid.innerHTML = '<p style="text-align: center; color: var(--text-secondary);">Error loading images</p>';
-    }
-}
-
-async function getWorkspaceImages() {
-    try {
-        // Get current workspace ID
-        const workspaceId = currentWorkspaceOperation?.id || activeWorkspace;
-        
-        let workspaceFiles = [];
-        
-        // Use WebSocket API if available, otherwise fall back to HTTP
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                const data = await window.wsClient.getWorkspaceFiles(workspaceId);
-                if (data) {
-                    workspaceFiles = data.files || [];
-                }
-            } catch (wsError) {
-                console.warn('WebSocket workspace files failed, falling back to HTTP:', wsError);
-                showError('Failed to load workspace images: ' + wsError.message);
-                throw new Error('Failed to load workspace images');
-            }
-        } else {
-            showError('Failed to load workspace images: WebSocket not connected');
-            throw new Error('Failed to load workspace images');
-        }
-
-        const workspaceFilesSet = new Set(workspaceFiles);
-
-        // Get all images from the filesystem (not filtered by active workspace)
-        const allImagesResponse = await fetchWithAuth('/images/all');
-        if (!allImagesResponse.ok) throw new Error('Failed to load all images');
-
-        const allImagesItems = await allImagesResponse.json();
-
-        // Filter images to only include workspace files
-        const filteredImages = allImagesItems.filter(img => {
-            const file = img.upscaled || img.original;
-            return workspaceFilesSet.has(file);
-        });
-
-        return filteredImages;
-    } catch (error) {
-        console.error('Error getting workspace images:', error);
-        showError('Failed to load workspace images: ' + error.message);
-        return [];
-    }
-}
-
-function populateBackgroundImageGrid(images) {
-    const grid = document.getElementById('backgroundImageGrid');
-    if (!grid) return;
-
-    grid.innerHTML = '';
-
-    images.forEach(img => {
-        const file = img.upscaled || img.original;
-        const preview = img.preview;
-
-        const option = document.createElement('button');
-        option.type = 'button';
-        option.className = 'background-image-option';
-        option.dataset.filename = file;
-
-        option.innerHTML = `
-            <div class="background-image-thumbnail" style="background-image: url('/previews/${preview}')"></div>
-        `;
-
-        grid.appendChild(option);
-    });
-}
-
-function setupBackgroundImageSearch(searchInput, allImages) {
-    if (!searchInput) return;
-
-    searchInput.addEventListener('input', (e) => {
-        const searchTerm = e.target.value.toLowerCase();
-        const grid = document.getElementById('backgroundImageGrid');
-        const options = grid.querySelectorAll('.background-image-option');
-
-        options.forEach(option => {
-            const filename = option.dataset.filename.toLowerCase();
-            if (filename.includes(searchTerm)) {
-                option.style.display = 'flex';
-            } else {
-                option.style.display = 'none';
-            }
-        });
-    });
-}
-
-function setupBackgroundImageSelection() {
-    const grid = document.getElementById('backgroundImageGrid');
-    const noImageBtn = document.getElementById('noBackgroundImageBtn');
-
-    // Clear previous selections
-    const allOptions = document.querySelectorAll('.background-image-option');
-    allOptions.forEach(option => option.classList.remove('selected'));
-    if (noImageBtn) noImageBtn.classList.remove('selected');
-
-    // Set current selection
-    const currentInput = document.getElementById('workspaceBackgroundImageInput');
-    const currentValue = currentInput ? currentInput.value : '';
-
-    if (!currentValue) {
-        if (noImageBtn) noImageBtn.classList.add('selected');
-    } else {
-        const selectedOption = grid.querySelector(`[data-filename="${currentValue}"]`);
-        if (selectedOption) selectedOption.classList.add('selected');
-    }
-
-    // Add click handlers
-    if (noImageBtn) {
-        noImageBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            selectBackgroundImage(null);
-        });
-    }
-
-    const options = grid.querySelectorAll('.background-image-option');
-    options.forEach(option => {
-        option.addEventListener('click', (e) => {
-            e.preventDefault();
-            const filename = option.dataset.filename;
-            selectBackgroundImage(filename);
-        });
-    });
-}
-
-function selectBackgroundImage(filename) {
-    selectedBackgroundImage = filename;
-
-    // Update visual selection
-    const allOptions = document.querySelectorAll('.background-image-option');
-    const noImageBtn = document.getElementById('noBackgroundImageBtn');
-
-    allOptions.forEach(option => option.classList.remove('selected'));
-    if (noImageBtn) noImageBtn.classList.remove('selected');
-
-    if (!filename) {
-        if (noImageBtn) noImageBtn.classList.add('selected');
-    } else {
-        const selectedOption = document.querySelector(`[data-filename="${filename}"]`);
-        if (selectedOption) selectedOption.classList.add('selected');
-    }
-
-    // Update input field
-    const input = document.getElementById('workspaceBackgroundImageInput');
-    if (input) {
-        input.value = filename || '';
-        input.placeholder = filename ? filename : 'No background image selected';
-    }
-
-    // Close modal
-    hideBackgroundImageModal();
-}
-
-function hideBackgroundImageModal() {
-    const modal = document.getElementById('backgroundImageModal');
-    closeModal(modal);
-
-    // Clear search
-    const searchInput = document.getElementById('backgroundImageSearchInput');
-    if (searchInput) searchInput.value = '';
-
-    selectedBackgroundImage = null;
-}
-
 // Register initialization steps with WebSocket client
 if (window.wsClient) {
-    // Priority 1: Initialize background layers
-    window.wsClient.registerInitStep(10, 'Initializing background layers', async () => {
-        initializeBokehBackgrounds();
+    document.addEventListener('galleryUpdated', () => {
+        console.log('🔄 Gallery updated, ensuring background system is active');
+        if (isGalleryReady() && !currentBackgroundImage) {
+            // If we don't have a background image yet, set one now
+            ensureInitialBackgroundImage();
+        }
     });
-
-    // Priority 2: Initialize workspace system
+    
     window.wsClient.registerInitStep(11, 'Initializing workspace system', async () => {
         initializeWorkspaceSystem();
     });
+    window.wsClient.registerInitStep(12, 'Loading Workspaces', async () => {
+        await loadWorkspaces();
+        await loadCacheImages();
+    });
+    window.wsClient.registerInitStep(13, 'Preloading fonts', async () => {
+        // Check if workspaces are loaded
+        if (Object.keys(workspaces).length === 0) {
+            console.log('🔤 No workspaces loaded yet, skipping font preloading');
+            return;
+        }
 
-    // Priority 3: Initialize workspace settings form event listeners
-    window.wsClient.registerInitStep(12, 'Setting up workspace settings', async () => {
+        // Map font names to their file paths
+        const fontPathMap = {
+            'Noto Sans': [
+                '/fonts/NotoSans-VariableFont_wdth,wght.ttf',
+                '/fonts/NotoSans-Italic-VariableFont_wdth,wght.ttf'
+            ],
+            'Noto Sans JP': ['/fonts/NotoSansJP-VariableFont_wght.ttf'],
+            'Oxanium': ['/fonts/Oxanium-VariableFont_wght.ttf'],
+            'Share Tech Mono': ['/fonts/ShareTechMono-Regular.ttf'],
+            'Eczar': ['/fonts/Eczar-VariableFont_wght.ttf'],
+            'Atkinson Hyperlegible Next': [
+                '/fonts/AtkinsonHyperlegibleNext-VariableFont_wght.ttf',
+                '/fonts/AtkinsonHyperlegibleNext-Italic-VariableFont_wght.ttf'
+            ],
+            'Grenze': [
+                '/fonts/Grenze-Thin.ttf',
+                '/fonts/Grenze-ExtraLight.ttf',
+                '/fonts/Grenze-Light.ttf',
+                '/fonts/Grenze-Regular.ttf',
+                '/fonts/Grenze-Medium.ttf',
+                '/fonts/Grenze-SemiBold.ttf',
+                '/fonts/Grenze-Bold.ttf',
+                '/fonts/Grenze-ExtraBold.ttf',
+                '/fonts/Grenze-Black.ttf',
+                '/fonts/Grenze-ThinItalic.ttf',
+                '/fonts/Grenze-ExtraLightItalic.ttf',
+                '/fonts/Grenze-LightItalic.ttf',
+                '/fonts/Grenze-Italic.ttf',
+                '/fonts/Grenze-MediumItalic.ttf',
+                '/fonts/Grenze-SemiBoldItalic.ttf',
+                '/fonts/Grenze-BoldItalic.ttf',
+                '/fonts/Grenze-ExtraBoldItalic.ttf',
+                '/fonts/Grenze-BlackItalic.ttf'
+            ],
+            'Texturina': [
+                '/fonts/Texturina-VariableFont_opsz,wght.ttf',
+                '/fonts/Texturina-Italic-VariableFont_opsz,wght.ttf'
+            ],
+            'Bodoni Moda': [
+                '/fonts/BodoniModa-VariableFont_opsz,wght.ttf',
+                '/fonts/BodoniModa-Italic-VariableFont_opsz,wght.ttf'
+            ],
+            'Red Hat Display': [
+                '/fonts/RedHatDisplay-VariableFont_wght.ttf',
+                '/fonts/RedHatDisplay-Italic-VariableFont_wght.ttf'
+            ],
+            'Tomorrow': [
+                '/fonts/Tomorrow-Thin.ttf',
+                '/fonts/Tomorrow-ExtraLight.ttf',
+                '/fonts/Tomorrow-Light.ttf',
+                '/fonts/Tomorrow-Regular.ttf',
+                '/fonts/Tomorrow-Medium.ttf',
+                '/fonts/Tomorrow-SemiBold.ttf',
+                '/fonts/Tomorrow-Bold.ttf',
+                '/fonts/Tomorrow-ExtraBold.ttf',
+                '/fonts/Tomorrow-Black.ttf',
+                '/fonts/Tomorrow-ThinItalic.ttf',
+                '/fonts/Tomorrow-ExtraLightItalic.ttf',
+                '/fonts/Tomorrow-LightItalic.ttf',
+                '/fonts/Tomorrow-Italic.ttf',
+                '/fonts/Tomorrow-MediumItalic.ttf',
+                '/fonts/Tomorrow-SemiBoldItalic.ttf',
+                '/fonts/Tomorrow-BoldItalic.ttf',
+                '/fonts/Tomorrow-ExtraBoldItalic.ttf',
+                '/fonts/Tomorrow-BlackItalic.ttf'
+            ],
+            'Tektur': ['/fonts/Tektur-VariableFont_wdth,wght.ttf'],
+            'Kanit': [
+                '/fonts/Kanit-Thin.ttf',
+                '/fonts/Kanit-ExtraLight.ttf',
+                '/fonts/Kanit-Light.ttf',
+                '/fonts/Kanit-Regular.ttf',
+                '/fonts/Kanit-Medium.ttf',
+                '/fonts/Kanit-SemiBold.ttf',
+                '/fonts/Kanit-Bold.ttf',
+                '/fonts/Kanit-ExtraBold.ttf',
+                '/fonts/Kanit-Black.ttf',
+                '/fonts/Kanit-ThinItalic.ttf',
+                '/fonts/Kanit-ExtraLightItalic.ttf',
+                '/fonts/Kanit-LightItalic.ttf',
+                '/fonts/Kanit-Italic.ttf',
+                '/fonts/Kanit-MediumItalic.ttf',
+                '/fonts/Kanit-SemiBoldItalic.ttf',
+                '/fonts/Kanit-BoldItalic.ttf',
+                '/fonts/Kanit-ExtraBoldItalic.ttf',
+                '/fonts/Kanit-BlackItalic.ttf'
+            ],
+            'Mozilla Headline': ['/fonts/MozillaHeadline-VariableFont_wdth,wght.ttf'],
+            'Mozilla Text': ['/fonts/MozillaText-VariableFont_wght.ttf'],
+            'Zen Kurenaido': ['/fonts/ZenKurenaido-Regular.ttf'],
+            'DotGothic16': ['/fonts/DotGothic16-Regular.ttf'],
+            'Kaisei Decol': [
+                '/fonts/KaiseiDecol-Regular.ttf',
+                '/fonts/KaiseiDecol-Medium.ttf',
+                '/fonts/KaiseiDecol-Bold.ttf'
+            ],
+            'Zen Antique': ['/fonts/ZenAntique-Regular.ttf'],
+            'Solway': [
+                '/fonts/Solway-Light.ttf',
+                '/fonts/Solway-Regular.ttf',
+                '/fonts/Solway-Medium.ttf',
+                '/fonts/Solway-Bold.ttf',
+                '/fonts/Solway-ExtraBold.ttf'
+            ]
+        };
+
+        // Collect fonts to preload based on ALL workspaces
+        const fontsToPreload = new Set();
+        
+        // Always preload default fonts
+        fontsToPreload.add('/fonts/NotoSans-VariableFont_wdth,wght.ttf');
+        fontsToPreload.add('/fonts/NotoSansJP-VariableFont_wght.ttf');
+        fontsToPreload.add('/fonts/ShareTechMono-Regular.ttf');
+        
+        // Collect fonts from all workspaces
+        const workspaceFonts = [];
+        Object.values(workspaces).forEach(workspace => {
+            const primaryFont = workspace.primaryFont;
+            const textareaFont = workspace.textareaFont;
+            
+            if (primaryFont && primaryFont.trim()) {
+                workspaceFonts.push({ workspace: workspace.name, type: 'primary', font: primaryFont });
+            }
+            if (textareaFont && textareaFont.trim()) {
+                workspaceFonts.push({ workspace: workspace.name, type: 'textarea', font: textareaFont });
+            }
+        });
+        
+        // Add all unique fonts from all workspaces
+        workspaceFonts.forEach(({ workspace, type, font }) => {
+            if (fontPathMap[font]) {
+                fontPathMap[font].forEach(path => fontsToPreload.add(path));
+            }
+        });
+
+        const fontsArray = Array.from(fontsToPreload);
+        
+        if (fontsArray.length === 0) {
+            console.log('🔤 No fonts to preload');
+            return;
+        }
+        
+        try {
+            // Create font preload links for selected fonts
+            const preloadPromises = fontsArray.map(fontPath => {
+                return new Promise((resolve) => {
+                    const link = document.createElement('link');
+                    link.rel = 'preload';
+                    link.as = 'font';
+                    link.type = 'font/ttf';
+                    link.crossOrigin = 'anonymous';
+                    link.href = fontPath;
+                    
+                    link.onload = () => resolve(fontPath);
+                    link.onerror = () => {
+                        console.warn(`⚠️ Failed to preload font: ${fontPath}`);
+                        resolve(fontPath); // Resolve anyway to not block initialization
+                    };
+                    
+                    document.head.appendChild(link);
+                });
+            });
+            
+            // Wait for all fonts to be preloaded (or fail gracefully)
+            await Promise.allSettled(preloadPromises);            
+        } catch (error) {
+            console.warn('⚠️ Font preloading encountered errors:', error);
+            // Don't throw - font preloading failure shouldn't block workspace initialization
+        }
+    });
+    window.wsClient.registerInitStep(14, 'Setting up workspace settings', async () => {
         initializeWorkspaceSettingsForm();
     });
-
-    // Priority 4: Initialize WebSocket workspace event listeners
-    window.wsClient.registerInitStep(13, 'Setting up workspace events', async () => {
+    window.wsClient.registerInitStep(15, 'Setting up workspace events', async () => {
         initializeWebSocketWorkspaceEvents();
+    });
+    window.wsClient.registerInitStep(91, 'Initializing background layers', async () => {
+        initializeBackgrounds();
     });
 } else {
     throw new Error('WebSocket client not initialized');
@@ -2350,13 +2191,21 @@ function initializeWebSocketWorkspaceEvents() {
         // Handle different types of workspace updates
         switch (data.action) {
             case 'created':
-            case 'renamed':
-            case 'deleted':
-            case 'dumped':
-                // Refresh workspace data and UI
-                loadWorkspaces();
-                generateAllWorkspaceStyles();
-                switchWorkspaceTheme(activeWorkspace);
+                // Add new workspace to local state
+                if (data.workspace) {
+                    workspaces[data.workspace.id] = data.workspace;
+                }
+                
+                // Only regenerate styles if this is the first workspace or if it affects current theme
+                const isFirstWorkspace = Object.keys(workspaces).length === 1;
+                if (isFirstWorkspace || data.workspace.id === activeWorkspace) {
+                    generateAllWorkspaceStyles();
+                    switchWorkspaceTheme(activeWorkspace);
+                }
+                
+                // Update UI components that need the new workspace
+                renderWorkspaceDropdown();
+                updateActiveWorkspaceDisplay();
                 
                 // If workspace management modal is open, refresh it
                 const workspaceManageModal = document.getElementById('workspaceManageModal');
@@ -2364,6 +2213,60 @@ function initializeWebSocketWorkspaceEvents() {
                     renderWorkspaceManagementList();
                 }
                 break;
+                
+            case 'renamed':
+                // Update local workspace data
+                if (data.workspace && workspaces[data.workspace.id]) {
+                    workspaces[data.workspace.id].name = data.workspace.name;
+                }
+                
+                // Update UI components
+                renderWorkspaceDropdown();
+                updateActiveWorkspaceDisplay();
+                
+                // If workspace management modal is open, refresh it
+                const workspaceManageModalRenamed = document.getElementById('workspaceManageModal');
+                if (workspaceManageModalRenamed && workspaceManageModalRenamed.style.display !== 'none') {
+                    renderWorkspaceManagementList();
+                }
+                break;
+                
+            case 'deleted':
+                // Remove deleted workspace from local state
+                if (data.workspaceId && workspaces[data.workspaceId]) {
+                    delete workspaces[data.workspaceId];
+                }
+                
+                // Update UI components
+                renderWorkspaceDropdown();
+                updateActiveWorkspaceDisplay();
+                
+                // If workspace management modal is open, refresh it
+                const workspaceManageModalDeleted = document.getElementById('workspaceManageModal');
+                if (workspaceManageModalDeleted && workspaceManageModalDeleted.style.display !== 'none') {
+                    renderWorkspaceManagementList();
+                }
+                break;
+                
+            case 'dumped':
+                // Update file counts for affected workspaces
+                if (data.sourceWorkspaceId && workspaces[data.sourceWorkspaceId]) {
+                    workspaces[data.sourceWorkspaceId].fileCount = Math.max(0, (workspaces[data.sourceWorkspaceId].fileCount || 0) - (data.movedCount || 0));
+                }
+                if (data.targetWorkspaceId && workspaces[data.targetWorkspaceId]) {
+                    workspaces[data.targetWorkspaceId].fileCount = (workspaces[data.targetWorkspaceId].fileCount || 0) + (data.movedCount || 0);
+                }
+                
+                // Update UI components
+                renderWorkspaceDropdown();
+                
+                // If workspace management modal is open, refresh it
+                const workspaceManageModalDumped = document.getElementById('workspaceManageModal');
+                if (workspaceManageModalDumped && workspaceManageModalDumped.style.display !== 'none') {
+                    renderWorkspaceManagementList();
+                }
+                break;
+                
             case 'reordered':
                 // Remove loading state from all workspace items
                 const workspaceManageList = document.getElementById('workspaceManageList');
@@ -2379,10 +2282,10 @@ function initializeWebSocketWorkspaceEvents() {
                     });
                 }
                 
-                // Refresh workspace data and UI
-                loadWorkspaces();
-                generateAllWorkspaceStyles();
-                switchWorkspaceTheme(activeWorkspace);
+                // For reordering, we don't need to reload all workspaces
+                // Just update the UI components that show the new order
+                renderWorkspaceDropdown();
+                updateActiveWorkspaceDisplay();
                 
                 // If workspace management modal is open, refresh it
                 const workspaceManageModalAfterReorder = document.getElementById('workspaceManageModal');
@@ -2390,7 +2293,30 @@ function initializeWebSocketWorkspaceEvents() {
                     renderWorkspaceManagementList();
                 }
                 break;
+                
             case 'files_moved':
+                // Update file counts for affected workspaces
+                if (data.sourceWorkspaceId && workspaces[data.sourceWorkspaceId]) {
+                    workspaces[data.sourceWorkspaceId].fileCount = Math.max(0, (workspaces[data.sourceWorkspaceId].fileCount || 0) - (data.movedCount || 0));
+                }
+                if (data.targetWorkspaceId && workspaces[data.targetWorkspaceId]) {
+                    workspaces[data.targetWorkspaceId].fileCount = (workspaces[data.targetWorkspaceId].fileCount || 0) + (data.movedCount || 0);
+                }
+                
+                // Update UI components
+                renderWorkspaceDropdown();
+                
+                // Only refresh gallery if it's currently visible
+                if (document.getElementById('gallery')?.style.display !== 'none') {
+                    switchGalleryView(currentGalleryView, true);
+                }
+                
+                // Only refresh cache if it's currently visible
+                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
+                    loadCacheImages();
+                }
+                break;
+                
             case 'scrap_added':
             case 'scrap_removed':
             case 'pinned_added':
@@ -2402,28 +2328,70 @@ function initializeWebSocketWorkspaceEvents() {
             case 'group_deleted':
             case 'images_added_to_group':
             case 'images_removed_from_group':
+                // Only refresh gallery if it's currently visible
+                if (document.getElementById('gallery')?.style.display !== 'none') {
+                    switchGalleryView(currentGalleryView, true);
+                }
+                
+                // Only refresh cache if it's currently visible
+                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
+                    loadCacheImages();
+                }
+                break;
+                
             case 'color_updated':
+                // Update local workspace data
+                if (data.workspaceId && workspaces[data.workspaceId]) {
+                    workspaces[data.workspaceId].color = data.color;
+                }
+                
                 // Update theme when workspace color changes
                 const updatedWorkspace = workspaces[data.workspaceId];
-                if (updatedWorkspace && updatedWorkspace.isActive) {
-                    activeWorkspaceColor = updatedWorkspace.color || '#124';
+                if (updatedWorkspace && data.workspaceId === activeWorkspace) {
+                    // Only regenerate styles if this affects the current active workspace
+                    generateWorkspaceStyles(data.workspaceId);
                     switchWorkspaceTheme(activeWorkspace);
                 }
-                switchGalleryView(currentGalleryView, true);
-                loadCacheImages();
+                
+                // Update UI components
+                renderWorkspaceDropdown();
+                
+                // Only refresh gallery if it's currently visible
+                if (document.getElementById('gallery')?.style.display !== 'none') {
+                    switchGalleryView(currentGalleryView, true);
+                }
+                
+                // Only refresh cache if it's currently visible
+                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
+                    loadCacheImages();
+                }
                 break;
+                
             case 'background_color_updated':
             case 'background_image_updated':
             case 'background_opacity_updated':
-                // Refresh workspace data and UI
-                loadWorkspaces();
+                // Update local workspace data
+                if (data.workspaceId && workspaces[data.workspaceId]) {
+                    if (data.backgroundColor !== undefined) {
+                        workspaces[data.workspaceId].backgroundColor = data.backgroundColor;
+                    }
+                }
                 
-                // Regenerate all workspace styles and update current theme
-                generateAllWorkspaceStyles();
-                switchWorkspaceTheme(activeWorkspace);
+                // Only regenerate styles if this affects the current theme
+                if (data.workspaceId === activeWorkspace) {
+                    generateWorkspaceStyles(data.workspaceId);
+                    switchWorkspaceTheme(activeWorkspace);
+                }
                 
-                switchGalleryView(currentGalleryView, true);
-                loadCacheImages();
+                // Only refresh gallery if it's currently visible
+                if (document.getElementById('gallery')?.style.display !== 'none') {
+                    switchGalleryView(currentGalleryView, true);
+                }
+                
+                // Only refresh cache if it's currently visible
+                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
+                    loadCacheImages();
+                }
                 break;
         }
     });
@@ -2438,21 +2406,16 @@ function initializeWebSocketWorkspaceEvents() {
         // Update workspace settings immediately
         const workspace = workspaces[activeWorkspace];
         if (workspace) {
-            activeWorkspaceColor = workspace.color || '#124';
-            activeWorkspaceBackgroundColor = workspace.backgroundColor;
-            activeWorkspaceBackgroundImage = workspace.backgroundImage;
-            activeWorkspaceBackgroundOpacity = workspace.backgroundOpacity || 0.3;
-            // Use new workspace theme switching system
             switchWorkspaceTheme(activeWorkspace);
         }
         
-        // Refresh all UI components
-        await loadWorkspaces();
+        // Refresh UI components (no need to reload workspaces)
+        renderWorkspaceDropdown();
         updateActiveWorkspaceDisplay();
         
         // Set up the completion callback and load gallery
         window.workspaceLoadingCompleteCallback = completeWorkspaceSwitch;
-        switchGalleryView(currentGalleryView, true);
+        switchGalleryView(window.currentGalleryView || 'images', true);
         loadCacheImages();
         
         // Fade in gallery
@@ -2470,9 +2433,6 @@ function initializeWebSocketWorkspaceEvents() {
         // Clear the workspace switching flag
         isWorkspaceSwitching = false;
         window.isWorkspaceSwitching = false;
-
-        // Remove 'inactive' class from all workspace tabs
-        workspaceTabs.classList.remove('inactive');
     });
 }
 
@@ -2496,12 +2456,6 @@ function completeWorkspaceSwitch() {
     // Clear the workspace switching flag
     isWorkspaceSwitching = false;
     window.isWorkspaceSwitching = false;
-
-    // Remove 'inactive' class from all workspace tabs
-    const workspaceTabs = document.querySelector('.workspace-tabs');
-    if (workspaceTabs) {
-        workspaceTabs.classList.remove('inactive');
-    }
 }
 
 // Initialize drag and drop functionality for workspace reordering
@@ -2677,12 +2631,14 @@ async function reorderWorkspaces(workspaceIds) {
 }
 
 function refreshWorkspaceManager() {
-    loadWorkspaces().then(() => {
-        const workspaceManageModal = document.getElementById('workspaceManageModal');
-        if (workspaceManageModal && workspaceManageModal.style.display !== 'none') {
-            renderWorkspaceManagementList();
-        }
-    });
+    // Only refresh the UI components, don't reload all workspaces
+    renderWorkspaceDropdown();
+    updateActiveWorkspaceDisplay();
+    
+    const workspaceManageModal = document.getElementById('workspaceManageModal');
+    if (workspaceManageModal && workspaceManageModal.style.display !== 'none') {
+        renderWorkspaceManagementList();
+    }
 }
 
 window.refreshWorkspaceManager = refreshWorkspaceManager;

@@ -86,7 +86,7 @@ function showConfirmationDialog(message, options = [], event = null) {
         positionConfirmationDialog(event);
 
         // Show dialog
-        confirmationDialog.style.display = 'block';
+        openModal(confirmationDialog);
         confirmationDialogActive = true;
     });
 }
@@ -147,7 +147,7 @@ function positionConfirmationDialog(event) {
 // Hide confirmation dialog
 function hideConfirmationDialog() {
     if (confirmationDialog) {
-        confirmationDialog.style.display = 'none';
+        closeModal(confirmationDialog);
         confirmationDialogActive = false;
         
         // Remove escape key handler

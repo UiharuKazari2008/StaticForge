@@ -7,6 +7,151 @@ let emphasisEditingTarget = null;
 let emphasisEditingSelection = null;
 let emphasisEditingMode = 'normal'; // 'normal', 'brace', 'group'
 
+// Function to apply emphasis directly to selected text
+function applyEmphasisDirectly(target, weight, mode = 'normal') {
+    console.log('applyEmphasisDirectly called with:', { target, weight, mode });
+    
+    if (!target) {
+        console.log('No target provided');
+        return false;
+    }
+    
+    const value = target.value;
+    const selectionStart = target.selectionStart;
+    const selectionEnd = target.selectionEnd;
+    
+    console.log('Selection:', { selectionStart, selectionEnd, hasSelection: selectionStart !== selectionEnd });
+    
+    // Check if there's a valid text selection
+    if (selectionStart === selectionEnd) {
+        console.log('No text selected');
+        return false; // No text selected
+    }
+    
+    // Get the selected text
+    const selectedText = value.substring(selectionStart, selectionEnd).trim();
+    if (!selectedText) {
+        return false; // Empty selection
+    }
+    
+    // Ensure weight is a valid number
+    let numericWeight;
+    if (typeof weight === 'string') {
+        numericWeight = parseFloat(weight);
+        if (isNaN(numericWeight)) {
+            numericWeight = 1.0;
+        }
+    } else {
+        numericWeight = weight;
+    }
+    
+    // Format the weight
+    const formattedWeight = numericWeight.toFixed(1);
+    
+    // Check if the selected text is already emphasized
+    const emphasisPattern = /^(-?\d+\.\d+)::(.+?)::$/;
+    const isAlreadyEmphasized = emphasisPattern.test(selectedText);
+    
+    let emphasizedText;
+    let finalStart = selectionStart;
+    let finalEnd = selectionStart;
+    
+    if (isAlreadyEmphasized) {
+        // Update existing emphasis - extract the inner text and re-emphasize
+        const match = selectedText.match(emphasisPattern);
+        if (match) {
+            const innerText = match[2];
+            if (mode === 'brace') {
+                // Brace mode: create {} or [] blocks with more reasonable scaling
+                let braceLevel;
+                
+                if (numericWeight > 1.0) {
+                    // Positive emphasis: use {} - limit to reasonable number
+                    braceLevel = Math.min(Math.round((numericWeight - 1.0) * 2), 5); // Max 5 braces
+                    const braces = '{'.repeat(braceLevel);
+                    emphasizedText = `${braces}${innerText}${'}'.repeat(braceLevel)}`;
+                } else if (numericWeight < 1.0) {
+                    // Negative emphasis: use [] - limit to reasonable number
+                    braceLevel = Math.min(Math.round((1.0 - numericWeight) * 2), 5); // Max 5 brackets
+                    const brackets = '['.repeat(braceLevel);
+                    emphasizedText = `${brackets}${innerText}${']'.repeat(bracketLevel)}`;
+                } else {
+                    // No emphasis: just the text
+                    emphasizedText = innerText;
+                }
+            } else {
+                // Normal/Group mode: create emphasis block
+                emphasizedText = `${formattedWeight}::${innerText}::`;
+            }
+            console.log('Updated existing emphasis:', { old: selectedText, new: emphasizedText });
+        }
+    } else {
+        // Create new emphasis
+        if (mode === 'brace') {
+            // Brace mode: create {} or [] blocks with more reasonable scaling
+            let braceLevel;
+            
+            if (numericWeight > 1.0) {
+                // Positive emphasis: use {} - limit to reasonable number
+                braceLevel = Math.min(Math.round((numericWeight - 1.0) * 2), 5); // Max 5 braces
+                const braces = '{'.repeat(braceLevel);
+                emphasizedText = `${braces}${selectedText}${'}'.repeat(braceLevel)}`;
+            } else if (numericWeight < 1.0) {
+                // Negative emphasis: use [] - limit to reasonable number
+                braceLevel = Math.min(Math.round((1.0 - numericWeight) * 2), 5); // Max 5 brackets
+                const brackets = '['.repeat(braceLevel);
+                emphasizedText = `${brackets}${selectedText}${']'.repeat(braceLevel)}`;
+            } else {
+                // No emphasis: just the text
+                emphasizedText = selectedText;
+            }
+        } else if (mode === 'group') {
+            // Group mode: create emphasis block (same as normal for now)
+            emphasizedText = `${formattedWeight}::${selectedText}::`;
+        } else {
+            // Normal mode: create emphasis block
+            emphasizedText = `${formattedWeight}::${selectedText}::`;
+        }
+        console.log('Created new emphasis:', emphasizedText);
+    }
+    
+    // Replace the selected text with the emphasized version
+    const beforeText = value.substring(0, selectionStart);
+    const afterText = value.substring(selectionEnd);
+    const newValue = beforeText + emphasizedText + afterText;
+    
+    console.log('Replacing text:', { 
+        original: value.substring(selectionStart, selectionEnd),
+        emphasized: emphasizedText,
+        newValue: newValue.substring(0, 100) + '...'
+    });
+    
+    target.value = newValue;
+    
+    // Set cursor position after the emphasized text
+    const newCursorPosition = selectionStart + emphasizedText.length;
+    target.setSelectionRange(newCursorPosition, newCursorPosition);
+    
+    // Trigger input event to update any dependent UI
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    
+    // Update emphasis highlighting
+    if (window.autoResizeTextarea) {
+        window.autoResizeTextarea(target);
+    }
+    if (window.updateEmphasisHighlighting) {
+        window.updateEmphasisHighlighting(target);
+    }
+    
+    // Return the emphasized text and its position for reselection
+    return {
+        success: true,
+        emphasizedText: emphasizedText,
+        start: selectionStart,
+        end: selectionStart + emphasizedText.length
+    };
+}
+
 // Emphasis highlighting functionality
 let emphasisHighlightingActive = false;
 let emphasisHighlightingTarget = null;
@@ -397,7 +542,7 @@ function updateEmphasisEditingFromSlider(value) {
         emphasisEditingValue = "---";
     } else {
         // Convert to number if it's a string (for integer inputs)
-    emphasisEditingValue = parseFloat(value);
+        emphasisEditingValue = parseFloat(value.toString());
     }
     
     // Update selection highlight to show the new emphasis value
@@ -1712,4 +1857,9 @@ Object.defineProperty(window, 'emphasisEditingSelection', {
 Object.defineProperty(window, 'emphasisEditingActive', {
     get: () => emphasisEditingActive,
     set: (value) => { emphasisEditingActive = value; }
+});
+
+// Expose the direct emphasis application function
+Object.defineProperty(window, 'applyEmphasisDirectly', {
+    value: applyEmphasisDirectly
 });

@@ -31,6 +31,10 @@ let searchCompletionStatus = {
     isComplete: false
 };
 
+// Search request tracking to prevent multiple simultaneous searches
+let currentSearchQuery = '';
+let currentSearchTimeout = null;
+
 // Persistent results storage for stable autocomplete
 let persistentSpellCheckData = null; // Current spell check data
 let isAutocompleteVisible = false; // Track if autocomplete is currently visible
@@ -47,6 +51,10 @@ let lastSearchQuery = '';
 
 // Track whether services have been initialized for the current autofill session
 let servicesInitialized = false;
+
+// Selection persistence for tag listings
+let lastSelectedItemData = null; // Store data about the last selected item for restoration
+let lastSelectedItemType = null; // Store the type of the last selected item
 
 // Map client model names to server model names
 const searchModelMapping = {
@@ -354,6 +362,8 @@ function handleSearchResultsComplete(message) {
     // Set searching to false after a small delay to ensure results are displayed
     setTimeout(() => {
         isSearching = false;
+        // Reset current search query to allow new searches
+        currentSearchQuery = '';
     }, 100);
     
     // Don't clear search state immediately - let it persist for continued searching
@@ -587,8 +597,70 @@ function updateSearchStatusDisplay() {
     if (visibleServices.length === 0) {
         return;
     }
+    
+    // Check if all services are in a completed state (not stalled or searching)
+    const allServicesDone = visibleServices.every(([name, status]) => 
+        status === 'completed' || status === 'completed-none' || status === 'error'
+    );
+    
+    // Count results for display
+    let tagResultsCount = 0;
+    let specialResultsCount = 0;
+    
+    if (allServicesDone) {
+        // Count tag results (API models and local tag services)
+        for (const [serviceName, results] of searchResultsByService) {
+            if (serviceName !== 'characters' && serviceName !== 'textReplacements' && serviceName !== 'spellcheck') {
+                if (results && Array.isArray(results)) {
+                    tagResultsCount += results.length;
+                }
+            }
+        }
         
-    let statusHTML = '<div class="search-status-header"><i class="fas fa-search"></i><span>Searching...</span></div><div class="search-service-indicators">';
+        // Count special results (characters and text replacements)
+        const charactersResults = searchResultsByService.get('characters') || [];
+        const textReplacementsResults = searchResultsByService.get('textReplacements') || [];
+        specialResultsCount = charactersResults.length + textReplacementsResults.length;
+    }
+    
+    // Determine display text
+    let displayIcon = 'fas fa-search';
+    let displayText = 'Searching...';
+    if (allServicesDone) {
+        if (tagResultsCount > 0) {
+            displayText = `${tagResultsCount} Results`;
+            if (specialResultsCount > 0) {
+                displayText += ` (+${specialResultsCount} Special)`;
+            }
+            displayIcon = 'fa-light fa-check';
+        } else if (specialResultsCount > 0) {
+            displayText = `${specialResultsCount} Special Results`;
+            displayIcon = 'fa-light fa-check';
+        } else {
+            displayText = 'No Results';
+            displayIcon = 'fa-light fa-question';
+        }
+    }
+    
+    // Handle expanded vs compact state
+    if (autocompleteExpanded) {
+        // In expanded state, don't show the element if search is done
+        if (allServicesDone) {
+            statusDisplay.style.display = 'none';
+            return;
+        } else {
+            statusDisplay.style.display = '';
+        }
+    } else {
+        if (allServicesDone) {
+            statusDisplay.classList.add('search-done');
+        } else {
+            statusDisplay.classList.remove('search-done');
+            statusDisplay.style.display = '';
+        }
+    }
+        
+    let statusHTML = `<div class="search-status-header"><i class="${displayIcon}"></i><span>${displayText}</span></div><div class="search-service-indicators">`;
     
     // Define the order you want services to appear in the status bar
     const serviceOrder = [
@@ -668,14 +740,14 @@ function getServiceIconClass(serviceName, status) {
         case 'v4_5':
         case 'v4_5_cur':
         case 'v3':
-            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-database';
+            return 'nai-sakura';
         case 'nai-diffusion-furry-3':
         case 'v3_furry':
             return 'nai-paw';
         case 'furry-local':
             return 'nai-paw';
         case 'anime-local':
-            return 'nai-sakura';
+            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-landmark-magnifying-glass'
         case 'dual-match':
             return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-link';
         case 'characters':
@@ -869,7 +941,7 @@ function handleCharacterAutocompleteInput(e) {
             } else {
                 hideCharacterAutocomplete();
             }
-        }, 500);
+        }, 250); // Reduced from 500ms for better responsiveness
         
         // Also trigger frequent spellcheck for Text: searches
         if (textAfterPrefix.length >= 3) {
@@ -950,7 +1022,7 @@ function handleCharacterAutocompleteInput(e) {
         } else {
             hideCharacterAutocomplete();
         }
-    }, 500);
+    }, 250); // Reduced from 500ms for better responsiveness
     
     // Also trigger frequent spellcheck for continuous typing
     if (searchText.length >= 3) {
@@ -965,7 +1037,29 @@ function handleCharacterAutocompleteKeydown(e) {
         if (e.key >= '0' && e.key <= '9') {
             e.preventDefault();
             const integerValue = parseInt(e.key);
-            window.emphasisEditingValue = integerValue.toFixed(1);
+            
+            // Check if there's selected text and apply emphasis directly (only when NOT in emphasis mode)
+            if (e.target && e.target.selectionStart !== e.target.selectionEnd && !window.emphasisEditingActive) {
+                // Text is selected and NOT in emphasis mode, apply emphasis directly
+                if (window.applyEmphasisDirectly) {
+                    // Use current emphasis mode (normal, brace, or group)
+                    const currentMode = window.emphasisEditingMode || 'normal';
+                    const success = window.applyEmphasisDirectly(e.target, integerValue, currentMode);
+                    if (success) {
+                        // Update the emphasis value for future use
+                        window.emphasisEditingValue = parseFloat(integerValue.toString());
+                        // Update selection highlight to show the new emphasis value
+                        if (window.emphasisEditingTarget && window.emphasisEditingSelection) {
+                            window.addEmphasisSelectionHighlight(window.emphasisEditingTarget, window.emphasisEditingSelection);
+                        }
+                        return;
+                    }
+                }
+            }
+            
+            // Fall back to normal emphasis editing mode
+            // Set as a number, not a string
+            window.emphasisEditingValue = parseFloat(integerValue.toString());
             // Update selection highlight to show the new emphasis value
             if (window.emphasisEditingTarget && window.emphasisEditingSelection) {
                 window.addEmphasisSelectionHighlight(window.emphasisEditingTarget, window.emphasisEditingSelection);
@@ -1540,7 +1634,22 @@ async function triggerSpellCheck(query, target) {
 }
 
 async function searchCharacters(query, target) {
-    try {
+    try {        
+        // Prevent duplicate searches for the same query
+        if (currentSearchQuery === query && isSearching) {
+            console.log(`🔄 Skipping duplicate search for query: "${query}"`);
+            return;
+        }
+        
+        // Clear any existing search timeout
+        if (currentSearchTimeout) {
+            clearTimeout(currentSearchTimeout);
+            currentSearchTimeout = null;
+        }
+        
+        // Update current search query
+        currentSearchQuery = query;
+        
         // Only clear results if this is a completely new search query
         // But don't clear searchServices - we want to preserve service status
         if (lastSearchQuery !== query) {
@@ -1761,6 +1870,7 @@ async function searchCharacters(query, target) {
         
         // Clear search state on error
         isSearching = false;
+        currentSearchQuery = ''; // Reset current search query
         searchServices.clear();
         searchResultsByService.clear();
         allSearchResults = [];
@@ -1938,6 +2048,12 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
     }
 
     currentCharacterAutocompleteTarget = target;
+    
+    // Store current selection before clearing (if we have an existing selection)
+    if (selectedCharacterAutocompleteIndex >= 0) {
+        storeCurrentSelection();
+    }
+    
     selectedCharacterAutocompleteIndex = -1;
 
     // Store all results for potential expansion
@@ -1952,7 +2068,7 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
 
     // Clear only the results section, not the entire list
     // This preserves the search status display
-    const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .no-results, .more-indicator');
+    const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .no-results, .more-indicator, .character-detail-content');
     existingResults.forEach(item => item.remove());
 
     // Note: Search status will be added at the bottom after results
@@ -2004,7 +2120,7 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
             moreItem.className = 'character-autocomplete-item more-indicator';
             moreItem.innerHTML = `
                 <div class="character-info-row">
-                    <span class="character-name">Press ↓ to show all ${displayResults.length} results</span>
+                    <span class="character-name">Press <i class="fas fa-arrow-down" style="margin: 0 4px; font-size: 0.85em;"></i> to show all ${displayResults.length} results</span>
                 </div>
             `;
             characterAutocompleteList.appendChild(moreItem);
@@ -2022,8 +2138,15 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
 
     // Auto-select first item if there are results and user is in navigation mode
     if (displayResults.length > 0 && (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0)) {
-        selectedCharacterAutocompleteIndex = 0;
-        updateCharacterAutocompleteSelection();
+        // Try to restore previous selection first
+        if (lastSelectedItemData && lastSelectedItemType) {
+            // Selection will be restored by rebuildAutocompleteDisplay, don't do it here
+            console.log('showCharacterAutocompleteSuggestions: Selection persistence active, skipping auto-selection');
+        } else {
+            // Fallback to first item if no previous selection
+            selectedCharacterAutocompleteIndex = 0;
+            updateCharacterAutocompleteSelection();
+        }
     }
 }
 
@@ -2060,16 +2183,112 @@ function updateAutocompleteDisplay(results, target) {
 
     // Auto-select first item if there are results and user is in navigation mode
     if (displayResults.length > 0 && (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0)) {
+        // Try to restore previous selection first
+        if (lastSelectedItemData && lastSelectedItemType) {
+            // Selection will be restored by rebuildAutocompleteDisplay, don't do it here
+            console.log('updateAutocompleteDisplay: Selection persistence active, skipping auto-selection');
+        } else {
+            // Fallback to first item if no previous selection
+            selectedCharacterAutocompleteIndex = 0;
+            updateCharacterAutocompleteSelection();
+        }
+    }
+}
+
+// Store current selection for restoration after content updates
+function storeCurrentSelection() {
+    if (selectedCharacterAutocompleteIndex >= 0 && characterAutocompleteList) {
+        const items = characterAutocompleteList.querySelectorAll('.character-autocomplete-item');
+        if (items[selectedCharacterAutocompleteIndex]) {
+            const selectedItem = items[selectedCharacterAutocompleteIndex];
+            const type = selectedItem.dataset.type;
+                        
+            if (type === 'tag') {
+                lastSelectedItemData = {
+                    type: 'tag',
+                    name: selectedItem.dataset.tagName,
+                    model: selectedItem.dataset.modelType
+                };
+                lastSelectedItemType = 'tag';
+            } else if (type === 'character') {
+                try {
+                    const characterData = JSON.parse(selectedItem.dataset.characterData);
+                    lastSelectedItemData = {
+                        type: 'character',
+                        name: characterData.name,
+                        copyright: characterData.copyright
+                    };
+                    lastSelectedItemType = 'character';
+                } catch (e) {
+                    console.warn('Failed to parse character data for selection persistence:', e);
+                }
+            } else if (type === 'textReplacement') {
+                lastSelectedItemData = {
+                    type: 'textReplacement',
+                    placeholder: selectedItem.dataset.placeholder
+                };
+                lastSelectedItemType = 'textReplacement';
+            }
+        }
+    }
+}
+
+// Restore selection after content updates
+function restoreSelection(displayResults) {
+    if (!lastSelectedItemData || !lastSelectedItemType || !characterAutocompleteList) {
+        return;
+    }
+    
+    const items = characterAutocompleteList.querySelectorAll('.character-autocomplete-item');
+    
+    let foundIndex = -1;
+    
+    // Find the item that matches our stored selection
+    for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const type = item.dataset.type;
+        
+        if (type === lastSelectedItemType) {
+            let matches = false;
+            
+            if (type === 'tag' && lastSelectedItemData.name === item.dataset.tagName) {
+                matches = true;
+            } else if (type === 'character' && lastSelectedItemData.name === JSON.parse(item.dataset.characterData).name) {
+                matches = true;
+            } else if (type === 'textReplacement' && lastSelectedItemData.placeholder === item.dataset.placeholder) {
+                matches = true;
+            }
+            
+            if (matches) {
+                foundIndex = i;
+                break;
+            }
+        }
+    }
+    
+    // If we found a match, restore the selection
+    if (foundIndex >= 0) {
+        selectedCharacterAutocompleteIndex = foundIndex;
+        updateCharacterAutocompleteSelection();
+    } else {
+        // If no match found, try to find a similar item or reset to first
         selectedCharacterAutocompleteIndex = 0;
         updateCharacterAutocompleteSelection();
     }
+    
+    // Clear stored selection data
+    lastSelectedItemData = null;
+    lastSelectedItemType = null;
 }
 
 // New function to rebuild the autocomplete display
 function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckResult, target) {    
-        // Clear only the results section, not the entire list
+    // Store current selection before clearing
+    storeCurrentSelection();
+    
+    // Clear only the results section, not the entire list
     // This preserves the search status display
-    const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .no-results, .more-indicator');
+    const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .no-results, .more-indicator, .character-detail-content');
     existingResults.forEach(item => item.remove());
 
     // Note: Search status will be added at the bottom after results
@@ -2119,11 +2338,17 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
             moreItem.className = 'character-autocomplete-item more-indicator';
             moreItem.innerHTML = `
                 <div class="character-info-row">
-                    <span class="character-name">Press ↓ to show all ${displayResults.length} results</span>
+                    <span class="character-name">Press <i class="fas fa-arrow-down" style="margin: 0 4px; font-size: 0.85em;"></i> to show all ${displayResults.length} results</span>
                 </div>
             `;
             characterAutocompleteList.appendChild(moreItem);
         }
+        
+        // Restore selection after rebuilding the display
+        // Use a small delay to ensure DOM elements are fully created
+        setTimeout(() => {
+            restoreSelection(displayResults);
+        }, 10);
     }
     
     // Add search status at the bottom if we're currently searching
@@ -2131,8 +2356,6 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
         updateSearchStatusDisplay();
     }
 }
-
-
 
 function showSpellCheckSuggestions(spellCheckData, target) {
     if (!spellCheckData.misspelled || spellCheckData.misspelled.length === 0) {
@@ -2205,9 +2428,58 @@ function applySpellCorrection(target, originalWord, suggestion) {
     const textPrefixIndex = currentValue.lastIndexOf('Text:');
     const isTextQuery = textPrefixIndex >= 0;
     
+    // First, try to find the exact word at or near the cursor position
+    // This is more reliable than regex matching for word boundaries
+    const textBeforeCursor = currentValue.substring(0, cursorPos);
+    const textAfterCursor = currentValue.substring(cursorPos);
+    
+    // Find word boundaries around cursor
+    const beforeMatch = textBeforeCursor.match(/\b\w*$/);
+    const afterMatch = textAfterCursor.match(/^\w*\b/);
+    
+    let wordStart = cursorPos;
+    let wordEnd = cursorPos;
+    
+    if (beforeMatch && beforeMatch[0]) {
+        wordStart = cursorPos - beforeMatch[0].length;
+    }
+    if (afterMatch && afterMatch[0]) {
+        wordEnd = cursorPos + afterMatch[0].length;
+    }
+    
+    // Get the word at cursor position
+    const wordAtCursor = currentValue.substring(wordStart, wordEnd);
+    
+    // Check if the word at cursor matches the original word (case-insensitive)
+    if (wordAtCursor.toLowerCase() === originalWord.toLowerCase()) {
+        // Replace the word at cursor position
+        const beforeWord = currentValue.substring(0, wordStart);
+        const afterWord = currentValue.substring(wordEnd);
+        const newValue = beforeWord + suggestion + afterWord;
+        
+        target.value = newValue;
+        
+        // Calculate new cursor position - place it at the end of the replaced word
+        const newCursorPos = wordStart + suggestion.length;
+        
+        // Set cursor position after the replacement
+        setTimeout(() => {
+            target.setSelectionRange(newCursorPos, newCursorPos);
+            target.focus();
+        }, 0);
+        
+        // Trigger search with corrected text
+        const event = new Event('input', { bubbles: true });
+        target.dispatchEvent(event);
+        
+        // Hide autocomplete and mark as not expanded to fix keyboard navigation issue
+        hideCharacterAutocomplete();
+        return;
+    }
+    
+    // If word at cursor doesn't match, try to find the closest occurrence
     // Use a more flexible word finding approach that doesn't require strict word boundaries
-    // This handles cases where there are no spaces on both sides of the word
-    const wordRegex = new RegExp(`${originalWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'gi');
+    const wordRegex = new RegExp(`\\b${originalWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
     let match;
     let closestDistance = Infinity;
     let closestMatch = null;
@@ -2260,7 +2532,7 @@ function applySpellCorrection(target, originalWord, suggestion) {
         // Hide autocomplete and mark as not expanded to fix keyboard navigation issue
         hideCharacterAutocomplete();
     } else {
-        // Fallback: if we can't find the word, try the old method
+        // Final fallback: if we can't find the word, try the old method
         const words = currentValue.split(/\b/);
         let currentPos = 0;
         let wordIndex = -1;
@@ -2299,6 +2571,12 @@ function applySpellCorrection(target, originalWord, suggestion) {
             
             // Hide autocomplete and mark as not expanded to fix keyboard navigation issue
             hideCharacterAutocomplete();
+        } else {
+            // If all else fails, show an error message
+            console.error(`Could not find word "${originalWord}" to replace`);
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', null, `Could not find "${originalWord}" to replace`, false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+            }
         }
     }
 }
@@ -3323,6 +3601,7 @@ function handleCharacterDetailEnter() {
 function hideCharacterAutocomplete() {
     if (characterAutocompleteOverlay) {
         characterAutocompleteOverlay.classList.add('hidden');
+        characterAutocompleteOverlay.classList.remove('expanded');
     }
     currentCharacterAutocompleteTarget = null;
     selectedCharacterAutocompleteIndex = -1;
@@ -3349,9 +3628,15 @@ function hideCharacterAutocomplete() {
     
     // Clear search state
     lastSearchQuery = '';
+    currentSearchQuery = ''; // Reset current search query
+    isSearching = false; // Reset searching flag
     
     // Reset services initialization flag for next autofill session
     servicesInitialized = false;
+    
+    // Clear stored selection data
+    lastSelectedItemData = null;
+    lastSelectedItemType = null;
     
     updateEmphasisTooltipVisibility();
 }
@@ -3361,9 +3646,9 @@ function hideCharacterDetail() {
     // we need to restore the original autocomplete list content
     const autocompleteList = document.querySelector('.character-autocomplete-list');
 
-    if (autocompleteList && characterSearchResults.length > 0) {
+    if (autocompleteList && window.allAutocompleteResults && window.allAutocompleteResults.length > 0) {
         // Restore the original autocomplete suggestions
-        showCharacterAutocompleteSuggestions(characterSearchResults, currentCharacterAutocompleteTarget);
+        showCharacterAutocompleteSuggestions(window.allAutocompleteResults, currentCharacterAutocompleteTarget);
     } else {
         // If no search results, just hide the overlay
         hideCharacterAutocomplete();
@@ -3431,14 +3716,17 @@ function expandAutocompleteToShowAll() {
     if (!window.allAutocompleteResults || !characterAutocompleteList) return;
 
     autocompleteExpanded = true;
+    
+    // Add expanded class to characterAutocompleteOverlay for CSS rules
+    if (characterAutocompleteOverlay) {
+        characterAutocompleteOverlay.classList.add('expanded');
+    }
 
     // Use the new display system to show all results
     updateAutocompleteDisplay(window.allAutocompleteResults, currentCharacterAutocompleteTarget);
 
-    // Maintain selection after expanding
-    if (selectedCharacterAutocompleteIndex >= 0) {
-        updateCharacterAutocompleteSelection();
-    }
+    // Selection will be maintained automatically by the updateAutocompleteDisplay function
+    // which calls rebuildAutocompleteDisplay with selection persistence
 }
 
 function updateSpellCheckSelection() {

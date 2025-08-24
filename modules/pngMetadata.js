@@ -700,6 +700,7 @@ function getBaseName(filename) {
         .replace(/_upscaled(?=\.)/, '')  // Remove _upscaled suffix
         .replace(/_pipeline(?=\.)/, '')  // Remove _pipeline suffix
         .replace(/_pipeline_upscaled(?=\.)/, '')  // Remove _pipeline_upscaled suffix
+        .replace(/_blur(?=\.)/, '')  // Remove _blur suffix
         .replace(/\.(png|jpg|jpeg)$/i, '');  // Remove file extension
 }
 

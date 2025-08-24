@@ -58,11 +58,11 @@ function updateGalleryToolbarContent(image) {
     let scrapButtonText, scrapButtonIcon, scrapButtonAction;
     if (currentGalleryView === 'scraps') {
         scrapButtonText = 'Remove from scraps';
-        scrapButtonIcon = 'nai-undo';
+        scrapButtonIcon = 'mdi mdi-1-5 mdi-archive-arrow-up';
         scrapButtonAction = () => removeFromScraps(image);
     } else {
         scrapButtonText = 'Move to scraps';
-        scrapButtonIcon = 'nai-image-tool-sketch';
+        scrapButtonIcon = 'mdi mdi-1-5 mdi-archive';
         scrapButtonAction = () => moveToScraps(image);
     }
     
@@ -76,10 +76,10 @@ function updateGalleryToolbarContent(image) {
                     <i class="fas fa-folder-image"></i>
                 </button>
                 <button class="btn-secondary gallery-toolbar-vibe" title="Encode as Vibe Transfer" type="button">
-                    <i class="nai-vibe-transfer"></i>
+                    <i class="mdi mdi-1-5 mdi-data-matrix-scan"></i>
                 </button>
                 <button class="btn-secondary gallery-toolbar-move" title="Move to workspace" type="button">
-                    <i class="fas fa-copy"></i>
+                    <i class="mdi mdi-1-5 mdi-folder-move"></i>
                 </button>
                 <button class="btn-secondary gallery-toolbar-scrap" title="${scrapButtonText}" type="button">
                     <i class="${scrapButtonIcon}"></i>
@@ -193,6 +193,11 @@ async function addImageAsReference(image) {
             // Show success toast
             updateGlassToast(toastId, 'success', 'Reference Added', 'Image copied to workspace references and set as base image');
             await loadCacheImages();
+            
+            // Ensure reference manager is refreshed after reference operation
+            if (typeof refreshReferenceManagerAfterVibeOperation === 'function') {
+                await refreshReferenceManagerAfterVibeOperation();
+            }
         } else {
             throw new Error(response.message || 'Failed to copy image to references');
         }
@@ -284,7 +289,7 @@ function showGalleryMoveModal(filename) {
                 </div>
                 <div class="gallery-move-right-panel">
                     <div class="modal-header gallery-move-header">
-                        <h3><i class="fas fa-copy"></i> Move to Workspace</h3>
+                        <h3><i class="mdi mdi-1-5 mdi-folder-move"></i> Move to Workspace</h3>
                         <button class="blur btn-secondary btn-small modal-close" type="button">
                             <i class="nai-cross"></i>
                         </button>
@@ -307,7 +312,7 @@ function showGalleryMoveModal(filename) {
                     </div>
                     <div class="gallery-move-actions">
                         <button class="btn-secondary" id="galleryMoveCancelBtn" type="button">Cancel</button>
-                        <button class="btn-primary" id="galleryMoveConfirmBtn" type="button" disabled><span>Move</span> <i class="fas fa-copy"></i></button>
+                        <button class="btn-primary" id="galleryMoveConfirmBtn" type="button" disabled><span>Move</span> <i class="mdi mdi-1-5 mdi-folder-move"></i></button>
                     </div>
                 </div>
             </div>
@@ -544,7 +549,7 @@ function hideGalleryMoveModal() {
 async function executeGalleryMove(filename, targetWorkspaceId) {
     try {
         // Show loading toast
-        const toastId = showGlassToast('info', 'Moving Image', 'Moving image to selected workspace...', true, false, '<i class="fas fa-copy"></i>');
+        const toastId = showGlassToast('info', 'Moving Image', 'Moving image to selected workspace...', true, false, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
         
         // Move the image using WebSocket
         const response = await wsClient.moveFilesToWorkspace([filename], targetWorkspaceId, activeWorkspace || 'default');
@@ -579,7 +584,7 @@ async function executeGalleryMoveMultiple(targetWorkspaceId) {
         }
         
         // Show loading toast
-        const toastId = showGlassToast('info', 'Moving Images', `Moving ${selectedImages.length} images to selected workspace...`, true, false, '<i class="fas fa-copy"></i>');
+        const toastId = showGlassToast('info', 'Moving Images', `Moving ${selectedImages.length} images to selected workspace...`, true, false, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
         
         // Move the images using WebSocket
         const response = await wsClient.moveFilesToWorkspace(selectedImages, targetWorkspaceId, activeWorkspace || 'default');

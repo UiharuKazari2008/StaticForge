@@ -159,7 +159,7 @@ class PinModal {
         if (this.errorElement) {
             this.errorElement.style.display = 'none';
         }
-        this.modal.style.display = 'flex';
+        openModal(this.modal);
         
         return new Promise((resolve, reject) => {
             this.resolveFn = resolve;
@@ -168,14 +168,14 @@ class PinModal {
     }
 
     resolve() {
-        this.modal.style.display = 'none';
+        closeModal(this.modal);
         if (this.resolveFn) {
             this.resolveFn();
         }
     }
 
     reject() {
-        this.modal.style.display = 'none';
+        closeModal(this.modal);
         if (this.rejectFn) {
             this.rejectFn();
         }

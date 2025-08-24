@@ -56,14 +56,6 @@ function loadWorkspaces() {
                     workspace.backgroundColor = null; // Will be auto-generated from color
                     needsSave = true;
                 }
-                if (!workspace.backgroundImage) {
-                    workspace.backgroundImage = null; // No background image by default
-                    needsSave = true;
-                }
-                if (!workspace.backgroundOpacity) {
-                    workspace.backgroundOpacity = 0.3; // Default opacity
-                    needsSave = true;
-                }
                 // Add font settings if missing
                 if (typeof workspace.primaryFont === 'undefined') {
                     workspace.primaryFont = null; // Use global default
@@ -101,8 +93,6 @@ function loadWorkspaces() {
                     name: 'Default',
                     color: '#124', // Default blue
                     backgroundColor: null, // Will be auto-generated from color
-                    backgroundImage: null, // No background image by default
-                    backgroundOpacity: 0.3, // Default opacity
                     primaryFont: null, // Use global default
                     textareaFont: null, // Use global default
                     sort: 0, // Default sort order
@@ -125,8 +115,6 @@ function loadWorkspaces() {
                 name: 'Default',
                 color: '#124',
                 backgroundColor: null,
-                backgroundImage: null,
-                backgroundOpacity: 0.3,
                 sort: 0,
                 presets: [],
                 vibeImages: [],
@@ -270,7 +258,7 @@ function getWorkspace(id) {
 }
 
 // Create a new workspace
-function createWorkspace(name, color = null, backgroundColor = null, backgroundImage = null, backgroundOpacity = 0.3) {
+function createWorkspace(name, color = null, backgroundColor = null) {
     if (!workspaces) {
         loadWorkspaces();
     }
@@ -284,8 +272,6 @@ function createWorkspace(name, color = null, backgroundColor = null, backgroundI
         name: name,
         color: color || getRandomWorkspaceColor(),
         backgroundColor: backgroundColor, // Can be null for auto-generation
-        backgroundImage: backgroundImage, // Can be null for no background image
-        backgroundOpacity: backgroundOpacity, // Default opacity
         primaryFont: null,
         textareaFont: null,
         sort: maxSort + 1, // Add to the end of the list
@@ -355,38 +341,6 @@ function updateWorkspaceBackgroundColor(id, backgroundColor) {
     console.log(`🎨 Updated workspace background color: ${workspaces[id].name} ${oldBackgroundColor} -> ${backgroundColor}`);
 }
 
-// Update workspace background image
-function updateWorkspaceBackgroundImage(id, backgroundImage) {
-    if (!workspaces) {
-        loadWorkspaces();
-    }
-
-    if (!workspaces[id]) {
-        throw new Error(`Workspace ${id} not found`);
-    }
-
-    const oldBackgroundImage = workspaces[id].backgroundImage;
-    workspaces[id].backgroundImage = backgroundImage;
-    saveWorkspaces();
-    console.log(`🖼️ Updated workspace background image: ${workspaces[id].name} ${oldBackgroundImage} -> ${backgroundImage}`);
-}
-
-// Update workspace background opacity
-function updateWorkspaceBackgroundOpacity(id, backgroundOpacity) {
-    if (!workspaces) {
-        loadWorkspaces();
-    }
-
-    if (!workspaces[id]) {
-        throw new Error(`Workspace ${id} not found`);
-    }
-
-    const oldBackgroundOpacity = workspaces[id].backgroundOpacity;
-    workspaces[id].backgroundOpacity = backgroundOpacity;
-    saveWorkspaces();
-    console.log(`🎚️ Updated workspace background opacity: ${workspaces[id].name} ${oldBackgroundOpacity} -> ${backgroundOpacity}`);
-}
-
 // Update multiple workspace settings at once and save once
 function updateWorkspaceSettings(id, settings = {}) {
     if (!workspaces) {
@@ -411,12 +365,6 @@ function updateWorkspaceSettings(id, settings = {}) {
     }
     if (typeof settings.backgroundColor !== 'undefined') {
         ws.backgroundColor = settings.backgroundColor || null;
-    }
-    if (typeof settings.backgroundImage !== 'undefined') {
-        ws.backgroundImage = settings.backgroundImage || null;
-    }
-    if (typeof settings.backgroundOpacity === 'number') {
-        ws.backgroundOpacity = settings.backgroundOpacity;
     }
     if (typeof settings.primaryFont !== 'undefined') {
         ws.primaryFont = settings.primaryFont || null;
@@ -480,6 +428,15 @@ function deleteWorkspace(id) {
     const workspace = workspaces[id];
     const name = workspace.name;
 
+    // Count items being moved
+    const movedCount = 
+        (workspace.presets?.length || 0) +
+        (workspace.vibeImages?.length || 0) +
+        (workspace.cacheFiles?.length || 0) +
+        (workspace.files?.length || 0) +
+        (workspace.scraps?.length || 0) +
+        (workspace.pinned?.length || 0);
+
     // Move all items to default workspace
     workspaces.default.presets.push(...workspace.presets);
     workspaces.default.vibeImages.push(...workspace.vibeImages);
@@ -498,7 +455,9 @@ function deleteWorkspace(id) {
 
     delete workspaces[id];
     saveWorkspaces();
-    console.log(`✅ Deleted workspace: ${name} and moved all items to default`);
+    console.log(`✅ Deleted workspace: ${name} and moved ${movedCount} items to default`);
+    
+    return movedCount;
 }
 
 // Dump workspace (merge items into another workspace)
@@ -520,6 +479,15 @@ function dumpWorkspace(sourceId, targetId) {
     const sourceName = sourceWorkspace.name;
     const targetName = targetWorkspace.name;
 
+    // Count items being moved
+    const movedCount = 
+        (sourceWorkspace.presets?.length || 0) +
+        (sourceWorkspace.vibeImages?.length || 0) +
+        (sourceWorkspace.cacheFiles?.length || 0) +
+        (sourceWorkspace.files?.length || 0) +
+        (sourceWorkspace.scraps?.length || 0) +
+        (sourceWorkspace.pinned?.length || 0);
+
     // Move all items to target workspace
     targetWorkspace.presets.push(...sourceWorkspace.presets);
     targetWorkspace.vibeImages.push(...sourceWorkspace.vibeImages);
@@ -538,7 +506,9 @@ function dumpWorkspace(sourceId, targetId) {
 
     delete workspaces[sourceId];
     saveWorkspaces();
-    console.log(`✅ Dumped workspace: ${sourceName} -> ${targetName}`);
+    console.log(`✅ Dumped workspace: ${sourceName} -> ${targetName} (${movedCount} items moved)`);
+    
+    return movedCount;
 }
 
 // Helper: extract timestamp from filename (first part when splitting by _)
@@ -1516,8 +1486,6 @@ module.exports = {
     renameWorkspace,
     updateWorkspaceColor,
     updateWorkspaceBackgroundColor,
-    updateWorkspaceBackgroundImage,
-    updateWorkspaceBackgroundOpacity,
     updateWorkspacePrimaryFont,
     updateWorkspaceTextareaFont,
     updateWorkspaceSettings,

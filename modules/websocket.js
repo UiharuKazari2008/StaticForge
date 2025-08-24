@@ -8,6 +8,7 @@ class WebSocketServer {
         this.sessionStore = sessionStore;
         this.messageHandler = messageHandler; // Store message handler from web server
         this.pingInterval = null;
+        this.queueStatusInterval = null;
         this.setupWebSocket();
     }
 
@@ -354,6 +355,46 @@ class WebSocketServer {
             clearInterval(this.pingInterval);
             this.pingInterval = null;
         }
+    }
+
+    startQueueStatusInterval() {
+        // Clear any existing queue status interval
+        if (this.queueStatusInterval) {
+            clearInterval(this.queueStatusInterval);
+        }
+
+        // Check queue status every minute and broadcast if changed
+        this.queueStatusInterval = setInterval(() => {
+            // Always broadcast every minute, but also check for immediate changes
+            this.broadcastQueueStatusIfChanged();
+        }, 60000); // Every minute
+    }
+
+    stopQueueStatusInterval() {
+        if (this.queueStatusInterval) {
+            clearInterval(this.queueStatusInterval);
+            this.queueStatusInterval = null;
+        }
+    }
+
+    // Method to manually broadcast queue status (for immediate updates)
+    broadcastQueueStatusImmediate() {
+        const { getStatus } = require('./queue');
+        const queueStatus = getStatus();
+        this.broadcastQueueUpdate(queueStatus);
+    }
+
+    // Enhanced method to broadcast queue status with change detection
+    broadcastQueueStatusIfChanged() {
+        const { getStatus, hasStatusChanged } = require('./queue');
+        
+        if (hasStatusChanged()) {
+            const queueStatus = getStatus();
+            this.broadcastQueueUpdate(queueStatus);
+            return true; // Status was broadcast
+        }
+        
+        return false; // No change detected
     }
 
     broadcastPing(serverData = null) {

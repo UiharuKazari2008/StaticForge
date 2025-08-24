@@ -62,7 +62,7 @@ function showCreditCostDialog(cost, event = null) {
         positionCreditCostDialog(event);
         
         // Show dialog
-        creditCostDialog.style.display = 'block';
+        openModal(creditCostDialog);
         creditCostDialogActive = true;
         
         // Focus cancel button
@@ -76,7 +76,7 @@ function showCreditCostDialog(cost, event = null) {
 // Hide credit cost dialog
 function hideCreditCostDialog() {
     if (creditCostDialog) {
-        creditCostDialog.style.display = 'none';
+        closeModal(creditCostDialog);
         creditCostDialogActive = false;
     }
 }

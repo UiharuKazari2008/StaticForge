@@ -153,7 +153,7 @@ async function showTextReplacementManager() {
     
     await loadTextReplacements();
     renderTextReplacementList();
-    modal.style.display = 'flex';
+    openModal(modal);
     
     // Focus search input
     const searchInput = document.getElementById('textReplacementSearch');
@@ -166,7 +166,7 @@ async function showTextReplacementManager() {
 function hideTextReplacementManager() {
     const modal = document.getElementById('textReplacementManagerModal');
     if (modal) {
-        modal.style.display = 'none';
+        closeModal(modal);
     }
     
     // Reset to first page and clear search
@@ -464,7 +464,7 @@ function convertToEditMode(key) {
                         </button>
                         <div class="divider"></div>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                            <i class="fas fa-weight-hanging"></i>
+                            <i class="fas fa-scale-unbalanced-flip"></i>
                         </button>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
                             <i class="fas fa-book-skull"></i>
@@ -987,8 +987,6 @@ async function deleteTextReplacement(key) {
     }
 }
 
-
-
 // Create new text replacement
 async function createTextReplacement() {
     showCreateTextReplacementModal();
@@ -1012,7 +1010,7 @@ function showCreateTextReplacementModal() {
     initializeCreateArrayItems();
     
     // Show modal
-    modal.style.display = 'flex';
+    openModal(modal);
     
     // Focus key input
     document.getElementById('textReplacementKeyInput').focus();
@@ -1022,7 +1020,7 @@ function showCreateTextReplacementModal() {
 function hideCreateTextReplacementModal() {
     const modal = document.getElementById('createTextReplacementModal');
     if (modal) {
-        modal.style.display = 'none';
+        closeModal(modal);
     }
 }
 
@@ -1099,10 +1097,10 @@ function addCreateArrayItem() {
                         </button>
                         <div class="divider"></div>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                            <i class="fas fa-weight-hanging"></i>
+                            <i class="fas fa-scale-unbalanced-flip"></i>
                         </button>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
-                            <i class="fas fa-highlighter-line"></i>
+                            <i class="fas fa-search"></i>
                         </button>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
                             <i class="fas fa-book-skull"></i>

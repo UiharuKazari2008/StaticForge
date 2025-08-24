@@ -1,4 +1,4 @@
-# StaticForge
+# Dreamscape
 
 A Node.js Express server for generating AI images using NovelAI's API with advanced features including AI upscaling, text replacements, rate limiting, authentication, and dynamic configuration.
 
@@ -97,16 +97,8 @@ Create a `prompt.config.json` file for presets and text replacements:
         "{{eyes}}": ["blue", "green", "brown"]
     },
     "presets": {
-        "example": {
-            "prompt": "<CHARACTER>, <STYLE>, <HAIR_COLOR>, <EYE_COLOR>",
-            "uc": "<NEGATIVE>",
-            "model": "v4_5",
-            "resolution": "NORMAL_PORTRAIT",
-            "steps": 28,
-            "guidance": 7.5
-        },
         "high_quality": {
-            "prompt": "<CHARACTER>, <STYLE>",
+            "prompt": "!CHARACTER, !STYLE",
             "model": "v4_5",
             "resolution": "NORMAL_PORTRAIT",
             "steps": 28,
@@ -329,10 +321,10 @@ The server supports dynamic text replacements in prompts and negative prompts. R
 
 ### Basic Usage
 
-Use `<KEY>` syntax in your prompts to reference replacement values:
+Use `!KEY` syntax in your prompts to reference replacement values:
 
 ```
-"prompt": "1girl, <CHARACTER>, <HAIR_COLOR>, <EYE_COLOR>"
+"prompt": "1girl, !CHARACTER, !HAIR_COLOR, !EYE_COLOR"
 ```
 
 ### Array-Based Random Selection
@@ -350,7 +342,7 @@ Text replacements can be arrays, in which case a random item is selected each ti
 }
 ```
 
-When using `<HAIR_COLOR>` in a prompt, it will randomly select one of the hair colors each time.
+When using `!HAIR_COLOR` in a prompt, it will randomly select one of the hair colors each time.
 
 ### Model-Specific Replacements
 
@@ -366,17 +358,17 @@ You can define model-specific versions of replacements by appending the model na
 }
 ```
 
-When generating with V4.5, `<CHARACTER>` will use "1girl, anime style, detailed face". For other models, it falls back to the base "CHARACTER" value.
+When generating with V4.5, `!CHARACTER` will use "1girl, anime style, detailed face". For other models, it falls back to the base "CHARACTER" value.
 
 ### Special Replacements
 
-- `<PRESET_NAME>`: Automatically replaced with the preset name being used
-- `<PICK_<NAME>>`: Randomly selects from all text replacement keys that begin with `NAME`
+- `!PRESET_NAME`: Automatically replaced with the preset name being used
+- `!<NAME>~`: Randomly selects from all text replacement keys that begin with `NAME`
 - Quality and UC presets: Pre-defined negative prompt components for different models
 
-#### PICK_<NAME> Usage
+#### PICK Usage with ~ Suffix
 
-The `PICK_<NAME>` replacement allows you to randomly select from a group of related replacements:
+The `!<NAME>~` replacement allows you to randomly select from a group of related replacements:
 
 ```json
 {
@@ -390,7 +382,7 @@ The `PICK_<NAME>` replacement allows you to randomly select from a group of rela
 }
 ```
 
-Using `<PICK_GIC_F_>` in a prompt will randomly select one of the GIC_F_* keys.
+Using `!GIC_F_~` in a prompt will randomly select one of the GIC_F_* keys.
 
 ### Validation
 
@@ -476,7 +468,7 @@ The following features require `"allow_paid": true`:
 | `Invalid model` | Unknown model name | Check available models with `/options` |
 | `Steps value X exceeds maximum of 28` | Steps too high | Set `"allow_paid": true` |
 | `Resolution "LARGE_PORTRAIT" requires Opus credits` | Large resolution | Set `"allow_paid": true` |
-| `Invalid text replacement: <UNKNOWN>` | Unknown replacement | Add to `text_replacements` in prompt config |
+| `Invalid text replacement: !UNKNOWN~` | Unknown replacement | Add to `text_replacements` in prompt config |
 | `Authentication required` | Missing auth parameter | Add `?auth=<loginKey>` to request |
 
 ## Examples

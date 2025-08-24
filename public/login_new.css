@@ -18,6 +18,10 @@ body {
     padding: 25px;
     font-size: 2em;
     text-shadow: 0 0 10px #000000;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.25em;
 }
 
 /* Blocky background container */
@@ -49,7 +53,31 @@ body {
 .block {
     animation: colorChange 10s infinite ease-in-out;
     aspect-ratio: 1;
+    position: relative;
 }
+
+/*
+.block::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url(/previews/login_image.jpg);
+    background-size: 40000% 4000%;
+    background-position: calc(var(--bg-x-pos) + var(--block-x-offset)) calc(100% + var(--block-y-offset));
+    background-repeat: no-repeat;
+    opacity: 0;
+    transition: opacity 0.8s ease-in-out;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.block.reveal-blur::after {
+    opacity: 1;
+}
+*/
 
 @keyframes colorChange {
     0%, 9% {
@@ -304,4 +332,50 @@ body {
     .pin-row, .pin-pad {
         gap: 10px;
     }
+}
+
+/* Background Image System using CSS Sprite Sheet */
+.background-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -2;
+    overflow: hidden;
+    /* CSS Custom Properties for background positioning */
+    --bg-x-pos: 0%;
+    --bg-y-pos: 0%;
+    --blur-x-pos: 0%;
+    --blur-y-pos: 100%;
+}
+
+.bg-layer, .blur-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: max(100vh, 100vw);
+    height: max(100vh, 100vw);
+    background-image: url(/previews/login_image.jpg);
+    background-size: 2000% 200%;
+    background-position: var(--bg-x-pos) var(--bg-y-pos);
+    background-repeat: no-repeat;
+    object-fit: cover;
+    aspect-ratio: 1 / 1;
+}
+
+.bg-layer {
+    z-index: -3; /* Normal image behind block-container */
+    background-position: var(--bg-x-pos) var(--bg-y-pos); /* Use CSS variables */
+}
+
+.blur-layer {
+    z-index: -2; /* Blur layer behind normal image */
+    background-position: var(--blur-x-pos) var(--blur-y-pos); /* Use CSS variables */
+    opacity: 0; /* Start hidden */
+    transition: opacity 0.25s ease-in-out; /* Longer fade-out (0.5 seconds) */
+}
+
+.blur-layer.transitioning {
+    opacity: 1;
 }
