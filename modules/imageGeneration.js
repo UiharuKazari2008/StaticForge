@@ -27,8 +27,156 @@ function setContext(newContext) { context = { ...newContext }; }
 
 const cacheDir = path.resolve(__dirname, '../.cache');
 const uploadCacheDir = path.join(cacheDir, 'upload');
+const presetSourceCacheDir = path.join(cacheDir, 'preset_source');
 const imagesDir = path.resolve(__dirname, '../images');
 const previewsDir = path.resolve(__dirname, '../.previews');
+
+// Ensure preset source cache directory exists
+try {
+    if (!fs.existsSync(presetSourceCacheDir)) {
+        fs.mkdirSync(presetSourceCacheDir, { recursive: true });
+    }
+} catch (error) {
+    console.warn(`⚠️ Failed to create preset source cache directory: ${error.message}`);
+}
+
+// Function to generate preset source image
+async function generatePresetSourceImage(presetName, seed, resolution, model) {
+    // Validate input parameters
+    if (!presetName || typeof presetName !== 'string') {
+        throw new Error('Preset name must be a non-empty string');
+    }
+    
+    if (typeof seed !== 'number' || seed < 0 || seed > 0xFFFFFFFF) {
+        throw new Error(`Invalid seed: ${seed}. Must be a number between 0 and 4294967295`);
+    }
+    
+    if (model && typeof model !== 'string') {
+        throw new Error('Model must be a string');
+    }
+    let currentPromptConfig;
+    try {
+        currentPromptConfig = loadPromptConfig();
+    } catch (error) {
+        throw new Error(`Failed to load prompt configuration: ${error.message}`);
+    }
+    
+    // Check if preset exists
+    if (!currentPromptConfig.presets || !currentPromptConfig.presets[presetName]) {
+        throw new Error(`Preset "${presetName}" not found`);
+    }
+    
+    // Get preset configuration
+    const preset = currentPromptConfig.presets[presetName];
+    
+    // Check for recursion - if preset has image source, throw error
+    if (preset.image && preset.image.startsWith('preset:')) {
+        throw new Error(`Recursive presets are not allowed. Preset "${presetName}" references "${preset.image}" as image source.`);
+    }
+    
+    // Create cache filename
+    const presetHash = crypto.createHash('md5').update(presetName).digest('hex');
+    const cacheFilename = `${presetHash}_${seed}.png`;
+    const cachePath = path.join(presetSourceCacheDir, cacheFilename);
+    
+    // Ensure cache directory exists
+    try {
+        if (!fs.existsSync(presetSourceCacheDir)) {
+            fs.mkdirSync(presetSourceCacheDir, { recursive: true });
+        }
+    } catch (error) {
+        console.warn(`⚠️ Failed to create cache directory: ${error.message}`);
+        // Continue without caching if directory creation fails
+    }
+    
+    // Check if cached image exists
+    if (fs.existsSync(cachePath)) {
+        try {
+            console.log(`📋 Using cached preset source image: ${cacheFilename}`);
+            const cachedBuffer = fs.readFileSync(cachePath);
+            return {
+                buffer: cachedBuffer,
+                seed: seed,
+                cached: true
+            };
+        } catch (error) {
+            console.warn(`⚠️ Failed to read cached image ${cacheFilename}, will regenerate: ${error.message}`);
+            // Continue to regenerate if cache read fails
+        }
+    }
+    
+    console.log(`🎨 Generating preset source image for "${presetName}" with seed ${seed}...`);
+    
+    // Build options for preset generation
+    const presetOptions = {
+        ...preset,
+        seed: seed,
+        no_save: true
+    };
+    
+    // Override resolution if provided
+    if (resolution) {
+        if (Resolution[resolution.toUpperCase()]) {
+            presetOptions.resPreset = Resolution[resolution.toUpperCase()];
+        } else {
+            // Parse custom dimensions
+            try {
+                const dims = resolution.split('x');
+                if (dims.length === 2) {
+                    const width = parseInt(dims[0]);
+                    const height = parseInt(dims[1]);
+                    
+                    if (isNaN(width) || isNaN(height) || width <= 0 || height <= 0) {
+                        throw new Error(`Invalid resolution format: ${resolution}. Expected format: "widthxheight" (e.g., "1024x1024")`);
+                    }
+                    
+                    presetOptions.width = width;
+                    presetOptions.height = height;
+                } else {
+                    throw new Error(`Invalid resolution format: ${resolution}. Expected format: "widthxheight" (e.g., "1024x1024")`);
+                }
+            } catch (error) {
+                throw new Error(`Failed to parse resolution "${resolution}": ${error.message}`);
+            }
+        }
+    }
+    
+    // Generate Request Options
+    let opts;
+    try {
+        opts = await buildOptions(presetOptions, null, {});
+    } catch (error) {
+        throw new Error(`Failed to build options for preset "${presetName}": ${error.message}`);
+    }
+
+    // Generate the preset image
+    let result;
+    try {
+        result = await handleGeneration(opts, true, presetName);
+    } catch (error) {
+        throw new Error(`Failed to generate preset image for "${presetName}": ${error.message}`);
+    }
+    
+    // Save to cache without metadata
+    try {
+        fs.writeFileSync(cachePath, result.buffer);
+        console.log(`💾 Cached preset source image: ${cacheFilename}`);
+    } catch (error) {
+        console.warn(`⚠️ Failed to cache preset source image ${cacheFilename}: ${error.message}`);
+        // Continue without caching - this is not critical
+    }
+    
+    // Add random delay between 5 and 15 seconds
+    const delaySeconds = Math.floor(Math.random() * 11) + 5; // Random between 5-15 seconds
+    console.log(`⏳ Waiting ${delaySeconds} seconds before continuing...`);
+    await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
+    
+    return {
+        buffer: result.buffer,
+        seed: result.seed,
+        cached: false
+    };
+}
 
 // Enhanced preset handling functions
 function selectPresetItem(presetConfig, modelKey, combinedPrompt, providedId = null) {
@@ -328,9 +476,54 @@ const buildOptions = async (body, preset = null, queryParams = {}) => {
 
         let imageBuffer;
         let originalSource = body.image;
+        let imageSourceSeed = null;
         const [imageType, imageIdentifier] = body.image.split(':', 2);
 
         switch (imageType) {
+            case 'preset':
+                // Handle preset as image source
+                const presetName = imageIdentifier;
+                if (!presetName || presetName.trim() === '') {
+                    throw new Error('Preset name cannot be empty');
+                }
+                let seed = body.image_source_seed;
+                if (seed !== undefined) {
+                    // Validate provided seed
+                    const parsedSeed = parseInt(seed);
+                    if (isNaN(parsedSeed) || parsedSeed < 0 || parsedSeed > 0xFFFFFFFF) {
+                        throw new Error(`Invalid image_source_seed: ${seed}. Must be a number between 0 and 4294967295`);
+                    }
+                    seed = parsedSeed;
+                } else {
+                    // Generate random seed
+                    seed = Math.floor(0x100000000 * Math.random() - 1);
+                }
+                let resolution = body.resolution;
+                if (!resolution && body.width && body.height) {
+                    resolution = `${body.width}x${body.height}`;
+                }
+                
+                try {
+                    const presetResult = await generatePresetSourceImage(presetName, seed, resolution, body.model);
+                    
+                    // Validate the generated image buffer
+                    if (!presetResult.buffer || !Buffer.isBuffer(presetResult.buffer)) {
+                        throw new Error('Generated preset image is invalid or empty');
+                    }
+                    
+                    if (presetResult.buffer.length === 0) {
+                        throw new Error('Generated preset image buffer is empty');
+                    }
+                    
+                    imageBuffer = presetResult.buffer;
+                    imageSourceSeed = presetResult.seed;
+                    originalSource = `preset:${presetName}`;
+                    console.log(`🎨 Generated preset source image with seed: ${imageSourceSeed}`);
+                } catch (error) {
+                    console.error(`❌ Preset source generation failed:`, error);
+                    throw new Error(`Failed to generate preset source image: ${error.message}`);
+                }
+                break;
             case 'cache':
                 const cachedImagePath = path.join(uploadCacheDir, imageIdentifier);
                 if (!fs.existsSync(cachedImagePath)) throw new Error(`Cached image not found: ${imageIdentifier}`);
@@ -462,6 +655,7 @@ const buildOptions = async (body, preset = null, queryParams = {}) => {
 
         baseOptions.image = imageBuffer.toString('base64');
         baseOptions.image_source = originalSource;
+        baseOptions.image_source_seed = imageSourceSeed;
         baseOptions.image_bias = body.image_bias;
     }
 
@@ -567,6 +761,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     delete apiOpts.image_bias;
     delete apiOpts.mask_bias;
     delete apiOpts.image_source;
+    delete apiOpts.image_source_seed;
     delete apiOpts.mask_compressed;
     delete apiOpts.dataset_config;
     delete apiOpts.append_quality;
@@ -693,6 +888,9 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             forgeData.generation_type = 'img2img';
             if (opts.image_source) {
                 forgeData.image_source = opts.image_source;
+            }
+            if (opts.image_source_seed !== undefined) {
+                forgeData.image_source_seed = opts.image_source_seed;
             }
             if (opts.image_bias !== undefined) {
                 forgeData.image_bias = opts.image_bias;
@@ -946,6 +1144,7 @@ module.exports = {
     handleGeneration,
     handleImageRequest,
     selectPresetItem,
-    setContext
+    setContext,
+    generatePresetSourceImage
 };
 

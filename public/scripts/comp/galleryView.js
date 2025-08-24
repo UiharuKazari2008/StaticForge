@@ -69,10 +69,39 @@ let pendingPlaceholderAdditions = {
 // Global images array (shared with main app)
 let allImages = [];
 
+// Helper function to find the true index of an image in the original array
+function findTrueImageIndex(image) {
+    const filename = image.filename || image.original || image.upscaled;
+    if (!filename) return -1;
+    
+    // If we have filtered results, use the original array
+    if (window.originalAllImages && window.originalAllImages.length > 0) {
+        return window.originalAllImages.findIndex(img => {
+            const imgFilename = img.filename || img.original || img.upscaled;
+            return imgFilename === filename;
+        });
+    }
+    
+    // Otherwise, use the current allImages array
+    return allImages.findIndex(img => {
+        const imgFilename = img.filename || img.original || img.upscaled;
+        return imgFilename === filename;
+    });
+}
+
 // Apply a provided image list to the gallery without fetching from server (used by search)
-window.applyFilteredImages = function(images) {
+window.applyFilteredImages = function(images, originalIndices = null) {
 	try {
 		allImages = Array.isArray(images) ? images : [];
+		
+		// Store the mapping of filtered images to their original indices
+		if (originalIndices && Array.isArray(originalIndices)) {
+			window.filteredImageIndices = originalIndices;
+		} else {
+			// If no mapping provided, create a default mapping (filtered array indices)
+			window.filteredImageIndices = allImages.map((_, index) => index);
+		}
+		
 		resetInfiniteScroll();
 		sortGalleryData();
 		displayCurrentPageOptimized();
@@ -260,6 +289,7 @@ async function addNewGalleryItemAfterGeneration(newImage) {
     placeholder.dataset.filename = newImage.filename || newImage.original || newImage.upscaled;
     placeholder.dataset.time = newImage.mtime;
     placeholder.dataset.index = 0;
+    placeholder.dataset.fileIndex = '0';
     gallery.insertBefore(placeholder, gallery.children[0]);
     // Wait for fade-in animation to finish
     await new Promise(resolve => {
@@ -412,6 +442,7 @@ function displayCurrentPageOptimized() {
         placeholder.style.height = '256px';
         placeholder.style.width = '100%';
         placeholder.dataset.index = i;
+        placeholder.dataset.fileIndex = i.toString();
         placeholder.dataset.filename = allImages[i]?.filename || allImages[i]?.original || allImages[i]?.upscaled || '';
         placeholder.dataset.time = allImages[i]?.mtime || 0;
         fragment.appendChild(placeholder);
@@ -461,6 +492,18 @@ function createGalleryItem(image, index) {
     item.dataset.filename = filename;
     item.dataset.time = image.mtime || 0;
     item.dataset.index = index;
+    
+    // Add data-file-index to track the true position in allImages array
+    // This is useful for search results where the filtered array indices don't match original array indices
+    let fileIndex = index;
+    if (window.filteredImageIndices && window.filteredImageIndices[index] !== undefined) {
+        fileIndex = window.filteredImageIndices[index];
+    } else {
+        // Fallback: try to find the image in the current allImages array
+        const foundIndex = allImages.indexOf(image);
+        fileIndex = foundIndex !== -1 ? foundIndex : index;
+    }
+    item.dataset.fileIndex = fileIndex.toString();
     
     // Use data-selected as single source of truth for selection state
     const isSelected = selectedImages.has(filename);
@@ -765,6 +808,7 @@ function addPlaceholdersAbove() {
                 placeholder.style.height = '256px';
                 placeholder.style.width = '100%';
                 placeholder.dataset.index = idx;
+                placeholder.dataset.fileIndex = idx.toString();
                 gallery.insertBefore(placeholder, gallery.firstChild);
                 placeholdersAbove++;
             }
@@ -812,6 +856,7 @@ function addPlaceholdersBelow() {
                 placeholder.style.height = '256px';
                 placeholder.style.width = '100%';
                 placeholder.dataset.index = idx;
+                placeholder.dataset.fileIndex = idx.toString();
                 gallery.appendChild(placeholder);
                 placeholdersBelow++;
             }
@@ -905,6 +950,7 @@ async function loadMoreImages() {
             placeholder.style.height = calculatePlaceholderHeight() + 'px';
             placeholder.style.width = '100%';
             placeholder.dataset.index = i;
+            placeholder.dataset.fileIndex = i.toString();
             gallery.appendChild(placeholder);
         }
         
@@ -950,6 +996,7 @@ async function loadMoreImagesBefore() {
             placeholder.style.height = calculatePlaceholderHeight() + 'px';
             placeholder.style.width = '100%';
             placeholder.dataset.index = i;
+            placeholder.dataset.fileIndex = i.toString();
             gallery.insertBefore(placeholder, gallery.firstChild);
         }
         
@@ -1100,16 +1147,17 @@ function updateVirtualScroll() {
                 placeholder.style.width = el.offsetWidth + 'px';
                 placeholder.dataset.filename = el.dataset.filename;
                 placeholder.dataset.index = el.dataset.index || i;
+                placeholder.dataset.fileIndex = el.dataset.fileIndex || el.dataset.index || i;
                 placeholder.dataset.time = el.dataset.time || 0;
                 placeholder.dataset.selected = el.dataset.selected;
                 gallery.replaceChild(placeholder, el);
             }
         } else {
             if (el.classList.contains('gallery-placeholder')) {
-                const imageIndex = parseInt(el.dataset.index || i);
-                const image = allImages[imageIndex];
+                const fileImageIndex = parseInt(el.dataset.fileIndex || el.dataset.index || i);
+                const image = allImages[fileImageIndex];
                 if (image) {
-                    const realItem = createGalleryItem(image, imageIndex);
+                    const realItem = createGalleryItem(image, fileImageIndex);
                     // The createGalleryItem function already handles selection state based on selectedImages Set
                     // No need to manually manage selectedImages here
                     gallery.replaceChild(realItem, el);
@@ -1190,6 +1238,7 @@ function updateVirtualScroll() {
                 placeholder.style.height = '256px';
                 placeholder.style.width = '100%';
                 placeholder.dataset.index = idx;
+                placeholder.dataset.fileIndex = idx.toString();
                 gallery.insertBefore(placeholder, gallery.firstChild);
                 presentIndices.add(idx);
                 actuallyAdded++;
@@ -1214,6 +1263,7 @@ function updateVirtualScroll() {
                 placeholder.style.height = '256px';
                 placeholder.style.width = '100%';
                 placeholder.dataset.index = idx;
+                placeholder.dataset.fileIndex = idx.toString();
                 gallery.appendChild(placeholder);
                 presentIndices.add(idx);
                 actuallyAdded++;
@@ -1253,10 +1303,10 @@ function updateVirtualScroll() {
         for (let i = minKeep; i <= maxKeep; i++) {
             const el = updatedItems[i];
             if (el && el.classList.contains('gallery-placeholder')) {
-                const imageIndex = parseInt(el.dataset.index || i);
-                const image = allImages[imageIndex];
+                const fileImageIndex = parseInt(el.dataset.fileIndex || el.dataset.index || i);
+                const image = allImages[fileImageIndex];
                 if (image) {
-                    const realItem = createGalleryItem(image, imageIndex);
+                    const realItem = createGalleryItem(image, fileImageIndex);
                     // The createGalleryItem function already handles selection state based on selectedImages Set
                     // No need to manually manage selectedImages here
                     gallery.replaceChild(realItem, el);
@@ -1351,11 +1401,7 @@ function removeImageFromGallery(image) {
         }
 
         // Remove from allImages array
-        const allImagesIndex = allImages.findIndex(img => 
-            img.original === image.original || 
-            img.upscaled === image.upscaled ||
-            img.filename === filename
-        );
+        const allImagesIndex = findTrueImageIndex(image);
         
         if (allImagesIndex !== -1) {
             allImages.splice(allImagesIndex, 1);
@@ -1373,6 +1419,7 @@ function removeImageFromGallery(image) {
         placeholder.style.height = '256px';
         placeholder.style.width = '100%';
         placeholder.dataset.index = placeholderIndex.toString();
+        placeholder.dataset.fileIndex = placeholderIndex.toString();
         gallery.appendChild(placeholder);
 
         // Reindex all gallery items after the removed one (only if we found and removed an item)
@@ -1382,6 +1429,11 @@ function removeImageFromGallery(image) {
                 const currentIndex = parseInt(item.dataset.index);
                 if (currentIndex > itemIndex) {
                     item.dataset.index = (currentIndex - 1).toString();
+                    // Also update file-index if it exists
+                    if (item.dataset.fileIndex) {
+                        const currentFileIndex = parseInt(item.dataset.fileIndex);
+                        item.dataset.fileIndex = (currentFileIndex - 1).toString();
+                    }
                 }
             }
 
@@ -1391,6 +1443,11 @@ function removeImageFromGallery(image) {
                 const currentIndex = parseInt(placeholder.dataset.index);
                 if (currentIndex > itemIndex) {
                     placeholder.dataset.index = (currentIndex - 1).toString();
+                    // Also update file-index if it exists
+                    if (placeholder.dataset.fileIndex) {
+                        const currentFileIndex = parseInt(placeholder.dataset.fileIndex);
+                        placeholder.dataset.fileIndex = (currentFileIndex - 1).toString();
+                    }
                 }
             }
         }
@@ -1440,11 +1497,7 @@ function removeMultipleImagesFromGallery(images) {
 
         // Remove from allImages array
         for (const image of images) {
-            const allImagesIndex = allImages.findIndex(img => 
-                img.original === image.original || 
-                img.upscaled === image.upscaled ||
-                img.filename === (image.filename || image.original || image.upscaled)
-            );
+            const allImagesIndex = findTrueImageIndex(image);
             
             if (allImagesIndex !== -1) {
                 allImages.splice(allImagesIndex, 1);
@@ -1458,6 +1511,7 @@ function removeMultipleImagesFromGallery(images) {
             placeholder.style.height = '256px';
             placeholder.style.width = '100%';
             placeholder.dataset.index = allImages.length + i;
+            placeholder.dataset.fileIndex = allImages.length + i;
             gallery.appendChild(placeholder);
         }
 
@@ -1475,6 +1529,17 @@ function removeMultipleImagesFromGallery(images) {
             }
             
             item.dataset.index = newIndex.toString();
+            // Also update file-index if it exists
+            if (item.dataset.fileIndex) {
+                const currentFileIndex = parseInt(item.dataset.fileIndex);
+                let newFileIndex = currentFileIndex;
+                for (const removedIndex of indicesToRemove) {
+                    if (currentFileIndex > removedIndex) {
+                        newFileIndex--;
+                    }
+                }
+                item.dataset.fileIndex = newFileIndex.toString();
+            }
         }
 
         // Update placeholder indices
@@ -1491,6 +1556,17 @@ function removeMultipleImagesFromGallery(images) {
             }
             
             placeholder.dataset.index = newIndex.toString();
+            // Also update file-index if it exists
+            if (placeholder.dataset.fileIndex) {
+                const currentFileIndex = parseInt(placeholder.dataset.fileIndex);
+                let newFileIndex = currentFileIndex;
+                for (const removedIndex of indicesToRemove) {
+                    if (currentFileIndex > removedIndex) {
+                        newFileIndex--;
+                    }
+                }
+                placeholder.dataset.fileIndex = newFileIndex.toString();
+            }
         }
     } catch (error) {
         console.error('Error removing multiple images from gallery:', error);
@@ -1730,6 +1806,7 @@ function displayGalleryFromStartIndex(startIndex) {
         placeholder.style.height = '256px';
         placeholder.style.width = '100%';
         placeholder.dataset.index = i;
+        placeholder.dataset.fileIndex = i.toString();
         placeholder.dataset.filename = allImages[i]?.filename || allImages[i]?.original || allImages[i]?.upscaled || '';
         placeholder.dataset.time = allImages[i]?.mtime || 0;
         fragment.appendChild(placeholder);

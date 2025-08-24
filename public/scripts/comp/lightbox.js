@@ -88,10 +88,23 @@ function hideLightbox() {
 // Navigate between images in lightbox
 function navigateLightbox(direction) {
     // Find current image index by matching the filename
-    const currentImageIndex = allImages.findIndex(img => {
-        const currentFilename = currentLightboxImage?.filename;
-        return img.original === currentFilename || img.upscaled === currentFilename;
-    });
+    const currentFilename = currentLightboxImage?.filename;
+    
+    // Determine which array to use for navigation
+    let navigationArray, currentImageIndex;
+    
+    if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
+        // We're in search mode - navigate through filtered results
+        navigationArray = allImages; // This contains the filtered results
+        currentImageIndex = allImages.findIndex(img => {
+            const imgFilename = img.filename || img.original || img.upscaled;
+            return imgFilename === currentFilename;
+        });
+    } else {
+        // Normal mode - navigate through original array
+        navigationArray = allImages;
+        currentImageIndex = findTrueImageIndexInLightbox(currentFilename);
+    }
 
     if (currentImageIndex === -1) return;
 
@@ -100,13 +113,13 @@ function navigateLightbox(direction) {
 
     // Handle wrapping
     if (newIndex < 0) {
-        newIndex = allImages.length - 1;
-    } else if (newIndex >= allImages.length) {
+        newIndex = navigationArray.length - 1;
+    } else if (newIndex >= navigationArray.length) {
         newIndex = 0;
     }
 
-    // Get the new image from allImages
-    const newImageObj = allImages[newIndex];
+    // Get the new image from the appropriate array
+    const newImageObj = navigationArray[newIndex];
     if (newImageObj) {
         // Construct the image object the same way as in createGalleryItem
         let filenameToShow = newImageObj.original;
@@ -133,6 +146,30 @@ let isDragging = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
 let lastTouchDistance = 0;
+
+// Helper function to find the true index of an image in the gallery
+// This handles both normal mode and search mode with filtered results
+function findTrueImageIndexInLightbox(filename) {
+    if (!filename) return -1;
+    
+    // If we have filtered results, use the original array
+    if (window.originalAllImages && window.originalAllImages.length > 0) {
+        return window.originalAllImages.findIndex(img => {
+            const imgFilename = img.filename || img.original || img.upscaled;
+            return imgFilename === filename;
+        });
+    }
+    
+    // Otherwise, use the current allImages array
+    if (allImages && Array.isArray(allImages)) {
+        return allImages.findIndex(img => {
+            const imgFilename = img.filename || img.original || img.upscaled;
+            return imgFilename === filename;
+        });
+    }
+    
+    return -1;
+}
 
 function initializeLightboxZoom() {
     const imageContainer = document.querySelector('.lightbox-image-container');

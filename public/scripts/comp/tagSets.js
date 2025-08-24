@@ -1,5 +1,5 @@
 
-let eG = [
+const eG = [
     ["dutch angle", 5],
     ["from above", 5],
     ["from behind", 5],

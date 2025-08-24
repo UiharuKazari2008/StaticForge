@@ -747,9 +747,19 @@ class FileSearch {
                 return matchingFilenames.has(img);
             });
             
-            // Update the gallery with filtered results
+            // Create mapping of filtered images to their original indices
+            const originalIndices = filteredImages.map(img => {
+                const originalIndex = originalImages.findIndex(originalImg => 
+                    (originalImg.original && originalImg.original === img.original) ||
+                    (originalImg.upscaled && originalImg.upscaled === img.upscaled) ||
+                    (originalImg.filename && originalImg.filename === img.filename)
+                );
+                return originalIndex !== -1 ? originalIndex : 0;
+            });
+            
+            // Update the gallery with filtered results and original indices mapping
             if (typeof window.applyFilteredImages === 'function') {
-                window.applyFilteredImages(filteredImages);
+                window.applyFilteredImages(filteredImages, originalIndices);
             } else if (typeof switchGalleryView === 'function') {
                 const currentView = window.currentGalleryView || 'images';
                 switchGalleryView(currentView, true);
@@ -757,7 +767,7 @@ class FileSearch {
         } else {
             // No results - show empty gallery
             if (typeof window.applyFilteredImages === 'function') {
-                window.applyFilteredImages([]);
+                window.applyFilteredImages([], []);
             } else if (typeof switchGalleryView === 'function') {
                 const currentView = window.currentGalleryView || 'images';
                 switchGalleryView(currentView, true);
@@ -808,6 +818,9 @@ class FileSearch {
         if (window.originalAllImages) {
             delete window.originalAllImages;
         }
+        if (window.filteredImageIndices) {
+            delete window.filteredImageIndices;
+        }
         if (this.searchTimeout) {
             clearTimeout(this.searchTimeout);
         }
@@ -818,6 +831,10 @@ class FileSearch {
         if (reload) {
             const currentView = window.currentGalleryView || 'images';
             switchGalleryView(currentView, true);
+            // Clear filtered indices when reloading
+            if (window.filteredImageIndices) {
+                delete window.filteredImageIndices;
+            }
         }
         
         // Clear search UI
@@ -833,6 +850,11 @@ class FileSearch {
             });
         }
         
+        // Clear filtered indices mapping
+        if (window.filteredImageIndices) {
+            delete window.filteredImageIndices;
+        }
+        
         this.cacheInitialized = false;
         this.cacheViewType = null;
     }
@@ -840,6 +862,10 @@ class FileSearch {
     ensureOriginalGalleryData() {
         if (!window.originalAllImages && allImages && allImages.length > 0) {
             window.originalAllImages = [...allImages];
+            // Clear filtered indices when ensuring original data
+            if (window.filteredImageIndices) {
+                delete window.filteredImageIndices;
+            }
         }
     }
     

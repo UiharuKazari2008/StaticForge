@@ -5741,10 +5741,106 @@ async function handleClipboardFile(file) {
         // Add file to files array
         unifiedUploadFiles = [file];
         unifiedUploadCurrentIndex = 0;
+        unifiedUploadFileMetadata = [];
         
-        // Process the file like a normal file selection
-        // This will handle hiding initial options, showing file section, and updating overlay
-        await handleUnifiedUploadFileChange();
+        // Process all files first to check for blueprint metadata (same logic as handleUnifiedUploadFileChange)
+        const metadataPromises = unifiedUploadFiles.map(async (file) => {
+            if (file.type === 'image/png') {
+                try {
+                    const metadata = await extractPNGMetadata(file);
+                    if (metadata && metadata.source && metadata.source.includes('NovelAI')) {
+                        return { valid: true, metadata };
+                    } else {
+                        return { 
+                            valid: false, 
+                            error: 'No Valid NovelAI / StaticForge metadata found' 
+                        };
+                    }
+                } catch (error) {
+                    console.warn('Error extracting PNG metadata:', error.message, 'for file:', file.name);
+                    return { 
+                        valid: false, 
+                        error: `Invalid PNG: ${error.message}` 
+                    };
+                }
+            } else {
+                return { 
+                    valid: false, 
+                    error: 'Not a PNG file' 
+                };
+            }
+        });
+        
+        // Wait for all metadata checks to complete using Promise.allSettled to avoid failing on individual errors
+        const metadataResults = await Promise.allSettled(metadataPromises);
+        unifiedUploadFileMetadata = metadataResults.map((result, index) => {
+            if (result.status === 'fulfilled') {
+                return result.value;
+            } else {
+                console.warn('Promise rejected for file:', unifiedUploadFiles[index].name, 'Error:', result.reason);
+                return { 
+                    valid: false, 
+                    error: `Processing failed: ${result.reason.message || result.reason}` 
+                };
+            }
+        });
+        
+        // Count valid blueprints
+        const validBlueprintCount = unifiedUploadFileMetadata.filter(meta => meta.valid).length;
+        const hasValidBlueprint = validBlueprintCount > 0;
+        
+        // ALWAYS enable blueprint mode option if at least one valid blueprint exists
+        const modeSliderContainer = document.querySelector('.mode-slider-container');
+        if (modeSliderContainer) {
+            // Always add the blueprint-enabled class if we have any valid blueprints
+            if (hasValidBlueprint) {
+                modeSliderContainer.classList.add('blueprint-enabled');
+            } else {
+                modeSliderContainer.classList.remove('blueprint-enabled');
+            }
+        }
+        
+        // If at least one file has valid NovelAI metadata, switch to blueprint mode
+        if (hasValidBlueprint) {
+            // Switch to blueprint mode
+            unifiedUploadCurrentMode = 'blueprint';
+            updateUnifiedUploadMode();
+            
+            // Show warning if some files are invalid
+            const warningContainer = document.getElementById('unifiedUploadWarnings');
+            if (warningContainer) {
+                if (validBlueprintCount < unifiedUploadFiles.length) {
+                    const invalidCount = unifiedUploadFiles.length - validBlueprintCount;
+                    warningContainer.style.display = '';
+                    warningContainer.querySelector('.warning-message').textContent = 
+                        `${invalidCount} of ${unifiedUploadFiles.length} files cannot be imported as blueprints.`;
+                } else {
+                    warningContainer.style.display = 'none';
+                }
+            }
+        } else {
+            // Clear any existing warnings if no blueprints detected
+            const warningContainer = document.getElementById('unifiedUploadWarnings');
+            if (warningContainer) {
+                warningContainer.style.display = 'none';
+            }
+        }
+        
+        // Show mode selector if we have image files (not just vibe bundles)
+        const hasImageFiles = unifiedUploadFiles.some(file => file.type.startsWith('image/'));
+        if (hasImageFiles) {
+            showModeSelector();
+        }
+        
+        // Hide initial options
+        hideInitialUploadOptions();
+        
+        // Update overlay with file information
+        const fileInfo = createFileInfoHTML(unifiedUploadFiles[0], unifiedUploadFiles.length);
+        updateUploadOverlayWithFileInfo(fileInfo);
+        
+        // Process first file immediately
+        await updateUnifiedUploadPreview();
         
         // Update background image for clipboard files
         const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');

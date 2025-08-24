@@ -197,6 +197,30 @@ let resizeTimeout = null;
 // Global variables
 let forcePaidRequest = false;
 
+// Helper function to find the true index of an image in the gallery
+// This handles both normal mode and search mode with filtered results
+function findTrueImageIndexInGallery(filename) {
+    if (!filename) return -1;
+    
+    // If we have filtered results, use the original array
+    if (window.originalAllImages && window.originalAllImages.length > 0) {
+        return window.originalAllImages.findIndex(img => {
+            const imgFilename = img.filename || img.original || img.upscaled;
+            return imgFilename === filename;
+        });
+    }
+    
+    // Otherwise, use the current allImages array
+    if (allImages && Array.isArray(allImages)) {
+        return allImages.findIndex(img => {
+            const imgFilename = img.filename || img.original || img.upscaled;
+            return imgFilename === filename;
+        });
+    }
+    
+    return -1;
+}
+
 // Make u1 array available globally for tag highlighting
 if (typeof u1 !== 'undefined') {
     window.u1 = u1;
@@ -2308,10 +2332,7 @@ async function togglePinImage(image, pinBtn = null) {
         
         // Update the local gallery data to reflect the pin status change
         if (allImages && Array.isArray(allImages)) {
-            const imageIndex = allImages.findIndex(img => {
-                const imgFilename = img.filename || img.original || img.upscaled;
-                return imgFilename === filename;
-            });
+            const imageIndex = findTrueImageIndexInGallery(filename);
             if (imageIndex !== -1) {
                 allImages[imageIndex].isPinned = !isPinned;
             }
@@ -4793,42 +4814,6 @@ async function rerollImageWithEdit(image) {
 
         await loadIntoManualForm(metadata, image);
 
-        // Show request type row
-        const requestTypeRow = document.getElementById('requestTypeRow');
-        if (requestTypeRow) requestTypeRow.style.display = 'flex';
-
-        // Determine types
-        const isVariation = metadata.base_image === true;
-
-        if (isVariation) {
-            window.currentRequestType = 'reroll';
-            // Set transformation type to reroll
-            updateTransformationDropdownState('reroll');
-
-            const [type, id] = metadata.image_source.split(':');
-            const previewUrl = type === 'file' ? `/images/${id}` : `/cache/preview/${id}.webp`;
-            window.uploadedImageData = {
-                image_source: metadata.image_source,
-                width: metadata.width || 0,
-                height: metadata.height || 0,
-                bias: typeof metadata.image_bias === 'number' ? metadata.image_bias : 2,
-                image_bias: typeof metadata.image_bias === 'object' ? metadata.image_bias : undefined,
-                isBiasMode: true,
-                isClientSide: false
-            };
-            if (typeof metadata.image_bias === 'object') {
-                imageBiasAdjustmentData.currentBias = metadata.image_bias;
-            }
-
-            variationImage.style.display = 'block';
-            updateInpaintButtonState();
-            renderImageBiasDropdown((typeof metadata.image_bias === 'number' ? metadata.image_bias : 2).toString());
-        } else {
-            window.currentRequestType = null;
-            // Clear transformation type
-            updateTransformationDropdownState();
-        }
-
         // Only call cropImageToResolution if uploadedImageData is available
         if (window.uploadedImageData?.image_source) {
             try {
@@ -4845,18 +4830,13 @@ async function rerollImageWithEdit(image) {
         if (allImages && Array.isArray(allImages)) {
             const filename = image.filename || image.upscaled || image.original;
             if (filename) {
-                const galleryIndex = allImages.findIndex(img => {
-                    const imgFilename = img.filename || img.original || img.upscaled;
-                    return imgFilename === filename;
-                });
+                const galleryIndex = findTrueImageIndexInGallery(filename);
                 if (galleryIndex >= 0) {
                     await updateManualPreview(galleryIndex);
                 }
             }
         }
         
-        // OLD SYSTEM: manualLoadingOverlay.classList.remove('hidden');
-        // OLD SYSTEM: manualLoadingOverlay.classList.add('return');
         manualPreviewOriginalImage.classList.add('hidden');
         
         // Save current gallery position
@@ -6149,6 +6129,107 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
         updateManualPreviewNavigation();
     }
 }
+
+// Function to update manual preview directly with image object (for search mode navigation)
+async function updateManualPreviewDirectly(imageObj, metadata = null) {
+    const previewImage = document.getElementById('manualPreviewImage');
+    const originalImage = document.getElementById('manualPreviewOriginalImage');
+    const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
+    const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
+    const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
+    const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
+    const rerollBtn = document.getElementById('manualPreviewRerollBtn');
+    const variationBtn = document.getElementById('manualPreviewVariationBtn');
+    const seedBtn = document.getElementById('manualPreviewSeedBtn');
+    const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
+
+    if (previewImage && previewPlaceholder) {
+        // Construct image URL from the image object
+        const imageUrl = `/images/${imageObj.filename}`;
+        
+        // Show the image and hide placeholder
+        previewImage.src = imageUrl;
+        previewImage.style.display = 'block';
+        previewPlaceholder.style.display = 'none';
+
+        // Store the blob URL for download functionality
+        previewImage.dataset.blobUrl = imageUrl;
+
+        // Wait for the image to load before continuing
+        await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error('Failed to load image'));
+            img.src = imageUrl;
+        });
+
+        // Update blurred background
+        updateBlurredBackground(imageUrl);
+
+        // Set the current image
+        currentManualPreviewImage = imageObj;
+        
+        // Use passed metadata if available
+        if (metadata) {
+            imageObj.metadata = metadata;
+        }
+
+        // Show control buttons
+        if (downloadBtn) downloadBtn.style.display = 'flex';
+        if (upscaleBtn) upscaleBtn.style.display = 'flex';
+        if (rerollBtn) rerollBtn.style.display = 'flex';
+        if (variationBtn) variationBtn.style.display = 'flex';
+        if (manualPreviewLoadBtn) manualPreviewLoadBtn.style.display = 'flex';
+        
+        // Show and update pin button
+        if (manualPreviewPinBtn) {
+            manualPreviewPinBtn.style.display = 'flex';
+            if (currentManualPreviewImage) {
+                const filename = currentManualPreviewImage.filename || currentManualPreviewImage.original || currentManualPreviewImage.upscaled;
+                if (filename) {
+                    updatePinButtonAppearance(manualPreviewPinBtn, filename);
+                }
+            }
+        }
+        
+        const scrapBtn = document.getElementById('manualPreviewScrapBtn');
+        if (scrapBtn) {
+            scrapBtn.style.display = 'flex';
+            // Update scrap button based on current view
+            if (currentGalleryView === 'scraps') {
+                scrapBtn.innerHTML = '<i class="mdi mdi-1-5 mdi-archive-arrow-up"></i>';
+                scrapBtn.title = 'Remove from scraps';
+            } else {
+                scrapBtn.innerHTML = '<i class="mdi mdi-1-25 mdi-archive"></i>';
+                scrapBtn.title = 'Move to scraps';
+            }
+        }
+        if (seedBtn) seedBtn.classList.remove('hidden');
+        if (deleteBtn) deleteBtn.style.display = 'flex';
+
+        // Initialize zoom functionality
+        setTimeout(() => {
+            initializeManualPreviewZoom();
+        }, 100);
+
+        // Update seed display
+        if (currentManualPreviewImage && currentManualPreviewImage.metadata && currentManualPreviewImage.metadata.seed !== undefined) {
+            manualPreviewSeedNumber.textContent = currentManualPreviewImage.metadata.seed;
+            window.lastGeneratedSeed = currentManualPreviewImage.metadata.seed;
+            sproutSeedBtn.classList.add('available');
+            updateSproutSeedButtonFromPreviewSeed();
+        } else {
+            manualPreviewSeedNumber.textContent = '---';
+            window.lastGeneratedSeed = null;
+            sproutSeedBtn.classList.remove('available');
+            updateSproutSeedButtonFromPreviewSeed();
+        }
+
+        // Update navigation buttons
+        updateManualPreviewNavigation();
+    }
+}
+
 // Function to handle image swapping in manual preview
 function swapManualPreviewImages() {
     const previewImage = document.getElementById('manualPreviewImage');
@@ -6300,10 +6381,7 @@ function updateManualPreviewNavigation() {
 
     // Find current image index in gallery using filename comparison
     const currentFilename = currentManualPreviewImage.original || currentManualPreviewImage.filename;
-    const currentIndex = allImages.findIndex(img =>
-        img.original === currentFilename ||
-        img.upscaled === currentFilename
-    );
+    const currentIndex = findTrueImageIndexInGallery(currentFilename);
 
     if (currentIndex === -1) {
         // Current image not found in gallery, disable both buttons
@@ -6332,35 +6410,92 @@ async function navigateManualPreview(event) {
         // Get current view type based on current gallery view
         const viewType = currentGalleryView || 'images';
         
-        // Calculate new index, default to 0 if not set
-        const currentIndex = window.currentManualPreviewIndex ?? 0;
-        const newIndex = currentIndex + direction;
-
-        // Check for negative index
-        if (newIndex < 0) {
-            console.warn('Cannot navigate before first image');
-            showManualPreviewNavigationLoading(false);
-            return;
-        }
+        // Determine navigation approach based on search mode
+        let newImage, newIndex;
         
-        // Request the image at the new index from the server
-        const newImage = await window.wsClient.requestImageByIndex(newIndex, viewType);
-        
-        if (!newImage) {
-            console.warn('No image found at index:', newIndex);
-            showManualPreviewNavigationLoading(false);
-            return;
+        if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
+            // We're in search mode - navigate through filtered results (same logic as lightbox)
+            const currentFilename = currentManualPreviewImage.original || currentManualPreviewImage.filename;
+            
+            // Use the filtered allImages array for navigation (this contains the filtered results)
+            const navigationArray = allImages;
+            const currentImageIndex = navigationArray.findIndex(img => {
+                const imgFilename = img.filename || img.original || img.upscaled;
+                return imgFilename === currentFilename;
+            });
+            
+            if (currentImageIndex === -1) {
+                console.warn('Current image not found in filtered results');
+                showManualPreviewNavigationLoading(false);
+                return;
+            }
+            
+            // Calculate new index within the filtered results
+            let newIndex = currentImageIndex + direction;
+            
+            // Handle wrapping within filtered results
+            if (newIndex < 0) {
+                newIndex = navigationArray.length - 1;
+            } else if (newIndex >= navigationArray.length) {
+                newIndex = 0;
+            }
+            
+            // Get the new image from the filtered results
+            const newImageObj = navigationArray[newIndex];
+            if (!newImageObj) {
+                console.warn('No image found at filtered index:', newIndex);
+                showManualPreviewNavigationLoading(false);
+                return;
+            }
+            
+            // Construct the image object for the preview (same as lightbox)
+            let filenameToShow = newImageObj.original;
+            if (newImageObj.upscaled) {
+                filenameToShow = newImageObj.upscaled;
+            }
+            
+            const imageToShow = {
+                filename: filenameToShow,
+                base: newImageObj.base,
+                upscaled: newImageObj.upscaled,
+                metadata: newImageObj.metadata
+            };
+            
+            // Update the preview with the new image directly (like lightbox does)
+            await updateManualPreviewDirectly(imageToShow, newImageObj.metadata);
+            
+        } else {
+            // Normal mode - use WebSocket API with global indices
+            const currentIndex = window.currentManualPreviewIndex ?? 0;
+            newIndex = currentIndex + direction;
+
+            // Check for negative index
+            if (newIndex < 0) {
+                console.warn('Cannot navigate before first image');
+                showManualPreviewNavigationLoading(false);
+                return;
+            }
+            
+            // Request the image at the new index from the server
+            newImage = await window.wsClient.requestImageByIndex(newIndex, viewType);
+            
+            if (!newImage) {
+                console.warn('No image found at index:', newIndex);
+                showManualPreviewNavigationLoading(false);
+                return;
+            }
+
+            // Update the current index
+            window.currentManualPreviewIndex = newIndex;
+
+            // Update the preview with the new image and metadata
+            await updateManualPreview(newIndex, null, newImage.metadata);
         }
-
-        // Update the current index
-        window.currentManualPreviewIndex = newIndex;
-
-        // Update the preview with the new image and metadata
-        await updateManualPreview(newIndex, null, newImage.metadata);
         
         // Check if we're navigating to index 0 (last generation) or a different image
-        if (newIndex === 0) {
-            // For index 0, switch preview to the right side (last generation is always on the right)
+        // Note: In search mode, index 0 refers to the first filtered result, not necessarily the global first image
+        if (newIndex === 0 && !window.originalAllImages) {
+            // For global index 0 in normal mode, switch preview to the right side (last generation is always on the right)
             // Clear any stored navigation original image since we're back to the main image
             window.navigationOriginalImage = null;
             
@@ -6369,7 +6504,7 @@ async function navigateManualPreview(event) {
                 container.classList.remove('swapped');
             });
         } else {
-            // For other indices, move placeholder to left side and show last generation on right
+            // For other indices or in search mode, move placeholder to left side and show last generation on right
             // First, store the current image as the "original" for comparison
             if (currentManualPreviewImage) {
                 window.navigationOriginalImage = {
@@ -9119,6 +9254,7 @@ async function toggleRandomPrompt() {
         }
     }
 }
+
 function addCharacterPrompt() {
     const characterId = `character_${characterPromptCounter++}`;
 

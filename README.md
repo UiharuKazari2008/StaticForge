@@ -1,6 +1,6 @@
 # Dreamscape
 
-A Node.js Express server for generating AI images using NovelAI's API with advanced features including AI upscaling, text replacements, rate limiting, authentication, and dynamic configuration.
+A powerful, feature-rich NovelAI API proxy and workspace built with modern web technologies. Dreamscape serves as an intelligent server-based proxy that enhances NovelAI's image generation capabilities with advanced prompt engineering tools, workspace management, and comprehensive image organization features. Built for power users who want more control, better organization, and enhanced workflow capabilities than the standard NovelAI interface.
 
 ## Preface
 > **⚠️ Important Notice:**  
@@ -19,523 +19,276 @@ A Node.js Express server for generating AI images using NovelAI's API with advan
 >  
 > See [NovelAI ToS Section 9](https://novelai.net/terms-of-service) for details.
 
+## 🌟 Key Features
 
+### 🎨 **NovelAI Image Generation**
+- **NovelAI API Integration**: Direct integration with NovelAI's powerful image generation models
+- **Enhanced Prompt Engineering**: Sophisticated prompt input with real-time token counting and advanced formatting
+- **Image-to-Image Generation**: Transform existing images with strength and noise controls
+- **Server-Side Proxy**: Handles image storage, metadata management, and API communication
+- **Advanced Non-Destructive Image Biasing**: Precise positioning, scaling, and rotation controls for image-to-image and inpainting workflows
+- **Dynamic Bias Adjustment**: Real-time preview of image positioning and cropping with client-side and server-side processing
 
-## Features
+### 🖼️ **Image Management & Organization**
+- **Multi-View Gallery**: Switch between Images, Scraps, Pinned, and Upscaled views
+- **Infinite Scroll**: Smooth, performance-optimized infinite scrolling with virtual scrolling
+- **Bulk Operations**: Select and manage multiple images simultaneously
+- **Advanced Search**: Search by prompts, characters, tags, and metadata
+- **Sorting Options**: Chronological sorting (newest/oldest first)
+- **Image Metadata**: Comprehensive metadata display and management
+- **Lightbox Viewer**: Full-screen image viewing with navigation controls
+- **Image Relationships**: Automatic detection of original/upscaled image pairs
+- **Metadata Caching**: Efficient metadata storage and retrieval system
 
-- 🎨 **AI Image Generation** using NovelAI API
-- 🔄 **AI Upscaling** with NovelAI's Image Upscaler API
-- 📝 **Text Replacements** for dynamic prompts
-- ⚡ **Advanced Rate Limiting** with Bottleneck
-- 📁 **Organized Storage** (original + upscaled images)
-- 🔧 **Dynamic Config Reloading**
-- 🎯 **Preset System** for quick generation
-- 🛡️ **Authentication** with optional login key
-- 📊 **Comprehensive Logging**
-- 🔍 **Prompt Preview Endpoints**
-- 🎲 **Upscale Override** via query parameters
-- 🎞 **Image Optimization** to compress images to JPEG at 75% quality
+### 🏢 **Workspace Management**
+- **Multiple Workspaces**: Create and manage separate workspaces for different projects
+- **Custom Themes**: Personalized color schemes and background colors per workspace
+- **Font Customization**: Choose from 20+ fonts for primary and textarea elements
+- **Automatic Backgrounds**: Dynamic background transitions between workspaces
+- **Workspace Operations**: Move, merge, and organize content between workspaces
+- **Image Groups**: Organize images within workspaces using custom groups
+- **Workspace Export/Import**: Dump and restore workspace configurations
 
-## Installation
+### 🔧 **Advanced Tools & Utilities**
+- **Inpainting System**: Advanced mask editing with brush tools and preview
+- **Vibe Encoding Organization**: Hierarchical storage and management of artistic styles for consistent workflow
+- **Dataset Tag System**: Hierarchical tag selection for organized content
+- **Text Replacement Manager**: Create and manage text expanders and shortcuts for efficient prompt writing
+  - **Dynamic Text Expanders**: Create shortcuts that expand to full phrases or paragraphs
+  - **Array-based Expansions**: Support for multiple variations and random selections
+- **Preset Management**: Save and load generation presets with workspace targeting
+  - **Complete Parameter Storage**: Save all generation settings including model, resolution, and advanced parameters
+  - **Workspace Targeting**: Apply presets to specific workspaces for project consistency
+  - **Quick Generations**: Generate Images from saved presets with one click for rapid workflow
+  - **Preset UUID System**: Unique identifiers for presets with REST API access
+- **Favorites System**: Save frequently used tags, text replacements, and characters for quick access
+- **Queue Management**: Intelligent request queuing with rate limiting and status monitoring
+- **Rate Limiting**: Per-session and global rate limiting with detailed statistics
+- **Spell Checker**: Real-time spelling correction with custom dictionary support
 
-1. Clone the repository:
+### 📝 **Prompt Engineering Tools**
+- **Random Prompt Generator**: Generate creative prompts with NSFW filtering
+- **Emphasis Management**: Weight-based text emphasis with multiple modes
+- **Quick Access**: Fast access to frequently used prompts and phrases
+- **Advanced Search Autofill System**: Intelligent prompt suggestions and completions with multiple service integrations
+  - **NoveAI Tag Autofill**: NovelAI model-specific tag suggestions and organization
+  - **Character Autocomplete**: Intelligent character name suggestions and management
+  - **Preset Autocomplete**: Quick access to saved generation presets
+  - **Danbooru and e621 Tag Autocomplete**: Hidden tag suggestions for more options
+  - **Text Replacement Autofill**: Dynamic text expander integration
+  - **Intelligent Spellcheck**: Real-time spelling correction and suggestions within autocomplete
+- **Inline Search**: Find and replace text within prompts with real-time highlighting
+
+### 🔍 **Reference Management**
+- **Reference Browser**: Integrated reference image management with workspace organization
+- **Unified Upload System**: Support for images, URLs, and vibe bundles
+- **Comprehensive Storage**: Store reference images and vibe encodings for consistent workflows
+- **Workspace Integration**: Organize references by project and workspace for better project management
+
+### 🔌 **External Integrations**
+- **Sequenzia Integration**: Send images directly to Sequenzia via FileWorker folder for further processing
+- **Bulk Export**: Export multiple images to external systems with workspace organization
+
+### ⌨️ **User Experience Features**
+- **Keyboard Shortcuts**: Comprehensive keyboard navigation and shortcuts
+- **Responsive Design**: Optimized for desktop and mobile devices
+- **Confetti Effects**: Celebration animations for successful generations
+- **Glass Toast System**: Modern notification system with progress tracking
+- **Background Updates**: Intelligent background image updates with animation awareness
+- **Session Validation**: Automatic session validation and reconnection handling
+
+### 🔐 **Security & Authentication**
+- **PIN Authentication**: Secure access control system with admin and read-only modes
+- **Session Management**: Secure user session handling
+- **WebSocket Communication**: Real-time updates and notifications
+- **Rate Limiting**: Protection against abuse with configurable limits
+
+## 🚀 Getting Started
+
+### Prerequisites
+- NovelAI Account with active **Opus** paid subscription
+- Server hosting environment for the proxy
+
+### Installation
+
+#### 1. Clone and Setup
 ```bash
-git clone <repository-url>
-cd StaticForge
-```
-
-2. Install dependencies:
-```bash
+git clone https://yozora.bluesteel.737.jp.net/UiharuKazari2008/StaticForge dreamscape
+cd dreamscape
 npm install
 ```
 
-3. Create configuration files (see Configuration section)
+#### 2. Configuration
+Create `config.json` in the root directory:
 
-4. Start the server:
+```json
+{
+  "apiKey": "your_novelai_api_key_here",
+  "port": 9220,
+  "loginKey": "your_login_key",
+  "loginPin": "your_admin_pin",
+  "readOnlyPin": "your_readonly_pin",
+  "sequenziaFolder": "/path/to/sequenzia/upload/folder"
+}
+```
+
+#### 3. Start Server
 ```bash
-node server.js
+node web_server.js
 ```
 
-## Configuration
-
-### Main Configuration (`config.json`)
-
-Create a `config.json` file in the root directory:
-
-```json
-{
-    "apiKey": "your-novelai-api-key-here",
-    "port": 3000,
-    "loginKey": "your-secret-key-here",
-    "allow_paid": true,
-    "rateLimit": {
-        "generation": {
-            "maxConcurrent": 1,
-            "minTime": 2000
-        },
-        "upscaling": {
-            "maxConcurrent": 1,
-            "minTime": 1000
-        }
-    }
-}
-```
-
-### Prompt Configuration (`prompt.config.json`)
-
-Create a `prompt.config.json` file for presets and text replacements:
-
-```json
-{
-    "text_replacements": {
-        "CHARACTER": "1girl, anime style",
-        "STYLE": "masterpiece, best quality",
-        "NEGATIVE": "lowres, bad anatomy, bad hands",
-        "HAIR_COLOR": ["blonde hair", "black hair", "brown hair", "red hair"],
-        "EYE_COLOR": ["blue eyes", "green eyes", "brown eyes", "red eyes"],
-        "{{hair}}": ["blonde", "brunette", "redhead"],
-        "{{eyes}}": ["blue", "green", "brown"]
-    },
-    "presets": {
-        "high_quality": {
-            "prompt": "!CHARACTER, !STYLE",
-            "model": "v4_5",
-            "resolution": "NORMAL_PORTRAIT",
-            "steps": 28,
-            "upscale": 2
-        },
-        "anime": {
-            "model": "nai-diffusion-3",
-            "prompt": "anime girl with {{hair}} hair and {{eyes}} eyes",
-            "negative_prompt": "nsfw, nude, naked",
-            "resolution": "PORTRAIT"
-        }
-    }
-}
-```
+Access at `http://localhost:9220`
 
 ### Configuration Options
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `apiKey` | string | Your NovelAI API key (required) |
-| `port` | number | Server port (default: 3000) |
-| `loginKey` | string | Optional authentication key |
-| `allow_paid` | boolean | Allow paid-tier features |
-| `rateLimit` | object | Rate limiting configuration |
-
-## Authentication
-
-If `loginKey` is set in `config.json`, all requests require authentication:
-
-```
-GET /preset/example?auth=your-secret-key
-POST /kayra/generate?auth=your-secret-key
-```
-
-- **No `loginKey`**: Authentication is disabled
-- **With `loginKey`**: All requests must include `?auth=<loginKey>`
-
-## API Endpoints
-
-### 1. Generate Image
-**POST** `/:model/generate`
-
-Generate an image using a specific model.
-
-**Parameters:**
-- `model` (path): Model name (e.g., `kayra`, `v4_5`, `v3`, `furry`)
-
-**Request Body:**
-```json
-{
-    "prompt": "beautiful landscape",
-    "uc": "lowres, bad anatomy",
-    "resolution": "NORMAL_LANDSCAPE",
-    "steps": 28,
-    "guidance": 7.5,
-    "upscale": 2,
-    "seed": 123456789,
-    "allow_paid": true,
-    "no_save": false
-}
-```
-
-**Query Parameters:**
-- `upscale` (optional): Override upscaling (`true` for 4x, or number like `2`, `1.5`)
-- `optimize` (optional): Compress image to JPEG at 75% quality
-- `download` (optional): Set to `true` to force download
-- `auth` (optional): Authentication key if enabled
-
-### 2. Generate from Preset
-**GET** `/preset/:name`
-
-Generate an image using a predefined preset.
-
-**Parameters:**
-- `name` (path): Preset name from prompt config
-
-**Query Parameters:**
-- `upscale` (optional): Override upscaling
-- `optimize` (optional): Compress image to JPEG at 75% quality
-- `download` (optional): Force download
-- `auth` (optional): Authentication key
-
-### 3. Preset with Resolution Override
-**GET** `/preset/:name/:resolution`
-
-Generate using preset with specific resolution.
-
-**Parameters:**
-- `name` (path): Preset name
-- `resolution` (path): Resolution preset (e.g., `LARGE_PORTRAIT`)
-
-### 4. Image-to-Image
-**POST** `/:model/img2img`
-
-Generate an image from an existing image.
-
-**Parameters:**
-- `model` (path): Model name
-
-**Request Body:**
-```json
-{
-    "prompt": "enhanced version",
-    "image": "base64-encoded-image",
-    "strength": 0.5,
-    "steps": 28
-}
-```
-
-### 5. Prompt Preview Endpoints
-
-#### Get Processed Prompt (Preset)
-**GET** `/preset/:name/prompt`
-
-Returns the processed prompt and negative prompt for a preset.
-
-**Query Parameters:**
-- `resolution` (optional): Override resolution
-- `upscale` (optional): Override upscaling
-
-#### Get Processed Prompt (Preset with Overrides)
-**POST** `/preset/:name/prompt`
-
-Returns processed prompt with body overrides applied.
-
-#### Get Processed Prompt (Direct Model)
-**POST** `/:model/prompt`
-
-Returns processed prompt for direct model generation.
-
-### 6. Get Available Options
-**GET** `/options`
-
-Returns all available models, samplers, resolutions, presets, and text replacements.
-
-**Response:**
-```json
-{
-    "models": {
-        "KAYRA": "kayra",
-        "V4_5": "v4_5",
-        "V3": "v3"
-    },
-    "samplers": {
-        "EULER_ANC": "euler_anc"
-    },
-    "resolutions": {
-        "NORMAL_PORTRAIT": "normal_portrait"
-    },
-    "presets": ["example", "high_quality", "anime"],
-    "textReplacements": {
-        "CHARACTER": "1girl, anime style"
-    }
-}
-```
-
-## Request Parameters
-
-### Core Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `prompt` | string | - | Main prompt for image generation |
-| `uc` | string | - | Negative prompt (unwanted elements) |
-| `model` | string | - | AI model to use |
-| `resolution` | string | - | Predefined resolution preset |
-| `width` | number | 1024 | Custom width (when not using resolution) |
-| `height` | number | 1024 | Custom height (when not using resolution) |
-| `steps` | number | 24 | Number of generation steps |
-| `guidance` | number | 5.5 | Guidance scale |
-| `seed` | number | random | Seed for reproducible results |
-
-### Advanced Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `upscale` | boolean/number | - | AI upscaling (`true` for 4x, or number) |
-| `allow_paid` | boolean | false | Allow paid-tier features |
-| `no_save` | boolean | false | Don't save image locally |
-| `noQualityTags` | boolean | false | Disable quality tags |
-| `ucPreset` | number | 100 | UC preset value |
-| `dynamicThresholding` | boolean | false | Enable dynamic thresholding |
-
-### Query Parameters
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `upscale` | string | Override upscaling (`true` or number) |
-| `optimize` | boolean | Compress image to JPEG at 75% quality |
-| `download` | boolean | Force download instead of display |
-| `auth` | string | Authentication key (if enabled) |
-
-## Upscale Override
-
-You can override upscaling settings per request using query parameters:
-
-### Examples:
-```bash
-# Default 4x upscaling
-GET /preset/example?upscale=true
-
-# Custom 2x upscaling
-GET /preset/example?upscale=2
-
-# Custom 1.5x upscaling
-POST /kayra/generate?upscale=1.5
-
-# Combine with other params
-GET /preset/example?upscale=4&auth=your-key
-```
-
-### Priority Order:
-1. **Query parameter** (`?upscale=...`) - Highest priority
-2. **Body parameter** (`"upscale": ...`) - Medium priority  
-3. **Preset setting** (`preset.upscale`) - Lowest priority
-
-## Text Replacements
-
-The server supports dynamic text replacements in prompts and negative prompts. Replacements are defined in `prompt.config.json` under the `text_replacements` section.
+- **apiKey**: Your NovelAI API key (required)
+- **port**: Server port (default: 9220)
+- **loginKey**: Admin login key for web interface
+- **loginPin**: Admin PIN for full access
+- **readOnlyPin**: Read-only user PIN
+- **sequenziaFolder**: Path for external integrations
 
 ### Basic Usage
+1. **Create Images**: Use the Creator button to open the generation interface
+2. **Manage Workspaces**: Switch between workspaces using the dropdown menu
+3. **Organize Content**: Use the gallery views to organize your images
+4. **Advanced Features**: Explore the various tools and utilities for enhanced workflow
 
-Use `!KEY` syntax in your prompts to reference replacement values:
+## 🔌 API Endpoints
 
-```
-"prompt": "1girl, !CHARACTER, !HAIR_COLOR, !EYE_COLOR"
-```
+### Preset Generation Endpoint
 
-### Array-Based Random Selection
+The preset endpoint allows you to generate images directly from saved presets via REST API calls.
 
-Text replacements can be arrays, in which case a random item is selected each time:
+**Endpoint**: `GET /preset/:uuid`
 
-```json
-{
-  "text_replacements": {
-    "HAIR_COLOR": ["blonde hair", "black hair", "brown hair", "red hair", "blue hair", "purple hair", "pink hair"],
-    "EYE_COLOR": ["blue eyes", "green eyes", "brown eyes", "red eyes", "purple eyes", "pink eyes"],
-    "POSE": ["standing", "sitting", "lying down", "walking", "running", "dancing"],
-    "EXPRESSION": ["smile", "serious", "angry", "sad", "surprised", "wink"]
-  }
-}
-```
+**Parameters**:
+- `:uuid` - The UUID of the preset to use for generation
+- `workspace` (query) - Target workspace ID (optional, defaults to preset's target workspace)
+- `optimize` (query) - Set to 'true' to return JPEG instead of PNG (optional)
+- `download` (query) - Set to 'true' to trigger file download (optional)
 
-When using `!HAIR_COLOR` in a prompt, it will randomly select one of the hair colors each time.
+**Headers Returned**:
+- `X-Generated-Filename` - Name of the generated image file
+- `X-Preset-UUID` - UUID of the preset used
+- `X-Preset-Name` - Name of the preset used
+- `Content-Type` - Image format (image/png or image/jpeg)
 
-### Model-Specific Replacements
-
-You can define model-specific versions of replacements by appending the model name:
-
-```json
-{
-  "text_replacements": {
-    "CHARACTER": "1girl, anime style",
-    "CHARACTER_V4_5": "1girl, anime style, detailed face",
-    "CHARACTER_V3": "1girl, anime style, simple"
-  }
-}
-```
-
-When generating with V4.5, `!CHARACTER` will use "1girl, anime style, detailed face". For other models, it falls back to the base "CHARACTER" value.
-
-### Special Replacements
-
-- `!PRESET_NAME`: Automatically replaced with the preset name being used
-- `!<NAME>~`: Randomly selects from all text replacement keys that begin with `NAME`
-- Quality and UC presets: Pre-defined negative prompt components for different models
-
-#### PICK Usage with ~ Suffix
-
-The `!<NAME>~` replacement allows you to randomly select from a group of related replacements:
-
-```json
-{
-  "text_replacements": {
-    "GIC_F_1": "girl in casual outfit",
-    "GIC_F_2": "girl in formal dress", 
-    "GIC_F_3": "girl in school uniform",
-    "GIC_F_4": "girl in swimsuit",
-    "GIC_F_5": "girl in kimono"
-  }
-}
-```
-
-Using `!GIC_F_~` in a prompt will randomly select one of the GIC_F_* keys.
-
-### Validation
-
-The server validates all text replacements and will throw an error if an undefined replacement is used.
-
-## Presets
-
-Presets are predefined configurations stored in `prompt.config.json`. They allow you to quickly generate images with consistent settings.
-
-### Using Presets
-
-#### Basic Preset Usage
-```
-GET /preset/example
-POST /preset/example
-```
-
-#### Preset with Resolution Override
-```
-GET /preset/example/NORMAL_PORTRAIT
-POST /preset/example/NORMAL_PORTRAIT
-```
-
-#### Preset with Body Overrides
-You can override preset values by sending a body with additional parameters (POST requests only):
-
-```json
-POST /preset/example
-{
-  "steps": 50,
-  "allow_paid": true,
-  "seed": 123456789,
-  "guidance": 8.0
-}
-```
-
-### Override Rules
-
-- **Prompt Override**: If a `prompt` is provided in the body, it will be **appended** to the preset's prompt
-- **UC Override**: The `uc` (negative prompt) from the body is **ignored** - only the preset's UC is used
-- **All Other Parameters**: Can be overridden by the body
-- **Resolution Override**: Can be specified in the URL path
-- **Upscale Override**: Can be specified via query parameter
-
-## Rate Limiting
-
-The server uses Bottleneck for advanced rate limiting:
-
-- **First 3 requests**: 5-second minimum delay between requests
-- **10-minute window**: Limits concurrent requests
-- **Queue system**: Requests are queued instead of rejected
-- **Separate limiters**: Different limiters for generation and upscaling
-
-## File Storage
-
-### Directory Structure
-```
-StaticForge/
-├── images/          # All generated images (original + upscaled)
-├── config.json      # Main configuration
-└── prompt.config.json # Presets and text replacements
-```
-
-### File Naming
-- **Original**: `YYYY-MM-DD_HH-MM_seed.png`
-- **Upscaled**: `upscaled_YYYY-MM-DD_HH-MM_seed.png`
-
-## Paid Tier Features
-
-The following features require `"allow_paid": true`:
-
-- **Steps > 28**: Higher step counts for better quality
-- **Large Resolutions**: `LARGE_*` and `WALLPAPER_*` presets
-- **Custom Dimensions > 1024**: Width or height exceeding 1024px
-- **Upscaling**: Any upscaling requires Opus credits
-
-## Error Handling
-
-### Common Errors
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Invalid model` | Unknown model name | Check available models with `/options` |
-| `Steps value X exceeds maximum of 28` | Steps too high | Set `"allow_paid": true` |
-| `Resolution "LARGE_PORTRAIT" requires Opus credits` | Large resolution | Set `"allow_paid": true` |
-| `Invalid text replacement: !UNKNOWN~` | Unknown replacement | Add to `text_replacements` in prompt config |
-| `Authentication required` | Missing auth parameter | Add `?auth=<loginKey>` to request |
-
-## Examples
-
-### Basic Generation
+**Example Usage**:
 ```bash
-curl -X POST "http://localhost:3000/kayra/generate?auth=your-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "beautiful landscape",
-    "resolution": "NORMAL_LANDSCAPE"
-  }'
+# Method 1: Using session cookie (requires web login first)
+curl -H "Cookie: connect.sid=your_session_cookie" \
+     "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000"
+
+# Method 2: Using loginKey (no session required - recommended for automation)
+curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key"
+
+# Generate optimized JPEG
+curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key&optimize=true"
+
+# Download generated image
+curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key&download=true" \
+     -o "generated_image.png"
+
+# Generate in specific workspace
+curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key&workspace=my_project"
 ```
 
-### High-Quality Generation with Upscaling
+**Authentication**: Requires valid session cookie (login via web interface first) OR use `loginKey` parameter for direct access
+
+**Query Parameters for Authentication**:
+- `loginKey` - Your configured login key for direct API access without session
+- `workspace` - Target workspace ID (optional, defaults to preset's target workspace)
+- `optimize` - Set to 'true' to return JPEG instead of PNG (optional)
+- `download` - Set to 'true' to trigger file download (optional)
+
+**Example Usage with loginKey**:
 ```bash
-curl -X POST "http://localhost:3000/kayra/generate?auth=your-key&upscale=2" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "anime character",
-    "resolution": "LARGE_PORTRAIT",
-    "steps": 50,
-    "allow_paid": true
-  }'
+# Generate image from preset using loginKey (no session required)
+curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key"
+
+# Generate optimized JPEG with loginKey
+curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key&optimize=true"
+
+# Download generated image with loginKey
+curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key&download=true" \
+     -o "generated_image.png"
+
+# Generate in specific workspace with loginKey
+curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key&workspace=my_project"
 ```
 
-### Using Preset with Upscale Override
-```bash
-curl "http://localhost:3000/preset/example?auth=your-key&upscale=true"
-```
+**Rate Limiting**: Subject to the same queue system as web interface
 
-### Prompt Preview
-```bash
-curl "http://localhost:3000/preset/example/prompt?auth=your-key"
-```
+### Test Bias Adjustment Endpoint
 
-## Logging
+**Endpoint**: `POST /test-bias-adjustment`
 
-The server provides detailed console logging:
+**Body Parameters**:
+- `image_source` - Image source (format: "file:filename" or "cache:hash")
+- `target_width` - Target image width
+- `target_height` - Target image height
+- `bias` - Bias adjustment object with x, y, scale, and rotate properties
 
-- 🔧 **Request Processing**: Input validation and option building
-- 🎲 **Seed Generation**: Random or provided seeds
-- 🚀 **Image Generation**: Progress and completion
-- 🔍 **Upscaling**: AI upscaling progress with NovelAI API
-- 💾 **File Operations**: Save/load operations
-- ⏰ **Rate Limiting**: Queue and timing information
-- 🔐 **Authentication**: Auth validation and success/failure
+**Returns**: Processed image buffer
 
-## Dependencies
+## 🎯 Use Cases
 
-- `express`: Web server framework
-- `nekoai-js`: NovelAI API client
-- `sharp`: Image processing and metadata extraction
-- `bottleneck`: Advanced rate limiting
-- `adm-zip`: ZIP file extraction for upscaled images
-- `fs`: File system operations (built-in)
-- `path`: Path utilities (built-in)
-- `https`: HTTPS requests (built-in)
+### For Artists & Designers
+- Create concept art and illustrations using NovelAI's advanced models
+- Generate reference materials with enhanced prompt control
+- Experiment with different artistic styles and techniques
+- Build character and world-building assets with organized workflows
 
-## Recent Updates
+### For Content Creators
+- Generate social media content with consistent branding
+- Create marketing materials with advanced prompt engineering
+- Develop visual storytelling elements with workspace organization
+- Produce consistent brand imagery across multiple projects
 
-- ✅ **NovelAI Upscaling**: Replaced waifu2x with NovelAI's Image Upscaler API
-- ✅ **Authentication**: Added optional login key authentication
-- ✅ **Config Separation**: Moved presets and text replacements to `prompt.config.json`
-- ✅ **Advanced Rate Limiting**: Implemented Bottleneck with separate limiters
-- ✅ **Upscale Override**: Added query parameter support for per-request upscaling
-- ✅ **Prompt Preview**: Added endpoints to preview processed prompts
-- ✅ **ZIP Extraction**: Added support for NovelAI's ZIP response format
-- ✅ **Code Cleanup**: Removed unused dependencies and optimized code
-- ✅ **Image Optimization**: Added support for compressing images to JPEG at 75% quality
+### For Power Users
+- Advanced prompt engineering beyond NovelAI's standard interface
+- Efficient workspace management for large-scale projects
+- Enhanced image organization and metadata management
+- Custom workflows and automation capabilities
+- REST API access for integration with external tools
+
+### For Developers & Researchers
+- Test NovelAI model capabilities with enhanced controls
+- Develop advanced prompt engineering skills and techniques
+- Integrate with external image processing pipelines
+- Build automated image generation workflows
+
+## 🛠️ Technical Architecture
+
+### Frontend Technologies
+- **Vanilla JavaScript**: No framework dependencies for maximum performance
+- **CSS3**: Modern styling with CSS custom properties
+- **HTML5**: Semantic markup and accessibility features
+- **WebSockets**: Real-time communication and updates
+
+### Backend Technologies
+- **Server-Side Proxy**: NovelAI API integration and management
+- **Image Storage**: Efficient storage and retrieval system
+- **Metadata Management**: Comprehensive image metadata handling
+- **JSON Databases**: Persistent storage for workspaces and settings
+- **Queue System**: Intelligent request queuing with rate limiting
+- **Session Management**: Secure user session handling
+
+### Key Components
+- **Modular Architecture**: Organized into logical component files
+- **Event-Driven Design**: Responsive and interactive user experience
+- **Performance Optimized**: Virtual scrolling, lazy loading, and efficient DOM manipulation
+- **WebSocket Communication**: Real-time updates and notifications
+- **Rate Limiting**: Protection against abuse with detailed statistics
+
+## 📞 Support
+
+- **Documentation**: Comprehensive guides and tutorials
+- **Community**: Active user community and forums
+- **Issues**: Bug reports and feature requests
+- **Contact**: Direct support channels
+
+---
+
+**Dreamscape** - Where creativity meets NovelAI technology. Transform your ideas into stunning visual reality with the most advanced NovelAI proxy and workspace available, designed for power users who demand more control and better organization.
