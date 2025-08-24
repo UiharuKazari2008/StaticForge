@@ -12,4 +12,3 @@ prompt.config.json
 .cache/
 logs/
 log.txt
-dataset_tag*.json
