@@ -102,7 +102,7 @@ function positionConfirmationDialog(event) {
         if (event.clientX && event.clientY) {
             x = event.clientX;
             y = event.clientY;
-        } else if (event.target) {
+        } else if (event.target && event.target.getBoundingClientRect) {
             const rect = event.target.getBoundingClientRect();
             x = rect.left + rect.width / 2;
             y = rect.top + rect.height / 2;

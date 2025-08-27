@@ -571,6 +571,14 @@ class WebSocketMessageHandlers {
                 await this.handleImageUpscaling(ws, message, clientInfo, wsServer);
                 break;
                 
+            case 'get_cache_manifest':
+                await this.handleGetCacheManifest(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'reload_cache_data':
+                await this.handleReloadCacheData(ws, message, clientInfo, wsServer);
+                break;
+                
             default:
                 this.sendError(ws, 'Unknown message type', message.type);
         }
@@ -687,11 +695,13 @@ class WebSocketMessageHandlers {
                 config.uuid = this.generateUUID();
             }
             
-            // Preserve existing target_workspace if present
+            // Preserve existing target_workspace if present, otherwise set to current active workspace
             if (currentPromptConfig.presets[presetName] && currentPromptConfig.presets[presetName].target_workspace) {
                 config.target_workspace = currentPromptConfig.presets[presetName].target_workspace;
-            } else if (!config.target_workspace) {
-                config.target_workspace = 'default';
+            } else if (!config.target_workspace || config.target_workspace === 'default') {
+                // Set target workspace to current active workspace if not set or is default
+                const activeWorkspaceId = getActiveWorkspace(clientInfo.sessionId);
+                config.target_workspace = activeWorkspaceId;
             }
             
             currentPromptConfig.presets[presetName] = config;
@@ -814,7 +824,7 @@ class WebSocketMessageHandlers {
                 currentPromptConfig.presets[name] = {
                     ...existingPreset,
                     name: name,
-                    target_workspace: target_workspace !== undefined ? target_workspace : existingPreset.target_workspace || 'default',
+                    target_workspace: target_workspace !== undefined ? target_workspace : (existingPreset.target_workspace && existingPreset.target_workspace !== 'default' ? existingPreset.target_workspace : getActiveWorkspace(clientInfo.sessionId)),
                     resolution: resolution !== undefined ? resolution : existingPreset.resolution || '',
                     request_upscale: request_upscale !== undefined ? request_upscale : existingPreset.request_upscale || false,
                     uuid: uuid
@@ -827,7 +837,7 @@ class WebSocketMessageHandlers {
                 currentPromptConfig.presets[presetName] = {
                     ...existingPreset,
                     name: name !== undefined ? name : existingPreset.name,
-                    target_workspace: target_workspace !== undefined ? target_workspace : existingPreset.target_workspace || 'default',
+                    target_workspace: target_workspace !== undefined ? target_workspace : (existingPreset.target_workspace && existingPreset.target_workspace !== 'default' ? existingPreset.target_workspace : getActiveWorkspace(clientInfo.sessionId)),
                     resolution: resolution !== undefined ? resolution : existingPreset.resolution || '',
                     request_upscale: request_upscale !== undefined ? request_upscale : existingPreset.request_upscale || false,
                     uuid: uuid
@@ -989,7 +999,7 @@ class WebSocketMessageHandlers {
             }
 
             // Use target_workspace from preset if no workspace specified (for REST API calls)
-            const targetWorkspace = workspace || preset.target_workspace || 'default';
+            const targetWorkspace = workspace || (preset.target_workspace && preset.target_workspace !== 'default' ? preset.target_workspace : getActiveWorkspace(clientInfo.sessionId));
             
             // Generate image using the preset
             const result = await generateImageWebSocket({
@@ -1330,7 +1340,10 @@ class WebSocketMessageHandlers {
                     mtime: metadata.mtime || Date.now(),
                     size: metadata.size || 0,
                     isLarge: isLarge,
-                    isPinned: includePinnedStatus ? pinnedFiles.includes(file) : false
+                    isPinned: includePinnedStatus ? pinnedFiles.includes(file) : false,
+                    // Include dimensions for PhotoSwipe
+                    width: metadata.width || null,
+                    height: metadata.height || null
                 });
             }
             
@@ -1538,7 +1551,10 @@ class WebSocketMessageHandlers {
                 preview,
                 mtime: metadata.mtime || Date.now(),
                 size: metadata.size || 0,
-                isLarge: isLarge
+                isLarge: isLarge,
+                // Include dimensions for PhotoSwipe
+                width: metadata.width || null,
+                height: metadata.height || null
             });
         }
         
@@ -7352,6 +7368,95 @@ class WebSocketMessageHandlers {
                 requestId: message.requestId,
                 data: null,
                 error: error.message || 'Image upscaling failed',
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // Handle cache manifest requests
+    async handleGetCacheManifest(ws, message, clientInfo, wsServer) {
+        try {
+            const globalCacheData = this.context.getGlobalCacheData ? this.context.getGlobalCacheData() : [];
+            
+            const response = {
+                type: 'cache_manifest_response',
+                requestId: message.requestId,
+                data: {
+                    assets: globalCacheData || [],
+                    timestamp: Date.now().valueOf()
+                },
+                timestamp: new Date().toISOString()
+            };
+            
+            wsServer.sendToClient(ws, response);            
+        } catch (error) {
+            console.error('❌ Cache manifest error:', error);
+            wsServer.sendToClient(ws, {
+                type: 'error',
+                message: 'Failed to get cache manifest',
+                details: error.message,
+                requestId: message.requestId,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // Handle cache data reload requests
+    async handleReloadCacheData(ws, message, clientInfo, wsServer) {
+        try {
+            // Check if user is admin (not readonly)
+            if (clientInfo.userType !== 'admin') {
+                wsServer.sendToClient(ws, {
+                    type: 'cache_reload_response',
+                    requestId: message.requestId,
+                    data: {
+                        success: false,
+                        error: 'Admin access required to reload cache data'
+                    },
+                    timestamp: new Date().toISOString()
+                });
+                return;
+            }
+
+            console.log('🔄 Admin requested cache data reload via WebSocket...');
+            
+            // Get the reload function from context
+            const reloadCacheData = this.context.reloadCacheData;
+            if (!reloadCacheData) {
+                throw new Error('Cache reload function not available in context');
+            }
+            
+            // Force reload of cache data
+            await reloadCacheData();
+            
+            // Get updated cache data
+            const globalCacheData = this.context.getGlobalCacheData ? this.context.getGlobalCacheData() : [];
+            
+            console.log(`✅ Cache data reloaded successfully via WebSocket: ${globalCacheData.length} assets`);
+            
+            wsServer.sendToClient(ws, {
+                type: 'cache_reload_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    message: 'Cache data reloaded successfully',
+                    assetsCount: globalCacheData.length,
+                    timestamp: Date.now().valueOf(),
+                    assets: globalCacheData
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('❌ Cache reload error:', error);
+            wsServer.sendToClient(ws, {
+                type: 'cache_reload_response',
+                requestId: message.requestId,
+                data: {
+                    success: false,
+                    error: 'Failed to reload cache data',
+                    details: error.message
+                },
                 timestamp: new Date().toISOString()
             });
         }

@@ -102,6 +102,8 @@ const previewStars = document.getElementById('previewStars');
 const previewBackgroundLines = document.getElementById('previewBackgroundLines');
 const previewForegroundLines = document.getElementById('previewForegroundLines');
 
+let bypassConfirmation = false;
+
 // Global background update state tracking
 const backgroundUpdateState = {
     isAnimating: false,
@@ -116,6 +118,38 @@ const backgroundUpdateState = {
 const updateBlurredBackground = createAnimationAwareDebounce(async (imageUrl) => {
     await updateManualPreviewBlurredBackground(imageUrl);
 }, 300);
+
+// Helper functions for manual preview visibility
+function showManualPreview() {
+    if (window.innerWidth <= 1400) {
+        const previewSection = document.getElementById('manualPanelSection');
+        if (previewSection) {
+            previewSection.classList.add('active');
+        }
+        setTimeout(() => { 
+            manualModal.classList.add('show-preview'); 
+        }, 1);
+    }
+}
+
+function hideManualPreview() {
+    const previewSection = document.getElementById('manualPanelSection');
+    if (previewSection) {
+        previewSection.classList.remove('active');
+    }
+    manualModal.classList.remove('show-preview');
+}
+
+function hideManualPreviewResponsive() {
+    // For responsive behavior, use a delay to match the original timing
+    const previewSection = document.getElementById('manualPanelSection');
+    if (previewSection) {
+        previewSection.classList.remove('active');
+    }
+    setTimeout(() => { 
+        manualModal.classList.remove('show-preview'); 
+    }, 500);
+}
 const manualPresetToggleBtn = document.getElementById('manualPresetToggleBtn');
 const manualPresetToggleText = document.getElementById('manualPresetToggleText');
 const manualPresetToggleIcon = document.getElementById('manualPresetToggleIcon');
@@ -164,6 +198,59 @@ let isManualPreviewDragging = false;
 let lastManualPreviewMouseX = 0;
 let lastManualPreviewMouseY = 0;
 let lastManualPreviewTouchDistance = 0;
+
+// Event listener management for manual preview
+let manualPreviewEventListenersRegistered = false;
+
+function registerManualPreviewEventListeners() {
+    if (manualPreviewEventListenersRegistered) return;
+    
+    const imageContainer = document.querySelector('.manual-preview-image-container');
+    const image = document.getElementById('manualPreviewImage');
+
+    if (!imageContainer || !image) return;
+
+    // Mouse wheel zoom
+    imageContainer.addEventListener('wheel', handleManualPreviewWheelZoom, { passive: false });
+
+    // Mouse drag pan
+    imageContainer.addEventListener('mousedown', handleManualPreviewMouseDown);
+    imageContainer.addEventListener('mousemove', handleManualPreviewMouseMove);
+    imageContainer.addEventListener('mouseup', handleManualPreviewMouseUp);
+    imageContainer.addEventListener('mouseleave', handleManualPreviewMouseUp);
+
+    // Touch zoom and pan
+    imageContainer.addEventListener('touchstart', handleManualPreviewTouchStart, { passive: false });
+    imageContainer.addEventListener('touchmove', handleManualPreviewTouchMove, { passive: false });
+    imageContainer.addEventListener('touchend', handleManualPreviewTouchEnd);
+
+    // Double click to reset zoom
+    imageContainer.addEventListener('dblclick', resetManualPreviewZoom);
+    
+    manualPreviewEventListenersRegistered = true;
+}
+
+function deregisterManualPreviewEventListeners() {
+    if (!manualPreviewEventListenersRegistered) return;
+    
+    const imageContainer = document.querySelector('.manual-preview-image-container');
+    const image = document.getElementById('manualPreviewImage');
+
+    if (!imageContainer || !image) return;
+
+    // Remove all event listeners
+    imageContainer.removeEventListener('wheel', handleManualPreviewWheelZoom);
+    imageContainer.removeEventListener('mousedown', handleManualPreviewMouseDown);
+    imageContainer.removeEventListener('mousemove', handleManualPreviewMouseMove);
+    imageContainer.removeEventListener('mouseup', handleManualPreviewMouseUp);
+    imageContainer.removeEventListener('mouseleave', handleManualPreviewMouseUp);
+    imageContainer.removeEventListener('touchstart', handleManualPreviewTouchStart);
+    imageContainer.removeEventListener('touchmove', handleManualPreviewTouchMove);
+    imageContainer.removeEventListener('touchend', handleManualPreviewTouchEnd);
+    imageContainer.removeEventListener('dblclick', resetManualPreviewZoom);
+    
+    manualPreviewEventListenersRegistered = false;
+}
 
 // Simple button state tracking
 let isGenerating = false;
@@ -1350,7 +1437,7 @@ async function loadIntoManualForm(source, image = null) {
         }
 
         // Handle image source data
-        const hasBaseImage = data.image_source;
+        const hasBaseImage = data.image_source && !data.isVariationEdit;
 
         if (hasBaseImage) {
             const [imageType, identifier] = data.image_source.split(':', 2);
@@ -1484,6 +1571,29 @@ async function loadIntoManualForm(source, image = null) {
             }
             document.getElementById('manualImg2ImgGroup').style.display = 'none';
         }
+        
+        // Handle variation editing - show image preview without triggering img2img mode
+        if (data.isVariationEdit && data.image_source && image) {
+            const [imageType, identifier] = data.image_source.split(':', 2);
+            let previewUrl = '';
+            
+            if (imageType === 'file') {
+                previewUrl = `/images/${identifier}`;
+            } else if (imageType === 'cache') {
+                previewUrl = `/cache/preview/${identifier}.webp`;
+            }
+            
+            if (previewUrl && variationImage) {
+                // Show the image preview for reference
+                variationImage.src = previewUrl;
+                variationImage.style.display = 'block';
+                
+                // Show transformation section content
+                if (transformationRow) {
+                    transformationRow.classList.add('display-image');
+                }
+            }
+        }
         updateUploadDeleteButtonVisibility();
 
         // Type-specific handling
@@ -1531,9 +1641,7 @@ async function loadIntoManualForm(source, image = null) {
                         imageToShow = image.original;
                     }
                     if (imageToShow) {
-                        // When editing an existing image, don't try to show it in the manual preview
-                        // The image will be shown in the variation image section instead
-                        console.log('Skipping manual preview update for edit mode - image will be shown in variation section');
+                        updateManualPreviewDirectly(image, image.metadata);
                     }
                 }
             }
@@ -1603,11 +1711,12 @@ async function loadTempImagePreview(previewUrl, imageData) {
         // Show the preview section
         const previewSection = document.getElementById('manualPreviewSection');
         if (previewSection) {
-            previewSection.classList.add('active', 'show');
+            previewSection.classList.add('active');
+            manualModal.classList.add('show-preview');
         }
         
-        // Show the preview container
-        previewContainer.style.display = 'block';
+        // Use the consolidated preview visibility system
+        showManualPreview();
         
         // Ensure the image container has the proper classes for zoom functionality
         const imageContainer = previewContainer.querySelector('.manual-preview-image-container');
@@ -2964,14 +3073,14 @@ function selectUcPreset(value) {
     selectedUcPreset = value;
 
     // Update UC boxes visual state
-    const ucBoxes = document.querySelector('.uc-boxes');
+    const ucBoxes = document.querySelector('#manualModal .uc-boxes');
     if (ucBoxes) {
         ucBoxes.setAttribute('data-uc-level', value.toString());
     }
 
     // Update toggle state - on when UC preset > 0
-    const ucPresetsBtn = document.getElementById('ucPresetsDropdownBtn');
-    if (ucPresetsBtn) {
+    const ucPresetsBtn = document.querySelector('#manualModal #ucPresetsDropdownBtn');
+    if (ucPresetsBtn) { 
         ucPresetsBtn.setAttribute('data-state', value > 0 ? 'on' : 'off');
     }
     updatePromptStatusIcons();
@@ -3139,8 +3248,7 @@ function setupEventListeners() {
         if (window.innerWidth > 1400) {
             hideManualModal(e, false);
         } else {
-            previewSection.classList.remove('active');
-            setTimeout(() => { previewSection.classList.remove('show'); }, 500);
+            hideManualPreviewResponsive();
         }
     });
 
@@ -3178,7 +3286,14 @@ function setupEventListeners() {
         handleManualSave();
     });
 
-    manualForm.addEventListener('submit', handleManualGeneration);
+    manualForm.addEventListener('submit', (e) => {
+        // Prevent form submission if it was triggered by Enter key in preset name input
+        if (document.activeElement === manualPresetName) {
+            e.preventDefault();
+            return;
+        }
+        handleManualGeneration(e);
+    });
 
     // Manual preview control events
     manualPreviewDownloadBtn.addEventListener('click', (e) => {
@@ -3207,9 +3322,8 @@ function setupEventListeners() {
     manualPreviewLoadBtn.addEventListener('click', (e) => {
         e.preventDefault();
         if (currentManualPreviewImage) {
-            if (window.innerWidth <= 1400 && previewSection.classList.contains('show')) {
-                previewSection.classList.remove('active');
-                setTimeout(() => { previewSection.classList.remove('show'); }, 500);
+            if (window.innerWidth <= 1400 && manualModal.classList.contains('show-preview')) {
+                hideManualPreviewResponsive();
             }
             rerollImageWithEdit(currentManualPreviewImage);
         } else {
@@ -3301,9 +3415,8 @@ function setupEventListeners() {
                 manualSeed.value = window.lastLoadedSeed;
             }
             
-            if (window.innerWidth <= 1400 && previewSection.classList.contains('show')) {
-                previewSection.classList.remove('active');
-                setTimeout(() => { previewSection.classList.remove('show'); }, 500);
+            if (window.innerWidth <= 1400 && manualModal.classList.contains('show-preview')) {
+                hideManualPreviewResponsive();
             }
         } else {
             showGlassToast('error', null, 'No seed available', false, 5000, '<i class="fas fa-seedling"></i>');
@@ -3412,13 +3525,6 @@ function setupEventListeners() {
     window.addEventListener('scroll', updateAutocompletePositions);
     window.addEventListener('resize', updateAutocompletePositions);
 
-    // Metadata dialog events
-    if (metadataBtn) {
-        metadataBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            showMetadataDialog();
-        });
-    }
     if (closeMetadataDialog) {
         closeMetadataDialog.addEventListener('click', (e) => {
             e.preventDefault();
@@ -3467,8 +3573,6 @@ function setupEventListeners() {
                     // We're showing autocomplete, hide it
                     hideCharacterAutocomplete();
                 }
-            } else if (lightboxModal.style.display === 'flex') {
-                hideLightbox();
             } else if (metadataDialog.style.display === 'flex') {
                 hideMetadataDialog();
             }
@@ -3480,12 +3584,6 @@ function setupEventListeners() {
                     
                     handleCharacterDetailArrowKeys(e.key);
                 }
-            }
-        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-            // Handle arrow key navigation for lightbox
-            if (lightboxModal.style.display === 'flex') {
-                
-                navigateLightbox(e.key === 'ArrowLeft' ? -1 : 1);
             }
         } else if (e.key === 'Enter') {
             // Handle Enter key for character detail selection
@@ -3569,7 +3667,7 @@ function setupEventListeners() {
             // Get the base image source
             const variationImage = document.getElementById('manualVariationImage');
             if (variationImage && variationImage.src && variationImage.src !== '') {
-                showImagePreview(variationImage.src, 'Base Image');
+                showLightbox({ url: variationImage.src });
             } else {
                 showGlassToast('error', 'Preview Failed', 'No base image available');
             }
@@ -3868,7 +3966,6 @@ function setupEventListeners() {
     // Tab switching functionality for prompt/UC tabs (Manual Generation Model)
     const manualTabButtons = document.querySelectorAll('#manualModal .prompt-tabs .gallery-toggle-group .gallery-toggle-btn');
     const showBothBtn = document.getElementById('showBothBtn');
-    const promptTabs = document.querySelector('#manualModal .prompt-tabs');
 
     // Track the last focused textarea globally
     let lastFocusedTextarea = null;
@@ -3923,9 +4020,10 @@ function setupEventListeners() {
         e.preventDefault();
         
         e.stopPropagation();
-        if (!previewSection.classList.contains('show')) {
-            previewSection.classList.add('show');
-            setTimeout(() => { previewSection.classList.add('active'); }, 1);
+        if (!manualModal.classList.contains('show-preview')) {
+            showManualPreview();
+        } else {
+            hideManualPreview();
         }
     });
     // Update the click event for manualPresetToggleBtn to toggle the group and button state
@@ -3978,6 +4076,30 @@ function setupEventListeners() {
             const delta = e.deltaY > 0 ? -1 : 1;
             const currentColumns = parseInt(galleryToggleGroup.dataset.columns) || 5;
             const newColumns = Math.max(3, Math.min(10, currentColumns + delta));
+            galleryToggleGroup.dataset.columns = newColumns;
+            setGalleryColumns(newColumns);
+        });
+    }
+
+    // Gallery columns button controls
+    const decreaseColumnsBtn = document.getElementById('decreaseColumnsBtn');
+    const increaseColumnsBtn = document.getElementById('increaseColumnsBtn');
+    
+    if (decreaseColumnsBtn) {
+        decreaseColumnsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const currentColumns = parseInt(galleryToggleGroup.dataset.columns) || 5;
+            const newColumns = Math.max(3, currentColumns - 1);
+            galleryToggleGroup.dataset.columns = newColumns;
+            setGalleryColumns(newColumns);
+        });
+    }
+    
+    if (increaseColumnsBtn) {
+        increaseColumnsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const currentColumns = parseInt(galleryToggleGroup.dataset.columns) || 5;
+            const newColumns = Math.min(10, currentColumns + 1);
             galleryToggleGroup.dataset.columns = newColumns;
             setGalleryColumns(newColumns);
         });
@@ -4097,6 +4219,136 @@ function setupEventListeners() {
     updatePresetLoadSaveState();
 
     setupTransformationDropdownListeners();
+
+    // Exit confirmation system - intercept page exits, refresh, and tab/window closing
+    let isExiting = false;
+
+    // Function to show exit confirmation
+    async function showExitConfirmation(event, action = 'leave') {
+        if (isExiting) return;
+        
+        const messages = {
+            leave: 'Are you sure you want to leave the application?',
+            refresh: 'Are you sure you want to restart the application?',
+            close: 'Are you sure you want to close the application?'
+        };
+        
+        const message = messages[action] || messages.leave;
+        
+        try {
+            const confirmed = await showConfirmationDialog(message, [
+                { text: 'Yes, Leave', value: true, className: 'btn-danger' },
+                { text: 'Stay', value: false, className: 'btn-secondary' }
+            ], event);
+            
+            if (confirmed) {
+                isExiting = true;
+                
+                // For refresh actions, we need to actually refresh the page
+                if (action === 'refresh') {
+                    window.location.reload();
+                    return;
+                }
+                
+                // For close actions, we can't programmatically close tabs/windows due to security restrictions
+                // But we can allow navigation to proceed
+                if (action === 'close') {
+                    // Try to close the tab (this may not work due to browser security)
+                    try {
+                        window.close();
+                    } catch (e) {
+                        console.log('Cannot close tab programmatically due to browser security');
+                    }
+                    return;
+                }
+                
+                // For navigation actions, allow them to proceed
+                if (event && event.target) {
+                    // Remove preventDefault and allow the action
+                    event.stopImmediatePropagation();
+                    // Re-trigger the original action
+                    if (event.target.click) {
+                        event.target.click();
+                    }
+                }
+            } else {
+                // User cancelled - prevent the action
+                if (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+            }
+        } catch (error) {
+            console.error('Error showing exit confirmation:', error);
+            // Fallback: prevent the action
+            if (event) {
+                event.preventDefault();
+            }
+
+        }
+    }
+
+    // Always show browser warning for unsaved changes
+    // This ensures the browser shows its native dialog for tab/window closing
+    window.addEventListener('beforeunload', (event) => {
+        // Always prevent unload and show browser warning
+        if (bypassConfirmation) {
+            return;
+        }
+        event.preventDefault();
+        event.returnValue = '';
+        return '';
+    });
+
+    // Intercept page visibility change (tab switching, minimizing)
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            // User switched tabs or minimized - log for debugging
+            console.log('Page hidden');
+        }
+    });
+    
+    // Intercept browser back/forward buttons
+    window.addEventListener('popstate', (event) => {
+        event.preventDefault();
+        // Show confirmation dialog
+        window.showExitConfirmation(event, 'leave');
+    });
+
+    // Intercept link clicks that might cause navigation
+    document.addEventListener('click', (event) => {
+        const link = event.target.closest('a');
+        if (link && link.href && !link.target && !link.hasAttribute('download')) {
+            const href = link.href;
+            const currentOrigin = window.location.origin;
+            
+            // Check if link navigates away from current page
+            if (href.startsWith(currentOrigin) && href !== window.location.href) {
+                event.preventDefault();
+                window.showExitConfirmation(event, 'close');
+            }
+        }
+    });
+    
+    window.showExitConfirmation = showExitConfirmation;
+
+    // Function to force refresh the page (used when user confirms refresh)
+    window.forceRefresh = () => {
+        window.location.reload();
+    };
+    
+    // Function to force close the tab (used when user confirms close)
+    window.forceClose = () => {
+        try {
+            window.close();
+        } catch (e) {
+            console.log('Cannot close tab programmatically due to browser security');
+            // Fallback: show a message that user needs to close manually
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('info', 'Close Tab', 'Please close this tab manually using Ctrl+W or the close button', false, 3000);
+            }
+        }
+    };
 }
 // Tab switching functionality for prompt/UC tabs (Manual Generation Model)
 function switchManualTab(targetTab, previouslyFocused = null) {
@@ -4770,9 +5022,7 @@ async function rerollImage(image) {
 async function rerollImageWithEdit(image) {
     try {
         // Close lightbox
-        if (lightboxModal.style.display === 'flex') {
-            hideLightbox();
-        }
+        hideLightbox();
         
         openModal(manualModal);
         
@@ -4806,9 +5056,12 @@ async function rerollImageWithEdit(image) {
         window.currentEditMetadata = metadata;
         window.currentEditImage = image;
 
-        // Ensure the metadata has the image_source for preview functionality
+        // For gallery editing, we want to edit the prompt/parameters, not use the image as a source
+        // Set isVariationEdit to true to indicate this is a variation edit, not img2img
+        metadata.isVariationEdit = true;
+        
+        // Set image_source for preview purposes, but this won't trigger img2img mode due to isVariationEdit flag
         if (!metadata.image_source && image.filename) {
-            // If no image_source in metadata, create one from the filename
             metadata.image_source = `file:${image.filename}`;
         }
 
@@ -4903,8 +5156,13 @@ async function upscaleImage(image, event = null) {
 
     try {
         // Prepare upscaling parameters
+        const filename = image.original || image.filename || image.upscaled;
+        if (!filename) {
+            throw new Error('No valid filename found in image object');
+        }
+        
         const upscaleParams = {
-            filename: image.original,
+            filename: filename,
             workspace: activeWorkspace || null
         };
 
@@ -4933,8 +5191,20 @@ async function upscaleImage(image, event = null) {
                 const byteArray = new Uint8Array(byteNumbers);
                 const blob = new Blob([byteArray], { type: 'image/png' });
 
-                // Use the universal handleImageResult function
-                await handleImageResult(blob, 'Image upscaled successfully!', undefined, undefined, null);
+                // Create a response-like object with the upscaled filename for proper preview update
+                const mockResponse = {
+                    headers: {
+                        get: (headerName) => {
+                            if (headerName === 'X-Generated-Filename') {
+                                return filename; // This is the upscaled filename from the result
+                            }
+                            return null;
+                        }
+                    }
+                };
+
+                // Use the universal handleImageResult function with the mock response
+                await handleImageResult(blob, 'Image upscaled successfully!', undefined, undefined, mockResponse);
             } else {
                 throw new Error('Invalid response from WebSocket');
             }
@@ -4942,7 +5212,7 @@ async function upscaleImage(image, event = null) {
         } catch (error) {
             console.error('Upscaling error:', error);
             if (!isInModal) {
-                clearInterval(progressInterval);
+                if (progressInterval) clearInterval(progressInterval);
                 updateGlassToast(toastId, 'error', 'Upscale Failed', 'Image upscaling failed. Please try again.');
             } else {
                 showError('Image upscaling failed. Please try again.');
@@ -4952,7 +5222,7 @@ async function upscaleImage(image, event = null) {
     } catch (error) {
         console.error('Upscaling error:', error);
         if (!isInModal) {
-            clearInterval(progressInterval);
+            if (progressInterval) clearInterval(progressInterval);
             updateGlassToast(toastId, 'error', 'Upscale Failed', 'Image upscaling failed. Please try again.');
         } else {
             showError('Image upscaling failed. Please try again.');
@@ -4960,6 +5230,8 @@ async function upscaleImage(image, event = null) {
     } finally {
         if (isInModal) {
             showManualLoading(false);
+        } else if (progressInterval) {
+            clearInterval(progressInterval);
         }
     }
 }
@@ -4967,6 +5239,16 @@ async function upscaleImage(image, event = null) {
 // Handle logout
 async function handleLogout() {
     try {
+        // Clear cached assets before logout
+        if (window.cacheManager && window.cacheManager.isInitialized) {
+            try {
+                await window.cacheManager.clearCache();
+                console.log('✅ Cache cleared on logout');
+            } catch (error) {
+                console.warn('⚠️ Failed to clear cache on logout:', error);
+            }
+        }
+
         const response = await fetchWithAuth('/logout', {
             method: 'POST',
             headers: {
@@ -5080,9 +5362,6 @@ async function showManualModal(presetName = null) {
 
 // Hide manual modal
 function hideManualModal(e, preventModalReset = false) {
-    // Restore body scrolling when modal is closed
-    document.body.style.overflow = '';
-    
     if (!preventModalReset) {
         // Handle loading overlay when modal is closed
         const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
@@ -5100,6 +5379,7 @@ function hideManualModal(e, preventModalReset = false) {
 
         if (previewSection) {
             previewSection.classList.remove('active', 'show');
+            hideManualPreview();
         }
 
         closeModal(manualModal);
@@ -5110,6 +5390,9 @@ function hideManualModal(e, preventModalReset = false) {
 
         // Reset manual preview
         resetManualPreview();
+        
+        // Deregister manual preview event listeners when modal is closed
+        deregisterManualPreviewEventListeners();
 
         // Hide request type toggle row
         const requestTypeRow = document.getElementById('requestTypeRow');
@@ -6145,7 +6428,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
 
     if (previewImage && previewPlaceholder) {
         // Construct image URL from the image object
-        const imageUrl = `/images/${imageObj.filename}`;
+        const imageUrl = `/images/${imageObj.upscaled || imageObj.original || imageObj.filename}`;
         
         // Show the image and hide placeholder
         previewImage.src = imageUrl;
@@ -6315,6 +6598,7 @@ function resetManualPreview() {
         if (scrapBtn) scrapBtn.style.display = 'none';
         if (seedBtn) seedBtn.classList.add('hidden');
         if (deleteBtn) deleteBtn.style.display = 'none';
+        hideManualPreview();
 
         // Reset zoom functionality
         resetManualPreviewZoom();
@@ -6669,6 +6953,11 @@ async function handleManualGeneration(e) {
     // Show loading and hide modal
     hideManualModal(undefined, true);
     showManualLoading(true, 'Generating Image...');
+    
+    // Show the manual preview when generation starts
+    if (typeof showManualPreview === 'function') {
+        showManualPreview();
+    }
 
 
     const generationParams = {
@@ -7137,36 +7426,11 @@ function initializeManualPreviewZoom() {
 
     if (!imageContainer || !image) return;
 
-    // Remove existing event listeners to prevent duplicates
-    imageContainer.removeEventListener('wheel', handleManualPreviewWheelZoom);
-    imageContainer.removeEventListener('mousedown', handleManualPreviewMouseDown);
-    imageContainer.removeEventListener('mousemove', handleManualPreviewMouseMove);
-    imageContainer.removeEventListener('mouseup', handleManualPreviewMouseUp);
-    imageContainer.removeEventListener('mouseleave', handleManualPreviewMouseUp);
-    imageContainer.removeEventListener('touchstart', handleManualPreviewTouchStart);
-    imageContainer.removeEventListener('touchmove', handleManualPreviewTouchMove);
-    imageContainer.removeEventListener('touchend', handleManualPreviewTouchEnd);
-    imageContainer.removeEventListener('dblclick', resetManualPreviewZoom);
-
     // Reset zoom and pan
     resetManualPreviewZoom();
 
-    // Mouse wheel zoom
-    imageContainer.addEventListener('wheel', handleManualPreviewWheelZoom, { passive: false });
-
-    // Mouse drag pan
-    imageContainer.addEventListener('mousedown', handleManualPreviewMouseDown);
-    imageContainer.addEventListener('mousemove', handleManualPreviewMouseMove);
-    imageContainer.addEventListener('mouseup', handleManualPreviewMouseUp);
-    imageContainer.addEventListener('mouseleave', handleManualPreviewMouseUp);
-
-    // Touch zoom and pan
-    imageContainer.addEventListener('touchstart', handleManualPreviewTouchStart, { passive: false });
-    imageContainer.addEventListener('touchmove', handleManualPreviewTouchMove, { passive: false });
-    imageContainer.addEventListener('touchend', handleManualPreviewTouchEnd);
-
-    // Double click to reset zoom
-    imageContainer.addEventListener('dblclick', resetManualPreviewZoom);
+    // Register event listeners
+    registerManualPreviewEventListeners();
 }
 
 function resetManualPreviewZoom() {
@@ -7634,63 +7898,6 @@ function showManualLoading(show, message = 'Generating Image...') {
         return;
     }
 
-    // OLD SYSTEM: Use manual loading overlay for other operations (commented out but preserved)
-    // This serves as a fallback if the new animation system fails
-    /*
-    // Use manual loading overlay for wide screens with modal open
-    if (manualModal.style.display !== 'none') {
-        manualLoadingOverlay.classList.remove('hidden');
-        if (previewSection && window.innerWidth <= 1400) {
-            if (!previewSection.classList.contains('show')) {
-                previewSection.classList.add('show');
-                setTimeout(() => { previewSection.classList.add('active'); }, 1);
-            }
-        }
-        // Update the loading message
-        const loadingText = manualLoadingOverlay.querySelector('p');
-        if (loadingText) {
-            loadingText.textContent = message;
-        }
-        if (show) {
-            requestAnimationFrame(() => {
-                manualLoadingOverlay.classList.remove('return');
-            });
-        } else {
-            requestAnimationFrame(() => {
-                manualLoadingOverlay.classList.add('return');
-            });
-        }
-    } else if (show) {
-        previewSection.classList.remove('active', 'show');
-        // Fall back to regular loading overlay for narrow screens or when modal is closed
-        loadingOverlay.classList.remove('hidden');
-        // Update the loading message
-        const loadingText = loadingOverlay.querySelector('p');
-        if (loadingText) {
-            loadingText.textContent = message;
-        }
-        requestAnimationFrame(() => {
-            loadingOverlay.classList.remove('return');
-        });
-    } else {
-        previewSection.classList.remove('active', 'show');
-        // Hide both overlays
-        if (manualLoadingOverlay) {
-            requestAnimationFrame(() => {
-                manualLoadingOverlay.classList.add('hidden', 'return');
-            });
-        }
-        requestAnimationFrame(() => {
-            loadingOverlay.classList.add('return');
-        });
-        setTimeout(() => {
-            requestAnimationFrame(() => {
-                loadingOverlay.classList.add('hidden');
-            });
-        }, 1000);
-    }
-    */
-    
     // FALLBACK: If animation system fails, use manual loading overlay for critical operations
     if (manualModal.style.display !== 'none' && !isPreviewAnimationAvailable()) {
         console.warn('Animation system not available, using manual loading overlay');
@@ -11035,9 +11242,6 @@ function forceStopPreviewAnimation() {
 if (window.wsClient) {
     // Handle WebSocket connection events
     wsClient.on('connected', () => {
-        console.log('✅ WebSocket connected successfully');
-        
-        // Subscribe to relevant channels
         wsClient.send({
             type: 'subscribe',
             channels: ['queue_updates', 'image_generated', 'system_messages']
@@ -11078,7 +11282,6 @@ if (window.wsClient) {
 
     // Handle receipt notifications
     wsClient.on('receipt', (data) => {
-        console.log('🧾 Receipt received:', data);
         if (data.data && data.data.message) {
             if (typeof showGlassToast === 'function') {
                 showGlassToast(data.data.type || 'info', null, data.data.message, false);
@@ -11088,7 +11291,7 @@ if (window.wsClient) {
 
     // Handle gallery responses
     wsClient.on('galleryResponse', (data) => {
-        console.log('🖼️ Gallery response received:', data);
+        console.log('🖼️ Gallery response received');
         if (data.data && (data.data.gallery || Array.isArray(data.data))) {
             if (window.workspaceLoadingCompleteCallback) {
                 window.workspaceLoadingCompleteCallback();
@@ -11160,7 +11363,7 @@ if (window.wsClient) {
 
     // Handle workspace restoration when reconnecting
     wsClient.on('workspace_restored', (data) => {
-        console.log('🔄 Workspace restored:', data);
+        console.log('🔄 Workspace restored');
         if (data.workspace && data.message) {
             // Show welcome back message
             if (typeof showGlassToast === 'function') {
@@ -11197,7 +11400,6 @@ if (window.wsClient) {
     });        
     
     window.wsClient.on('presetUpdated', (message) => {
-        console.log('🔄 Preset updated:', message.data);
         handlePresetUpdate(message.data);
     });
 
@@ -11258,7 +11460,7 @@ if (window.wsClient) {
         await loadOptions();
     });
 
-    window.wsClient.registerInitStep(2, 'Configuring Application', async () => {
+    window.wsClient.registerInitStep(10, 'Configuring Application', async () => {
         updateBalanceDisplay(window.optionsData?.balance);
         // Handle queue status
         if (window.optionsData?.queue_status === 2) {
@@ -11295,8 +11497,6 @@ if (window.wsClient) {
         renderUcPresetsDropdown();
         selectUcPreset(0);
     });
-
-    // Priority 5: Initialize main app components
 
     // Priority 7: Load gallery and finalize UI
     window.wsClient.registerInitStep(90, 'Loading Gallery', async () => {

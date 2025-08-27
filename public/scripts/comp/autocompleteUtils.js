@@ -4883,7 +4883,7 @@ async function showTextReplacementDialog(selectedText) {
 }
 
 if (window.wsClient) {
-    window.wsClient.registerInitStep(85, 'Setting up autocomplete', async () => {
+    window.wsClient.registerInitStep(20, 'Setting up autocomplete', async () => {
         window.wsClient.on('search_status_update', handleSearchStatusUpdate);
         window.wsClient.on('search_results_update', handleSearchResultsUpdate);
         window.wsClient.on('search_results_complete', handleSearchResultsComplete);

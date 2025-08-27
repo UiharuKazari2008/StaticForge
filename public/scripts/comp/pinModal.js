@@ -7,8 +7,6 @@ class PinModal {
         this.pinButtons = document.querySelectorAll('#pinModal .pin-button');
         this.errorElement = document.getElementById('pinModalError');
         this.modal = document.getElementById('pinModal');
-        this.cancelBtn = document.getElementById('pinModalCancelBtn');
-        this.closeBtn = document.getElementById('closePinModalBtn');
         this.resolveFn = null;
         this.rejectFn = null;
         this.init();
@@ -17,7 +15,6 @@ class PinModal {
     init() {
         this.setupKeyboardListener();
         this.setupPinPadListener();
-        this.setupModalListeners();
     }
 
     setupKeyboardListener() {
@@ -53,16 +50,6 @@ class PinModal {
                     this.removeDigit();
                 }
             });
-        });
-    }
-
-    setupModalListeners() {
-        this.cancelBtn.addEventListener('click', () => {
-            this.reject();
-        });
-        
-        this.closeBtn.addEventListener('click', () => {
-            this.reject();
         });
     }
 
@@ -171,13 +158,6 @@ class PinModal {
         closeModal(this.modal);
         if (this.resolveFn) {
             this.resolveFn();
-        }
-    }
-
-    reject() {
-        closeModal(this.modal);
-        if (this.rejectFn) {
-            this.rejectFn();
         }
     }
 }

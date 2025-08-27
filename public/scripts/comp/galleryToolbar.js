@@ -36,7 +36,7 @@ function showGalleryToolbar(image, event = null) {
     positionGalleryToolbar(event);
     
     // Show toolbar
-    galleryToolbar.style.display = 'block';
+    galleryToolbar.style.display = '';
     galleryToolbarActive = true;
     currentGalleryItem = image;
 }
@@ -279,7 +279,7 @@ function showGalleryMoveModal(filename) {
         modal.innerHTML = `
             <div class="modal-content gallery-move-modal-content">
                 <div class="gallery-move-left-panel">
-                    <img src="/background.jpg" alt="Image to move" class="gallery-move-background-image" id="galleryMoveBackgroundImage">
+                    <img src="/images/background.jpg" alt="Image to move" class="gallery-move-background-image" id="galleryMoveBackgroundImage">
                     <div class="gallery-move-overlay">
                         <div class="gallery-move-image-info-overlay">
                             <p><strong>Images:</strong> <span id="galleryMoveCount">0</span> selected</p>

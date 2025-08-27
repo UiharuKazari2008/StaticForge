@@ -165,7 +165,6 @@ class WebSocketServer {
                         // Check if session is authenticated (this is the key check)
                         if (session.authenticated === true) {
                             console.log('✅ WebSocket session verified for authenticated session:', sessionId);
-                            // Include user type information
                             const userType = session.userType || 'admin'; // Default to admin for backward compatibility
                             resolve({ session, sessionId, userType });
                         } else {
@@ -175,11 +174,6 @@ class WebSocketServer {
                     });
                 });
             } else {
-                // Fallback: simple cookie-based verification
-                // This is less secure but works without session store
-                console.log('⚠️ Using fallback session verification (less secure)');
-                // For fallback, we can't verify the session content, so we reject all connections
-                // This ensures security when no session store is available
                 console.error('❌ Fallback session verification: rejecting connection (no session store)');
                 return null;
             }

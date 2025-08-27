@@ -1269,6 +1269,6 @@ function escapeHtml(text) {
 }
 
 // Initialize when DOM is loaded
-window.wsClient.registerInitStep(92, 'Initializing Text Replacement Manager', async () => {
+window.wsClient.registerInitStep(45, 'Initializing Text Replacement Manager', async () => {
     initializeTextReplacementManager();
 });

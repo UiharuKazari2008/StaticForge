@@ -84,7 +84,7 @@ const importModelMapping = {
 };
 
 // Reference Browser Functions
-let cacheImages = [];
+let cacheImages = false;
 let cacheCurrentPage = 1;
 let cacheImagesPerPage = 20;
 let cacheShowAllReferences = false;
@@ -151,11 +151,10 @@ async function showCacheBrowser() {
     cacheBrowserLoadingContainer.style.display = '';
     cacheGalleryContainer.innerHTML = '';
 
-    if (window.innerWidth <= 1400) {
-        previewSection.classList.add('show');
-        setTimeout(() => { previewSection.classList.add('active'); }, 1);
+    // Show the manual preview when cache browser is opened
+    if (typeof showManualPreview === 'function') {
+        showManualPreview();
     }
-
     try {
         await loadCacheImages();
         displayCacheImagesContainer();
@@ -174,14 +173,13 @@ function hideCacheBrowser() {
     }
 
     // Clear active panel to show manual preview
-    if (previewSection) {
-        if (window.innerWidth <= 1400) {
-            previewSection.classList.remove('show');
-            setTimeout(() => { previewSection.classList.remove('active'); }, 1);
-            setTimeout(() => { previewSection.removeAttribute('data-active-panel'); }, 1000);
-        } else {
-            previewSection.removeAttribute('data-active-panel');
-        }
+    if (!window.innerWidth <= 1400) {
+        previewSection.removeAttribute('data-active-panel');
+    }
+    
+    // Close the manual preview when cache browser is closed
+    if (typeof hideManualPreview === 'function') {
+        hideManualPreview();
     }
 }
 
@@ -292,8 +290,7 @@ async function loadCacheImages() {
     }
     
     try {
-        const images = await loadReferenceImages(null, cacheShowAllReferences);
-        cacheImages = images;
+        cacheImages = await loadReferenceImages(null, cacheShowAllReferences);
     } catch (error) {
         console.error('Error loading cache images:', error);
         throw error;
@@ -427,7 +424,7 @@ function createCacheGalleryItem(cacheImage) {
         if (cacheImage.hasPreview) {
             img.src = `/cache/preview/${cacheImage.hasPreview}`;
         } else {
-            img.src = '/background.jpg';
+            img.src = '/images/background.jpg';
         }
     } else {
         // For cache images (with or without vibes)
@@ -559,7 +556,7 @@ function createCacheGalleryItem(cacheImage) {
             }
 
             if (imageSrc) {
-                showImagePreview(imageSrc, `Reference image ${cacheImage.hash}`);
+                showLightbox({ url: imageSrc });
             } else {
                 showError('No image found');
             }
@@ -700,13 +697,18 @@ function refreshReferenceBrowserForModelChange() {
 }
 
 // Function to refresh vibe references display
-function refreshVibeReferencesDisplay() {
+async function refreshVibeReferencesDisplay() {
     const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
     if (!vibeReferencesContainer) return;
     
     // Get all current vibe reference items
     const vibeReferenceItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item');
     
+    if (vibeReferenceItems.length > 0 && cacheImages === false) {
+        console.log('Loading cache images...');
+        await loadCacheImages();
+    }
+
     vibeReferenceItems.forEach(item => {
         const vibeId = item.getAttribute('data-vibe-id');
         if (!vibeId) return;
@@ -758,7 +760,7 @@ async function refreshReferenceManagerAfterVibeOperation() {
         await refreshReferenceBrowserIfOpen();
         
         // Refresh vibe references display if they exist
-        refreshVibeReferencesDisplay();
+        await refreshVibeReferencesDisplay();
     } catch (error) {
         console.error('Error refreshing reference manager after vibe operation:', error);
     } finally {
@@ -789,7 +791,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null) {
         preview.src = `data:image/png;base64,${vibeRef.image}`;
     } else {
         // Fallback to a placeholder
-        preview.src = '/background.jpg';
+        preview.src = '/images/background.jpg';
     }
     preview.alt = `Vibe reference ${vibeRef.id}`;
 
@@ -826,7 +828,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null) {
         }
                 
         if (imageSrc) {
-            showImagePreview(imageSrc, `Vibe reference ${vibeRef.id}`);
+            showLightbox({ url: imageSrc });
         } else {
             showError('No image found');
         }
@@ -1168,6 +1170,10 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
         console.warn('Cannot add vibe references during inpainting');
         showError('Vibe transfers are disabled during inpainting');
         return;
+    }
+
+    if (cacheImages === false) {
+        await loadCacheImages();
     }
 
     // First, try to find the vibe reference in the cacheImages array
@@ -1605,7 +1611,7 @@ function createCacheManagerGalleryItem(cacheImage) {
         if (cacheImage.hasPreview) {
             img.src = `/cache/preview/${cacheImage.hasPreview}`;
         } else {
-            img.src = '/background.jpg';
+            img.src = '/images/background.jpg';
         }
     } else {
         // For cache images (with or without vibes)
@@ -1681,7 +1687,7 @@ function createCacheManagerGalleryItem(cacheImage) {
             }
 
             if (imageSrc) {
-                showImagePreview(imageSrc, `Reference image ${cacheImage.hash}`);
+                showLightbox({ url: imageSrc });
             } else {
                 showError('No image found');
             }
@@ -1954,7 +1960,7 @@ function hideUnifiedUploadModal() {
         // Reset background image
         const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
         if (backgroundImage) {
-            backgroundImage.src = '/background.jpg';
+            backgroundImage.src = '/images/background.jpg';
         }
         
         // Hide Open in Editor button
@@ -3181,7 +3187,7 @@ function showCacheManagerMoveModal() {
             if (cacheManagerMoveTargetImage.hasPreview) {
                 backgroundImage.src = `/cache/preview/${cacheManagerMoveTargetImage.hasPreview}`;
             } else {
-                backgroundImage.src = '/background.jpg';
+                backgroundImage.src = '/images/background.jpg';
             }
         } else {
             if (cacheManagerMoveTargetImage.hasPreview) {
@@ -3381,7 +3387,7 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
             if (vibeEncodingConfirmText) vibeEncodingConfirmText.textContent = 'Upload';
             if (vibeEncodingUploadSection) vibeEncodingUploadSection.style.display = '';
             if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = true;
-            if (backgroundImage) backgroundImage.src = '/background.jpg';
+            if (backgroundImage) backgroundImage.src = '/images/background.jpg';
             if (modeDisplay) modeDisplay.textContent = 'Upload Mode';
             break;
             
@@ -3683,7 +3689,7 @@ function createVibeManagerGalleryItem(vibeImage) {
     if (vibeImage.preview) {
         img.src = `/cache/preview/${vibeImage.preview}`;
     } else {
-        img.src = '/background.jpg'; // Fallback image
+        img.src = '/images/background.jpg'; // Fallback image
     }
     img.alt = `Vibe image ${vibeImage.id}`;
     img.loading = 'lazy';
@@ -3810,7 +3816,7 @@ function createVibeManagerGalleryItem(vibeImage) {
             imageSrc = `/cache/preview/${vibeImage.preview}`;
         }
         if (imageSrc) {
-            showImagePreview(imageSrc, `Vibe image ${vibeImage.id}`);
+            showLightbox({ url: imageSrc });
         } else {
             showError('No preview image found');
         }
@@ -4315,7 +4321,7 @@ async function handleVibeBundleFile(file, backgroundImage) {
                 if (firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
                     backgroundImage.src = firstVibe.thumbnail;
                 } else {
-                    backgroundImage.src = '/background.jpg';
+                    backgroundImage.src = '/images/background.jpg';
                 }
                 
                 // Update UI for bundle import
@@ -4882,7 +4888,7 @@ function showVibeBundlePreview(vibes) {
             // Use the server-generated thumbnail with indexed filename
             img.src = `/cache/${vibe.thumbnail}.webp`;
         } else {
-            img.src = '/background.jpg';
+            img.src = '/images/background.jpg';
         }
         img.alt = vibe.name || 'Vibe';
         
@@ -5152,7 +5158,7 @@ function updateUIForVibeBundleImport(vibeCount, isBundle) {
 
 // Handle invalid bundle
 function handleInvalidBundle(backgroundImage) {
-    backgroundImage.src = '/background.jpg';
+    backgroundImage.src = '/images/background.jpg';
     // Invalid bundle handling - could show toast notification instead
     console.warn('Invalid vibe bundle format');
 }
@@ -5161,7 +5167,7 @@ function handleInvalidBundle(backgroundImage) {
 function resetUploadModal() {
     const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
     if (backgroundImage) {
-        backgroundImage.src = '/background.jpg';
+        backgroundImage.src = '/images/background.jpg';
     }
     
     const modalTitle = document.getElementById('unifiedUploadModalTitle');
@@ -6430,7 +6436,7 @@ async function handleUnifiedUploadClipboard() {
         // Set background to show URL preview
         const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
         if (backgroundImage) {
-            backgroundImage.src = '/background.jpg';
+            backgroundImage.src = '/images/background.jpg';
         }
     } catch (error) {
         console.error('Clipboard download error:', error);
@@ -6601,7 +6607,7 @@ function resetUnifiedUploadModal() {
     // Reset background image
     const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
     if (backgroundImage) {
-        backgroundImage.src = '/background.jpg';
+        backgroundImage.src = '/images/background.jpg';
     }
     
     // Reset navigation buttons
@@ -6729,6 +6735,6 @@ async function refreshCacheBrowser() {
 window.addAsBaseImage = addAsBaseImage;
 window.refreshCacheBrowser = refreshCacheBrowser;
 
-window.wsClient.registerInitStep(93, 'Initializing reference manager', async () => {
+window.wsClient.registerInitStep(40, 'Initializing reference manager', async () => {
     await initializeCacheManager();
 });

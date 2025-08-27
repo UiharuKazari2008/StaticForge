@@ -31,9 +31,9 @@ let infiniteScrollConfig = {
     throttleDelay: 100, // ms between scroll checks
     debounceDelay: 300, // ms after scroll stops
     
-    // Responsive adjustments
+    // Responsive adjustments - improved for mobile
     smallScreenThreshold: 768, // px
-    smallScreenMultiplier: 0.5, // Reduce triggers on small screens
+    smallScreenMultiplier: 0.8, // Increased from 0.5 to 0.8 for better mobile experience
 };
 
 // Selection state
@@ -66,6 +66,11 @@ let pendingPlaceholderAdditions = {
     below: false
 };
 
+// Scroll position preservation for upward scrolling
+let scrollPositionPreservationEnabled = false;
+let lastScrollTop = 0;
+let lastVisibleItemIndex = -1;
+
 // Global images array (shared with main app)
 let allImages = [];
 
@@ -87,6 +92,64 @@ function findTrueImageIndex(image) {
         const imgFilename = img.filename || img.original || img.upscaled;
         return imgFilename === filename;
     });
+}
+
+// Preserve scroll position when adding placeholders above
+function preserveScrollPosition() {
+    if (!scrollPositionPreservationEnabled) return;
+    
+    // Find the first visible item to use as an anchor
+    const visibleItems = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+    let anchorItem = null;
+    let anchorIndex = -1;
+    
+    for (const item of visibleItems) {
+        const rect = item.getBoundingClientRect();
+        if (rect.top >= 0 && rect.bottom <= window.innerHeight) {
+            anchorItem = item;
+            anchorIndex = parseInt(item.dataset.index || '0');
+            break;
+        }
+    }
+    
+    // If no visible item found, use the first item in viewport
+    if (!anchorItem) {
+        for (const item of visibleItems) {
+            const rect = item.getBoundingClientRect();
+            if (rect.bottom > 0 && rect.top < window.innerHeight) {
+                anchorItem = item;
+                anchorIndex = parseInt(item.dataset.index || '0');
+                break;
+            }
+        }
+    }
+    
+    if (anchorItem && anchorIndex !== -1) {
+        lastVisibleItemIndex = anchorIndex;
+        lastScrollTop = window.pageYOffset;
+    }
+}
+
+// Restore scroll position after adding placeholders above
+function restoreScrollPosition() {
+    if (!scrollPositionPreservationEnabled || lastVisibleItemIndex === -1) return;
+    
+    // Find the anchor item by its index
+    const anchorItem = gallery.querySelector(`[data-index="${lastVisibleItemIndex}"]`);
+    if (anchorItem) {
+        const rect = anchorItem.getBoundingClientRect();
+        const targetScrollTop = window.pageYOffset + rect.top - 100; // 100px offset from top
+        
+        // Smooth scroll to maintain visual continuity
+        window.scrollTo({
+            top: targetScrollTop,
+            behavior: 'auto' // Use 'auto' for immediate positioning to avoid jarring
+        });
+    }
+    
+    // Reset preservation state
+    scrollPositionPreservationEnabled = false;
+    lastVisibleItemIndex = -1;
 }
 
 // Apply a provided image list to the gallery without fetching from server (used by search)
@@ -284,7 +347,7 @@ async function addNewGalleryItemAfterGeneration(newImage) {
     // Add placeholder with fade-in
     const placeholder = document.createElement('div');
     placeholder.className = 'gallery-placeholder fade-in';
-    placeholder.style.height = '256px';
+    placeholder.style.height = calculatePlaceholderHeight() + 'px';
     placeholder.style.width = '100%';
     placeholder.dataset.filename = newImage.filename || newImage.original || newImage.upscaled;
     placeholder.dataset.time = newImage.mtime;
@@ -437,21 +500,18 @@ function displayCurrentPageOptimized() {
 
     const fragment = document.createDocumentFragment();
     for (let i = displayedStartIndex; i < displayedEndIndex; i++) {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'gallery-placeholder initial-placeholder';
-        placeholder.style.height = '256px';
-        placeholder.style.width = '100%';
-        placeholder.dataset.index = i;
-        placeholder.dataset.fileIndex = i.toString();
-        placeholder.dataset.filename = allImages[i]?.filename || allImages[i]?.original || allImages[i]?.upscaled || '';
-        placeholder.dataset.time = allImages[i]?.mtime || 0;
-        fragment.appendChild(placeholder);
+        const image = allImages[i];
+        if (image) {
+            const galleryItem = createGalleryItem(image, i);
+            galleryItem.classList.add('fade-in');
+            fragment.appendChild(galleryItem);
+        }
     }
     gallery.appendChild(fragment);
 
-    // Fade in placeholders one by one
-    const placeholders = gallery.querySelectorAll('.gallery-placeholder.initial-placeholder');
-    placeholders.forEach((el, idx) => {
+    // Fade in items one by one
+    const items = gallery.querySelectorAll('.gallery-item.fade-in');
+    items.forEach((el, idx) => {
         setTimeout(() => {
             el.classList.add('fade-in');
             el.addEventListener('animationend', function handler() {
@@ -720,17 +780,25 @@ function createGalleryItem(image, index) {
             return;
         }
 
-        let filenameToShow = image.original;
-        if (image.upscaled) {
-            filenameToShow = image.upscaled;
-        }
+        // Use the data-file-index directly for better performance
+        const fileIndex = parseInt(item.dataset.fileIndex, 10);
+        if (!isNaN(fileIndex) && fileIndex >= 0 && fileIndex < allImages.length) {
+            // Use index directly - much faster than searching by filename
+            showLightbox(fileIndex);
+        } else {
+            // Fallback to filename search if index is invalid
+            let filenameToShow = image.original;
+            if (image.upscaled) {
+                filenameToShow = image.upscaled;
+            }
 
-        const imageToShow = {
-            filename: filenameToShow,
-            base: image.base,
-            upscaled: image.upscaled
-        };
-        showLightbox(imageToShow);
+            const imageToShow = {
+                filename: filenameToShow,
+                base: image.base,
+                upscaled: image.upscaled
+            };
+            showLightbox(imageToShow);
+        }
     });
 
     return item;
@@ -775,27 +843,53 @@ function addPlaceholdersAbove() {
     // Don't add placeholders if manual modal is open
     if (manualModal.style.display !== 'none') return;
     
+    // Check if there are actually images above the current position
     const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-    const bufferRows = 8;
-    const itemsPerRow = realGalleryColumns;
-    const bufferSize = bufferRows * itemsPerRow;
-    
-    // Count placeholders above
-    let placeholdersAbove = 0;
     let firstRealIndex = -1;
     
     for (let i = 0; i < items.length; i++) {
         if (items[i].classList.contains('gallery-placeholder')) {
-            placeholdersAbove++;
+            continue;
         } else {
             firstRealIndex = parseInt(items[i].dataset.index);
             break;
         }
     }
     
+    // If firstRealIndex is 0 or -1, there are no images above to load
+    if (firstRealIndex <= 0) return;
+    
+    // Only enable scroll position preservation if user is near the top of the gallery
+    const scrollTop = window.pageYOffset;
+    const isNearTop = scrollTop < 200; // Only preserve position if within 200px of top
+    
+    if (isNearTop && !scrollPositionPreservationEnabled) {
+        scrollPositionPreservationEnabled = true;
+        preserveScrollPosition();
+    }
+    
+    const bufferRows = 8;
+    const itemsPerRow = realGalleryColumns;
+    const bufferSize = bufferRows * itemsPerRow;
+    
+    // Mobile-specific buffer size adjustment
+    const isMobile = window.innerWidth <= infiniteScrollConfig.smallScreenThreshold;
+    const adjustedBufferSize = isMobile ? Math.max(bufferSize, itemsPerRow * 4) : bufferSize; // Ensure at least 4 rows on mobile
+    
+    // Count placeholders above
+    let placeholdersAbove = 0;
+    
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].classList.contains('gallery-placeholder')) {
+            placeholdersAbove++;
+        } else {
+            break;
+        }
+    }
+    
     // Add placeholders in row batches until buffer is filled
-    while (placeholdersAbove < bufferSize && firstRealIndex > 0) {
-        const needed = Math.min(bufferSize - placeholdersAbove, itemsPerRow);
+    while (placeholdersAbove < adjustedBufferSize && firstRealIndex > 0) {
+        const needed = Math.min(adjustedBufferSize - placeholdersAbove, itemsPerRow);
         for (let i = 0; i < needed; i++) {
             const idx = firstRealIndex - i - 1;
             if (idx < 0) break;
@@ -805,7 +899,7 @@ function addPlaceholdersAbove() {
             if (!existingPlaceholder) {
                 const placeholder = document.createElement('div');
                 placeholder.className = 'gallery-placeholder';
-                placeholder.style.height = '256px';
+                placeholder.style.height = calculatePlaceholderHeight() + 'px';
                 placeholder.style.width = '100%';
                 placeholder.dataset.index = idx;
                 placeholder.dataset.fileIndex = idx.toString();
@@ -815,6 +909,14 @@ function addPlaceholdersAbove() {
         }
         firstRealIndex = Math.max(0, firstRealIndex - needed);
     }
+    
+    // If we added placeholders and position preservation was enabled, restore it
+    if (placeholdersAbove > 0 && scrollPositionPreservationEnabled) {
+        // Use a small delay to ensure DOM updates are complete
+        setTimeout(() => {
+            restoreScrollPosition();
+        }, 10);
+    }
 }
 
 function addPlaceholdersBelow() {
@@ -823,27 +925,44 @@ function addPlaceholdersBelow() {
     // Don't add placeholders if manual modal is open
     if (manualModal.style.display !== 'none') return;
     
+    // Check if there are actually images below the current position
     const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-    const bufferRows = 8;
-    const itemsPerRow = realGalleryColumns;
-    const bufferSize = bufferRows * itemsPerRow;
-    
-    // Count placeholders below
-    let placeholdersBelow = 0;
     let lastRealIndex = -1;
     
     for (let i = items.length - 1; i >= 0; i--) {
         if (items[i].classList.contains('gallery-placeholder')) {
-            placeholdersBelow++;
+            continue;
         } else {
             lastRealIndex = parseInt(items[i].dataset.index);
             break;
         }
     }
     
+    // If lastRealIndex is at or beyond the end of allImages, there are no more images below to load
+    if (lastRealIndex >= allImages.length - 1) return;
+    
+    const bufferRows = 8;
+    const itemsPerRow = realGalleryColumns;
+    const bufferSize = bufferRows * itemsPerRow;
+    
+    // Mobile-specific buffer size adjustment
+    const isMobile = window.innerWidth <= infiniteScrollConfig.smallScreenThreshold;
+    const adjustedBufferSize = isMobile ? Math.max(bufferSize, itemsPerRow * 4) : bufferSize; // Ensure at least 4 rows on mobile
+    
+    // Count placeholders below
+    let placeholdersBelow = 0;
+    
+    for (let i = items.length - 1; i >= 0; i--) {
+        if (items[i].classList.contains('gallery-placeholder')) {
+            placeholdersBelow++;
+        } else {
+            break;
+        }
+    }
+    
     // Add placeholders in row batches until buffer is filled
-    while (placeholdersBelow < bufferSize && lastRealIndex < allImages.length - 1) {
-        const needed = Math.min(bufferSize - placeholdersBelow, itemsPerRow);
+    while (placeholdersBelow < adjustedBufferSize && lastRealIndex < allImages.length - 1) {
+        const needed = Math.min(adjustedBufferSize - placeholdersBelow, itemsPerRow);
         for (let i = 0; i < needed; i++) {
             const idx = lastRealIndex + i + 1;
             if (idx >= allImages.length) break;
@@ -853,7 +972,7 @@ function addPlaceholdersBelow() {
             if (!existingPlaceholder) {
                 const placeholder = document.createElement('div');
                 placeholder.className = 'gallery-placeholder';
-                placeholder.style.height = '256px';
+                placeholder.style.height = calculatePlaceholderHeight() + 'px';
                 placeholder.style.width = '100%';
                 placeholder.dataset.index = idx;
                 placeholder.dataset.fileIndex = idx.toString();
@@ -880,6 +999,16 @@ function handleInfiniteScroll() {
     const isSmallScreen = window.innerWidth <= infiniteScrollConfig.smallScreenThreshold;
     const multiplier = isSmallScreen ? infiniteScrollConfig.smallScreenMultiplier : 1;
     
+    // Mobile-specific adjustments for better placeholder filling
+    let topTriggerPercent = infiniteScrollConfig.topTriggerPercent;
+    let placeholderTriggerPercent = infiniteScrollConfig.placeholderTriggerPercent;
+    
+    if (isSmallScreen) {
+        // On mobile, be more aggressive with placeholder triggers
+        topTriggerPercent = Math.max(topTriggerPercent, 0.2); // At least 20% from top
+        placeholderTriggerPercent = Math.max(placeholderTriggerPercent, 0.3); // At least 30% for placeholders
+    }
+    
     // Use percentage-based triggers that adapt to page height
     const bottomTriggerDistance = Math.max(
         windowHeight * infiniteScrollConfig.bottomTriggerPercent * multiplier,
@@ -887,18 +1016,37 @@ function handleInfiniteScroll() {
     );
     
     const topTriggerDistance = Math.max(
-        windowHeight * infiniteScrollConfig.topTriggerPercent * multiplier,
+        windowHeight * topTriggerPercent * multiplier,
         windowHeight * 0.1 // Minimum 10% of viewport height
     );
     
     const placeholderTriggerDistance = Math.max(
-        windowHeight * infiniteScrollConfig.placeholderTriggerPercent * multiplier,
+        windowHeight * placeholderTriggerPercent * multiplier,
         windowHeight * 0.15 // Minimum 15% of viewport height
     );
 
-    // Load more when user is near the bottom (percentage-based)
-    if (scrollTop + windowHeight >= documentHeight - bottomTriggerDistance && hasMoreImages) {
-        loadMoreImages();
+    // Check if we're near the bottom and need to load more images
+    const scrollBottom = scrollTop + windowHeight;
+    const bottomThreshold = documentHeight - (windowHeight * infiniteScrollConfig.bottomTriggerPercent);
+    
+    if (scrollBottom >= bottomThreshold && !isLoadingMore) {
+        // Check if there are actually more images to load before proceeding
+        const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+        let lastRealIndex = -1;
+        
+        for (let i = items.length - 1; i >= 0; i--) {
+            if (items[i].classList.contains('gallery-placeholder')) {
+                continue;
+            } else {
+                lastRealIndex = parseInt(items[i].dataset.index);
+                break;
+            }
+        }
+        
+        // Only load more if there are actually more images available
+        if (lastRealIndex < allImages.length - 1) {
+            loadMoreImages();
+        }
     }
     
     // Load more when user is near the top (percentage-based)
@@ -907,11 +1055,20 @@ function handleInfiniteScroll() {
     }
     
     // Schedule deferred placeholder additions for rapid scrolling
+    // On mobile, be more aggressive with placeholder scheduling
     if (scrollTop <= placeholderTriggerDistance) {
         scheduleDeferredPlaceholderAddition('above');
+        // On mobile, also trigger immediate placeholder addition for better responsiveness
+        if (isSmallScreen && hasMoreImagesBefore) {
+            addPlaceholdersAbove();
+        }
     }
     if (scrollTop + windowHeight >= documentHeight - placeholderTriggerDistance) {
         scheduleDeferredPlaceholderAddition('below');
+        // On mobile, also trigger immediate placeholder addition for better responsiveness
+        if (isSmallScreen && hasMoreImages) {
+            addPlaceholdersBelow();
+        }
     }
     
     // Virtual scrolling: remove items that are too far from viewport
@@ -922,41 +1079,66 @@ function handleInfiniteScroll() {
 
 // Load more images for infinite scroll (scroll down) with dynamic batch sizing
 async function loadMoreImages() {
-    if (isLoadingMore || !hasMoreImages) return;
-    
-    // Don't load more images if manual modal is open
-    if (manualModal.style.display !== 'none') return;
-    isLoadingMore = true;
-    if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'flex';
+    if (isLoadingMore) return;
     
     try {
-        // Calculate dynamic batch size based on viewport
-        const dynamicBatchSize = calculateDynamicBatchSize();
+        isLoadingMore = true;
+        if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'block';
         
-        // Calculate next batch of images
-        const startIndex = displayedEndIndex;
-        const endIndex = Math.min(startIndex + dynamicBatchSize, allImages.length);
-        const nextBatch = allImages.slice(startIndex, endIndex);
+        // Check if there are actually more images to load
+        const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+        let lastRealIndex = -1;
         
-        if (nextBatch.length === 0) {
-            hasMoreImages = false;
+        for (let i = items.length - 1; i >= 0; i--) {
+            if (items[i].classList.contains('gallery-placeholder')) {
+                continue;
+            } else {
+                lastRealIndex = parseInt(items[i].dataset.index);
+                break;
+            }
+        }
+        
+        // If lastRealIndex is at or beyond the end of allImages, there are no more images to load
+        if (lastRealIndex >= allImages.length - 1) {
+            console.log('No more images to load');
             return;
         }
         
-        // Add placeholders for new items with responsive height
+        // Determine the starting index for new images
+        const startIndex = lastRealIndex + 1;
+        const batchSize = calculateDynamicBatchSize();
+        const endIndex = Math.min(startIndex + batchSize, allImages.length);
+        
+        // If startIndex is beyond the end, there's nothing to load
+        if (startIndex >= allImages.length) {
+            console.log('Start index beyond available images');
+            return;
+        }
+        
+        console.log(`Loading images from ${startIndex} to ${endIndex - 1}`);
+        
+        // Load the images
         for (let i = startIndex; i < endIndex; i++) {
-            const placeholder = document.createElement('div');
-            placeholder.className = 'gallery-placeholder';
-            placeholder.style.height = calculatePlaceholderHeight() + 'px';
-            placeholder.style.width = '100%';
-            placeholder.dataset.index = i;
-            placeholder.dataset.fileIndex = i.toString();
-            gallery.appendChild(placeholder);
+            if (i < allImages.length) {
+                const image = allImages[i];
+                const item = createGalleryItem(image, i);
+                gallery.appendChild(item);
+                
+                // Add animation class
+                item.classList.add('fade-in');
+                item.addEventListener('animationend', function handler() {
+                    item.classList.remove('fade-in');
+                    item.removeEventListener('animationend', handler);
+                });
+            }
         }
         
         // Update displayed range
         displayedEndIndex = endIndex;
         hasMoreImages = endIndex < allImages.length;
+        
+        // Update placeholders after adding real images
+        updateGalleryPlaceholders();
         
     } catch (error) {
         console.error('Error loading more images:', error);
@@ -1004,6 +1186,24 @@ async function loadMoreImagesBefore() {
         displayedStartIndex = startIndex;
         hasMoreImagesBefore = startIndex > 0;
         
+        // Only restore scroll position if there are actually images above and user is near the top
+        if (startIndex > 0) {
+            const scrollTop = window.pageYOffset;
+            const isNearTop = scrollTop < 200;
+            
+            if (isNearTop) {
+                // Enable scroll position preservation and restore position
+                if (!scrollPositionPreservationEnabled) {
+                    scrollPositionPreservationEnabled = true;
+                    preserveScrollPosition();
+                }
+                // Use a small delay to ensure DOM updates are complete
+                setTimeout(() => {
+                    restoreScrollPosition();
+                }, 10);
+            }
+        }
+        
     } catch (error) {
         console.error('Error loading more images before:', error);
     } finally {
@@ -1020,9 +1220,11 @@ function calculateDynamicBatchSize() {
     // Base batch size on viewport size
     let baseSize = Math.ceil((windowWidth * windowHeight) / (300 * 300)); // Rough calculation
     
-    // Adjust for small screens
+    // Adjust for small screens - ensure minimum batch size for mobile
     if (windowWidth <= infiniteScrollConfig.smallScreenThreshold) {
-        baseSize = Math.ceil(baseSize * 0.7);
+        // On mobile, ensure we have enough items to fill at least 2-3 rows
+        const mobileMinBatch = Math.max(6, Math.ceil(realGalleryColumns * 2.5));
+        baseSize = Math.max(baseSize, mobileMinBatch);
     }
     
     // Ensure batch size is within configured bounds
@@ -1098,7 +1300,7 @@ function updateVisibleItems() {
     visibleItems.clear();
     const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
     const viewportTop = window.pageYOffset;
-    const viewportBottom = viewportTop + window.innerHeight;
+    const viewportBottom = viewportTop  + window.innerHeight;
 
     items.forEach((item, index) => {
         const rect = item.getBoundingClientRect();
@@ -1224,9 +1426,22 @@ function updateVirtualScroll() {
     }
     // Add missing placeholders above (in full row batches, only for missing indices)
     while (placeholdersAbove < bufferSize) {
+        // Check if there are actually images above the current position
         let firstChild = gallery.firstChild;
         let firstIndex = firstChild && firstChild.dataset && firstChild.dataset.index !== undefined ? parseInt(firstChild.dataset.index) : displayedStartIndex;
+        
+        // If firstIndex is 0 or less, there are no images above to load
         if (firstIndex <= 0) break;
+        
+        // Only enable scroll position preservation if user is near the top of the gallery
+        const scrollTop = window.pageYOffset;
+        const isNearTop = scrollTop < 200; // Only preserve position if within 200px of top
+        
+        if (isNearTop && !scrollPositionPreservationEnabled) {
+            scrollPositionPreservationEnabled = true;
+            preserveScrollPosition();
+        }
+        
         let needed = Math.min(bufferSize - placeholdersAbove, itemsPerRow);
         let actuallyAdded = 0;
         for (let i = 0; i < needed; i++) {
@@ -1248,10 +1463,14 @@ function updateVirtualScroll() {
         if (actuallyAdded === 0 || needed < itemsPerRow) break;
     }
     // Add missing placeholders below (in full row batches, only for missing indices)
-    while (placeholdersBelow < bufferSize && displayedEndIndex < allImages.length) {
-        // Find the current last index in the gallery
+    while (placeholdersBelow < bufferSize) {
+        // Check if there are actually images below the current position
         let lastChild = gallery.lastChild;
         let lastIndex = lastChild && lastChild.dataset && lastChild.dataset.index !== undefined ? parseInt(lastChild.dataset.index) : displayedEndIndex;
+        
+        // If lastIndex is at or beyond the end of allImages, there are no more images below to load
+        if (lastIndex >= allImages.length - 1) break;
+        
         let needed = Math.min(bufferSize - placeholdersBelow, itemsPerRow);
         let actuallyAdded = 0;
         for (let i = 0; i < needed; i++) {
@@ -1315,30 +1534,12 @@ function updateVirtualScroll() {
         }
     }
 
-    // --- If still at bottom or top, keep updating until filled or no more can be loaded ---
-    let safetyCounter = 0;
-    while (safetyCounter < 10) { // Prevent infinite loops
-        safetyCounter++;
-        // Re-calculate after DOM updates
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const windowHeight = window.innerHeight;
-        const documentHeight = document.documentElement.scrollHeight;
-        const atBottom = (windowHeight + scrollTop) >= (documentHeight - 10); // 10px threshold
-        const atTop = scrollTop <= 10;
-        let didWork = false;
-        // If at bottom, try to add/resolve more below
-        if (atBottom && hasMoreImages) {
-            loadMoreImages();
-            didWork = true;
-        }
-        // If at top, try to add/resolve more above
-        if (atTop && hasMoreImagesBefore) {
-            loadMoreImagesBefore();
-            didWork = true;
-        }
-        // If no more work, break
-        if (!didWork) break;
-        // After loading, placeholders will be resolved in the next loop iteration
+    // With sentinel-based approach, infinite scroll is handled by Intersection Observer
+    // No need for scroll-based detection here
+    
+    // Restore scroll position if placeholders were added above
+    if (scrollPositionPreservationEnabled) {
+        restoreScrollPosition();
     }
 }
 
@@ -1508,10 +1709,10 @@ function removeMultipleImagesFromGallery(images) {
         for (let i = 0; i < images.length; i++) {
             const placeholder = document.createElement('div');
             placeholder.className = 'gallery-placeholder';
-            placeholder.style.height = '256px';
+            placeholder.style.height = calculatePlaceholderHeight() + 'px';
             placeholder.style.width = '100%';
             placeholder.dataset.index = allImages.length + i;
-            placeholder.dataset.fileIndex = allImages.length + i;
+            placeholder.dataset.fileIndex = (allImages.length + i).toString();
             gallery.appendChild(placeholder);
         }
 
@@ -1711,8 +1912,9 @@ function clearSelection() {
     updateBulkActionsBar();
 }
 
-window.wsClient.registerInitStep(87, 'Initializing Gallery System', async () => {
-    // Improved infinite scroll with percentage-based triggers
+window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => {
+    // With sentinel-based approach, the main infinite scroll is handled by Intersection Observer
+    // The scroll event now only handles virtual scrolling and placeholder management
     let lastScrollTime = 0;
     let scrollTimeout;
     
@@ -1792,30 +1994,28 @@ function displayGalleryFromStartIndex(startIndex) {
     }
 
     // Calculate how many items to display
-    const itemHeight = 256;
+    const itemHeight = calculatePlaceholderHeight();
     const itemsPerCol = Math.floor(window.innerHeight / itemHeight);
     const buffer = Math.ceil(itemsPerCol * 0.15);
     const totalItems = Math.min((itemsPerCol + buffer) * realGalleryColumns, allImages.length - startIndex);
     
     const endIndex = Math.min(startIndex + totalItems, allImages.length);
 
+    // Desktop: Create real gallery items immediately
     const fragment = document.createDocumentFragment();
     for (let i = startIndex; i < endIndex; i++) {
-        const placeholder = document.createElement('div');
-        placeholder.className = 'gallery-placeholder initial-placeholder';
-        placeholder.style.height = '256px';
-        placeholder.style.width = '100%';
-        placeholder.dataset.index = i;
-        placeholder.dataset.fileIndex = i.toString();
-        placeholder.dataset.filename = allImages[i]?.filename || allImages[i]?.original || allImages[i]?.upscaled || '';
-        placeholder.dataset.time = allImages[i]?.mtime || 0;
-        fragment.appendChild(placeholder);
+        const image = allImages[i];
+        if (image) {
+            const galleryItem = createGalleryItem(image, i);
+            galleryItem.classList.add('fade-in');
+            fragment.appendChild(galleryItem);
+        }
     }
     gallery.appendChild(fragment);
 
-    // Fade in placeholders one by one
-    const placeholders = gallery.querySelectorAll('.gallery-placeholder.initial-placeholder');
-    placeholders.forEach((el, idx) => {
+    // Fade in items one by one
+    const items = gallery.querySelectorAll('.gallery-item.fade-in');
+    items.forEach((el, idx) => {
         setTimeout(() => {
             el.classList.add('fade-in');
             el.addEventListener('animationend', function handler() {
@@ -1824,8 +2024,19 @@ function displayGalleryFromStartIndex(startIndex) {
             });
         }, idx * 60);
     });
-
-    updateVirtualScroll();
+    
+    const anchorItem = gallery.querySelector(`[data-index="${startIndex}"]`);
+    if (anchorItem) {
+        const rect = anchorItem.getBoundingClientRect();
+        const targetScrollTop = window.pageYOffset + rect.top - 100; // 100px offset from top
+        
+        // Smooth scroll to maintain visual continuity
+        window.scrollTo({
+            top: targetScrollTop,
+            behavior: 'instant' // Use 'auto' for immediate positioning to avoid jarring
+        });
+    }
+    
     updateGalleryItemToolbars();
     updateGalleryPlaceholders();
 }

@@ -14,7 +14,7 @@ let globalMouseDown = false; // Track global mouse state for continuous drawing
 const negativeBtn = document.getElementById('maskNegativeBtn');
 const inpaintBtn = document.getElementById('inpaintBtn');
 
-window.wsClient.registerInitStep(90, 'Initializing Inpaint Editor', async () => {
+window.wsClient.registerInitStep(39, 'Initializing Inpaint Editor', async () => {
     inpaintBtn.addEventListener('click', openMaskEditor);
     negativeBtn.addEventListener('click', invertMask);
 });
@@ -70,32 +70,6 @@ function initializeMaskEditor() {
     // Hide the floating brush cursor div (we use overlay canvas now)
     brushCursor.style.display = 'none';
 
-    // Set up canvas event listeners
-    maskEditorCanvas.addEventListener('mousedown', startDrawing);
-    maskEditorCanvas.addEventListener('mousemove', draw);
-    maskEditorCanvas.addEventListener('mouseup', stopDrawing);
-
-    // Brush cursor events
-    maskEditorCanvas.addEventListener('mousemove', updateBrushCursor);
-    maskEditorCanvas.addEventListener('mouseenter', handleCanvasMouseEnter);
-    maskEditorCanvas.addEventListener('mouseleave', () => {
-        if (maskBrushPreviewCtx && maskBrushPreviewCanvas) {
-            maskBrushPreviewCtx.clearRect(0, 0, maskBrushPreviewCanvas.width, maskBrushPreviewCanvas.height);
-        }
-    });
-
-    // Wheel event for brush size adjustment
-    maskEditorCanvas.addEventListener('wheel', handleCanvasWheel);
-
-    // Global mouse events for continuous drawing
-    document.addEventListener('mouseup', handleGlobalMouseUp);
-    document.addEventListener('mousemove', handleGlobalMouseMove);
-
-    // Touch events for mobile
-    maskEditorCanvas.addEventListener('touchstart', handleTouchStart);
-    maskEditorCanvas.addEventListener('touchmove', handleTouchMove);
-    maskEditorCanvas.addEventListener('touchend', handleTouchEnd);
-
     // Tool buttons
     const brushBtn = document.getElementById('maskBrushBtn');
     const eraserBtn = document.getElementById('maskEraserBtn');
@@ -109,56 +83,48 @@ function initializeMaskEditor() {
 
     if (brushBtn) {
         brushBtn.addEventListener('click', (e) => {
-            
             setTool('brush');
         });
     }
 
     if (eraserBtn) {
         eraserBtn.addEventListener('click', (e) => {
-            
             setTool('eraser');
         });
     }
 
     if (brushShapeBtn) {
         brushShapeBtn.addEventListener('click', (e) => {
-            
             toggleBrushShape();
         });
     }
 
     if (clearBtn) {
         clearBtn.addEventListener('click', (e) => {
-            
             clearMask();
         });
     }
 
     if (saveBtn) {
         saveBtn.addEventListener('click', (e) => {
-            
             saveMask();
         });
     }
 
     if (deleteBtn) {
         deleteBtn.addEventListener('click', (e) => {
-            
             deleteMask();
         });
     }
 
     if (cancelBtn) {
         cancelBtn.addEventListener('click', (e) => {
-            
             closeMaskEditor();
         });
     }
 
     if (closeBtn) {
         closeBtn.addEventListener('click', (e) => {
-            
             closeMaskEditor();
         });
     }
@@ -214,6 +180,83 @@ function initializeMaskEditor() {
             }
         });
     }
+}
+
+// Event listener management
+let inpaintEventListenersRegistered = false;
+
+function registerInpaintEventListeners() {
+    if (inpaintEventListenersRegistered) return;
+    
+    if (!maskEditorCanvas || !maskEditorCtx) {
+        console.warn('Cannot register inpaint event listeners: canvas or context not ready');
+        return;
+    }
+
+    // Set up canvas event listeners
+    maskEditorCanvas.addEventListener('mousedown', startDrawing);
+    maskEditorCanvas.addEventListener('mousemove', draw);
+    maskEditorCanvas.addEventListener('mouseup', stopDrawing);
+
+    // Brush cursor events
+    maskEditorCanvas.addEventListener('mousemove', updateBrushCursor);
+    maskEditorCanvas.addEventListener('mouseenter', handleCanvasMouseEnter);
+    
+    // Create a named function for mouseleave to properly remove it later
+    const handleCanvasMouseLeave = () => {
+        if (maskBrushPreviewCtx && maskBrushPreviewCanvas) {
+            maskBrushPreviewCtx.clearRect(0, 0, maskBrushPreviewCanvas.width, maskBrushPreviewCanvas.height);
+        }
+    };
+    maskEditorCanvas.addEventListener('mouseleave', handleCanvasMouseLeave);
+    
+    // Store the function reference for removal
+    maskEditorCanvas._handleCanvasMouseLeave = handleCanvasMouseLeave;
+
+    // Wheel event for brush size adjustment
+    maskEditorCanvas.addEventListener('wheel', handleCanvasWheel);
+
+    // Global mouse events for continuous drawing
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+
+    // Touch events for mobile - must be non-passive to allow preventDefault
+    maskEditorCanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    maskEditorCanvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    maskEditorCanvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    
+    inpaintEventListenersRegistered = true;
+}
+
+function deregisterInpaintEventListeners() {
+    if (!inpaintEventListenersRegistered) return;
+    
+    if (!maskEditorCanvas) {
+        console.warn('Cannot deregister inpaint event listeners: canvas not available');
+        return;
+    }
+
+    // Remove all event listeners
+    maskEditorCanvas.removeEventListener('mousedown', startDrawing);
+    maskEditorCanvas.removeEventListener('mousemove', draw);
+    maskEditorCanvas.removeEventListener('mouseup', stopDrawing);
+    maskEditorCanvas.removeEventListener('mousemove', updateBrushCursor);
+    maskEditorCanvas.removeEventListener('mouseenter', handleCanvasMouseEnter);
+    
+    // Remove mouseleave using the stored function reference
+    if (maskEditorCanvas._handleCanvasMouseLeave) {
+        maskEditorCanvas.removeEventListener('mouseleave', maskEditorCanvas._handleCanvasMouseLeave);
+        delete maskEditorCanvas._handleCanvasMouseLeave;
+    }
+    
+    maskEditorCanvas.removeEventListener('wheel', handleCanvasWheel);
+    document.removeEventListener('mouseup', handleGlobalMouseUp);
+    document.removeEventListener('mousemove', handleGlobalMouseMove);
+    maskEditorCanvas.removeEventListener('touchstart', handleTouchStart);
+    maskEditorCanvas.removeEventListener('touchmove', handleTouchMove);
+    maskEditorCanvas.removeEventListener('touchend', handleTouchEnd);
+    
+    inpaintEventListenersRegistered = false;
 }
 
 // Set drawing tool
@@ -283,6 +326,11 @@ function invertMask() {
 
 // Handle canvas wheel for brush size adjustment
 function handleCanvasWheel(e) {
+    // Only handle wheel events when the editor is actually open and canvas is ready
+    if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered) {
+        return; // Silently ignore if editor isn't ready
+    }
+    
     e.preventDefault();
     const delta = e.deltaY > 0 ? 1 : -1;
     const currentValue = brushSize;
@@ -316,6 +364,11 @@ function handleCanvasWheel(e) {
 
 // Handle canvas mouse enter for continuous drawing
 function handleCanvasMouseEnter(e) {
+    // Only handle mouse events when the editor is actually open and canvas is ready
+    if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered) {
+        return; // Silently ignore if editor isn't ready
+    }
+    
     if (maskBrushPreviewCtx && maskBrushPreviewCanvas) {
         maskBrushPreviewCtx.clearRect(0, 0, maskBrushPreviewCanvas.width, maskBrushPreviewCanvas.height);
     }
@@ -327,18 +380,26 @@ function handleCanvasMouseEnter(e) {
     }
 }
 
-// Handle global mouse up to stop drawing
-function handleGlobalMouseUp() {
-    if (isDrawing) {
-        isDrawing = false;
+// Global mouse event handlers for continuous drawing
+function handleGlobalMouseUp(e) {
+    // Only handle global mouse events when the editor is actually open and canvas is ready
+    if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered) {
+        return; // Silently ignore if editor isn't ready
+    }
+    
+    if (globalMouseDown) {
         globalMouseDown = false;
+        isDrawing = false;
     }
 }
 
-// Handle global mouse move for continuous drawing
 function handleGlobalMouseMove(e) {
-    // Only handle if we're drawing and mouse is over the canvas
-    if (globalMouseDown && !isDrawing && maskEditorCanvas) {
+    // Only handle global mouse events when the editor is actually open and canvas is ready
+    if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered) {
+        return; // Silently ignore if editor isn't ready
+    }
+    
+    if (globalMouseDown && !isDrawing) {
         const rect = maskEditorCanvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
@@ -353,6 +414,11 @@ function handleGlobalMouseMove(e) {
 
 // Start drawing
 function startDrawing(e) {
+    // Only handle drawing events when the editor is actually open and canvas is ready
+    if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered) {
+        return; // Silently ignore if editor isn't ready
+    }
+    
     isDrawing = true;
     globalMouseDown = true;
     draw(e);
@@ -360,7 +426,10 @@ function startDrawing(e) {
 
 // Draw function
 function draw(e) {
-    if (!isDrawing || !maskEditorCtx) return;
+    // Only handle drawing events when the editor is actually open and canvas is ready
+    if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered || !isDrawing) {
+        return; // Silently ignore if editor isn't ready
+    }
 
     e.preventDefault();
 
@@ -470,7 +539,12 @@ function drawSquare(x, y, size, color, alpha) {
 }
 
 // Stop drawing
-function stopDrawing() {
+function stopDrawing(e) {
+    // Only handle drawing events when the editor is actually open and canvas is ready
+    if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered) {
+        return; // Silently ignore if editor isn't ready
+    }
+    
     isDrawing = false;
     globalMouseDown = false;
     if (maskBrushPreviewCtx && maskBrushPreviewCanvas) {
@@ -577,6 +651,11 @@ function drawBrushPreviewSquare(x, y, size, color) {
 
 // Touch event handlers
 function handleTouchStart(e) {
+    // Only handle touch events when the editor is actually open and canvas is ready
+    if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered) {
+        return; // Silently ignore if editor isn't ready
+    }
+    
     e.preventDefault();
     const touch = e.touches[0];
     const mouseEvent = new MouseEvent('mousedown', {
@@ -587,6 +666,11 @@ function handleTouchStart(e) {
 }
 
 function handleTouchMove(e) {
+    // Only handle touch events when the editor is actually open and canvas is ready
+    if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered) {
+        return; // Silently ignore if editor isn't ready
+    }
+    
     e.preventDefault();
     const touch = e.touches[0];
     const mouseEvent = new MouseEvent('mousemove', {
@@ -597,6 +681,11 @@ function handleTouchMove(e) {
 }
 
 function handleTouchEnd(e) {
+    // Only handle touch events when the editor is actually open and canvas is ready
+    if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered) {
+        return; // Silently ignore if editor isn't ready
+    }
+    
     e.preventDefault();
     const mouseEvent = new MouseEvent('mouseup', {});
     maskEditorCanvas.dispatchEvent(mouseEvent);
@@ -993,9 +1082,8 @@ function closeMaskEditor() {
     isDrawing = false;
     globalMouseDown = false;
 
-    // Remove global event listeners
-    document.removeEventListener('mouseup', handleGlobalMouseUp);
-    document.removeEventListener('mousemove', handleGlobalMouseMove);
+    // Deregister event listeners when editor is closed
+    deregisterInpaintEventListeners();
 
     // Update inpaint button state and mask preview
     updateInpaintButtonState();
@@ -1014,6 +1102,12 @@ function openMaskEditor() {
     // Initialize mask editor first if not already done
     if (!maskEditorCtx) {
         initializeMaskEditor();
+    }
+    
+    // Ensure the canvas is ready before proceeding
+    if (!maskEditorCanvas) {
+        console.error('Mask editor canvas not found');
+        return;
     }
 
     // Get the source image dimensions
@@ -1200,9 +1294,12 @@ function openMaskEditor() {
     // Show the dialog
     maskEditorDialog.style.display = 'flex';
 
-    // Add global event listeners for continuous drawing
-    document.addEventListener('mouseup', handleGlobalMouseUp);
-    document.addEventListener('mousemove', handleGlobalMouseMove);
+    // Register event listeners when editor is opened and canvas is ready
+    if (maskEditorCanvas && maskEditorCtx) {
+        registerInpaintEventListeners();
+    } else {
+        console.error('Cannot register event listeners: canvas not ready');
+    }
 }
 
 // Update inpaint button state

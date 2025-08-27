@@ -1092,10 +1092,6 @@ const handleImageRequest = async (req, res, opts, presetName = null) => {
 
 // WebSocket-native image generation function
 async function generateImageWebSocket(body, userType, sessionId) {
-    console.log('🚀 WebSocket image generation request received:', body);
-    console.log('📋 Body type:', typeof body);
-    console.log('📋 Body keys:', body ? Object.keys(body) : 'undefined');
-    
     // Check if user is read-only
     if (userType === 'readonly') {
         throw new Error('Non-Administrator Login: This operation is not allowed for read-only users');

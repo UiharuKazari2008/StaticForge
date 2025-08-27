@@ -93,28 +93,70 @@ class FileSearch {
                 }
             } else if (e.key === 'ArrowDown') {
                 e.preventDefault();
-                // Always flip for bottom-up layout (overlay appears above search)
-                this.navigateSuggestions(-1);
+                // Handle navigation based on mobile vs desktop layout
+                const isMobile = window.innerWidth <= 768;
+                if (isMobile) {
+                    // Mobile: overlay appears below, so down arrow goes down
+                    this.navigateSuggestions(1);
+                } else {
+                    // Desktop: overlay appears above, so down arrow goes up
+                    this.navigateSuggestions(-1);
+                }
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
-                // Always flip for bottom-up layout (overlay appears above search)
-                this.navigateSuggestions(1);
+                // Handle navigation based on mobile vs desktop layout
+                const isMobile = window.innerWidth <= 768;
+                if (isMobile) {
+                    // Mobile: overlay appears below, so up arrow goes up
+                    this.navigateSuggestions(-1);
+                } else {
+                    // Desktop: overlay appears above, so up arrow goes down
+                    this.navigateSuggestions(1);
+                }
             } else if (e.key === 'PageDown') {
                 e.preventDefault();
-                // Always flip for bottom-up layout
-                this.handlePageNavigation(-1);
+                // Handle navigation based on mobile vs desktop layout
+                const isMobile = window.innerWidth <= 768;
+                if (isMobile) {
+                    // Mobile: overlay appears below, so PageDown goes down
+                    this.handlePageNavigation(1);
+                } else {
+                    // Desktop: overlay appears above, so PageDown goes up
+                    this.handlePageNavigation(-1);
+                }
             } else if (e.key === 'PageUp') {
                 e.preventDefault();
-                // Always flip for bottom-up layout
-                this.handlePageNavigation(1);
+                // Handle navigation based on mobile vs desktop layout
+                const isMobile = window.innerWidth <= 768;
+                if (isMobile) {
+                    // Mobile: overlay appears below, so PageUp goes up
+                    this.handlePageNavigation(-1);
+                } else {
+                    // Desktop: overlay appears above, so PageUp goes down
+                    this.handlePageNavigation(1);
+                }
             } else if (e.key === 'Home') {
                 e.preventDefault();
-                // Always flip for bottom-up layout
-                this.handleHomeEndNavigation(false);
+                // Handle navigation based on mobile vs desktop layout
+                const isMobile = window.innerWidth <= 768;
+                if (isMobile) {
+                    // Mobile: overlay appears below, so Home goes to top
+                    this.handleHomeEndNavigation(false);
+                } else {
+                    // Desktop: overlay appears above, so Home goes to bottom
+                    this.handleHomeEndNavigation(true);
+                }
             } else if (e.key === 'End') {
                 e.preventDefault();
-                // Always flip for bottom-up layout
-                this.handleHomeEndNavigation(true);
+                // Handle navigation based on mobile vs desktop layout
+                const isMobile = window.innerWidth <= 768;
+                if (isMobile) {
+                    // Mobile: overlay appears below, so End goes to bottom
+                    this.handleHomeEndNavigation(true);
+                } else {
+                    // Desktop: overlay appears above, so End goes to top
+                    this.handleHomeEndNavigation(false);
+                }
             }
             // Don't intercept left/right arrows - allow text navigation
         });
@@ -177,6 +219,33 @@ class FileSearch {
         });
         
         // Listen for gallery view changes to clear search system
+        
+        // Handle window resize and orientation changes for mobile positioning
+        window.addEventListener('resize', () => {
+            if (this.autofillVisible) {
+                // Reposition autofill if visible during resize
+                this.showAutofill();
+            }
+        });
+        
+        // Handle orientation change specifically for mobile
+        window.addEventListener('orientationchange', () => {
+            // Small delay to allow orientation change to complete
+            setTimeout(() => {
+                if (this.autofillVisible) {
+                    this.showAutofill();
+                }
+            }, 100);
+        });
+        
+        // Ensure mobile expanded state is maintained
+        this.ensureMobileExpandedState();
+        
+        // Set up interval to maintain mobile expanded state
+        setInterval(() => {
+            this.ensureMobileExpandedState();
+        }, 1000); // Check every second
+        
         if (window.galleryToggleGroup) {
             window.galleryToggleGroup.addEventListener('click', (e) => {
                 if (e.target.classList.contains('gallery-toggle-btn') && !e.target.classList.contains('active')) {
@@ -305,6 +374,13 @@ class FileSearch {
             if (result && result.tagSuggestions) {
                 this.tagSuggestions = result.tagSuggestions;
                 this.displayPreviewImages();
+                
+                // Ensure mobile shows expanded results
+                const isMobile = window.innerWidth <= 768;
+                if (isMobile) {
+                    this.expandedResults = true;
+                }
+                
                 this.displayTagSuggestions();
                 if (this.tagSuggestions.length === 0) {
                     this.showNoResultsBanner();
@@ -370,6 +446,13 @@ class FileSearch {
             if (result && result.tagSuggestions) {
                 this.tagSuggestions = result.tagSuggestions;
                 this.displayPreviewImages();
+                
+                // Ensure mobile shows expanded results
+                const isMobile = window.innerWidth <= 768;
+                if (isMobile) {
+                    this.expandedResults = true;
+                }
+                
                 this.displayTagSuggestions();
                 if (this.tagSuggestions.length === 0) {
                     this.showNoResultsBanner();
@@ -651,18 +734,43 @@ class FileSearch {
         this.autofillOverlay.classList.remove('hidden');
         this.autofillVisible = true;
         
-        // Position the overlay directly above the search input
+        // Position the overlay based on screen size
         const rect = this.searchInput.getBoundingClientRect();
+        const isMobile = window.innerWidth <= 768;
         
         this.autofillOverlay.style.left = rect.left + 'px';
         this.autofillOverlay.style.width = Math.max(rect.width, 300) + 'px';
-        this.autofillOverlay.style.bottom = (window.innerHeight - rect.top + 5) + 'px';
-        this.autofillOverlay.style.top = 'auto';
-        this.autofillOverlay.style.maxHeight = '400px';
         
-        // Always use bottom-up for floating bar layout
-        this.autofillOverlay.classList.add('bottom-up');
-        this.autofillOverlay.classList.remove('top-down');
+        if (isMobile) {
+            // Mobile: position below the search input (drop down)
+            this.autofillOverlay.style.top = (rect.bottom + 5) + 'px';
+            this.autofillOverlay.style.bottom = 'auto';
+            
+            // Mobile: always expanded for better usability
+            this.expandedResults = true;
+            this.autofillOverlay.classList.add('expanded');
+            
+            // Use top-down for mobile layout
+            this.autofillOverlay.classList.add('top-down');
+            this.autofillOverlay.classList.remove('bottom-up');
+        } else {
+            // Desktop: position above the search input (drop up)
+            this.autofillOverlay.style.bottom = (window.innerHeight - rect.top + 5) + 'px';
+            this.autofillOverlay.style.top = 'auto';
+            
+            // Desktop: use default height (not expanded)
+            this.expandedResults = false;
+            this.autofillOverlay.classList.remove('expanded');
+            
+            // Use bottom-up for desktop layout
+            this.autofillOverlay.classList.add('bottom-up');
+            this.autofillOverlay.classList.remove('top-down');
+        }
+        
+        // Refresh the display to show expanded/collapsed results based on new state
+        if (this.tagSuggestions && this.tagSuggestions.length > 0) {
+            this.displayTagSuggestions();
+        }
     }
     
     hideAutofill() {
@@ -670,6 +778,14 @@ class FileSearch {
         
         this.autofillOverlay.classList.add('hidden');
         this.autofillOverlay.classList.remove('bottom-up', 'top-down');
+        
+        // Preserve expanded class on mobile, remove on desktop
+        const isMobile = window.innerWidth <= 768;
+        if (!isMobile) {
+            this.autofillOverlay.classList.remove('expanded');
+            this.expandedResults = false;
+        }
+        
         this.autofillVisible = false;
         
         this.selectedIndex = -1;
@@ -1070,6 +1186,13 @@ class FileSearch {
                 if (result && result.tagSuggestions) {
                     this.tagSuggestions = result.tagSuggestions;
                     this.displayPreviewImages();
+                    
+                    // Ensure mobile shows expanded results
+                    const isMobile = window.innerWidth <= 768;
+                    if (isMobile) {
+                        this.expandedResults = true;
+                    }
+                    
                     this.displayTagSuggestions();
                     if (this.tagSuggestions.length === 0) {
                         this.showNoResultsBanner();
@@ -1143,6 +1266,15 @@ class FileSearch {
         } else {
             // No current tag text, show top results (which will use enhanced search if tags exist)
             this.showTopResults();
+        }
+    }
+    
+    ensureMobileExpandedState() {
+        // Ensure mobile devices always have expanded autofill
+        const isMobile = window.innerWidth <= 768;
+        if (isMobile && this.autofillOverlay && !this.autofillOverlay.classList.contains('hidden')) {
+            this.autofillOverlay.classList.add('expanded');
+            this.expandedResults = true;
         }
     }
 }

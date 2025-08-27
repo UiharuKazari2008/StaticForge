@@ -1198,14 +1198,10 @@ function setupWebSocketEventHandlers() {
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🔧 DOM Content Loaded - Setting up Preset Manager');
-    
     // Set up WebSocket event handlers when WebSocket client is available
     if (wsClient) {
-        console.log('🔧 WebSocket client already available');
         setupWebSocketEventHandlers();
-        wsClient.registerInitStep(95, 'Initializing Preset Manager', async () => {
-            console.log('🔧 WebSocket init step 95 triggered');
+        wsClient.registerInitStep(46, 'Initializing Preset Manager', async () => {
             initializePresetManager();
             initializeUpdatePresetModal();
         });

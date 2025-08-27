@@ -232,7 +232,7 @@ class CustomScrollbar {
         });
     }
 }
-window.wsClient.registerInitStep(86, 'Initializing Scrollbars', async () => {
+window.wsClient.registerInitStep(25, 'Initializing Scrollbars', async () => {
     window.customScrollbar = new CustomScrollbar();
 });
 

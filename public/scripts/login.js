@@ -111,6 +111,14 @@ class LoginPage {
                 if (data.userType) {
                     localStorage.setItem('userType', data.userType);
                 }
+                
+                // Show progress bar and start asset caching
+                this.showAssetLoadingProgress();
+                
+                // Register service worker and cache assets before redirecting
+                await this.prepareAppAssets();
+                
+                // Redirect to app
                 window.location.href = '/app';
             } else {
                 this.showPinError();
@@ -138,6 +146,160 @@ class LoginPage {
         this.pinDots.forEach(dot => {
             dot.classList.remove('error');
         });
+    }
+
+    // Show asset loading progress
+    showAssetLoadingProgress() {
+        const progressContainer = document.getElementById('assetLoadingProgress');
+        const progressFill = document.getElementById('progressFill');
+        const progressStatus = document.getElementById('progressStatus');
+        
+        if (progressContainer) {
+            progressContainer.classList.remove('hidden');
+            progressFill.style.width = '0%';
+            progressStatus.textContent = 'Initializing...';
+        }
+    }
+
+    // Update progress bar with detailed asset information
+    updateProgress(percentage, status) {
+        const progressFill = document.getElementById('progressFill');
+        const progressStatus = document.getElementById('progressStatus');
+        
+        if (progressFill) {
+            progressFill.style.width = `${percentage}%`;
+        }
+    }
+
+    // Prepare app assets (service worker + caching)
+    async prepareAppAssets() {
+        try {
+            // Step 1: Register service worker
+            this.updateProgress(10, 'Registering');
+            const serviceWorker = await this.registerServiceWorker();
+            if (!serviceWorker) {
+                this.updateProgress(100, 'Ready');
+                return;
+            }
+            
+            // Step 2: Get cache manifest
+            this.updateProgress(20, 'Preparing');
+            const manifest = await this.getCacheManifest();
+            
+            if (!manifest || manifest.length === 0) {
+                this.updateProgress(100, 'Ready');
+                await new Promise(resolve => setTimeout(resolve, 500));
+                return;
+            }
+            
+            // Show total asset count
+            this.updateProgress(25, `Installing`);
+            
+            // Step 3: Cache assets (progress will be updated via handleProgressUpdate)
+            await this.cacheAssets(manifest);
+            
+            this.updateProgress(100, 'Ready');
+            
+            // Wait a moment for user to see completion
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+        } catch (error) {
+            console.error('Error preparing app assets:', error);
+            this.updateProgress(100, 'Not Ready');
+            // Continue anyway - assets will load on demand
+        }
+    }
+
+    // Register service worker
+    async registerServiceWorker() {
+        if ('serviceWorker' in navigator) {
+            try {
+                const registration = await navigator.serviceWorker.register('/sw.js');
+                console.log('Service Worker registered:', registration);
+                return registration;
+            } catch (error) {
+                console.error('Service Worker registration failed:', error);
+                return null;
+            }
+        } else {
+            console.warn('Service Worker not supported');
+        }
+    }
+
+    // Get cache manifest from server
+    async getCacheManifest() {
+        try {
+            console.log('Getting cache manifest from server...');
+            const response = await fetch('/app', { method: 'OPTIONS' });
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Cache manifest received:', data.cacheData?.length || 0, 'assets');
+                return data.cacheData || [];
+            }
+            throw new Error('Failed to get cache manifest');
+        } catch (error) {
+            console.error('Error getting cache manifest:', error);
+            throw error;
+        }
+    }
+
+    // Cache assets via service worker with progress tracking
+    async cacheAssets(assets) {
+        if (!assets || assets.length === 0) {
+            console.warn('No assets to cache');
+            return;
+        }
+
+        try {
+            // Wait for service worker to be ready
+            if (!navigator.serviceWorker.controller) {
+                return;
+            }
+
+            // Send message to service worker to cache assets
+            const messageChannel = new MessageChannel();
+            
+            return new Promise((resolve, reject) => {
+                messageChannel.port1.onmessage = (event) => {
+                    if (event.data && event.data.type === 'CACHE_COMPLETE') {
+                        resolve(event.data.results);
+                    } else if (event.data && event.data.type === 'CACHE_ERROR') {
+                        reject(new Error(event.data.error));
+                    } else if (event.data && event.data.type === 'PROGRESS_UPDATE') {
+                        // Handle progress updates from service worker
+                        this.handleProgressUpdate(event.data);
+                    }
+                };
+
+                // Send cache request to service worker
+                navigator.serviceWorker.controller.postMessage({
+                    type: 'CACHE_ASSETS',
+                    assets: assets
+                }, [messageChannel.port2]);
+                
+                // Set timeout
+                setTimeout(() => {
+                    reject(new Error('Cache operation timeout'));
+                }, 30000);
+            });
+        } catch (error) {
+            console.error('Error caching assets:', error);
+            throw error;
+        }
+    }
+
+    // Handle progress updates from service worker
+    handleProgressUpdate(progressData) {
+        const { current, total, percentage, asset, status, downloading, completed, skipped, failed } = progressData;
+        
+        // Update the progress bar
+        this.updateProgress(percentage, status);
+        
+        // Update status to include percentage
+        const progressStatus = document.getElementById('progressStatus');
+        if (progressStatus && total > 0) {
+            progressStatus.textContent = `${status} (${percentage}%)`;
+        }
     }
 
     // Animate background (reuse from app, but static color for login)

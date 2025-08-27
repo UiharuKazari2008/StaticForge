@@ -213,7 +213,7 @@ body {
     animation: errorShake 0.5s ease-in-out;
 }
 
-.error-message.hidden {
+.hidden {
     display: none;
 }
 

@@ -57,6 +57,10 @@
     transition: max-height 0.4s ease, margin-top 0.4s ease, opacity 0.3s ease;
 }
 
+#pinModal {
+    z-index: 10000000 !important;
+}
+
 #pinModal .pin-pad {
     margin: 2em;
 }

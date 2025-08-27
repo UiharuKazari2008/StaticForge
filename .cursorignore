@@ -1,8 +1,8 @@
 # Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
-public/fonts/
-public/fontawesome/
+public/dist/fonts/
+public/dist/fontawesome/
 public/mdi/
-public/nai-svg/
+public/dist/nai-svg/
 .cache/
 .previews/
 images/

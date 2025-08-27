@@ -43,6 +43,11 @@ let lastAccountDataCheck = 0;
 const BALANCE_REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
 const ACCOUNT_DATA_REFRESH_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours
 
+// Cache data management
+let globalCacheData = [];
+const CACHE_REFRESH_INTERVAL = 30 * 60 * 1000; // 30 minutes
+let lastCacheCheck = 0;
+
 // Initialize account data on startup
 async function initializeAccountData(force = false) {
     try {
@@ -77,6 +82,103 @@ async function initializeAccountData(force = false) {
     } catch (error) {
         console.error('❌ Error initializing account data:', error.message);
     }
+}
+
+// Initialize cache data on startup
+async function initializeCacheData(force = false) {
+    try {
+        const now = Date.now();
+        if (now - lastCacheCheck >= CACHE_REFRESH_INTERVAL || force) {
+            console.log('🔄 Initializing cache data...');
+            
+            const publicDir = path.join(__dirname, 'public');
+            const cacheData = await generateCacheData(publicDir);
+            
+            globalCacheData = cacheData;
+            lastCacheCheck = Date.now();
+            
+            console.log(`✅ Cache data generated: ${cacheData.length} assets`);
+        }
+    } catch (error) {
+        console.error('❌ Error initializing cache data:', error.message);
+    }
+}
+
+// Generate cache data for public directory
+async function generateCacheData(directory) {
+    const assets = [];
+    
+    try {
+        const files = await scanDirectory(directory);
+        
+        for (const file of files) {
+            try {
+                const filePath = path.join(directory, file);
+                const stats = fs.statSync(filePath);
+                
+                // Skip directories and non-asset files
+                if (stats.isDirectory() || 
+                    file.startsWith('.') || 
+                    file.includes('node_modules') ||
+                    file.includes('.git')) {
+                    continue;
+                }
+                
+                // Calculate MD5 hash
+                const fileBuffer = fs.readFileSync(filePath);
+                const hash = crypto.createHash('md5').update(fileBuffer).digest('hex');
+                
+                // Convert to web path (remove /public prefix for clean URLs)
+                const relativePath = path.relative(__dirname, filePath).replace(/\\/g, '/');
+                const webPath = relativePath.startsWith('public/') 
+                    ? '/' + relativePath.substring(7) // Remove 'public/' prefix
+                    : '/' + relativePath;
+                
+                assets.push({
+                    path: webPath,
+                    md5: hash,
+                    size: stats.size,
+                    modified: stats.mtime.getTime()
+                });
+            } catch (error) {
+                console.warn(`⚠️ Error processing file ${file}:`, error.message);
+            }
+        }
+        
+        // Sort by path for consistent ordering
+        assets.sort((a, b) => a.path.localeCompare(b.path));
+        
+        return assets;
+    } catch (error) {
+        console.error('❌ Error scanning directory:', error.message);
+        return [];
+    }
+}
+
+// Recursively scan directory for files
+async function scanDirectory(dir) {
+    const files = [];
+    
+    try {
+        const items = fs.readdirSync(dir);
+        
+        for (const item of items) {
+            const itemPath = path.join(dir, item);
+            const stats = fs.statSync(itemPath);
+            
+            if (stats.isDirectory()) {
+                // Recursively scan subdirectories
+                const subFiles = await scanDirectory(itemPath);
+                files.push(...subFiles.map(subFile => path.join(item, subFile)));
+            } else {
+                files.push(item);
+            }
+        }
+    } catch (error) {
+        console.error(`❌ Error reading directory ${dir}:`, error.message);
+    }
+    
+    return files;
 }
 
 // Refresh account data periodically
@@ -211,84 +313,20 @@ const previewsDir = path.resolve(__dirname, '.previews');
 // Initialize workspace system
 initializeWorkspaces();
 
-// Public routes (no authentication required)
-app.get('/', (req, res) => {
-    // Check if user is authenticated via session
-    if (req.session && req.session.authenticated) {
-        res.redirect('/app');
-    } else {
-        generateLoginSpriteSheet();
-        res.sendFile(path.join(__dirname, 'public', 'index.html'));
-    }
-});
 
-// App route (requires authentication)
-app.get('/app', (req, res) => {
-    if (req.session && req.session.authenticated) {
-        res.sendFile(path.join(__dirname, 'public', 'app.html'));
-    } else {
-        res.redirect('/');
-    }
-});
-
-app.options('/ping', authMiddleware, (req, res) => {
-    res.json({ ok: true, date: Date.now().valueOf() });
-});
-
-// Manual queue status update endpoint (for testing)
-app.post('/queue/status/update', authMiddleware, (req, res) => {
-    try {
-        const success = broadcastQueueStatusImmediate();
-        res.json({ 
-            success, 
-            message: success ? 'Queue status broadcasted' : 'Failed to broadcast queue status',
-            timestamp: Date.now().valueOf()
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Get detailed queue status
-app.get('/queue/status', authMiddleware, (req, res) => {
-    try {
-        const status = getDetailedStatus();
-        res.json(status);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Login endpoint
-app.post('/login', express.json(), (req, res) => {
-    const { pin } = req.body;
-    if (!pin) {
-        return res.status(400).json({ error: 'PIN code is required' });
-    }
-    if (pin === config.loginPin) {
-        req.session.authenticated = true;
-        req.session.userType = 'admin';
-        res.json({ success: true, message: 'Login successful', userType: 'admin' });
-    } else if (pin === config.readOnlyPin) {
-        req.session.authenticated = true;
-        req.session.userType = 'readonly';
-        res.json({ success: true, message: 'Login successful', userType: 'readonly' });
-    } else {
-        res.status(401).json({ error: 'Invalid PIN code' });
-    }
-});
-
-// Logout endpoint
-app.post('/logout', (req, res) => {
-    req.session.destroy(() => {
-        res.clearCookie('connect.sid');
-        res.json({ success: true, message: 'Logged out successfully' });
-    });
-});
-
-// Serve static files from public directory
+// Serve static files from public directory ("/public/" is served as "/")
 app.use(express.static('public'));
-app.use('/cache', express.static(cacheDir));
+
+// Serve cache directory with 15-day cache headers for .webp and .jpg files
+app.use('/cache', (req, res, next) => {
+    // Only add cache headers for image files
+    if (req.path.match(/\.(webp|jpg|jpeg|png)$/i)) {
+        res.set('Cache-Control', 'public, max-age=1296000'); // 15 days in seconds
+    }
+    next();
+}, express.static(cacheDir));
+
+// Serve temp directory
 app.use('/temp', express.static(path.join(cacheDir, 'tempDownload')));
 
 // Generate login page sprite sheet (single sheet with normal + blurred images)
@@ -574,9 +612,6 @@ const upload = multer({
         fileSize: 100 * 1024 * 1024 // 10MB limit
     }
 });
-const cacheUpload = multer({
-    storage: multer.memoryStorage()
-});
 
 // On startup: generate missing previews and clean up orphans
 async function syncPreviews() {
@@ -797,6 +832,9 @@ app.get('/previews/:preview', (req, res) => {
     if (!fs.existsSync(previewPath)) {
         return res.status(404).json({ error: 'Preview not found' });
     }
+    
+    // Set cache headers for previews (3 days)
+    res.setHeader('Cache-Control', 'public, max-age=259200'); // 3 days in seconds
     res.setHeader('Content-Type', 'image/jpeg');
     res.sendFile(previewFile, { root: previewsDir });
 });
@@ -887,6 +925,108 @@ app.use((req, res, next) => {
     next();
 });
 
+// Public routes (no authentication required)
+app.get('/', (req, res) => {
+    // Check if user is authenticated via session
+    if (req.session && req.session.authenticated) {
+        res.redirect('/app');
+    } else {
+        generateLoginSpriteSheet();
+        res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    }
+});
+
+// App route (requires authentication)
+app.get('/app', (req, res) => {
+    if (req.session && req.session.authenticated) {
+        res.sendFile(path.join(__dirname, 'public', 'app.html'));
+    } else {
+        res.redirect('/');
+    }
+});
+
+// Cache manifest endpoint
+app.options('/app', authMiddleware, (req, res) => {
+    try {
+        // Return the pre-generated cache data
+        res.json({
+            success: true,
+            cacheData: globalCacheData,
+            timestamp: Date.now().valueOf()
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Reload cache data endpoint (for development/deployment)
+app.post('/admin/reload-cache', authMiddleware, async (req, res) => {
+    try {
+        // Check if user is admin (not readonly)
+        if (req.session.userType !== 'admin') {
+            return res.status(403).json({ 
+                error: 'Admin access required to reload cache data' 
+            });
+        }
+
+        console.log('🔄 Admin requested cache data reload...');
+        
+        // Force reload of cache data
+        await initializeCacheData(true);
+        
+        // Get updated cache data
+        const publicDir = path.join(__dirname, 'public');
+        const updatedCacheData = await generateCacheData(publicDir);
+        
+        // Update global cache data
+        globalCacheData = updatedCacheData;
+        
+        console.log(`✅ Cache data reloaded successfully: ${updatedCacheData.length} assets`);
+        
+        res.json({
+            success: true,
+            message: `Cache data reloaded successfully`,
+            assetsCount: updatedCacheData.length,
+            timestamp: Date.now().valueOf(),
+            cacheData: updatedCacheData
+        });
+        
+    } catch (error) {
+        console.error('❌ Error reloading cache data:', error);
+        res.status(500).json({ 
+            error: 'Failed to reload cache data',
+            details: error.message 
+        });
+    }
+});
+
+// Login endpoint
+app.post('/login', express.json(), (req, res) => {
+    const { pin } = req.body;
+    if (!pin) {
+        return res.status(400).json({ error: 'PIN code is required' });
+    }
+    if (pin === config.loginPin) {
+        req.session.authenticated = true;
+        req.session.userType = 'admin';
+        res.json({ success: true, message: 'Login successful', userType: 'admin' });
+    } else if (pin === config.readOnlyPin) {
+        req.session.authenticated = true;
+        req.session.userType = 'readonly';
+        res.json({ success: true, message: 'Login successful', userType: 'readonly' });
+    } else {
+        res.status(401).json({ error: 'Invalid PIN code' });
+    }
+});
+
+// Logout endpoint
+app.post('/logout', (req, res) => {
+    req.session.destroy(() => {
+        res.clearCookie('connect.sid');
+        res.json({ success: true, message: 'Logged out successfully' });
+    });
+});
+
 app.get('/preset/:uuid', authMiddleware, queueMiddleware, async (req, res) => {
     try {
         const currentPromptConfig = loadPromptConfig();
@@ -944,9 +1084,13 @@ async function initializeCache() {
     // Initialize account data
     await initializeAccountData();
     
+    // Initialize cache data
+    await initializeCacheData(true);
+    
     // Set up periodic refreshes
     setInterval(() => initializeAccountData(), ACCOUNT_DATA_REFRESH_INTERVAL); // Check every 4 hours
     setInterval(() => refreshBalance(), BALANCE_REFRESH_INTERVAL); // Check every 15 minutes
+    setInterval(() => initializeCacheData(), CACHE_REFRESH_INTERVAL); // Check every 5 minutes
 }
 
 // Test bias adjustment endpoint
@@ -1089,15 +1233,17 @@ const wsMessageHandlers = new WebSocketMessageHandlers({
     calculateCreditUsage,
     tagSuggestionsCache,
     accountData: () => accountData,
-    accountBalance: () => accountBalance
+    accountBalance: () => accountBalance,
+    getGlobalCacheData: () => globalCacheData,
+    reloadCacheData: () => initializeCacheData(true)
 });
 
 // Initialize WebSocket server with session store and message handler
 const wsServer = new WebSocketServer(server, sessionStore, async (ws, message, clientInfo, wsServer) => {
     await wsMessageHandlers.handleMessage(ws, message, clientInfo, wsServer);
 });
-setGlobalWsServer(wsServer);
 
+setGlobalWsServer(wsServer);
 
 // Set context with all required functions
 setImageGenContext({
@@ -1114,6 +1260,9 @@ setUpscaleContext({
     addToWorkspaceArray: addToWorkspaceArray,
     getActiveWorkspace: getActiveWorkspace
 });
+
+// Export global cache data for websocket handlers
+module.exports.globalCacheData = globalCacheData;
 
 // Start ping interval with server data callback
 wsServer.startPingInterval(() => {
@@ -1180,9 +1329,7 @@ function gracefulShutdown() {
     
     // Stop WebSocket ping interval
     if (wsServer) {
-        console.log('🛑 Stopping WebSocket ping interval...');
         wsServer.stopPingInterval();
-        console.log('🛑 Stopping WebSocket queue status interval...');
         wsServer.stopQueueStatusInterval();
     }
     

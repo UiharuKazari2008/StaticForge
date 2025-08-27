@@ -1,922 +1,469 @@
+// PhotoSwipe Lightbox Implementation
+let lightbox = null;
+let currentImageIndex = 0;
 
-const lightboxModal = document.getElementById('lightboxModal');
-const lightboxImage = document.getElementById('lightboxImage');
-const lightboxCloseBtn = document.getElementById('lightboxCloseBtn');
-const lightboxDownloadBtn = document.getElementById('lightboxDownloadBtn');
-const lightboxScrapBtn = document.getElementById('lightboxScrapBtn');
-const lightboxPinBtn = document.getElementById('lightboxPinBtn');
-const lightboxUpscaleBtn = document.getElementById('lightboxUpscaleBtn');
-const lightboxRerollBtn = document.getElementById('lightboxRerollBtn');
-const lightboxRerollEditBtn = document.getElementById('lightboxRerollEditBtn');
+// Initialize PhotoSwipe lightbox
+async function initializePhotoSwipe() {
+    try {
+        const PhotoSwipeLightbox = await import('/dist/photoswipe/photoswipe-lightbox.esm.js');
+        
+        lightbox = new PhotoSwipeLightbox.default({
+            dataSource: [],
+            pswpModule: () => import('/dist/photoswipe/photoswipe.esm.js'),
+            showHideAnimationType: 'zoom', //'fade',
+            showAnimationDuration: 300,
+            hideAnimationDuration: 300,
+            allowPanToNext: true,
+            allowMouseDrag: true,
+            allowTouchDrag: true,
+            opacity: 0.15,
+            spacing: 0.1,
+            loop: true,
+            pinchToClose: true,
+            closeOnScroll: false,
+            closeOnVerticalDrag: true,
+            wheelToZoom: true,
+            escKey: true,
+            arrowKeys: true,
+            returnFocus: true,
+            initalZoomLevel: 'fit',
+            secondaryZoomLevel: 1,
+            maxZoomLevel: 4,
+            imageClickAction: 'zoom',
+            tapAction: 'zoom',
+            doubleTapAction: 'zoom',
+            indexIndicatorSep: ' / ',
+            preloaderDelay: 2000,
+            errorMsg: '<div class="pswp__error-msg">Image not found</div>',
+            closeTitle: 'Close (Esc)',
+            prevTitle: 'Previous (arrow left)',
+            nextTitle: 'Next (arrow right)',
+            zoomTitle: 'Zoom in/out',
+            counterTitle: 'Image counter',
+            fullscreenTitle: 'Toggle fullscreen',
+            shareTitle: 'Share',
+            toggleThumbnailsTitle: 'Toggle thumbnails',
+            downloadTitle: 'Download'
+        });
 
-// Show lightbox
-async function showLightbox(image) {
-    // Prevent body scrolling when lightbox is open
-    document.body.style.overflow = 'hidden';
-    
-    // Set current lightbox image for navigation
-    currentLightboxImage = image;
+        // Function to update button visibility based on current slide
+        const updateButtonVisibility = (bottomBar, pswp) => {
+            if (!bottomBar || !pswp) return;
+            
+            const currentItem = pswp.currSlide;
+            if (currentItem && currentItem.data) {
+                // Hide bottom bar for standalone images
+                if (currentItem.data.isStandalone) {
+                    bottomBar.style.display = 'none';
+                    return;
+                } else {
+                    bottomBar.style.display = '';
+                }
+            }
+        };
 
-    if (image.url) {
-        lightboxImage.src = image.url;
-    } else {
-        lightboxImage.src = `/images/${image.filename}`;
+        // Add custom UI elements
+        lightbox.on('uiRegister', function() {
+            // Create custom bottom bar container
+            lightbox.pswp.ui.registerElement({
+                name: 'custom-bottom-bar',
+                order: 9,
+                isButton: false,
+                appendTo: 'wrapper',
+                html: '<div class="pswp__custom-bottom-bar"></div>',
+                onInit: (el, pswp) => {
+                    const bottomBar = el.querySelector('.pswp__custom-bottom-bar');
+                    
+                    // Initial visibility check
+                    updateButtonVisibility(bottomBar, pswp);
+                    
+                    // Create all buttons
+                    const buttons = [
+                        {
+                            className: 'download-button',
+                            icon: '<i class="fas fa-download"></i>',
+                            label: 'Download image',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data) {
+                                    downloadImage(currentItem.data);
+                                }
+                            }
+                        },
+                        {
+                            className: 'reroll-button',
+                            icon: '<i class="nai-dice"></i>',
+                            label: 'Reroll image',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data) {
+                                    rerollImage(currentItem.data);
+                                }
+                            }
+                        },
+                        {
+                            className: 'reroll-edit-button',
+                            icon: '<i class="mdi mdi-1-25 mdi-text-box-edit-outline"></i>',
+                            label: 'Reroll with edit',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data) {
+                                    rerollImageWithEdit(currentItem.data);
+                                }
+                            }
+                        },
+                        {
+                            className: 'upscale-button',
+                            icon: '<i class="nai-upscale"></i>',
+                            label: 'Upscale image',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data) {
+                                    upscaleImage(currentItem.data);
+                                }
+                            }
+                        },
+                        {
+                            className: 'scrap-button',
+                            icon: '<i class="mdi mdi-1-5 mdi-archive"></i>',
+                            label: 'Move to scraps',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data) {
+                                    if (currentGalleryView === 'scraps') {
+                                        removeFromScraps(currentItem.data);
+                                    } else {
+                                        moveToScraps(currentItem.data);
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            className: 'pin-button',
+                            icon: '<i class="fa-regular fa-star"></i>',
+                            label: 'Pin image',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data) {
+                                    togglePinImage(currentItem.data);
+                                }
+                            }
+                        },
+                        {
+                            className: 'delete-button',
+                            icon: '<i class="nai-trash"></i>',
+                            label: 'Delete image',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data) {
+                                    deleteImage(currentItem.data);
+                                }
+                            }
+                        },
+                        {
+                            className: 'metadata-button',
+                            icon: '<i class="fas fa-info-circle"></i>',
+                            label: 'Show metadata',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data) {
+                                    showMetadataDialog();
+                                }
+                            }
+                        }
+                    ];
+
+                    // Add all buttons to the bottom bar
+                    buttons.forEach(buttonData => {
+                        const button = document.createElement('button');
+                        button.classList = `pswp__button--custom round-button pswp__button--${buttonData.className}`;
+                        button.setAttribute('aria-label', buttonData.label);
+                        button.innerHTML = buttonData.icon;
+                        button.onclick = buttonData.onClick;
+                        bottomBar.appendChild(button);
+                    });
+                }
+            });
+        });
+
+        // Set up event listener for slide changes to update button visibility
+        lightbox.on('change', function() {
+            const bottomBar = document.querySelector('.pswp__custom-bottom-bar');
+            if (bottomBar && lightbox.pswp) {
+                updateButtonVisibility(bottomBar, lightbox.pswp);
+            }
+        });
+
+        // Initialize the lightbox
+        lightbox.init();
+        
+        console.log('PhotoSwipe lightbox initialized successfully');
+    } catch (error) {
+        console.error('Failed to initialize PhotoSwipe:', error);
     }
-
-    openModal(lightboxModal);
-
-    // Store current image for download
-    lightboxImage.dataset.filename = image.filename;
-    lightboxImage.dataset.url = image.url;
-    lightboxImage.dataset.base = image.base;
-    lightboxImage.dataset.upscaled = image.upscaled ? 'true' : '';
-
-    // Reset metadata table first
-    resetMetadataTable();
-
-    // Load and display metadata
-    const metadata = await loadAndDisplayMetadata(image.filename);
-
-    // Store current image and metadata for dialog
-    currentImage = { ...image, metadata };
-
-    // Update lightbox controls with metadata
-    updateLightboxControls({ ...image, metadata });
-
-    // Initialize zoom and pan functionality
-    initializeLightboxZoom();
 }
 
-// Hide lightbox
-function hideLightbox() {
-    // Restore body scrolling when lightbox is closed
-    document.body.style.overflow = '';
-    
-    closeModal(lightboxModal);
 
-    // Clear any existing metadata
-    const metadataTable = document.querySelector('.lightbox-metadata-section .metadata-table tbody');
-    if (metadataTable) {
-        metadataTable.innerHTML = '';
+// Function to open standalone PhotoSwipe instances
+async function openStandalonePhotoSwipe(dataSource) {
+    try {
+        const PhotoSwipe = await import('/dist/photoswipe/photoswipe.esm.js');
+        
+        // Create PhotoSwipe instance with custom options
+        const pswp = new PhotoSwipe.default({
+            dataSource: dataSource,
+            showHideAnimationType: 'zoom',
+            showAnimationDuration: 300,
+            hideAnimationDuration: 300,
+            allowPanToNext: false, // No navigation for single images
+            allowMouseDrag: true,
+            allowTouchDrag: true,
+            spacing: 0.1,
+            loop: false,
+            pinchToClose: true,
+            closeOnScroll: false,
+            closeOnVerticalDrag: true,
+            wheelToZoom: true,
+            escKey: true,
+            arrowKeys: false, // No arrow keys for single images
+            returnFocus: true,
+            initalZoomLevel: 'fit',
+            secondaryZoomLevel: 1,
+            maxZoomLevel: 4,
+            imageClickAction: 'zoom',
+            tapAction: 'zoom',
+            doubleTapAction: 'zoom',
+            preloaderDelay: 2000,
+            errorMsg: '<div class="pswp__error-msg">Image not found</div>',
+            closeTitle: 'Close (Esc)',
+            zoomTitle: 'Zoom in/out'
+        });
+
+        // Initialize and open
+        pswp.init();
+        
+        // Listen for close event to clean up
+        pswp.on('close', () => {
+            pswp.destroy();
+        });
+        
+    } catch (error) {
+        console.error('Failed to open standalone PhotoSwipe:', error);
+    }
+}
+
+// Show lightbox with PhotoSwipe
+async function showLightbox(input) {
+    if (!lightbox) {
+        await initializePhotoSwipe();
     }
 
-    // Hide expanded sections
-    const expandedSections = document.querySelectorAll('.metadata-expanded');
-    expandedSections.forEach(section => {
-        section.style.display = 'none';
+    let imageIndex = 0;
+    let targetImage = null;
+
+    // Handle different input types
+    if (typeof input === 'number') {
+        // Direct index provided
+        imageIndex = input;
+        if (imageIndex < 0 || imageIndex >= allImages.length) {
+            console.error('Image index out of range:', imageIndex);
+            return;
+        }
+        targetImage = allImages[imageIndex];
+    } else if (typeof input === 'object' && input !== null) {
+        // Object with filename, url, or element provided
+        if (input.filename) {
+            // Find by filename
+            if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
+                // Search mode - use filtered results
+                imageIndex = window.originalAllImages.findIndex(img => {
+                    return img.upscaled === input.filename || 
+                        img.original === input.filename ||
+                        img.filename === input.filename;
+                });
+            } else {
+                // Normal mode - use current allImages
+                imageIndex = allImages.findIndex(img => {
+                    return img.upscaled === input.filename || 
+                        img.original === input.filename ||
+                        img.filename === input.filename;
+                });
+            }
+        } else if (input.url) {
+            // Standalone image URL - get dimensions if not provided
+            if (!input.width || !input.height) {
+                // Create a temporary image to get natural dimensions
+                const tempImg = new Image();
+                tempImg.onload = function() {
+                    const standaloneData = [{
+                        src: input.url,
+                        width: input.width || tempImg.naturalWidth || 1024,
+                        height: input.height || tempImg.naturalHeight || 1024,
+                        data: {
+                            filename: input.url,
+                            base: input.url,
+                            upscaled: input.url,
+                            original: input.url,
+                            isStandalone: true
+                        }
+                    }];
+                    
+                    // Use PhotoSwipe core directly for standalone images
+                    openStandalonePhotoSwipe(standaloneData);
+                };
+                tempImg.onerror = function() {
+                    // Fallback with default dimensions if image fails to load
+                    const standaloneData = [{
+                        src: input.url,
+                        width: input.width || 1024,
+                        height: input.height || 1024,
+                        data: {
+                            filename: input.url,
+                            base: input.url,
+                            upscaled: input.url,
+                            original: input.url,
+                            isStandalone: true
+                        }
+                    }];
+                    
+                    openStandalonePhotoSwipe(standaloneData);
+                };
+                tempImg.src = input.url;
+                return;
+            } else {
+                // Dimensions provided, create data source immediately
+                const standaloneData = [{
+                    src: input.url,
+                    width: input.width,
+                    height: input.height,
+                    data: {
+                        filename: input.url,
+                        base: input.url,
+                        upscaled: input.url,
+                        original: input.url,
+                        isStandalone: true
+                    }
+                }];
+                
+                // Use PhotoSwipe core directly for standalone images
+                openStandalonePhotoSwipe(standaloneData);
+                return;
+            }
+        } else if (input.element) {
+            // Check if element has data-file-index (gallery item)
+            const fileIndex = input.element.getAttribute('data-file-index');
+            if (fileIndex !== null) {
+                imageIndex = parseInt(fileIndex, 10);
+                if (imageIndex >= 0 && imageIndex < allImages.length) {
+                    targetImage = allImages[imageIndex];
+                } else {
+                    imageIndex = -1;
+                }
+            } else {
+                // Standalone element - try to extract image data
+                const img = input.element.querySelector('img');
+                if (img && img.src) {
+                    const standaloneData = [{
+                        src: img.src,
+                        width: input.width || img.naturalWidth || 1024,
+                        height: input.height || img.naturalHeight || 1024,
+                        data: {
+                            filename: img.src,
+                            base: img.src,
+                            upscaled: img.src,
+                            original: img.src,
+                            isStandalone: true
+                        }
+                    }];
+                    
+                    // Use PhotoSwipe core directly for standalone images
+                    openStandalonePhotoSwipe(standaloneData);
+                    return;
+                } else {
+                    imageIndex = -1;
+                }
+            }
+        }
+
+        if (imageIndex === -1) {
+            console.error('Image not found in allImages array');
+            return;
+        }
+        targetImage = allImages[imageIndex];
+    } else {
+        console.error('Invalid input to showLightbox:', input);
+        return;
+    }
+
+    // Prepare data source for PhotoSwipe with proper dimensions from metadata
+    const dataSource = allImages.map(img => {
+        let filenameToShow = img.original;
+        if (img.upscaled) {
+            filenameToShow = img.upscaled;
+        }
+
+        // Get metadata for this image to get dimensions
+        let width = 1024; // Default fallback
+        let height = 1024; // Default fallback
+        
+        // Try to get dimensions from the image object if available
+        if (img.metadata && img.metadata.width && img.metadata.height) {
+            width = img.metadata.width;
+            height = img.metadata.height;
+        } else if (img.width && img.height) {
+            width = img.width;
+            height = img.height;
+        }
+
+        return {
+            src: `/images/${filenameToShow}`,
+            width: width,
+            height: height,
+            data: {
+                filename: filenameToShow,
+                base: img.base,
+                upscaled: img.upscaled,
+                original: img.original,
+                metadata: img.metadata
+            }
+        };
     });
 
-    // Hide prompt panel
-    const promptPanel = document.getElementById('promptPanel');
-    if (promptPanel) {
-        promptPanel.classList.remove('show');
-        promptPanel.classList.add('hidden');
-    }
-
-    // Reset close button position
-    if (lightboxCloseBtn) {
-        lightboxCloseBtn.classList.remove('prompt-panel-open');
-    }
-
-    // Hide dialog if open
-    hideMetadataDialog();
-
-    // Reset zoom and pan
-    resetLightboxZoom();
+    // Update PhotoSwipe data source
+    lightbox.loadAndOpen(imageIndex, dataSource);
 }
 
-// Navigate between images in lightbox
+// Hide lightbox (PhotoSwipe handles this automatically)
+function hideLightbox() {
+    if (lightbox && lightbox.pswp) {
+        lightbox.pswp.close();
+    }
+}
+
+// Navigate between images (PhotoSwipe handles this automatically)
 function navigateLightbox(direction) {
-    // Find current image index by matching the filename
-    const currentFilename = currentLightboxImage?.filename;
-    
-    // Determine which array to use for navigation
-    let navigationArray, currentImageIndex;
-    
-    if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
-        // We're in search mode - navigate through filtered results
-        navigationArray = allImages; // This contains the filtered results
-        currentImageIndex = allImages.findIndex(img => {
-            const imgFilename = img.filename || img.original || img.upscaled;
-            return imgFilename === currentFilename;
-        });
-    } else {
-        // Normal mode - navigate through original array
-        navigationArray = allImages;
-        currentImageIndex = findTrueImageIndexInLightbox(currentFilename);
-    }
-
-    if (currentImageIndex === -1) return;
-
-    // Calculate new index
-    let newIndex = currentImageIndex + direction;
-
-    // Handle wrapping
-    if (newIndex < 0) {
-        newIndex = navigationArray.length - 1;
-    } else if (newIndex >= navigationArray.length) {
-        newIndex = 0;
-    }
-
-    // Get the new image from the appropriate array
-    const newImageObj = navigationArray[newIndex];
-    if (newImageObj) {
-        // Construct the image object the same way as in createGalleryItem
-        let filenameToShow = newImageObj.original;
-        if (newImageObj.upscaled) {
-            filenameToShow = newImageObj.upscaled;
-        }
-
-        const imageToShow = {
-            filename: filenameToShow,
-            base: newImageObj.base,
-            upscaled: newImageObj.upscaled
-        };
-
-        showLightbox(imageToShow);
-    }
-}
-
-// Lightbox zoom and pan functionality
-let currentLightboxImage = null;
-let lightboxZoom = 1;
-let lightboxPanX = 0;
-let lightboxPanY = 0;
-let isDragging = false;
-let lastMouseX = 0;
-let lastMouseY = 0;
-let lastTouchDistance = 0;
-
-// Helper function to find the true index of an image in the gallery
-// This handles both normal mode and search mode with filtered results
-function findTrueImageIndexInLightbox(filename) {
-    if (!filename) return -1;
-    
-    // If we have filtered results, use the original array
-    if (window.originalAllImages && window.originalAllImages.length > 0) {
-        return window.originalAllImages.findIndex(img => {
-            const imgFilename = img.filename || img.original || img.upscaled;
-            return imgFilename === filename;
-        });
-    }
-    
-    // Otherwise, use the current allImages array
-    if (allImages && Array.isArray(allImages)) {
-        return allImages.findIndex(img => {
-            const imgFilename = img.filename || img.original || img.upscaled;
-            return imgFilename === filename;
-        });
-    }
-    
-    return -1;
-}
-
-function initializeLightboxZoom() {
-    const imageContainer = document.querySelector('.lightbox-image-container');
-    const image = document.getElementById('lightboxImage');
-
-    if (!imageContainer || !image) return;
-
-    // Remove existing event listeners to prevent duplicates
-    imageContainer.removeEventListener('wheel', handleWheelZoom);
-    imageContainer.removeEventListener('mousedown', handleMouseDown);
-    imageContainer.removeEventListener('mousemove', handleMouseMove);
-    imageContainer.removeEventListener('mouseup', handleMouseUp);
-    imageContainer.removeEventListener('mouseleave', handleMouseUp);
-    imageContainer.removeEventListener('touchstart', handleTouchStart);
-    imageContainer.removeEventListener('touchmove', handleTouchMove);
-    imageContainer.removeEventListener('touchend', handleTouchEnd);
-    imageContainer.removeEventListener('dblclick', resetLightboxZoom);
-
-    // Reset zoom and pan
-    resetLightboxZoom();
-
-    // Mouse wheel zoom
-    imageContainer.addEventListener('wheel', handleWheelZoom, { passive: false });
-
-    // Mouse drag pan
-    imageContainer.addEventListener('mousedown', handleMouseDown);
-    imageContainer.addEventListener('mousemove', handleMouseMove);
-    imageContainer.addEventListener('mouseup', handleMouseUp);
-    imageContainer.addEventListener('mouseleave', handleMouseUp);
-
-    // Touch zoom and pan
-    imageContainer.addEventListener('touchstart', handleTouchStart, { passive: false });
-    imageContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
-    imageContainer.addEventListener('touchend', handleTouchEnd);
-
-    // Double click to reset zoom
-    imageContainer.addEventListener('dblclick', resetLightboxZoom);
-}
-
-function resetLightboxZoom() {
-    lightboxZoom = 1;
-    lightboxPanX = 0;
-    lightboxPanY = 0;
-    updateImageTransform();
-
-    const imageContainer = document.querySelector('.lightbox-image-container');
-    if (imageContainer) {
-        imageContainer.classList.remove('zoomed');
-    }
-}
-
-function updateImageTransform() {
-    const image = document.getElementById('lightboxImage');
-    if (image) {
-        image.style.transform = `translate(${lightboxPanX}px, ${lightboxPanY}px) scale(${lightboxZoom})`;
-    }
-}
-
-let lightboxWheelZoomTimeout = null;
-function handleWheelZoom(e) {
-    e.preventDefault();
-
-    if (lightboxWheelZoomTimeout)
-        return;
-    lightboxWheelZoomTimeout = setTimeout(() => {
-        lightboxWheelZoomTimeout = null;
-    }, 100);
-    const delta = e.deltaY > 0 ? 0.95 : 1.05;
-    const newZoom = Math.max(1, Math.min(5, lightboxZoom * delta));
-
-    // If zooming out to original size, reset pan to center
-    if (newZoom <= 1 && lightboxZoom > 1) {
-        lightboxPanX = 0;
-        lightboxPanY = 0;
-    } else {
-        // Get the container bounds
-        const rect = e.currentTarget.getBoundingClientRect();
-        
-        // Calculate mouse position relative to the container
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-        
-        // Get the image element to calculate its dimensions
-        const image = document.getElementById('lightboxImage');
-        if (!image) return;
-        
-        // Calculate the image's visual dimensions and position within the container
-        const imageRect = image.getBoundingClientRect();
-        const containerRect = e.currentTarget.getBoundingClientRect();
-        
-        // Calculate the image's center offset from the container center
-        const imageCenterX = containerRect.width / 2;
-        const imageCenterY = containerRect.height / 2;
-        
-        // Calculate the mouse position relative to the image center
-        const mouseRelToImageCenterX = mouseX - imageCenterX;
-        const mouseRelToImageCenterY = mouseY - imageCenterY;
-        
-        // Calculate the zoom change factor
-        const zoomChange = newZoom / lightboxZoom;
-        
-        // Calculate new pan position to zoom into the mouse cursor
-        // Account for transform-origin: center
-        lightboxPanX = lightboxPanX - (mouseRelToImageCenterX * (zoomChange - 1));
-        lightboxPanY = lightboxPanY - (mouseRelToImageCenterY * (zoomChange - 1));
-    }
-
-    lightboxZoom = newZoom;
-    updateImageTransform();
-
-    const imageContainer = document.querySelector('.lightbox-image-container');
-    if (imageContainer) {
-        imageContainer.classList.toggle('zoomed', lightboxZoom > 1);
-    }
-}
-
-function handleMouseDown(e) {
-    e.preventDefault();
-    if (lightboxZoom > 1) {
-        isDragging = true;
-        lastMouseX = e.clientX;
-        lastMouseY = e.clientY;
-    }
-}
-
-function handleMouseMove(e) {
-    e.preventDefault();
-    if (isDragging && lightboxZoom > 1) {
-        const deltaX = e.clientX - lastMouseX;
-        const deltaY = e.clientY - lastMouseY;
-
-        lightboxPanX += deltaX;
-        lightboxPanY += deltaY;
-
-        lastMouseX = e.clientX;
-        lastMouseY = e.clientY;
-
-        updateImageTransform();
-    }
-}
-
-function handleMouseUp(e) {
-    if (e) {
-        e.preventDefault();
-    }
-    isDragging = false;
-}
-
-function handleTouchStart(e) {
-    if (e.touches.length === 1) {
-        // Single touch - start pan
-        isDragging = true;
-        lastMouseX = e.touches[0].clientX;
-        lastMouseY = e.touches[0].clientY;
-    } else if (e.touches.length === 2) {
-        // Two touches - start pinch zoom
-        lastTouchDistance = getTouchDistance(e.touches);
-    }
-}
-
-function handleTouchMove(e) {
-    if (e.touches.length === 1 && isDragging && lightboxZoom > 1) {
-        // Single touch pan
-        const deltaX = e.touches[0].clientX - lastMouseX;
-        const deltaY = e.touches[0].clientY - lastMouseY;
-
-        lightboxPanX += deltaX;
-        lightboxPanY += deltaY;
-
-        lastMouseX = e.touches[0].clientX;
-        lastMouseY = e.touches[0].clientY;
-
-        updateImageTransform();
-        e.preventDefault();
-    } else if (e.touches.length === 2) {
-        // Two touch pinch zoom
-        const currentDistance = getTouchDistance(e.touches);
-        const delta = currentDistance / lastTouchDistance;
-
-        const newZoom = Math.max(1, Math.min(5, lightboxZoom * delta));
-
-        // If zooming out to original size, reset pan to center
-        if (newZoom <= 1 && lightboxZoom > 1) {
-            lightboxPanX = 0;
-            lightboxPanY = 0;
+    if (lightbox && lightbox.pswp) {
+        if (direction > 0) {
+            lightbox.pswp.next();
         } else {
-            // Zoom towards center of touches only when zooming in or when already zoomed
-            const rect = e.currentTarget.getBoundingClientRect();
-            const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
-            const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
-
-            const zoomChange = newZoom / lightboxZoom;
-            lightboxPanX = centerX - (centerX - lightboxPanX) * zoomChange;
-            lightboxPanY = centerY - (centerY - lightboxPanY) * zoomChange;
+            lightbox.pswp.prev();
         }
-
-        lightboxZoom = newZoom;
-        lastTouchDistance = currentDistance;
-
-        updateImageTransform();
-
-        const imageContainer = document.querySelector('.lightbox-image-container');
-        if (imageContainer) {
-            imageContainer.classList.toggle('zoomed', lightboxZoom > 1);
-        }
-
-        e.preventDefault();
     }
 }
 
-function handleTouchEnd(e) {
-    if (e.touches.length === 0) {
-        isDragging = false;
-        lastTouchDistance = 0;
-    }
-}
-
-function getTouchDistance(touches) {
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.sqrt(dx * dx + dy * dy);
-}
-
+// Update button states and functionality
 function updateLightboxControls(image) {
-    const deleteBtn = document.getElementById('lightboxDeleteBtn');
-    const toggleBaseBtn = document.getElementById('toggleBaseImageBtn');
-    
-    if (image.isMask) {
-        lightboxDownloadBtn.style.display = 'inline-block';
-        lightboxRerollBtn.style.display = 'none';
-        lightboxRerollEditBtn.style.display = 'none';
-        lightboxUpscaleBtn.style.display = 'none';
-        deleteBtn.style.display = 'none';
-
-        // Set up download for mask
-        lightboxDownloadBtn.onclick = (e) => {
-            e.preventDefault();
-            downloadImage(image);
-        };
-        return;
-    }
-
-    // Always show download button for regular images
-    lightboxDownloadBtn.style.display = '';
-    lightboxRerollBtn.style.display = '';
-    lightboxRerollEditBtn.style.display = '';
-    lightboxDeleteBtn.style.display = '';
-    if (image.upscaled) {
-        lightboxUpscaleBtn.style.display = 'none';
-    } else {
-        lightboxUpscaleBtn.style.display = 'inline-block';
-    }
-    lightboxScrapBtn.style.display = 'inline-block';
-    if (currentGalleryView === 'scraps') {
-        lightboxScrapBtn.innerHTML = '<i class="mdi mdi-1-5 mdi-archive-arrow-up"></i>';
-        lightboxScrapBtn.title = 'Remove from scraps';
-    } else {
-        lightboxScrapBtn.innerHTML = '<i class="mdi mdi-1-25 mdi-archive"></i>';
-        lightboxScrapBtn.title = 'Move to scraps';
-    }
-    
-    // Show pin button for all views
-    lightboxPinBtn.style.display = 'inline-block';
-    lightboxPinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
-    lightboxPinBtn.title = 'Pin/Unpin image';
-    
-    // Update pin button appearance based on pin status
-    updateLightboxPinButtonAppearance(image.filename);
-    if (image.metadata && image.metadata.base_image === true && image.metadata.original_filename) {
-        toggleBaseBtn.style.display = 'inline-block';
-        toggleBaseBtn.setAttribute('data-state', 'variation');
-        toggleBaseBtn.innerHTML = '<i class="fas fa-exchange-alt"></i> <span>Show Base</span>';
-    } else {
-        toggleBaseBtn.style.display = 'none';
-    }
-    
-    const imageObj = {
-        filename: image.filename,
-        base: image.base,
-        original: image.original || image.filename,
-        upscaled: image.upscaled,
-        metadata: image.metadata
-    };
-    lightboxDownloadBtn.onclick = (e) => {
-        e.preventDefault();
-        downloadImage(imageObj);
-    };
-    lightboxRerollBtn.onclick = () => rerollImage(imageObj);
-    lightboxRerollEditBtn.onclick = () => rerollImageWithEdit(imageObj);
-    lightboxUpscaleBtn.onclick = (e) => upscaleImage(imageObj, e);
-    lightboxScrapBtn.onclick = () => {
-            if (currentGalleryView === 'scraps') {
-        removeFromScraps(imageObj);
-    } else {
-        moveToScraps(imageObj);
-    }
-    };
-    lightboxPinBtn.onclick = () => togglePinImage(imageObj);
-    deleteBtn.onclick = (e) => deleteImage(imageObj, e);
-    if (toggleBaseBtn.style.display !== 'none') {
-        toggleBaseBtn.onclick = () => toggleBaseImage(imageObj);
-    }
+    // This is now handled by PhotoSwipe UI elements
+    // The buttons are automatically updated based on the current image
 }
 
-// Update lightbox pin button appearance based on pin status
-async function updateLightboxPinButtonAppearance(filename) {
-    try {
-        const isPinned = await checkIfImageIsPinned(filename);
-        if (isPinned) {
-            lightboxPinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
-            lightboxPinBtn.title = 'Unpin image';
-        } else {
-            lightboxPinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
-            lightboxPinBtn.title = 'Pin image';
-        }
-    } catch (error) {
-        console.error('Error updating lightbox pin button appearance:', error);
-    }
-}
-
-// Make function globally available
-window.updateLightboxPinButtonAppearance = updateLightboxPinButtonAppearance;
-
-async function toggleBaseImage(imageObj) {
-    const toggleBaseBtn = document.getElementById('toggleBaseImageBtn');
-    const lightboxImage = document.getElementById('lightboxImage');
-    const currentState = toggleBaseBtn.getAttribute('data-state');
-
-    if (currentState === 'variation') {
-        // Switch to base image
-        try {
-            const baseImageUrl = `/images/${imageObj.metadata.original_filename}`;
-            lightboxImage.src = baseImageUrl;
-            toggleBaseBtn.setAttribute('data-state', 'base');
-            toggleBaseBtn.innerHTML = '<i class="fas fa-exchange-alt"></i> <span>Show Variation</span>';
-        } catch (error) {
-            console.error('Error loading base image:', error);
-            showError('Failed to load base image');
-        }
-    } else {
-        // Switch back to variation image
-        const variationImageUrl = `/images/${imageObj.filename}`;
-        lightboxImage.src = variationImageUrl;
-        toggleBaseBtn.setAttribute('data-state', 'variation');
-        toggleBaseBtn.innerHTML = '<i class="fas fa-exchange-alt"></i> <span>Show Base</span>';
-    }
-}
-
-
-// Setup prompt panel
-function setupPromptPanel(metadata) {
-    const promptBtn = document.getElementById('promptBtn');
-    const promptPanel = document.getElementById('promptPanel');
-    const allPromptsContent = document.getElementById('allPromptsContent');
-
-    // Clear previous content
-    if (allPromptsContent) allPromptsContent.innerHTML = '';
-
-    // Setup prompt button
-    if (promptBtn && promptPanel) {
-        promptBtn.style.display = 'inline-block';
-
-        promptBtn.onclick = () => {
-            // Check if panel is currently shown
-            const isPanelShown = promptPanel.classList.contains('show');
-
-            if (isPanelShown) {
-                // Hide panel
-                promptPanel.classList.remove('show');
-                setTimeout(() => {
-                    promptPanel.classList.add('hidden');
-                }, 300);
-
-                // Move close button back to original position
-                if (lightboxCloseBtn) {
-                    lightboxCloseBtn.classList.remove('prompt-panel-open');
-                }
-            } else {
-                // Populate panel content
-                if (allPromptsContent) {
-                    allPromptsContent.innerHTML = '';
-
-                    // Add base prompt if exists
-                    if (metadata.prompt) {
-                        const basePromptItem = createCharacterPromptItem('Base Prompt', metadata.prompt, metadata.uc);
-                        allPromptsContent.appendChild(basePromptItem);
-                    }
-
-                    // Add character prompts if exist
-                    if (metadata.characterPrompts && metadata.characterPrompts.length > 0) {
-                        metadata.characterPrompts.forEach((charPrompt, index) => {
-                            const charName = charPrompt.chara_name || `Character ${index + 1}`;
-                            const charPromptItem = createCharacterPromptItem(charName, charPrompt.prompt || 'No prompt available', charPrompt.uc, charPrompt);
-                            allPromptsContent.appendChild(charPromptItem);
-                        });
-                    }
-
-                    // Show message if no prompts at all
-                    if (!metadata.prompt && (!metadata.characterPrompts || metadata.characterPrompts.length === 0)) {
-                        const noPromptsMsg = document.createElement('div');
-                        noPromptsMsg.className = 'character-prompt-item-panel';
-                        noPromptsMsg.innerHTML = '<div class="character-prompt-text">No prompts available</div>';
-                        allPromptsContent.appendChild(noPromptsMsg);
-                    }
-                }
-
-                // Show panel
-                promptPanel.classList.remove('hidden');
-                setTimeout(() => {
-                    promptPanel.classList.add('show');
-                }, 10);
-
-                // Move close button to accommodate panel
-                if (lightboxCloseBtn) {
-                    lightboxCloseBtn.classList.add('prompt-panel-open');
-                }
-            }
-        };
-    } else if (promptBtn) {
-        promptBtn.style.display = 'none';
-    }
-}
-
-// Helper function to create prompt items with copy functionality
-function createPromptItem(title, content) {
-    const promptItem = document.createElement('div');
-    promptItem.className = 'character-prompt-item-panel';
-
-    const headerDiv = document.createElement('div');
-    headerDiv.className = 'prompt-header';
-
-    const titleDiv = document.createElement('div');
-    titleDiv.className = 'character-name';
-    titleDiv.textContent = title;
-
-    const copyBtn = document.createElement('button');
-    copyBtn.type = 'button';
-    copyBtn.className = 'prompt-copy-btn';
-    copyBtn.innerHTML = '<i class="nai-clipboard"></i>';
-    copyBtn.title = 'Copy to clipboard';
-    copyBtn.onclick = () => copyToClipboard(content, title);
-
-    headerDiv.appendChild(titleDiv);
-    headerDiv.appendChild(copyBtn);
-
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'character-prompt-text';
-    contentDiv.textContent = content;
-
-    promptItem.appendChild(headerDiv);
-    promptItem.appendChild(contentDiv);
-
-    return promptItem;
-}
-
-// Helper function to create character prompt items with UC
-function createCharacterPromptItem(title, content, uc, charPrompt = null) {
-    const promptItem = document.createElement('div');
-    promptItem.className = 'character-prompt-item-panel';
-
-    const headerDiv = document.createElement('div');
-    headerDiv.className = 'prompt-header';
-
-    const titleDiv = document.createElement('div');
-    titleDiv.className = 'character-name';
-    titleDiv.textContent = title;
-
-    // Add badges for character prompts
-    if (charPrompt) {
-        const badgesDiv = document.createElement('div');
-        badgesDiv.className = 'prompt-badges';
-
-        // Add coordinate badge if coordinates exist
-        if (charPrompt.center && charPrompt.center.x !== undefined && charPrompt.center.y !== undefined) {
-            const coordBadge = document.createElement('span');
-            coordBadge.className = 'prompt-badge coordinate-badge';
-            coordBadge.textContent = getCellLabelFromCoords(charPrompt.center.x, charPrompt.center.y);
-            badgesDiv.appendChild(coordBadge);
-        }
-
-        // Add disabled badge if character is disabled
-        if (charPrompt.enabled === false) {
-            const disabledBadge = document.createElement('span');
-            disabledBadge.className = 'prompt-badge disabled-badge';
-            disabledBadge.textContent = 'Not Included';
-            badgesDiv.appendChild(disabledBadge);
-        }
-
-        titleDiv.appendChild(badgesDiv);
-    }
-
-    const copyBtn = document.createElement('button');
-    copyBtn.type = 'button';
-    copyBtn.className = 'prompt-copy-btn';
-    copyBtn.innerHTML = '<i class="nai-clipboard"></i>';
-    copyBtn.title = 'Copy to clipboard';
-    copyBtn.onclick = () => copyToClipboard(content, title);
-
-    headerDiv.appendChild(titleDiv);
-    headerDiv.appendChild(copyBtn);
-
-    const contentDiv = document.createElement('div');
-    contentDiv.className = 'character-prompt-text';
-    contentDiv.textContent = content;
-
-    promptItem.appendChild(headerDiv);
-    promptItem.appendChild(contentDiv);
-
-    // Add UC if it exists
-    if (uc) {
-        const divider = document.createElement('div');
-        divider.className = 'prompt-divider';
-        promptItem.appendChild(divider);
-
-        const ucHeaderDiv = document.createElement('div');
-        ucHeaderDiv.className = 'prompt-header';
-
-        const ucTitleDiv = document.createElement('div');
-        ucTitleDiv.className = 'character-name';
-        ucTitleDiv.textContent = 'Undesired Content';
-
-        const ucCopyBtn = document.createElement('button');
-        ucCopyBtn.type = 'button';
-        ucCopyBtn.className = 'prompt-copy-btn';
-        ucCopyBtn.innerHTML = '<i class="nai-clipboard"></i>';
-        ucCopyBtn.title = 'Copy to clipboard';
-        ucCopyBtn.onclick = () => copyToClipboard(uc, `${title} - Undesired Content`);
-
-        ucHeaderDiv.appendChild(ucTitleDiv);
-        ucHeaderDiv.appendChild(ucCopyBtn);
-
-        const ucContentDiv = document.createElement('div');
-        ucContentDiv.className = 'character-prompt-text';
-        ucContentDiv.textContent = uc;
-
-        promptItem.appendChild(ucHeaderDiv);
-        promptItem.appendChild(ucContentDiv);
-    }
-
-    return promptItem;
-}
-
-// Function to copy text to clipboard and show toast
-async function copyToClipboard(text, title) {
-    try {
-        // Try modern clipboard API first
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(text);
-            showGlassToast('success', null, `Copied ${title} to clipboard`, false, 3000, '<i class="fas fa-clipboard"></i>');
-        } else {
-            // Fallback for older browsers
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            textArea.style.top = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-
-            const successful = document.execCommand('copy');
-            document.body.removeChild(textArea);
-
-            if (successful) {
-                showGlassToast('success', null, `Copied ${title} to clipboard`, false, 3000, '<i class="fas fa-clipboard"></i>');
-            } else {
-                throw new Error('execCommand copy failed');
-            }
-        }
-    } catch (err) {
-        console.error('Failed to copy text: ', err);
-        showGlassToast('error', null, 'Failed to copy to clipboard', false);
-    }
-}
-
-// Helper: Format resolution name for display
-function formatResolution(resolution) {
-    if (!resolution) return '';
-
-    // Handle custom resolution format: custom_1024x768
-    if (resolution.startsWith('custom_')) {
-        const dimensions = resolution.replace('custom_', '');
-        const [width, height] = dimensions.split('x').map(Number);
-        if (width && height) {
-            return `Custom ${width}×${height}`;
-        }
-    }
-
-    // Try to find the resolution in our global array first
-    const res = RESOLUTIONS.find(r => r.value.toLowerCase() === resolution.toLowerCase());
-    if (res) {
-        return res.display;
-    }
-
-    // Fallback: Convert snake_case to Title Case
-    return resolution
-        .split('_')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
-}
-
-// Load and display metadata
-async function loadAndDisplayMetadata(filename) {
-    try {
-        const metadata = await getImageMetadata(filename);
-
-        if (metadata && Object.keys(metadata).length > 0) {
-            // Populate metadata table
-            populateMetadataTable(metadata);
-
-            // Set up expandable sections
-            setupPromptPanel(metadata);
-
-            return metadata;
-        }
-        return null;
-    } catch (error) {
-        console.error('Error loading metadata:', error);
-        return null;
-    }
-}
-
-// Populate metadata table
-function populateMetadataTable(metadata) {
-    // Type and Name
-    const typeElement = document.getElementById('metadataType');
-    const nameElement = document.getElementById('metadataName');
-
-    if (typeElement && nameElement) {
-        if (metadata.request_type) {
-            typeElement.textContent = formatRequestType(metadata.request_type);
-
-            // Show/hide name field based on preset_name availability
-            const nameCell = nameElement.closest('.metadata-cell');
-            if (metadata.preset_name) {
-                nameElement.textContent = metadata.preset_name;
-                if (nameCell) nameCell.style.display = 'flex';
-            } else {
-                if (nameCell) nameCell.style.display = 'none';
-            }
-        } else {
-            typeElement.textContent = '-';
-            const nameCell = nameElement.closest('.metadata-cell');
-            if (nameCell) nameCell.style.display = 'none';
-        }
-    }
-
-    // Model
-    const modelElement = document.getElementById('metadataModel');
-    if (modelElement) {
-        modelElement.textContent = metadata.model_display_name || metadata.model || '-';
-    }
-
-    // Resolution
-    const resolutionElement = document.getElementById('metadataResolution');
-    if (resolutionElement) {
-        if (metadata.resolution) {
-            let resolutionText = formatResolution(metadata.resolution);
-            if (metadata.upscaled) {
-                resolutionElement.innerHTML = `${resolutionText} <span class="badge upscaled-badge">Upscaled</span>`;
-            } else {
-                resolutionElement.textContent = resolutionText;
-            }
-        } else if (metadata.width && metadata.height) {
-            let dimensionText = `${metadata.width} × ${metadata.height}`;
-            if (metadata.upscaled) {
-                resolutionElement.innerHTML = `${dimensionText} <span class="badge upscaled-badge">Upscaled</span>`;
-            } else {
-                resolutionElement.textContent = dimensionText;
-            }
-        } else {
-            resolutionElement.textContent = '-';
-        }
-    }
-
-    // Steps
-    const stepsElement = document.getElementById('metadataSteps');
-    if (stepsElement) {
-        const stepsText = metadata.steps || '-';
-        if (metadata.skip_cfg_above_sigma !== null && metadata.skip_cfg_above_sigma !== undefined) {
-            stepsElement.innerHTML = `${stepsText} <i class="fas fa-splotch variety-icon" title="Variety+ enabled"></i>`;
-        } else {
-            stepsElement.textContent = stepsText;
-        }
-    }
-
-    // Seeds - Handle display logic
-    const seed1Element = document.getElementById('metadataSeed1');
-    const seed2Element = document.getElementById('metadataSeed2');
-
-    if (seed1Element && seed2Element) {
-        // Find the label elements more safely
-        const seed1Cell = seed1Element.closest('.metadata-cell');
-        const seed2Cell = seed2Element.closest('.metadata-cell');
-        const seed1Label = seed1Cell ? seed1Cell.querySelector('.metadata-label') : null;
-        const seed2Label = seed2Cell ? seed2Cell.querySelector('.metadata-label') : null;
-
-        if (seed1Label && seed2Label) {
-            // Single seed - hide seed 2 and rename seed 1
-            seed1Label.textContent = 'Seed';
-            seed1Element.textContent = metadata.layer1Seed || metadata.seed || '-';
-            seed1Cell.style.display = 'flex';
-            seed2Cell.style.display = 'none';
-            
-        }
-    }
-
-    // Guidance
-    const guidanceElement = document.getElementById('metadataGuidance');
-    if (guidanceElement) {
-        guidanceElement.textContent = metadata.scale || '-';
-    }
-
-    // Rescale
-    const rescaleElement = document.getElementById('metadataRescale');
-    if (rescaleElement) {
-        rescaleElement.textContent = metadata.cfg_rescale || '-';
-    }
-
-    // Sampler
-    const samplerElement = document.getElementById('metadataSampler');
-    if (samplerElement) {
-        const samplerObj = getSamplerMeta(metadata.sampler);
-        samplerElement.textContent = samplerObj ? samplerObj.display : (metadata.sampler || '-');
-    }
-
-    // Noise Schedule
-    const noiseScheduleElement = document.getElementById('metadataNoiseSchedule');
-    if (noiseScheduleElement) {
-        const noiseObj = getNoiseMeta(metadata.noise_schedule);
-        noiseScheduleElement.textContent = noiseObj ? noiseObj.display : (metadata.noise_schedule || '-');
-    }
-}
-
-// Helper: Format request type for display
-function formatRequestType(requestType) {
-    const typeMappings = {
-        'custom': 'Manual Generation',
-        'preset': 'Image Preset'
-    };
-
-    return typeMappings[requestType] || requestType;
-}
-
-window.wsClient.registerInitStep(89, 'Initializing Lightbox', async () => {
-    // Lightbox events
-    if (lightboxCloseBtn) {
-        lightboxCloseBtn.addEventListener('click', hideLightbox);
-    }
+// Initialize PhotoSwipe when the page loads
+window.wsClient.registerInitStep(36, 'Initializing PhotoSwipe Lightbox', async () => {
+    await initializePhotoSwipe();
 });
+
+// Make functions globally available for compatibility
+window.showLightbox = showLightbox;
+window.hideLightbox = hideLightbox;
+window.navigateLightbox = navigateLightbox;
+window.updateLightboxControls = updateLightboxControls;

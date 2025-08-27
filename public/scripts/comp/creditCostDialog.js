@@ -14,6 +14,7 @@ function showCreditCostDialog(cost, event = null) {
             creditCostDialog = document.createElement('div');
             creditCostDialog.id = 'creditCostDialog';
             creditCostDialog.className = 'credit-cost-dialog';
+            creditCostDialog.style.display = 'none';
             creditCostDialog.innerHTML = `
                 <div class="credit-cost-content">
                     <div class="credit-cost-header">
@@ -47,9 +48,6 @@ function showCreditCostDialog(cost, event = null) {
             
             // Close on escape key
             document.addEventListener('keydown', handleCreditCostKeydown);
-            
-            // Close on outside click
-            document.addEventListener('click', handleCreditCostOutsideClick);
         } else {
             // Update cost in existing dialog
             const costElement = creditCostDialog.querySelector('.credit-cost-message strong');
@@ -62,21 +60,15 @@ function showCreditCostDialog(cost, event = null) {
         positionCreditCostDialog(event);
         
         // Show dialog
-        openModal(creditCostDialog);
+        creditCostDialog.style.display = 'block';
         creditCostDialogActive = true;
-        
-        // Focus cancel button
-        const cancelBtn = creditCostDialog.querySelector('.credit-cost-cancel-btn');
-        if (cancelBtn) {
-            cancelBtn.focus();
-        }
     });
 }
 
 // Hide credit cost dialog
 function hideCreditCostDialog() {
     if (creditCostDialog) {
-        closeModal(creditCostDialog);
+        creditCostDialog.style.display = 'none';
         creditCostDialogActive = false;
     }
 }
@@ -142,19 +134,6 @@ function handleCreditCostKeydown(e) {
     if (!creditCostDialogActive) return;
     
     if (e.key === 'Escape') {
-        hideCreditCostDialog();
-        if (creditCostDialogCancelCallback) {
-            creditCostDialogCancelCallback();
-        }
-    }
-}
-
-// Handle outside clicks
-function handleCreditCostOutsideClick(e) {
-    if (!creditCostDialogActive || !creditCostDialog) return;
-    
-    // Check if click is outside the dialog
-    if (!creditCostDialog.contains(e.target)) {
         hideCreditCostDialog();
         if (creditCostDialogCancelCallback) {
             creditCostDialogCancelCallback();

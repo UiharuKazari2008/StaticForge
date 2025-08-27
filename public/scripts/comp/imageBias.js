@@ -592,6 +592,9 @@ async function showImageBiasAdjustmentModal() {
             if (toggleBtn) {
                 toggleBtn.setAttribute('data-state', 'on');
             }
+            
+            // Register event listeners when modal is shown
+            registerImageBiasEventListeners();
         }, 100);
     };
     originalImage.src = imageDataUrl;
@@ -1359,6 +1362,9 @@ function hideImageBiasAdjustmentModal() {
         closeModal(modal);
     }
 
+    // Deregister event listeners when modal is hidden
+    deregisterImageBiasEventListeners();
+
     // Clean up test results
     const resultsDiv = document.getElementById('biasTestResults');
     if (resultsDiv) {
@@ -1540,8 +1546,6 @@ function setupImageBiasAdjustmentListeners() {
     if (resetBtn) resetBtn.addEventListener('click', resetBiasControls);
     if (testBtn) testBtn.addEventListener('click', testBiasAdjustment);
 
-
-
     // Bias control inputs
     const biasInputs = ['biasX', 'biasY', 'biasScale', 'biasRotate'];
     biasInputs.forEach(id => {
@@ -1557,14 +1561,6 @@ function setupImageBiasAdjustmentListeners() {
             });
         }
     });
-
-    // Image dragging
-    const imageContainer = document.getElementById('imagePreviewContainer');
-    if (imageContainer) {
-        imageContainer.addEventListener('mousedown', handleBiasImageMouseDown);
-        imageContainer.addEventListener('mousemove', handleBiasImageMouseMove);
-        imageContainer.addEventListener('mouseup', handleBiasImageMouseUp);
-    }
 
     // Preview toggle button
     const previewToggleBtn = document.getElementById('previewToggleBtn');
@@ -1757,6 +1753,37 @@ function setupImageBiasAdjustmentListeners() {
     }
 }
 
+// Event listener management
+let imageBiasEventListenersRegistered = false;
+
+function registerImageBiasEventListeners() {
+    if (imageBiasEventListenersRegistered) return;
+    
+    // Image dragging
+    const imageContainer = document.getElementById('imagePreviewContainer');
+    if (imageContainer) {
+        imageContainer.addEventListener('mousedown', handleBiasImageMouseDown);
+        imageContainer.addEventListener('mousemove', handleBiasImageMouseMove);
+        imageContainer.addEventListener('mouseup', handleBiasImageMouseUp);
+    }
+    
+    imageBiasEventListenersRegistered = true;
+}
+
+function deregisterImageBiasEventListeners() {
+    if (!imageBiasEventListenersRegistered) return;
+    
+    // Image dragging
+    const imageContainer = document.getElementById('imagePreviewContainer');
+    if (imageContainer) {
+        imageContainer.removeEventListener('mousedown', handleBiasImageMouseDown);
+        imageContainer.removeEventListener('mousemove', handleBiasImageMouseMove);
+        imageContainer.removeEventListener('mouseup', handleBiasImageMouseUp);
+    }
+    
+    imageBiasEventListenersRegistered = false;
+}
+
 // Add button to open bias adjustment modal
 function addBiasAdjustmentButton() {
     // Check if button already exists
@@ -1807,6 +1834,6 @@ function initializeImageBiasAdjustment() {
     }
 }
 
-window.wsClient.registerInitStep(94, 'Initializing Image Bias System', async () => {
+window.wsClient.registerInitStep(38, 'Initializing Image Bias System', async () => {
     await initializeImageBiasAdjustment();
 });

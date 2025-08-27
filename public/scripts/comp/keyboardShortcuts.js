@@ -158,9 +158,27 @@ function handleKeyDown(event) {
             event.preventDefault();
             event.stopPropagation();
             if (isTextReplacementModalOpen || isCreateTextReplacementModalOpen) return;
-            const manualGenerateBtn = document.getElementById('manualGenerateBtn');
-            if (manualGenerateBtn && !manualGenerateBtn.disabled) {
-                manualGenerateBtn.click();
+            
+            // Check if manual modal is open
+            const manualModal = document.getElementById('manualModal');
+            const isInModal = manualModal && manualModal.style.display !== 'none';
+            
+            if (isInModal) {
+                // In modal: trigger generation
+                const manualGenerateBtn = document.getElementById('manualGenerateBtn');
+                if (manualGenerateBtn && !manualGenerateBtn.disabled) {
+                    manualGenerateBtn.click();
+                }
+            } else {
+                // Not in modal: show refresh confirmation
+                if (typeof showExitConfirmation === 'function') {
+                    showExitConfirmation(event, 'refresh');
+                } else {
+                    // Fallback: show browser confirmation
+                    if (confirm('Are you sure you want to restart the application?')) {
+                        window.location.reload();
+                    }
+                }
             }
             break;
         case 'F6':
@@ -236,6 +254,41 @@ function handleKeyDown(event) {
                 });
             }
             break;
+            
+        // Exit confirmation keyboard shortcuts
+        case 'CTRL+R':
+            // Refresh - show custom confirmation dialog
+            if (typeof window.showExitConfirmation === 'function') {
+                event.preventDefault();
+                event.stopPropagation();
+                window.showExitConfirmation(event, 'refresh');
+            }
+            break;
+            
+        case 'CTRL+SHIFT+R':
+            // Hard refresh - show custom confirmation dialog
+            if (typeof window.showExitConfirmation === 'function') {
+                event.preventDefault();
+                event.stopPropagation();
+                window.showExitConfirmation(event, 'refresh');
+            }
+            break;
+            
+        case 'CTRL+W':
+            // Close tab - let browser handle, beforeunload will show warning
+            // Don't prevent default - let browser show "unsaved changes" dialog
+            break;
+            
+        case 'CTRL+SHIFT+W':
+            // Close window - let browser handle, beforeunload will show warning
+            // Don't prevent default - let browser show "unsaved changes" dialog
+            break;
+            
+        case 'ALT+F4':
+            // Close window (Windows) - let browser handle, beforeunload will show warning
+            // Don't prevent default - let browser show "unsaved changes" dialog
+            break;
+            
         default:
             break;
     }
@@ -278,6 +331,6 @@ function cleanupManualModalShortcuts() {
     }
 } 
 
-window.wsClient.registerInitStep(95, 'Initializing Keyboard Shortcuts', async () => {
+window.wsClient.registerInitStep(50, 'Initializing Keyboard Shortcuts', async () => {
     await initializeManualModalShortcuts();
 });

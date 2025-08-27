@@ -2,22 +2,88 @@
 <html lang="en" class="disable-blur">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
     <title>Dreamscape Workspace</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Dreamscape">
+    <meta name="msapplication-TileColor" content="#6366f1">
+    <meta name="msapplication-config" content="/browserconfig.xml">
+    
+    <!-- Tablet and Orientation Support -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="apple-touch-fullscreen" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- PWA Icons -->
+    <link rel="icon" type="image/svg+xml" sizes="32x32" href="/images/icon-32x32.svg">
+    <link rel="icon" type="image/svg+xml" sizes="16x16" href="/images/icon-16x16.svg">
+    <link rel="apple-touch-icon" href="/images/icon-152x152.svg">
+    <link rel="mask-icon" href="/images/icon-192x192.svg" color="#6366f1">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="/fonts.css">
+    <link rel="stylesheet" href="/css/fonts.css">
     <link rel="stylesheet" href="/styles.css">
-    <link rel="stylesheet" href="/pin-modal.css">
+    <link rel="stylesheet" href="/css/pin-modal.css">
+    <link rel="stylesheet" href="/dist/photoswipe/photoswipe.css">
     <script src="/scripts/comp/tagSets.js"></script>
-    <link rel="stylesheet" href="/fontawesome/css/fontawesome.min.css">
-    <link rel="stylesheet" href="/fontawesome/css/all.min.css">
-    <link rel="stylesheet" href="/mdi/materialdesignicons.min.css">
+    <link rel="stylesheet" href="/dist/fontawesome/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="/dist/mdi/materialdesignicons.min.css">
 </head>
-<body>
-<!-- Background layers for smooth transitions -->
-<div class="page-background current-bg" style="opacity: 1;"></div>
-<div class="page-background next-bg" style="opacity: 0;"></div>
+<body class="initializing">
+    <!-- Banner Container -->
+    <div id="bannerContainer" class="banner-container">
+        <!-- Update Available Banner -->
+        <div id="updateBanner" class="status-banner glass-toast glass-toast-warning hidden">
+            <div class="status-banner-content">
+                <div class="status-banner-left">
+                    <i class="fas fa-download status-banner-icon"></i>
+                    <span class="status-banner-text">Critical updates available. Please save your work and reload to apply.</span>
+                    <div class="update-progress-container" style="display: none;">
+                        <div class="update-progress-bar-container">
+                            <div class="update-progress-bar"></div>
+                        </div>
+                        <div class="update-progress-status">0 / 0 files</div>
+                    </div>
+                </div>
+                <div class="status-banner-right">
+                    <button type="button" id="updateBannerReloadBtn" class="btn-danger">
+                        <i class="fas fa-sync-alt"></i>
+                        Reload Now
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!-- WebSocket Connection Status Banner -->
+        <div id="websocketStatusBanner" class="status-banner glass-toast hidden">
+            <div class="status-banner-content">
+                <div class="status-banner-left">
+                    <i class="status-banner-icon"></i>
+                    <span class="status-banner-text">Checking connection...</span>
+                </div>
+                <div class="status-banner-right">
+                    <button type="button" class="status-banner-close" title="Dismiss">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+
+    <!-- Background layers for smooth transitions -->
+    <div class="page-background current-bg" style="opacity: 1; background-image: url('/internal/default_bg.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
+    <div class="page-background next-bg" style="opacity: 0; background-image: url('/internal/default_bg.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
     <!-- Character Autocomplete Overlay -->
     <div id="characterAutocompleteOverlay" class="character-autocomplete-overlay hidden">
         <div class="character-autocomplete-list">
@@ -92,24 +158,29 @@
                         <i class="fa-light fa-bars"></i>
                     </button>
                 </div>
-                <div id="subFloatMenu" class="main-menu-row sub-menu-contents sub-menu-toggle hidden">
-                    <div class="button-group">                        
-                        <button type="button" id="workspaceManageBtn" class="btn-secondary sub-menu-toggle" title="Manage Workspaces">
+                <div id="subFloatMenu" class="main-menu-row sub-menu-contents sub-menu-toggle hidden">    
+                    <div class="button-group" style="display: none;">
+                        <button type="button" id="decreaseColumnsBtn" class="btn-secondary" title="Decrease Gallery Columns">
+                            <i class="fa-light fa-minus"></i>
+                        </button>
+                        <button type="button" id="increaseColumnsBtn" class="btn-secondary" title="Increase Gallery Columns">
+                            <i class="fa-light fa-plus"></i>
+                        </button>
+                    </div>
+                    <div class="button-group" id="manageButtonGroup">                        
+                        <button type="button" id="workspaceManageBtn" class="btn-secondary" title="Manage Workspaces">
                             <i class="fa-light fa-folder-image"></i><span>Manage</span>
+                        </button>
+                        <button type="button" id="uploadBtn" class="btn-secondary" title="Upload Images (or paste from clipboard)">
+                            <i class="nai-import"></i>
                         </button>
                         <button type="button" id="cacheManagerBtn" class="btn-secondary" title="Reference Manager">
                             <i class="fa-light fa-swatchbook"></i>
                         </button>
-                        <button type="button" id="presetManagerBtn" class="btn-secondary" title="Manage Spellbook">
-                            <i class="fa-light fa-book-spells"></i>
-                        </button>
                         <button type="button" id="textReplacementManagerBtn" class="btn-secondary" title="Manage Text Expanders">
                             <i class="fa-light fa-language"></i>
                         </button>
-                    </div>    
-                    <button type="button" id="uploadBtn" class="btn-secondary" title="Upload Images (or paste from clipboard)">
-                        <i class="nai-import"></i>
-                    </button>
+                    </div>
                     <button type="button" id="logoutButton" class="btn-danger">
                             <i class="fa-light fa-power-off"></i>
                         </button>
@@ -145,6 +216,9 @@
                         <div class="button-group">
                             <button type="button" id="customPresetDropdownBtn" class="btn-secondary">
                                 <span id="customPresetSelected"><i class="fa-light fa-book-spells"></i> Spellbook</span>
+                            </button>
+                            <button type="button" id="presetManagerBtn" class="btn-secondary sub-menu-toggle" title="Manage Spellbook">
+                                <i class="fa-light fa-cog"></i>
                             </button>
                             <button type="button" id="clearPresetBtn" class="btn-secondary hidden"title="Clear preset selection">
                                 <i class="fas fa-times"></i>
@@ -551,7 +625,7 @@
                             <!-- Manual Modal Loading Overlay -->
                             <div id="manualLoadingOverlay" class="manual-loading-overlay hidden return">
                                 <div class="manual-loading-content">
-                                    <img class="loading" src="/boom.gif"></img>
+                                    <img class="loading" src="/images/boom.gif"></img>
                                     <p class="loading">Generating your image...</p>
                                 </div>
                             </div>
@@ -662,7 +736,7 @@
                                         <!-- Reference images will be loaded here -->
                                     </div>
                                     <div class="cache-browser-loading" id="cacheBrowserLoadingContainer" style="display: none;">
-                                        <img class="loading" src="/workin.gif"></img>
+                                        <img class="loading" src="/images/workin.gif"></img>
                                         <p class="loading">Loading references...</p>
                                     </div>
                                 </div>
@@ -760,7 +834,7 @@
                                 <input type="hidden" id="manualSampler" value="">
                             </div>
                             <div class="form-group auto-flex">
-                                <label for="manualNoiseScheduler"><span class="small-viewport">Noise Sch.</span></span><span class="full-viewport">Noise Scheduler</span></label>
+                                <label for="manualNoiseScheduler"><span class="small-viewport">Noise Sch.</span><span class="full-viewport">Noise Scheduler</span></label>
                                 <!-- Custom Manual Noise Scheduler Dropdown -->
                                 <div id="manualNoiseSchedulerDropdown" class="custom-dropdown dropup">
                                     <button type="button" id="manualNoiseSchedulerDropdownBtn" class="custom-dropdown-btn hover-show colored">
@@ -830,7 +904,9 @@
                             <i class="fas fa-spinner fa-spin"></i>
                             <span id="manualPendingRequestsBadge" class="pending-requests-badge fas">0</span>
                         </div>
-                        <button type="button" id="closeManualBtn" class="btn-secondary">Cancel</button>
+                        <button type="button" id="closeManualBtn" class="btn-secondary">
+                            <i class="nai-thin-cross"></i>
+                        </button>
                         <button type="submit" id="manualGenerateBtn" class="btn-primary">
                             <span>Generate</span>
                             <i id="manualGenerateBtnIcon" class="nai-sparkles"></i>
@@ -885,7 +961,7 @@
             
             <!-- Loading indicator for infinite scroll -->
             <div id="infiniteScrollLoading" class="infinite-scroll-loading" style="display: none;">
-                <img class="loading" src="/azuspin.gif"></img>
+                <img class="loading" src="/images/azuspin.gif"></img>
                 <p class="loading">Loading more images...</p>
             </div>
         </div>
@@ -893,7 +969,7 @@
         <!-- Loading Overlay -->
         <div id="loadingOverlay" class="loading-overlay hidden">
             <div class="loading-content">
-                <img class="loading" src="/boom.gif"></img>
+                <img class="loading" src="/images/boom.gif"></img>
                 <p class="loading">Generating your image...</p>
             </div>
         </div>
@@ -1157,153 +1233,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Lightbox Modal -->
-    <div id="lightboxModal" class="lightbox-modal">
-        <!-- Top left toggle button for base image -->
-        <button type="button" id="toggleBaseImageBtn" class="lightbox-toggle-btn" style="display:none;">
-            <i class="fas fa-exchange-alt"></i> <span>Show Base</span>
-        </button>
-        
-        <!-- Close button overlay -->
-        <button type="button" id="lightboxCloseBtn" class="lightbox-close-btn">
-            <i class="nai-thin-cross"></i>
-        </button>
-        
-        <div class="lightbox-container">
-            <!-- Main content area with image and prompt panel side by side -->
-            <div class="lightbox-main-content">
-                <!-- Image and Controls Section -->
-                <div class="lightbox-image-section">
-                    <div class="lightbox-image-container">
-                        <img id="lightboxImage" src="" alt="Generated Image">
-                    </div>
-                    
-                    <!-- Controls Section -->
-                    <div class="lightbox-controls-section">
-                        <div class="lightbox-controls">
-                            <button type="button" id="lightboxDownloadBtn" class="btn-secondary round-button">
-                                <i class="fas fa-download"></i>
-                            </button>
-                            <button type="button" id="lightboxUpscaleBtn" class="btn-secondary round-button" style="display:none;">
-                                <i class="nai-upscale"></i>
-                            </button>
-                            <button type="button" id="lightboxRerollBtn" class="btn-secondary round-button" style="display:none;">
-                                <i class="nai-dice"></i>
-                            </button>
-                            <button type="button" id="lightboxRerollEditBtn" class="btn-secondary round-button" style="display:none;">
-                                <i class="nai-settings"></i>
-                            </button>
-                            <button type="button" id="lightboxScrapBtn" class="btn-secondary round-button" style="display:none;">
-                                <i class="mdi mdi-1-5 mdi-archive"></i>
-                            </button> 
-                            <button type="button" id="lightboxPinBtn" class="btn-secondary round-button" style="display:none;">
-                                <i class="fa-regular fa-star"></i>
-                            </button>
-                            <button type="button" id="metadataBtn" class="btn-secondary metadata-btn-mobile round-button">
-                                <i class="fas fa-info-circle"></i>
-                            </button>
-                            <button type="button" id="lightboxDeleteBtn" class="btn-danger round-button" style="display:none;">
-                                <i class="nai-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Prompt Panel (Right Side) -->
-                <div id="promptPanel" class="prompt-panel hidden">
-                    <div class="prompt-panel-content">
-                        <div id="allPromptsContent" class="character-prompts-list">
-                            <!-- All prompts will be populated here -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Metadata Section -->
-            <div class="lightbox-metadata-section">
-                <div class="metadata-table-container">
-                    <div class="metadata-grid">
-                        <!-- Row 1: Type, Name, Model, Resolution -->
-                        <div class="metadata-row">
-                            <div class="metadata-cell metadata-small">
-                                <span class="metadata-label">Type</span>
-                                <span id="metadataType" class="metadata-value">-</span>
-                            </div>
-                            <div class="metadata-cell metadata-small">
-                                <span class="metadata-label">Name</span>
-                                <span id="metadataName" class="metadata-value">-</span>
-                            </div>
-                            <div class="metadata-cell">
-                                <span class="metadata-label">Model</span>
-                                <div class="metadata-model-content">
-                                    <span id="metadataModel" class="metadata-value">-</span>
-                                    <div class="metadata-buttons">
-                                        <button type="button" id="promptBtn" class="metadata-btn">Prompts</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Row 2: Steps, Guidance, Seed 1, Seed 2, Sampler, Rescale, Noise Schedule -->
-                        <div class="metadata-row">
-                            <div class="metadata-cell metadata-small">
-                                <span class="metadata-label">Resolution</span>
-                                <span id="metadataResolution" class="metadata-value">-</span>
-                            </div>
-                            
-                            <div class="metadata-cell metadata-small">
-                                <span class="metadata-label">Seed 1</span>
-                                <span id="metadataSeed1" class="metadata-value">-</span>
-                            </div>
-                            <div class="metadata-cell metadata-small">
-                                <span class="metadata-label">Seed 2</span>
-                                <span id="metadataSeed2" class="metadata-value">-</span>
-                            </div>
-                            <div class="metadata-cell metadata-very-small">
-                                <span class="metadata-label">Steps</span>
-                                <span id="metadataSteps" class="metadata-value">-</span>
-                            </div>
-                            <div class="metadata-cell metadata-very-small">
-                                <span class="metadata-label">Guidance</span>
-                                <span id="metadataGuidance" class="metadata-value">-</span>
-                            </div>
-                            <div class="metadata-cell">
-                                <span class="metadata-label">Rescale</span>
-                                <span id="metadataRescale" class="metadata-value">-</span>
-                            </div>
-                            <div class="metadata-cell">
-                                <span class="metadata-label">Sampler</span>
-                                <span id="metadataSampler" class="metadata-value">-</span>
-                            </div>
-                            <div class="metadata-cell">
-                                <span class="metadata-label">Noise Schedule</span>
-                                <span id="metadataNoiseSchedule" class="metadata-value">-</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Expandable prompt/UC sections -->
-                    <div id="promptExpanded" class="metadata-expanded" style="display: none;">
-                        <div class="metadata-expanded-header">
-                            <span>Prompt</span>
-                            <button type="button" class="close-expanded">&times;</button>
-                        </div>
-                        <div id="promptContent" class="metadata-expanded-content"></div>
-                    </div>
-                    
-                    <div id="ucExpanded" class="metadata-expanded" style="display: none;">
-                        <div class="metadata-expanded-header">
-                            <span>Undesired Content</span>
-                            <button type="button" class="close-expanded">&times;</button>
-                        </div>
-                        <div id="ucContent" class="metadata-expanded-content"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Metadata Dialog (Mobile Only) -->
     <div id="metadataDialog" class="metadata-dialog">
         <div class="metadata-dialog-content">
@@ -1705,7 +1634,7 @@
                             <!-- Reference images will be loaded here -->
                         </div>
                         <div class="cache-manager-loading" id="cacheManagerLoading" style="display: none;">
-                            <img class="loading" src="/azuspin.gif"></img>
+                            <img class="loading" src="/images/azuspin.gif"></img>
                             <p class="loading">Loading cache images...</p>
                         </div>
                     </div>
@@ -1718,7 +1647,7 @@
     <div id="unifiedUploadModal" class="modal" style="display: none;">
         <div class="modal-content gallery-move-modal-content">
             <div class="gallery-move-left-panel">
-                <img id="unifiedUploadBackgroundImage" src="/background.jpg" alt="Upload image" class="gallery-move-background-image">
+                <img id="unifiedUploadBackgroundImage" src="/images/background.jpg" alt="Upload image" class="gallery-move-background-image">
                 <h3 id="unifiedUploadModalTitle" class="gallery-move-left-header"><i class="nai-import"></i> Import File</h3>
                 <div class="gallery-move-overlay">
                     <div class="gallery-move-image-info-overlay hidden">
@@ -1871,7 +1800,7 @@
     <div id="cacheManagerMoveModal" class="modal" style="display: none;">
         <div class="modal-content gallery-move-modal-content">
             <div class="gallery-move-left-panel">
-                <img id="cacheManagerMoveBackgroundImage" src="/background.jpg" alt="Reference image" class="gallery-move-background-image">
+                <img id="cacheManagerMoveBackgroundImage" src="/images/background.jpg" alt="Reference image" class="gallery-move-background-image">
                 <div class="gallery-move-left-header">
                     <h3><i class="mdi mdi-1-5 mdi-folder-move"></i> Move Reference</h3>
                 </div>
@@ -1918,7 +1847,7 @@
     <div id="vibeEncodingModal" class="modal" style="display: none;">
         <div class="modal-content gallery-move-modal-content">
             <div class="gallery-move-left-panel">
-                <img id="vibeEncodingBackgroundImage" src="/background.jpg" alt="Vibe encoding image" class="gallery-move-background-image">
+                <img id="vibeEncodingBackgroundImage" src="/images/background.jpg" alt="Vibe encoding image" class="gallery-move-background-image">
                 <div class="gallery-move-left-header">
                     <h3 id="vibeEncodingModalTitle"><i class="mdi mdi-data-matrix-scan"></i> Vibe Encoding</h3>
                 </div>
@@ -2050,8 +1979,6 @@
         </div>
     </div>
 
-
-
     <!-- Bulk Change Preset Modal -->
     <div id="bulkChangePresetModal" class="modal" style="display: none;">
         <div class="modal-content">
@@ -2078,26 +2005,11 @@
         </div>
     </div>
 
-    <!-- Image Preview Modal -->
-    <div id="imagePreviewModal" class="image-preview-modal">
-        <!-- Close button overlay -->
-        <button type="button" id="imagePreviewCloseBtn" class="image-preview-close-btn">
-            <i class="nai-thin-cross"></i>
-        </button>
-        
-        <div class="image-preview-container">
-            <div class="image-preview-image-container">
-                <img id="imagePreviewImage" src="" alt="Preview Image">
-            </div>
-        </div>
-    </div>
-
     <!-- PIN Re-authentication Modal -->
     <div id="pinModal" class="alert-theme modal" style="display: none;">
         <div class="modal-content center" style="width: auto;">
             <div class="modal-header">
                 <h2>Authentication</h2>
-                <button type="button" id="closePinModalBtn" class="btn-secondary btn-small" aria-label="Close"><i class="nai-cross"></i></button>
             </div>
             <div class="modal-body">
                 <p>Enter your PIN to continue.</p>
@@ -2138,9 +2050,6 @@
                         </div>
                     </div>
                 <div id="pinModalError" class="form-text" style="color: var(--danger-color); display: none;"></div>
-                <div class="modal-actions btn-group" style="margin-top:1em;">
-                    <button type="button" id="pinModalCancelBtn" class="btn-secondary">Cancel</button>
-                </div>
             </div>
         </div>
     </div>
@@ -2178,6 +2087,7 @@
     <script src="scripts/comp/promptTextareaToolbar.js"></script>
     <script src="scripts/comp/galleryView.js"></script>
     <script src="scripts/comp/fileSearch.js"></script>
+    <script src="scripts/comp/cacheManager.js"></script>
     <script src="scripts/app.js"></script>
 </body>
 </html> 

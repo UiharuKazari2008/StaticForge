@@ -1458,7 +1458,7 @@ class PromptTextareaToolbar {
 }
 
 // Initialize the toolbar manager when the DOM is ready
-window.wsClient.registerInitStep(91, 'Initializing Prompt Toolbar', async () => {
+window.wsClient.registerInitStep(37, 'Initializing Prompt Toolbar', async () => {
     window.promptTextareaToolbar = new PromptTextareaToolbar();
     
     // Expose reset method globally for other components to use

@@ -1,3 +1,81 @@
+// Banner Manager for WebSocket Status and Updates
+class BannerManager {
+    constructor() {
+        this.websocketBanner = document.getElementById('websocketStatusBanner');
+        this.updateBanner = document.getElementById('updateBanner');
+        this.websocketBannerClose = this.websocketBanner?.querySelector('.status-banner-close');
+        
+        this.init();
+    }
+    
+    init() {
+        if (this.websocketBannerClose) {
+            this.websocketBannerClose.addEventListener('click', () => {
+                this.hideWebSocketBanner();
+            });
+        }
+    }
+    
+    showWebSocketBanner(status, message, icon, autoHide = false, hideDelay = 3000) {
+        if (!this.websocketBanner) return;
+        
+        // Remove all status classes and add toast styling
+        this.websocketBanner.classList.remove('status-connecting', 'status-connected', 'status-warning', 'status-error');
+        this.websocketBanner.classList.remove('glass-toast-success', 'glass-toast-error', 'glass-toast-warning', 'glass-toast-info');
+        
+        // Add appropriate toast class for styling
+        switch (status) {
+            case 'connecting':
+                this.websocketBanner.classList.add('glass-toast-info');
+                break;
+            case 'connected':
+                this.websocketBanner.classList.add('glass-toast-success');
+                break;
+            case 'warning':
+                this.websocketBanner.classList.add('glass-toast-warning');
+                break;
+            case 'error':
+                this.websocketBanner.classList.add('glass-toast-error');
+                break;
+        }
+        
+        // Update content
+        const iconEl = this.websocketBanner.querySelector('.status-banner-icon');
+        const textEl = this.websocketBanner.querySelector('.status-banner-text');
+        
+        if (iconEl) iconEl.innerHTML = icon;
+        if (textEl) textEl.textContent = message;
+        
+        // Show banner with animation
+        this.websocketBanner.classList.remove('hidden', 'hide');
+        this.websocketBanner.classList.add('show');
+        
+        // Auto-hide if specified
+        if (autoHide) {
+            setTimeout(() => {
+                this.hideWebSocketBanner();
+            }, hideDelay);
+        }
+    }
+    
+    hideWebSocketBanner() {
+        if (!this.websocketBanner) return;
+        
+        this.websocketBanner.classList.remove('show');
+        this.websocketBanner.classList.add('hide');
+        
+        // Hide completely after animation
+        setTimeout(() => {
+            this.websocketBanner.classList.add('hidden');
+            this.websocketBanner.classList.remove('hide');
+        }, 500);
+    }
+    
+    updateWebSocketBanner(status, message, icon) {
+        this.showWebSocketBanner(status, message, icon);
+    }
+}
+
 // WebSocket Client with Auto-Reconnection and Glass Toast
 class WebSocketClient {
     constructor() {
@@ -24,6 +102,9 @@ class WebSocketClient {
         this.pendingRequestsSpinner = null;
         this.pendingRequestsBadge = null;
         
+        // Banner manager for status updates
+        this.bannerManager = new BannerManager();
+        
         // Bind methods
         this.connect = this.connect.bind(this);
         this.disconnect = this.disconnect.bind(this);
@@ -34,12 +115,45 @@ class WebSocketClient {
         this.init();
     }
 
+    // Ping host over HTTP before attempting WebSocket connection
+    async pingHost() {
+        const maxPingAttempts = 15;
+        const pingInterval = 1000; // 1 second between attempts
+        
+        for (let attempt = 1; attempt <= maxPingAttempts; attempt++) {
+            try {
+                this.updateLoadingProgress(`Checking Connection (${attempt}/${maxPingAttempts})...`, 5 + (attempt * 2));
+                
+                // Try to fetch a simple endpoint to ping the host
+                const response = await fetch('/', {
+                    method: 'HEAD',
+                    cache: 'no-cache',
+                    signal: AbortSignal.timeout(5000) // 5 second timeout
+                });
+                
+                if (response.ok) {
+                    return true;
+                }
+            } catch (error) {
+                console.warn(`⚠️ Ping attempt ${attempt} failed:`, error.message);
+                
+                if (attempt < maxPingAttempts) {
+                    // Wait before next attempt
+                    await new Promise(resolve => setTimeout(resolve, pingInterval));
+                }
+            }
+        }
+        
+        // If all ping attempts failed, throw an error
+        throw new Error(`Host not responding after ${maxPingAttempts} attempts`);
+    }
+
     // Loading overlay methods
     showLoadingOverlay(message = 'Connecting...', progress = 0) {
         if (!this.loadingOverlay) {
             this.createLoadingOverlay();
         }
-        
+        document.body.classList.add('initializing');
         this.loadingOverlay.style.display = 'flex';
         this.updateLoadingProgress(message, progress);
     }
@@ -48,6 +162,7 @@ class WebSocketClient {
         if (this.loadingOverlay) {
             this.loadingOverlay.style.display = 'none';
         }
+        document.body.classList.remove('initializing');
     }
 
     updateLoadingProgress(message, progress) {
@@ -55,11 +170,9 @@ class WebSocketClient {
         
         const messageEl = this.loadingOverlay.querySelector('.loading-message');
         const progressBar = this.loadingOverlay.querySelector('.loading-progress-bar');
-        const progressText = this.loadingOverlay.querySelector('.loading-progress-text');
         
         if (messageEl) messageEl.textContent = message;
         if (progressBar) progressBar.style.width = `${progress}%`;
-        if (progressText) progressText.textContent = `${Math.round(progress)}%`;
     }
 
     createLoadingOverlay() {
@@ -67,14 +180,10 @@ class WebSocketClient {
         this.loadingOverlay.className = 'loading-overlay';
         this.loadingOverlay.innerHTML = `
             <div class="loading-content">
-                <div class="loading-spinner">
-                    <i class="fas fa-spinner fa-spin"></i>
-                </div>
                 <div class="loading-message">Connecting...</div>
                 <div class="loading-progress">
                     <div class="loading-progress-bar"></div>
                 </div>
-                <div class="loading-progress-text">0%</div>
             </div>
         `;
         document.body.appendChild(this.loadingOverlay);
@@ -136,6 +245,16 @@ class WebSocketClient {
         return this.executeInitSteps();
     }
 
+    // Get cache manifest from server
+    async getCacheManifest() {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        // Use the existing sendMessage pattern that the client already uses
+        return this.sendMessage('get_cache_manifest');
+    }
+
     async executeInitSteps() {
         // Prevent duplicate initialization on reconnection
         if (this.initializationCompleted) {
@@ -156,8 +275,10 @@ class WebSocketClient {
         try {
             for (const step of this.initSteps) {
                 this.currentInitStep++;
-                const progress = (this.currentInitStep / this.totalInitSteps) * 100;
-                this.updateLoadingProgress(step.message, progress);
+                // Calculate progress: 25% (initial steps) + 75% (registered steps)
+                // Each registered step gets a portion of the remaining 75%
+                const stepProgress = 25 + ((this.currentInitStep / this.totalInitSteps) * 75);
+                this.updateLoadingProgress(step.message, stepProgress);
                                 
                 try {
                     await step.stepFunction();
@@ -182,7 +303,8 @@ class WebSocketClient {
         }
     }
 
-    init() {
+    // Initialize the websocket client with proper sequence
+    async init() {
         // Show loading overlay immediately
         this.showLoadingOverlay('Initializing...', 0);
         
@@ -199,14 +321,12 @@ class WebSocketClient {
         // Handle page visibility changes
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && !this.ws) {
-                console.log('👁️ Page became visible, reconnecting if needed');
                 this.connect();
             }
         });
 
         // Handle beforeunload
         window.addEventListener('beforeunload', () => {
-            console.log('🚪 Page unloading, closing WebSocket');
             this.isManualClose = true;
             this.disconnect();
         });
@@ -214,28 +334,58 @@ class WebSocketClient {
         // Handle page focus events
         window.addEventListener('focus', () => {
             if (!this.isConnected() && !this.isConnecting) {
-                console.log('🎯 Page focused, attempting reconnection');
                 this.connect();
             }
         });
     }
 
-    connect() {
+    async connect() {
         if (this.isConnecting || this.ws?.readyState === WebSocket.OPEN) {
-            console.log('🔄 Connection already in progress or connected, skipping');
             return;
         }
 
-        console.log('🔌 Attempting WebSocket connection...');
         this.isConnecting = true;
-        this.updateLoadingProgress('Connecting to server...', 10);
+        this.updateLoadingProgress('Checking connection...', 0);
         
-        // Show connecting toast - use global websocket toast ID
-        if (typeof showGlassToast === 'function' && typeof window.websocketToastId === 'undefined') {
-            window.websocketToastId = showGlassToast('info', null, 'Connecting to server...', false, 5000, '<i class="fas fa-plug"></i>');
-        }
+        // Show connecting banner
+        this.bannerManager.showWebSocketBanner('connecting', 'Connecting...', '<i class="fas fa-signal"></i>');
 
         try {
+            // Step 1: First ping the host over HTTP to ensure it's responsive
+            try {
+                await this.pingHost();
+                this.updateLoadingProgress('Initializing components...', 15);
+            } catch (pingError) {
+                console.error('❌ Host availability check failed:', pingError.message);
+                this.isConnecting = false;
+                
+                // Show ping failure banner
+                this.bannerManager.showWebSocketBanner('error', 'Server not responding. Retrying...', '<i class="fas fa-exclamation-triangle"></i>');
+                
+                // Retry connection after a delay
+                setTimeout(() => {
+                    this.reconnect();
+                }, 3000);
+                return;
+            }
+            
+            // Step 2: Execute initialization steps 2/3 (service worker and asset downloading)
+            // before attempting WebSocket connection
+            if (!this.initializationCompleted) {
+                try {
+                    this.updateLoadingProgress('Initializing Application...', 20);
+                    
+                    // Execute steps 2 and 3 specifically
+                    await this.executeInitStepsBeforeWebSocket();
+                } catch (initError) {
+                    console.warn('⚠️ Component initialization failed, continuing with WebSocket connection:', initError.message);
+                    // Continue with WebSocket connection even if initialization fails
+                }
+            }
+            
+            // Step 3: Now attempt WebSocket connection
+            this.updateLoadingProgress('Connecting to Server...', 25);
+            
             // Determine WebSocket URL
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}`;
@@ -248,44 +398,24 @@ class WebSocketClient {
                 this.reconnectAttempts = 0;
                 this.reconnectDelay = 1000;
                 
-                this.updateLoadingProgress('Connected! Loading page...', 25);
-                
-                // Show connected toast - update existing toast
-                if (typeof showGlassToast === 'function' && typeof updateGlassToast === 'function') {
-                    try {
-                        if (window.websocketToastId) {
-                            window.websocketToastId = updateGlassToast(window.websocketToastId, 'success', null, 'Connected to server');
-                            // Remove after 3 seconds
-                            setTimeout(() => {
-                                if (typeof removeGlassToast === 'function' && window.websocketToastId) {
-                                    removeGlassToast(window.websocketToastId);
-                                    window.websocketToastId = null;
-                                }
-                            }, 3000);
-                        } else {
-                            window.websocketToastId = showGlassToast('success', null, 'Connected to server', false, 5000, '<i class="fas fa-plug"></i>');
-                            setTimeout(() => {
-                                if (typeof removeGlassToast === 'function' && window.websocketToastId) {
-                                    removeGlassToast(window.websocketToastId);
-                                    window.websocketToastId = null;
-                                }
-                            }, 3000);
-                        }
-                    } catch (error) {
-                        console.error('Error updating WebSocket toast:', error);
-                        // Reset toast ID if there was an error
-                        window.websocketToastId = null;
-                    }
-                }
+                // Show connected banner
+                this.bannerManager.showWebSocketBanner('connected', 'Connected to server', '<i class="fas fa-plug"></i>', true, 3000);
                 
                 // Trigger connection event
                 this.triggerEvent('connected');
                 
-                // Execute initialization steps only if not already completed
+                // Complete any remaining initialization steps
                 if (!this.initializationCompleted) {
                     this.executeInitSteps();
                 } else {
                     this.hideLoadingOverlay();
+                    
+                    // Check for updates on reconnection
+                    if (window.cacheManager) {
+                        window.cacheManager.checkForUpdatesOnReconnection().catch(error => {
+                            console.warn('⚠️ Update check on reconnection failed:', error.message);
+                        });
+                    }
                 }
             };
 
@@ -315,18 +445,7 @@ class WebSocketClient {
                 }
                 
                 if (!this.isManualClose) {
-                    if (typeof showGlassToast === 'function' && typeof updateGlassToast === 'function') {
-                        try {
-                            if (window.websocketToastId) {
-                                window.websocketToastId = updateGlassToast(window.websocketToastId, 'warning', null, 'Connection lost. Reconnecting...');
-                            } else {
-                                window.websocketToastId = showGlassToast('warning', null, 'Connection lost. Reconnecting...', false, 5000, '<i class="fas fa-sync-alt"></i>');
-                            }
-                        } catch (error) {
-                            console.error('Error updating WebSocket toast:', error);
-                            window.websocketToastId = null;
-                        }
-                    }
+                    this.bannerManager.showWebSocketBanner('warning', 'Connection lost. Reconnecting...', '<i class="fas fa-sync-alt"></i>');
                     this.reconnect();
                 }
                 
@@ -339,36 +458,81 @@ class WebSocketClient {
                 this.isConnecting = false;
                 
                 if (!this.isManualClose) {
-                    if (typeof showGlassToast === 'function' && typeof updateGlassToast === 'function') {
-                        try {
-                            if (window.websocketToastId) {
-                                window.websocketToastId = updateGlassToast(window.websocketToastId, 'error', null, 'Connection error. Retrying...');
-                            } else {
-                                window.websocketToastId = showGlassToast('error', null, 'Connection error. Retrying...', false);
-                            }
-                        } catch (error) {
-                            console.error('Error updating WebSocket toast:', error);
-                            window.websocketToastId = null;
-                        }
-                    }
+                    this.bannerManager.showWebSocketBanner('error', 'Connection error. Retrying...', '<i class="fas fa-exclamation-triangle"></i>');
                 }
             };
 
         } catch (error) {
             console.error('❌ Failed to create WebSocket connection:', error);
             this.isConnecting = false;
-            if (typeof showGlassToast === 'function' && typeof updateGlassToast === 'function') {
+            this.bannerManager.showWebSocketBanner('error', 'Failed to connect', '<i class="fas fa-times-circle"></i>');
+        }
+    }
+
+    // Execute initialization steps 2 and 3 before WebSocket connection
+    async executeInitStepsBeforeWebSocket() {
+        try {
+            // Step 2: Initialize Service Worker
+            if (window.cacheManager) {
+                const success = await window.cacheManager.initialize();
+                if (!success) {
+                    console.warn('⚠️ Cache Manager initialization failed, continuing without caching');
+                }
+            } else {
+                console.warn('⚠️ Cache Manager not available, skipping service worker initialization');
+            }
+            
+            // Step 3: Download and Cache Assets
+            if (window.cacheManager && window.cacheManager.isInitialized) {
                 try {
-                    if (window.websocketToastId) {
-                        window.websocketToastId = updateGlassToast(window.websocketToastId, 'error', null, 'Failed to connect');
+                    const response = await fetch('/app', { method: 'OPTIONS' });
+                    if (response.ok) {
+                        const data = await response.json();
+                        const serverAssets = data.cacheData || [];
+                        
+                        if (serverAssets.length > 0) {
+                            // Check for updates
+                            const updateInfo = await window.cacheManager.checkForUpdates(serverAssets);
+                            
+                            if (updateInfo.needsUpdate) {
+                                // Check for critical updates
+                                const criticalUpdates = [];
+                                const cachedAssetsMap = new Map();
+                                if (updateInfo.cachedAssets && updateInfo.cachedAssets.length > 0) {
+                                    updateInfo.cachedAssets.forEach(asset => cachedAssetsMap.set(asset.path, asset));
+                                }
+                                
+                                for (const asset of updateInfo.assets) {
+                                    const isCritical = asset.path.endsWith('.js') || asset.path.endsWith('.html');
+                                    
+                                    if (isCritical) {
+                                        const cachedAsset = cachedAssetsMap.get(asset.path);
+                                        const wasPreviouslyCached = cachedAsset && cachedAsset.md5;
+                                        
+                                        if (wasPreviouslyCached && wasPreviouslyCached !== asset.md5) {
+                                            criticalUpdates.push(asset);
+                                        }
+                                    }
+                                }
+
+                                const isInitialCache = !updateInfo.cachedAssets || updateInfo.cachedAssets.length === 0;
+                                const shouldAutoHide = isInitialCache;                                
+                                // Download assets with progress - only auto-hide for initial cache
+                                await window.cacheManager.showUpdateBannerWithProgress(updateInfo.assets, shouldAutoHide);
+                            }
+                        }
                     } else {
-                        window.websocketToastId = showGlassToast('error', null, 'Failed to connect', false, 5000, '<i class="fas fa-times-circle"></i>');
+                        console.warn('⚠️ Failed to get cache manifest via HTTP');
                     }
                 } catch (error) {
-                    console.error('Error updating WebSocket toast:', error);
-                    window.websocketToastId = null;
+                    console.error('❌ Error during asset download and caching:', error);
                 }
+            } else {
+                console.warn('⚠️ Cache Manager not initialized, skipping asset download');
             }
+            
+        } catch (error) {
+            console.error('❌ Error during pre-WebSocket initialization:', error);
         }
     }
 
@@ -390,18 +554,7 @@ class WebSocketClient {
     reconnect() {
         if (this.isManualClose || this.reconnectAttempts >= this.maxReconnectAttempts) {
             if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-                if (typeof showGlassToast === 'function' && typeof updateGlassToast === 'function') {
-                    try {
-                        if (window.websocketToastId) {
-                            window.websocketToastId = updateGlassToast(window.websocketToastId, 'error', null, 'Max reconnection attempts reached');
-                        } else {
-                            window.websocketToastId = showGlassToast('error', null, 'Max reconnection attempts reached', false, 5000, '<i class="fas fa-ban"></i>');
-                        }
-                    } catch (error) {
-                        console.error('Error updating WebSocket toast:', error);
-                        window.websocketToastId = null;
-                    }
-                }
+                this.bannerManager.showWebSocketBanner('error', 'Max reconnection attempts reached', '<i class="fas fa-ban"></i>');
             }
             return;
         }
@@ -533,6 +686,11 @@ class WebSocketClient {
                 this.handleGalleryResponse(message.data, message.requestId);
             }
             
+            // Special handling for cache reload responses to ensure they always trigger update checks
+            if (message.type === 'cache_reload_response') {
+                this.handleCacheReloadResponse(message);
+            }
+            
             return;
         }
         
@@ -560,17 +718,13 @@ class WebSocketClient {
         // Handle specific message types
         switch (message.type) {
             case 'connection':
-                if (message.status === 'connected') {
-                    console.log('✅ WebSocket connection confirmed');
-                }
                 break;
                 
             case 'error':
-                showGlassToast('error', null, 'WebSocket server error: ' + message.message, false);
+                this.bannerManager.showWebSocketBanner('error', 'WebSocket server error: ' + message.message, '<i class="fas fa-exclamation-triangle"></i>');
                 break;
                 
             case 'subscribed':
-                console.log('✅ Subscribed to channels:', message.channels);
                 break;
 
             case 'image_generated':
@@ -596,6 +750,11 @@ class WebSocketClient {
             case 'queue_update':
                 this.handleQueueUpdate(message.data);
                 break;
+
+            case 'SERVICE_WORKER_UPDATED':
+                // Trigger the event for other parts of the app to handle
+                this.triggerEvent('serviceWorkerUpdated', message);
+                break;
                 
             default:
                 // Handle custom message types
@@ -604,10 +763,8 @@ class WebSocketClient {
     }
 
     handleAuthError(message) {
-        // Show authentication error toast
-        if (typeof showGlassToast === 'function') {
-            showGlassToast('error', null, 'Authentication required. Please log in.', false, 5000, '<i class="fas fa-lock"></i>');
-        }
+        // Show authentication error banner
+        this.bannerManager.showWebSocketBanner('error', 'Authentication required. Please log in.', '<i class="fas fa-lock"></i>', false);
         
         // Trigger authentication event for other parts of the app to handle
         this.triggerEvent('authentication_required', message);
@@ -675,6 +832,18 @@ class WebSocketClient {
         if (typeof updateManualGenerateBtnState === 'function') {
             updateManualGenerateBtnState();
         }
+    }
+
+    handleCacheReloadResponse(message) {
+        // Always check for updates when cache reload response is received
+        if (window.cacheManager && window.cacheManager.isInitialized) {
+            window.cacheManager.checkForUpdatesOnReconnection().catch(error => {
+                console.warn('⚠️ Update check after cache reload response failed:', error.message);
+            });
+        }
+        
+        // Also trigger the event for any other listeners
+        this.triggerEvent('cache_reload_response', message);
     }
 
     // Method to request image generation via WebSocket
