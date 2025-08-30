@@ -109,10 +109,13 @@ class PinModal {
         this.clearPinError();
         
         try {
-            const response = await fetch('/login', {
+            const response = await fetch('/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pin: this.currentPin })
+                body: JSON.stringify({ 
+                    action: 'login',
+                    data: { pin: this.currentPin }
+                })
             });
             
             const data = await response.json();

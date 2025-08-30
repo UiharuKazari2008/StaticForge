@@ -66,6 +66,11 @@ class DatasetTagService {
             // If we're at the root level (empty path) and doing a wildcard search, 
             // include favorites as the first item
             if (path.length === 0 && searchQuery === '*') {
+                // Calculate actual total count of favorites
+                const tagFavorites = this.favoritesManager.getFavorites('tags');
+                const textReplacementFavorites = this.favoritesManager.getFavorites('textReplacements');
+                const totalFavorites = tagFavorites.length + textReplacementFavorites.length;
+                
                 results.push({
                     name: 'favorites',
                     prettyName: 'Favorites',
@@ -74,8 +79,40 @@ class DatasetTagService {
                     path: ['favorites'],
                     icon: 'fas fa-star',
                     isTagArray: false,
-                    itemCount: 2 // tags and textReplacements
+                    itemCount: totalFavorites
                 });
+
+                // Add All Text Replacements entry
+                try {
+                    const { loadPromptConfig } = require('./textReplacements');
+                    const promptConfig = loadPromptConfig();
+                    const allTextReplacements = promptConfig.text_replacements || {};
+                    const textReplacementCount = Object.keys(allTextReplacements).length;
+                    
+                    results.push({
+                        name: 'allTextReplacements',
+                        prettyName: 'Text Replacements',
+                        description: '',
+                        hasChildren: false,
+                        path: ['allTextReplacements'],
+                        icon: 'fas fa-language',
+                        isTagArray: true,
+                        itemCount: textReplacementCount
+                    });
+                } catch (error) {
+                    console.error('Error loading text replacements for quick access:', error);
+                    // Add entry with 0 count if there's an error
+                    results.push({
+                        name: 'allTextReplacements',
+                        prettyName: 'All Text Replacements',
+                        description: 'Browse all available text replacements',
+                        hasChildren: false,
+                        path: ['allTextReplacements'],
+                        icon: 'fas fa-language',
+                        isTagArray: true,
+                        itemCount: 0
+                    });
+                }
             }
 
             // Navigate to the current path in the hierarchy
@@ -198,6 +235,10 @@ class DatasetTagService {
 
             // If no subPath, return the categories (tags and textReplacements)
             if (subPath.length === 0) {
+                // Get actual counts for favorites
+                const tagFavorites = this.favoritesManager.getFavorites('tags');
+                const textReplacementFavorites = this.favoritesManager.getFavorites('textReplacements');
+                
                 return {
                     results: [
                         {
@@ -208,7 +249,7 @@ class DatasetTagService {
                             path: ['favorites', 'tags'],
                             icon: 'fas fa-tag',
                             isTagArray: true,
-                            itemCount: 0
+                            itemCount: tagFavorites.length
                         },
                         {
                             name: 'textReplacements',
@@ -216,9 +257,9 @@ class DatasetTagService {
                             description: '',
                             hasChildren: false,
                             path: ['favorites', 'textReplacements'],
-                            icon: 'fas fa-code',
+                            icon: 'fas fa-language',
                             isTagArray: true,
-                            itemCount: 0
+                            itemCount: textReplacementFavorites.length
                         }
                     ],
                     mainTags: []
@@ -318,6 +359,19 @@ class DatasetTagService {
                 });
             }
 
+            // Handle all text replacements path
+            if (path.length === 1 && path[0] === 'allTextReplacements') {
+                try {
+                    const { loadPromptConfig } = require('./textReplacements');
+                    const promptConfig = loadPromptConfig();
+                    const allTextReplacements = promptConfig.text_replacements || {};
+                    return Object.keys(allTextReplacements).map(key => `!${key}`);
+                } catch (error) {
+                    console.error('Error loading all text replacements:', error);
+                    return [];
+                }
+            }
+
             if (!this.datasetTagGroups) {
                 const loaded = await this.loadDatasetTagGroups();
                 if (!loaded) {
@@ -361,6 +415,11 @@ class DatasetTagService {
                     return true; // "favorites/tags" or "favorites/textReplacements"
                 }
                 return false;
+            }
+
+            // Handle all text replacements path
+            if (path.length === 1 && path[0] === 'allTextReplacements') {
+                return true; // "allTextReplacements"
             }
 
             if (!this.datasetTagGroups) {

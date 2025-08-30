@@ -76,6 +76,7 @@ function initializeCreateTextReplacementModal() {
 // Initialize text replacement manager
 function initializeTextReplacementManager() {
     const textReplacementManagerBtn = document.getElementById('textReplacementManagerBtn');
+    const manualTextReplacementManagerBtn = document.getElementById('manualTextReplacementManagerBtn');
     const closeTextReplacementManagerBtn = document.getElementById('closeTextReplacementManagerBtn');
     const textReplacementSearch = document.getElementById('textReplacementSearch');
     const textReplacementPrevBtn = document.getElementById('textReplacementPrevBtn');
@@ -84,6 +85,10 @@ function initializeTextReplacementManager() {
     // Event listeners
     if (textReplacementManagerBtn) {
         textReplacementManagerBtn.addEventListener('click', showTextReplacementManager);
+    }
+
+    if (manualTextReplacementManagerBtn) {
+        manualTextReplacementManagerBtn.addEventListener('click', showTextReplacementManager);
     }
     
     if (closeTextReplacementManagerBtn) {

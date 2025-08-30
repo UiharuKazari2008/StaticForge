@@ -1,0 +1,112 @@
+/* Block Container Styles - Reusable block effect system */
+
+/* Block container grid */
+.block-container {
+    display: grid;
+    grid-template-columns: repeat(var(--grid-col, 20), 1fr);
+    grid-template-rows: repeat(var(--grid-row, 20), 1fr);
+    z-index: -1;
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateZ(0px) translateX(-50%);
+    width: max(100vh, 100vw);
+    height: max(100vh, 100vw);
+    object-fit: cover;
+    aspect-ratio: 1 / 1;
+    will-change: background-position;
+    
+    /* Performance optimizations for high block counts */
+    contain: layout style paint;
+    transform-style: preserve-3d;
+    backface-visibility: hidden;
+}
+
+/* Individual blocks */
+.block {
+    animation: colorChange 7.5s infinite ease-in-out;
+    aspect-ratio: 1;
+    position: relative;
+    transition: opacity var(--transition-duration, 0.3s) cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: opacity;
+    opacity: var(--random-opacity, 0.15);
+    
+    /* Performance optimizations for high block counts */
+    contain: layout style paint;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+    
+    /* Hardware acceleration hints */
+    transform-style: preserve-3d;
+    -webkit-transform-style: preserve-3d;
+}
+
+/* Wave opacity effect classes */
+.block.wave-opaque {
+    opacity: 1 !important;
+    transition: opacity 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.block.wave-normal {
+    opacity: var(--random-opacity, 0.15);
+}
+
+/* Block state classes */
+.block.started-opaque {
+    opacity: 1;
+}
+
+.block.started-opaque.wave-opaque {
+    opacity: 1;
+}
+
+/* Ready state - blocks at 0 opacity */
+.block.ready-state {
+    opacity: 0 !important;
+    animation-play-state: paused; /* Pause color animation when not visible */
+}
+
+/* Fade to zero state - blocks transitioning to 0 opacity */
+.block.fade-to-zero {
+    opacity: 0 !important;
+    transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    animation-play-state: paused; /* Pause color animation during fade */
+}
+
+/* Block color animation */
+@keyframes colorChange {
+    0%, 9% {
+        background-color: #e75480; /* Darker Pink */
+    }
+    10%, 19% {
+        background-color: #ff914d; /* Darker Peach/Orange */
+    }
+    20%, 29% {
+        background-color: #ffe156; /* Darker Yellow */
+    }
+    30%, 39% {
+        background-color: #43e8d8; /* Darker Mint */
+    }
+    40%, 49% {
+        background-color: #43b97f; /* Darker Green */
+    }
+    50%, 59% {
+        background-color: #3a6ea5;
+    }
+    60%, 69% {
+        background-color: #6c4fbb;
+    }
+    70%, 79% {
+        background-color: #a259c6;
+    }
+    80%, 89% {
+        background-color: #e754a6;
+    }
+    90%, 99% {
+        background-color: #c94f7c;
+    }
+    100% {
+        background-color: #e75480; /* Darker Pink */
+    }
+}

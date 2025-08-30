@@ -1,0 +1,47 @@
+<svg width="152" height="152" viewBox="0 0 152 152" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:1" />
+        </linearGradient>
+        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="rgba(0,0,0,0.3)"/>
+        </filter>
+    </defs>
+    
+    <!-- Background circle -->
+    <circle cx="76" cy="76" r="65" fill="url(#grad)" filter="url(#shadow)"/>
+    
+    <!-- Image icon (simplified mdi-image-auto-adjust) -->
+    <g transform="translate(32.8, 32.8)" fill="white">
+        <!-- Main image rectangle -->
+        <rect x="0" y="0" width="86.4" height="64.8" rx="4.5" 
+              stroke="white" stroke-width="4.5" fill="none"/>
+        
+        <!-- Image content lines -->
+        <rect x="10.8" y="16.2" width="64.8" height="4.5" rx="2.25"/>
+        <rect x="10.8" y="27" width="43.2" height="4.5" rx="2.25"/>
+        <rect x="10.8" y="37.8" width="54" height="4.5" rx="2.25"/>
+        
+        <!-- Auto-adjust indicators -->
+        <circle cx="91.8" cy="21.6" r="8.64" fill="none" stroke="white" stroke-width="4.5"/>
+        <path d="M 86.4 21.6 L 97.2 21.6 M 91.8 16.2 L 91.8 27" 
+              stroke="white" stroke-width="4.5" stroke-linecap="round"/>
+        
+        <!-- Corner adjustment handles -->
+        <circle cx="10.8" cy="10.8" r="6.4799999999999995" fill="none" stroke="white" stroke-width="4.5"/>
+        <circle cx="97.2" cy="10.8" r="6.4799999999999995" fill="none" stroke="white" stroke-width="4.5"/>
+        <circle cx="10.8" cy="97.2" r="6.4799999999999995" fill="none" stroke="white" stroke-width="4.5"/>
+        <circle cx="97.2" cy="97.2" r="6.4799999999999995" fill="none" stroke="white" stroke-width="4.5"/>
+        
+        <!-- Adjustment arrows -->
+        <path d="M 5.4 10.8 L 16.2 10.8 M 10.8 5.4 L 10.8 16.2" 
+              stroke="white" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M 91.8 10.8 L 102.6 10.8 M 97.2 5.4 L 97.2 16.2" 
+              stroke="white" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M 5.4 97.2 L 16.2 97.2 M 10.8 91.8 L 10.8 102.6" 
+              stroke="white" stroke-width="4.5" stroke-linecap="round"/>
+        <path d="M 91.8 97.2 L 102.6 97.2 M 97.2 91.8 L 97.2 102.6" 
+              stroke="white" stroke-width="4.5" stroke-linecap="round"/>
+    </g>
+</svg>

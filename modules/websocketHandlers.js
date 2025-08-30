@@ -38,9 +38,9 @@ const {
     getWorkspacesData, 
     getActiveWorkspaceData
 } = require('./workspace');
-const { getCachedMetadata, getAllMetadata, getImagesMetadata, scanAndUpdateMetadata, removeImageMetadata, addUnattributedReceipt, getImageMetadata: getImageMetadataFromCache } = require('./metadataCache');
+const { getCachedMetadata, getAllMetadata, getImagesMetadata, scanAndUpdateMetadata, removeImageMetadata, addUnattributedReceipt, getImageMetadata } = require('./metadataDatabase');
 const { isImageLarge, matchOriginalResolution } = require('./imageTools');
-const { readMetadata, updateMetadata, getImageMetadata, extractRelevantFields, getModelDisplayName, extractMetadataSummary } = require('./pngMetadata');
+const { readMetadata, updateMetadata, extractRelevantFields, getModelDisplayName, extractMetadataSummary } = require('./pngMetadata');
 const { getStatus } = require('./queue');
 const imageCounter = require('./imageCounter');
 const { generateImageWebSocket } = require('./imageGeneration');
@@ -91,6 +91,7 @@ class WebSocketMessageHandlers {
         this.datasetTagService = new DatasetTagService();
         this.favoritesManager = new FavoritesManager();
         this.context = context;
+        
         // Initialize the service at startup
         this.initializeDatasetTagService();
     }
@@ -575,8 +576,12 @@ class WebSocketMessageHandlers {
                 await this.handleGetCacheManifest(ws, message, clientInfo, wsServer);
                 break;
                 
-            case 'reload_cache_data':
-                await this.handleReloadCacheData(ws, message, clientInfo, wsServer);
+            case 'refresh_server_cache':
+                await this.handleRefreshServerCache(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'broadcast_resource_update':
+                await this.handleBroadcastResourceUpdate(ws, message, clientInfo, wsServer);
                 break;
                 
             default:
@@ -1311,7 +1316,7 @@ class WebSocketMessageHandlers {
                     try {
                         // Try to extract metadata for the missing file
                         const imagesDir = path.join(process.cwd(), 'images');
-                        metadata = await getImageMetadataFromCache(file, imagesDir);
+                        metadata = await getImageMetadata(file, imagesDir);
                         if (!metadata) {
                             console.warn(`❌ Could not extract metadata for file: ${file}`);
                             continue;
@@ -1523,7 +1528,7 @@ class WebSocketMessageHandlers {
                 try {
                     // Try to extract metadata for the missing file
                     const imagesDir = path.join(process.cwd(), 'images');
-                    metadata = await getImageMetadataFromCache(file, imagesDir);
+                    metadata = await getImageMetadata(file, imagesDir);
                     if (!metadata) {
                         console.warn(`❌ Could not extract metadata for file: ${file}`);
                         continue;
@@ -7118,7 +7123,6 @@ class WebSocketMessageHandlers {
     // Helper method to get file metadata
     getFileMetadata(filename) {
         try {
-            const { getImagesMetadata } = require('./metadataCache');
             const allMetadata = getImagesMetadata();
             return allMetadata[filename] || null;
         } catch (error) {
@@ -7401,24 +7405,24 @@ class WebSocketMessageHandlers {
         }
     }
 
-    // Handle cache data reload requests
-    async handleReloadCacheData(ws, message, clientInfo, wsServer) {
+    // Handle server cache refresh requests
+    async handleRefreshServerCache(ws, message, clientInfo, wsServer) {
         try {
             // Check if user is admin (not readonly)
             if (clientInfo.userType !== 'admin') {
                 wsServer.sendToClient(ws, {
-                    type: 'cache_reload_response',
+                    type: 'refresh_server_cache_response',
                     requestId: message.requestId,
                     data: {
                         success: false,
-                        error: 'Admin access required to reload cache data'
+                        error: 'Admin access required to refresh server cache'
                     },
                     timestamp: new Date().toISOString()
                 });
                 return;
             }
 
-            console.log('🔄 Admin requested cache data reload via WebSocket...');
+            console.log('🔄 Admin requested server cache refresh via WebSocket...');
             
             // Get the reload function from context
             const reloadCacheData = this.context.reloadCacheData;
@@ -7432,14 +7436,14 @@ class WebSocketMessageHandlers {
             // Get updated cache data
             const globalCacheData = this.context.getGlobalCacheData ? this.context.getGlobalCacheData() : [];
             
-            console.log(`✅ Cache data reloaded successfully via WebSocket: ${globalCacheData.length} assets`);
+            console.log(`✅ Server cache refreshed successfully via WebSocket: ${globalCacheData.length} assets`);
             
             wsServer.sendToClient(ws, {
-                type: 'cache_reload_response',
+                type: 'refresh_server_cache_response',
                 requestId: message.requestId,
                 data: {
                     success: true,
-                    message: 'Cache data reloaded successfully',
+                    message: 'Server cache refreshed successfully',
                     assetsCount: globalCacheData.length,
                     timestamp: Date.now().valueOf(),
                     assets: globalCacheData
@@ -7448,13 +7452,70 @@ class WebSocketMessageHandlers {
             });
             
         } catch (error) {
-            console.error('❌ Cache reload error:', error);
+            console.error('❌ Server cache refresh error:', error);
             wsServer.sendToClient(ws, {
-                type: 'cache_reload_response',
+                type: 'refresh_server_cache_response',
                 requestId: message.requestId,
                 data: {
                     success: false,
-                    error: 'Failed to reload cache data',
+                    error: 'Failed to refresh server cache',
+                    details: error.message
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+    
+    // Handle broadcasting resource updates to all clients
+    async handleBroadcastResourceUpdate(ws, message, clientInfo, wsServer) {
+        try {
+            // Check if user is admin (not readonly)
+            if (clientInfo.userType !== 'admin') {
+                wsServer.sendToClient(ws, {
+                    type: 'error',
+                    message: 'Admin access required to broadcast resource updates',
+                    timestamp: new Date().toISOString()
+                });
+                return;
+            }
+
+            const { updateType, message: updateMessage, files } = message;
+            
+            console.log('🔄 Admin broadcasting resource update:', updateType, updateMessage);
+            
+            // Broadcast to all connected clients
+            wsServer.broadcastToAll({
+                type: 'resource_update_available',
+                data: {
+                    updateType: updateType || 'general',
+                    message: updateMessage || 'Resource updates are available',
+                    files: files || [],
+                    timestamp: Date.now().valueOf(),
+                    requiresRestart: true
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+            // Send confirmation to admin
+            wsServer.sendToClient(ws, {
+                type: 'broadcast_resource_update_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    message: 'Resource update broadcast sent to all clients',
+                    clientsNotified: wsServer.getConnectionCount()
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('❌ Error broadcasting resource update:', error);
+            wsServer.sendToClient(ws, {
+                type: 'broadcast_resource_update_response',
+                requestId: message.requestId,
+                data: {
+                    success: false,
+                    error: 'Failed to broadcast resource update',
                     details: error.message
                 },
                 timestamp: new Date().toISOString()

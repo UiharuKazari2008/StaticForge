@@ -104,6 +104,29 @@ const previewForegroundLines = document.getElementById('previewForegroundLines')
 
 let bypassConfirmation = false;
 
+// Global button handler registry
+const buttonHandlers = new Map();
+let nextButtonId = 1;
+
+// Global button click handler function
+function handleToastButtonClick(buttonId) {
+    const handler = buttonHandlers.get(buttonId);
+    if (handler) {
+        try {
+            handler.onClick(handler.toastId);
+            if (handler.closeOnClick !== false) {
+                removeGlassToast(handler.toastId);
+            }
+            // Clean up the handler after use
+            buttonHandlers.delete(buttonId);
+        } catch (error) {
+            console.error('Error in button click handler:', error);
+        }
+    } else {
+        console.error('Button handler not found for ID:', buttonId);
+    }
+}
+
 // Global background update state tracking
 const backgroundUpdateState = {
     isAnimating: false,
@@ -161,7 +184,6 @@ const manualPreviewPinBtn = document.getElementById('manualPreviewPinBtn');
 const manualPreviewScrapBtn = document.getElementById('manualPreviewScrapBtn');
 const datasetDropdown = document.getElementById('datasetDropdown');
 const datasetDropdownBtn = document.getElementById('datasetDropdownBtn');
-const toggleMenuBtn = document.getElementById('toggleMenuBtn');
 const datasetDropdownMenu = document.getElementById('datasetDropdownMenu');
 const datasetSelected = document.getElementById('datasetSelected');
 const datasetIcon = document.getElementById('datasetIcon');
@@ -179,7 +201,6 @@ let selectedUcPreset = 3;
 let presetAutocompleteTimeout = null;
 let currentPresetAutocompleteTarget = null;
 let selectedPresetAutocompleteIndex = -1;
-const logoutButton = document.getElementById('logoutButton');
 const addCharacterBtn = document.getElementById('addCharacterBtn');
 const characterPromptsContainer = document.getElementById('characterPromptsContainer');
 const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
@@ -190,14 +211,152 @@ const sproutSeedBtn = document.getElementById('sproutSeedBtn');
 
 let generationAnimationActive = false;
 
-// Manual preview zoom and pan functionality
-let manualPreviewZoom = 1;
-let manualPreviewPanX = 0;
-let manualPreviewPanY = 0;
-let isManualPreviewDragging = false;
-let lastManualPreviewMouseX = 0;
-let lastManualPreviewMouseY = 0;
-let lastManualPreviewTouchDistance = 0;
+// Manual block container for wave animation
+let manualBlockContainer = null;
+
+window.currentManualPreviewImage = null;
+window.currentManualPreviewIndex = null;
+
+// Initialize manual block container for wave animation
+function initializeManualBlockContainer() {
+    if (manualBlockContainer) return; // Already initialized
+    
+    const container = document.getElementById('manualBlockContainer');
+    if (!container) {
+        console.warn('Manual block container not found');
+        return;
+    }
+    
+    try {
+        // Get current image dimensions from preview image if available
+        let width, height;
+        
+        const manualPreviewImage = document.getElementById('manualPreviewImage');
+        if (manualPreviewImage && manualPreviewImage.style.display !== 'none' && manualPreviewImage.src && manualPreviewImage.src !== '') {
+            // Use computed style of the preview image to get actual displayed dimensions
+            const computedStyle = getComputedStyle(manualPreviewImage);
+            width = parseInt(computedStyle.width.replace('px', '')) || 0;
+            height = parseInt(computedStyle.height.replace('px', '')) || 0;
+        }
+        
+        // Fall back to resolution preset if no preview image
+        if (!width || !height) {
+            if (manualSelectedResolution && manualSelectedResolution !== 'custom') {
+                // Use the selected resolution preset
+                const dimensions = getDimensionsFromResolution(manualSelectedResolution);
+                if (dimensions) {
+                    width = dimensions.width;
+                    height = dimensions.height;
+                }
+            }
+        }
+        
+        // Final fallback to manual input values
+        if (!width || !height) {
+            width = parseInt(manualWidth.value) || 1024;
+            height = parseInt(manualHeight.value) || 1024;
+        }
+        
+        // Calculate optimal grid dimensions to get closest to 400 blocks without going over
+        const aspectRatio = width / height;
+        let initialRow, initialCol;
+        
+        // Target: 400 blocks (30x30)
+        const targetBlocks = 400;
+        
+        if (Math.abs(aspectRatio - 1) < 0.1) {
+            // Square: calculate dimensions to get closest to 400 blocks
+            const dimension = Math.floor(Math.sqrt(targetBlocks));
+            initialRow = dimension;
+            initialCol = dimension;
+        } else if (aspectRatio > 1) {
+            // Landscape: width > height
+            // Calculate optimal dimensions maintaining aspect ratio
+            const maxCol = Math.floor(Math.sqrt(targetBlocks / aspectRatio));
+            const maxRow = Math.floor(maxCol * aspectRatio);
+            
+            // Ensure we don't go over target blocks
+            if (maxRow * maxCol > targetBlocks) {
+                initialRow = Math.floor(Math.sqrt(targetBlocks * aspectRatio));
+                initialCol = Math.floor(targetBlocks / initialRow);
+            } else {
+                initialRow = maxRow;
+                initialCol = maxCol;
+            }
+        } else {
+            // Portrait: height > width
+            // Calculate optimal dimensions maintaining aspect ratio
+            const maxRow = Math.floor(Math.sqrt(targetBlocks * aspectRatio));
+            const maxCol = Math.floor(maxRow / aspectRatio);
+            
+            // Ensure we don't go over target blocks
+            if (maxRow * maxCol > targetBlocks) {
+                initialCol = Math.floor(Math.sqrt(targetBlocks / aspectRatio));
+                initialRow = Math.floor(targetBlocks / initialCol);
+            } else {
+                initialRow = maxRow;
+                initialCol = maxCol;
+            }
+        }
+        
+        // Ensure minimum dimensions
+        initialRow = Math.max(initialRow, 5);
+        initialCol = Math.max(initialCol, 5);
+        
+        manualBlockContainer = new BlockContainer('#manualBlockContainer', {
+            row: initialRow,
+            col: initialCol,
+            opacityRange: [0.05, 0.3],
+            waveDelay: 30
+        });
+        
+        // Initialize the container
+        manualBlockContainer.init('ready');
+    } catch (error) {
+        console.error('Failed to initialize manual block container:', error);
+    }
+}
+
+// Update manual block grid when starting generation
+function updateManualBlockGrid() {
+    if (!manualBlockContainer) return;
+    
+    try {
+        // Get current image dimensions from preview image if available
+        let width, height;
+        
+        const manualPreviewImage = document.getElementById('manualPreviewImage');
+        if (manualPreviewImage && manualPreviewImage.style.display !== 'none' && manualPreviewImage.src && manualPreviewImage.src !== '') {
+            // Use computed style of the preview image to get actual displayed dimensions
+            const computedStyle = getComputedStyle(manualPreviewImage);
+            width = parseInt(computedStyle.width.replace('px', '')) || 0;
+            height = parseInt(computedStyle.height.replace('px', '')) || 0;
+        }
+        
+        // Fall back to resolution preset if no preview image
+        if (!width || !height) {
+            if (manualSelectedResolution && manualSelectedResolution !== 'custom') {
+                // Use the selected resolution preset
+                const dimensions = getDimensionsFromResolution(manualSelectedResolution);
+                if (dimensions) {
+                    width = dimensions.width;
+                    height = dimensions.height;
+                }
+            }
+        }
+        
+        // Final fallback to manual input values
+        if (!width || !height) {
+            width = parseInt(manualWidth.value) || 1024;
+            height = parseInt(manualHeight.value) || 1024;
+        }
+        
+        // Update the block grid dimensions based on the resolution
+        manualBlockContainer.updateGridDimensions(width, height);
+    } catch (error) {
+        console.error('Failed to update manual block grid:', error);
+    }
+}
 
 // Event listener management for manual preview
 let manualPreviewEventListenersRegistered = false;
@@ -210,22 +369,13 @@ function registerManualPreviewEventListeners() {
 
     if (!imageContainer || !image) return;
 
-    // Mouse wheel zoom
-    imageContainer.addEventListener('wheel', handleManualPreviewWheelZoom, { passive: false });
-
-    // Mouse drag pan
-    imageContainer.addEventListener('mousedown', handleManualPreviewMouseDown);
-    imageContainer.addEventListener('mousemove', handleManualPreviewMouseMove);
-    imageContainer.addEventListener('mouseup', handleManualPreviewMouseUp);
-    imageContainer.addEventListener('mouseleave', handleManualPreviewMouseUp);
-
-    // Touch zoom and pan
-    imageContainer.addEventListener('touchstart', handleManualPreviewTouchStart, { passive: false });
-    imageContainer.addEventListener('touchmove', handleManualPreviewTouchMove, { passive: false });
-    imageContainer.addEventListener('touchend', handleManualPreviewTouchEnd);
-
-    // Double click to reset zoom
-    imageContainer.addEventListener('dblclick', resetManualPreviewZoom);
+    // Remove zoom and pan functionality - replace with lightbox functionality
+    
+    // Click to open lightbox
+    imageContainer.addEventListener('click', handleManualPreviewClick);
+    
+    // Scroll up to open lightbox
+    imageContainer.addEventListener('wheel', handleManualPreviewScroll, { passive: false });
     
     manualPreviewEventListenersRegistered = true;
 }
@@ -239,15 +389,8 @@ function deregisterManualPreviewEventListeners() {
     if (!imageContainer || !image) return;
 
     // Remove all event listeners
-    imageContainer.removeEventListener('wheel', handleManualPreviewWheelZoom);
-    imageContainer.removeEventListener('mousedown', handleManualPreviewMouseDown);
-    imageContainer.removeEventListener('mousemove', handleManualPreviewMouseMove);
-    imageContainer.removeEventListener('mouseup', handleManualPreviewMouseUp);
-    imageContainer.removeEventListener('mouseleave', handleManualPreviewMouseUp);
-    imageContainer.removeEventListener('touchstart', handleManualPreviewTouchStart);
-    imageContainer.removeEventListener('touchmove', handleManualPreviewTouchMove);
-    imageContainer.removeEventListener('touchend', handleManualPreviewTouchEnd);
-    imageContainer.removeEventListener('dblclick', resetManualPreviewZoom);
+    imageContainer.removeEventListener('click', handleManualPreviewClick);
+    imageContainer.removeEventListener('wheel', handleManualPreviewScroll);
     
     manualPreviewEventListenersRegistered = false;
 }
@@ -857,39 +1000,46 @@ async function generateFromPreset(presetName) {
 
         console.log('📋 Generation result:', { result, filename, seed });
 
-        // Hide the generating toast first
-        if (toastId) {
-            removeGlassToast(toastId);
-        }
+        // Update the existing toast to show completion
+        updateGlassToastComplete(toastId, {
+            type: 'success',
+            title: 'Image Generated',
+            message: 'Image generated successfully and added to gallery',
+            customIcon: '<i class="nai-check"></i>'
+        });
+        
         createConfetti();
         await loadGallery(true);
         
-        // Find the generated image in the gallery
-        const found = allImages.find(img => img.original === filename || img.upscaled === filename);
-        if (found) {
-            // Construct proper image object with filename property
-            const imageToShow = {
-                filename: filename,
-                base: found.base,
-                original: found.original,
-                upscaled: found.upscaled
-            };
-            showLightbox(imageToShow);
-        } else {
-            showGlassToast('info', 'Image Generated', 'Image generated successfully and added to gallery');
+        if (manualModal.style.display !== 'none') {
+            // Find the generated image in the gallery
+            const found = allImages.find(img => img.original === filename || img.upscaled === filename);
+            if (found) {
+                // Construct proper image object with filename property
+                const imageToShow = {
+                    filename: filename,
+                    base: found.base,
+                    original: found.original,
+                    upscaled: found.upscaled
+                };
+                showLightbox(imageToShow);
+            }
         }
 
     } catch (error) {
         console.error('Generation error:', error);
-        showGlassToast('error', 'Generation Failed', error.message);
+        // Update the existing toast to show error
+        updateGlassToastComplete(toastId, {
+            type: 'error',
+            title: 'Generation Failed',
+            message: error.message,
+            customIcon: '<i class="nai-cross"></i>'
+        });
     } finally {
         // Reset generating state
         isGenerating = false;
         
         // Clear progress and loading states
-        if (toastId) {
-            removeGlassToast(toastId);
-        }
         if (progressInterval) {
             clearInterval(progressInterval);
         }
@@ -1732,9 +1882,9 @@ async function loadTempImagePreview(previewUrl, imageData) {
             previewSeedBtn.style.display = '';
         }
         
-        // Initialize zoom functionality for the temp image preview
+        // Initialize lightbox functionality for the temp image preview
         setTimeout(() => {
-            initializeManualPreviewZoom();
+            initializeManualPreviewLightbox();
         }, 1000);
         
     } catch (error) {
@@ -1772,7 +1922,7 @@ async function updateCustomResolutionValue() {
                 await cropImageToResolution();
 
                 // Re-render the dropdown options to reflect new resolution and reset bias
-                renderImageBiasDropdown(resetBias.toString());
+                await renderImageBiasDropdown(resetBias.toString());
             }
             updateImageBiasOrientation();
         }
@@ -2303,7 +2453,7 @@ async function moveToScraps(image) {
 
 // Move manual preview image to scraps and advance to next image
 async function moveManualPreviewToScraps() {
-    if (!currentManualPreviewImage) {
+    if (!window.currentManualPreviewImage) {
         showError('No image to move to scraps');
         return;
     }
@@ -2312,7 +2462,7 @@ async function moveManualPreviewToScraps() {
         // Show navigation loading overlay
         showManualPreviewNavigationLoading(true);
         
-        const filename = currentManualPreviewImage.filename || currentManualPreviewImage.original || currentManualPreviewImage.upscaled;
+        const filename = window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
         if (!filename) {
             showError('No filename available for this image');
             showManualPreviewNavigationLoading(false);
@@ -3212,11 +3362,6 @@ function updatePromptStatusIcons() {
 function setupEventListeners() {
     // Load saved blur preference
     loadBlurPreference();
-    // Logout button
-    logoutButton.addEventListener('click', (e) => {
-        e.preventDefault();
-        handleLogout();
-    });
 
     // Generate button hover popover
     if (manualGenerateBtn) {
@@ -3225,12 +3370,12 @@ function setupEventListeners() {
         //manualGenerateBtn.addEventListener('click', handleManualGeneration);
     }
 
-    // Logo click to toggle blur state
+    // Logo click to show options popup
     const logoElement = document.querySelector('.menu-logo');
     if (logoElement) {
-        logoElement.addEventListener('click', toggleBlurState);
+        logoElement.addEventListener('click', showLogoOptionsPopup);
         logoElement.style.cursor = 'pointer';
-        logoElement.title = 'Click to toggle blur effects';
+        logoElement.title = 'Click to show options';
     }
 
     // Manual modal events
@@ -3287,9 +3432,9 @@ function setupEventListeners() {
     });
 
     manualForm.addEventListener('submit', (e) => {
+            e.preventDefault();
         // Prevent form submission if it was triggered by Enter key in preset name input
         if (document.activeElement === manualPresetName) {
-            e.preventDefault();
             return;
         }
         handleManualGeneration(e);
@@ -3312,8 +3457,8 @@ function setupEventListeners() {
 
     manualPreviewUpscaleBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        if (currentManualPreviewImage) {
-            upscaleImage(currentManualPreviewImage, e);
+        if (window.currentManualPreviewImage) {
+            upscaleImage(window.currentManualPreviewImage, e);
         } else {
             showGlassToast('error', 'Upscale Failed', 'No image available');
         }
@@ -3321,11 +3466,11 @@ function setupEventListeners() {
 
     manualPreviewLoadBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        if (currentManualPreviewImage) {
+        if (window.currentManualPreviewImage) {
             if (window.innerWidth <= 1400 && manualModal.classList.contains('show-preview')) {
                 hideManualPreviewResponsive();
             }
-            rerollImageWithEdit(currentManualPreviewImage);
+            rerollImageWithEdit(window.currentManualPreviewImage);
         } else {
             showGlassToast('error', 'Load Failed', 'No image available');
         }
@@ -3333,9 +3478,9 @@ function setupEventListeners() {
 
     manualPreviewVariationBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        if (currentManualPreviewImage) {
+        if (window.currentManualPreviewImage) {
             // For preview, only set the base image without replacing dialog contents
-            const filename = currentManualPreviewImage.original;
+            const filename = window.currentManualPreviewImage.original;
             if (filename) {
                 const source = `file:${filename}`;
                 const previewUrl = `/images/${filename}`;
@@ -3430,8 +3575,8 @@ function setupEventListeners() {
 
     manualPreviewPinBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        if (currentManualPreviewImage) {
-            togglePinImage(currentManualPreviewImage, manualPreviewPinBtn);
+        if (window.currentManualPreviewImage) {
+            togglePinImage(window.currentManualPreviewImage, manualPreviewPinBtn);
         } else {
             showGlassToast('error', 'Pin Failed', 'No image available');
         }
@@ -3439,20 +3584,15 @@ function setupEventListeners() {
 
     manualPreviewScrapBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        if (currentManualPreviewImage) {
+        if (window.currentManualPreviewImage) {
             if (currentGalleryView === 'scraps') {
-                removeFromScraps(currentManualPreviewImage);
+                removeFromScraps(window.currentManualPreviewImage);
             } else {
                 moveManualPreviewToScraps();
             }
         } else {
             showGlassToast('error', 'Load Failed', 'No image available');
         }
-    });
-
-    toggleMenuBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        toggleSubMenu();
     });
 
     // Search toggle button
@@ -3562,7 +3702,11 @@ function setupEventListeners() {
     // ESC key to close lightbox and modals
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
+            if (metadataDialog.style.display === 'flex') {
+                hideMetadataDialog();
+            } else if (logoOptionsModal.style.display === 'flex') {
+                hideLogoOptionsModal();
+            } else if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
                 // Check if we're showing character detail or autocomplete
                 const autocompleteList = document.querySelector('.character-autocomplete-list');
                 if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
@@ -3573,8 +3717,6 @@ function setupEventListeners() {
                     // We're showing autocomplete, hide it
                     hideCharacterAutocomplete();
                 }
-            } else if (metadataDialog.style.display === 'flex') {
-                hideMetadataDialog();
             }
         } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             // Handle arrow key navigation for character detail
@@ -4073,6 +4215,10 @@ function setupEventListeners() {
     if (galleryToggleGroup) {
         galleryToggleGroup.addEventListener('wheel', (e) => {
             e.preventDefault();
+            // Disable on mobile displays
+            if (window.innerWidth <= 768) {
+                return false;
+            }
             const delta = e.deltaY > 0 ? -1 : 1;
             const currentColumns = parseInt(galleryToggleGroup.dataset.columns) || 5;
             const newColumns = Math.max(3, Math.min(10, currentColumns + delta));
@@ -4088,6 +4234,10 @@ function setupEventListeners() {
     if (decreaseColumnsBtn) {
         decreaseColumnsBtn.addEventListener('click', (e) => {
             e.preventDefault();
+            // Disable on mobile displays
+            if (window.innerWidth <= 768) {
+                return false;
+            }
             const currentColumns = parseInt(galleryToggleGroup.dataset.columns) || 5;
             const newColumns = Math.max(3, currentColumns - 1);
             galleryToggleGroup.dataset.columns = newColumns;
@@ -4098,6 +4248,10 @@ function setupEventListeners() {
     if (increaseColumnsBtn) {
         increaseColumnsBtn.addEventListener('click', (e) => {
             e.preventDefault();
+            // Disable on mobile displays
+            if (window.innerWidth <= 768) {
+                return false;
+            }
             const currentColumns = parseInt(galleryToggleGroup.dataset.columns) || 5;
             const newColumns = Math.min(10, currentColumns + 1);
             galleryToggleGroup.dataset.columns = newColumns;
@@ -4329,8 +4483,6 @@ function setupEventListeners() {
             }
         }
     });
-    
-    window.showExitConfirmation = showExitConfirmation;
 
     // Function to force refresh the page (used when user confirms refresh)
     window.forceRefresh = () => {
@@ -4972,20 +5124,22 @@ async function rerollImage(image) {
             setTimeout(async () => {
                 await loadGallery(true);
 
-                // Find the newly generated image (should be the first one)
-                if (allImages.length > 0) {
-                    const newImage = allImages[0]; // Newest image is first
-                    let filenameToShow = newImage.original;
-                    if (newImage.upscaled) {
-                        filenameToShow = newImage.upscaled;
-                    }
+                if (manualModal.style.display !== 'none') {
+                    // Find the newly generated image (should be the first one)
+                    if (allImages.length > 0) {
+                        const newImage = allImages[0]; // Newest image is first
+                        let filenameToShow = newImage.original;
+                        if (newImage.upscaled) {
+                            filenameToShow = newImage.upscaled;
+                        }
 
-                    const imageToShow = {
-                        filename: filenameToShow,
-                        base: newImage.base,
-                        upscaled: newImage.upscaled
-                    };
-                    showLightbox(imageToShow);
+                        const imageToShow = {
+                            filename: filenameToShow,
+                            base: newImage.base,
+                            upscaled: newImage.upscaled
+                        };
+                        showLightbox(imageToShow);
+                    }
                 }
             }, 1000);
         };
@@ -4995,7 +5149,12 @@ async function rerollImage(image) {
         if (!isInModal) {
             clearInterval(progressInterval);
             updateGlassToastProgress(toastId, 100);
-            updateGlassToast(toastId, 'success', 'Reroll Complete', 'Image generated successfully!');
+            updateGlassToastComplete(toastId, {
+                type: 'success',
+                title: 'Reroll Complete',
+                message: 'Image generated successfully!',
+                customIcon: '<i class="nai-check"></i>'
+            });
             document.querySelectorAll('.manual-preview-image-container, #manualPanelSection').forEach(element => {
                 element.classList.remove('swapped');
             });
@@ -5007,7 +5166,12 @@ async function rerollImage(image) {
         console.error('Direct reroll error:', error);
         if (!isInModal) {
             clearInterval(progressInterval);
-            updateGlassToast(toastId, 'error', 'Reroll Failed', 'Image reroll failed: ' + error.message);
+            updateGlassToastComplete(toastId, {
+                type: 'error',
+                title: 'Reroll Failed',
+                message: 'Image reroll failed: ' + error.message,
+                customIcon: '<i class="nai-cross"></i>'
+            });
         } else {
             showError('Image reroll failed: ' + error.message);
         }
@@ -5025,6 +5189,15 @@ async function rerollImageWithEdit(image) {
         hideLightbox();
         
         openModal(manualModal);
+        
+        // Add initializing class to show loading state
+        manualModal.classList.add('initializing');
+        
+        // Show spinner overlay
+        const spinnerOverlay = manualModal.querySelector('.spinner-overlay');
+        if (spinnerOverlay) {
+            spinnerOverlay.style.display = '';
+        }
         
         if (!document.body.classList.contains('editor-open')) {
             document.body.classList.add('editor-open');
@@ -5116,9 +5289,25 @@ async function rerollImageWithEdit(image) {
         autoResizeTextareasAfterModalShow();
         manualPrompt.focus();
 
+        // Remove initializing class after all async processes are complete
+        manualModal.classList.remove('initializing');
+        
+        // Hide spinner overlay
+        if (spinnerOverlay) {
+            spinnerOverlay.style.display = 'none';
+        }
+
     } catch (error) {
         console.error('Reroll with edit error:', error);
         showError('Failed to load image metadata: ' + error.message);
+        // Remove initializing class on error as well
+        manualModal.classList.remove('initializing');
+        
+        // Hide spinner overlay on error as well
+        const spinnerOverlay = manualModal.querySelector('.spinner-overlay');
+        if (spinnerOverlay) {
+            spinnerOverlay.style.display = 'none';
+        }
     }
 }
 // Upscale an image
@@ -5177,7 +5366,12 @@ async function upscaleImage(image, event = null) {
                 if (!isInModal) {
                     clearInterval(progressInterval);
                     updateGlassToastProgress(toastId, 100);
-                    updateGlassToast(toastId, 'success', 'Upscale Complete', 'Image upscaled successfully!');
+                    updateGlassToastComplete(toastId, {
+                        type: 'success',
+                        title: 'Upscale Complete',
+                        message: 'Image upscaled successfully!',
+                        customIcon: '<i class="nai-check"></i>'
+                    });
                 } else {
                     showGlassToast('success', 'Upscale Complete', 'Image upscaled successfully!');
                 }
@@ -5213,7 +5407,12 @@ async function upscaleImage(image, event = null) {
             console.error('Upscaling error:', error);
             if (!isInModal) {
                 if (progressInterval) clearInterval(progressInterval);
-                updateGlassToast(toastId, 'error', 'Upscale Failed', 'Image upscaling failed. Please try again.');
+                updateGlassToastComplete(toastId, {
+                    type: 'error',
+                    title: 'Upscale Failed',
+                    message: 'Image upscaling failed. Please try again.',
+                    customIcon: '<i class="nai-cross"></i>'
+                });
             } else {
                 showError('Image upscaling failed. Please try again.');
             }
@@ -5223,7 +5422,12 @@ async function upscaleImage(image, event = null) {
         console.error('Upscaling error:', error);
         if (!isInModal) {
             if (progressInterval) clearInterval(progressInterval);
-            updateGlassToast(toastId, 'error', 'Upscale Failed', 'Image upscaling failed. Please try again.');
+            updateGlassToastComplete(toastId, {
+                type: 'error',
+                title: 'Upscale Failed',
+                message: 'Image upscaling failed. Please try again.',
+                customIcon: '<i class="nai-cross"></i>'
+            });
         } else {
             showError('Image upscaling failed. Please try again.');
         }
@@ -5239,21 +5443,14 @@ async function upscaleImage(image, event = null) {
 // Handle logout
 async function handleLogout() {
     try {
-        // Clear cached assets before logout
-        if (window.cacheManager && window.cacheManager.isInitialized) {
-            try {
-                await window.cacheManager.clearCache();
-                console.log('✅ Cache cleared on logout');
-            } catch (error) {
-                console.warn('⚠️ Failed to clear cache on logout:', error);
-            }
-        }
-
-        const response = await fetchWithAuth('/logout', {
+        const response = await fetchWithAuth('/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
-            }
+            },
+            body: JSON.stringify({
+                action: 'logout'
+            })
         });
         if (response.ok) {
             window.location.href = '/';
@@ -5266,6 +5463,11 @@ async function handleLogout() {
 }
 // Show manual modal
 async function showManualModal(presetName = null) {
+    // Disable on mobile displays
+    if (window.innerWidth <= 768) {
+        return false;
+    }
+    
     // Prevent body scrolling when modal is open
     if (!document.body.classList.contains('editor-open')) {
         document.body.classList.add('editor-open');
@@ -5475,16 +5677,13 @@ function clearGallery() {
 // Load gallery from specific index and scroll to it
 async function loadGalleryFromIndex(index) {
     try {
-        console.log('🔄 Restoring gallery from index:', index);
         
         // Load gallery data if needed
         if (allImages.length === 0) {
-            console.log('📁 Loading gallery data...');
             await loadGallery();
         }
         
         // Reset infinite scroll state but set custom start position
-        console.log('🔄 Resetting infinite scroll with custom position...');
         window.scrollTo({ top: 0, behavior: 'instant' });
         
         // Set the display range to include our target index
@@ -5507,9 +5706,7 @@ async function loadGalleryFromIndex(index) {
         isLoadingMore = false;
         hasMoreImages = displayedEndIndex < allImages.length;
         hasMoreImagesBefore = displayedStartIndex > 0;
-        
-        console.log(`🖼️ Displaying gallery range ${displayedStartIndex}-${displayedEndIndex} (target: ${index})`);
-        
+                
         // Display gallery with the calculated range
         displayGalleryFromStartIndex(displayedStartIndex);
         
@@ -5517,18 +5714,15 @@ async function loadGalleryFromIndex(index) {
         setTimeout(() => {
             const targetItem = document.querySelector(`[data-index="${index}"]`);
             if (targetItem) {
-                console.log('🎯 Found target item, scrolling to position...');
                 // Scroll to the item with offset to avoid triggering upper placeholders
                 const itemRect = targetItem.getBoundingClientRect();
                 const scrollTop = window.pageYOffset + itemRect.top - 100; // 100px offset from top
                 window.scrollTo({ top: scrollTop, behavior: 'instant' });
             } else {
-                console.log('⚠️ Target item not found, scrolling to calculated position');
                 // Calculate approximate scroll position based on index
                 const approximateScrollTop = (index / cols) * itemHeight;
                 window.scrollTo({ top: approximateScrollTop - 100, behavior: 'instant' });
             }
-            console.log('✅ Gallery restoration complete');
         }, 200); // Give DOM time to render
         
     } catch (error) {
@@ -5806,7 +6000,12 @@ function collectVibeTransferData() {
     vibeTransferItems.forEach(item => {
         const vibeId = item.getAttribute('data-vibe-id');
         const ieDropdownBtn = item.querySelector('.custom-dropdown-btn');
-        const ratioInput = item.querySelector('.vibe-reference-ratio-input');
+        const ratioInput = item.querySelector('input.vibe-reference-ratio-input');
+        const disabledVibe = item.querySelector('.toggle-btn[data-state="off"]');
+        // Skip disabled vibe references
+        if (disabledVibe) {
+            return;
+        }
 
         if (vibeId && ieDropdownBtn && ratioInput) {
             const selectedIe = ieDropdownBtn.dataset.selectedIe;
@@ -5821,7 +6020,7 @@ function collectVibeTransferData() {
             }
         }
     });
-
+    
     return vibeTransfers;
 }
 
@@ -5931,21 +6130,23 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
             // Clear context only when modal is not open or not in wide viewport mode
             if (typeof clearContextFn === "function") clearContextFn();
 
-            // Normal behavior - open lightbox
-            setTimeout(async () => {
-                await loadGallery();
-                
-                if (allImages.length > 0) {
-                    const newImage = allImages[0];
-                    const imageToShow = {
-                        filename: newImage.upscaled || newImage.original,
-                        base: newImage.base,
-                        upscaled: newImage.upscaled
-                    };
+            if (manualModal.style.display !== 'none') {
+                // Normal behavior - open lightbox
+                setTimeout(async () => {
+                    await loadGallery();
                     
-                    showLightbox(imageToShow);
-                }
-            }, 1000);
+                    if (allImages.length > 0) {
+                        const newImage = allImages[0];
+                        const imageToShow = {
+                            filename: newImage.upscaled || newImage.original,
+                            base: newImage.base,
+                            upscaled: newImage.upscaled
+                        };
+                        
+                        showLightbox(imageToShow);
+                    }
+                }, 1000);
+            }
         }
     };
     img.src = imageUrl;
@@ -6339,7 +6540,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
         }
 
         // Set the current image and index
-        currentManualPreviewImage = imageData;
+        window.currentManualPreviewImage = imageData;
         window.currentManualPreviewIndex = index;
 
         // Use passed metadata if available, otherwise use metadata from imageData
@@ -6367,8 +6568,8 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
         // Show and update pin button
         if (manualPreviewPinBtn) {
             manualPreviewPinBtn.style.display = 'flex';
-            if (currentManualPreviewImage) {
-                const filename = currentManualPreviewImage.filename || currentManualPreviewImage.original || currentManualPreviewImage.upscaled;
+            if (window.currentManualPreviewImage) {
+                const filename = window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
                 if (filename) {
                     updatePinButtonAppearance(manualPreviewPinBtn, filename);
                 }
@@ -6390,15 +6591,15 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
         if (seedBtn) seedBtn.classList.remove('hidden');
         if (deleteBtn) deleteBtn.style.display = 'flex';
 
-        // Initialize zoom functionality
+        // Initialize lightbox functionality
         setTimeout(() => {
-            initializeManualPreviewZoom();
+            initializeManualPreviewLightbox();
         }, 100);
 
         // Update seed display
-        if (currentManualPreviewImage && currentManualPreviewImage.metadata && currentManualPreviewImage.metadata.seed !== undefined) {
-            manualPreviewSeedNumber.textContent = currentManualPreviewImage.metadata.seed;
-            window.lastGeneratedSeed = currentManualPreviewImage.metadata.seed;
+        if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata && window.currentManualPreviewImage.metadata.seed !== undefined) {
+            manualPreviewSeedNumber.textContent = window.currentManualPreviewImage.metadata.seed;
+            window.lastGeneratedSeed = window.currentManualPreviewImage.metadata.seed;
             sproutSeedBtn.classList.add('available');
             updateSproutSeedButtonFromPreviewSeed();
         } else {
@@ -6450,7 +6651,28 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
         updateBlurredBackground(imageUrl);
 
         // Set the current image
-        currentManualPreviewImage = imageObj;
+        window.currentManualPreviewImage = imageObj;
+        
+        // Try to find the index of this image in the gallery
+        let imageIndex = -1;
+        if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
+            // Search mode - use filtered results
+            imageIndex = window.originalAllImages.findIndex(img => {
+                return img.upscaled === imageObj.upscaled || 
+                       img.original === imageObj.original ||
+                       img.filename === imageObj.filename;
+            });
+        } else if (window.allImages && window.allImages.length > 0) {
+            // Normal mode - use current allImages
+            imageIndex = window.allImages.findIndex(img => {
+                return img.upscaled === imageObj.upscaled || 
+                       img.original === imageObj.original ||
+                       img.filename === imageObj.filename;
+            });
+        }
+        
+        // Update the current index (use found index or keep as -1 if not found)
+        window.currentManualPreviewIndex = imageIndex !== -1 ? imageIndex : null;
         
         // Use passed metadata if available
         if (metadata) {
@@ -6467,8 +6689,8 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
         // Show and update pin button
         if (manualPreviewPinBtn) {
             manualPreviewPinBtn.style.display = 'flex';
-            if (currentManualPreviewImage) {
-                const filename = currentManualPreviewImage.filename || currentManualPreviewImage.original || currentManualPreviewImage.upscaled;
+            if (window.currentManualPreviewImage) {
+                const filename = window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
                 if (filename) {
                     updatePinButtonAppearance(manualPreviewPinBtn, filename);
                 }
@@ -6490,15 +6712,15 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
         if (seedBtn) seedBtn.classList.remove('hidden');
         if (deleteBtn) deleteBtn.style.display = 'flex';
 
-        // Initialize zoom functionality
+        // Initialize lightbox functionality
         setTimeout(() => {
-            initializeManualPreviewZoom();
+            initializeManualPreviewLightbox();
         }, 100);
 
         // Update seed display
-        if (currentManualPreviewImage && currentManualPreviewImage.metadata && currentManualPreviewImage.metadata.seed !== undefined) {
-            manualPreviewSeedNumber.textContent = currentManualPreviewImage.metadata.seed;
-            window.lastGeneratedSeed = currentManualPreviewImage.metadata.seed;
+        if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata && window.currentManualPreviewImage.metadata.seed !== undefined) {
+            manualPreviewSeedNumber.textContent = window.currentManualPreviewImage.metadata.seed;
+            window.lastGeneratedSeed = window.currentManualPreviewImage.metadata.seed;
             sproutSeedBtn.classList.add('available');
             updateSproutSeedButtonFromPreviewSeed();
         } else {
@@ -6533,6 +6755,23 @@ function swapManualPreviewImages() {
             
             // Update blurred background
             updateBlurredBackground(generatedImageUrl);
+            
+            // Update global variables to reflect the generated image
+            window.currentManualPreviewImage = window.lastGeneration;
+            // Try to find the index of the generated image
+            let imageIndex = -1;
+            if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
+                imageIndex = window.originalAllImages.findIndex(img => {
+                    return img.upscaled === window.lastGeneration.filename || 
+                           img.original === window.lastGeneration.filename;
+                });
+            } else if (window.allImages && window.allImages.length > 0) {
+                imageIndex = window.allImages.findIndex(img => {
+                    return img.upscaled === window.lastGeneration.filename || 
+                           img.original === window.lastGeneration.filename;
+                });
+            }
+            window.currentManualPreviewIndex = imageIndex !== -1 ? imageIndex : null;
         }
         imageContainers.forEach(container => {
             container.classList.remove('swapped');
@@ -6547,6 +6786,23 @@ function swapManualPreviewImages() {
             
             // Update blurred background
             updateBlurredBackground(originalImageUrl);
+            
+            // Update global variables to reflect the original image
+            window.currentManualPreviewImage = window.initialEdit.image;
+            // Try to find the index of the original image
+            let imageIndex = -1;
+            if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
+                imageIndex = window.originalAllImages.findIndex(img => {
+                    return img.upscaled === window.initialEdit.image.upscaled || 
+                           img.original === window.initialEdit.image.original;
+                });
+            } else if (window.allImages && window.allImages.length > 0) {
+                imageIndex = window.allImages.findIndex(img => {
+                    return img.upscaled === window.initialEdit.image.upscaled || 
+                           img.original === window.initialEdit.image.original;
+                });
+            }
+            window.currentManualPreviewIndex = imageIndex !== -1 ? imageIndex : null;
         }
         imageContainers.forEach(container => {
             container.classList.add('swapped');
@@ -6600,16 +6856,14 @@ function resetManualPreview() {
         if (deleteBtn) deleteBtn.style.display = 'none';
         hideManualPreview();
 
-        // Reset zoom functionality
-        resetManualPreviewZoom();
-
         // Clear stored seed and current image
         window.lastGeneratedSeed = null;
         window.lastGeneration = null;
         manualPreviewSeedNumber.textContent = '---';
         sproutSeedBtn.classList.remove('available');
         updateSproutSeedButtonFromPreviewSeed();
-        currentManualPreviewImage = null;
+        window.currentManualPreviewImage = null;
+        window.currentManualPreviewIndex = null;
         
         // Reset blurred backgrounds
         const bg1 = document.getElementById('manualPreviewBlurBackground1');
@@ -6657,14 +6911,14 @@ function updateManualPreviewNavigation() {
     if (!prevBtn || !nextBtn) return;
 
     // Disable both buttons if no current image or no gallery
-    if (!currentManualPreviewImage || !allImages || allImages.length === 0) {
+    if (!window.currentManualPreviewImage || !allImages || allImages.length === 0) {
         prevBtn.disabled = true;
         nextBtn.disabled = true;
         return;
     }
 
     // Find current image index in gallery using filename comparison
-    const currentFilename = currentManualPreviewImage.original || currentManualPreviewImage.filename;
+    const currentFilename = window.currentManualPreviewImage.original || window.currentManualPreviewImage.filename;
     const currentIndex = findTrueImageIndexInGallery(currentFilename);
 
     if (currentIndex === -1) {
@@ -6681,7 +6935,7 @@ function updateManualPreviewNavigation() {
 // Function to navigate manual preview
 async function navigateManualPreview(event) {
     const direction = event.currentTarget.id === 'manualPreviewPrevBtn' ? -1 : 1;
-    if (!currentManualPreviewImage) return;
+    if (!window.currentManualPreviewImage) return;
     // Use WebSocket to get image by index
     if (!window.wsClient || !window.wsClient.isConnected()) {
         throw new Error('WebSocket not connected');
@@ -6699,7 +6953,7 @@ async function navigateManualPreview(event) {
         
         if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
             // We're in search mode - navigate through filtered results (same logic as lightbox)
-            const currentFilename = currentManualPreviewImage.original || currentManualPreviewImage.filename;
+            const currentFilename = window.currentManualPreviewImage.original || window.currentManualPreviewImage.filename;
             
             // Use the filtered allImages array for navigation (this contains the filtered results)
             const navigationArray = allImages;
@@ -6771,6 +7025,7 @@ async function navigateManualPreview(event) {
 
             // Update the current index
             window.currentManualPreviewIndex = newIndex;
+            window.currentManualPreviewImage = newImage;
 
             // Update the preview with the new image and metadata
             await updateManualPreview(newIndex, null, newImage.metadata);
@@ -6790,10 +7045,10 @@ async function navigateManualPreview(event) {
         } else {
             // For other indices or in search mode, move placeholder to left side and show last generation on right
             // First, store the current image as the "original" for comparison
-            if (currentManualPreviewImage) {
+            if (window.currentManualPreviewImage) {
                 window.navigationOriginalImage = {
-                    image: currentManualPreviewImage,
-                    seed: currentManualPreviewImage.metadata?.seed
+                    image: window.currentManualPreviewImage,
+                    seed: window.currentManualPreviewImage.metadata?.seed
                 };
             }
             
@@ -6846,6 +7101,25 @@ function restoreOriginalImage() {
                 container.classList.remove('swapped');
             });
             
+            // Update global variables to reflect the restored original image
+            window.currentManualPreviewImage = window.navigationOriginalImage.image;
+            // Try to find the index of the restored image
+            let imageIndex = -1;
+            if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
+                imageIndex = window.originalAllImages.findIndex(img => {
+                    return img.upscaled === window.navigationOriginalImage.image.upscaled || 
+                           img.original === window.navigationOriginalImage.image.original ||
+                           img.filename === window.navigationOriginalImage.image.filename;
+                });
+            } else if (window.allImages && window.allImages.length > 0) {
+                imageIndex = window.allImages.findIndex(img => {
+                    return img.upscaled === window.navigationOriginalImage.image.upscaled || 
+                           img.original === window.navigationOriginalImage.image.original ||
+                           img.filename === window.navigationOriginalImage.image.filename;
+                });
+            }
+            window.currentManualPreviewIndex = imageIndex !== -1 ? imageIndex : null;
+            
             // Clear the stored navigation original image
             window.navigationOriginalImage = null;
         }
@@ -6880,7 +7154,11 @@ async function handleManualGeneration(e) {
     }
 
     // Validate required fields for both paths
-    if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
+    if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) {
+        isGenerating = false;
+        updateManualGenerateBtnState();
+        return;
+    }
 
     // Prepare base requestBody (shared between both paths)
     const requestBody = {
@@ -6941,6 +7219,8 @@ async function handleManualGeneration(e) {
         const confirmed = await showCreditCostDialog(cost, e);
         
         if (!confirmed) {
+            isGenerating = false;
+            updateManualGenerateBtnState();
             return;
         }
         
@@ -7373,44 +7653,49 @@ async function generateImage(event = null) {
 
         console.log('📋 Generation result:', { result, filename, seed });
 
-        // Hide the generating toast first
-        if (toastId) {
-            removeGlassToast(toastId);
-        }
+        // Update the existing toast to show completion
+        updateGlassToastComplete(toastId, {
+            type: 'success',
+            title: 'Image Generated',
+            message: 'Image generated successfully and added to gallery',
+            customIcon: '<i class="nai-check"></i>'
+        });
         
-        // Create confetti effect
         createConfetti();
         
         // Refresh gallery to show the new image
         await loadGallery(true);
         
-        // Find the generated image in the gallery
-        const found = allImages.find(img => img.original === filename || img.upscaled === filename);
-        if (found) {
-            // Construct proper image object with filename property
-            const imageToShow = {
-                filename: filename,
-                base: found.base,
-                original: found.original,
-                upscaled: found.upscaled
-            };
-            showLightbox(imageToShow);
-        } else {
-            showGlassToast('info', 'Image Generated', 'Image generated successfully and added to gallery');
+        if (manualModal.style.display !== 'none') {
+            // Find the generated image in the gallery
+            const found = allImages.find(img => img.original === filename || img.upscaled === filename);
+            if (found) {
+                // Construct proper image object with filename property
+                const imageToShow = {
+                    filename: filename,
+                    base: found.base,
+                    original: found.original,
+                    upscaled: found.upscaled
+                };
+                showLightbox(imageToShow);
+            }
         }
 
     } catch (error) {
         console.error('Generation error:', error);
-        showGlassToast('error', 'Generation Failed', error.message);
+        // Update the existing toast to show error
+        updateGlassToastComplete(toastId, {
+            type: 'error',
+            title: 'Generation Failed',
+            message: error.message,
+            customIcon: '<i class="nai-cross"></i>'
+        });
     } finally {
         // Reset generating state
         isGenerating = false;
         updateManualGenerateBtnState();
         
         // Clear progress and loading states
-        if (toastId) {
-            removeGlassToast(toastId);
-        }
         if (progressInterval) {
             clearInterval(progressInterval);
         }
@@ -7420,219 +7705,147 @@ async function generateImage(event = null) {
     }
 }
 
-function initializeManualPreviewZoom() {
+function initializeManualPreviewLightbox() {
     const imageContainer = document.querySelector('.manual-preview-image-container');
     const image = document.getElementById('manualPreviewImage');
 
     if (!imageContainer || !image) return;
-
-    // Reset zoom and pan
-    resetManualPreviewZoom();
-
-    // Register event listeners
-    registerManualPreviewEventListeners();
-}
-
-function resetManualPreviewZoom() {
-    manualPreviewZoom = 1;
-    manualPreviewPanX = 0;
-    manualPreviewPanY = 0;
-    updateManualPreviewImageTransform();
-
-    const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
-    if (imageContainers.length > 0) {
-        imageContainers.forEach(container => {
-            container.classList.remove('zoomed');
-        });
-        
-        // Restore original image visibility when zoom is reset
-        const originalImage = document.getElementById('manualPreviewOriginalImage');
-        if (originalImage && imageContainers[0].classList.contains('dual-mode')) {
-            originalImage.style.display = 'block';
-        }
-    }
-}
-
-function updateManualPreviewImageTransform() {
-    const image = document.getElementById('manualPreviewImage');
-    if (image) {
-        image.style.transform = `translate(${manualPreviewPanX}px, ${manualPreviewPanY}px) scale(${manualPreviewZoom})`;
-    }
-}
-
-function handleManualPreviewWheelZoom(e) {
-    const delta = e.deltaY > 0 ? 0.95 : 1.05;
-    const newZoom = Math.max(1, Math.min(5, manualPreviewZoom * delta));
-
-    // If zooming out to original size, reset pan to center
-    if (newZoom <= 1 && manualPreviewZoom > 1) {
-        manualPreviewPanX = 0;
-        manualPreviewPanY = 0;
+    
+    // Only register event listeners if there's actually an image to preview
+    if (window.currentManualPreviewImage && image.style.display !== 'none') {
+        registerManualPreviewEventListeners();
     } else {
-        // Get the container bounds
-        const rect = e.currentTarget.getBoundingClientRect();
-        
-        // Calculate mouse position relative to the container
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-        
-        // Get the image element to calculate its dimensions
-        const image = document.getElementById('manualPreviewImage');
-        if (!image) return;
-        
-        // Calculate the image's visual dimensions and position within the container
-        const imageRect = image.getBoundingClientRect();
-        const containerRect = e.currentTarget.getBoundingClientRect();
-        
-        // Calculate the image's center offset from the container center
-        const imageCenterX = containerRect.width / 2;
-        const imageCenterY = containerRect.height / 2;
-        
-        // Calculate the mouse position relative to the image center
-        const mouseRelToImageCenterX = mouseX - imageCenterX;
-        const mouseRelToImageCenterY = mouseY - imageCenterY;
-        
-        // Calculate the zoom change factor
-        const zoomChange = newZoom / manualPreviewZoom;
-        
-        // Calculate new pan position to zoom into the mouse cursor
-        // Account for transform-origin: center
-        manualPreviewPanX = manualPreviewPanX - (mouseRelToImageCenterX * (zoomChange - 1));
-        manualPreviewPanY = manualPreviewPanY - (mouseRelToImageCenterY * (zoomChange - 1));
+        // Deregister event listeners if there's no image to prevent errors
+        deregisterManualPreviewEventListeners();
     }
+}
 
-    manualPreviewZoom = newZoom;
-    updateManualPreviewImageTransform();
+// Prevent multiple lightbox openings
+let isOpeningLightbox = false;
 
-    const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
-    if (imageContainers.length > 0) {
-        imageContainers.forEach(container => {
-            if (!container.classList.contains('initial'))
-                container.classList.add('initial');
-            container.classList.toggle('zoomed', manualPreviewZoom > 1);
-        });
-        
-        // Hide original image when zoomed
-        const originalImage = document.getElementById('manualPreviewOriginalImage');
-        if (originalImage && imageContainers[0].classList.contains('dual-mode')) {
-            if (manualPreviewZoom > 1) {
-                originalImage.style.display = 'none';
-            } else {
-                originalImage.style.display = 'block';
+function handleManualPreviewClick(e) {
+    e.preventDefault();
+    
+    // Prevent multiple rapid calls
+    if (isOpeningLightbox) {
+        console.log('Lightbox already opening, skipping...');
+        return;
+    }
+    
+    // Check if we have a current manual preview image
+    if (!window.currentManualPreviewImage) {
+        console.warn('No current manual preview image to open in lightbox');
+        return;
+    }
+    
+    // Check if the image is actually visible
+    const image = document.getElementById('manualPreviewImage');
+    if (!image || image.style.display === 'none') {
+        console.warn('Preview image is not visible');
+        return;
+    }
+    
+    // Use the current manual preview index that was set by the update functions
+    let imageIndex = window.currentManualPreviewIndex;
+    
+    // If we have a valid index, use it directly (trust the update functions)
+    if (imageIndex !== null && imageIndex !== undefined && imageIndex >= 0) {
+        // Open lightbox with the index set by the update functions
+        if (window.showLightbox) {
+            console.log('Opening lightbox with index:', imageIndex);
+            isOpeningLightbox = true;
+            try {
+                window.showLightbox(imageIndex);
+            } finally {
+                // Reset flag after a delay to allow lightbox to open
+                setTimeout(() => {
+                    isOpeningLightbox = false;
+                }, 1000);
             }
-        }
-    }
-}
-
-function handleManualPreviewMouseDown(e) {
-    e.preventDefault();
-    if (manualPreviewZoom > 1) {
-        isManualPreviewDragging = true;
-        lastManualPreviewMouseX = e.clientX;
-        lastManualPreviewMouseY = e.clientY;
-    }
-}
-
-function handleManualPreviewMouseMove(e) {
-    e.preventDefault();
-    if (isManualPreviewDragging && manualPreviewZoom > 1) {
-        const deltaX = e.clientX - lastManualPreviewMouseX;
-        const deltaY = e.clientY - lastManualPreviewMouseY;
-
-        manualPreviewPanX += deltaX;
-        manualPreviewPanY += deltaY;
-
-        lastManualPreviewMouseX = e.clientX;
-        lastManualPreviewMouseY = e.clientY;
-
-        updateManualPreviewImageTransform();
-    }
-}
-
-function handleManualPreviewMouseUp(e) {
-    if (e) {
-        e.preventDefault();
-    }
-    isManualPreviewDragging = false;
-}
-
-function handleManualPreviewTouchStart(e) {
-    if (e.touches.length === 1) {
-        // Single touch - start pan
-        isManualPreviewDragging = true;
-        lastManualPreviewMouseX = e.touches[0].clientX;
-        lastManualPreviewMouseY = e.touches[0].clientY;
-    } else if (e.touches.length === 2) {
-        // Two touches - start pinch zoom
-        lastManualPreviewTouchDistance = getTouchDistance(e.touches);
-    }
-}
-
-function handleManualPreviewTouchMove(e) {
-    if (e.touches.length === 1 && isManualPreviewDragging && manualPreviewZoom > 1) {
-        // Single touch pan
-        const deltaX = e.touches[0].clientX - lastManualPreviewMouseX;
-        const deltaY = e.touches[0].clientY - lastManualPreviewMouseY;
-
-        manualPreviewPanX += deltaX;
-        manualPreviewPanY += deltaY;
-
-        lastManualPreviewMouseX = e.touches[0].clientX;
-        lastManualPreviewMouseY = e.touches[0].clientY;
-
-        updateManualPreviewImageTransform();
-    } else if (e.touches.length === 2) {
-        // Two touch pinch zoom
-        const currentDistance = getTouchDistance(e.touches);
-        const delta = currentDistance / lastManualPreviewTouchDistance;
-
-        const newZoom = Math.max(1, Math.min(5, manualPreviewZoom * delta));
-
-        // If zooming out to original size, reset pan to center
-        if (newZoom <= 1 && manualPreviewZoom > 1) {
-            manualPreviewPanX = 0;
-            manualPreviewPanY = 0;
         } else {
-            // Zoom towards center of touches only when zooming in or when already zoomed
-            const rect = e.currentTarget.getBoundingClientRect();
-            const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
-            const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
-
-            const zoomChange = newZoom / manualPreviewZoom;
-            manualPreviewPanX = centerX - (centerX - manualPreviewPanX) * zoomChange;
-            manualPreviewPanY = centerY - (centerY - manualPreviewPanY) * zoomChange;
+            console.warn('showLightbox function not available');
         }
-
-        manualPreviewZoom = newZoom;
-        lastManualPreviewTouchDistance = currentDistance;
-
-        updateManualPreviewImageTransform();
-
-        const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
-        if (imageContainers.length > 0) {
-            imageContainers.forEach(container => {
-                if (!container.classList.contains('initial'))
-                    container.classList.add('initial');
-                container.classList.toggle('zoomed', manualPreviewZoom > 1);
+    } else {
+        // If no valid index, try to find the image by filename in the gallery
+        let foundIndex = -1;
+        
+        if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
+            console.log('Searching for image in filtered results');
+            // Search mode - use filtered results
+            foundIndex = window.originalAllImages.findIndex(img => {
+                return img.upscaled === window.currentManualPreviewImage.upscaled || 
+                       img.original === window.currentManualPreviewImage.original ||
+                       img.filename === window.currentManualPreviewImage.filename;
             });
-            
-            // Hide original image when zoomed
-            const originalImage = document.getElementById('manualPreviewOriginalImage');
-            if (originalImage && imageContainers[0].classList.contains('dual-mode')) {
-                if (manualPreviewZoom > 1) {
-                    originalImage.style.display = 'none';
-                } else {
-                    originalImage.style.display = 'block';
+        } else if (window.allImages && window.allImages.length > 0) {
+            console.log('Searching for image in all images');
+            // Normal mode - use current allImages
+            foundIndex = window.allImages.findIndex(img => {
+                return img.upscaled === window.currentManualPreviewImage.upscaled || 
+                       img.original === window.currentManualPreviewImage.original ||
+                       img.filename === window.currentManualPreviewImage.filename;
+            });
+        }
+        
+        if (foundIndex !== -1) {
+            console.log('Found image in gallery at index:', foundIndex);
+            // Found the image in the gallery, open lightbox at that index
+            if (window.showLightbox) {
+                isOpeningLightbox = true;
+                try {
+                    window.showLightbox(foundIndex);
+                } finally {
+                    // Reset flag after a delay to allow lightbox to open
+                    setTimeout(() => {
+                        isOpeningLightbox = false;
+                    }, 1000);
                 }
+            } else {
+                console.warn('showLightbox function not available');
+            }
+        } else {
+            console.log('Image not found in gallery, opening as standalone image');
+            // Image not found in gallery, open as standalone image
+            if (window.showLightbox) {
+                const imageUrl = window.currentManualPreviewImage.upscaled || 
+                               window.currentManualPreviewImage.original || 
+                               window.currentManualPreviewImage.filename;
+                isOpeningLightbox = true;
+                try {
+                    window.showLightbox({ url: `/images/${imageUrl}` });
+                } finally {
+                    // Reset flag after a delay to allow lightbox to open
+                    setTimeout(() => {
+                        isOpeningLightbox = false;
+                    }, 1000);
+                }
+            } else {
+                console.warn('showLightbox function not available');
             }
         }
     }
 }
 
-function handleManualPreviewTouchEnd(e) {
-    if (e.touches.length === 0) {
-        isManualPreviewDragging = false;
-        lastManualPreviewTouchDistance = 0;
+// Throttle scroll events to prevent rapid-fire calls
+let lastOpenLightboxScrollTime = 0;
+const SCROLL_THROTTLE_MS = 500; // 500ms throttle
+
+function handleManualPreviewScroll(e) {
+    // Only trigger on scroll up (negative deltaY)
+    if (e.deltaY < 0) {
+        e.preventDefault();
+        
+        // Throttle scroll events to prevent rapid calls
+        const now = Date.now();
+        if (now - lastOpenLightboxScrollTime < SCROLL_THROTTLE_MS) {
+            return; // Skip if called too recently
+        }
+        lastOpenLightboxScrollTime = now;
+        
+        // Use a small delay to ensure scroll event has settled
+        setTimeout(() => {
+            handleManualPreviewClick(e);
+        }, 100);
     }
 }
 
@@ -7732,7 +7945,7 @@ async function deleteImage(image, event = null) {
 }
 
 async function deleteManualPreviewImage() {
-    if (!currentManualPreviewImage) {
+    if (!window.currentManualPreviewImage) {
         showError('No image to delete');
         return;
     }
@@ -7745,10 +7958,10 @@ async function deleteManualPreviewImage() {
         let filenameToDelete = null;
 
         // For regular images, prioritize original, then upscaled
-        if (currentManualPreviewImage.original) {
-            filenameToDelete = currentManualPreviewImage.original;
-        } else if (currentManualPreviewImage.upscaled) {
-            filenameToDelete = currentManualPreviewImage.upscaled;
+        if (window.currentManualPreviewImage.original) {
+            filenameToDelete = window.currentManualPreviewImage.original;
+        } else if (window.currentManualPreviewImage.upscaled) {
+            filenameToDelete = window.currentManualPreviewImage.upscaled;
         }
 
         if (!filenameToDelete) {
@@ -8464,7 +8677,7 @@ async function handleClipboardPaste(event) {
     }
 }
 
-function showGlassToast(type, title, message, showProgress = false, timeout = 5000, customIcon = null) {
+function showGlassToast(type, title, message, showProgress = false, timeout = 5000, customIcon = null, buttons = null) {
     const toastId = `toast-${++toastCounter}`;
     const toastContainer = document.getElementById('toastContainer') || createToastContainer();
 
@@ -8475,6 +8688,9 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
 
     // Use custom icon if provided, otherwise use default icon
     const icon = customIcon || getToastIcon(type, showProgress);
+
+    // Generate buttons HTML if provided
+    const buttonsElement = buttons ? generateButtonsHtml(buttons, toastId) : null;
 
     // If only message is provided (no title), create a simple one-line toast
     if (title && message) {
@@ -8490,6 +8706,14 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
             </div>
             ${closeBtn}
         `;
+        
+        // Add buttons as DOM elements to preserve event handlers
+        if (buttonsElement) {
+            const content = toast.querySelector('.toast-content');
+            if (content) {
+                content.appendChild(buttonsElement);
+            }
+        }
     } else {
         // Simple one-line toast (message only) - now with icon
         const messageText = title || message;
@@ -8503,6 +8727,14 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
             </div>
             ${closeBtn}
         `;
+        
+        // Add buttons as DOM elements to preserve event handlers
+        if (buttonsElement) {
+            const content = toast.querySelector('.toast-content');
+            if (content) {
+                content.appendChild(buttonsElement);
+            }
+        }
     }
 
     toastContainer.appendChild(toast);
@@ -8519,7 +8751,7 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
         }, timeout);
     }
 
-    activeToasts.set(toastId, { type, title, message, showProgress, customIcon });
+    activeToasts.set(toastId, { type, title, message, showProgress, customIcon, buttons });
     return toastId;
 }
 
@@ -8531,7 +8763,21 @@ function updateGlassToast(toastId, type, title, message, customIcon = null) {
     const isSimple = !title || !message;
     const messageText = title || message;
 
-    toast.className = `glass-toast show ${isSimple ? 'simple' : ''}`;
+    // Preserve existing classes and only update necessary ones
+    const existingClasses = toast.className.split(' ').filter(cls => 
+        cls !== 'glass-toast' && 
+        !cls.startsWith('glass-toast-') && 
+        cls !== 'simple' && 
+        cls !== 'upload-progress'
+    );
+    
+    // Build new class list
+    const newClasses = ['glass-toast', `glass-toast-${type}`];
+    if (isSimple) newClasses.push('simple');
+    if (existingClasses.includes('upload-progress')) newClasses.push('upload-progress');
+    if (existingClasses.includes('show')) newClasses.push('show');
+    
+    toast.className = newClasses.join(' ');
     
     // Update icon
     const iconElement = toast.querySelector('.toast-icon');
@@ -8568,15 +8814,18 @@ function updateGlassToast(toastId, type, title, message, customIcon = null) {
         activeToasts.set(toastId, stored);
     }
 
-    // Auto-remove after 3 seconds for updated toasts
-    setTimeout(() => {
-        removeGlassToast(toastId);
-    }, 3000);
 }
 
 function removeGlassToast(toastId) {
     const toast = document.getElementById(toastId);
     if (!toast) return;
+
+    // Clean up button handlers for this toast
+    for (const [buttonId, handler] of buttonHandlers.entries()) {
+        if (handler.toastId === toastId) {
+            buttonHandlers.delete(buttonId);
+        }
+    }
 
     toast.classList.add('removing');
     activeToasts.delete(toastId);
@@ -8619,108 +8868,162 @@ function updateGlassToastProgress(toastId, progress) {
     }
 }
 
+function generateButtonsHtml(buttons, toastId) {
+    if (!buttons || !Array.isArray(buttons)) return '';
+    
+    const buttonsContainer = document.createElement('div');
+    buttonsContainer.className = 'toast-buttons';
+    
+    buttons.forEach((button, index) => {
+        const btn = document.createElement('button');
+        btn.className = `toast-button btn-${button.type || 'secondary'}`;
+        btn.textContent = button.text;
+        btn.type = 'button'; // Prevent form submission
+        
+        if (button.onClick) {
+            // Generate unique button ID
+            const buttonId = nextButtonId++;
+            
+            // Store the button handler
+            buttonHandlers.set(buttonId, {
+                onClick: button.onClick,
+                toastId: toastId,
+                closeOnClick: button.closeOnClick
+            });
+            
+            // Set onclick attribute to call global handler
+            btn.setAttribute('onclick', `handleToastButtonClick(${buttonId})`);
+            
+            // Add data attributes for debugging
+            btn.setAttribute('data-button-id', buttonId);
+            btn.setAttribute('data-button-index', index);
+            btn.setAttribute('data-toast-id', toastId);
+        }
+        
+        buttonsContainer.appendChild(btn);
+    });
+    
+    return buttonsContainer;
+}
+
+function updateGlassToastButtons(toastId, buttons) {
+    const toast = document.getElementById(toastId);
+    if (!toast) return;
+
+    // Remove existing buttons
+    const existingButtons = toast.querySelector('.toast-buttons');
+    if (existingButtons) {
+        existingButtons.remove();
+    }
+
+    // Add new buttons
+    if (buttons && Array.isArray(buttons)) {
+        const buttonsElement = generateButtonsHtml(buttons, toastId);
+        const content = toast.querySelector('.toast-content');
+        if (content && buttonsElement) {
+            content.appendChild(buttonsElement);
+        }
+    }
+
+    // Update stored data
+    const stored = activeToasts.get(toastId);
+    if (stored) {
+        stored.buttons = buttons;
+        activeToasts.set(toastId, stored);
+    }
+}
+
+// Comprehensive toast update function that handles all aspects
+function updateGlassToastComplete(toastId, options = {}) {
+    const toast = document.getElementById(toastId);
+    if (!toast) return;
+
+    const {
+        type,
+        title,
+        message,
+        customIcon,
+        buttons,
+        showProgress = null,
+        timeout = null
+    } = options;
+
+    // Update basic content if provided
+    if (type || title || message || customIcon) {
+        updateGlassToast(toastId, type, title, message, customIcon);
+    }
+
+    // Update buttons if provided
+    if (buttons !== undefined) {
+        updateGlassToastButtons(toastId, buttons);
+    }
+
+    // Update progress state if provided
+    if (showProgress !== null) {
+        const progressElement = toast.querySelector('.toast-progress');
+        if (showProgress && !progressElement) {
+            // Add progress bar
+            const content = toast.querySelector('.toast-content');
+            if (content) {
+                content.insertAdjacentHTML('beforeend', '<div class="toast-progress"><div class="toast-progress-bar"></div></div>');
+            }
+            toast.classList.add('upload-progress');
+        } else if (!showProgress && progressElement) {
+            // Remove progress bar
+            progressElement.remove();
+            toast.classList.remove('upload-progress');
+        }
+    }
+
+    // Update timeout if provided
+    if (timeout !== null) {
+        const stored = activeToasts.get(toastId);
+        if (stored) {
+            stored.timeout = timeout;
+            activeToasts.set(toastId, stored);
+            
+            // Clear existing timeout and set new one
+            if (stored.timeoutId) {
+                clearTimeout(stored.timeoutId);
+            }
+            
+            if (timeout !== false) {
+                stored.timeoutId = setTimeout(() => {
+                    removeGlassToast(toastId);
+                }, timeout);
+                activeToasts.set(toastId, stored);
+            }
+        }
+    }
+
+    // Ensure toast is visible
+    if (!toast.classList.contains('show')) {
+        toast.classList.add('show');
+    }
+}
+
 // Test functions for toast system
 let testProgressIntervals = new Map();
 let vibeEncodingProgressIntervals = new Map();
 
-function testToastSuccess() {
-    return showGlassToast('success', 'Success Test', 'This is a success toast test message', false, false);
-}
-
-function testToastError() {
-    return showGlassToast('error', 'Error Test', 'This is an error toast test message', false, false);
-}
-
-function testToastWarning() {
-    return showGlassToast('warning', 'Warning Test', 'This is a warning toast test message', false, false);
-}
-
-function testToastInfo() {
-    return showGlassToast('info', 'Info Test', 'This is an info toast test message', false, false);
-}
-
-function testToastSuccessWithIcon() {
-    return showGlassToast('success', 'Success with Custom Icon', 'This toast has a custom icon', false, false, '<i class="fas fa-star"></i>');
-}
-
-function testToastErrorWithIcon() {
-    return showGlassToast('error', 'Error with Custom Icon', 'This toast has a custom icon', false, false, '<i class="fas fa-skull"></i>');
-}
-
-function testToastWarningWithIcon() {
-    return showGlassToast('warning', 'Warning with Custom Icon', 'This toast has a custom icon', false, false, '<i class="fas fa-fire"></i>');
-}
-
-function testToastInfoWithIcon() {
-    return showGlassToast('info', 'Info with Custom Icon', 'This toast has a custom icon', false, false, '<i class="fas fa-lightbulb"></i>');
-}
-
-function testToastSuccessWithProgress() {
-    const toastId = showGlassToast('success', 'Success with Progress', 'This toast has a progress bar', true, false);
+// Debug function to inspect button handlers
+function inspectButtonHandlers() {
+    console.log('🔧 Button Handler Registry Status:');
+    console.log('Total handlers:', buttonHandlers.size);
+    console.log('Next button ID:', nextButtonId);
     
-    let progress = 0;
-    const interval = setInterval(() => {
-        progress += 2;
-        updateGlassToastProgress(toastId, progress);
-        
-        if (progress >= 50) {
-            clearInterval(interval);
-            testProgressIntervals.set(toastId, interval);
+    if (buttonHandlers.size > 0) {
+        console.log('Registered handlers:');
+        for (const [buttonId, handler] of buttonHandlers.entries()) {
+            console.log(`  Button ${buttonId}:`, {
+                toastId: handler.toastId,
+                closeOnClick: handler.closeOnClick,
+                onClick: typeof handler.onClick
+            });
         }
-    }, 100);
-    
-    return toastId;
-}
-
-function testToastErrorWithProgress() {
-    const toastId = showGlassToast('error', 'Error with Progress', 'This toast has a progress bar', true, false);
-    
-    let progress = 0;
-    const interval = setInterval(() => {
-        progress += 2;
-        updateGlassToastProgress(toastId, progress);
-        
-        if (progress >= 50) {
-            clearInterval(interval);
-            testProgressIntervals.set(toastId, interval);
-        }
-    }, 100);
-    
-    return toastId;
-}
-
-function testToastWarningWithProgress() {
-    const toastId = showGlassToast('warning', 'Warning with Progress', 'This toast has a progress bar', true, false);
-    
-    let progress = 0;
-    const interval = setInterval(() => {
-        progress += 2;
-        updateGlassToastProgress(toastId, progress);
-        
-        if (progress >= 50) {
-            clearInterval(interval);
-            testProgressIntervals.set(toastId, interval);
-        }
-    }, 100);
-    
-    return toastId;
-}
-
-function testToastInfoWithProgress() {
-    const toastId = showGlassToast('info', 'Info with Progress', 'This toast has a progress bar', true, false);
-    
-    let progress = 0;
-    const interval = setInterval(() => {
-        progress += 2;
-        updateGlassToastProgress(toastId, progress);
-        
-        if (progress >= 50) {
-            clearInterval(interval);
-            testProgressIntervals.set(toastId, interval);
-        }
-    }, 100);
-    
-    return toastId;
+    } else {
+        console.log('No button handlers registered');
+    }
 }
 
 function completeTestProgress(toastId) {
@@ -8782,7 +9085,12 @@ function completeVibeEncodingProgress(toastId, successMessage = 'Vibe encoding c
     
     // Update the toast to show completion
     setTimeout(() => {
-        updateGlassToast(toastId, 'success', 'Vibe Created', successMessage, '<i class="nai-check"></i>');
+        updateGlassToastComplete(toastId, {
+            type: 'success',
+            title: 'Vibe Created',
+            message: successMessage,
+            customIcon: '<i class="nai-check"></i>'
+        });
     }, 200); // Small delay to show 100% completion
 }
 
@@ -8794,7 +9102,12 @@ function failVibeEncodingProgress(toastId, errorMessage = 'Vibe encoding failed'
     }
     
     // Update the toast to show error
-    updateGlassToast(toastId, 'error', 'Encoding Failed', errorMessage, '<i class="nai-cross"></i>');
+    updateGlassToastComplete(toastId, {
+        type: 'error',
+        title: 'Encoding Failed',
+        message: errorMessage,
+        customIcon: '<i class="nai-cross"></i>'
+    });
 }
 
 let showSubscriptionExpirationToast = false;
@@ -8866,11 +9179,19 @@ async function uploadImages(files) {
         const errorCount = results.length - successCount;
 
         if (errorCount > 0) {
-            updateGlassToast(toastId, 'warning', 'Upload Complete',
-                `Successfully uploaded ${successCount} images, ${errorCount} failed`);
+            updateGlassToastComplete(toastId, {
+                type: 'warning',
+                title: 'Upload Complete',
+                message: `Successfully uploaded ${successCount} images, ${errorCount} failed`,
+                customIcon: '<i class="fas fa-thumbtack"></i>'
+            });
         } else {
-            updateGlassToast(toastId, 'success', 'Upload Complete',
-                `Successfully uploaded ${successCount} images`);
+            updateGlassToastComplete(toastId, {
+                type: 'success',
+                title: 'Upload Complete',
+                message: `Successfully uploaded ${successCount} images`,
+                customIcon: '<i class="fas fa-thumbtack"></i>'
+            });
         }
 
         // Refresh gallery to show the new images - gallery updates are broadcast automatically by WebSocket
@@ -8880,7 +9201,12 @@ async function uploadImages(files) {
 
     } catch (error) {
         console.error('Upload error:', error);
-        updateGlassToast(toastId, 'error', 'Upload Failed', error.message);
+        updateGlassToastComplete(toastId, {
+            type: 'error',
+            title: 'Upload Failed',
+            message: error.message,
+            customIcon: '<i class="fas fa-thumbtack"></i>'
+        });
     }
 }
 
@@ -8945,7 +9271,7 @@ async function handleManualImageUploadInternal(file) {
         updateImageBiasOrientation();
         
         if (imageBiasHidden != null) imageBiasHidden.value = biasToUse.toString();
-        renderImageBiasDropdown(biasToUse.toString());
+        await renderImageBiasDropdown(biasToUse.toString());
     
         // Set transformation type to upload (successful)
         updateTransformationDropdownState('upload', 'Upload');
@@ -10195,6 +10521,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
     updateAutoPositionToggle();
 }
 
+// Cell Label Functions - Do not remove or modify this function
 function getCellLabelFromCoords(x, y) {
     const positions = {
         '0.1,0.1': 'A1', '0.3,0.1': 'B1', '0.5,0.1': 'C1', '0.7,0.1': 'D1', '0.9,0.1': 'E1',
@@ -11094,6 +11421,23 @@ function startPreviewAnimation() {
             toggleBtn.title = 'Stop Preview Animation';
         }
         
+        if (manualPreviewImage && manualPreviewImage.style.display !== 'none') {
+            // Initialize manual block container if not already done
+            if (!manualBlockContainer) {
+                initializeManualBlockContainer();
+            }
+            
+            // Start wave animation in manual block container
+            if (manualBlockContainer) {
+                try {
+                    manualBlockContainer.ensureWaveReady();
+                    manualBlockContainer.createOpacityWave('diagonal');
+                } catch (error) {
+                    console.warn('Failed to start manual block container wave:', error);
+                }
+            }
+        }
+        
         // Show animation layers
         previewStars.style.display = 'block';
         previewBackgroundLines.style.display = 'block';
@@ -11119,7 +11463,6 @@ function startPreviewAnimation() {
         });
         
         // Debug: ensure background lines are visible
-        console.log('Animation started - Background lines:', previewBackgroundLines.children.length);
     } catch (error) {
         console.error('Error starting preview animation:', error);
         generationAnimationActive = false;
@@ -11131,7 +11474,7 @@ function startPreviewAnimation() {
     }
 }
 
-function stopPreviewAnimation() {
+async function stopPreviewAnimation() {
     if (!generationAnimationActive) return;
     
     // Safety check: ensure all required elements exist
@@ -11187,6 +11530,18 @@ function stopPreviewAnimation() {
                 line.style.visibility = 'visible';
             });
         }, 2500);
+        
+        // Stop wave animation in manual block container
+        if (manualBlockContainer) {
+            try {
+                await manualBlockContainer.returnToNormalOpacity(true);
+                // Unload the container to free up resources
+                await manualBlockContainer.unload();
+                manualBlockContainer = null;
+            } catch (error) {
+                console.warn('Failed to stop manual block container wave:', error);
+            }
+        }
     } catch (error) {
         console.error('Error stopping preview animation:', error);
         // Force reset animation state
@@ -11236,6 +11591,16 @@ function forceStopPreviewAnimation() {
         line.style.visibility = 'visible';
         line.style.animationPlayState = 'paused';
     });
+    
+    // Force unload manual block container
+    if (manualBlockContainer) {
+        try {
+            manualBlockContainer.unload();
+            manualBlockContainer = null;
+        } catch (error) {
+            console.warn('Failed to unload manual block container:', error);
+        }
+    }
 }
 
 // Register main app initialization steps with WebSocket client
@@ -11458,7 +11823,7 @@ if (window.wsClient) {
     // Priority 5: Initialize main app components
     window.wsClient.registerInitStep(1, 'Loading Application Data', async () => {
         await loadOptions();
-    });
+    }, true);
 
     window.wsClient.registerInitStep(10, 'Configuring Application', async () => {
         updateBalanceDisplay(window.optionsData?.balance);
@@ -11496,18 +11861,18 @@ if (window.wsClient) {
         updateSubTogglesButtonState();
         renderUcPresetsDropdown();
         selectUcPreset(0);
-    });
 
-    // Priority 7: Load gallery and finalize UI
-    window.wsClient.registerInitStep(90, 'Loading Gallery', async () => {
         galleryRows = calculateGalleryRows();
         const galleryToggleGroup = document.getElementById('galleryToggleGroup');
         imagesPerPage = parseInt(galleryToggleGroup?.dataset?.columns || 5) * galleryRows;
         galleryToggleGroup.setAttribute('data-active', currentGalleryView);
+    });
 
+    // Priority 7: Load gallery and finalize UI
+    window.wsClient.registerInitStep(90, 'Loading Gallery', async () => {
         await loadGallery();
         await updateGalleryColumnsFromLayout();
-    });
+    }, true);
 
     // Priority 7: Load gallery and finalize UI
     window.wsClient.registerInitStep(100, 'Finalizing', async () => {
@@ -11525,4 +11890,150 @@ if (window.wsClient) {
         // Start closed
         setSeedInputGroupState(false);
     });
+}
+
+// Logo Options Popup Functions
+function showLogoOptionsPopup() {
+    const modal = document.getElementById('logoOptionsModal');
+    if (modal) {
+        openModal(modal);
+        setupLogoOptionsEventListeners();
+        updateToggleBlurButtonText();
+    }
+}
+
+function setupLogoOptionsEventListeners() {
+    const modal = document.getElementById('logoOptionsModal');
+    
+    // Close button
+    const closeBtn = document.getElementById('closeLogoOptionsBtn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            if (modal) {
+                closeModal(modal);
+            }
+        });
+    }
+
+    // Click outside to close
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal(modal);
+            }
+        });
+    }
+
+    
+    const modalButtons = document.querySelectorAll('#logoOptionsModal .logo-option-btn');
+    if (modalButtons) {
+        modalButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                closeModal(modal);
+            });
+        });
+    }
+
+    // Toggle blur button
+    const toggleBlurBtn = document.getElementById('toggleBlurBtn');
+    if (toggleBlurBtn) {
+        toggleBlurBtn.addEventListener('click', () => {
+            toggleBlurState();
+            updateToggleBlurButtonText();
+        });
+    }
+
+    // Logout button
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async (e) => {
+            const confirmed = await showConfirmationDialog(
+                `Are you sure you want to log out?`,
+                [
+                    { text: 'Log Out', value: true, className: 'btn-danger' },
+                    { text: 'Cancel', value: false, className: 'btn-secondary' }
+                ],
+                event
+            );
+            if (confirmed) {
+                e.preventDefault();
+                handleLogout();
+            }
+        });
+    }
+
+    // Refresh cache button
+    const refreshCacheBtn = document.getElementById('refreshCacheBtn');
+    if (refreshCacheBtn) {
+        refreshCacheBtn.addEventListener('click', async (e) => {
+            try {
+                await window.serviceWorkerManager.refreshServerCacheAndCheck();
+            } catch (error) {
+                console.error('Error refreshing cache:', error);
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('error', 'Cache Refresh Failed', 'Failed to refresh caches: ' + error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+                }
+            }
+        });
+    }
+
+    // Clear all caches button
+    const clearCacheBtn = document.getElementById('clearCacheBtn');
+    if (clearCacheBtn) {
+        clearCacheBtn.addEventListener('click', async (e) => {
+            const confirmed = await showConfirmationDialog(
+                `Are you sure you want to reinstall the application?`,
+                [
+                    { text: 'Reinstall', value: true, className: 'btn-danger' },
+                    { text: 'Cancel', value: false, className: 'btn-secondary' }
+                ],
+                event
+            );
+            if (confirmed) {
+                await clearAllCachesAndReload();
+            }
+        });
+    }
+
+    // Update button text on first load
+    updateToggleBlurButtonText();
+}
+
+function updateToggleBlurButtonText() {
+    const toggleBlurBtn = document.getElementById('toggleBlurBtn');
+    if (toggleBlurBtn) {
+        const html = document.documentElement;
+        const isBlurDisabled = html.classList.contains('disable-blur');
+        toggleBlurBtn.setAttribute('data-state', isBlurDisabled ? 'off' : 'on');
+        
+        if (isBlurDisabled) {
+            toggleBlurBtn.title = 'Click to enable blur effects';
+        } else {
+            toggleBlurBtn.title = 'Click to disable blur effects';
+        }
+    }
+}
+
+async function clearAllCachesAndReload() {
+    try {
+        // Clear all caches
+        if ('caches' in window) {
+            const cacheNames = await caches.keys();
+            await Promise.all(cacheNames.map(name => caches.delete(name)));
+        }
+
+        // Clear service worker registration
+        if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(registrations.map(registration => registration.unregister()));
+        }
+
+        await window.serviceWorkerManager.checkStaticFileUpdates();
+
+    } catch (error) {
+        console.error('Error clearing caches:', error);
+        if (typeof showGlassToast === 'function') {
+            showGlassToast('error', 'Cache Clear Failed', 'Failed to clear caches: ' + error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+        }
+    }
 }

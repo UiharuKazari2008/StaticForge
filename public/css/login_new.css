@@ -24,102 +24,13 @@ body {
     gap: 0.25em;
 }
 
-/* Blocky background container */
-.background {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: -1;
-    overflow: hidden;
-}
 
-.block-container {
-    position: relative;
-    width: max(100vh, 100vw);
-    height: max(100vh, 100vw);
-    display: grid;
-    grid-template-columns: repeat(20, 1fr);
-    grid-template-rows: repeat(20, 1fr);
-    z-index: -1;
-    aspect-ratio: 1;
-    object-fit: cover;
-}
-
-.block {
-    animation: colorChange 10s infinite ease-in-out;
-    aspect-ratio: 1;
-    position: relative;
-}
-
-/*
-.block::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-image: url(/previews/login_image.jpg);
-    background-size: 40000% 4000%;
-    background-position: calc(var(--bg-x-pos) + var(--block-x-offset)) calc(100% + var(--block-y-offset));
-    background-repeat: no-repeat;
-    opacity: 0;
-    transition: opacity 0.8s ease-in-out;
-    pointer-events: none;
-    z-index: 1;
-}
-
-.block.reveal-blur::after {
-    opacity: 1;
-}
-*/
-
-@keyframes colorChange {
-    0%, 9% {
-        background-color: #e75480; /* Darker Pink */
-    }
-    10%, 19% {
-        background-color: #ff914d; /* Darker Peach/Orange */
-    }
-    20%, 29% {
-        background-color: #ffe156; /* Darker Yellow */
-    }
-    30%, 39% {
-        background-color: #43e8d8; /* Darker Mint */
-    }
-    40%, 49% {
-        background-color: #43b97f; /* Darker Green */
-    }
-    50%, 59% {
-        background-color: #3a6ea5;
-    }
-    60%, 69% {
-        background-color: #6c4fbb;
-    }
-    70%, 79% {
-        background-color: #a259c6;
-    }
-    80%, 89% {
-        background-color: #e754a6;
-    }
-    90%, 99% {
-        background-color: #c94f7c;
-    }
-    100% {
-        background-color: #e75480; /* Darker Pink */
-    }
-}
 
 /* Login form */
 .login-container {
     background-color: rgba(255, 255, 255, 0.1);
     border: 1px solid #ffffff75;
-    backdrop-filter: blur(40px);
+    backdrop-filter: blur(5px);
     padding: 40px 35px;
     border-radius: 10px;
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
@@ -175,10 +86,22 @@ body {
     animation: shake 0.5s ease-in-out;
 }
 
+.pin-dot.success {
+    border-color: #28a745;
+    background-color: rgba(40, 167, 69, 0.2);
+    animation: success-pulse 0.6s ease-in-out;
+}
+
 @keyframes shake {
     0%, 100% { transform: translateX(0); }
     10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
     20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+@keyframes success-pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
 }
 
 /* PIN Pad */
@@ -188,18 +111,68 @@ body {
     flex-wrap: nowrap;
     align-items: center;
     justify-content: flex-start;
-    overflow: hidden;
+    overflow: visible;
     gap: 15px;
     margin-top: 30px;
     max-height: 500px;
     opacity: 1;
-    transition: max-height 0.4s ease, margin-top 0.4s ease, opacity 0.3s ease;
+}
+
+@keyframes pin-pad-transition-out {
+    0% {
+        max-height: 500px;
+        margin-top: 30px;
+        opacity: 1;
+        overflow: visible;
+    }
+    0.001% {
+        max-height: 500px;
+        margin-top: 30px;
+        opacity: 1;
+        overflow: hidden;
+    }
+    100% {
+        max-height: 0;
+        margin-top: 0;
+        opacity: 0;
+        overflow: hidden;
+    }
+}
+
+
+@keyframes pin-pad-transition-in {
+    0% {
+        max-height: 0;
+        margin-top: 0;
+        opacity: 0;
+        overflow: hidden;
+    }
+    99.999% {
+        max-height: 500px;
+        margin-top: 30px;
+        opacity: 1;
+        overflow: hidden;
+    }
+    100% {
+        max-height: 500px;
+        margin-top: 30px;
+        opacity: 1;
+        overflow: visible;
+    }
+}
+
+.transition .pin-pad {
+    animation: pin-pad-transition-in 0.25s ease-in-out;
+}
+.transition.minimize .pin-pad {
+    animation: pin-pad-transition-out 0.3s ease-in-out;
 }
 
 .minimize .pin-pad {
     max-height: 0;
     margin-top: 0;
     opacity: 0;
+    overflow: hidden;
 }
 
 .login-container.minimize {
@@ -217,8 +190,8 @@ body {
     height: 60px;
     border-radius: 50%;
     border: none;
-    background-color: rgba(255, 255, 255, 0.2);
-    color: #fff;
+    background-color: rgba(255, 255, 255, 0.45);
+    color: #505050;
     font-size: 1.5em;
     font-weight: bold;
     cursor: pointer;
@@ -226,30 +199,34 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    backdrop-filter: blur(5px);
-    border: 2px solid rgba(255, 255, 255, 0.3);
+    border: 2px solid rgba(255, 255, 255, 0.25);
 }
 
-.pin-button:hover {
-    color: #6a6a6a;
-    background-color: rgb(255 255 255 / 68%);
-    box-shadow: 0 0 20px rgb(255 255 255 / 66%);
-}
+@supports (-webkit-touch-callout: none) or (hover: hover) {
+    .pin-button:hover {
+        color: #6a6a6a;
+        background-color: rgb(255 255 255 / 68%);
+        box-shadow: 0 0 20px rgb(255 255 255 / 66%);
+    }
 
-.pin-button:active {
-    background-color: rgb(255 255 255 / 90%);
+    .pin-button:active {
+        background-color: rgb(255 255 255 / 90%);
+    }
 }
 
 .pin-button.backspace-btn,
 .pin-button.clear-btn {
     font-size: 1.2em;
+    color: #fff;
     background-color: rgba(255, 0, 25, 0.75);
     border-color: rgba(255, 128, 140, 0.58);
 }
 
-.pin-button.backspace-btn:hover,
-.pin-button.clear-btn:hover {
-    background-color: rgba(220, 53, 69, 0.5);
+@supports (-webkit-touch-callout: none) or (hover: hover) {
+    .pin-button.backspace-btn:hover,
+    .pin-button.clear-btn:hover {
+        background-color: rgba(220, 53, 69, 0.5);
+    }
 }
 
 .pin-button.clear-btn {
@@ -336,6 +313,9 @@ body {
 
 /* Background Image System using CSS Sprite Sheet */
 .background-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
     position: fixed;
     top: 0;
     left: 0;
@@ -346,34 +326,42 @@ body {
     /* CSS Custom Properties for background positioning */
     --bg-x-pos: 0%;
     --bg-y-pos: 0%;
-    --blur-x-pos: 0%;
-    --blur-y-pos: 100%;
+    --image-sheet: 100% 100%;
+    --image-width: 1024px;
+    --image-height: 1024px;
+    --image-num: 20;
 }
 
 .bg-layer, .blur-layer {
+    display: block;
     position: absolute;
     top: 0;
-    left: 0;
+    left: 50%;
+    transform: translateZ(0px) translateX(-50%);
     width: max(100vh, 100vw);
     height: max(100vh, 100vw);
-    background-image: url(/previews/login_image.jpg);
-    background-size: 2000% 200%;
-    background-position: var(--bg-x-pos) var(--bg-y-pos);
-    background-repeat: no-repeat;
     object-fit: cover;
     aspect-ratio: 1 / 1;
+    will-change: background-position;
 }
 
-.bg-layer {
-    z-index: -3; /* Normal image behind block-container */
-    background-position: var(--bg-x-pos) var(--bg-y-pos); /* Use CSS variables */
+.bg-layer, .blur-layer {
+    background-image: url(/previews/login_image.jpg);
+    background-size: var(--image-sheet, 100% 2000%);
+    background-position: var(--bg-x-pos) var(--bg-y-pos);
+    background-repeat: no-repeat;
 }
 
 .blur-layer {
     z-index: -2; /* Blur layer behind normal image */
     background-position: var(--blur-x-pos) var(--blur-y-pos); /* Use CSS variables */
     opacity: 0; /* Start hidden */
-    transition: opacity 0.25s ease-in-out; /* Longer fade-out (0.5 seconds) */
+    transition: opacity 0.25s cubic-bezier(1, 0, 0.21, 0.86);; /* Longer fade-out (0.5 seconds) */
+}
+
+.bg-layer {
+    z-index: -3; /* Normal image behind block-container */
+    background-position: var(--bg-x-pos) var(--bg-y-pos); /* Use CSS variables */
 }
 
 .blur-layer.transitioning {

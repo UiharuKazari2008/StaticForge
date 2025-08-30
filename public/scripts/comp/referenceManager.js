@@ -424,7 +424,7 @@ function createCacheGalleryItem(cacheImage) {
         if (cacheImage.hasPreview) {
             img.src = `/cache/preview/${cacheImage.hasPreview}`;
         } else {
-            img.src = '/images/background.jpg';
+            img.src = '/static_images/background.jpg';
         }
     } else {
         // For cache images (with or without vibes)
@@ -713,12 +713,14 @@ async function refreshVibeReferencesDisplay() {
         const vibeId = item.getAttribute('data-vibe-id');
         if (!vibeId) return;
         
-        // Store current IE and strength values before replacing
+        // Store current IE, strength, and toggle values before replacing
         const ieDropdownBtn = item.querySelector('.custom-dropdown-btn');
-        const ratioInput = item.querySelector('.vibe-reference-ratio-input');
+        const ratioInput = item.querySelector('input.vibe-reference-ratio-input');
+        const toggleBtn = item.querySelector('.toggle-btn');
         
         const currentIe = ieDropdownBtn?.dataset.selectedIe || null;
         const currentStrength = ratioInput?.value || null;
+        const currentToggleState = toggleBtn?.getAttribute('data-state') || 'on';
         
         // Find the vibe reference data
         let vibeRef = null;
@@ -733,8 +735,8 @@ async function refreshVibeReferencesDisplay() {
         }
         
         if (vibeRef) {
-            // Create new item with preserved IE and strength values
-            const newItem = createVibeReferenceItem(vibeRef, currentIe, currentStrength);
+            // Create new item with preserved IE, strength, and toggle values
+            const newItem = createVibeReferenceItem(vibeRef, currentIe, currentStrength, currentToggleState);
             item.parentNode.replaceChild(newItem, item);
         }
     });
@@ -774,7 +776,7 @@ async function refreshReferenceManagerAfterVibeOperation() {
     }
 }
 
-function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null) {
+function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, toggleState = 'on') {
     const item = document.createElement('div');
     item.className = 'vibe-reference-item';
     item.setAttribute('data-vibe-id', vibeRef.id);
@@ -791,7 +793,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null) {
         preview.src = `data:image/png;base64,${vibeRef.image}`;
     } else {
         // Fallback to a placeholder
-        preview.src = '/images/background.jpg';
+        preview.src = '/static_images/background.jpg';
     }
     preview.alt = `Vibe reference ${vibeRef.id}`;
 
@@ -849,6 +851,33 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null) {
         });
         controls.appendChild(commentBtn);
     }
+
+    // Create toggle button for enabling/disabling the vibe reference
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'indicator btn-secondary blur';
+    toggleBtn.setAttribute('data-state', toggleState); // Use passed toggle state
+    toggleBtn.innerHTML = '<i class="fas fa-power-off"></i>';
+    toggleBtn.title = toggleState === 'on' ? 'Toggle vibe reference (enabled)' : 'Toggle vibe reference (disabled)';
+    if (toggleState === 'off') {
+        toggleBtn.classList.add('disabled');
+    }
+    toggleBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const currentState = toggleBtn.getAttribute('data-state');
+        const newState = currentState === 'on' ? 'off' : 'on';
+        
+        toggleBtn.setAttribute('data-state', newState);
+        if (newState === 'on') {
+            toggleBtn.title = 'Toggle vibe reference (enabled)';
+            toggleBtn.classList.remove('disabled');
+        } else {
+            toggleBtn.title = 'Toggle vibe reference (disabled)';
+            toggleBtn.classList.add('disabled');
+        }
+    });
+    controls.appendChild(toggleBtn);
 
     // Create delete button
     const deleteBtn = document.createElement('button');
@@ -1044,12 +1073,12 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null) {
     ratioInput.min = '-1.00';
     ratioInput.max = '1.00';
     ratioInput.step = '0.01';
-    ratioInput.value = strength !== null ? strength.toFixed(2) : '0.70';
+    ratioInput.value = strength !== null ? parseFloat(strength).toFixed(2) || '0.70' : '0.70';
 
     // Create percentage overlay
     const ratioOverlay = document.createElement('span');
     ratioOverlay.className = 'percentage-input-overlay';
-    const currentValue = strength !== null ? strength : 0.7;
+    const currentValue = strength !== null ? parseFloat(strength) || 0.7 : 0.7;
     ratioOverlay.textContent = `${(currentValue * 100).toFixed(0)}%`;
 
     // Add wheel event for scrolling
@@ -1430,6 +1459,11 @@ async function deleteCacheImage(cacheImage) {
 // Reference Manager Functions
 
 function showCacheManagerModal() {
+    // Disable on mobile displays
+    if (window.innerWidth <= 768) {
+        return false;
+    }
+    
     closeSubMenu();
     
     cacheManagerCurrentWorkspace = activeWorkspace;
@@ -1611,7 +1645,7 @@ function createCacheManagerGalleryItem(cacheImage) {
         if (cacheImage.hasPreview) {
             img.src = `/cache/preview/${cacheImage.hasPreview}`;
         } else {
-            img.src = '/images/background.jpg';
+            img.src = '/static_images/background.jpg';
         }
     } else {
         // For cache images (with or without vibes)
@@ -1960,7 +1994,7 @@ function hideUnifiedUploadModal() {
         // Reset background image
         const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
         if (backgroundImage) {
-            backgroundImage.src = '/images/background.jpg';
+            backgroundImage.src = '/static_images/background.jpg';
         }
         
         // Hide Open in Editor button
@@ -2824,8 +2858,12 @@ async function uploadUnifiedReferenceImages() {
             results = await Promise.all(uploadPromises);
         }
         
-        removeGlassToast(toastId);
-        showGlassToast('success', 'Upload Complete', `Successfully uploaded ${results.length} image(s)`, false, true, '<i class="nai-check"></i>');
+        updateGlassToastComplete(toastId, {
+            type: 'success',
+            title: 'Upload Complete',
+            message: `Successfully uploaded ${results.length} image(s)`,
+            customIcon: '<i class="nai-check"></i>'
+        });
         
         // If this was uploaded as a base image (reference mode), add it to the manual form
         if (unifiedUploadCurrentMode === 'reference' && results.length > 0) {
@@ -2851,9 +2889,13 @@ async function uploadUnifiedReferenceImages() {
         hideUnifiedUploadModal();
         
     } catch (error) {
-        removeGlassToast(toastId);
+        updateGlassToastComplete(toastId, {
+            type: 'error',
+            title: 'Upload Failed',
+            message: 'Upload failed: ' + (error.message || 'Unknown error'),
+            customIcon: '<i class="nai-cross"></i>'
+        });
         hideGalleryMoveRightPanelCover();
-        showGlassToast('error', null, 'Upload failed: ' + (error.message || 'Unknown error'));
     }
 }
 
@@ -2932,8 +2974,12 @@ async function handleJsonFileImport(files) {
             return response;
         });
         const results = await Promise.all(importPromises);
-        removeGlassToast(toastId);
-        showGlassToast('success', 'Import Complete', `Successfully imported ${results.length} vibe bundle(s)`, false, true, '<i class="nai-check"></i>');
+        updateGlassToastComplete(toastId, {
+            type: 'success',
+            title: 'Import Complete',
+            message: `Successfully imported ${results.length} vibe bundle(s)`,
+            customIcon: '<i class="nai-check"></i>'
+        });
         
         // Clear modified vibe data after successful import
         window.modifiedVibeData = [];
@@ -3142,8 +3188,12 @@ async function importDownloadedVibeBundle() {
             throw new Error(response.message || 'Vibe bundle import failed');
         }
         
-        removeGlassToast(toastId);
-        showGlassToast('success', 'Vibe Bundle Imported', `Successfully imported ${unifiedUploadDownloadedFile.vibeCount} vibe(s)`, false, true, '<i class="nai-check"></i>');
+        updateGlassToastComplete(toastId, {
+            type: 'success',
+            title: 'Vibe Bundle Imported',
+            message: `Successfully imported ${unifiedUploadDownloadedFile.vibeCount} vibe(s)`,
+            customIcon: '<i class="nai-check"></i>'
+        });
         
         // Refresh cache manager
         if (cacheBrowserContainer.style.display !== 'none') {
@@ -3161,9 +3211,13 @@ async function importDownloadedVibeBundle() {
         
     } catch (error) {
         console.error('Error importing downloaded vibe bundle:', error);
-        removeGlassToast(toastId);
+        updateGlassToastComplete(toastId, {
+            type: 'error',
+            title: 'Import Failed',
+            message: 'Vibe bundle import failed: ' + error.message,
+            customIcon: '<i class="nai-cross"></i>'
+        });
         hideGalleryMoveRightPanelCover();
-        showError('Vibe bundle import failed: ' + error.message);
     }
 }
 
@@ -3187,7 +3241,7 @@ function showCacheManagerMoveModal() {
             if (cacheManagerMoveTargetImage.hasPreview) {
                 backgroundImage.src = `/cache/preview/${cacheManagerMoveTargetImage.hasPreview}`;
             } else {
-                backgroundImage.src = '/images/background.jpg';
+                backgroundImage.src = '/static_images/background.jpg';
             }
         } else {
             if (cacheManagerMoveTargetImage.hasPreview) {
@@ -3387,7 +3441,7 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
             if (vibeEncodingConfirmText) vibeEncodingConfirmText.textContent = 'Upload';
             if (vibeEncodingUploadSection) vibeEncodingUploadSection.style.display = '';
             if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = true;
-            if (backgroundImage) backgroundImage.src = '/images/background.jpg';
+            if (backgroundImage) backgroundImage.src = '/static_images/background.jpg';
             if (modeDisplay) modeDisplay.textContent = 'Upload Mode';
             break;
             
@@ -3689,7 +3743,7 @@ function createVibeManagerGalleryItem(vibeImage) {
     if (vibeImage.preview) {
         img.src = `/cache/preview/${vibeImage.preview}`;
     } else {
-        img.src = '/images/background.jpg'; // Fallback image
+        img.src = '/static_images/background.jpg'; // Fallback image
     }
     img.alt = `Vibe image ${vibeImage.id}`;
     img.loading = 'lazy';
@@ -4321,7 +4375,7 @@ async function handleVibeBundleFile(file, backgroundImage) {
                 if (firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
                     backgroundImage.src = firstVibe.thumbnail;
                 } else {
-                    backgroundImage.src = '/images/background.jpg';
+                    backgroundImage.src = '/static_images/background.jpg';
                 }
                 
                 // Update UI for bundle import
@@ -4888,7 +4942,7 @@ function showVibeBundlePreview(vibes) {
             // Use the server-generated thumbnail with indexed filename
             img.src = `/cache/${vibe.thumbnail}.webp`;
         } else {
-            img.src = '/images/background.jpg';
+            img.src = '/static_images/background.jpg';
         }
         img.alt = vibe.name || 'Vibe';
         
@@ -5158,7 +5212,7 @@ function updateUIForVibeBundleImport(vibeCount, isBundle) {
 
 // Handle invalid bundle
 function handleInvalidBundle(backgroundImage) {
-    backgroundImage.src = '/images/background.jpg';
+    backgroundImage.src = '/static_images/background.jpg';
     // Invalid bundle handling - could show toast notification instead
     console.warn('Invalid vibe bundle format');
 }
@@ -5167,7 +5221,7 @@ function handleInvalidBundle(backgroundImage) {
 function resetUploadModal() {
     const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
     if (backgroundImage) {
-        backgroundImage.src = '/images/background.jpg';
+        backgroundImage.src = '/static_images/background.jpg';
     }
     
     const modalTitle = document.getElementById('unifiedUploadModalTitle');
@@ -6436,7 +6490,7 @@ async function handleUnifiedUploadClipboard() {
         // Set background to show URL preview
         const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
         if (backgroundImage) {
-            backgroundImage.src = '/images/background.jpg';
+            backgroundImage.src = '/static_images/background.jpg';
         }
     } catch (error) {
         console.error('Clipboard download error:', error);
@@ -6607,7 +6661,7 @@ function resetUnifiedUploadModal() {
     // Reset background image
     const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
     if (backgroundImage) {
-        backgroundImage.src = '/images/background.jpg';
+        backgroundImage.src = '/static_images/background.jpg';
     }
     
     // Reset navigation buttons

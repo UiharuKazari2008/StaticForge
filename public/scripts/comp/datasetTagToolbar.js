@@ -603,6 +603,20 @@ async function createTagSelectionDropdown(level, path) {
                         updateSelectedOption(dropdowns[level].menu, -1);
                     }
                 }, 50);
+            } else if (Array.isArray(result)) {
+                // Handle case where result is an array directly (e.g., allTextReplacements)
+                createTagDropdown(container, level, result, path);
+                
+                // Auto-focus the new tag dropdown if it was created via keyboard navigation
+                currentActiveDropdown = level;
+                setTimeout(() => {
+                    if (dropdowns[level] && dropdowns[level].menu && dropdowns[level].button) {
+                        openDropdown(dropdowns[level].menu, dropdowns[level].button);
+                        updateSelectedOption(dropdowns[level].menu, -1);
+                    }
+                }, 50);
+            } else {
+                console.warn('No tags found in result:', result);
             }
         }
     } catch (error) {
@@ -1372,12 +1386,12 @@ function handleGlobalKeyboardNav(event) {
             handled = true;
             break;
             
-        case 'q':
-        case 'Q':
-            if (!isSearchMode) {
+        default:
+            // Check if it's a letter (a-z, A-Z) and not in search mode
+            if (!isSearchMode && /^[a-zA-Z0-9]$/.test(event.key)) {
                 event.preventDefault();
                 event.stopPropagation();
-                enterSearchMode();
+                enterSearchMode(event.key);
                 handled = true;
             }
             break;
@@ -1435,7 +1449,7 @@ function hideLoadingSpinner() {
 } 
 
 // Search mode functions
-function enterSearchMode() {
+function enterSearchMode(initialQuery = '') {
     isSearchMode = true;
     searchResults = [];
     selectedDatasetSearchIndex = -1;
@@ -1450,8 +1464,19 @@ function enterSearchMode() {
     const searchInput = document.getElementById('datasetTagSearchInput');
     if (searchInput) {
         searchInput.style.display = 'block';
-        searchInput.value = '';
+        searchInput.value = initialQuery;
         searchInput.focus();
+        
+        // If we have an initial query, trigger search immediately
+        if (initialQuery) {
+            // Set cursor position to end of input
+            searchInput.setSelectionRange(initialQuery.length, initialQuery.length);
+            // Trigger search input event to start searching
+            setTimeout(() => {
+                const inputEvent = new Event('input', { bubbles: true });
+                searchInput.dispatchEvent(inputEvent);
+            }, 10);
+        }
         
         // Add search input listeners if not already added
         if (!searchInput.hasAttribute('data-listeners-added')) {
@@ -1490,7 +1515,8 @@ function exitSearchMode() {
 async function handleSearchInput(event) {
     const query = event.target.value.toLowerCase().trim();
     
-    if (query.length < 2) {
+    // Allow single character searches (useful when typing any letter to start search)
+    if (query.length < 1) {
         searchResults = [];
         hideSearchResults();
         return;

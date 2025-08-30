@@ -85,56 +85,8 @@ async function initializePhotoSwipe() {
                             label: 'Download image',
                             onClick: () => {
                                 const currentItem = pswp.currSlide;
-                                if (currentItem && currentItem.data) {
-                                    downloadImage(currentItem.data);
-                                }
-                            }
-                        },
-                        {
-                            className: 'reroll-button',
-                            icon: '<i class="nai-dice"></i>',
-                            label: 'Reroll image',
-                            onClick: () => {
-                                const currentItem = pswp.currSlide;
-                                if (currentItem && currentItem.data) {
-                                    rerollImage(currentItem.data);
-                                }
-                            }
-                        },
-                        {
-                            className: 'reroll-edit-button',
-                            icon: '<i class="mdi mdi-1-25 mdi-text-box-edit-outline"></i>',
-                            label: 'Reroll with edit',
-                            onClick: () => {
-                                const currentItem = pswp.currSlide;
-                                if (currentItem && currentItem.data) {
-                                    rerollImageWithEdit(currentItem.data);
-                                }
-                            }
-                        },
-                        {
-                            className: 'upscale-button',
-                            icon: '<i class="nai-upscale"></i>',
-                            label: 'Upscale image',
-                            onClick: () => {
-                                const currentItem = pswp.currSlide;
-                                if (currentItem && currentItem.data) {
-                                    upscaleImage(currentItem.data);
-                                }
-                            }
-                        },
-                        {
-                            className: 'scrap-button',
-                            icon: '<i class="mdi mdi-1-5 mdi-archive"></i>',
-                            label: 'Move to scraps',
-                            onClick: () => {
-                                const currentItem = pswp.currSlide;
-                                if (currentItem && currentItem.data) {
-                                    if (currentGalleryView === 'scraps') {
-                                        removeFromScraps(currentItem.data);
-                                    } else {
-                                        moveToScraps(currentItem.data);
-                                    }
+                                if (currentItem && currentItem.data?.data) {
+                                    downloadImage(currentItem.data?.data);
                                 }
                             }
                         },
@@ -144,8 +96,56 @@ async function initializePhotoSwipe() {
                             label: 'Pin image',
                             onClick: () => {
                                 const currentItem = pswp.currSlide;
-                                if (currentItem && currentItem.data) {
-                                    togglePinImage(currentItem.data);
+                                if (currentItem && currentItem.data?.data) {
+                                    togglePinImage(currentItem.data?.data);
+                                }
+                            }
+                        },
+                        {
+                            className: 'reroll-button',
+                            icon: '<i class="nai-dice"></i>',
+                            label: 'Reroll image',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data?.data) {
+                                    rerollImage(currentItem.data?.data);
+                                }
+                            }
+                        },
+                        {
+                            className: 'reroll-edit-button',
+                            icon: '<i class="mdi mdi-1-25 mdi-text-box-edit-outline"></i>',
+                            label: 'Reroll with edit',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data?.data) {
+                                    rerollImageWithEdit(currentItem.data?.data);
+                                }
+                            }
+                        },
+                        {
+                            className: 'upscale-button',
+                            icon: '<i class="nai-upscale"></i>',
+                            label: 'Upscale image',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data?.data) {
+                                    upscaleImage(currentItem.data?.data);
+                                }
+                            }
+                        },
+                        {
+                            className: 'scrap-button',
+                            icon: '<i class="mdi mdi-1-5 mdi-archive"></i>',
+                            label: 'Move to scraps',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data?.data) {
+                                    if (currentGalleryView === 'scraps') {
+                                        removeFromScraps(currentItem.data?.data);
+                                    } else {
+                                        moveToScraps(currentItem.data?.data);
+                                    }
                                 }
                             }
                         },
@@ -155,8 +155,8 @@ async function initializePhotoSwipe() {
                             label: 'Delete image',
                             onClick: () => {
                                 const currentItem = pswp.currSlide;
-                                if (currentItem && currentItem.data) {
-                                    deleteImage(currentItem.data);
+                                if (currentItem && currentItem.data?.data) {
+                                    deleteImage(currentItem.data?.data);
                                 }
                             }
                         },
@@ -166,7 +166,7 @@ async function initializePhotoSwipe() {
                             label: 'Show metadata',
                             onClick: () => {
                                 const currentItem = pswp.currSlide;
-                                if (currentItem && currentItem.data) {
+                                if (currentItem && currentItem.data?.data) {
                                     showMetadataDialog();
                                 }
                             }

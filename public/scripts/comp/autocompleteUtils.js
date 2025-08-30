@@ -757,7 +757,7 @@ function getServiceIconClass(serviceName, status) {
         case 'cached_tags':
             return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-tag';
         case 'textReplacements':
-            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-code';
+            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-language';
         case 'spellcheck':
             return ((status === 'searching' || status === 'stalled' || status === 'completed-noerrors') ? 'fa-light' : 'fas') + ' fa-spell-check';
         case 'cached':
@@ -4858,7 +4858,7 @@ async function showTextReplacementDialog(selectedText) {
                     requestId: `favorite_add_${Date.now()}`
                 });
                 
-                showGlassToast('success', null, `Added text replacement "!${name}" to config`, false, 3000, '<i class="fas fa-code"></i>');
+                showGlassToast('success', null, `Added text replacement "!${name}" to config`, false, 3000, '<i class="fas fa-language"></i>');
             } else {
                 showGlassToast('error', null, 'Unable to add to favorites: not connected to server', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
             }

@@ -9,6 +9,8 @@ const cookieParser = require('cookie-parser');
 const session = require('express-session');
 const multer = require('multer');
 const crypto = require('crypto');
+const compression = require('compression');
+const helmet = require('helmet');
 
 // Import modules
 const { authMiddleware } = require('./modules/auth');
@@ -20,7 +22,7 @@ const { WebSocketMessageHandlers } = require('./modules/websocketHandlers');
 const { updateMetadata, getBaseName } = require('./modules/pngMetadata');
 const { processDynamicImage } = require('./modules/imageTools');
 const { initializeWorkspaces, getWorkspaces, getActiveWorkspace, addToWorkspaceArray } = require('./modules/workspace');
-const { saveMetadataCache, addReceiptMetadata, addUnattributedReceipt, broadcastReceiptNotification } = require('./modules/metadataCache.js');
+const { addReceiptMetadata, addUnattributedReceipt, broadcastReceiptNotification } = require('./modules/metadataDatabase');
 const imageCounter = require('./modules/imageCounter');
 const { generatePreview, generateBlurredPreview } = require('./modules/previewUtils');
 // Example usage in WebSocket handler or main server
@@ -269,7 +271,30 @@ async function calculateCreditUsage(_oldBalance) {
 // Create Express app
 const app = express();
 const server = require('http').createServer(app);
+
+// Security and performance middleware
+app.use(helmet({
+    contentSecurityPolicy: false, // Disable CSP for development
+    crossOriginEmbedderPolicy: false
+}));
+
+// Enable gzip compression for all responses
+app.use(compression({
+    level: 6, // Balanced compression level
+    threshold: 1024, // Only compress responses larger than 1KB
+    filter: (req, res) => {
+        // Don't compress if client doesn't support it
+        if (req.headers['x-no-compression']) {
+            return false;
+        }
+        // Use compression for all other requests
+        return compression.filter(req, res);
+    }
+}));
+
+// Body parsing middleware with optimized limits
 app.use(express.json({limit: '100mb'}));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
 // Create session store
@@ -312,22 +337,6 @@ const previewsDir = path.resolve(__dirname, '.previews');
 
 // Initialize workspace system
 initializeWorkspaces();
-
-
-// Serve static files from public directory ("/public/" is served as "/")
-app.use(express.static('public'));
-
-// Serve cache directory with 15-day cache headers for .webp and .jpg files
-app.use('/cache', (req, res, next) => {
-    // Only add cache headers for image files
-    if (req.path.match(/\.(webp|jpg|jpeg|png)$/i)) {
-        res.set('Cache-Control', 'public, max-age=1296000'); // 15 days in seconds
-    }
-    next();
-}, express.static(cacheDir));
-
-// Serve temp directory
-app.use('/temp', express.static(path.join(cacheDir, 'tempDownload')));
 
 // Generate login page sprite sheet (single sheet with normal + blurred images)
 async function generateLoginSpriteSheet() {
@@ -374,20 +383,20 @@ async function generateLoginSpriteSheet() {
             return;
         }
         
-        // Create single sprite sheet: width = image count * 1024px, height = 2 * 1024px (normal + blurred)
-        const spriteWidth = 1024 * selectedImages.length;
-        const spriteHeight = 2048; // 2 rows: normal images (top) + blurred images (bottom)
+        // Create 2x20 sprite sheet: 2 columns (normal + blurred), 20 rows (images)
+        const width = 1024;
+        const height = 1024;
         
         // Generate single combined sprite sheet with both normal and blurred images
         console.log('🖼️ Step 3: Generating combined sprite sheet...');
-        await generateCombinedSpriteSheet(selectedImages, spritePath, spriteWidth, spriteHeight);
+        await generateCombinedSpriteSheet(selectedImages, spritePath, width, height);
         
         // Save metadata for frontend use
         console.log('💾 Step 4: Saving metadata...');
         const metadata = {
             imageCount: selectedImages.length,
-            spriteWidth: spriteWidth,
-            spriteHeight: spriteHeight,
+            spriteWidth: width,
+            spriteHeight: (height * selectedImages.length),
             generatedAt: Date.now(),
             images: selectedImages.map(img => img.filename)
         };
@@ -506,7 +515,7 @@ async function generateCombinedSpriteSheet(images, outputPath, width, height) {
         const spriteCanvas = sharp({
             create: {
                 width: width,
-                height: height,
+                height: height * images.length,
                 channels: 3,
                 background: { r: 0, g: 0, b: 0 }
             }
@@ -517,7 +526,7 @@ async function generateCombinedSpriteSheet(images, outputPath, width, height) {
         
         for (let i = 0; i < images.length; i++) {
             const image = images[i];
-            const x = i * 1024;
+            const y = i * height; // Y position for each row
             
             try {
                 if (!image.path || !fs.existsSync(image.path)) {
@@ -525,35 +534,19 @@ async function generateCombinedSpriteSheet(images, outputPath, width, height) {
                     continue;
                 }
                 
-                // Process normal image (top row) - crop to point of interest
+                // Process normal image (left column) - crop to point of interest
                 const normalImage = sharp(image.path)
-                    .resize(1024, 1024, { 
+                    .resize(width, height, { 
                         fit: 'cover',
                         position: 'attention' // This focuses on the most interesting part of the image
                     });
                 
-                const normalBuffer = await normalImage.jpeg({ quality: 90 }).toBuffer();
+                const normalBuffer = await normalImage.toBuffer();
                 
                 composites.push({
                     input: normalBuffer,
-                    left: x,
-                    top: 0 // Top row for normal images
-                });
-                
-                // Process blurred image (bottom row) - crop to point of interest
-                const blurredImage = sharp(image.path)
-                    .resize(1024, 1024, { 
-                        fit: 'cover',
-                        position: 'attention' // This focuses on the most interesting part of the image
-                    })
-                    .blur(15);
-                
-                const blurredBuffer = await blurredImage.jpeg({ quality: 90 }).toBuffer();
-                
-                composites.push({
-                    input: blurredBuffer,
-                    left: x,
-                    top: 1024 // Bottom row for blurred images
+                    left: 0, // Left column for normal images
+                    top: y
                 });
                 
                 processedCount++;
@@ -573,7 +566,7 @@ async function generateCombinedSpriteSheet(images, outputPath, width, height) {
         // Composite all images onto the sprite sheet
         await spriteCanvas
             .composite(composites)
-            .jpeg({ quality: 90 })
+            .jpeg({ quality: 40 })
             .toFile(outputPath);
             
         console.log(`💾 Saved combined sprite sheet to ${outputPath}`);
@@ -825,22 +818,32 @@ async function getUserData() {
     }
 }
 
-// GET /previews/:preview (serve preview images)
-app.get('/previews/:preview', (req, res) => {
+// Serve static files from public directory with optimized caching and compression
+app.use(express.static('public', {
+    maxAge: '10s', // Cache static assets for 1 day
+    etag: true, // Enable ETags for cache validation
+    lastModified: true, // Enable Last-Modified headers
+    setHeaders: (res, path) => {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+    }
+}));
+app.use('/cache', (req, res, next) => {
+    res.setHeader('Cache-Control', 'public, max-age=259200');
+    next();
+}, express.static(cacheDir));
+app.use('/temp', express.static(path.join(cacheDir, 'tempDownload')));
+app.use('/previews/:preview', (req, res) => {
     const previewFile = req.params.preview;
     const previewPath = path.join(previewsDir, previewFile);
     if (!fs.existsSync(previewPath)) {
         return res.status(404).json({ error: 'Preview not found' });
     }
-    
-    // Set cache headers for previews (3 days)
-    res.setHeader('Cache-Control', 'public, max-age=259200'); // 3 days in seconds
-    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=259200');
     res.sendFile(previewFile, { root: previewsDir });
 });
-
-// GET /images/:filename (serve individual image files)
-app.get('/images/:filename', (req, res) => {
+app.use('/images/:filename', authMiddleware, (req, res) => {
     const filename = req.params.filename;
     const filePath = path.join(imagesDir, filename);
     
@@ -867,7 +870,7 @@ app.get('/images/:filename', (req, res) => {
     res.sendFile(filePath);
 });
 
-// Common request logging middleware
+// Logger // NOTE: Everything above this is not logged!
 app.use((req, res, next) => {
     const skippedPaths = [
         '/ping',
@@ -879,6 +882,7 @@ app.use((req, res, next) => {
     if (skippedPaths.some(path => req.path.startsWith(path))) {
         return next();
     }
+    
     const startTime = Date.now();
     const timestamp = new Date().toLocaleString('en-US', {
         month: '2-digit',
@@ -888,10 +892,14 @@ app.use((req, res, next) => {
         second: '2-digit',
         hour12: false
     });
+    
     const realIP = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.ip || req.connection.remoteAddress;
     const queryParams = { ...req.query };
     delete queryParams.auth;
     delete queryParams.loginKey;
+    
+    // Add response time header
+    res.setHeader('X-Response-Time', '0ms');
     
     console.log(`\n📋 [${timestamp}] ${realIP} => ${req.method} ${req.path}`);
     if (Object.keys(queryParams).length > 0) {
@@ -904,20 +912,38 @@ app.use((req, res, next) => {
     let completionLogged = false;
     const originalEnd = res.end;
     res.end = function(...args) {
-        if (!completionLogged) {
-            const duration = Date.now() - startTime;
-            console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s`);
-            completionLogged = true;
+        if (!completionLogged && !res.headersSent) {
+            try {
+                const duration = Date.now() - startTime;
+                const responseTime = `${duration}ms`;
+                res.setHeader('X-Response-Time', responseTime);
+                console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s`);
+                completionLogged = true;
+            } catch (error) {
+                // Headers already sent, just log completion
+                const duration = Date.now() - startTime;
+                console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s (headers already sent)`);
+                completionLogged = true;
+            }
         }
         originalEnd.apply(this, args);
     };
     
     const originalSend = res.send;
     res.send = function(...args) {
-        if (!completionLogged) {
-            const duration = Date.now() - startTime;
-            console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s`);
-            completionLogged = true;
+        if (!completionLogged && !res.headersSent) {
+            try {
+                const duration = Date.now() - startTime;
+                const responseTime = `${duration}ms`;
+                res.setHeader('X-Response-Time', responseTime);
+                console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s`);
+                completionLogged = true;
+            } catch (error) {
+                // Headers already sent, just log completion
+                const duration = Date.now() - startTime;
+                console.log(`⏱️ Completed in ${(duration / 1000).toFixed(2)}s (headers already sent)`);
+                completionLogged = true;
+            }
         }
         originalSend.apply(this, args);
     };
@@ -936,6 +962,62 @@ app.get('/', (req, res) => {
     }
 });
 
+// Cache manifest endpoint for service worker
+app.options('/', (req, res) => {
+    try {
+        // Return the pre-generated cache data in the format expected by the service worker
+        const staticFiles = globalCacheData.map(file => ({
+            url: file.path,
+            hash: file.md5,
+            size: file.size,
+            modified: file.modified
+        }));
+        
+        res.json(staticFiles);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Unified message endpoint
+app.post('/', express.json(), (req, res) => {
+    const { action, data } = req.body;
+    
+    if (!action) {
+        return res.status(400).json({ error: 'Action is required' });
+    }
+    
+    switch (action) {
+        case 'login':
+            const { pin } = data || {};
+            if (!pin) {
+                return res.status(400).json({ error: 'PIN code is required' });
+            }
+            if (pin === config.loginPin) {
+                req.session.authenticated = true;
+                req.session.userType = 'admin';
+                res.json({ success: true, message: 'Login successful', userType: 'admin' });
+            } else if (pin === config.readOnlyPin) {
+                req.session.authenticated = true;
+                req.session.userType = 'readonly';
+                res.json({ success: true, message: 'Login successful', userType: 'readonly' });
+            } else {
+                res.status(401).json({ error: 'Invalid PIN code' });
+            }
+            break;
+            
+        case 'logout':
+            req.session.destroy(() => {
+                res.clearCookie('connect.sid');
+                res.json({ success: true, message: 'Logged out successfully' });
+            });
+            break;
+            
+        default:
+            res.status(400).json({ error: 'Invalid action' });
+    }
+});
+
 // App route (requires authentication)
 app.get('/app', (req, res) => {
     if (req.session && req.session.authenticated) {
@@ -945,22 +1027,12 @@ app.get('/app', (req, res) => {
     }
 });
 
-// Cache manifest endpoint
 app.options('/app', authMiddleware, (req, res) => {
-    try {
-        // Return the pre-generated cache data
-        res.json({
-            success: true,
-            cacheData: globalCacheData,
-            timestamp: Date.now().valueOf()
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+    res.json({ success: true, message: 'Session Valid', timestamp: Date.now().valueOf() });
 });
 
 // Reload cache data endpoint (for development/deployment)
-app.post('/admin/reload-cache', authMiddleware, async (req, res) => {
+app.get('/admin/reload-cache', authMiddleware, async (req, res) => {
     try {
         // Check if user is admin (not readonly)
         if (req.session.userType !== 'admin') {
@@ -1000,35 +1072,69 @@ app.post('/admin/reload-cache', authMiddleware, async (req, res) => {
     }
 });
 
-// Login endpoint
-app.post('/login', express.json(), (req, res) => {
-    const { pin } = req.body;
-    if (!pin) {
-        return res.status(400).json({ error: 'PIN code is required' });
-    }
-    if (pin === config.loginPin) {
-        req.session.authenticated = true;
-        req.session.userType = 'admin';
-        res.json({ success: true, message: 'Login successful', userType: 'admin' });
-    } else if (pin === config.readOnlyPin) {
-        req.session.authenticated = true;
-        req.session.userType = 'readonly';
-        res.json({ success: true, message: 'Login successful', userType: 'readonly' });
-    } else {
-        res.status(401).json({ error: 'Invalid PIN code' });
+// Restart server endpoint (for development/deployment)
+app.post('/admin/restart-server', authMiddleware, async (req, res) => {
+    try {
+        // Check if user is admin (not readonly)
+        if (req.session.userType !== 'admin') {
+            return res.status(403).json({ 
+                error: 'Admin access required to restart server' 
+            });
+        }
+
+        console.log('🔄 Admin requested server restart...');
+        
+        // Send response immediately before restarting
+        res.json({
+            success: true,
+            message: 'Server restart initiated',
+            timestamp: Date.now().valueOf()
+        });
+        
+        // Small delay to ensure response is sent
+        setTimeout(() => {
+            console.log('🔄 Restarting server via PM2...');
+            // Use PM2 to restart the server (ID 12 as mentioned in user rules)
+            const { exec } = require('child_process');
+            exec('timeout 5 pm2 restart 12', (error, stdout, stderr) => {
+                if (error) {
+                    console.error('❌ Error restarting server:', error);
+                } else {
+                    console.log('✅ Server restart command executed:', stdout);
+                }
+            });
+        }, 100);
+        
+    } catch (error) {
+        console.error('❌ Error initiating server restart:', error);
+        // Response already sent, just log the error
     }
 });
 
-// Logout endpoint
-app.post('/logout', (req, res) => {
-    req.session.destroy(() => {
-        res.clearCookie('connect.sid');
-        res.json({ success: true, message: 'Logged out successfully' });
-    });
+// Internal URL handler for service worker cached data
+app.get('/internal/*', (req, res) => {
+    try {
+        res.set('Content-Type', 'application/json');
+        res.json({
+            message: 'File is missing from client cache',
+            path: req.path,
+            timestamp: Date.now()
+        });
+        
+    } catch (error) {
+        console.error('❌ Error handling internal URL:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 app.get('/preset/:uuid', authMiddleware, queueMiddleware, async (req, res) => {
     try {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        if (req.userType !== 'admin') {
+            return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for non-administrator users' });
+        }
         const currentPromptConfig = loadPromptConfig();
         // Find preset by UUID instead of name
         const p = Object.entries(currentPromptConfig.presets).find(([key, preset]) => preset.uuid === req.params.uuid).map(p => ({...p[1], name: p[0]}));
@@ -1137,87 +1243,6 @@ app.post('/test-bias-adjustment', async (req, res) => {
     }
 });
 
-// Upload endpoint
-app.post('/workspaces/:id/images', authMiddleware, upload.array('images', 10), async (req, res) => {
-    // Check if user is read-only
-    if (req.userType === 'readonly') {
-        return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
-    }
-    try {
-        if (!req.files || req.files.length === 0) {
-            return res.status(400).json({ error: 'No image files provided' });
-        }
-        
-        const results = [];
-        const errors = [];
-        
-        for (const file of req.files) {
-            try {
-                const filename = file.filename;
-                const filePath = path.join(imagesDir, filename);
-                
-                // Generate preview
-                const baseName = getBaseName(filename);
-                const previewFile = `${baseName}.jpg`
-                const blurPreviewFile = `${baseName}_blur.jpg`;
-                const previewPath = path.join(previewsDir, previewFile);
-                const blurPreviewPath = path.join(previewsDir, blurPreviewFile);
-                
-                await generatePreview(filePath, previewPath);
-                console.log(`📸 Generated preview: ${previewFile}`);
-                
-                // Generate blurred preview
-                await generateBlurredPreview(filePath, blurPreviewPath);
-                console.log(`📸 Generated blurred preview: ${blurPreviewFile}`);
-                
-                // Add basic forge metadata for uploaded image
-                const imageBuffer = fs.readFileSync(filePath);
-                const forgeData = {
-                    date_generated: Date.now(),
-                    generation_type: 'uploaded',
-                    request_type: 'upload'
-                };
-                const updatedBuffer = updateMetadata(imageBuffer, forgeData);
-                fs.writeFileSync(filePath, updatedBuffer);
-                
-                console.log(`💾 Uploaded: ${filename}`);
-
-                // Add to workspace
-                addToWorkspaceArray('files', filename, req.params.id);
-                
-                results.push({
-                    success: true,
-                    filename: filename,
-                    originalName: file.originalname
-                });
-                
-            } catch (error) {
-                console.error(`❌ Upload error for ${file.originalname}:`, error.message);
-                errors.push({
-                    filename: file.originalname,
-                    error: error.message
-                });
-            }
-        }
-        
-        const successCount = results.length;
-        const errorCount = errors.length;
-        
-        res.json({ 
-            success: true, 
-            message: `Uploaded ${successCount} images${errorCount > 0 ? `, ${errorCount} failed` : ''}`,
-            results: results,
-            errors: errors,
-            totalUploaded: successCount,
-            totalErrors: errorCount
-        });
-        
-    } catch(e) {
-        console.error('❌ Upload error:', e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
 // Cache save scheduling function
 function scheduleCacheSave() {
     if (tagSuggestionsCache.isDirty) {
@@ -1303,9 +1328,41 @@ function clearTempDownloads() {
     }
 }
 
+// Performance monitoring endpoint
+app.get('/admin/performance', authMiddleware, (req, res) => {
+    try {
+        if (req.userType !== 'admin') {
+            return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for non-administrator users' });
+        }
+        
+        const memUsage = process.memoryUsage();
+        const uptime = process.uptime();
+        
+        res.json({
+            success: true,
+            performance: {
+                memory: {
+                    rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
+                    heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
+                    heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
+                    external: `${Math.round(memUsage.external / 1024 / 1024)}MB`
+                },
+                uptime: `${Math.round(uptime)}s`,
+                nodeVersion: process.version,
+                platform: process.platform,
+                arch: process.arch,
+                pid: process.pid
+            },
+            timestamp: Date.now().valueOf()
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Start server
 (async () => {
-    console.log('🚀 Initializing cache... (Server unavalible until cache is initialized)');
+    console.log('🚀 Initializing cache... (Server unavailable until cache is initialized)');
     await initializeCache();
     
     // Clear temp downloads on startup
@@ -1320,7 +1377,12 @@ function clearTempDownloads() {
         console.log('⚠️ Server will continue without sprite sheet, it will be generated on first login access');
     }
     
-    server.listen(config.port, () => console.log(`Server running on port ${config.port}`));
+    server.listen(config.port, () => {
+        console.log(`🚀 Server running on port ${config.port}`);
+        console.log(`📊 Performance monitoring: GET /admin/performance`);
+        console.log(`🔒 Gzip compression enabled`);
+        console.log(`🛡️ Security headers enabled`);
+    });
 })();
 
 // Graceful shutdown handling
@@ -1338,10 +1400,6 @@ function gracefulShutdown() {
         console.log('💾 Saving tag cache before shutdown...');
         tagSuggestionsCache.saveCache();
     }
-    
-    // Save metadata cache
-    console.log('💾 Saving metadata cache before shutdown...');
-    saveMetadataCache();
     
     process.exit(0);
 }

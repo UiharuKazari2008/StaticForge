@@ -375,7 +375,8 @@ body.dialog-open {
     flex-direction: column;
     position: fixed;
     bottom: 0;
-    left: 0;
+    left: env(safe-area-inset-left);
+    padding-left: env(safe-area-inset-left);
     z-index: 2;
     margin: var(--spacing-xxl);
     transition: all 0.2s ease;
@@ -389,7 +390,8 @@ body.dialog-open {
     flex-direction: column;
     position: fixed;
     bottom: 0;
-    right: 0;
+    right: env(safe-area-inset-right);
+    padding-right: env(safe-area-inset-right);
     z-index: 2;
     margin: var(--spacing-xxl);
     transition: all 0.2s ease;
@@ -403,8 +405,8 @@ body.dialog-open {
     position: absolute;
     top: calc(-1 * calc(var(--spacing-xxl) + 50%));
     left: calc(-1 * var(--spacing-xxl));
-    width: calc(150% + (2 * var(--spacing-xxl)));
-    height: calc(150% + (2 * var(--spacing-xxl)));
+    width: calc(150% + calc(2 * var(--spacing-xxl)));
+    height: calc(150% + calc(2 * var(--spacing-xxl)));
     background: linear-gradient(transparent, #000000b0);
     z-index: -1;
     pointer-events: none;
@@ -416,8 +418,8 @@ body.dialog-open {
     position: absolute;
     top: calc(-1 * calc(var(--spacing-xxl) + 50%));
     right: calc(-1 * var(--spacing-xxl));
-    width: calc(150% + (2 * var(--spacing-xxl)));
-    height: calc(150% + (2 * var(--spacing-xxl)));
+    width: calc(150% + calc(2 * var(--spacing-xxl)));
+    height: calc(150% + calc(2 * var(--spacing-xxl)));
     background: linear-gradient(transparent, #000000b0);
     z-index: -1;
     pointer-events: none;
@@ -622,7 +624,7 @@ span.menu-logo,
 }
 
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     span.menu-logo:hover,
     #workspaceSelected:hover {
         background: var(--glass-layer-2);
@@ -777,7 +779,7 @@ span.menu-logo,
     box-shadow: 0 0 5px 0px rgb(255 170 54);
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .toggle-btn:hover:not(:disabled),
     .tab-btn:hover:not(:disabled) {
         background: var(--glass-layer-4);
@@ -1134,7 +1136,7 @@ button#ucPresetsDropdownBtn.btn-small {
     z-index: var(--z-layer-3);
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     /* Button hover states with layer elevation */
     .btn-secondary:hover:not(:disabled),
     .pswp__button--custom:hover:not(:disabled) {
@@ -1285,7 +1287,7 @@ textarea:active {
     font-size: 16px;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .gallery-controls .toggle-btn:hover {
         background: var(--glass-layer-3);
         border-color: var(--glass-border-3);
@@ -1300,7 +1302,7 @@ textarea:active {
     color: var(--primary-color);
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .gallery-controls .toggle-btn[data-state="scraps"]:hover {
         background: var(--primary-color);
         color: var(--text-primary);
@@ -1342,7 +1344,7 @@ textarea:active {
     z-index: var(--z-layer-2);
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .gallery-toggle-group:hover .gallery-toggle-btn {
         color: var(--text-primary);
         opacity: 0.75;
@@ -1423,7 +1425,7 @@ textarea:active {
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
 /* Hover effects for the toggle group */
     .gallery-toggle-group:hover {
         background: var(--glass-layer-dark-3);
@@ -1475,17 +1477,16 @@ textarea:active {
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(transparent, hsl(0 0% 0% / 80%));
     color: var(--text-primary);
     padding: 15px;
     opacity: 0;
-    transition: opacity var(--transition-normal);
+    transition: opacity var(--transition-fast);
     display: flex;
     flex-direction: column;
     justify-content: space-between;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .gallery-item:hover {
         border-color: var(--glass-border-4);
         box-shadow: var(--glass-shadow-4);
@@ -1523,7 +1524,7 @@ textarea:active {
     align-items: flex-start;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .gallery-item:hover .gallery-actions {
         opacity: 1;
     }
@@ -1568,6 +1569,43 @@ div#manualModal {
 
 div#bulkMoveToWorkspaceModal {
     background: #00000052;
+}
+
+/* Modal Initializing State */
+.modal.initializing .prompt-options-container,
+.modal.initializing .form-section.model-control,
+.modal.initializing .manual-preview-content {
+    opacity: 0.3;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.modal.initializing .prompt-options-container {
+    position: relative;
+}
+
+.modal.initializing .prompt-options-container .spinner-overlay {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+}
+
+.modal.initializing .prompt-options-container .spinner-overlay .fa-spinner {
+    font-size: 2rem;
+    color: var(--accent-primary);
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 .modal-content {
@@ -1661,7 +1699,7 @@ div#bulkMoveToWorkspaceModal {
     background: #4700005c;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .round-button:hover {
         background: var(--btn-hover-bg-secondary);
         border-color: var(--btn-hover-border-secondary);
@@ -1838,12 +1876,35 @@ span#manualPreviewSeedNumber {
     pointer-events: none;
 }
 
+.manual-preview-image-container-inner {
+    position: relative;
+    overflow: hidden;
+}
+
+/* Manual block container positioning */
+.manual-preview-image-container .block-container {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.manual-preview-image-container .block-container .block {
+    aspect-ratio: 1/1;
+}
+
+.manual-preview-image-container .block-container img#manualPreviewImage {
+    position: relative;
+    z-index: 1;
+}
+
 /* Side-by-side preview styles */
 .manual-preview-image-container.dual-mode {
     justify-content: center;
 }
 
-.manual-preview-image-container.dual-mode img#manualPreviewImage {
+.manual-preview-image-container.dual-mode .manual-preview-image-container {
     max-width: 100%;
     max-height: 100%;
     transition: all 0.3s ease;
@@ -1874,7 +1935,7 @@ span#manualPreviewSeedNumber {
     right: unset;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .manual-preview-image-container img.manual-preview-original-image:hover {
         opacity: 1;
         transform: translateY(-50%) translateX(calc(100% - 72px));
@@ -2214,13 +2275,13 @@ span#manualPreviewSeedNumber {
         justify-content: end;
     }
 
-    @supports not (-webkit-touch-callout: none) {
+    @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
         #manualSeed:not(:hover):not(:focus) {
             padding: 0.35em 0em 0.35em 1.2em;
         }
     }
 
-    @supports (-webkit-touch-callout: none) {
+    @supports (-webkit-touch-callout: none) or (hover: hover) {
         #manualSeed {
             padding: 0.35em 0em 0.35em 1.2em;
         }
@@ -2774,7 +2835,7 @@ button::-moz-focus-inner {
     border-bottom-left-radius: var(--border-radius-lg);
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     /* Show scrollbar on hover */
     .form-section-scroll:hover .custom-scrollbar {
         opacity: 1;
@@ -3706,7 +3767,7 @@ div#characterPromptsContainer {
     will-change: backdrop-filter;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .lightbox-close-btn:hover {
         background: hsl(0 0% 100% / 20%);
         transform: scale(1.1);
@@ -3817,7 +3878,7 @@ div#characterPromptsContainer {
     pointer-events: auto;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .lightbox-nav-btn:hover {
         background: hsl(0 0% 100% / 20%);
         transform: scale(1.1);
@@ -3864,7 +3925,7 @@ div#characterPromptsContainer {
     pointer-events: auto;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .image-preview-nav-btn:hover {
         background: hsl(0 0% 100% / 20%);
         transform: scale(1.1);
@@ -3980,7 +4041,7 @@ div#characterPromptsContainer {
     border-radius: 2px;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .metadata-btn:hover {
         background: #e55a2b;
     }
@@ -4026,7 +4087,7 @@ div#characterPromptsContainer {
     transition: background-color 0.2s ease;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .close-expanded:hover {
         background: rgba(255, 107, 53, 0.2);
     }
@@ -4115,7 +4176,7 @@ div#characterPromptsContainer {
     transition: background-color 0.2s ease;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .close-dialog:hover {
         background: rgba(255, 255, 255, 0.2);
     }
@@ -4183,7 +4244,7 @@ div#characterPromptsContainer {
     height: 32px;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .close-panel-btn:hover {
         background: rgba(255, 255, 255, 0.2);
     }
@@ -4315,7 +4376,7 @@ div#characterPromptsContainer {
     flex-shrink: 0;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .character-prompt-item-panel .prompt-copy-btn:hover {
         background: var(--bg-quaternary);
         color: var(--primary-color);
@@ -4598,7 +4659,7 @@ div#characterPromptsContainer {
     flex-shrink: 0;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .glass-toast .toast-close:hover {
         background: rgba(255, 255, 255, 0.1);
         color: var(--text-primary);
@@ -4623,6 +4684,14 @@ div#characterPromptsContainer {
     font-weight: 500;
 }
 
+/* Toast Button Styles */
+.toast-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    justify-content: flex-end;
+}
+
 /* Utility Classes */
 .hidden {
     display: none !important;
@@ -4642,7 +4711,7 @@ div#characterPromptsContainer {
     border-radius: 4px;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     ::-webkit-scrollbar-thumb:hover {
         background: var(--primary-color-light);
     }
@@ -5560,7 +5629,7 @@ textarea:focus {
     background: #2196F3;
 }
 
-.search-service-icon.fas.fa-code {
+.search-service-icon.fas.fa-language {
     background: #9C27B0;
 }
 
@@ -6280,7 +6349,7 @@ textarea:focus {
     will-change: backdrop-filter;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .image-preview-close-btn:hover {
         background: rgba(255, 255, 255, 0.2);
         transform: scale(1.1);
@@ -6565,9 +6634,6 @@ body.error-sub-header-active .container {
     padding: 0.25em 0.5em;
     min-width: 36px;
 }
-button#logoutButton {
-    margin-left: auto;
-}
 .workspace-option-content {
     display: flex;
     justify-content: space-between;
@@ -6653,7 +6719,7 @@ button#logoutButton {
     cursor: pointer;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .gallery.selection-mode .gallery-item:not(.selected):not(:hover) {
         opacity: 0.7;
         scale: 0.9;
@@ -6678,8 +6744,10 @@ button#logoutButton {
     padding: 2px;
 }
 
-.gallery-item:hover .gallery-item-checkbox {
-    opacity: 1;
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .gallery-item:hover .gallery-item-checkbox {
+        opacity: 1;
+    }
 }
 
 .gallery-item-checkbox:checked {
@@ -6790,7 +6858,7 @@ button#logoutButton {
     border-right: 1px solid var(--glass-border-3);
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
 .character-prompts-controls .btn-group .btn-secondary:hover:not(:disabled) {
     background: var(--glass-layer-4);
     color: #ffffff;
@@ -6822,7 +6890,7 @@ button#logoutButton {
     z-index: 1;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .character-prompts-controls .btn-group .btn-secondary[data-state="on"]:hover {
         background: rgb(255 154 83 / 52%);
         color: var(--text-primary);
@@ -6945,7 +7013,7 @@ button#logoutButton {
     box-shadow: 0 2px 8px var(--shadow-danger);
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .character-prompt-delete:hover {
         box-shadow: 0 5px 15px var(--shadow-danger);
     }
@@ -7018,7 +7086,7 @@ button#logoutButton {
     font-size: 0.9rem;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .position-cell:hover {
         border-color: var(--primary-color);
         background: var(--bg-quaternary);
@@ -7878,7 +7946,7 @@ div#subTogglesDropdownMenu {
     transition: all var(--transition-normal);
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     #manualModal .gallery-toggle-group .gallery-toggle-btn:hover {
         color: var(--text-primary);
     }
@@ -8103,7 +8171,7 @@ div#subTogglesDropdownMenu {
     pointer-events: none;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .btn-secondary:disabled:hover,
     .pswp__button--custom:disabled:hover {
         transform: none;
@@ -9479,6 +9547,8 @@ html.disable-blur .manual-loading-overlay {
     right: 8px;
     display: flex;
     gap: 4px;
+    justify-content: space-between;
+    width: calc(100% - calc(2 * 8px));
 }
 .vibe-reference-controls-bottom {
     position: absolute;
@@ -10096,7 +10166,7 @@ img.loading {
     color: white;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .mask-adjustment-options .btn-primary:hover:not(:disabled) {
         background: var(--primary-hover);
     }
@@ -10149,7 +10219,7 @@ img.loading {
     color: rgba(255, 255, 255, 0.9);
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .modal.alert-theme .modal-content .btn-primary:hover:not(:disabled) {
         background: linear-gradient(135deg, #c82333, #bd2130);
         border: 1px solid #c82333;
@@ -10163,7 +10233,7 @@ img.loading {
     color: #ffffff;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .modal.alert-theme .modal-content .btn-secondary:hover:not(:disabled) {
         background: rgba(255, 255, 255, 0.2);
         border: 1px solid rgba(255, 255, 255, 0.4);
@@ -10176,7 +10246,7 @@ img.loading {
     color: #ffffff;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .modal.alert-theme .modal-content .btn-danger:hover:not(:disabled) {
         background: linear-gradient(135deg, #c82333, #bd2130);
         border: 1px solid #c82333;
@@ -10190,7 +10260,7 @@ img.loading {
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .modal.alert-theme .modal-content .close-dialog:hover {
         background: rgba(255, 255, 255, 0.2);
         border: 1px solid rgba(255, 255, 255, 0.3);
@@ -10240,7 +10310,7 @@ img.loading {
     color: #000000;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .modal.warning-theme .modal-content .btn-primary:hover:not(:disabled) {
         background: linear-gradient(135deg, #e0a800, #d39e00);
         border: 1px solid #e0a800;
@@ -10254,7 +10324,7 @@ img.loading {
     color: #000000;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .modal.warning-theme .modal-content .btn-secondary:hover:not(:disabled) {
         background: rgba(0, 0, 0, 0.2);
         border: 1px solid rgba(0, 0, 0, 0.4);
@@ -10267,7 +10337,7 @@ img.loading {
     border: 1px solid rgba(0, 0, 0, 0.2);
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .modal.warning-theme .modal-content .close-dialog:hover {
         background: rgba(0, 0, 0, 0.2);
         border: 1px solid rgba(0, 0, 0, 0.3);
@@ -10317,7 +10387,7 @@ img.loading {
     color: #ffffff;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .modal.success-theme .modal-content .btn-primary:hover:not(:disabled) {
         background: linear-gradient(135deg, #20c997, #1ea085);
         border: 1px solid #20c997;
@@ -10331,7 +10401,7 @@ img.loading {
     color: #ffffff;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .modal.success-theme .modal-content .btn-secondary:hover:not(:disabled) {
         background: rgba(255, 255, 255, 0.2);
         border: 1px solid rgba(255, 255, 255, 0.4);
@@ -10344,7 +10414,7 @@ img.loading {
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .modal.success-theme .modal-content .close-dialog:hover {
         background: rgba(255, 255, 255, 0.2);
         border: 1px solid rgba(255, 255, 255, 0.3);
@@ -10393,7 +10463,7 @@ img.loading {
     align-items: center;
     justify-content: center;
 }
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .mini-toolbar .btn-small:hover {
         background: var(--glass-layer-5);
         color: #fff;
@@ -10430,6 +10500,7 @@ body.editor-open .gallery-container {
     /* Responsive adjustments */
     max-height: 400px;
     transition: all var(--transition-normal);
+    visibility: hidden;
 }
 
 /* Responsive gallery placeholder adjustments */
@@ -10541,7 +10612,7 @@ div#workspaceDropdownMenu {
     font-size: 0.9rem;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .workspace-manage-actions .btn-link:hover {
         background: var(--glass-layer-3);
         color: var(--text-primary);
@@ -10568,7 +10639,7 @@ div#workspaceDropdownMenu {
     user-select: none;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .workspace-drag-handle:hover {
         color: var(--text-primary);
         background: var(--glass-layer-3);
@@ -12295,7 +12366,7 @@ div#cacheManagerMoveModal, #workspaceEditModal {
     color: white;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .modal-buttons .btn-secondary:hover {
         background: #5a6268;
     }
@@ -12306,7 +12377,7 @@ div#cacheManagerMoveModal, #workspaceEditModal {
     color: white;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .modal-buttons .btn-danger:hover {
         background: #c82333;
     }
@@ -12327,7 +12398,7 @@ div#cacheManagerMoveModal, #workspaceEditModal {
     transition: background-color 0.2s;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .radio-option:hover {
         background-color: rgba(255, 255, 255, 0.1);
     }
@@ -12365,7 +12436,7 @@ div#cacheManagerMoveModal, #workspaceEditModal {
     border-bottom: none;
 }
 
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .delete-item:hover {
         background-color: rgba(255, 255, 255, 0.1);
     }
@@ -14738,93 +14809,7 @@ span#customPresetSelected {
     pointer-events: none;
 }
 
-/* Status Banner - Override toast styles for banner appearance */
-.status-banner {
-    width: 100%;
-    overflow: hidden;
-    transition: height 0.3s ease;
-    pointer-events: auto;
-    /* Override toast positioning and margins */
-    position: static !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-    /* Keep only bottom border */
-    border: none !important;
-    border-bottom: 1px solid var(--glass-border-2) !important;
-    /* Override toast box-shadow */
-    box-shadow: none !important;
-    transform: none !important;
-    max-width: none;
-    padding: 8px 20px !important;
-    min-height: 48px;
-}
 
-.status-banner-content {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0;
-    max-width: 1400px;
-    margin: 0 auto;
-    gap: 24px;
-    width: 100%;
-}
-
-.status-banner-left {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    flex: 1;
-    min-width: 0;
-}
-
-.status-banner-icon {
-    font-size: 18px;
-    width: 24px;
-    text-align: center;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.status-banner-text {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-color);
-    line-height: 1.4;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-    min-width: 0;
-}
-
-.status-banner-right {
-    display: flex;
-    align-items: center;
-}
-
-.status-banner-close {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 6px;
-    border-radius: 6px;
-    transition: all 0.2s ease;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 28px;
-    min-height: 28px;
-}
-
-.status-banner-close:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--text-color);
-}
 
 /* Update Banner Styles - Uses same design as status banner */
 .update-banner {
@@ -14834,13 +14819,14 @@ span#customPresetSelected {
     transition: height 0.3s ease;
     pointer-events: auto;
     /* Override toast positioning and styling */
-    position: static !important;
-    margin: 0 !important;
-    border-radius: 0 !important;
-    border: none !important;
-    border-bottom: 1px solid var(--glass-border-2) !important;
-    box-shadow: none !important;
-    transform: none !important;
+    position: static;
+    margin: 0;
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid var(--glass-border-2);
+    box-shadow: none;
+    transform: none;
+    z-index: 1000000000;
 }
 
 @keyframes pulse {
@@ -14852,53 +14838,13 @@ span#customPresetSelected {
     }
 }
 
-/* Update Progress Bar Styles */
-.update-progress-container {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 8px 0;
-    padding: 4px 12px;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    width: 100%;
-    max-width: 200px;
-    margin-left: auto;
-}
-
-.update-progress-bar-container {
-    flex: 1;
-    height: 10px;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 3px;
-    overflow: hidden;
-}
-
-.update-progress-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #f59e0b, #fbbf24);
-    border-radius: 3px;
-    width: 0%;
-    transition: width 0.3s ease;
-}
-
-.update-progress-status {
-    color: var(--text-color);
-    font-size: 0.8rem;
-    font-weight: 600;
-    opacity: 0.9;
-    text-align: right;
-}
-
-
-@supports not (-webkit-touch-callout: none) {
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .floating-bar-right:hover .main-menu-bar-overlay,
     .floating-bar-left:hover .main-menu-bar-overlay {
         opacity: 1;
     }
 }
-@supports (-webkit-touch-callout: none) {
+@supports (-webkit-touch-callout: none) or (hover: hover) {
     .gallery-item {
         animation: none;
     }
@@ -14919,8 +14865,94 @@ span#customPresetSelected {
     }
 }
 
+.pswp__custom-bottom-bar:has(.pswp__custom-bottom-bar) {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    z-index: 11;
+    pointer-events: none !important;
+    opacity: 1;
+    transition: opacity var(--transition-slow);
+}
+.pswp--zoomed-in .pswp__custom-bottom-bar:has(.pswp__custom-bottom-bar),
+.pswp--zoomed-in .pswp__button--arrow--prev,
+.pswp--zoomed-in .pswp__button--arrow--next {
+    opacity: 0;
+}
+
+.pswp__custom-bottom-bar:has(.pswp__custom-bottom-bar) .pswp__custom-bottom-bar {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: var(--spacing-lg);
+    margin-bottom: env(safe-area-inset-bottom);
+    flex-wrap: wrap;
+}
+
+.pswp__custom-bottom-bar:has(.pswp__custom-bottom-bar) .pswp__custom-bottom-bar .pswp__button--custom {
+    pointer-events: auto !important;
+}
+
+/* Logo Options Popup Styles */
+#logoOptionsModal .modal-content {
+    max-width: 450px;
+    width: 90vw;
+}
+
+.logo-options-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) 0;
+}
+
+.logo-options-row {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+.logo-options-grid .logo-option-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-lg);
+    cursor: pointer;
+    min-height: 100px;
+    gap: var(--spacing-sm);
+}
+
+.logo-options-row .logo-option-btn {
+    flex: 1 0 auto;
+}
+
+.logo-options-grid .logo-option-btn i {
+    font-size: 1.25rem;
+    margin-bottom: var(--spacing-xs);
+}
+
+.logo-options-grid .logo-option-btn span {
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-align: center;
+}
+
+.logo-options-row .logo-option-btn span {
+    display: none;
+}
+
 @media (max-width: 768px) {
-    #openGenEditorBtn {
+    #openGenEditorBtn,
+    .pswp__button--reroll-edit-button,
+    .hide-mobile {
         display: none;
     }
     .container {
@@ -14947,14 +14979,6 @@ span#customPresetSelected {
         top: env(safe-area-inset-top, 0);
         width: calc(100% - calc(2 * var(--spacing-xxl)));
     }
-    @supports (padding-top: env(safe-area-inset-top)) {
-        .floating-bar-left {
-            margin-top: max(
-                calc(var(--spacing-xxl) - env(safe-area-inset-top, 0)),
-                calc(0px + var(--spacing-md))
-            );
-        }
-    }
     
     .floating-bar-left::after {
         top: calc(-1 * calc(var(--spacing-xxl) + env(safe-area-inset-top, 0)));
@@ -14964,21 +14988,22 @@ span#customPresetSelected {
         background: linear-gradient(0deg, transparent, #00000085, #000000de);
         mask-image: none;
     }
+    @supports (padding-top: env(safe-area-inset-top)) {
+        .floating-bar-left {
+            margin-top: max(
+                calc(var(--spacing-xxl) - env(safe-area-inset-top, 0)),
+                calc(0px + var(--spacing-md))
+            );
+        }
+    }
 
     .update-progress-container {
         display: none!important;
     }
 
-    .status-banner-text {
-        overflow: visible;
-        text-overflow: unset;
-        white-space: normal;
-        word-break: break-word;
-    }
-    
     #workspaceDropdown.custom-dropdown.dropup .custom-dropdown-menu {
         position: fixed;
-        top: 0;
+        top: env(safe-area-inset-top, 0);
         left: 50%;
         bottom: auto;
         font-size: 24px;
@@ -15103,8 +15128,39 @@ span#customPresetSelected {
 }
 
 @media (max-width: 480px) {
-    #manageButtonGroup, #toggleMenuBtn {
+    #manageButtonGroup, #uploadBtn {
         display: none;
+    }
+    #sortOrderToggleBtn {
+        display: none;
+    }
+    .logo-options-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--spacing-md);
+        padding: var(--spacing-md) 0;
+    }
+    .logo-options-row .logo-option-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: var(--spacing-lg);
+        cursor: pointer;
+        min-height: 100px;
+        gap: var(--spacing-sm);
+    }
+    
+    .logo-options-row .logo-option-btn i {
+        font-size: 1.25rem;
+        margin-bottom: var(--spacing-xs);
+    }
+    
+    .logo-options-row .logo-option-btn span {
+        font-size: 0.9rem;
+        font-weight: 500;
+        text-align: center;
+        display: inline-block;
     }
     .manual-modal-content {
         margin: 1% auto;
@@ -15160,38 +15216,5 @@ span#customPresetSelected {
 }
 
 /* iOS-specific infinite scroll fixes */
-@supports (-webkit-touch-callout: none) {
-}
-
-.pswp__custom-bottom-bar:has(.pswp__custom-bottom-bar) {
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    width: 100%;
-    display: flex;
-    flex-direction: row;
-    justify-content: center;
-    z-index: 11;
-    pointer-events: none !important;
-    opacity: 1;
-    transition: opacity var(--transition-slow);
-}
-.pswp--zoomed-in .pswp__custom-bottom-bar:has(.pswp__custom-bottom-bar),
-.pswp--zoomed-in .pswp__button--arrow--prev,
-.pswp--zoomed-in .pswp__button--arrow--next {
-    opacity: 0;
-}
-
-.pswp__custom-bottom-bar:has(.pswp__custom-bottom-bar) .pswp__custom-bottom-bar {
-    display: flex;
-    flex-direction: row;
-    justify-content: center;
-    align-items: center;
-    gap: 8px;
-    padding: var(--spacing-lg);
-    flex-wrap: wrap;
-}
-
-.pswp__custom-bottom-bar:has(.pswp__custom-bottom-bar) .pswp__custom-bottom-bar .pswp__button--custom {
-    pointer-events: auto !important;
+@supports (-webkit-touch-callout: none) or (hover: hover) {
 }

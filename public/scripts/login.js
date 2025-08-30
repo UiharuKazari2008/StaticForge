@@ -10,9 +10,22 @@ class LoginPage {
         this.pinButtons = document.querySelectorAll('.pin-button');
         this.loginContainer = document.querySelector('.login-container');
         this.currentImageIndex = 0;
-        this.totalImages = 20;
-        this.backgroundOpacityLow = 0.05;
-        this.backgroundOpacityHigh = 0.3;
+        this.config = {
+            // Background image
+            image: {
+                num: 20, // Number of images
+                width: 1024, // Width of each image
+                height: 1024 // Height of each image
+            }
+        };
+        
+        // Initialize block container
+        this.blockContainer = new BlockContainer('.block-container', {
+            row: 20,
+            col: 20,
+            opacityRange: [0.05, 0.3]
+        });
+        
         this.init();
     }
 
@@ -21,7 +34,7 @@ class LoginPage {
         this.setupPinPadListener();
         this.startBackground();
         this.updatePinDisplay();
-        this.setupInitialBackground();
+        this.transitionToImage(0);
     }
 
     setupKeyboardListener() {
@@ -57,6 +70,7 @@ class LoginPage {
             });
         });
         this.pinDisplay.addEventListener('click', () => {
+            this.loginContainer.classList.add('transition');
             this.loginContainer.classList.toggle('minimize');
         });
     }
@@ -99,32 +113,51 @@ class LoginPage {
         if (this.isLoading) return;
         this.isLoading = true;
         this.clearPinError();
+        
         try {
-            const response = await fetch('/login', {
+            const response = await fetch('/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pin: this.rollingBuffer })
+                body: JSON.stringify({ 
+                    action: 'login',
+                    data: { pin: this.rollingBuffer }
+                })
             });
+            
             const data = await response.json();
+            
             if (response.ok) {
-                // Store user type for use in the app
+                // Store user type and any other user data for use in the app
                 if (data.userType) {
                     localStorage.setItem('userType', data.userType);
                 }
                 
-                // Show progress bar and start asset caching
-                this.showAssetLoadingProgress();
+                // Store any additional user data that might be returned
+                if (data.userData) {
+                    localStorage.setItem('userData', JSON.stringify(data.userData));
+                }
                 
-                // Register service worker and cache assets before redirecting
-                await this.prepareAppAssets();
+                // Store login timestamp
+                localStorage.setItem('loginTimestamp', Date.now().toString());
                 
-                // Redirect to app
-                window.location.href = '/app';
+                // Clear any existing error states
+                this.clearPinError();
+                
+                // Show brief success feedback
+                this.showLoginSuccess();
+                
+                // Wait a moment for user to see success, then redirect
+                setTimeout(() => {
+                    // Redirect to app immediately - let the app handle its own caching
+                    window.location.href = '/app';
+                }, 800);
+                
             } else {
                 this.showPinError();
                 this.clearPin();
             }
         } catch (error) {
+            console.error('Login error:', error);
             this.showPinError();
             this.clearPin();
         } finally {
@@ -148,295 +181,68 @@ class LoginPage {
         });
     }
 
-    // Show asset loading progress
-    showAssetLoadingProgress() {
-        const progressContainer = document.getElementById('assetLoadingProgress');
-        const progressFill = document.getElementById('progressFill');
-        const progressStatus = document.getElementById('progressStatus');
-        
-        if (progressContainer) {
-            progressContainer.classList.remove('hidden');
-            progressFill.style.width = '0%';
-            progressStatus.textContent = 'Initializing...';
-        }
-    }
-
-    // Update progress bar with detailed asset information
-    updateProgress(percentage, status) {
-        const progressFill = document.getElementById('progressFill');
-        const progressStatus = document.getElementById('progressStatus');
-        
-        if (progressFill) {
-            progressFill.style.width = `${percentage}%`;
-        }
-    }
-
-    // Prepare app assets (service worker + caching)
-    async prepareAppAssets() {
-        try {
-            // Step 1: Register service worker
-            this.updateProgress(10, 'Registering');
-            const serviceWorker = await this.registerServiceWorker();
-            if (!serviceWorker) {
-                this.updateProgress(100, 'Ready');
-                return;
-            }
-            
-            // Step 2: Get cache manifest
-            this.updateProgress(20, 'Preparing');
-            const manifest = await this.getCacheManifest();
-            
-            if (!manifest || manifest.length === 0) {
-                this.updateProgress(100, 'Ready');
-                await new Promise(resolve => setTimeout(resolve, 500));
-                return;
-            }
-            
-            // Show total asset count
-            this.updateProgress(25, `Installing`);
-            
-            // Step 3: Cache assets (progress will be updated via handleProgressUpdate)
-            await this.cacheAssets(manifest);
-            
-            this.updateProgress(100, 'Ready');
-            
-            // Wait a moment for user to see completion
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-        } catch (error) {
-            console.error('Error preparing app assets:', error);
-            this.updateProgress(100, 'Not Ready');
-            // Continue anyway - assets will load on demand
-        }
-    }
-
-    // Register service worker
-    async registerServiceWorker() {
-        if ('serviceWorker' in navigator) {
-            try {
-                const registration = await navigator.serviceWorker.register('/sw.js');
-                console.log('Service Worker registered:', registration);
-                return registration;
-            } catch (error) {
-                console.error('Service Worker registration failed:', error);
-                return null;
-            }
-        } else {
-            console.warn('Service Worker not supported');
-        }
-    }
-
-    // Get cache manifest from server
-    async getCacheManifest() {
-        try {
-            console.log('Getting cache manifest from server...');
-            const response = await fetch('/app', { method: 'OPTIONS' });
-            if (response.ok) {
-                const data = await response.json();
-                console.log('Cache manifest received:', data.cacheData?.length || 0, 'assets');
-                return data.cacheData || [];
-            }
-            throw new Error('Failed to get cache manifest');
-        } catch (error) {
-            console.error('Error getting cache manifest:', error);
-            throw error;
-        }
-    }
-
-    // Cache assets via service worker with progress tracking
-    async cacheAssets(assets) {
-        if (!assets || assets.length === 0) {
-            console.warn('No assets to cache');
-            return;
-        }
-
-        try {
-            // Wait for service worker to be ready
-            if (!navigator.serviceWorker.controller) {
-                return;
-            }
-
-            // Send message to service worker to cache assets
-            const messageChannel = new MessageChannel();
-            
-            return new Promise((resolve, reject) => {
-                messageChannel.port1.onmessage = (event) => {
-                    if (event.data && event.data.type === 'CACHE_COMPLETE') {
-                        resolve(event.data.results);
-                    } else if (event.data && event.data.type === 'CACHE_ERROR') {
-                        reject(new Error(event.data.error));
-                    } else if (event.data && event.data.type === 'PROGRESS_UPDATE') {
-                        // Handle progress updates from service worker
-                        this.handleProgressUpdate(event.data);
-                    }
-                };
-
-                // Send cache request to service worker
-                navigator.serviceWorker.controller.postMessage({
-                    type: 'CACHE_ASSETS',
-                    assets: assets
-                }, [messageChannel.port2]);
-                
-                // Set timeout
-                setTimeout(() => {
-                    reject(new Error('Cache operation timeout'));
-                }, 30000);
-            });
-        } catch (error) {
-            console.error('Error caching assets:', error);
-            throw error;
-        }
-    }
-
-    // Handle progress updates from service worker
-    handleProgressUpdate(progressData) {
-        const { current, total, percentage, asset, status, downloading, completed, skipped, failed } = progressData;
-        
-        // Update the progress bar
-        this.updateProgress(percentage, status);
-        
-        // Update status to include percentage
-        const progressStatus = document.getElementById('progressStatus');
-        if (progressStatus && total > 0) {
-            progressStatus.textContent = `${status} (${percentage}%)`;
-        }
-    }
-
-    // Animate background (reuse from app, but static color for login)
-    startBackground() {
-        const background = document.querySelector('.block-container');
-        const blocks = [];
-        
-        for (let i = 0; i < 400; i++) { // 20x20 = 400 blocks, doubling the number (quadrupling count by doubling grid size)
-            const block = document.createElement('div');
-            block.classList.add('block');
-            // Start each block at a random point in the animation cycle for variety
-            const randomDelay = Math.random() * 10; // Match reduced duration
-            block.style.animationDelay = `-${randomDelay}s`;
-            
-            // Add random opacity adjustment
-            const randomOpacity = this.backgroundOpacityLow + Math.random() * (this.backgroundOpacityHigh - this.backgroundOpacityLow); // Random opacity between 0.3 and 1.0
-            block.style.opacity = randomOpacity;
-            
-            // Calculate block's position in the grid and set CSS custom properties
-            const row = Math.floor(i / 20);
-            const col = i % 20;
-            
-            // Calculate the percentage offset for this block within the current image
-            // Each block represents 1/20th of the image width and height
-            // With 20 blocks, each block takes up 5% of the image (100% / 20 = 5%)
-            const blockXOffset = (5 / 20) * (col + 1); // 0%, 5%, 10%, 15%, etc.
-            const blockYOffset = (50 / 20) * (row + 1); // 0%, 5%, 10%, 15%, etc.
-            
-            block.style.setProperty('--block-x-offset', `${blockXOffset}%`);
-            block.style.setProperty('--block-y-offset', `${blockYOffset}%`);
-            
-            // Store block reference and position for wave effect
-            blocks.push({ element: block, row, col });
-            
-            background.appendChild(block);
-        }
-        
-        // Create opacity wave effect after 5 seconds
-        setTimeout(() => {
-            this.createOpacityWave(blocks);
-        }, 2000);
-        
-        // Start random opacity adjustments
-        this.startRandomOpacityAdjustments(blocks);
-    }
-    
-    // Create opacity wave from top-left to bottom-right
-    createOpacityWave(blocks) {
-        const waveDelay = 60; // 50ms delay between each block activation
-        
-        blocks.forEach((block, index) => {
-            const delay = (block.row + block.col) * waveDelay;
-            const element = block.element;
-            
-            setTimeout(() => {
-                // Create wave effect by temporarily increasing opacity
-                element.style.transition = 'opacity 0.5s ease-in-out';
-                element.style.opacity = '1';
-                
-                // Return to random opacity after wave passes
-                setTimeout(() => {
-                    const randomOpacity = this.backgroundOpacityLow + Math.random() * (this.backgroundOpacityHigh - this.backgroundOpacityLow);
-                    element.style.opacity = randomOpacity;
-                }, 500);
-            }, delay);
+    // Show login success feedback
+    showLoginSuccess() {
+        this.pinDots.forEach(dot => {
+            dot.classList.add('success');
         });
+        
+        // Update status if progress container exists
+        const progressStatus = document.getElementById('progressStatus');
+        if (progressStatus) {
+            progressStatus.textContent = 'Login successful! Redirecting...';
+        }
+        
+        // Remove success state after animation
         setTimeout(() => {
-            this.rotateBackgroundImage();
-        }, 750);
+            this.pinDots.forEach(dot => {
+                dot.classList.remove('success');
+            });
+        }, 1000);
+    }
 
-        // Repeat the wave effect every 15 seconds
-        setTimeout(() => {
-            this.createOpacityWave(blocks);
-        }, 8000);
+    // Animate background using BlockContainer module
+    async startBackground() {
+        const backgroundContainer = document.querySelector('.background-container');
+
+        backgroundContainer.style.setProperty('--image-sheet', `100% ${100 * this.config.image.num}%`);
+        backgroundContainer.style.setProperty('--image-width', `${this.config.image.width}px`);
+        backgroundContainer.style.setProperty('--image-height', `${this.config.image.height}px`);
+        backgroundContainer.style.setProperty('--image-num', `${this.config.image.num}`);
+        
+        // Initialize and start the block container with background rotation callback
+        this.blockContainer.init(true);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        this.blockContainer.start(5000, 10000, 'diagonal', () => this.rotateBackgroundImage());
     }
     
-    // Start random opacity adjustments
-    startRandomOpacityAdjustments(blocks) {
-        setInterval(() => {
-            // Randomly select 5-10 blocks to adjust opacity
-            const numBlocks = 5 + Math.floor(Math.random() * 6);
-            const shuffled = [...blocks].sort(() => 0.5 - Math.random());
-            
-            for (let i = 0; i < numBlocks; i++) {
-                const block = shuffled[i];
-                const randomOpacity = this.backgroundOpacityLow + Math.random() * (this.backgroundOpacityHigh - this.backgroundOpacityLow); // Random opacity between 0.2 and 1.0
-                block.element.style.transition = 'opacity 0.8s ease-in-out';
-                block.element.style.opacity = randomOpacity;
-            }
-        }, 2000); // Adjust every 2 seconds
-    }
-
     // Rotate to next background image
     rotateBackgroundImage() {
-        const nextIndex = (this.currentImageIndex + 1) % this.totalImages;
+        const nextIndex = (this.currentImageIndex + 1) % this.config.image.num;
         this.transitionToImage(nextIndex);
     }
 
     // Transition to specific image using crossfade
     transitionToImage(imageIndex) {
         const bgLayer = document.getElementById('bg-layer');
-        const blurLayer = document.getElementById('blur-layer');
         const backgroundContainer = document.querySelector('.background-container');
-        
-        if (!bgLayer || !blurLayer || !backgroundContainer) return;
+
+        if (!bgLayer || !backgroundContainer) return;
         
         // Calculate X offset as percentage
         // With background-size: 2000% 200%, we have 20 images horizontally
         // Each image takes up: 2000% / 20 = 100% of the container width
         // To convert to 0-100% range: (imageIndex * 100) / 20 = imageIndex * 5%
-        const imageStep = 100 / (this.totalImages - 1); // 5%
-        const imageX = imageIndex * imageStep; // Each image at 0%, 5%, 10%, etc.
-        
-        // Step 1: Change blur layer to next image and fade it in
-        backgroundContainer.style.setProperty('--blur-x-pos', `${imageX}%`);
-        blurLayer.classList.add('transitioning'); // Fade in
-        
-        // Step 2: After blur layer is visible, change normal layer underneath
+        const imageStep = 100 / (this.config.image.num - 1); // 5%
+        const imageY = imageIndex * imageStep; // Each image at 0%, 5%, 10%, etc.
+
         setTimeout(() => {
-            backgroundContainer.style.setProperty('--bg-x-pos', `${imageX}%`);
+            backgroundContainer.style.setProperty('--bg-y-pos', `${imageY}%`);
         }, 150); // Wait for fade-in to be mostly complete
-        
-        // Step 3: Fade out blur layer to complete transition
-        setTimeout(() => {
-            blurLayer.classList.remove('transitioning');
-        }, 650); // Wait for normal layer change (150ms) + fade-out duration (500ms)
         
         // Update current index
         this.currentImageIndex = imageIndex;
     }
-
-    // Setup initial background positioning
-    setupInitialBackground() {
-        // Set initial background for the first image
-        this.transitionToImage(0);
-    }
-
 }
 
 // Create the login page instance

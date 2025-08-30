@@ -955,7 +955,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                 creditType: creditUsage.usageType,
                 date: Date.now().valueOf()
             };
-            await context.addReceiptMetadata(name, imagesDir, receiptData);
+            await context.addReceiptMetadata(name, imagesDir, receiptData, forgeData);
             
             // Broadcast receipt notification
             context.broadcastReceiptNotification(receiptData);
@@ -1012,7 +1012,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                     date: Date.now().valueOf()
                 };
                 // Attach receipt to parent image instead of upscaled image
-                await context.addReceiptMetadata(name, imagesDir, upscaledReceiptData);
+                await context.addReceiptMetadata(name, imagesDir, upscaledReceiptData, upscaledForgeData);
                 
                 // Broadcast receipt notification
                 context.broadcastReceiptNotification(upscaledReceiptData);

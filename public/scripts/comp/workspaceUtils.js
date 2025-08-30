@@ -522,23 +522,19 @@ async function setDefaultBackgroundForWorkspace(imageUrl) {
             return;
         }
         
-        // Tell service worker to cache this as the default background
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        // Use the service worker manager to cache this as internal data
+        if (window.serviceWorkerManager) {
             try {
-                const messageChannel = new MessageChannel();
-                messageChannel.port1.onmessage = (event) => {
-                    if (event.data && event.data.success) {
-                        console.log('Default background cached successfully');
-                    } else {
-                        console.warn('Failed to cache default background:', event.data?.error);
-                    }
-                };
+                const success = await window.serviceWorkerManager.cacheInternalData(
+                    '/internal/default_bg.jpg', 
+                    { imageUrl: imageUrl, timestamp: Date.now() }
+                );
                 
-                navigator.serviceWorker.controller.postMessage({
-                    type: 'CACHE_DEFAULT_BACKGROUND',
-                    url: imageUrl,
-                    targetPath: '/internal/default_bg.jpg'
-                }, [messageChannel.port2]);
+                if (success) {
+                    console.log('Default background cached successfully');
+                } else {
+                    console.warn('Failed to cache default background');
+                }
             } catch (error) {
                 console.warn('Failed to communicate with service worker:', error);
             }
@@ -845,7 +841,7 @@ function getFirstGalleryImage() {
     
     // Find first image that has a preview (non-placeholder)
     for (const image of allImages) {
-        if (image.preview && image.preview !== 'images/placeholder.jpg') {
+        if (image.preview && image.preview !== 'static_images/placeholder.jpg') {
             return image;
         }
     }
@@ -1318,7 +1314,7 @@ async function setActiveWorkspace(id) {
             workspaceLoadingOverlay.className = 'workspace-loading-overlay';
             workspaceLoadingOverlay.innerHTML = `
                 <div class="workspace-loading-content">
-                    <img class="loading" src="/images/azuspin.gif" alt="Loading">
+                    <img class="loading" src="/static_images/azuspin.gif" alt="Loading">
                     <p class="loading">Switching Workspace...</p>
                 </div>
             `;
@@ -1736,18 +1732,7 @@ function initializeWorkspaceSystem() {
             showAddWorkspaceModal();
         });
     }
-
-    // Workspace selected click event
-    const workspaceSelected = document.getElementById('workspaceSelected');
-    if (workspaceSelected) {
-        workspaceSelected.addEventListener('click', (e) => {
-            e.preventDefault();
-            showWorkspaceManagementModal();
-        });
-        workspaceSelected.style.cursor = 'pointer';
-        workspaceSelected.title = 'Manage Workspaces';
-    }
-
+    
     // Modal close events
     document.getElementById('closeWorkspaceManageBtn')?.addEventListener('click', (e) => {
         e.preventDefault();
@@ -2018,184 +2003,7 @@ if (window.wsClient) {
     });
     window.wsClient.registerInitStep(12, 'Loading Workspaces', async () => {
         await loadWorkspaces();
-    });
-    window.wsClient.registerInitStep(13, 'Preloading fonts', async () => {
-        // Check if workspaces are loaded
-        if (Object.keys(workspaces).length === 0) {
-            console.log('🔤 No workspaces loaded yet, skipping font preloading');
-            return;
-        }
-
-        // Map font names to their file paths
-        const fontPathMap = {
-            'Noto Sans': [
-                '/dist/fonts/NotoSans-VariableFont_wdth,wght.ttf',
-                '/dist/fonts/NotoSans-Italic-VariableFont_wdth,wght.ttf'
-            ],
-            'Noto Sans JP': ['/dist/fonts/NotoSansJP-VariableFont_wght.ttf'],
-            'Oxanium': ['/dist/fonts/Oxanium-VariableFont_wght.ttf'],
-            'Share Tech Mono': ['/dist/fonts/ShareTechMono-Regular.ttf'],
-            'Eczar': ['/dist/fonts/Eczar-VariableFont_wght.ttf'],
-            'Atkinson Hyperlegible Next': [
-                '/dist/fonts/AtkinsonHyperlegibleNext-VariableFont_wght.ttf',
-                '/dist/fonts/AtkinsonHyperlegibleNext-Italic-VariableFont_wght.ttf'
-            ],
-            'Grenze': [
-                '/dist/fonts/Grenze-Thin.ttf',
-                '/dist/fonts/Grenze-ExtraLight.ttf',
-                '/dist/fonts/Grenze-Light.ttf',
-                '/dist/fonts/Grenze-Regular.ttf',
-                '/dist/fonts/Grenze-Medium.ttf',
-                '/dist/fonts/Grenze-SemiBold.ttf',
-                '/dist/fonts/Grenze-Bold.ttf',
-                '/dist/fonts/Grenze-ExtraBold.ttf',
-                '/dist/fonts/Grenze-Black.ttf',
-                '/dist/fonts/Grenze-ThinItalic.ttf',
-                '/dist/fonts/Grenze-ExtraLightItalic.ttf',
-                '/dist/fonts/Grenze-LightItalic.ttf',
-                '/dist/fonts/Grenze-Italic.ttf',
-                '/dist/fonts/Grenze-MediumItalic.ttf',
-                '/dist/fonts/Grenze-SemiBoldItalic.ttf',
-                '/dist/fonts/Grenze-BoldItalic.ttf',
-                '/dist/fonts/Grenze-ExtraBoldItalic.ttf',
-                '/dist/fonts/Grenze-BlackItalic.ttf'
-            ],
-            'Texturina': [
-                '/dist/fonts/Texturina-VariableFont_opsz,wght.ttf',
-                '/dist/fonts/Texturina-Italic-VariableFont_opsz,wght.ttf'
-            ],
-            'Bodoni Moda': [
-                '/dist/fonts/BodoniModa-VariableFont_opsz,wght.ttf',
-                '/dist/fonts/BodoniModa-Italic-VariableFont_opsz,wght.ttf'
-            ],
-            'Red Hat Display': [
-                '/dist/fonts/RedHatDisplay-VariableFont_wght.ttf',
-                '/dist/fonts/RedHatDisplay-Italic-VariableFont_wght.ttf'
-            ],
-            'Tomorrow': [
-                '/dist/fonts/Tomorrow-Thin.ttf',
-                '/dist/fonts/Tomorrow-ExtraLight.ttf',
-                '/dist/fonts/Tomorrow-Light.ttf',
-                '/dist/fonts/Tomorrow-Regular.ttf',
-                '/dist/fonts/Tomorrow-Medium.ttf',
-                '/dist/fonts/Tomorrow-SemiBold.ttf',
-                '/dist/fonts/Tomorrow-Bold.ttf',
-                '/dist/fonts/Tomorrow-ExtraBold.ttf',
-                '/dist/fonts/Tomorrow-Black.ttf',
-                '/dist/fonts/Tomorrow-ThinItalic.ttf',
-                '/dist/fonts/Tomorrow-ExtraLightItalic.ttf',
-                '/dist/fonts/Tomorrow-LightItalic.ttf',
-                '/dist/fonts/Tomorrow-Italic.ttf',
-                '/dist/fonts/Tomorrow-MediumItalic.ttf',
-                '/dist/fonts/Tomorrow-SemiBoldItalic.ttf',
-                '/dist/fonts/Tomorrow-BoldItalic.ttf',
-                '/dist/fonts/Tomorrow-ExtraBoldItalic.ttf',
-                '/dist/fonts/Tomorrow-BlackItalic.ttf'
-            ],
-            'Tektur': ['/dist/fonts/Tektur-VariableFont_wdth,wght.ttf'],
-            'Kanit': [
-                '/dist/fonts/Kanit-Thin.ttf',
-                '/dist/fonts/Kanit-ExtraLight.ttf',
-                '/dist/fonts/Kanit-Light.ttf',
-                '/dist/fonts/Kanit-Regular.ttf',
-                '/dist/fonts/Kanit-Medium.ttf',
-                '/dist/fonts/Kanit-SemiBold.ttf',
-                '/dist/fonts/Kanit-Bold.ttf',
-                '/dist/fonts/Kanit-ExtraBold.ttf',
-                '/dist/fonts/Kanit-Black.ttf',
-                '/dist/fonts/Kanit-ThinItalic.ttf',
-                '/dist/fonts/Kanit-ExtraLightItalic.ttf',
-                '/dist/fonts/Kanit-LightItalic.ttf',
-                '/dist/fonts/Kanit-Italic.ttf',
-                '/dist/fonts/Kanit-MediumItalic.ttf',
-                '/dist/fonts/Kanit-SemiBoldItalic.ttf',
-                '/dist/fonts/Kanit-BoldItalic.ttf',
-                '/dist/fonts/Kanit-ExtraBoldItalic.ttf',
-                '/dist/fonts/Kanit-BlackItalic.ttf'
-            ],
-            'Mozilla Headline': ['/dist/fonts/MozillaHeadline-VariableFont_wdth,wght.ttf'],
-            'Mozilla Text': ['/dist/fonts/MozillaText-VariableFont_wght.ttf'],
-            'Zen Kurenaido': ['/dist/fonts/ZenKurenaido-Regular.ttf'],
-            'DotGothic16': ['/dist/fonts/DotGothic16-Regular.ttf'],
-            'Kaisei Decol': [
-                '/dist/fonts/KaiseiDecol-Regular.ttf',
-                '/dist/fonts/KaiseiDecol-Medium.ttf',
-                '/dist/fonts/KaiseiDecol-Bold.ttf'
-            ],
-            'Zen Antique': ['/dist/fonts/ZenAntique-Regular.ttf'],
-            'Solway': [
-                '/dist/fonts/Solway-Light.ttf',
-                '/dist/fonts/Solway-Regular.ttf',
-                '/dist/fonts/Solway-Medium.ttf',
-                '/dist/fonts/Solway-Bold.ttf',
-                '/dist/fonts/Solway-ExtraBold.ttf'
-            ]
-        };
-
-        // Collect fonts to preload based on ALL workspaces
-        const fontsToPreload = new Set();
-        
-        // Always preload default fonts
-        fontsToPreload.add('/dist/fonts/NotoSans-VariableFont_wdth,wght.ttf');
-        fontsToPreload.add('/dist/fonts/NotoSansJP-VariableFont_wght.ttf');
-        fontsToPreload.add('/dist/fonts/ShareTechMono-Regular.ttf');
-        
-        // Collect fonts from all workspaces
-        const workspaceFonts = [];
-        Object.values(workspaces).forEach(workspace => {
-            const primaryFont = workspace.primaryFont;
-            const textareaFont = workspace.textareaFont;
-            
-            if (primaryFont && primaryFont.trim()) {
-                workspaceFonts.push({ workspace: workspace.name, type: 'primary', font: primaryFont });
-            }
-            if (textareaFont && textareaFont.trim()) {
-                workspaceFonts.push({ workspace: workspace.name, type: 'textarea', font: textareaFont });
-            }
-        });
-        
-        // Add all unique fonts from all workspaces
-        workspaceFonts.forEach(({ workspace, type, font }) => {
-            if (fontPathMap[font]) {
-                fontPathMap[font].forEach(path => fontsToPreload.add(path));
-            }
-        });
-
-        const fontsArray = Array.from(fontsToPreload);
-        
-        if (fontsArray.length === 0) {
-            console.log('🔤 No fonts to preload');
-            return;
-        }
-        
-        try {
-            // Create font preload links for selected fonts
-            const preloadPromises = fontsArray.map(fontPath => {
-                return new Promise((resolve) => {
-                    const link = document.createElement('link');
-                    link.rel = 'preload';
-                    link.as = 'font';
-                    link.type = 'font/ttf';
-                    link.crossOrigin = 'anonymous';
-                    link.href = fontPath;
-                    
-                    link.onload = () => resolve(fontPath);
-                    link.onerror = () => {
-                        console.warn(`⚠️ Failed to preload font: ${fontPath}`);
-                        resolve(fontPath); // Resolve anyway to not block initialization
-                    };
-                    
-                    document.head.appendChild(link);
-                });
-            });
-            
-            // Wait for all fonts to be preloaded (or fail gracefully)
-            await Promise.allSettled(preloadPromises);            
-        } catch (error) {
-            console.warn('⚠️ Font preloading encountered errors:', error);
-            // Don't throw - font preloading failure shouldn't block workspace initialization
-        }
-    });
+    }, true);
     window.wsClient.registerInitStep(14, 'Setting up workspace settings', async () => {
         initializeWorkspaceSettingsForm();
     });

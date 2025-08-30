@@ -19,7 +19,7 @@ async function generateBlurredPreview(imagePath, blurPreviewPath) {
     try {
         await sharp(imagePath)
             .resize(128, 128, { fit: 'cover' })
-            .blur(20) // Heavy blur effect
+            .blur(10) // Heavy blur effect
             .jpeg({ quality: 60 })
             .toFile(blurPreviewPath);
         return true;

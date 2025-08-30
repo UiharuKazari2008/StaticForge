@@ -1463,9 +1463,8 @@ window.wsClient.registerInitStep(37, 'Initializing Prompt Toolbar', async () => 
     
     // Expose reset method globally for other components to use
     window.resetInlineSearch = () => {
-        if (window.promptTextareaToolbar) {
+        if (window.promptTextareaToolbar)
             window.promptTextareaToolbar.resetAllSearchStates();
-        }
     };
 });
 

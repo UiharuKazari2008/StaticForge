@@ -36,10 +36,22 @@
     animation: shake 0.5s ease-in-out;
 }
 
+.pin-dot.success {
+    border-color: #28a745;
+    background-color: rgba(40, 167, 69, 0.2);
+    animation: success-pulse 0.6s ease-in-out;
+}
+
 @keyframes shake {
     0%, 100% { transform: translateX(0); }
     10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
     20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+@keyframes success-pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
 }
 
 /* PIN Pad */
@@ -89,14 +101,16 @@
     border: 2px solid rgba(255, 255, 255, 0.3);
 }
 
-.pin-button:hover {
-    color: #6a6a6a;
-    background-color: rgb(255 255 255 / 68%);
-    box-shadow: 0 0 20px rgb(255 255 255 / 66%);
-}
+@supports (-webkit-touch-callout: none) or (hover: hover) {
+    .pin-button:hover {
+        color: #6a6a6a;
+        background-color: rgb(255 255 255 / 68%);
+        box-shadow: 0 0 20px rgb(255 255 255 / 66%);
+    }
 
-.pin-button:active {
-    background-color: rgb(255 255 255 / 90%);
+    .pin-button:active {
+        background-color: rgb(255 255 255 / 90%);
+    }
 }
 
 .pin-button.backspace-btn,
@@ -106,9 +120,11 @@
     border-color: rgba(255, 128, 140, 0.58);
 }
 
-.pin-button.backspace-btn:hover,
-.pin-button.clear-btn:hover {
-    background-color: rgba(220, 53, 69, 0.5);
+@supports (-webkit-touch-callout: none) or (hover: hover) {
+    .pin-button.backspace-btn:hover,
+    .pin-button.clear-btn:hover {
+        background-color: rgba(220, 53, 69, 0.5);
+    }
 }
 
 .pin-button.clear-btn {

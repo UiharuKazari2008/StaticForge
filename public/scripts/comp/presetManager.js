@@ -1073,7 +1073,7 @@ async function generateFromPreset(presetName) {
             throw new Error('Preset not found');
         }
         
-        showGlassToast('info', 'Generating...', `Starting generation for preset "${preset.name || presetName}"`);
+        const toastId = showGlassToast('info', 'Generating...', `Starting generation for preset "${preset.name || presetName}"`, true);
         
         // Get current workspace
         const workspace = currentWorkspace || null;
@@ -1081,8 +1081,13 @@ async function generateFromPreset(presetName) {
         // Generate using WebSocket
         const result = await wsClient.generatePreset(presetName, workspace);
         
-        // Show success message
-        showGlassToast('success', 'Generation Complete', `Generated image from preset "${preset.name || presetName}"`);
+        // Update the existing toast to show completion
+        updateGlassToastComplete(toastId, {
+            type: 'success',
+            title: 'Generation Complete',
+            message: `Generated image from preset "${preset.name || presetName}"`,
+            customIcon: '<i class="fas fa-check"></i>'
+        });
         
         // Close the preset manager modal
         hidePresetManager();
@@ -1090,7 +1095,17 @@ async function generateFromPreset(presetName) {
         return result;
     } catch (error) {
         console.error('Preset generation error:', error);
-        showGlassToast('error', 'Generation Failed', error.message);
+        // Update the existing toast to show error
+        if (toastId) {
+            updateGlassToastComplete(toastId, {
+                type: 'error',
+                title: 'Generation Failed',
+                message: error.message,
+                customIcon: '<i class="nai-cross"></i>'
+            });
+        } else {
+            showGlassToast('error', 'Generation Failed', error.message);
+        }
         throw error;
     }
 }

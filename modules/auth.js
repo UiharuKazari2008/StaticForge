@@ -14,8 +14,12 @@ const authMiddleware = (req, res, next) => {
         if (authToken !== config.loginKey) {
             return res.status(403).json({ error: 'Invalid authentication token' });
         }
-        // For API tokens, assume admin access
+        // For API tokens, assume admin access and set session
         req.userType = 'admin';
+        if (req.session) {
+            req.session.authenticated = true;
+            req.session.userType = 'admin';
+        }
         return next();
     }
 

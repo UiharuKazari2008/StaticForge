@@ -1,78 +1,74 @@
 // Banner Manager for WebSocket Status and Updates
 class BannerManager {
     constructor() {
-        this.websocketBanner = document.getElementById('websocketStatusBanner');
-        this.updateBanner = document.getElementById('updateBanner');
-        this.websocketBannerClose = this.websocketBanner?.querySelector('.status-banner-close');
-        
+        this.websocketToastId = null;
         this.init();
     }
     
     init() {
-        if (this.websocketBannerClose) {
-            this.websocketBannerClose.addEventListener('click', () => {
-                this.hideWebSocketBanner();
-            });
+        // No initialization needed for glass toasts
+    }
+    
+    showWebSocketToast(status, message, icon, autoHide = false, hideDelay = 3000) {
+        // If we already have a toast, update it instead of creating a new one
+        if (this.websocketToastId && typeof updateGlassToastComplete === 'function') {
+            this.updateWebSocketToast(status, message, icon);
+            return;
+        }
+        
+        // Create new toast only if we don't have one
+        if (typeof showGlassToast === 'function') {
+            this.websocketToastId = showGlassToast(
+                status === 'connected' ? 'success' : 
+                status === 'error' ? 'error' : 
+                status === 'warning' ? 'warning' : 'info',
+                status === 'connected' ? 'Connected' : 
+                status === 'error' ? 'Connection Error' : 
+                status === 'warning' ? 'Connection Warning' : 'Connecting',
+                message,
+                false, // No progress bar
+                autoHide ? hideDelay : false, // Only auto-hide if specified
+                icon
+            );
         }
     }
     
+    updateWebSocketToast(status, message, icon) {
+        if (!this.websocketToastId || typeof updateGlassToastComplete !== 'function') {
+            return;
+        }
+        
+        // Update the existing toast
+        updateGlassToastComplete(this.websocketToastId, {
+            type: status === 'connected' ? 'success' : 
+                  status === 'error' ? 'error' : 
+                  status === 'warning' ? 'warning' : 'info',
+            title: status === 'connected' ? 'Connected' : 
+                   status === 'error' ? 'Connection Error' : 
+                   status === 'warning' ? 'Connection Warning' : 'Connecting',
+            message: message,
+            customIcon: icon
+        });
+    }
+    
+    hideWebSocketToast() {
+        if (this.websocketToastId && typeof removeGlassToast === 'function') {
+            removeGlassToast(this.websocketToastId);
+            this.websocketToastId = null;
+        }
+    }
+    
+    // Legacy method names for compatibility
     showWebSocketBanner(status, message, icon, autoHide = false, hideDelay = 3000) {
-        if (!this.websocketBanner) return;
-        
-        // Remove all status classes and add toast styling
-        this.websocketBanner.classList.remove('status-connecting', 'status-connected', 'status-warning', 'status-error');
-        this.websocketBanner.classList.remove('glass-toast-success', 'glass-toast-error', 'glass-toast-warning', 'glass-toast-info');
-        
-        // Add appropriate toast class for styling
-        switch (status) {
-            case 'connecting':
-                this.websocketBanner.classList.add('glass-toast-info');
-                break;
-            case 'connected':
-                this.websocketBanner.classList.add('glass-toast-success');
-                break;
-            case 'warning':
-                this.websocketBanner.classList.add('glass-toast-warning');
-                break;
-            case 'error':
-                this.websocketBanner.classList.add('glass-toast-error');
-                break;
-        }
-        
-        // Update content
-        const iconEl = this.websocketBanner.querySelector('.status-banner-icon');
-        const textEl = this.websocketBanner.querySelector('.status-banner-text');
-        
-        if (iconEl) iconEl.innerHTML = icon;
-        if (textEl) textEl.textContent = message;
-        
-        // Show banner with animation
-        this.websocketBanner.classList.remove('hidden', 'hide');
-        this.websocketBanner.classList.add('show');
-        
-        // Auto-hide if specified
-        if (autoHide) {
-            setTimeout(() => {
-                this.hideWebSocketBanner();
-            }, hideDelay);
-        }
+        this.showWebSocketToast(status, message, icon, autoHide, hideDelay);
     }
     
     hideWebSocketBanner() {
-        if (!this.websocketBanner) return;
-        
-        this.websocketBanner.classList.remove('show');
-        this.websocketBanner.classList.add('hide');
-        
-        // Hide completely after animation
-        setTimeout(() => {
-            this.websocketBanner.classList.add('hidden');
-            this.websocketBanner.classList.remove('hide');
-        }, 500);
+        this.hideWebSocketToast();
     }
     
     updateWebSocketBanner(status, message, icon) {
-        this.showWebSocketBanner(status, message, icon);
+        this.updateWebSocketToast(status, message, icon);
     }
 }
 
@@ -189,13 +185,13 @@ class WebSocketClient {
         document.body.appendChild(this.loadingOverlay);
     }
 
-    registerInitStep(priority, message, stepFunction) {
+    registerInitStep(priority, message, stepFunction, runOnReconnect = false) {
         // Check if step with same message already exists
         const existingStepIndex = this.initSteps.findIndex(step => step.message === message);
         if (existingStepIndex !== -1) {
-            this.initSteps[existingStepIndex] = { priority, message, stepFunction };
+            this.initSteps[existingStepIndex] = { priority, message, stepFunction, runOnReconnect };
         } else {
-            this.initSteps.push({ priority, message, stepFunction });
+            this.initSteps.push({ priority, message, stepFunction, runOnReconnect });
         }
         
         // Sort by priority
@@ -279,9 +275,15 @@ class WebSocketClient {
                 // Each registered step gets a portion of the remaining 75%
                 const stepProgress = 25 + ((this.currentInitStep / this.totalInitSteps) * 75);
                 this.updateLoadingProgress(step.message, stepProgress);
+                
+                // On reconnection, only run steps flagged as runOnReconnect
+                if (this.initializationCompleted && !step.runOnReconnect) {
+                    console.log(`⏭️ Skipping step "${step.message}" on reconnect (not flagged as runOnReconnect)`);
+                    continue;
+                }
                                 
                 try {
-                    await step.stepFunction();
+                    await step.stepFunction();   // run the step
                 } catch (error) {
                     console.error(`❌ Error in init step "${step.message}":`, error);
                 }
@@ -347,8 +349,8 @@ class WebSocketClient {
         this.isConnecting = true;
         this.updateLoadingProgress('Checking connection...', 0);
         
-        // Show connecting banner
-        this.bannerManager.showWebSocketBanner('connecting', 'Connecting...', '<i class="fas fa-signal"></i>');
+        // Show connecting toast
+        this.bannerManager.showWebSocketToast('connecting', 'Connecting...', '<i class="fas fa-signal"></i>');
 
         try {
             // Step 1: First ping the host over HTTP to ensure it's responsive
@@ -359,28 +361,14 @@ class WebSocketClient {
                 console.error('❌ Host availability check failed:', pingError.message);
                 this.isConnecting = false;
                 
-                // Show ping failure banner
-                this.bannerManager.showWebSocketBanner('error', 'Server not responding. Retrying...', '<i class="fas fa-exclamation-triangle"></i>');
+                // Show ping failure toast
+                this.bannerManager.updateWebSocketToast('error', 'Server not responding. Retrying...', '<i class="fas fa-exclamation-triangle"></i>');
                 
                 // Retry connection after a delay
                 setTimeout(() => {
                     this.reconnect();
                 }, 3000);
                 return;
-            }
-            
-            // Step 2: Execute initialization steps 2/3 (service worker and asset downloading)
-            // before attempting WebSocket connection
-            if (!this.initializationCompleted) {
-                try {
-                    this.updateLoadingProgress('Initializing Application...', 20);
-                    
-                    // Execute steps 2 and 3 specifically
-                    await this.executeInitStepsBeforeWebSocket();
-                } catch (initError) {
-                    console.warn('⚠️ Component initialization failed, continuing with WebSocket connection:', initError.message);
-                    // Continue with WebSocket connection even if initialization fails
-                }
             }
             
             // Step 3: Now attempt WebSocket connection
@@ -398,8 +386,11 @@ class WebSocketClient {
                 this.reconnectAttempts = 0;
                 this.reconnectDelay = 1000;
                 
-                // Show connected banner
-                this.bannerManager.showWebSocketBanner('connected', 'Connected to server', '<i class="fas fa-plug"></i>', true, 3000);
+                // Show connected toast and auto-hide after 3 seconds
+                this.bannerManager.updateWebSocketToast('connected', 'Connected to server', '<i class="fas fa-plug"></i>');
+                setTimeout(() => {
+                    this.bannerManager.hideWebSocketToast();
+                }, 3000);
                 
                 // Trigger connection event
                 this.triggerEvent('connected');
@@ -409,13 +400,7 @@ class WebSocketClient {
                     this.executeInitSteps();
                 } else {
                     this.hideLoadingOverlay();
-                    
-                    // Check for updates on reconnection
-                    if (window.cacheManager) {
-                        window.cacheManager.checkForUpdatesOnReconnection().catch(error => {
-                            console.warn('⚠️ Update check on reconnection failed:', error.message);
-                        });
-                    }
+                    // ON CONNECT CHECK IN WITH SERVICE WORKER TO SEE IF IT HAS UPDATES
                 }
             };
 
@@ -445,7 +430,7 @@ class WebSocketClient {
                 }
                 
                 if (!this.isManualClose) {
-                    this.bannerManager.showWebSocketBanner('warning', 'Connection lost. Reconnecting...', '<i class="fas fa-sync-alt"></i>');
+                    this.bannerManager.updateWebSocketToast('warning', 'Connection lost. Reconnecting...', '<i class="fas fa-sync-alt"></i>');
                     this.reconnect();
                 }
                 
@@ -458,81 +443,14 @@ class WebSocketClient {
                 this.isConnecting = false;
                 
                 if (!this.isManualClose) {
-                    this.bannerManager.showWebSocketBanner('error', 'Connection error. Retrying...', '<i class="fas fa-exclamation-triangle"></i>');
+                    this.bannerManager.updateWebSocketToast('error', 'Connection error. Retrying...', '<i class="fas fa-exclamation-triangle"></i>');
                 }
             };
 
         } catch (error) {
             console.error('❌ Failed to create WebSocket connection:', error);
             this.isConnecting = false;
-            this.bannerManager.showWebSocketBanner('error', 'Failed to connect', '<i class="fas fa-times-circle"></i>');
-        }
-    }
-
-    // Execute initialization steps 2 and 3 before WebSocket connection
-    async executeInitStepsBeforeWebSocket() {
-        try {
-            // Step 2: Initialize Service Worker
-            if (window.cacheManager) {
-                const success = await window.cacheManager.initialize();
-                if (!success) {
-                    console.warn('⚠️ Cache Manager initialization failed, continuing without caching');
-                }
-            } else {
-                console.warn('⚠️ Cache Manager not available, skipping service worker initialization');
-            }
-            
-            // Step 3: Download and Cache Assets
-            if (window.cacheManager && window.cacheManager.isInitialized) {
-                try {
-                    const response = await fetch('/app', { method: 'OPTIONS' });
-                    if (response.ok) {
-                        const data = await response.json();
-                        const serverAssets = data.cacheData || [];
-                        
-                        if (serverAssets.length > 0) {
-                            // Check for updates
-                            const updateInfo = await window.cacheManager.checkForUpdates(serverAssets);
-                            
-                            if (updateInfo.needsUpdate) {
-                                // Check for critical updates
-                                const criticalUpdates = [];
-                                const cachedAssetsMap = new Map();
-                                if (updateInfo.cachedAssets && updateInfo.cachedAssets.length > 0) {
-                                    updateInfo.cachedAssets.forEach(asset => cachedAssetsMap.set(asset.path, asset));
-                                }
-                                
-                                for (const asset of updateInfo.assets) {
-                                    const isCritical = asset.path.endsWith('.js') || asset.path.endsWith('.html');
-                                    
-                                    if (isCritical) {
-                                        const cachedAsset = cachedAssetsMap.get(asset.path);
-                                        const wasPreviouslyCached = cachedAsset && cachedAsset.md5;
-                                        
-                                        if (wasPreviouslyCached && wasPreviouslyCached !== asset.md5) {
-                                            criticalUpdates.push(asset);
-                                        }
-                                    }
-                                }
-
-                                const isInitialCache = !updateInfo.cachedAssets || updateInfo.cachedAssets.length === 0;
-                                const shouldAutoHide = isInitialCache;                                
-                                // Download assets with progress - only auto-hide for initial cache
-                                await window.cacheManager.showUpdateBannerWithProgress(updateInfo.assets, shouldAutoHide);
-                            }
-                        }
-                    } else {
-                        console.warn('⚠️ Failed to get cache manifest via HTTP');
-                    }
-                } catch (error) {
-                    console.error('❌ Error during asset download and caching:', error);
-                }
-            } else {
-                console.warn('⚠️ Cache Manager not initialized, skipping asset download');
-            }
-            
-        } catch (error) {
-            console.error('❌ Error during pre-WebSocket initialization:', error);
+            this.bannerManager.updateWebSocketToast('error', 'Failed to connect', '<i class="fas fa-times-circle"></i>');
         }
     }
 
@@ -554,7 +472,7 @@ class WebSocketClient {
     reconnect() {
         if (this.isManualClose || this.reconnectAttempts >= this.maxReconnectAttempts) {
             if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-                this.bannerManager.showWebSocketBanner('error', 'Max reconnection attempts reached', '<i class="fas fa-ban"></i>');
+                this.bannerManager.updateWebSocketToast('error', 'Max reconnection attempts reached', '<i class="fas fa-ban"></i>');
             }
             return;
         }
@@ -574,7 +492,7 @@ class WebSocketClient {
         this.isManualClose = false;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
-        this.initializationCompleted = false; // Reset initialization flag for force reconnect
+        // Don't reset initializationCompleted - we only want to run steps flagged as runOnReconnect
         this.disconnect();
         setTimeout(() => {
             this.connect();
@@ -613,6 +531,7 @@ class WebSocketClient {
         return this.initSteps.map(step => ({
             message: step.message,
             priority: step.priority,
+            runOnReconnect: step.runOnReconnect,
             completed: this.initializationCompleted
         }));
     }
@@ -686,9 +605,68 @@ class WebSocketClient {
                 this.handleGalleryResponse(message.data, message.requestId);
             }
             
-            // Special handling for cache reload responses to ensure they always trigger update checks
-            if (message.type === 'cache_reload_response') {
-                this.handleCacheReloadResponse(message);
+            return;
+        }
+        
+        // Handle cache refresh response
+        if (message.type === 'refresh_server_cache_response') {
+            if (message.requestId) {
+                this.resolveRequest(message.requestId, message.data, message.error);
+            }
+            
+            // Show success/error message
+            if (message.success) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', 'Cache Refreshed', `Server cache refreshed successfully. ${message.data?.assetsCount || 0} assets updated.`, false, 5000, '<i class="fas fa-sync"></i>');
+                }
+                console.log('✅ Server cache refreshed successfully:', message.data);
+            } else {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('error', 'Cache Refresh Failed', message.error || 'Failed to refresh server cache', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+                }
+                console.error('❌ Server cache refresh failed:', message.error);
+            }
+            
+            return;
+        }
+        
+        // Handle resource update notifications
+        if (message.type === 'resource_update_available') {
+            console.log('🔄 Resource update available:', message.data);
+            
+            // Show update notification with download/later buttons
+            if (typeof showGlassToast === 'function') {
+                const downloadButton = {
+                    text: 'Download Now',
+                    type: 'primary',
+                    onClick: () => {
+                        console.log('User chose to download updates now');
+                        // Trigger the service worker update check
+                        if (window.serviceWorkerManager) {
+                            window.serviceWorkerManager.checkStaticFileUpdates();
+                        }
+                    },
+                    closeOnClick: true
+                };
+                
+                const laterButton = {
+                    text: 'Later',
+                    type: 'default',
+                    onClick: () => {
+                        console.log('User chose to download updates later');
+                    },
+                    closeOnClick: true
+                };
+                
+                showGlassToast(
+                    'warning',
+                    'Updates Available',
+                    message.data.message || 'Resource updates are available for download',
+                    false,
+                    false,
+                    '<i class="fas fa-download"></i>',
+                    [downloadButton, laterButton]
+                );
             }
             
             return;
@@ -750,11 +728,6 @@ class WebSocketClient {
             case 'queue_update':
                 this.handleQueueUpdate(message.data);
                 break;
-
-            case 'SERVICE_WORKER_UPDATED':
-                // Trigger the event for other parts of the app to handle
-                this.triggerEvent('serviceWorkerUpdated', message);
-                break;
                 
             default:
                 // Handle custom message types
@@ -763,8 +736,8 @@ class WebSocketClient {
     }
 
     handleAuthError(message) {
-        // Show authentication error banner
-        this.bannerManager.showWebSocketBanner('error', 'Authentication required. Please log in.', '<i class="fas fa-lock"></i>', false);
+        // Show authentication error toast (won't auto-hide)
+        this.bannerManager.updateWebSocketToast('error', 'Authentication required. Please log in.', '<i class="fas fa-lock"></i>');
         
         // Trigger authentication event for other parts of the app to handle
         this.triggerEvent('authentication_required', message);
@@ -772,7 +745,8 @@ class WebSocketClient {
         // Show PIN modal for authentication
         if (typeof window.showPinModal === 'function') {
             window.showPinModal().then(() => {
-                // After successful login, reconnect WebSocket
+                // After successful login, hide the toast and reconnect WebSocket
+                this.bannerManager.hideWebSocketToast();
                 this.forceReconnect();
             }).catch((error) => {
                 console.error('❌ PIN modal error:', error);
@@ -834,37 +808,6 @@ class WebSocketClient {
         }
     }
 
-    handleCacheReloadResponse(message) {
-        // Always check for updates when cache reload response is received
-        if (window.cacheManager && window.cacheManager.isInitialized) {
-            window.cacheManager.checkForUpdatesOnReconnection().catch(error => {
-                console.warn('⚠️ Update check after cache reload response failed:', error.message);
-            });
-        }
-        
-        // Also trigger the event for any other listeners
-        this.triggerEvent('cache_reload_response', message);
-    }
-
-    // Method to request image generation via WebSocket
-    generateImage(generationParams, requestId = null) {
-        if (!this.isConnected()) {
-            throw new Error('WebSocket not connected');
-        }
-
-        const id = requestId || `gen_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        
-        const message = {
-            type: 'generate_image',
-            requestId: id,
-            data: generationParams,
-            timestamp: new Date().toISOString()
-        };
-
-        this.send(message);
-        return id;
-    }
-
     // Method to request image upscaling via WebSocket
     async upscaleImage(upscaleParams, requestId = null) {
         if (!this.isConnected()) {
@@ -887,6 +830,10 @@ class WebSocketClient {
         }
         
         try {
+            console.log('🔍 WebSocket generateImage called with params:', generationParams);
+            if (generationParams.vibe_transfer) {
+                console.log('🔍 Vibe transfers in generation params:', generationParams.vibe_transfer);
+            }
             const result = await this.sendMessage('generate_image', generationParams);
             return result;
         } catch (error) {
@@ -1283,7 +1230,6 @@ class WebSocketClient {
         return this.sendMessage('workspace_reorder', { workspaceIds });
     }
 
-    // Bulk operations
     async addScrapBulk(id, filenames) {
         return this.sendMessage('workspace_bulk_add_scrap', { id, filenames });
     }
@@ -1308,7 +1254,6 @@ class WebSocketClient {
         return this.sendMessage('update_image_preset_bulk', { filenames, presetName });
     }
 
-    // References WebSocket Methods
     async getReferences() {
         return this.sendMessage('get_references');
     }
@@ -1399,6 +1344,14 @@ class WebSocketClient {
 
     async pingWithAuth() {
         return this.sendMessage('ping');
+    }
+
+    async refreshServerCache() {
+        return this.sendMessage('refresh_server_cache');
+    }
+    
+    async broadcastResourceUpdate(updateType, message, files = []) {
+        return this.sendMessage('broadcast_resource_update', { updateType, message, files });
     }
 
     async waitForConnection(timeout = 10000) {
