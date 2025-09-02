@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlockContainer Demo</title>
+    <link rel="stylesheet" href="/css/blockContainer.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .demo-container {
+            display: flex;
+            gap: 30px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .blocks-section {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .controls-section {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .section-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #fff;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .block-container-wrapper {
+            position: relative;
+            width: 100%;
+            height: 700px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .background-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url('/static_images/background.jpg');
+            background-size: cover;
+            background-position: center;
+            opacity: 1;
+            z-index: 1;
+        }
+
+        .block-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+        }
+
+        .control-group {
+            margin-bottom: 25px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .control-group h3 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #4fc3f7;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+        }
+
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn.primary {
+            background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 100%);
+        }
+
+        .btn.success {
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+        }
+
+        .btn.warning {
+            background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+        }
+
+        .btn.danger {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status-display {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .status-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .status-label {
+            color: #4fc3f7;
+            font-weight: 500;
+        }
+
+        .status-value {
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .log-display {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 3px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .log-time {
+            color: #4fc3f7;
+            margin-right: 10px;
+        }
+
+        .log-message {
+            color: #fff;
+        }
+
+        .log-error {
+            color: #ff6b6b;
+        }
+
+        .log-success {
+            color: #4caf50;
+        }
+
+        .wave-direction-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .wave-direction-btn {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            background: linear-gradient(135deg, #9c27b0 0%, #7b1fa2 100%);
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .wave-direction-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .wave-direction-btn.active {
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+        }
+
+        .config-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .config-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .config-group label {
+            margin-bottom: 5px;
+            color: #4fc3f7;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .config-group input {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .config-group input:focus {
+            outline: none;
+            border-color: #4fc3f7;
+            box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.2);
+        }
+
+        .config-group input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .demo-info {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .demo-info h3 {
+            color: #4fc3f7;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .demo-info p {
+            margin-bottom: 10px;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .demo-info code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #4fc3f7;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <!-- Block Container Section -->
+        <div class="blocks-section">
+            <h2 class="section-title">Block Container Demo</h2>
+            <div class="block-container-wrapper">
+                <div class="background-image"></div>
+                <div class="block-container" id="blockContainer"></div>
+            </div>
+            
+            <div class="demo-info">
+                <h3>Current State</h3>
+                <div id="currentState">Select an Initialization Method</div>
+            </div>
+        </div>
+
+        <!-- Controls Section -->
+        <div class="controls-section">
+            <h2 class="section-title">Interactive Controls</h2>
+
+            <!-- Initialization Controls -->
+            <div class="control-group">
+                <h3>Initialization</h3>
+                <div class="button-grid">
+                    <button class="btn primary" onclick="initNormal()">Start Normal</button>
+                    <button class="btn primary" onclick="initOpaque()">Start Opaque</button>
+                    <button class="btn primary" onclick="initReady()">Start Ready</button>
+                </div>
+                <p style="color: rgba(255,255,255,0.8); font-size: 14px; margin-top: 10px;">
+                    <strong>Normal:</strong> Random opacity | <strong>Opaque:</strong> All blocks at 1.0 | <strong>Ready:</strong> All blocks at 0.0
+                </p>
+            </div>
+
+            <!-- Wave Controls -->
+            <div class="control-group">
+                <h3>Wave Effects</h3>
+                <div class="wave-direction-controls">
+                    <button class="wave-direction-btn" data-direction="diagonal" onclick="setWaveDirection('diagonal')">Diagonal</button>
+                    <button class="wave-direction-btn" data-direction="left" onclick="setWaveDirection('left')">Left</button>
+                    <button class="wave-direction-btn" data-direction="right" onclick="setWaveDirection('right')">Right</button>
+                    <button class="wave-direction-btn" data-direction="up" onclick="setWaveDirection('up')">Up</button>
+                    <button class="wave-direction-btn" data-direction="down" onclick="setWaveDirection('down')">Down</button>
+                    <button class="wave-direction-btn" data-direction="out" onclick="setWaveDirection('out')">Out</button>
+                    <button class="wave-direction-btn" data-direction="in" onclick="setWaveDirection('in')">In</button>
+                    <button class="wave-direction-btn" data-direction="rand" onclick="setWaveDirection('rand')">Random</button>
+                </div>
+                <div class="button-grid">
+                    <button class="btn success" onclick="createWave()">Create Wave</button>
+                    <button class="btn warning" onclick="returnToNormal()">Return to Normal</button>
+                    <button class="btn warning" onclick="returnToNormalFade()">Return + Fade</button>
+                </div>
+            </div>
+
+            <!-- Continuous Wave Controls -->
+            <div class="control-group">
+                <h3>Continuous Waves</h3>
+                <div class="button-grid">
+                    <button class="btn success" onclick="startContinuous()">Start Continuous</button>
+                    <button class="btn danger" onclick="stopWaves()">Stop Waves</button>
+                </div>
+                <div class="config-controls">
+                    <div class="config-group">
+                        <label for="initialDelay">Initial Delay (ms)</label>
+                        <input type="number" id="initialDelay" value="2000" min="0" max="10000">
+                    </div>
+                    <div class="config-group">
+                        <label for="repeatInterval">Repeat Interval (ms)</label>
+                        <input type="number" id="repeatInterval" value="5000" min="1000" max="20000">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Utility Controls -->
+            <div class="control-group">
+                <h3>Utility Methods</h3>
+                <div class="button-grid">
+                    <button class="btn warning" onclick="goOpaque()">Go Opaque</button>
+                    <button class="btn danger" onclick="stopFade()">Stop & Fade</button>
+                    <button class="btn danger" onclick="stopAll()">Stop All</button>
+                    <button class="btn danger" onclick="emergencyStop()" style="background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);">EMERGENCY STOP</button>
+                </div>
+            </div>
+
+            <!-- Configuration Controls -->
+            <div class="control-group">
+                <h3>Configuration</h3>
+                <div class="config-controls">
+                    <div class="config-group">
+                        <label for="gridRows">Grid Rows</label>
+                        <input type="number" id="gridRows" value="20" min="5" max="50">
+                    </div>
+                    <div class="config-group">
+                        <label for="gridCols">Grid Columns</label>
+                        <input type="number" id="gridCols" value="20" min="5" max="50">
+                    </div>
+                </div>
+                <div class="config-controls">
+                    <div class="config-group">
+                        <label for="minOpacity">Min Opacity</label>
+                        <input type="number" id="minOpacity" value="0.05" min="0" max="1" step="0.01">
+                    </div>
+                    <div class="config-group">
+                        <label for="maxOpacity">Max Opacity</label>
+                        <input type="number" id="maxOpacity" value="0.3" min="0" max="1" step="0.01">
+                    </div>
+                </div>
+                <button class="btn primary" onclick="updateConfig()" style="margin-top: 10px; width: 100%;">Update Configuration</button>
+            </div>
+
+            <!-- Status Display -->
+            <div class="control-group">
+                <h3>Status</h3>
+                <div id="statusDisplay" class="status-display">
+                    <div class="status-item">
+                        <span class="status-label">Active:</span>
+                        <span class="status-value" id="statusActive">-</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Block Count:</span>
+                        <span class="status-value" id="statusBlockCount">-</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Grid Size:</span>
+                        <span class="status-value" id="statusGridSize">-</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Current Direction:</span>
+                        <span class="status-value" id="statusDirection">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log Display -->
+            <div class="control-group">
+                <h3>Activity Log</h3>
+                <div id="logDisplay" class="log-display"></div>
+                <button class="btn warning" onclick="clearLog()" style="margin-top: 10px; width: 100%;">Clear Log</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/scripts/blockContainer.js"></script>
+    <script>
+        // Global variables
+        let blockContainer;
+        let currentWaveDirection = 'diagonal';
+        let isContinuousRunning = false;
+
+        // Initialize the demo
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeBlockContainer();
+            setWaveDirection('diagonal'); // Set initial direction after container is ready
+            updateStatus();
+            log('Demo initialized', 'success');
+        });
+
+        // Initialize BlockContainer
+        function initializeBlockContainer() {
+            blockContainer = new BlockContainer('#blockContainer', {
+                row: 20,
+                col: 20,
+                opacityRange: [0.05, 0.3],
+                waveDelay: 30,
+                randomAdjustInterval: 2000
+            });
+            
+            // Start with normal state
+            blockContainer.init('normal');
+            updateStatus();
+            log('BlockContainer initialized with normal state', 'success');
+        }
+
+        // Initialization methods
+        function initNormal() {
+            blockContainer.stop();
+            blockContainer.init('normal');
+            updateStatus();
+            log('Initialized with normal state (random opacity)', 'success');
+        }
+
+        function initOpaque() {
+            blockContainer.stop();
+            blockContainer.init('opaque');
+            updateStatus();
+            log('Initialized with opaque state (all blocks at 1.0)', 'success');
+        }
+
+        function initReady() {
+            blockContainer.stop();
+            blockContainer.init('ready');
+            updateStatus();
+            log('Initialized with ready state (all blocks at 0.0)', 'success');
+        }
+
+        // Wave direction control
+        function setWaveDirection(direction) {
+            currentWaveDirection = direction;
+            
+            // Update active button
+            document.querySelectorAll('.wave-direction-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-direction="${direction}"]`).classList.add('active');
+            
+            updateStatus();
+            log(`Wave direction set to: ${direction}`, 'success');
+        }
+
+        // Wave methods
+        async function createWave() {
+            try {
+                log(`Creating ${currentWaveDirection} wave...`, 'message');
+                
+                // Ensure container is ready for waves
+                blockContainer.ensureWaveReady();
+                
+                await blockContainer.createOpacityWave(currentWaveDirection);
+                log(`${currentWaveDirection} wave completed`, 'success');
+            } catch (error) {
+                log(`Wave error: ${error.message}`, 'error');
+                
+                // Try to recover by ensuring wave ready state
+                try {
+                    blockContainer.ensureWaveReady();
+                    log('Container state recovered, try creating wave again', 'warning');
+                } catch (recoveryError) {
+                    log(`Recovery failed: ${recoveryError.message}`, 'error');
+                }
+            }
+        }
+
+        async function returnToNormal() {
+            try {
+                log('Returning to normal opacity...', 'message');
+                await blockContainer.returnToNormalOpacity(false);
+                log('Returned to normal opacity', 'success');
+            } catch (error) {
+                log(`Return error: ${error.message}`, 'error');
+            }
+        }
+
+        async function returnToNormalFade() {
+            try {
+                log('Returning to normal, then fading to zero...', 'message');
+                await blockContainer.returnToNormalOpacity(true);
+                log('Returned to normal and faded to zero', 'success');
+            } catch (error) {
+                log(`Return + fade error: ${error.message}`, 'error');
+            }
+        }
+
+        // Continuous wave methods
+        async function startContinuous() {
+            if (isContinuousRunning) {
+                log('Continuous waves already running', 'warning');
+                return;
+            }
+
+            try {
+                const initialDelay = parseInt(document.getElementById('initialDelay').value);
+                const repeatInterval = parseInt(document.getElementById('repeatInterval').value);
+                
+                log(`Starting continuous waves (delay: ${initialDelay}ms, interval: ${repeatInterval}ms)...`, 'message');
+                
+                isContinuousRunning = true;
+                await blockContainer.startContinuousWave(initialDelay, repeatInterval, currentWaveDirection, () => {
+                    log('Wave cycle completed', 'success');
+                });
+                
+                log('Continuous waves started', 'success');
+            } catch (error) {
+                log(`Continuous wave error: ${error.message}`, 'error');
+                isContinuousRunning = false;
+            }
+        }
+
+        function stopWaves() {
+            try {
+                // Stop all container effects
+                blockContainer.stop();
+                
+                // Reset continuous wave flag
+                isContinuousRunning = false;
+                
+                // Force stop any ongoing animations by removing effect classes
+                if (blockContainer.blocks) {
+                    blockContainer.blocks.forEach(block => {
+                        const element = block.element;
+                        // Remove all effect classes
+                        element.classList.remove('wave-opaque', 'fade-to-zero');
+                        
+                        // If we're stopping mid-animation, ensure blocks have proper opacity
+                        if (!element.style.getPropertyValue('--random-opacity')) {
+                            const randomOpacity = blockContainer.config.opacityRange[0] + 
+                                Math.random() * (blockContainer.config.opacityRange[1] - blockContainer.config.opacityRange[0]);
+                            element.style.setProperty('--random-opacity', randomOpacity);
+                        }
+                    });
+                }
+                
+                updateStatus();
+                log('All waves and effects stopped', 'warning');
+            } catch (error) {
+                log(`Error stopping waves: ${error.message}`, 'error');
+            }
+        }
+
+        // Utility methods
+        function goOpaque() {
+            blockContainer.goOpaque();
+            log('All blocks set to opaque', 'success');
+        }
+
+        async function stopFade() {
+            try {
+                log('Stopping and fading to zero...', 'message');
+                await blockContainer.stopFade();
+                log('Stopped and faded to zero', 'success');
+            } catch (error) {
+                log(`Stop fade error: ${error.message}`, 'error');
+            }
+        }
+
+        function stopAll() {
+            try {
+                // Stop all container effects
+                blockContainer.stop();
+                
+                // Reset continuous wave flag
+                isContinuousRunning = false;
+                
+                // Force stop any ongoing animations and reset to normal state
+                if (blockContainer.blocks) {
+                    blockContainer.blocks.forEach(block => {
+                        const element = block.element;
+                        
+                        // Remove all effect classes
+                        element.classList.remove('wave-opaque', 'fade-to-zero', 'ready-state');
+                        
+                        // Ensure blocks have proper random opacity
+                        const randomOpacity = blockContainer.config.opacityRange[0] + 
+                            Math.random() * (blockContainer.config.opacityRange[1] - blockContainer.config.opacityRange[0]);
+                        element.style.setProperty('--random-opacity', randomOpacity);
+                    });
+                }
+                
+                updateStatus();
+                log('All effects stopped and blocks reset to normal', 'warning');
+            } catch (error) {
+                log(`Error stopping all effects: ${error.message}`, 'error');
+            }
+        }
+
+        // Emergency stop function for immediate interruption
+        function emergencyStop() {
+            try {
+                // Force stop everything immediately
+                blockContainer.stop();
+                isContinuousRunning = false;
+                
+                // Immediately reset all blocks to normal state
+                if (blockContainer.blocks) {
+                    blockContainer.blocks.forEach(block => {
+                        const element = block.element;
+                        
+                        // Remove ALL effect classes immediately
+                        element.classList.remove('wave-opaque', 'fade-to-zero', 'ready-state', 'started-opaque');
+                        
+                        // Set immediate random opacity
+                        const randomOpacity = blockContainer.config.opacityRange[0] + 
+                            Math.random() * (blockContainer.config.opacityRange[1] - blockContainer.config.opacityRange[0]);
+                        element.style.setProperty('--random-opacity', randomOpacity);
+                        
+                        // Remove any custom transition durations
+                        element.style.removeProperty('--transition-duration');
+                    });
+                }
+                
+                updateStatus();
+                log('EMERGENCY STOP: All effects immediately terminated', 'error');
+            } catch (error) {
+                log(`Emergency stop error: ${error.message}`, 'error');
+            }
+        }
+
+        // Configuration methods
+        function updateConfig() {
+            const rows = parseInt(document.getElementById('gridRows').value);
+            const cols = parseInt(document.getElementById('gridCols').value);
+            const minOpacity = parseFloat(document.getElementById('minOpacity').value);
+            const maxOpacity = parseFloat(document.getElementById('maxOpacity').value);
+
+            if (minOpacity >= maxOpacity) {
+                log('Min opacity must be less than max opacity', 'error');
+                return;
+            }
+
+            const newConfig = {
+                row: rows,
+                col: cols,
+                opacityRange: [minOpacity, maxOpacity]
+            };
+
+            blockContainer.updateConfig(newConfig);
+            updateStatus();
+            log(`Configuration updated: ${rows}x${cols} grid, opacity ${minOpacity}-${maxOpacity}`, 'success');
+        }
+
+        // Status and logging
+        function updateStatus() {
+            if (!blockContainer) {
+                document.getElementById('statusActive').textContent = 'No';
+                document.getElementById('statusBlockCount').textContent = '-';
+                document.getElementById('statusGridSize').textContent = '-';
+                document.getElementById('statusDirection').textContent = currentWaveDirection;
+                document.getElementById('currentState').innerHTML = '<strong>Current State:</strong> Not initialized';
+                return;
+            }
+            
+            const status = blockContainer.getStatus();
+            
+            document.getElementById('statusActive').textContent = status.isActive ? 'Yes' : 'No';
+            document.getElementById('statusBlockCount').textContent = status.blockCount;
+            document.getElementById('statusGridSize').textContent = `${status.config.row} × ${status.config.col}`;
+            document.getElementById('statusDirection').textContent = currentWaveDirection;
+            
+            // Update current state display
+            const currentStateDiv = document.getElementById('currentState');
+            if (blockContainer.blocks && blockContainer.blocks.length > 0) {
+                const firstBlock = blockContainer.blocks[0].element;
+                if (firstBlock.classList.contains('ready-state')) {
+                    currentStateDiv.innerHTML = '<strong>Current State:</strong> Ready (0 opacity)';
+                } else if (firstBlock.classList.contains('started-opaque')) {
+                    currentStateDiv.innerHTML = '<strong>Current State:</strong> Opaque (1.0 opacity)';
+                } else {
+                    currentStateDiv.innerHTML = '<strong>Current State:</strong> Normal (random opacity)';
+                }
+            }
+        }
+
+        function log(message, type = 'message') {
+            const logDisplay = document.getElementById('logDisplay');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            
+            const now = new Date();
+            const timeString = now.toLocaleTimeString();
+            
+            logEntry.innerHTML = `
+                <span class="log-time">[${timeString}]</span>
+                <span class="log-message">${message}</span>
+            `;
+            
+            logDisplay.appendChild(logEntry);
+            logDisplay.scrollTop = logDisplay.scrollHeight;
+            
+            // Limit log entries
+            while (logDisplay.children.length > 50) {
+                logDisplay.removeChild(logDisplay.firstChild);
+            }
+        }
+
+        function clearLog() {
+            document.getElementById('logDisplay').innerHTML = '';
+            log('Log cleared', 'message');
+        }
+
+
+    </script>
+</body>
+</html>

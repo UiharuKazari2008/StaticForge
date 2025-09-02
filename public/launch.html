@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Dreamscape</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#6366f1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Dreamscape">
+    <meta name="msapplication-TileColor" content="#6366f1">
+    <meta name="msapplication-config" content="/browserconfig.xml">
+    
+    <!-- Tablet and Orientation Support -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="apple-touch-fullscreen" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- Cache Control - Prevent Browser Caching -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="/static_images/splash.png" as="image">
+    <link rel="preload" href="/static_images/logo_icon.png" as="image">
+    <link rel="preload" href="/dist/fonts/MozillaHeadline-VariableFont_wdth,wght.ttf" as="font" type="font/ttf" crossorigin="anonymous">
+    
+    <!-- PWA Icons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/static_images/icon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static_images/icon-16x16.png">
+    
+    <!-- iOS Icons -->
+    <link rel="apple-touch-icon" href="/static_images/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static_images/apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="/static_images/apple-touch-icon-167x167.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/static_images/apple-touch-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="/static_images/apple-touch-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="87x87" href="/static_images/apple-touch-icon-87x87.png">
+    <link rel="apple-touch-icon" sizes="80x80" href="/static_images/apple-touch-icon-80x80.png">
+    <link rel="apple-touch-icon" sizes="76x76" href="/static_images/apple-touch-icon-76x76.png">
+    <link rel="apple-touch-icon" sizes="60x60" href="/static_images/apple-touch-icon-60x60.png">
+    <link rel="apple-touch-icon" sizes="40x40" href="/static_images/apple-touch-icon-40x40.png">
+    <link rel="apple-touch-icon" sizes="29x29" href="/static_images/apple-touch-icon-29x29.png">
+    
+    <!-- Safari Pinned Tab Icon -->
+    <link rel="mask-icon" href="/static_images/icon-192x192.png" color="#6366f1">
+    
+    <!-- iOS Splash Screens -->
+    <!-- iPhone 14 Pro Max / 15 Pro Max -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1290x2796.png">
+    <!-- iPhone 14 Pro / 15 Pro -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1179x2556.png">
+    <!-- iPhone 14 Plus / 15 Plus -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1284x2778.png">
+    <!-- iPhone 14 / 15 -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1170x2532.png">
+    <!-- iPhone 13 Pro / 14 Pro -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1125x2436.png">
+    <!-- iPhone 13 / 14 -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1242x2688.png">
+    <!-- iPhone 11 Pro Max / XS Max -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-828x1792.png">
+    <!-- iPhone 11 / XR -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-750x1334.png">
+         <!-- iPhone 12 mini / 13 mini -->
+     <link rel="apple-touch-startup-image" media="screen and (device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1080x2340.png">
+    <!-- iPhone 5 / SE -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-640x1136.png">
+    <!-- iPad Pro 12.9" -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-2048x2732.png">
+    <!-- iPad Pro 11" -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-1668x2388.png">
+    <!-- iPad 9.7" / Air -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-1536x2048.png">
+    
+    <!-- Landscape Orientation Splash Screens -->
+    <!-- iPad Pro 12.9" Landscape -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 1366px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-2732x2048.png">
+    <!-- iPad Pro 11" Landscape -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 1194px) and (device-height: 834px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-2388x1668.png">
+    <!-- iPad 9.7" / Air Landscape -->
+    <link rel="apple-touch-startup-image" media="screen and (device-width: 1024px) and (device-height: 768px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-2048x1536.png">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        @font-face {
+            font-family: 'MozillaHeadline';
+            src: url('/dist/fonts/MozillaHeadline-VariableFont_wdth,wght.ttf') format('truetype');
+            font-weight: 100 900;
+            font-stretch: 75% 125%;
+        }
+        
+        body {
+            font-family: 'MozillaHeadline', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a1a;
+            color: white;
+            overflow: hidden;
+            font-variation-settings: "wght" 400;
+            font-weight: 400;
+            overscroll-behavior: none;
+            height: 100vh;
+            width: 100vw;
+        }
+        
+        .launch-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background-image: url('/static_images/splash.png');
+            background-size: cover;
+            background-position: center center;
+            background-repeat: no-repeat;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        /* Landscape orientation - use top-center cropping to match generated splash screens */
+        @media screen and (orientation: landscape) {
+            .launch-container {
+                background-position: center top;
+            }
+        }
+        
+        .launch-content {
+            text-align: center;
+            z-index: 10;
+            background: rgb(38 38 38 / 57%);
+            padding: 2rem;
+            border-radius: 1rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            justify-content: center;
+            align-items: center;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1rem;
+            background-image: url('/static_images/logo_icon.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+        
+        .app-name {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 1rem 0;
+        }
+        
+        .spinner {
+            width: 42px;
+            height: 42px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #f1b263;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error-message {
+            color: #ef4444;
+            margin: 1rem 0;
+            padding: 1rem;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 0.5rem;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+            justify-content: center;
+        }
+        
+        .retry-button, .continue-button {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .retry-button:disabled, .continue-button:disabled {
+            background: #6b7280;
+            cursor: not-allowed;
+        }
+        
+        .rescue-button {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .rescue-button:hover {
+            background: #dc2626;
+        }
+        
+        .version-warning {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .warning-content {
+            background: rgb(38 38 38 / 90%);
+            padding: 2rem;
+            border-radius: 1rem;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+            max-width: 500px;
+            margin: 1rem;
+        }
+        
+        .warning-content h3 {
+            color: #fbbf24;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+        
+        .warning-content p {
+            margin-bottom: 2rem;
+            line-height: 1.5;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .launch-content {
+                margin: 1rem;
+                padding: 1.5rem;
+            }
+            
+            .logo {
+                width: 60px;
+                height: 60px;
+            }
+            
+            .app-name {
+                font-size: 1.25rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="launch-container">
+        <div class="launch-content">
+            <div class="logo"></div>
+            <div class="app-name">Dreamscape</div>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+            </div>
+            
+            <div class="error-message hidden" id="errorMessage">
+                <div id="errorText"></div>
+                <div class="button-group">
+                    <button class="retry-button" id="retryButton" onclick="retryValidation()">Retry</button>
+                    <button class="rescue-button hidden" id="rescueButton" onclick="performRescue()">Rescue</button>
+                </div>
+            </div>
+            
+            <div class="version-warning hidden" id="versionWarning">
+                <div class="warning-content">
+                    <h3>Version Mismatch Detected</h3>
+                    <p id="versionMessage"></p>
+                    <div class="button-group">
+                        <button class="continue-button" onclick="continueAnyway()">Continue Anyway</button>
+                        <button class="rescue-button" onclick="performRescue()">Rescue & Update</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let validationInProgress = false;
+        
+        async function checkOnlineStatus() {
+            return navigator.onLine;
+        }
+        
+        async function checkServerAccessibility() {
+            try {
+                const response = await fetch('/static_images/icon-32x32.png', {
+                    method: 'HEAD',
+                    cache: 'no-cache'
+                });
+                return response.ok;
+            } catch (error) {
+                return false;
+            }
+        }
+        
+        async function checkSessionValidity() {
+            try {
+                const response = await fetch('/app', {
+                    method: 'OPTIONS',
+                    cache: 'no-cache'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Check version compatibility
+                    const clientVersion = '1.0.0'; // Current client version
+                    if (data.serverVersion && data.serverVersion !== clientVersion) {
+                        // Version mismatch - show warning
+                        showVersionWarning({
+                            serverVersion: data.serverVersion,
+                            clientVersion: clientVersion,
+                            message: data.versionMessage || 'A new version is available. Some features may not work correctly.'
+                        });
+                        return null; // Indicate version check needed
+                    }
+                    
+                    return true; // Session valid and version compatible
+                } else {
+                    return false; // Session invalid
+                }
+            } catch (error) {
+                return false;
+            }
+        }
+        
+
+        
+        function showError(message, showRescue = false) {
+            document.getElementById('loading').classList.add('hidden');
+            document.getElementById('errorMessage').classList.remove('hidden');
+            document.getElementById('errorText').textContent = message;
+            
+            if (showRescue) {
+                document.getElementById('rescueButton').classList.remove('hidden');
+            } else {
+                document.getElementById('rescueButton').classList.add('hidden');
+            }
+        }
+        
+        function hideError() {
+            document.getElementById('errorMessage').classList.add('hidden');
+            document.getElementById('loading').classList.remove('hidden');
+        }
+        
+        function redirectToApp() {
+            // Use replace to avoid back button issues and prevent white flash
+            window.location.replace('/app');
+        }
+        
+        function redirectToHome() {
+            // Use replace to avoid back button issues and prevent white flash
+            window.location.replace('/');
+        }
+        
+        async function performValidation() {
+            if (validationInProgress) return;
+            validationInProgress = true;
+            
+            hideError();
+            
+            // Step 1: Check online status
+            if (!await checkOnlineStatus()) {
+                showError('No internet connection');
+                validationInProgress = false;
+                return;
+            }
+            
+            // Step 2: Check server accessibility
+            if (!await checkServerAccessibility()) {
+                showError('Unable to connect to server', true); // Show rescue button
+                validationInProgress = false;
+                return;
+            }
+            
+            // Step 3: Check session validity and version compatibility
+            const sessionResult = await checkSessionValidity();
+            if (sessionResult === null) {
+                // Version mismatch - warning already shown
+                validationInProgress = false;
+                return;
+            } else if (sessionResult) {
+                // Session valid and version compatible
+                setTimeout(redirectToApp, 500);
+            } else {
+                // Session invalid
+                setTimeout(redirectToHome, 500);
+            }
+            
+            validationInProgress = false;
+        }
+        
+        function retryValidation() {
+            performValidation();
+        }
+        
+        async function performRescue() {
+            try {
+                // Clear all caches
+                if ('caches' in window) {
+                    const cacheNames = await caches.keys();
+                    await Promise.all(
+                        cacheNames.map(cacheName => caches.delete(cacheName))
+                    );
+                }
+                
+                // Unregister service worker
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(
+                        registrations.map(registration => registration.unregister())
+                    );
+                }
+                
+                // Clear localStorage and sessionStorage
+                localStorage.clear();
+                sessionStorage.clear();
+                
+                // Reload the page
+                window.location.reload();
+            } catch (error) {
+                console.error('Rescue failed:', error);
+                showError('Rescue failed. Please try refreshing the page manually.');
+            }
+        }
+        
+
+        
+        function showVersionWarning(versionData) {
+            document.getElementById('versionMessage').textContent = versionData.message;
+            document.getElementById('versionWarning').classList.remove('hidden');
+        }
+        
+        function continueAnyway() {
+            document.getElementById('versionWarning').classList.add('hidden');
+            // Continue with normal flow
+            performValidation();
+        }
+        
+        // Start validation when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            // Small delay to ensure the page is fully rendered
+            setTimeout(performValidation, 100);
+        });
+        
+        // Handle online/offline events
+        window.addEventListener('online', () => {
+            if (document.getElementById('errorMessage').classList.contains('hidden')) {
+                performValidation();
+            }
+        });
+        
+        window.addEventListener('offline', () => {
+            showError('Connection lost. Please check your network and try again.');
+        });
+    </script>
+</body>
+</html>

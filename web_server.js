@@ -280,7 +280,7 @@ app.use(helmet({
 // Enable gzip compression for all responses
 app.use(compression({
     level: 6, // Balanced compression level
-    threshold: 1024, // Only compress responses larger than 1KB
+    threshold: 512, // Only compress responses larger than 512B
     filter: (req, res) => {
         // Don't compress if client doesn't support it
         if (req.headers['x-no-compression']) {
@@ -293,7 +293,7 @@ app.use(compression({
 
 // Body parsing middleware with optimized limits
 app.use(express.json({limit: '100mb'}));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
 
 // Create session store (prefer SQLite, fallback to memory)
@@ -339,7 +339,7 @@ const sessionMiddleware = session({
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     }
 });
 
@@ -869,7 +869,7 @@ app.use('/previews/:preview', (req, res) => {
     const previewFile = req.params.preview;
     const previewPath = path.join(previewsDir, previewFile);
     if (!fs.existsSync(previewPath)) {
-        return res.status(404).json({ error: 'Preview not found' });
+        return res.status(404).json({ success: false, error: 'Preview not found' });
     }
     res.setHeader('Cache-Control', 'public, max-age=259200');
     res.sendFile(previewFile, { root: previewsDir });
@@ -880,7 +880,7 @@ app.use('/images/:filename', authMiddleware, (req, res) => {
     
     // Check if file exists
     if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ error: 'Image not found' });
+        return res.status(404).json({ success: false, error: 'Image not found' });
     }
     
     // Set appropriate headers
@@ -1071,7 +1071,7 @@ app.post('/', express.json(), (req, res) => {
                 req.session.userType = 'readonly';
                 res.json({ success: true, message: 'Login successful', userType: 'readonly' });
             } else {
-                res.status(401).json({ error: 'Invalid PIN code' });
+                res.status(401).json({ success: false, error: 'Invalid PIN code' });
             }
             break;
             
@@ -1083,7 +1083,7 @@ app.post('/', express.json(), (req, res) => {
             break;
             
         default:
-            res.status(400).json({ error: 'Invalid action' });
+            res.status(400).json({ success: false, error: 'Invalid action' });
     }
 });
 
@@ -1120,7 +1120,7 @@ app.get('/admin/reload-cache', authMiddleware, async (req, res) => {
         // Check if user is admin (not readonly)
         if (req.session.userType !== 'admin') {
             return res.status(403).json({ 
-                error: 'Admin access required to reload cache data' 
+                success: false, error: 'Admin access required to reload cache data' 
             });
         }
 
@@ -1161,7 +1161,7 @@ app.post('/admin/restart-server', authMiddleware, async (req, res) => {
         // Check if user is admin (not readonly)
         if (req.session.userType !== 'admin') {
             return res.status(403).json({ 
-                error: 'Admin access required to restart server' 
+                success: false, error: 'Admin access required to restart server' 
             });
         }
 
@@ -1199,6 +1199,7 @@ app.get('/internal/*', (req, res) => {
     try {
         res.set('Content-Type', 'application/json');
         res.json({
+            success: true,
             message: 'File is missing from client cache',
             path: req.path,
             timestamp: Date.now()
@@ -1206,7 +1207,7 @@ app.get('/internal/*', (req, res) => {
         
     } catch (error) {
         console.error('❌ Error handling internal URL:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
@@ -1216,13 +1217,13 @@ app.get('/preset/:uuid', authMiddleware, queueMiddleware, async (req, res) => {
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
         if (req.userType !== 'admin') {
-            return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for non-administrator users' });
+            return res.status(403).json({ success: false, error: 'Non-Administrator Login: This operation is not allowed for non-administrator users' });
         }
         const currentPromptConfig = loadPromptConfig();
         // Find preset by UUID instead of name
         const p = Object.entries(currentPromptConfig.presets).find(([key, preset]) => preset.uuid === req.params.uuid).map(p => ({...p[1], name: p[0]}));
         if (!p) {
-            return res.status(404).json({ error: 'Preset not found' });
+            return res.status(404).json({ success: false, error: 'Preset not found' });
         }
         
         console.log('🔍 Building options for preset:', p);
@@ -1261,7 +1262,7 @@ app.get('/preset/:uuid', authMiddleware, queueMiddleware, async (req, res) => {
         res.send(finalBuffer);
     } catch(e) {
         console.error('❌ Error occurred:', e);
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 
@@ -1273,7 +1274,7 @@ app.post('/reroll/:filename', authMiddleware, queueMiddleware, async (req, res) 
         res.setHeader('Expires', '0');
         
         if (req.userType !== 'admin') {
-            return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for non-administrator users' });
+            return res.status(403).json({ success: false, error: 'Non-Administrator Login: This operation is not allowed for non-administrator users' });
         }
 
         const filename = req.params.filename;
@@ -1284,7 +1285,7 @@ app.post('/reroll/:filename', authMiddleware, queueMiddleware, async (req, res) 
         // Get image metadata
         const metadata = await getImageMetadata(filename, imagesDir);
         if (!metadata) {
-            return res.status(404).json({ error: `No metadata found for image: ${filename}` });
+            return res.status(404).json({ success: false, error: `No metadata found for image: ${filename}` });
         }
 
         // Call the reroll generation function
@@ -1335,7 +1336,7 @@ app.post('/reroll/:filename', authMiddleware, queueMiddleware, async (req, res) 
         
     } catch(e) {
         console.error('❌ Reroll error occurred:', e);
-        res.status(500).json({ error: e.message });
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 
@@ -1362,7 +1363,7 @@ app.post('/test-bias-adjustment', async (req, res) => {
         const { image_source, target_width, target_height, bias } = req.body;
         
         if (!image_source || !target_width || !target_height || !bias) {
-            return res.status(400).json({ error: 'Missing required parameters' });
+            return res.status(400).json({ success: false, error: 'Missing required parameters' });
         }
         
         // Load image from disk based on source
@@ -1372,12 +1373,12 @@ app.post('/test-bias-adjustment', async (req, res) => {
         } else if (image_source.startsWith('cache:')) {
             imagePath = path.join(uploadCacheDir, image_source.replace('cache:', ''));
         } else {
-            return res.status(400).json({ error: 'Invalid image source format' });
+            return res.status(400).json({ success: false, error: 'Invalid image source format' });
         }
         
         // Check if file exists
         if (!fs.existsSync(imagePath)) {
-            return res.status(404).json({ error: 'Image file not found' });
+            return res.status(404).json({ success: false, error: 'Image file not found' });
         }
         
         // Read image file
@@ -1396,7 +1397,7 @@ app.post('/test-bias-adjustment', async (req, res) => {
         
     } catch (error) {
         console.error('Bias adjustment test error:', error);
-        res.status(500).json({ error: 'Failed to process bias adjustment' });
+        res.status(500).json({ success: false, error: 'Failed to process bias adjustment' });
     }
 });
 
@@ -1489,7 +1490,7 @@ function clearTempDownloads() {
 app.get('/admin/performance', authMiddleware, (req, res) => {
     try {
         if (req.userType !== 'admin') {
-            return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for non-administrator users' });
+            return res.status(403).json({ success: false, error: 'Non-Administrator Login: This operation is not allowed for non-administrator users' });
         }
         
         const memUsage = process.memoryUsage();
@@ -1513,7 +1514,7 @@ app.get('/admin/performance', authMiddleware, (req, res) => {
             timestamp: Date.now().valueOf()
         });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

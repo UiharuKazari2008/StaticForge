@@ -8366,7 +8366,6 @@ div#manualResolutionDropdownMenu {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
-    height: -webkit-fill-available;
     font-size: 1em;
     font-variation-settings: "wght" var(--wght-semibold);
     padding: 2px 0.8em;
@@ -15012,6 +15011,9 @@ span#customPresetSelected {
     .gallery-actions {
         opacity: 1;
     }
+    #toggleFocusCoverBtn {
+        display: none;
+    }
 }
 
 .pswp__custom-bottom-bar:has(.pswp__custom-bottom-bar) {
@@ -15442,10 +15444,7 @@ span#customPresetSelected {
     .form-group label {
         font-size: 0.9rem;
     }
-
-    .container {
-        padding: calc(var(--spacing-xl) + env(safe-area-inset-top, 0)) 0 calc(var(--spacing-xl) + env(safe-area-inset-bottom, 0)) 0;
-    }
+    
     .gallery {
         flex-direction: column;
         display: flex;
@@ -15490,6 +15489,7 @@ span#customPresetSelected {
 
 /* iOS-specific infinite scroll fixes */
 @supports (-webkit-touch-callout: none) or (hover: hover) {
+
 }
 
 /* Rules for hiding elements and overrides, this must be located at the end of the stylesheet always and no other rules should come after this */

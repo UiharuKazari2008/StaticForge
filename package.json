@@ -34,5 +34,16 @@
     "workbox-strategies": "^7.3.0",
     "workbox-webpack-plugin": "^7.3.0",
     "ws": "^8.18.3"
-  }
+  },
+  "description": "A powerful, feature-rich NovelAI API proxy and workspace built with modern web technologies. Dreamscape serves as an intelligent server-based proxy that enhances NovelAI's image generation capabilities with advanced prompt engineering tools, workspace management, and comprehensive image organization features. Built for power users who want more control, better organization, and enhanced workflow capabilities than the standard NovelAI interface.",
+  "main": "migrate_metadata.js",
+  "devDependencies": {
+    "fantasticon": "^3.0.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }
