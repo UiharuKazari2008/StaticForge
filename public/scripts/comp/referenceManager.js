@@ -4254,7 +4254,7 @@ async function handleUnifiedUploadFileChange(event) {
     unifiedUploadCurrentIndex = 0;
     unifiedUploadFileMetadata = [];
     
-    // Process all files first to check for blueprint metadata
+    // Process all files first to check for blueprint metadata and vibe bundles
     const metadataPromises = unifiedUploadFiles.map(async (file) => {
         if (file.type === 'image/png') {
             try {
@@ -4274,10 +4274,42 @@ async function handleUnifiedUploadFileChange(event) {
                     error: `Invalid PNG: ${error.message}` 
                 };
             }
+        } else if (file.type === 'application/json' || file.name.endsWith('vibebundle')) {
+            // Check if it's a valid vibe bundle
+            try {
+                const fileContent = await file.text();
+                const jsonData = JSON.parse(fileContent);
+                
+                // Check if it's a vibe bundle or single vibe
+                const isVibeBundle = jsonData.identifier === 'novelai-vibe-transfer-bundle' && jsonData.vibes && jsonData.vibes.length > 0;
+                const isSingleVibe = jsonData.identifier === 'novelai-vibe-transfer';
+                
+                if (isVibeBundle || isSingleVibe) {
+                    return { 
+                        valid: true, 
+                        metadata: { 
+                            type: 'vibe_bundle',
+                            vibes: isVibeBundle ? jsonData.vibes : [jsonData],
+                            isBundle: isVibeBundle
+                        } 
+                    };
+                } else {
+                    return { 
+                        valid: false, 
+                        error: 'Not a valid NovelAI vibe transfer or bundle file' 
+                    };
+                }
+            } catch (error) {
+                console.warn('Error parsing JSON file:', error.message, 'for file:', file.name);
+                return { 
+                    valid: false, 
+                    error: `Invalid JSON: ${error.message}` 
+                };
+            }
         } else {
             return { 
                 valid: false, 
-                error: 'Not a PNG file' 
+                error: 'Not a PNG file or JSON vibe bundle' 
             };
         }
     });
@@ -4296,9 +4328,11 @@ async function handleUnifiedUploadFileChange(event) {
         }
     });
     
-    // Count valid blueprints
-    const validBlueprintCount = unifiedUploadFileMetadata.filter(meta => meta.valid).length;
+    // Count valid blueprints and vibe bundles
+    const validBlueprintCount = unifiedUploadFileMetadata.filter(meta => meta.valid && meta.metadata && !meta.metadata.type).length;
+    const validVibeBundleCount = unifiedUploadFileMetadata.filter(meta => meta.valid && meta.metadata && meta.metadata.type === 'vibe_bundle').length;
     const hasValidBlueprint = validBlueprintCount > 0;
+    const hasValidVibeBundle = validVibeBundleCount > 0;
     
     // ALWAYS enable blueprint mode option if at least one valid blueprint exists
     const modeSliderContainer = document.querySelector('.mode-slider-container');
@@ -4311,8 +4345,20 @@ async function handleUnifiedUploadFileChange(event) {
         }
     }
     
+    // If we have vibe bundles, switch to vibe mode and hide mode selector
+    if (hasValidVibeBundle) {
+        unifiedUploadCurrentMode = 'vibe';
+        updateUnifiedUploadMode();
+        hideModeSelector();
+        
+        // Clear any existing warnings
+        const warningContainer = document.getElementById('unifiedUploadWarnings');
+        if (warningContainer) {
+            warningContainer.classList.add('hidden');
+        }
+    }
     // If at least one file has valid NovelAI metadata, switch to blueprint mode
-    if (hasValidBlueprint) {
+    else if (hasValidBlueprint) {
         // Switch to blueprint mode
         unifiedUploadCurrentMode = 'blueprint';
         updateUnifiedUploadMode();
@@ -4693,7 +4739,31 @@ async function updateUnifiedUploadPreview() {
         }
     } else if (unifiedUploadCurrentMode === 'vibe') {
         // Handle vibe preview
-        if (currentFile.type === 'application/json' || currentFile.name.endsWith('.naiv4vibebundle')) {
+        const currentMetadata = unifiedUploadFileMetadata[unifiedUploadCurrentIndex];
+        
+        if (currentMetadata && currentMetadata.valid && currentMetadata.metadata && currentMetadata.metadata.type === 'vibe_bundle') {
+            // Use the pre-parsed vibe data from metadata
+            const vibes = currentMetadata.metadata.vibes;
+            const isVibeBundle = currentMetadata.metadata.isBundle;
+            
+            // Hide mode selection for vibe bundles
+            hideModeSelector();
+            
+            // Show vibe bundle preview
+            showVibeBundlePreview(vibes);
+            
+            // Set background image to first vibe's thumbnail
+            const firstVibe = vibes[0];
+            if (firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
+                backgroundImage.src = firstVibe.thumbnail;
+            } else {
+                backgroundImage.src = '/static_images/background.jpg';
+            }
+            
+            // Update UI for bundle import
+            updateUIForVibeBundleImport(vibes.length, isVibeBundle);
+        } else if (currentFile.type === 'application/json' || currentFile.name.endsWith('.naiv4vibebundle')) {
+            // Fallback: parse the file directly
             await handleVibeBundleFile(currentFile, backgroundImage);
         }
     }

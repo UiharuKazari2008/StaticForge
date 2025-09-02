@@ -28,6 +28,8 @@ const manualPresetName = document.getElementById('manualPresetName');
 const manualUpscale = document.getElementById('manualUpscale');
 const clearSeedBtn = document.getElementById('clearSeedBtn');
 const editSeedBtn = document.getElementById('editSeedBtn');
+const toggleFocusCoverBtn = document.getElementById('toggleFocusCoverBtn');
+const focusOverlay = document.getElementById('focus-overlay');
 let savedGalleryPosition = null;
 let galleryClearTimeout = null;
 const manualNoiseSchedulerDropdown = document.getElementById('manualNoiseSchedulerDropdown');
@@ -3542,6 +3544,27 @@ function updatePromptStatusIcons() {
         }
     }
 }
+
+let focusCoverEnabled = true;
+function updateFocusCoverState() {
+    if (focusCoverEnabled) {
+        toggleFocusCoverBtn.setAttribute('data-state', 'on');
+        toggleFocusCoverBtn.classList.add('active');
+        // Re-enable focus overlay if it was disabled
+        if (focusOverlay) {
+            focusOverlay.style.display = '';
+        }
+    } else {
+        toggleFocusCoverBtn.setAttribute('data-state', 'off');
+        toggleFocusCoverBtn.classList.remove('active');
+        // Disable focus overlay
+        if (focusOverlay) {
+            focusOverlay.style.display = 'none';
+            focusOverlay.classList.remove('active');
+        }
+    }
+};
+
 // Setup event listeners
 function setupEventListeners() {
     // Load saved blur preference
@@ -3956,7 +3979,6 @@ function setupEventListeners() {
     }
 
     // Focus overlay to prevent accidental interactions when window loses focus
-    const focusOverlay = document.getElementById('focus-overlay');
     if (focusOverlay) {
         let focusTimeout;
         
@@ -4017,29 +4039,7 @@ function setupEventListeners() {
     }
 
     // Focus cover toggle button functionality
-    const toggleFocusCoverBtn = document.getElementById('toggleFocusCoverBtn');
     if (toggleFocusCoverBtn) {
-        let focusCoverEnabled = true;
-        
-        const updateFocusCoverState = () => {
-            if (focusCoverEnabled) {
-                toggleFocusCoverBtn.setAttribute('data-state', 'on');
-                toggleFocusCoverBtn.classList.add('active');
-                // Re-enable focus overlay if it was disabled
-                if (focusOverlay) {
-                    focusOverlay.style.display = '';
-                }
-            } else {
-                toggleFocusCoverBtn.setAttribute('data-state', 'off');
-                toggleFocusCoverBtn.classList.remove('active');
-                // Disable focus overlay
-                if (focusOverlay) {
-                    focusOverlay.style.display = 'none';
-                    focusOverlay.classList.remove('active');
-                }
-            }
-        };
-        
         toggleFocusCoverBtn.addEventListener('click', () => {
             focusCoverEnabled = !focusCoverEnabled;
             updateFocusCoverState();
@@ -7066,9 +7066,9 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                        img.original === imageObj.original ||
                        img.filename === imageObj.filename;
             });
-        } else if (window.allImages && window.allImages.length > 0) {
+        } else if (allImages && allImages.length > 0) {
             // Normal mode - use current allImages
-            imageIndex = window.allImages.findIndex(img => {
+            imageIndex = allImages.findIndex(img => {
                 return img.upscaled === imageObj.upscaled || 
                        img.original === imageObj.original ||
                        img.filename === imageObj.filename;
@@ -7170,8 +7170,8 @@ function swapManualPreviewImages() {
                     return img.upscaled === window.lastGeneration.filename || 
                            img.original === window.lastGeneration.filename;
                 });
-            } else if (window.allImages && window.allImages.length > 0) {
-                imageIndex = window.allImages.findIndex(img => {
+            } else if (allImages && allImages.length > 0) {
+                imageIndex = allImages.findIndex(img => {
                     return img.upscaled === window.lastGeneration.filename || 
                            img.original === window.lastGeneration.filename;
                 });
@@ -7201,8 +7201,8 @@ function swapManualPreviewImages() {
                     return img.upscaled === window.initialEdit.image.upscaled || 
                            img.original === window.initialEdit.image.original;
                 });
-            } else if (window.allImages && window.allImages.length > 0) {
-                imageIndex = window.allImages.findIndex(img => {
+            } else if (allImages && allImages.length > 0) {
+                imageIndex = allImages.findIndex(img => {
                     return img.upscaled === window.initialEdit.image.upscaled || 
                            img.original === window.initialEdit.image.original;
                 });
@@ -7517,8 +7517,8 @@ function restoreOriginalImage() {
                            img.original === window.navigationOriginalImage.image.original ||
                            img.filename === window.navigationOriginalImage.image.filename;
                 });
-            } else if (window.allImages && window.allImages.length > 0) {
-                imageIndex = window.allImages.findIndex(img => {
+            } else if (allImages && allImages.length > 0) {
+                imageIndex = allImages.findIndex(img => {
                     return img.upscaled === window.navigationOriginalImage.image.upscaled || 
                            img.original === window.navigationOriginalImage.image.original ||
                            img.filename === window.navigationOriginalImage.image.filename;
@@ -8185,10 +8185,10 @@ function handleManualPreviewClick(e) {
                        img.original === window.currentManualPreviewImage.original ||
                        img.filename === window.currentManualPreviewImage.filename;
             });
-        } else if (window.allImages && window.allImages.length > 0) {
+        } else if (allImages && allImages.length > 0) {
             console.log('Searching for image in all images');
             // Normal mode - use current allImages
-            foundIndex = window.allImages.findIndex(img => {
+            foundIndex = allImages.findIndex(img => {
                 return img.upscaled === window.currentManualPreviewImage.upscaled || 
                        img.original === window.currentManualPreviewImage.original ||
                        img.filename === window.currentManualPreviewImage.filename;
@@ -12351,6 +12351,8 @@ if (window.wsClient) {
         // Initialize background gradient
         await setupEventListeners();
 
+        setupMainMenuContextMenus();
+        
         initializeSessionValidation();
         
         // Initialize emphasis highlighting for manual fields
@@ -12576,4 +12578,464 @@ async function updateAnlasSubscriptionInfo() {
             daysText.textContent = 'Error loading';
         }
     }
+}
+
+// Main Menu Bar Context Menu Configuration
+function setupMainMenuContextMenus() {
+    if (!window.contextMenu) return;
+    
+    // Create workspace submenu options function
+    function getWorkspaceOptions(target) {
+        const workspaceOptions = [];
+        
+        // Sort workspaces by their sort order - same as main dropdown
+        const sortedWorkspaces = Object.values(workspaces).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+        
+        // Generate workspace options
+        sortedWorkspaces.forEach((workspace, index) => {
+            const workspaceId = workspace.id || workspace;
+            const workspaceName = workspace.name || workspaceId;
+            const workspaceColor = workspace.color || '#6366f1';
+            // Use the same activeWorkspace variable as the main dropdown
+            const isActive = workspaceId === activeWorkspace;
+            
+            workspaceOptions.push({
+                content: `
+                    <div class="workspace-option-content" style="display: flex; align-items: center; gap: 8px;">
+                        <div class="workspace-color-indicator" style="width: 12px; height: 12px; border-radius: 50%; background-color: ${workspaceColor};"></div>
+                        <span class="context-menu-item-text">${workspaceName}</span>
+                        ${isActive ? '<i class="fas fa-check" style="margin-left: auto; color: var(--success-color);"></i>' : ''}
+                    </div>
+                `,
+                action: `switch-workspace-${workspaceId}`,
+                disabled: isActive,
+                workspaceId: workspaceId
+            });
+        });
+        
+        return workspaceOptions;
+    }
+    
+    // Create workspace submenu handler function
+    function handleWorkspaceAction(subItem, target) {
+        const action = subItem.action;
+        if (action && action.startsWith('switch-workspace-')) {
+            const workspaceId = action.replace('switch-workspace-', '');
+            
+            // Try to switch workspace using available methods
+            if (wsClient && wsClient.isConnected()) {
+                // Use WebSocket to switch workspace
+                setActiveWorkspace(workspaceId).catch(error => {
+                    console.error('Error switching workspace:', error);
+                    showGlassToast('error', 'Workspace Switch Failed', 'Failed to switch workspace: ' + error.message, false, 5000);
+                });
+            }
+        }
+    }
+    
+    // Create the shared context menu configuration
+    const contextMenuConfig = {
+            sections: [
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            icon: 'fa-light fa-chevron-double-up',
+                            text: 'Jump to Top',
+                            action: 'jump-to-top'
+                        },
+                        {
+                            icon: 'fa-light fa-sort-amount-down',
+                            text: 'Invert Sort',
+                            action: 'invert-sort',
+                            loadfn: (menuItem, target) => {
+                                // Update sort icon and text based on current state
+                                const sortBtn = document.getElementById('sortOrderToggleBtn');
+                                const isDesc = sortBtn && sortBtn.dataset.state === 'desc';
+                                menuItem.icon = isDesc ? 'fa-light fa-sort-amount-down' : 'fa-light fa-sort-amount-up';
+                                menuItem.text = isDesc ? 'Newest First' : 'Oldest First';
+                            }
+                        },
+                        {
+                            content: (target) => {
+                                // Get current workspace from workspaces object using activeWorkspace variable
+                                let workspaceName = 'Workspace';
+                                let workspaceColor = '#6366f1';
+                                
+                                // Use the same activeWorkspace variable as the main dropdown
+                                if (typeof workspaces !== 'undefined' && workspaces && typeof workspaces === 'object' && activeWorkspace) {
+                                    const currentWorkspace = workspaces[activeWorkspace];
+                                    if (currentWorkspace) {
+                                        workspaceName = currentWorkspace.name || activeWorkspace;
+                                        workspaceColor = currentWorkspace.color || '#6366f1';
+                                    }
+                                }
+                                
+                                return `
+                                    <div class="workspace-option-content" style="display: flex; align-items: center; gap: 8px;">
+                                        <div class="workspace-color-indicator" style="background-color: ${workspaceColor};"></div>
+                                        <span class="context-menu-item-text">${workspaceName}</span>
+                                    </div>
+                                `;
+                            },
+                            optionsfn: getWorkspaceOptions,
+                            handlerfn: handleWorkspaceAction,
+                            openOnHover: true
+                        }
+                    ]
+                },
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            icon: 'fa-light fa-shelves',
+                            text: 'Workspaces',
+                            action: 'workspace-manage'
+                        },
+                        {
+                            icon: 'fa-light fa-book-copy',
+                            text: 'Spellbook',
+                            action: 'preset-manager'
+                        },
+                        {
+                            icon: 'fa-light fa-swatchbook',
+                            text: 'References',
+                            action: 'cache-manager'
+                        },
+                        {
+                            icon: 'fa-light fa-language',
+                            text: 'Expanders',
+                            action: 'text-replacement-manager'
+                        }
+                    ]
+                },
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            icon: 'nai-import',
+                            text: 'Import',
+                            action: 'upload'
+                        }
+                    ]
+                },
+                {
+                    type: 'custom',
+                    content: `
+                        <div class="anlas-subscription-section" style="padding: 0 10px; gap: var(--spacing-xs);">
+                            <div class="menu-item-row balance-list">
+                                <i class="nai-anla"></i>
+                                <div class="price-list-container">
+                                    <div class="price-list-fixed">
+                                        <span class="price-list-label">Fixed</span> 
+                                        <span id="contextAnlasBalanceFixed" class="price-list balanceFixed">-</span>
+                                    </div>
+                                    <i class="fas fa-circle" style="font-size: 0.35rem; padding-top: 0.15rem;"></i>
+                                    <div class="price-list-paid">
+                                        <span class="price-list-label">Paid</span>
+                                        <span id="contextAnlasBalancePaid" class="price-list balancePaid">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="menu-item-row balance-list">
+                                <i class="nai-opus" style="font-size: 1.15rem; margin: calc(-1.15rem / 2) 0;"></i>
+                                <div class="price-list-container">
+                                    <span class="anlas-subscription-value" id="contextAnlasSubscriptionTier">Free</span>
+                                    <i class="fas fa-circle hidden" id="contextAnlasSubscriptionDivider" style="font-size: 0.35rem; padding-top: 0.15rem;"></i>
+                                    <span class="anlas-subscription-value" id="contextAnlasDaysTillExpire">
+                                        <i class="fas fa-exclamation-triangle anlas-warning-icon hidden"></i>
+                                        <span class="anlas-days-text">Loading...</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    `,
+                    loadfn: (section, target) => {
+                        // Update balance values directly (copied from updateBalanceDisplay)
+                        if (window.optionsData?.balance) {
+                            const balance = window.optionsData.balance;
+                            const totalCredits = balance?.totalCredits || 0;
+                            const fixedCredits = balance?.fixedTrainingStepsLeft || 0;
+                            const purchasedCredits = balance?.purchasedTrainingSteps || 0;
+
+                            // Update context menu balance elements
+                            const contextBalanceFixed = document.getElementById('contextAnlasBalanceFixed');
+                            const contextBalancePaid = document.getElementById('contextAnlasBalancePaid');
+                            
+                            if (contextBalanceFixed) {
+                                contextBalanceFixed.textContent = fixedCredits;
+                            }
+                            if (contextBalancePaid) {
+                                contextBalancePaid.textContent = purchasedCredits;
+                            }
+
+                            // Update main balance display elements
+                            const balanceDisplay = document.querySelectorAll('.balanceDisplay');
+                            const balanceAmount = document.querySelectorAll('.balanceAmount');
+                            const balanceFixed = document.querySelectorAll('.balanceFixed');
+                            const balancePaid = document.querySelectorAll('.balancePaid');
+                            
+                            if (balanceDisplay && balanceAmount) {
+                                const balanceIcon = balanceDisplay[0].querySelector('i');
+
+                                // Update amount
+                                balanceAmount.forEach(amount => {
+                                    amount.textContent = totalCredits;
+                                });
+
+                                if (balanceFixed) {
+                                    balanceFixed.forEach(fixed => {
+                                        fixed.textContent = fixedCredits;
+                                    });
+                                }
+                                if (balancePaid) {
+                                    balancePaid.forEach(paid => {
+                                        paid.textContent = purchasedCredits;
+                                    });
+                                }
+
+                                // Update tooltip with detailed breakdown
+                                const tooltip = `Free Credits: ${fixedCredits}\nPaid Credits: ${purchasedCredits}`;
+                                balanceDisplay.forEach(display => {
+                                    display.title = tooltip;
+                                    display.classList.remove('low-credits');
+                                });
+
+                                if (totalCredits !== -1) {
+                                    currentBalance = totalCredits;
+                                }
+
+                                if (totalCredits === -1) {
+                                    balanceIcon.className = 'nai-anla';
+                                    balanceAmount.forEach(amount => {
+                                        amount.textContent = 'Error';
+                                    });
+                                    balanceDisplay.forEach(display => {
+                                        display.classList.add('low-credits');
+                                    });
+                                } else if (totalCredits === 0) {
+                                    // No credits - show dollar sign and warning styling
+                                    balanceIcon.className = 'nai-anla';
+                                    balanceDisplay.forEach(display => {
+                                        display.classList.add('low-credits');
+                                    });
+                                } else if (fixedCredits === 0) {
+                                    // No free credits - show dollar sign
+                                    balanceIcon.className = 'nai-anla';
+                                } else if (totalCredits < 5000) {
+                                    // Low credits - show warning triangle and orange styling
+                                    balanceIcon.className = 'fas fa-exclamation-triangle';
+                                    balanceDisplay.forEach(display => {
+                                        display.classList.add('low-credits');
+                                    });
+                                } else {
+                                    // Normal credits - show coin icon
+                                    balanceIcon.className = 'nai-anla';
+                                }
+                            }
+                        }
+                        
+                        // Update subscription values directly (copied from updateAnlasSubscriptionInfo)
+                        try {
+                            const subscriptionTierElement = document.getElementById('contextAnlasSubscriptionTier');
+                            const daysTillExpireElement = document.getElementById('contextAnlasDaysTillExpire');
+                            const subscriptionDivider = document.getElementById('contextAnlasSubscriptionDivider');
+                            const warningIcon = document.querySelector('#contextAnlasDaysTillExpire .anlas-warning-icon');
+                            const daysText = document.querySelector('#contextAnlasDaysTillExpire .anlas-days-text');
+                            
+                            if (subscriptionTierElement && daysTillExpireElement && warningIcon && daysText) {
+                                const accountData = window.optionsData;
+                                
+                                if (accountData?.user?.subscription?.tier !== undefined) {
+                                    // Update subscription tier
+                                    const subscriptionTier = accountData.user.subscription.tier || 'Unknown';
+                                    subscriptionTierElement.textContent = subscriptionTier === 3 ? 'Opus' : 
+                                                                          subscriptionTier === 2 ? 'Scroll' :
+                                                                          subscriptionTier === 1 ? 'Tablet' : 
+                                                                          subscriptionTier === 0 ? 'Free' : 'Unknown';
+                                    
+                                    if (subscriptionDivider) {
+                                        subscriptionDivider.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
+                                    }
+                                    daysTillExpireElement.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
+
+                                    // Calculate days till expire
+                                    let daysTillExpire = 0;
+                                    if (accountData.user.subscription.expiresAt) {
+                                        const expireDate = new Date(accountData.user.subscription.expiresAt * 1000);
+                                        const now = new Date();
+                                        const diffTime = expireDate.getTime() - now.getTime();
+                                        daysTillExpire = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                    }
+                                    
+                                    daysText.textContent = `${daysTillExpire} days`;
+                                    
+                                    // Show warning icon if expiring in a week or less
+                                    if (daysTillExpire <= 7 && daysTillExpire > 0) {
+                                        warningIcon.classList.remove('hidden');
+                                    } else {
+                                        warningIcon.classList.add('hidden');
+                                    }
+
+                                    // Add color coding for urgency
+                                    if (daysTillExpire <= 3) {
+                                        daysTillExpireElement.style.color = 'var(--danger-color, #ff6b6b)';
+                                    } else if (daysTillExpire <= 7) {
+                                        daysTillExpireElement.style.color = 'var(--warning-color, #ffc107)';
+                                    } else {
+                                        daysTillExpireElement.style.color = '';
+                                    }
+                                } else {
+                                    subscriptionTierElement.textContent = 'No data';
+                                    daysText.textContent = 'No data';
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error updating subscription info in context menu:', error);
+                        }
+                    }
+                },
+                {
+                    type: 'icons',
+                    icons: [
+                        {
+                            icon: 'fa-light fa-droplet',
+                            tooltip: 'Liquid Glass',
+                            action: 'toggle-glass',
+                            loadfn: (icon, target) => {
+                                const blurBtn = document.getElementById('toggleBlurBtn');
+                                if (blurBtn) {
+                                    const isOn = blurBtn.dataset.state === 'on';
+                                    icon.dataState = isOn ? 'on' : 'off';
+                                }
+                            }
+                        },
+                        {
+                            icon: 'fa-light fa-blinds',
+                            tooltip: 'Focus Cover',
+                            action: 'toggle-privacy-mode',
+                            loadfn: (icon, target) => {
+                                const coverBtn = document.getElementById('toggleFocusCoverBtn');
+                                if (coverBtn) {
+                                    const isOn = coverBtn.dataset.state === 'on';
+                                    icon.dataState = isOn ? 'on' : 'off';
+                                }
+                            }
+                        },
+                        {
+                            icon: 'fa-light fa-sync',
+                            tooltip: 'Update',
+                            action: 'refresh-cache'
+                        },
+                        {
+                            icon: 'fa-light fa-laptop-arrow-down',
+                            tooltip: 'Reinstall',
+                            action: 'clear-cache'
+                        },
+                        {
+                            icon: 'fa-light fa-power-off',
+                            tooltip: 'Logout',
+                            action: 'logout'
+                        }
+                    ]
+                }
+            ],
+            maxHeight: true
+        };
+    
+    // Attach the same configuration to multiple elements
+    window.contextMenu.attachToElements('#main-menu-bar, #galleryToggleGroup', contextMenuConfig);
+    
+    // Handle context menu actions
+    document.addEventListener('contextMenuAction', async function(event) {
+        const { action, target, item } = event.detail;
+        
+        switch (action) {
+            case 'jump-to-top':
+                loadGalleryFromIndex(0);
+                window.scrollTo(0, {behavior: 'instant'});
+                break;
+                
+            case 'invert-sort':
+                // Toggle sort order directly
+                toggleGallerySortOrder();
+                break;
+                
+            case 'workspace-manage':
+                // Open workspace management modal directly
+                showWorkspaceManagementModal();
+                break;
+                
+            case 'preset-manager':
+                // Open preset manager modal directly
+                showPresetManager();
+                break;
+                
+            case 'cache-manager':
+                // Open cache manager modal directly
+                showCacheManagerModal();
+                break;
+                
+            case 'text-replacement-manager':
+                // Open text replacement manager modal directly
+                showTextReplacementManager();
+                break;
+                
+            case 'upload':
+                // Open upload modal directly
+                showUnifiedUploadModal();
+                closeSubMenu();
+                break;
+                
+            case 'toggle-glass':
+                // Toggle blur effect directly
+                toggleBlurState();
+                updateToggleBlurButtonText();
+                break;
+                
+            case 'toggle-privacy-mode':
+                // Toggle focus cover directly
+                focusCoverEnabled = !focusCoverEnabled;
+                updateFocusCoverState();
+                localStorage.setItem('focusCoverEnabled', focusCoverEnabled.toString());
+                break;
+                
+            case 'refresh-cache':
+                // Refresh cache directly
+                await serviceWorkerManager.refreshServerCacheAndCheck();
+                break;
+                
+            case 'clear-cache':
+                // Clear cache directly
+                const confirmedClear = await showConfirmationDialog(
+                    `Are you sure you want to reinstall the application?`,
+                    [
+                        { text: 'Reinstall', value: true, className: 'btn-danger' },
+                        { text: 'Cancel', value: false, className: 'btn-secondary' }
+                    ],
+                    event
+                );
+                if (confirmedClear) {
+                    event.preventDefault();
+                    await clearAllCachesAndReload();
+                }
+                break;
+                
+            case 'logout':
+                // Logout directly
+                const confirmedLogout = await showConfirmationDialog(
+                    `Are you sure you want to log out?`,
+                    [
+                        { text: 'Log Out', value: true, className: 'btn-danger' },
+                        { text: 'Cancel', value: false, className: 'btn-secondary' }
+                    ],
+                    event
+                );
+                if (confirmedLogout) {
+                    event.preventDefault();
+                    handleLogout();
+                }
+                break;
+        }
+    });
 }

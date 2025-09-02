@@ -738,46 +738,6 @@ function createGalleryItem(image, index) {
         }
     };
 
-    // Direct reroll button (left side)
-    const rerollBtn = document.createElement('button');
-    rerollBtn.type = 'button';
-    rerollBtn.className = 'btn-secondary round-button';
-    rerollBtn.innerHTML = '<i class="nai-dice"></i>';
-    rerollBtn.title = 'Reroll with same settings';
-    rerollBtn.onclick = (e) => {
-        e.stopPropagation();
-        rerollImage(image, e);
-    };
-
-    // Reroll with edit button (right side with cog)
-    const rerollEditBtn = document.createElement('button');
-    rerollEditBtn.type = 'button';
-    rerollEditBtn.className = 'btn-secondary round-button hide-mobile';
-    rerollEditBtn.innerHTML = '<i class="mdi mdi-1-25 mdi-text-box-edit-outline"></i>';
-    rerollEditBtn.title = 'Reroll with Edit';
-    rerollEditBtn.onclick = (e) => {
-        e.stopPropagation();
-        rerollImageWithEdit(image, e);
-    };
-
-    // Upscale button (only for non-upscaled images)
-    const upscaleBtn = document.createElement('button');
-    upscaleBtn.type = 'button';
-    upscaleBtn.className = 'btn-secondary round-button';
-    upscaleBtn.innerHTML = '<i class="nai-upscale"></i>';
-    upscaleBtn.title = 'Upscale';
-    upscaleBtn.onclick = (e) => {
-        e.stopPropagation();
-        upscaleImage(image, e);
-    };
-
-    // Only show upscale button for non-upscaled images
-    if (!image.upscaled) {
-        upscaleBtn.classList.remove('hidden');
-    } else {
-        upscaleBtn.classList.add('hidden');
-    }
-
     // Pin button
     const pinBtn = document.createElement('button');
     pinBtn.type = 'button';
@@ -804,24 +764,9 @@ function createGalleryItem(image, index) {
         togglePinImage(image, pinBtn);
     };
 
-    // Toolbar trigger button (combines scrap and delete)
-    const toolbarBtn = document.createElement('button');
-    toolbarBtn.type = 'button';
-    toolbarBtn.className = 'btn-secondary round-button';
-    toolbarBtn.innerHTML = '<i class="nai-dotdotdot"></i>';
-    toolbarBtn.title = 'More actions';
-    toolbarBtn.onclick = (e) => {
-        e.stopPropagation();
-        showGalleryToolbar(image, e);
-    };
-
-    actionsDiv.appendChild(downloadBtn);
-    actionsDiv.appendChild(copyBtn);
-    actionsDiv.appendChild(upscaleBtn);
-    actionsDiv.appendChild(rerollBtn);
-    actionsDiv.appendChild(rerollEditBtn);
     actionsDiv.appendChild(pinBtn);
-    actionsDiv.appendChild(toolbarBtn);
+    actionsDiv.appendChild(copyBtn);
+    actionsDiv.appendChild(downloadBtn);
 
     overlay.appendChild(actionsDiv);
 
@@ -829,6 +774,121 @@ function createGalleryItem(image, index) {
     item.appendChild(img);
     item.appendChild(overlay);
 
+    // Add context menu to gallery item
+    if (window.contextMenu) {
+        const contextMenuConfig = {
+            sections: [
+                {
+                    type: 'icons',
+                    icons: [
+                        {
+                            icon: 'fa-regular fa-star', // Default icon, will be updated by loadfn
+                            tooltip: 'Favorite', // Default text, will be updated by loadfn
+                            action: 'toggle-favorite',
+                            loadfn: (menuItem, target) => {
+                                // Get image data from target element
+                                const fileIndex = parseInt(target.dataset.fileIndex, 10);
+                                const image = allImages && allImages[fileIndex];
+                                
+                                if (image) {
+                                    // Update favorite icon and tooltip based on current pin status
+                                    const isPinned = image.isPinned;
+                                    menuItem.icon = isPinned ? 'fa-solid fa-star' : 'fa-regular fa-star';
+                                    menuItem.tooltip = isPinned ? 'Unfavorite' : 'Favorite';
+                                }
+                            }
+                        },
+                        {
+                            icon: 'fas fa-download',
+                            tooltip: 'Download',
+                            action: 'download'
+                        },
+                        {
+                            icon: 'fas fa-clipboard',
+                            tooltip: 'Copy',
+                            action: 'copy'
+                        },
+                        {
+                            icon: 'fas fa-folder',
+                            tooltip: 'Move',
+                            action: 'move'
+                        },
+                        {
+                            icon: 'mdi mdi-1-5 mdi-archive',
+                            tooltip: 'Scrap',
+                            action: 'scrap',
+                            loadfn: (menuItem, target) => {
+                                // Update scrap tooltip based on current view
+                                const currentView = window.currentGalleryView || 'images';
+                                if (currentView === 'scraps') {
+                                    menuItem.tooltip = 'Restore';
+                                    menuItem.icon = 'fas fa-undo';
+                                } else {
+                                    menuItem.tooltip = 'Scrap';
+                                    menuItem.icon = 'mdi mdi-1-5 mdi-archive';
+                                }
+                            }
+                        },
+                        {
+                            icon: 'nai-trash',
+                            tooltip: 'Delete',
+                            action: 'delete'
+                        }
+                    ]
+                },
+                {
+                    type: 'list',
+                    title: 'Generation',
+                    items: [
+                        {
+                            icon: 'nai-dice',
+                            text: 'Reroll Generation',
+                            action: 'reroll'
+                        },
+                        {
+                            icon: 'mdi mdi-1-25 mdi-text-box-edit-outline',
+                            text: 'Edit Generation',
+                            action: 'modify'
+                        },
+                        {
+                            icon: 'nai-upscale',
+                            text: 'Upscale Image',
+                            action: 'upscale',
+                            disabled: !!image.upscaled,
+                            loadfn: (menuItem, target) => {
+                                // Get image data from target element
+                                const fileIndex = parseInt(target.dataset.fileIndex, 10);
+                                const image = allImages && allImages[fileIndex];
+                                
+                                if (image) {
+                                    // Update upscale disabled state
+                                    menuItem.disabled = !!image.upscaled;
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    type: 'list',
+                    title: 'Reference',
+                    items: [
+                        {
+                            icon: 'nai-img2img',
+                            text: 'Create New Reference',
+                            action: 'create-reference'
+                        },
+                        {
+                            icon: 'mdi mdi-data-matrix-scan',
+                            text: 'Create New Encoding',
+                            action: 'create-encoding'
+                        }
+                    ]
+                }
+            ]
+        };
+        
+        window.contextMenu.attachToElement(item, contextMenuConfig);
+    }
     
     item.addEventListener('click', (e) => {
         // Don't open lightbox if clicking on checkbox
@@ -2382,6 +2442,224 @@ function triggerGalleryMoveWithSelection() {
         showGalleryMoveModal(null);
     }
 }
+
+// Context menu action handlers for gallery items
+function handleGalleryContextMenuAction(event) {
+    const { action, target, item } = event.detail;
+    const galleryItem = target.closest('.gallery-item');
+    
+    if (!galleryItem) return;
+    
+    const filename = galleryItem.dataset.filename;
+    const fileIndex = parseInt(galleryItem.dataset.fileIndex, 10);
+    const image = allImages[fileIndex];
+    
+    if (!image) return;
+    
+    switch (action) {
+        case 'toggle-favorite':
+            // Toggle pin status directly
+            togglePinImage(image, null);
+            // Update the image's pin status for future context menu loads
+            image.isPinned = !image.isPinned;
+            break;
+            
+        case 'download':
+            downloadImage(image);
+            break;
+            
+        case 'copy':
+            // Copy image to clipboard directly
+            copyImageToClipboard(image);
+            break;
+            
+        case 'move':
+            // Select the image and show move modal
+            selectedImages.clear();
+            selectedImages.add(filename);
+            galleryItem.dataset.selected = 'true';
+            galleryItem.classList.add('selected');
+            const checkbox = galleryItem.querySelector('.gallery-item-checkbox');
+            if (checkbox) checkbox.checked = true;
+            updateBulkActionsBar();
+            showGalleryMoveModal(filename);
+            break;
+            
+        case 'scrap':
+            // Move image to scraps directly
+            moveImageToScraps(image);
+            break;
+            
+        case 'delete':
+            // Delete image directly
+            deleteImage(image);
+            break;
+            
+        case 'reroll':
+            rerollImage(image, event);
+            break;
+            
+        case 'modify':
+            rerollImageWithEdit(image, event);
+            break;
+            
+        case 'upscale':
+            if (!image.upscaled) {
+                upscaleImage(image, event);
+            }
+            break;
+            
+        case 'create-reference':
+            // Create reference from image
+            createReferenceFromImage(image);
+            break;
+            
+        case 'create-encoding':
+            // Create vibe encoding from image
+            createVibeEncodingFromImage(image);
+            break;
+    }
+}
+
+// Helper functions for context menu actions
+function copyImageToClipboard(image) {
+    // Copy image to clipboard directly
+    (async () => {
+        try {
+            // Determine the correct URL for the image
+            let imageUrl;
+            if (image.url) {
+                // For newly generated images
+                imageUrl = image.url;
+            } else {
+                // For gallery images - prefer highest quality version
+                const filename = image.upscaled || image.original;
+                imageUrl = `/images/${filename}`;
+            }
+            
+            // Fetch the image as a blob
+            const response = await fetch(imageUrl);
+            const blob = await response.blob();
+            
+            // Copy to clipboard
+            await navigator.clipboard.write([
+                new ClipboardItem({
+                    [blob.type]: blob
+                })
+            ]);
+            
+            // Calculate and format file size
+            const sizeInBytes = blob.size;
+            let sizeText;
+            if (sizeInBytes < 1024 * 1024) {
+                sizeText = `${(sizeInBytes / 1024).toFixed(1)} KB`;
+            } else {
+                sizeText = `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
+            }
+            
+            // Show success notification with size
+            if (window.showGlassToast) {
+                window.showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
+            }
+        } catch (error) {
+            console.error('Failed to copy image to clipboard:', error);
+            if (window.showGlassToast) {
+                window.showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fas fa-clipboard"></i>');
+            }
+        }
+    })();
+}
+
+function moveImageToScraps(image) {
+    const filename = image.filename || image.original || image.upscaled;
+    
+    // Call the move to scraps function directly
+    if (typeof moveImageToScrapsDirect === 'function') {
+        moveImageToScrapsDirect(filename);
+    } else {
+        // Fallback: use the existing scrap functionality
+        console.warn('moveImageToScrapsDirect function not available, using fallback');
+        // You can implement the direct scrap functionality here
+    }
+}
+
+function deleteImage(image) {
+    const filename = image.filename || image.original || image.upscaled;
+    
+    // Call the delete function directly
+    if (typeof deleteImageDirect === 'function') {
+        deleteImageDirect(filename);
+    } else {
+        // Fallback: use the existing delete functionality
+        console.warn('deleteImageDirect function not available, using fallback');
+        // You can implement the direct delete functionality here
+    }
+}
+
+function createReferenceFromImage(image) {
+    // Get the image URL
+    const filename = image.upscaled || image.original;
+    const imageUrl = `/images/${filename}`;
+    
+    // Show unified upload modal in reference mode
+    if (typeof showUnifiedUploadModal === 'function') {
+        // Set the image URL in the modal
+        const urlInput = document.getElementById('unifiedUploadUrlInput');
+        if (urlInput) {
+            urlInput.value = imageUrl;
+        }
+        
+        // Trigger the modal to open in reference mode
+        showUnifiedUploadModal();
+        
+        // Set the mode to reference
+        setTimeout(() => {
+            const modeSelector = document.getElementById('unifiedUploadModeSelector');
+            if (modeSelector) {
+                const referenceBtn = modeSelector.querySelector('[data-mode="reference"]');
+                if (referenceBtn) {
+                    referenceBtn.click();
+                }
+            }
+        }, 100);
+    } else {
+        console.warn('showUnifiedUploadModal function not available');
+    }
+}
+
+function createVibeEncodingFromImage(image) {
+    // Get the image URL
+    const filename = image.upscaled || image.original;
+    const imageUrl = `/images/${filename}`;
+    
+    // Show unified upload modal in vibe mode
+    if (typeof showUnifiedUploadModal === 'function') {
+        // Set the image URL in the modal
+        const urlInput = document.getElementById('unifiedUploadUrlInput');
+        if (urlInput) {
+            urlInput.value = imageUrl;
+        }
+        
+        // Trigger the modal to open in vibe mode
+        showUnifiedUploadModal();
+        
+        // Set the mode to vibe
+        setTimeout(() => {
+            const modeSelector = document.getElementById('unifiedUploadModeSelector');
+            if (modeSelector) {
+                const vibeBtn = modeSelector.querySelector('[data-mode="vibe"]');
+                if (vibeBtn) {
+                    vibeBtn.click();
+                }
+            }
+        }, 100);
+    } else {
+        console.warn('showUnifiedUploadModal function not available');
+    }
+}
+
+// Add context menu event listener
+document.addEventListener('contextMenuAction', handleGalleryContextMenuAction);
 
 // Make necessary functions and variables globally accessible for app.js
 window.loadGallery = loadGallery;

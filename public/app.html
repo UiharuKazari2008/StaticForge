@@ -136,7 +136,10 @@
         </div>
 
         <div id="title-bar" class="floating-bar-top-left no-mobile">
-            <span class="title-bar-text logo-text">Dreamscape</span>
+            <div class="title-bar-text">
+                <img src="/static_images/logo_icon.png" alt="Dreamscape" class="logo-image">
+                <span class="logo-text">Dreamscape</span>
+            </div>
         </div>  
 
         <div id="main-menu-bar" class="floating-bar-left">
@@ -182,7 +185,7 @@
                         </button>
                         <div class="menu-section no-mobile">
                             <button type="button" id="mobileLoadGalleryBtn" class="btn-secondary" title="Load Gallery from Start" onclick="loadGalleryFromIndex(0); window.scrollTo(0, {behavior: 'instant'}); ">
-                                <i class="fa-light fa-arrow-up"></i>
+                                <i class="fa-light fa-chevron-double-up"></i>
                             </button>
                         </div>
                     </div>
@@ -203,7 +206,7 @@
                 <div class="main-menu-contents">
                     <div class="main-menu-row">
                         <button type="button" id="mobileLoadGalleryBtn" class="btn-secondary" title="Load Gallery from Start" onclick="loadGalleryFromIndex(0); window.scrollTo(0, {behavior: 'instant'}); ">
-                            <i class="fa-light fa-arrow-up"></i>
+                            <i class="fa-light fa-chevron-double-up"></i>
                         </button>
                         <button type="button" id="mobileSortOrderToggleBtn" class="btn-secondary indicator" data-state="desc" title="Sort Order: Newest First">
                             <i class="fa-light fa-sort-amount-down"></i>
@@ -979,10 +982,6 @@
                             <i class="nai-thin-cross"></i>
                         </button>
                     </div>
-                </div>
-                
-                <div class="gallery-title-bar">
-                    <span class="gallery-main-logo-text logo-text">Dreamscape</span>
                 </div>
                 
                 <div id="gallery" class="gallery">
@@ -2082,11 +2081,11 @@
                 <div class="modal-body">
                     <div id="manageButtonGroup" class="logo-options-grid">
                         <button type="button" id="workspaceManageBtn" class="btn-secondary logo-option-btn" title="Manage Workspaces">
-                            <i class="fa-light fa-folder-image"></i>
+                            <i class="fa-light fa-shelves"></i>
                             <span>Workspaces</span>
                         </button>
                         <button type="button" id="presetManagerBtn" class="btn-secondary logo-option-btn" title="Manage Spellbook">
-                            <i class="fa-light fa-book-spells"></i>
+                            <i class="fa-light fa-book-copy"></i>
                             <span>Spells</span>
                         </button>
                         <button type="button" id="cacheManagerBtn" class="btn-secondary logo-option-btn" title="Reference Manager">
@@ -2169,6 +2168,7 @@
         <script src="scripts/websocket.js"></script>
         <script src="scripts/comp/serviceWorkerManager.js"></script>
         <script src="scripts/comp/dropdown.js"></script>
+        <script src="scripts/comp/contextMenu.js"></script>
         <script src="scripts/comp/lightbox.js"></script>
         <script src="scripts/comp/modalUtils.js"></script>
         <script src="scripts/comp/inpaint.js"></script>

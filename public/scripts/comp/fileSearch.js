@@ -570,7 +570,7 @@ class FileSearch {
             moreItem.className = 'character-autocomplete-item more-indicator';
             moreItem.innerHTML = `
                 <div class="character-info-row">
-                    <span class="character-name">Press <i class="fas fa-arrow-up" style="margin: 0 4px; font-size: 0.85em;"></i> to show all ${allResults.length} results</span>
+                    <span class="character-name">Press <i class="fas fa-chevron-double-up" style="margin: 0 4px; font-size: 0.85em;"></i> to show all ${allResults.length} results</span>
                 </div>
             `;
             moreItem.addEventListener('click', () => {

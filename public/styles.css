@@ -527,11 +527,24 @@ body.dialog-open {
     mask-image: linear-gradient(90deg, rgba(0, 0, 0, 1) 50%, rgba(0, 0, 0, 0));
 }
 
-span.logo-text.title-bar-text,
+.title-bar-text .logo-text,
 .gallery-title-bar .logo-text.gallery-main-logo-text {
     font-size: 24pt;
     font-variation-settings: "wght" 400;
     font-weight: 400;
+    opacity: 0.75;
+}
+
+.title-bar-text {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--spacing-sm);
+}
+
+.title-bar-text img.logo-image {
+    height: 32px;
     opacity: 0.75;
 }
 
@@ -1557,12 +1570,12 @@ textarea:active {
 
 .gallery-toggle-group[data-active="images"] .gallery-toggle-slider {
     transform: translateX(calc(100% + 2px));
-    background: hsl(210 73% 47% / 50%);
-    border-color: hsl(210 73% 59% / 50%);
+    background: var(--glass-layer-4);
+    border-color: var(--glass-border-4);
 }
 
 .gallery-toggle-group[data-active="images"] .gallery-toggle-btn.active {
-    color: #def4ff;
+    color: #ffffffe0;
 }
 
 .gallery-toggle-group[data-active="pinned"] .gallery-toggle-slider {
@@ -2498,6 +2511,10 @@ span#manualPreviewSeedNumber {
         background: var(--glass-layer-5);
         animation: panelBlurIn 0.35s ease forwards;
         backdrop-filter: blur(10px);
+    }
+
+    #manualGenerateBtn {
+        min-width: 200px;
     }
 
     
@@ -9367,6 +9384,10 @@ html.disable-blur .manual-loading-overlay {
     flex: auto;
 }
 
+#manualModal .footer-left {
+    align-items: stretch;
+}
+
 /* Cache Browser Modal */
 .cache-browser-content {
     width: 90%;
@@ -13499,10 +13520,6 @@ span.dataset-button-text {
     background: #6a210aa6 !important;
 }
 
-button#manualGenerateBtn {
-    min-width: 200px;
-}
-
 /* Prompt Status Icons */
 .prompt-status-icons {
     position: absolute;
@@ -15208,9 +15225,6 @@ span#customPresetSelected {
     .character-prompt-preview {
         display: none;
     }
-    button#manualGenerateBtn {
-        min-width: 0;
-    }
     .text-replacement-actions button {
         flex: 1 0 auto;
     } 
@@ -15490,6 +15504,488 @@ span#customPresetSelected {
 /* iOS-specific infinite scroll fixes */
 @supports (-webkit-touch-callout: none) or (hover: hover) {
 
+}
+
+/* Context Menu Styles - Matching Custom Dropdown Design */
+.context-menu {
+    position: fixed;
+    z-index: var(--z-layer-6);
+    background: var(--glass-layer-dark-5, var(--glass-layer-dark-menu));
+    backdrop-filter: var(--glass-blur-4, none);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: var(--border-radius-lg);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    min-width: 165px;
+    max-width: 300px;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
+    overscroll-behavior: contain;
+    line-height: 1.75;
+    padding: 0.25em 0;
+    max-height: 400px;
+    overflow-y: auto;
+    width: auto;
+    transform-origin: top center;
+}
+
+/* Context menu overlay - transparent layer behind menu to catch clicks */
+.context-menu-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: calc(var(--z-layer-6) - 1);
+    background: transparent;
+    cursor: default;
+}
+
+.context-menu-overlay.hidden {
+    display: none;
+}
+
+/* Submenu styles */
+.context-menu-item.has-submenu {
+    position: relative;
+}
+
+.context-menu-submenu-arrow {
+    margin-left: auto;
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
+.context-menu-submenu {
+    position: absolute;
+    background: var(--glass-layer-dark-5, var(--glass-layer-dark-menu));
+    backdrop-filter: var(--glass-blur-4, none);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: var(--border-radius-lg);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    min-width: 165px;
+    max-width: 300px;
+    z-index: calc(var(--z-layer-6) + 10);
+    padding: 0.25em 0;
+    max-height: 400px;
+    overflow-y: auto;
+    transform: translateZ(0);
+    will-change: backdrop-filter;
+    overscroll-behavior: contain;
+    line-height: 1.75;
+}
+
+.dark .context-menu-submenu {
+    color: var(--text-primary);
+    background: var(--glass-layer-dark-2);
+    border: 1px solid var(--glass-border-dark-2);
+}
+
+/* Submenu directional animations */
+.context-menu-submenu.submenu-right {
+    animation: submenuGrowSlideRight 0.2s ease-out forwards;
+}
+
+.context-menu-submenu.submenu-left {
+    animation: submenuGrowSlideLeft 0.2s ease-out forwards;
+}
+
+@keyframes submenuGrowSlideRight {
+    0% {
+        opacity: 0;
+        transform: scaleX(0) translateX(-10px) translateZ(0);
+        transform-origin: left center;
+    }
+    100% {
+        opacity: 1;
+        transform: scaleX(1) translateX(0) translateZ(0);
+        transform-origin: left center;
+    }
+}
+
+@keyframes submenuGrowSlideLeft {
+    0% {
+        opacity: 0;
+        transform: scaleX(0) translateX(10px) translateZ(0);
+        transform-origin: right center;
+    }
+    100% {
+        opacity: 1;
+        transform: scaleX(1) translateX(0) translateZ(0);
+        transform-origin: right center;
+    }
+}
+
+/* Dark theme support */
+.dark .context-menu {
+    color: var(--text-primary);
+    background: var(--glass-layer-dark-2);
+    border: 1px solid var(--glass-border-dark-2);
+}
+
+/* Opening Animation - Grow and Slide Effect */
+@keyframes contextMenuGrowSlide {
+    0% {
+        opacity: 0;
+        transform: scaleY(0) translateY(-10px) translateZ(0);
+    }
+    80% {
+        opacity: 1;
+        transform: scaleY(1.1) translateY(0) translateZ(0);
+    }
+    100% {
+        opacity: 1;
+        transform: scaleY(1) translateY(0) translateZ(0);
+    }
+}
+
+/* Opening Animation - Grow and Slide Effect (Upward) */
+@keyframes contextMenuGrowSlideUp {
+    0% {
+        opacity: 0;
+        transform: scaleY(0) translateY(10px) translateZ(0);
+    }
+    80% {
+        opacity: 1;
+        transform: scaleY(1.1) translateY(0) translateZ(0);
+    }
+    100% {
+        opacity: 1;
+        transform: scaleY(1) translateY(0) translateZ(0);
+    }
+}
+
+/* Animation trigger class */
+.context-menu-animate {
+    animation: contextMenuGrowSlide 0.3s ease-out forwards;
+}
+
+
+
+.context-menu {
+    max-height: var(--context-menu-max-height, 400px);
+    overflow-y: auto;
+}
+
+.context-menu-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    flex-wrap: wrap;
+    align-items: stretch;
+    padding: 0;
+    position: relative; /* For submenu positioning */
+}
+
+.context-menu-section {
+}
+
+.context-menu-section:last-child {
+}
+
+.context-menu-section-title {
+    padding: 0 var(--spacing-lg, 1.2em) 0.2em var(--spacing-lg, 1.2em);
+    font-size: 0.65em;
+    color: var(--text-accent);
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    opacity: 0.85;
+    border-bottom: 1px solid var(--glass-border-2, rgba(255, 255, 255, 0.2));
+    margin-bottom: var(--spacing-sm, 0.5em);
+}
+
+.dark .context-menu-section-title {
+    color: var(--text-secondary);
+    border-bottom-color: var(--glass-border-dark-2);
+}
+
+/* List Section Styles */
+.context-menu-list-section:not(:first-child):not(:has(.context-menu-section-title)),
+.context-menu-custom-section:not(:first-child):not(:has(.context-menu-section-title)) {
+    border-top: 1px solid var(--glass-border-2, rgba(255, 255, 255, 0.1));
+    padding-top: var(--spacing-sm, 0.5em);
+}
+
+.menu-item-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-xs) 0;
+}
+
+/* Context Menu Items - Matching Custom Dropdown Options */
+.context-menu-item {
+    display: flex;
+    align-items: center;
+    padding: 0.25em var(--spacing-md, 1em);
+    background: none;
+    color: var(--text-primary, #1a1a1a);
+    font-size: 0.85em;
+    cursor: pointer;
+    border: none;
+    width: 100%;
+    text-align: left;
+    transition: background var(--transition-fast, 0.15s), color var(--transition-fast, 0.15s);
+    gap: var(--spacing-sm, 0.75em);
+}
+
+.context-menu-item i {
+    min-width: 20px;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.context-menu-item .workspace-color-indicator {
+    margin-right: 4px;
+    margin-left: 4px;
+    width: 13px;
+    height: 13px;
+}
+
+.dark .context-menu-item {
+    color: var(--text-primary);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .context-menu-item:hover:not(.disabled) {
+        background: var(--dropdown-hover-bg, var(--primary-glass-border));
+        color: var(--text-white, #fff);
+    }
+
+    .dark .context-menu-item:hover:not(.disabled) {
+        background: var(--dropdown-hover-bg, var(--primary-glass-border));
+        color: var(--text-white, #fff);
+    }
+}
+
+.context-menu-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Keyboard navigation highlighting - matching dropdown */
+.context-menu-item.keyboard-selected {
+    background: var(--dropdown-keyboard-selected-bg, var(--primary-glass-color)) !important;
+    color: var(--text-white, white) !important;
+    border-left: 3px solid var(--dropdown-keyboard-selected-border, var(--primary-glass-border)) !important;
+}
+
+.context-menu-item i {
+    font-size: 1.1em;
+    width: 1.2em;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.context-menu-item-text {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px; /* Prevent menu from growing too wide */
+}
+
+/* Icons Section Styles */
+.context-menu-icons-section {
+    /* Inherits from .context-menu-section */
+}
+
+.context-menu-icons-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm, 0.5em);
+    padding: var(--spacing-sm) var(--spacing-md);
+    justify-content: center;
+}
+
+.context-menu-icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25em;
+    height: 2.25em;
+    border: none;
+    background: transparent;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast, 0.15s) ease;
+    color: inherit;
+    padding: 0;
+    font-size: 0.9em;
+}
+
+.dark .context-menu-icon-btn {
+    background: var(--glass-layer-dark-1, rgba(255, 255, 255, 0.1));
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .context-menu-icon-btn:hover:not(.disabled) {
+        background: var(--glass-layer-2, rgba(0, 0, 0, 0.15));
+        transform: translateY(-1px);
+    }
+    .dark .context-menu-icon-btn:hover:not(.disabled) {
+        background: var(--glass-layer-dark-2, rgba(255, 255, 255, 0.2));
+    }
+}
+
+.context-menu-icon-btn.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Toggle button state indicators with bottom border */
+.context-menu-icon-btn[data-action="toggle-glass"],
+.context-menu-icon-btn[data-action="toggle-privacy-mode"] {
+    position: relative;
+    border-bottom: 3px solid transparent;
+    transition: border-bottom-color var(--transition-fast, 0.15s) ease;
+}
+
+.context-menu-icon-btn[data-action="toggle-glass"][data-state="on"],
+.context-menu-icon-btn[data-action="toggle-privacy-mode"][data-state="on"] {
+    border-bottom-color: #3aff67;
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.context-menu-icon-btn[data-action="toggle-glass"][data-state="off"],
+.context-menu-icon-btn[data-action="toggle-privacy-mode"][data-state="off"] {
+    border-bottom-color: #b21414ab;
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.context-menu-icon-btn.keyboard-selected {
+    background: var(--glass-layer-3, rgba(0, 0, 0, 0.2));
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
+}
+
+.dark .context-menu-icon-btn.keyboard-selected {
+    background: var(--glass-layer-dark-3, rgba(255, 255, 255, 0.2));
+}
+
+/* Separator Styles */
+.context-menu-separator {
+    height: 1px;
+    background: var(--glass-border-2, rgba(255, 255, 255, 0.2));
+}
+
+.dark .context-menu-separator {
+    background: var(--glass-border-dark-2);
+}
+
+/* Touch Feedback */
+.context-menu-triggered {
+    background: rgba(0, 0, 0, 0.1) !important;
+    transform: scale(0.98);
+    transition: all 0.2s ease;
+}
+
+.dark .context-menu-triggered {
+    background: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Scrollbar for context menu */
+.context-menu-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.context-menu-content::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 4px;
+}
+
+.context-menu-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 4px;
+}
+
+.dark .context-menu-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .context-menu-content::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 1);
+    }
+
+    .dark .context-menu-content::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.5);
+    }
+}
+/* Positioning classes for debugging and styling */
+.context-menu.position-up {
+    /* Menu positioned above cursor */
+}
+
+.context-menu.position-down {
+    /* Menu positioned below cursor */
+}
+
+.context-menu.position-left {
+    /* Menu positioned to the left of cursor */
+}
+
+.context-menu.position-right {
+    /* Menu positioned to the right of cursor */
+}
+
+/* Animation direction classes */
+.context-menu.position-up {
+    transform-origin: bottom center;
+}
+
+.context-menu.position-up .context-menu-animate {
+    animation: contextMenuGrowSlideUp 0.3s ease-out forwards;
+}
+
+.context-menu.position-down {
+    transform-origin: top center;
+}
+
+.context-menu.position-down .context-menu-animate {
+    animation: contextMenuGrowSlide 0.3s ease-out forwards;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+    .context-menu {
+        min-width: 180px;
+        max-width: 250px;
+    }
+    
+    .context-menu-item {
+        padding: 0.8em var(--spacing-lg, 1.2em);
+        font-size: 1em;
+    }
+    
+    .context-menu-icon-btn {
+        width: 3em;
+        height: 3em;
+    }
+    
+    .context-menu-icons-container {
+        padding: 0.8em var(--spacing-md, 1em);
+        gap: 0.8em;
+    }
+}
+
+/* Center context menu on small mobile screens (480px and below) */
+@media (max-width: 480px) {
+    .context-menu {
+        position: fixed !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        z-index: var(--z-layer-6);
+        min-width: 200px;
+        max-width: 280px;
+        width: auto;
+    }
 }
 
 /* Rules for hiding elements and overrides, this must be located at the end of the stylesheet always and no other rules should come after this */
