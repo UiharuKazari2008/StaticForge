@@ -45,6 +45,7 @@ let spellCheckTimer = null; // Timer for frequent spellcheck
 let spellCheckWordCount = 0; // Track word count for spellcheck
 let lastSpellCheckTime = 0; // Track last spellcheck time
 let spellCheckInputTimer = null; // Timer for input delay spellcheck
+let currentSpellCheckRequest = null; // Track current spellcheck request for cancellation
 
 // Track last search query to prevent unnecessary clearing
 let lastSearchQuery = '';
@@ -646,17 +647,17 @@ function updateSearchStatusDisplay() {
     if (autocompleteExpanded) {
         // In expanded state, don't show the element if search is done
         if (allServicesDone) {
-            statusDisplay.style.display = 'none';
+            statusDisplay.classList.add('hidden');
             return;
         } else {
-            statusDisplay.style.display = '';
+            statusDisplay.classList.remove('hidden');
         }
     } else {
         if (allServicesDone) {
             statusDisplay.classList.add('search-done');
         } else {
             statusDisplay.classList.remove('search-done');
-            statusDisplay.style.display = '';
+            statusDisplay.classList.remove('hidden');
         }
     }
         
@@ -870,6 +871,12 @@ function handleCharacterAutocompleteInput(e) {
     // Don't trigger autocomplete if autofill is disabled
     if (!autofillEnabled) {
         return;
+    }
+    
+    // Cancel any pending spellcheck request when user starts typing
+    if (currentSpellCheckRequest) {
+        currentSpellCheckRequest.cancel();
+        currentSpellCheckRequest = null;
     }
     
     // Don't trigger autocomplete if we're in navigation mode and user is actively navigating
@@ -1487,7 +1494,7 @@ function handleCharacterAutocompleteKeydown(e) {
                 }
                 break;
         }
-    } else if (manualModal.style.display !== 'none') {
+    } else if (!manualModal.classList.contains('hidden')) {
         switch(e.key) {
             case 'Tab':
                 if (document.activeElement.type === 'textarea' && (document.activeElement.classList.contains('prompt-textarea') || document.activeElement.classList.contains('character-prompt-textarea'))) {
@@ -1531,6 +1538,12 @@ async function requestFrequentSpellCheck(query, target) {
         clearTimeout(spellCheckInputTimer);
     }
     
+    // Cancel any pending spellcheck request
+    if (currentSpellCheckRequest) {
+        currentSpellCheckRequest.cancel();
+        currentSpellCheckRequest = null;
+    }
+    
     // Count words in the query
     const wordCount = query.trim().split(/\s+/).filter(word => word.length > 0).length;
     
@@ -1562,7 +1575,7 @@ async function requestFrequentSpellCheck(query, target) {
         }
     }, 250);
     
-    // Set timer for 500ms after no input
+    // Set timer for 800ms final spellcheck after no input
     spellCheckInputTimer = setTimeout(async () => {
         if (query === lastSpellCheckQuery && query.length >= 3) {
             await triggerSpellCheck(query, target);
@@ -1585,51 +1598,89 @@ async function triggerSpellCheck(query, target) {
         searchServices.set('spellcheck', 'searching');
         updateSearchStatusDisplay();
         
-        // Send spellcheck request via WebSocket
-        if (window.wsClient && window.wsClient.isConnected()) {
+        // Create a cancellable request
+        const requestPromise = new Promise(async (resolve, reject) => {
+            const cancelToken = { cancelled: false };
+            
+            // Store the cancellation function
+            currentSpellCheckRequest = {
+                cancel: () => {
+                    cancelToken.cancelled = true;
+                    reject(new Error('Request cancelled'));
+                }
+            };
+            
             try {
-                const responseData = await window.wsClient.searchCharacters(spellCheckQuery, manualModel.value);
-                const spellCheckData = responseData.spellCheck || null;
-                
-                if (spellCheckData) {
-                    // Update persistent spellcheck data
-                    persistentSpellCheckData = spellCheckData;
+                // Send spellcheck request via WebSocket
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    const responseData = await window.wsClient.searchCharacters(spellCheckQuery, manualModel.value);
                     
-                    // Store spellcheck results in the unified system instead of sending separate WebSocket messages
-                    if (spellCheckData.hasErrors) {
-                        const spellCheckResult = {
-                            type: 'spellcheck',
-                            data: spellCheckData,
-                            serviceOrder: -2,
-                            resultOrder: 0,
-                            serviceName: 'spellcheck'
-                        };
+                    // Check if request was cancelled
+                    if (cancelToken.cancelled) {
+                        reject(new Error('Request cancelled'));
+                        return;
+                    }
+                    
+                    const spellCheckData = responseData.spellCheck || null;
+                    
+                    if (spellCheckData) {
+                        // Update persistent spellcheck data
+                        persistentSpellCheckData = spellCheckData;
                         
-                        // Add to the unified results system
-                        searchResultsByService.set('spellcheck', [spellCheckResult]);
+                        // Store spellcheck results in the unified system instead of sending separate WebSocket messages
+                        if (spellCheckData.hasErrors) {
+                            const spellCheckResult = {
+                                type: 'spellcheck',
+                                data: spellCheckData,
+                                serviceOrder: -2,
+                                resultOrder: 0,
+                                serviceName: 'spellcheck'
+                            };
+                            
+                            // Add to the unified results system
+                            searchResultsByService.set('spellcheck', [spellCheckResult]);
+                        }
+                        
+                        // Mark spellcheck service as completed or completed-none based on results
+                        if (spellCheckData.hasErrors && spellCheckData.misspelled && spellCheckData.misspelled.length > 0) {
+                            searchServices.set('spellcheck', 'completed');
+                        } else {
+                            searchServices.set('spellcheck', 'completed-noerrors');
+                        }
+                        updateSearchStatusDisplay();
+                        
+                        // Rebuild and display results to show spellcheck
+                        rebuildAndDisplayResults();
                     }
                     
-                    // Mark spellcheck service as completed or completed-none based on results
-                    if (spellCheckData.hasErrors && spellCheckData.misspelled && spellCheckData.misspelled.length > 0) {
-                        searchServices.set('spellcheck', 'completed');
-                    } else {
-                        searchServices.set('spellcheck', 'completed-noerrors');
-                    }
-                    updateSearchStatusDisplay();
-                    
-                    // Rebuild and display results to show spellcheck
-                    rebuildAndDisplayResults();
+                    resolve(spellCheckData);
+                } else {
+                    reject(new Error('WebSocket not connected'));
                 }
             } catch (wsError) {
                 console.error('WebSocket spellcheck failed:', wsError);
                 searchServices.set('spellcheck', 'error');
                 updateSearchStatusDisplay();
+                reject(wsError);
             }
-        }
+        });
+        
+        // Wait for the request to complete
+        await requestPromise;
+        
+        // Clear the current request reference
+        currentSpellCheckRequest = null;
+        
     } catch (error) {
-        console.error('Spellcheck error:', error);
-        searchServices.set('spellcheck', 'error');
-        updateSearchStatusDisplay();
+        // Only log errors that aren't cancellation
+        if (error.message !== 'Request cancelled') {
+            console.error('Spellcheck error:', error);
+            searchServices.set('spellcheck', 'error');
+            updateSearchStatusDisplay();
+        }
+        
+        // Clear the current request reference
+        currentSpellCheckRequest = null;
     }
 }
 
@@ -2424,6 +2475,9 @@ function applySpellCorrection(target, originalWord, suggestion) {
     const currentValue = target.value;
     const cursorPos = target.selectionStart;
     
+    // Store the original cursor position for restoration
+    const originalCursorPos = cursorPos;
+    
     // Check if this is a "Text:" prefixed query
     const textPrefixIndex = currentValue.lastIndexOf('Text:');
     const isTextQuery = textPrefixIndex >= 0;
@@ -2457,10 +2511,13 @@ function applySpellCorrection(target, originalWord, suggestion) {
         const afterWord = currentValue.substring(wordEnd);
         const newValue = beforeWord + suggestion + afterWord;
         
+        // Calculate the length difference for cursor adjustment
+        const lengthDifference = suggestion.length - originalWord.length;
+        
         target.value = newValue;
         
-        // Calculate new cursor position - place it at the end of the replaced word
-        const newCursorPos = wordStart + suggestion.length;
+        // Calculate new cursor position - adjust for the length difference
+        const newCursorPos = originalCursorPos + lengthDifference;
         
         // Set cursor position after the replacement
         setTimeout(() => {
@@ -2514,10 +2571,13 @@ function applySpellCorrection(target, originalWord, suggestion) {
         const afterWord = currentValue.substring(closestMatch.end);
         const newValue = beforeWord + suggestion + afterWord;
         
+        // Calculate the length difference for cursor adjustment
+        const lengthDifference = suggestion.length - closestMatch.word.length;
+        
         target.value = newValue;
         
-        // Calculate new cursor position - place it at the end of the replaced word
-        const newCursorPos = closestMatch.start + suggestion.length;
+        // Calculate new cursor position - adjust for the length difference
+        const newCursorPos = originalCursorPos + lengthDifference;
         
         // Set cursor position after the replacement
         setTimeout(() => {
@@ -2554,10 +2614,14 @@ function applySpellCorrection(target, originalWord, suggestion) {
             // Replace the word
             words[wordIndex] = suggestion;
             const newValue = words.join('');
+            
+            // Calculate the length difference for cursor adjustment
+            const lengthDifference = suggestion.length - originalWord.length;
+            
             target.value = newValue;
             
-            // Calculate new cursor position - place it at the end of the replaced word
-            const newCursorPos = wordStartPos + suggestion.length;
+            // Calculate new cursor position - adjust for the length difference
+            const newCursorPos = originalCursorPos + lengthDifference;
             
             // Set cursor position after the replacement
             setTimeout(() => {
@@ -4806,7 +4870,7 @@ async function showTextReplacementDialog(selectedText) {
         
         // Position and show dialog
         positionCustomDialog(dialog);
-        dialog.style.display = 'block';
+        dialog.classList.remove('hidden');
         
         // Get elements
         const nameInput = dialog.querySelector('#replacementName');

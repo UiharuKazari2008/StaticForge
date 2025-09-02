@@ -314,6 +314,29 @@ class PromptTextareaToolbar {
         
         this.searchStates.set(toolbar, searchState);
 
+        // Add input event listener to exit search when typing in textarea
+        const textareaInputHandler = () => {
+            if (toolbar.classList.contains('search-mode')) {
+                this.closeSearch(toolbar);
+            }
+        };
+        
+        const textareaKeydownHandler = (e) => {
+            if (toolbar.classList.contains('search-mode') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                // Don't exit for navigation keys, but exit for typing
+                if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') {
+                    this.closeSearch(toolbar);
+                }
+            }
+        };
+        
+        // Store the handlers so we can remove them later
+        textarea._searchInputHandler = textareaInputHandler;
+        textarea._searchKeydownHandler = textareaKeydownHandler;
+        
+        textarea.addEventListener('input', textareaInputHandler);
+        textarea.addEventListener('keydown', textareaKeydownHandler);
+
         // Focus the search input
         searchInput.focus();
         searchInput.select();
@@ -951,6 +974,16 @@ class PromptTextareaToolbar {
         // Store reference to original textarea before clearing state
         const originalTextarea = searchState.textarea;
         
+        // Remove event listeners if they exist
+        if (originalTextarea && originalTextarea._searchInputHandler) {
+            originalTextarea.removeEventListener('input', originalTextarea._searchInputHandler);
+            originalTextarea._searchInputHandler = null;
+        }
+        if (originalTextarea && originalTextarea._searchKeydownHandler) {
+            originalTextarea.removeEventListener('keydown', originalTextarea._searchKeydownHandler);
+            originalTextarea._searchKeydownHandler = null;
+        }
+        
         // Clear search state
         this.clearAllSearchHighlights();
         this.searchStates.delete(activeToolbar);
@@ -1025,7 +1058,7 @@ class PromptTextareaToolbar {
                         <button class="btn-secondary emphasis-btn btn-small emphasis-down" data-action="emphasis-down" title="Decrease">
                             <i class="nai-minus"></i>
                         </button>
-                        <button class="btn-secondary emphasis-btn btn-small emphasis-toggle" data-action="emphasis-toggle" title="Toggle Mode" style="display: none;">
+                        <button class="btn-secondary emphasis-btn btn-small emphasis-toggle hidden" data-action="emphasis-toggle" title="Toggle Mode">
                             <i class="nai-arrow-left"></i>
                         </button>
                         <div class="emphasis-actions">
@@ -1179,15 +1212,15 @@ class PromptTextareaToolbar {
         // Update toggle button visibility
         if (toggleBtn) {
             if (window.emphasisEditingMode === 'group') {
-                toggleBtn.style.display = 'block';
+                toggleBtn.classList.remove('hidden');
                 toggleBtn.innerHTML = '<i class="fas fa-brackets-curly"></i>';
                 toggleBtn.title = 'Switch to Brace Block';
             } else if (window.emphasisEditingMode === 'brace') {
-                toggleBtn.style.display = 'block';
+                toggleBtn.classList.remove('hidden');
                 toggleBtn.innerHTML = '<i class="fas fa-colon"></i>';
                 toggleBtn.title = 'Switch to Group';
             } else {
-                toggleBtn.style.display = 'none';
+                toggleBtn.classList.add('hidden');
             }
         }
     }
@@ -1264,6 +1297,27 @@ class PromptTextareaToolbar {
     addDirectEmphasisKeyboardListener(textarea, toolbar) {        
         // Add a separate listener for direct emphasis application when NOT in emphasis mode
         const directEmphasisHandler = (e) => {
+            // Handle ALT + S for splitting emphasis blocks
+            if (e.altKey && e.key === 's') {
+                e.preventDefault();
+                
+                // Check if cursor is inside an emphasis block
+                if (window.isCursorInsideEmphasisBlock && window.splitEmphasisBlock) {
+                    const emphasisInfo = window.isCursorInsideEmphasisBlock(textarea);
+                    if (emphasisInfo) {
+                        const success = window.splitEmphasisBlock(textarea);
+                        if (success) {
+                            // Update emphasis highlighting
+                            if (window.updateEmphasisHighlighting) {
+                                window.updateEmphasisHighlighting(textarea);
+                            }
+                            return;
+                        }
+                    }
+                }
+                return;
+            }
+            
             // Early return for non-numeric keys to improve efficiency
             if (e.key < '0' || e.key > '9' || (e.altKey && (e.key === '™' || e.key === '¡'))) {
                 return;

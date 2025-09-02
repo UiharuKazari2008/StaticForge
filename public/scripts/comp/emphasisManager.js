@@ -7,6 +7,78 @@ let emphasisEditingTarget = null;
 let emphasisEditingSelection = null;
 let emphasisEditingMode = 'normal'; // 'normal', 'brace', 'group'
 
+// Function to check if cursor is inside an emphasis block
+function isCursorInsideEmphasisBlock(target) {
+    if (!target) return null;
+    
+    const value = target.value;
+    const cursorPosition = target.selectionStart;
+    
+    // Look for emphasis blocks in the format: number::text::
+    const emphasisPattern = /(-?\d+(?:\.\d+)?)::([^:]+)::/g;
+    let match;
+    
+    while ((match = emphasisPattern.exec(value)) !== null) {
+        const blockStart = match.index;
+        const blockEnd = match.index + match[0].length;
+        
+        // Check if cursor is inside this emphasis block
+        if (cursorPosition >= blockStart && cursorPosition <= blockEnd) {
+            return {
+                start: blockStart,
+                end: blockEnd,
+                weight: match[1],
+                text: match[2],
+                fullMatch: match[0]
+            };
+        }
+    }
+    
+    return null;
+}
+
+// Function to split an emphasis block at cursor position
+function splitEmphasisBlock(target) {
+    if (!target) return false;
+    
+    const emphasisInfo = isCursorInsideEmphasisBlock(target);
+    if (!emphasisInfo) return false;
+    
+    const value = target.value;
+    const cursorPosition = target.selectionStart;
+    
+    // Calculate the position within the emphasis block text (excluding the weight part)
+    const textStart = emphasisInfo.start + emphasisInfo.weight.length + 2; // +2 for "::"
+    const textEnd = emphasisInfo.end - 2; // -2 for "::"
+    const textContent = emphasisInfo.text;
+    
+    // Calculate cursor position within the text content
+    const cursorInText = cursorPosition - textStart;
+    
+    if (cursorInText < 0 || cursorInText > textContent.length) {
+        return false; // Cursor not in the text part
+    }
+    
+    // Simply insert the emphasis syntax at cursor position with the same weight
+    const emphasisInsert = `::, ${emphasisInfo.weight}::`;
+    
+    // Insert the emphasis syntax at cursor position
+    const beforeText = value.substring(0, cursorPosition);
+    const afterText = value.substring(cursorPosition);
+    const newValue = beforeText + emphasisInsert + afterText;
+    
+    target.value = newValue;
+    
+    // Position cursor after the inserted emphasis syntax
+    const newCursorPosition = cursorPosition + emphasisInsert.length;
+    target.setSelectionRange(newCursorPosition, newCursorPosition);
+    
+    // Trigger input event to update any dependent UI
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    
+    return true;
+}
+
 // Function to apply emphasis directly to selected text
 function applyEmphasisDirectly(target, weight, mode = 'normal') {
     console.log('applyEmphasisDirectly called with:', { target, weight, mode });
@@ -32,6 +104,13 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
     const selectedText = value.substring(selectionStart, selectionEnd).trim();
     if (!selectedText) {
         return false; // Empty selection
+    }
+    
+    // Check if selected text is just a number (prevent emphasis application)
+    // This includes patterns like "2.0::", "2", "2.05", "1.5::", etc.
+    const numberPattern = /^-?\d+(\.\d+)?(::)?$/;
+    if (numberPattern.test(selectedText)) {
+        return false; // Don't apply emphasis to pure numbers
     }
     
     // Ensure weight is a valid number
@@ -1555,7 +1634,7 @@ function cancelEmphasisEditing() {
 function updateEmphasisTooltipVisibility() {
     const tooltip = document.getElementById('emphasisTooltip');
     if (tooltip) {
-        tooltip.style.display = autocompleteNavigationMode ? 'block' : 'none';
+        tooltip.classList.toggle('hidden', !autocompleteNavigationMode);
     }
 }
 
@@ -1569,7 +1648,29 @@ function startTextSearch(target) {
     textSearchResults = [];
     selectedSearchIndex = -1;
 
-    // No need to hide emphasis popup since it's removed
+    // Add input event listener to exit search when typing
+    const inputHandler = () => {
+        if (textSearchActive) {
+            closeTextSearch();
+        }
+    };
+    
+    // Add keydown event listener to exit search when editing
+    const keydownHandler = (e) => {
+        if (textSearchActive && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            // Don't exit for navigation keys, but exit for typing
+            if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Delete') {
+                closeTextSearch();
+            }
+        }
+    };
+    
+    // Store the handlers so we can remove them later
+    target._searchInputHandler = inputHandler;
+    target._searchKeydownHandler = keydownHandler;
+    
+    target.addEventListener('input', inputHandler);
+    target.addEventListener('keydown', keydownHandler);
 
     // Show text search popup
     showTextSearchPopup();
@@ -1610,7 +1711,7 @@ function showTextSearchPopup() {
     const rect = textSearchTarget.getBoundingClientRect();
     textSearchPopup.style.left = (rect.left + rect.width / 2 - 175) + 'px';
     textSearchPopup.style.top = (rect.top - 50) + 'px';
-    textSearchPopup.style.display = 'block';
+            textSearchPopup.classList.remove('hidden');
 
     // Focus the input
     const searchInput = textSearchPopup.querySelector('#textSearchInput');
@@ -1815,6 +1916,16 @@ function handleTextSearchKeydown(e) {
 }
 
 function closeTextSearch() {
+    // Remove event listeners if they exist
+    if (textSearchTarget && textSearchTarget._searchInputHandler) {
+        textSearchTarget.removeEventListener('input', textSearchTarget._searchInputHandler);
+        textSearchTarget._searchInputHandler = null;
+    }
+    if (textSearchTarget && textSearchTarget._searchKeydownHandler) {
+        textSearchTarget.removeEventListener('keydown', textSearchTarget._searchKeydownHandler);
+        textSearchTarget._searchKeydownHandler = null;
+    }
+    
     textSearchActive = false;
     textSearchTarget = null;
     textSearchQuery = '';
@@ -1824,7 +1935,7 @@ function closeTextSearch() {
     clearSearchHighlights();
     
     if (textSearchPopup) {
-        textSearchPopup.style.display = 'none';
+        textSearchPopup.classList.add('hidden');
     }
     
     // Return focus to the original textarea
@@ -1862,4 +1973,13 @@ Object.defineProperty(window, 'emphasisEditingActive', {
 // Expose the direct emphasis application function
 Object.defineProperty(window, 'applyEmphasisDirectly', {
     value: applyEmphasisDirectly
+});
+
+// Expose the emphasis block detection and splitting functions
+Object.defineProperty(window, 'isCursorInsideEmphasisBlock', {
+    value: isCursorInsideEmphasisBlock
+});
+
+Object.defineProperty(window, 'splitEmphasisBlock', {
+    value: splitEmphasisBlock
 });

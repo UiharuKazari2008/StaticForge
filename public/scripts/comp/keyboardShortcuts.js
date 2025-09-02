@@ -95,11 +95,11 @@ function handleKeyDown(event) {
     const textReplacementModal = document.getElementById('textReplacementManagerModal');
     const createTextReplacementModal = document.getElementById('createTextReplacementModal');
     
-    const isTextReplacementModalOpen = textReplacementModal && textReplacementModal.style.display !== 'none';
-    const isCreateTextReplacementModalOpen = createTextReplacementModal && createTextReplacementModal.style.display !== 'none';
+    const isTextReplacementModalOpen = textReplacementModal && !textReplacementModal.classList.contains('hidden');
+    const isCreateTextReplacementModalOpen = createTextReplacementModal && !createTextReplacementModal.classList.contains('hidden');
     
     // Only handle shortcuts when relevant modals are open
-    if (manualModal.style.display === 'none' && !isTextReplacementModalOpen && !isCreateTextReplacementModalOpen) return;
+    if (manualModal.classList.contains('hidden') && !isTextReplacementModalOpen && !isCreateTextReplacementModalOpen) return;
     
     // Handle Alt key press
     if (event.key === 'Alt') {
@@ -161,7 +161,7 @@ function handleKeyDown(event) {
             
             // Check if manual modal is open
             const manualModal = document.getElementById('manualModal');
-            const isInModal = manualModal && manualModal.style.display !== 'none';
+            const isInModal = manualModal && !manualModal.classList.contains('hidden');
             
             if (isInModal) {
                 // In modal: trigger generation

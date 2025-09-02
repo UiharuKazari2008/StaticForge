@@ -93,7 +93,7 @@ let cacheShowAllReferences = false;
 async function toggleShowAllReferences() {
     // Show loading overlay
     if (cacheBrowserLoadingContainer) {
-        cacheBrowserLoadingContainer.style.display = '';
+        cacheBrowserLoadingContainer.classList.remove('hidden');
     }
     
     try {
@@ -113,7 +113,7 @@ async function toggleShowAllReferences() {
     } finally {
         // Hide loading overlay
         if (cacheBrowserLoadingContainer) {
-            cacheBrowserLoadingContainer.style.display = 'none';
+            cacheBrowserLoadingContainer.classList.add('hidden');
         }
     }
 }
@@ -148,7 +148,7 @@ async function showCacheBrowser() {
 
     // Set active panel to cache browser
     previewSection.setAttribute('data-active-panel', 'cache-browser');
-    cacheBrowserLoadingContainer.style.display = '';
+    cacheBrowserLoadingContainer.classList.remove('hidden');
     cacheGalleryContainer.innerHTML = '';
 
     // Show the manual preview when cache browser is opened
@@ -162,14 +162,14 @@ async function showCacheBrowser() {
         console.error('Error loading cache images:', error);
         showError('Failed to load cache images');
     } finally {
-        cacheBrowserLoadingContainer.style.display = 'none';
+        cacheBrowserLoadingContainer.classList.add('hidden');
     }
 }
 
 function hideCacheBrowser() {
     // Hide both modal and container versions
     if (cacheBrowserContainer) {
-        cacheBrowserContainer.style.display = 'none';
+        cacheBrowserContainer.classList.add('hidden');
     }
 
     // Clear active panel to show manual preview
@@ -201,8 +201,8 @@ async function refreshReferenceBrowserIfOpen() {
 async function loadReferenceImages(workspace = null, showAll = false) {
     try {
         // Show loading overlay for reference image loading
-        if (cacheBrowserLoadingContainer && cacheBrowserContainer && cacheBrowserContainer.style.display !== 'none') {
-            cacheBrowserLoadingContainer.style.display = '';
+        if (cacheBrowserLoadingContainer && cacheBrowserContainer && !cacheBrowserContainer.classList.contains('hidden')) {
+            cacheBrowserLoadingContainer.classList.remove('hidden');
         }
         
         // Load unified references (cache images and vibe images together)
@@ -277,16 +277,16 @@ async function loadReferenceImages(workspace = null, showAll = false) {
     throw error;
 } finally {
     // Hide loading overlay for reference image loading
-    if (cacheBrowserLoadingContainer && cacheBrowserContainer && cacheBrowserContainer.style.display !== 'none') {
-        cacheBrowserLoadingContainer.style.display = 'none';
+    if (cacheBrowserLoadingContainer && cacheBrowserContainer && !cacheBrowserContainer.classList.contains('hidden')) {
+        cacheBrowserLoadingContainer.classList.add('hidden');
     }
 }
 }
 
 async function loadCacheImages() {
     // Show loading overlay if cache browser is open
-    if (cacheBrowserContainer && cacheBrowserContainer.style.display !== 'none' && cacheBrowserLoadingContainer) {
-        cacheBrowserLoadingContainer.style.display = '';
+    if (cacheBrowserContainer && !cacheBrowserContainer.classList.contains('hidden') && cacheBrowserLoadingContainer) {
+        cacheBrowserLoadingContainer.classList.remove('hidden');
     }
     
     try {
@@ -297,7 +297,7 @@ async function loadCacheImages() {
     } finally {
         // Hide loading overlay
         if (cacheBrowserLoadingContainer) {
-            cacheBrowserLoadingContainer.style.display = 'none';
+            cacheBrowserLoadingContainer.classList.add('hidden');
         }
     }
 }
@@ -746,13 +746,13 @@ async function refreshVibeReferencesDisplay() {
 async function refreshReferenceManagerAfterVibeOperation() {
     try {
         // Show loading overlay for cache browser if it's open
-        if (cacheBrowserContainer && cacheBrowserContainer.style.display !== 'none' && cacheBrowserLoadingContainer) {
-            cacheBrowserLoadingContainer.style.display = '';
+        if (cacheBrowserContainer && !cacheBrowserContainer.classList.contains('hidden') && cacheBrowserLoadingContainer) {
+            cacheBrowserLoadingContainer.classList.remove('hidden');
         }
         
         // Show loading overlay for cache manager if it's open
         if (cacheManagerModal && cacheManagerModal.classList.contains('modal-open') && cacheManagerLoading) {
-            cacheManagerLoading.style.display = '';
+            cacheManagerLoading.classList.remove('hidden');
         }
         
         // Refresh cache images to get the latest vibe data
@@ -768,10 +768,10 @@ async function refreshReferenceManagerAfterVibeOperation() {
     } finally {
         // Hide loading overlays
         if (cacheBrowserLoadingContainer) {
-            cacheBrowserLoadingContainer.style.display = 'none';
+            cacheBrowserLoadingContainer.classList.add('hidden');
         }
         if (cacheManagerLoading) {
-            cacheManagerLoading.style.display = 'none';
+            cacheManagerLoading.classList.add('hidden');
         }
     }
 }
@@ -981,8 +981,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
     ieDropdownBtn.appendChild(ieSuffix);
 
     const ieDropdownMenu = document.createElement('div');
-    ieDropdownMenu.className = 'custom-dropdown-menu';
-    ieDropdownMenu.style.display = 'none';
+    ieDropdownMenu.className = 'custom-dropdown-menu hidden';
 
     // Add encoding options (only for current model)
     availableEncodings.forEach(encoding => {
@@ -1000,7 +999,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
             ieDropdownBtn.appendChild(ieSuffix);
             ieDropdownBtn.dataset.selectedModel = encoding.model;
             ieDropdownBtn.dataset.selectedIe = encoding.informationExtraction;
-            ieDropdownMenu.style.display = 'none';
+            ieDropdownMenu.classList.add('hidden');
         });
 
         ieDropdownMenu.appendChild(option);
@@ -1013,7 +1012,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
         requestOption.innerHTML = `<i class="fas fa-exclamation-triangle"></i><span>${(parseFloat(selectedIe) * 100).toFixed(0)}%</span>`;
         
         requestOption.addEventListener('click', async () => {
-            ieDropdownMenu.style.display = 'none';
+            ieDropdownMenu.classList.add('hidden');
             
             // Check if vibe is locked
             if (vibeRef.locked) {
@@ -1042,17 +1041,17 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
 
     // Add dropdown toggle functionality
     ieDropdownBtn.addEventListener('click', () => {
-        if (ieDropdownMenu.style.display === 'none') {
-            ieDropdownMenu.style.display = '';
+        if (ieDropdownMenu.classList.contains('hidden')) {
+            ieDropdownMenu.classList.remove('hidden');
         } else {
-            ieDropdownMenu.style.display = 'none';
+            ieDropdownMenu.classList.add('hidden');
         }
     });
 
     // Close dropdown when clicking outside
     document.addEventListener('click', (e) => {
         if (!ieDropdown.contains(e.target)) {
-            ieDropdownMenu.style.display = 'none';
+            ieDropdownMenu.classList.add('hidden');
         }
     });
 
@@ -1251,9 +1250,9 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
 
     // Show the section
     if (vibeReferencesContainer) {
-        vibeReferencesContainer.style.display = '';
+        vibeReferencesContainer.classList.remove('hidden');
         if (vibeNormalizeToggle) {
-            vibeNormalizeToggle.style.display = '';
+            vibeNormalizeToggle.classList.remove('hidden');
         }
         if (transformationRow) {
             transformationRow.classList.add('display-vibe');
@@ -1272,13 +1271,13 @@ function removeVibeReference(vibeId) {
         const remainingItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item');
         if (remainingItems.length === 0) {
             if (vibeReferencesContainer) {
-                vibeReferencesContainer.style.display = 'none';
+                vibeReferencesContainer.classList.add('hidden');
             }
             if (transformationRow) {
                 transformationRow.classList.remove('display-vibe');
             }
             if (vibeNormalizeToggle) {
-                vibeNormalizeToggle.style.display = 'none';
+                vibeNormalizeToggle.classList.add('hidden');
             }
         }
     }
@@ -1340,7 +1339,7 @@ async function selectCacheImageInternal(cacheImage) {
         if (transformationRow) {
             transformationRow.classList.add('display-image');
         }
-        if (manualImg2ImgGroup) manualImg2ImgGroup.style.display = '';
+        if (manualImg2ImgGroup) manualImg2ImgGroup.classList.remove('hidden');
 
         // Update image bias - reset to center (2)
         if (imageBiasHidden != null) imageBiasHidden.value = '2';
@@ -1442,7 +1441,7 @@ async function deleteCacheImage(cacheImage) {
     await deleteReferenceImage(cacheImage, null, async () => {
         // Remove from local array
         cacheImages = cacheImages.filter(img => img.hash !== cacheImage.hash);
-        if (cacheBrowserContainer.style.display !== 'none') {
+        if (!cacheBrowserContainer.classList.contains('hidden')) {
             await loadCacheManagerImages();
         } else {
             await loadCacheImages();
@@ -1460,7 +1459,7 @@ async function deleteCacheImage(cacheImage) {
 
 function showCacheManagerModal() {
     // Disable on mobile displays
-    if (window.innerWidth <= 768) {
+    if (window.innerWidth <= 577) {
         return false;
     }
     
@@ -1484,7 +1483,7 @@ async function hideCacheManagerModal() {
         closeModal(cacheManagerModal);
     }
     
-    if (cacheBrowserContainer.style.display !== 'none') {
+    if (!cacheBrowserContainer.classList.contains('hidden')) {
         await loadCacheManagerImages();
     } else {
         await loadCacheImages();
@@ -1573,7 +1572,7 @@ function setupCacheManagerWorkspaceDropdown() {
         onWorkspaceChange: async (workspace) => {
             if (workspace.id !== cacheManagerCurrentWorkspace) {
                 // Show loading overlay for workspace change
-                if (cacheManagerLoading) cacheManagerLoading.style.display = '';
+                if (cacheManagerLoading) cacheManagerLoading.classList.remove('hidden');
                 
                 try {
                     cacheManagerCurrentWorkspace = workspace.id;
@@ -1586,7 +1585,7 @@ function setupCacheManagerWorkspaceDropdown() {
                     showError('Failed to change workspace');
                 } finally {
                     // Hide loading overlay
-                    if (cacheManagerLoading) cacheManagerLoading.style.display = 'none';
+                    if (cacheManagerLoading) cacheManagerLoading.classList.add('hidden');
                 }
             }
         }
@@ -1610,7 +1609,7 @@ function renderCacheManagerWorkspaceDropdown() {
 }
 
 async function loadCacheManagerImages() {
-    if (cacheManagerLoading) cacheManagerLoading.style.display = '';
+    if (cacheManagerLoading) cacheManagerLoading.classList.remove('hidden');
     if (cacheManagerGallery) cacheManagerGallery.innerHTML = '';
 
     try {
@@ -1621,7 +1620,7 @@ async function loadCacheManagerImages() {
         console.error('Error loading cache manager images:', error);
         showError('Failed to load cache images');
     } finally {
-        if (cacheManagerLoading) cacheManagerLoading.style.display = 'none';
+        if (cacheManagerLoading) cacheManagerLoading.classList.add('hidden');
     }
 }
 
@@ -1858,7 +1857,7 @@ async function deleteCacheManagerImage(cacheImage, workspace) {
         // Remove from local array
         cacheManagerImages = cacheManagerImages.filter(img => img.hash !== cacheImage.hash);
         // Refresh display
-        if (cacheBrowserContainer.style.display !== 'none') {
+        if (!cacheBrowserContainer.classList.contains('hidden')) {
             await loadCacheManagerImages();
         } else {
             await loadCacheImages();
@@ -1915,7 +1914,7 @@ function showUnifiedUploadModal() {
     // Hide downloaded file info section
     const downloadedInfo = document.getElementById('unifiedUploadDownloadedInfo');
     if (downloadedInfo) {
-        downloadedInfo.style.display = 'none';
+        downloadedInfo.classList.add('hidden');
     }
     
     // Reset comment input
@@ -1943,18 +1942,18 @@ function showUnifiedUploadModal() {
     // Hide comment input container initially
     const commentContainer = document.getElementById('unifiedUploadCommentInputContainer');
     if (commentContainer) {
-        commentContainer.style.display = 'none';
+        commentContainer.classList.add('hidden');
     }
     
     // Hide footer actions initially
     const footerActions = document.querySelector('.gallery-move-actions');
     if (footerActions) {
-        footerActions.style.display = 'none';
+        footerActions.classList.add('hidden');
     }
     
     // Hide Open in Editor button initially
     if (unifiedUploadOpenInEditorBtn) {
-        unifiedUploadOpenInEditorBtn.style.display = 'none';
+        unifiedUploadOpenInEditorBtn.classList.add('hidden');
     }
     
     // Reset overlay content
@@ -1999,7 +1998,7 @@ function hideUnifiedUploadModal() {
         
         // Hide Open in Editor button
         if (unifiedUploadOpenInEditorBtn) {
-            unifiedUploadOpenInEditorBtn.style.display = 'none';
+            unifiedUploadOpenInEditorBtn.classList.add('hidden');
         }
     }
 }
@@ -2080,9 +2079,9 @@ function updateUnifiedUploadMode() {
     const blueprintPreview = document.getElementById('unifiedUploadBlueprintPreview');
     if (blueprintPreview) {
         if (unifiedUploadCurrentMode === 'blueprint') {
-            blueprintPreview.style.display = '';
+            blueprintPreview.classList.remove('hidden');
         } else {
-            blueprintPreview.style.display = 'none';
+            blueprintPreview.classList.add('hidden');
         }
     }
     
@@ -2090,18 +2089,18 @@ function updateUnifiedUploadMode() {
     const referenceComment = document.getElementById('unifiedUploadCommentInputContainer');
     if (referenceComment) {
         if (unifiedUploadCurrentMode === 'blueprint') {
-            referenceComment.style.display = 'none';
+            referenceComment.classList.add('hidden');
         } else {
-            referenceComment.style.display = '';
+            referenceComment.classList.remove('hidden');
         }
     }
     
     // Show/hide Open in Editor button based on mode
     if (unifiedUploadOpenInEditorBtn) {
         if (unifiedUploadCurrentMode === 'blueprint') {
-            unifiedUploadOpenInEditorBtn.style.display = '';
+            unifiedUploadOpenInEditorBtn.classList.remove('hidden');
         } else {
-            unifiedUploadOpenInEditorBtn.style.display = 'none';
+            unifiedUploadOpenInEditorBtn.classList.add('hidden');
         }
     }
 }
@@ -2862,7 +2861,8 @@ async function uploadUnifiedReferenceImages() {
             type: 'success',
             title: 'Upload Complete',
             message: `Successfully uploaded ${results.length} image(s)`,
-            customIcon: '<i class="nai-check"></i>'
+            customIcon: '<i class="nai-check"></i>',
+            showProgress: false
         });
         
         // If this was uploaded as a base image (reference mode), add it to the manual form
@@ -2875,7 +2875,7 @@ async function uploadUnifiedReferenceImages() {
         }
         
         // Refresh cache manager
-        if (cacheBrowserContainer.style.display !== 'none') {
+        if (!cacheBrowserContainer.classList.contains('hidden')) {
             await loadCacheManagerImages();
         } else {
             await loadCacheImages();
@@ -2893,7 +2893,8 @@ async function uploadUnifiedReferenceImages() {
             type: 'error',
             title: 'Upload Failed',
             message: 'Upload failed: ' + (error.message || 'Unknown error'),
-            customIcon: '<i class="nai-cross"></i>'
+            customIcon: '<i class="nai-cross"></i>',
+            showProgress: false
         });
         hideGalleryMoveRightPanelCover();
     }
@@ -2978,13 +2979,14 @@ async function handleJsonFileImport(files) {
             type: 'success',
             title: 'Import Complete',
             message: `Successfully imported ${results.length} vibe bundle(s)`,
-            customIcon: '<i class="nai-check"></i>'
+            customIcon: '<i class="nai-check"></i>',
+            showProgress: false
         });
         
         // Clear modified vibe data after successful import
         window.modifiedVibeData = [];
         
-        if (cacheBrowserContainer.style.display !== 'none') {
+        if (!cacheBrowserContainer.classList.contains('hidden')) {
             await loadCacheManagerImages();
         } else {
             await loadCacheImages();
@@ -3103,7 +3105,7 @@ async function uploadUnifiedVibeImage(file) {
         completeVibeEncodingProgress(toastId, 'Successfully created vibe encoding');
         
         // Use consistent refresh function
-        if (cacheBrowserContainer.style.display !== 'none') {
+        if (!cacheBrowserContainer.classList.contains('hidden')) {
             await loadCacheManagerImages();
         } else {
             await loadCacheImages();
@@ -3192,11 +3194,12 @@ async function importDownloadedVibeBundle() {
             type: 'success',
             title: 'Vibe Bundle Imported',
             message: `Successfully imported ${unifiedUploadDownloadedFile.vibeCount} vibe(s)`,
-            customIcon: '<i class="nai-check"></i>'
+            customIcon: '<i class="nai-check"></i>',
+            showProgress: false
         });
         
         // Refresh cache manager
-        if (cacheBrowserContainer.style.display !== 'none') {
+        if (!cacheBrowserContainer.classList.contains('hidden')) {
             await loadCacheManagerImages();
         } else {
             await loadCacheImages();
@@ -3215,7 +3218,8 @@ async function importDownloadedVibeBundle() {
             type: 'error',
             title: 'Import Failed',
             message: 'Vibe bundle import failed: ' + error.message,
-            customIcon: '<i class="nai-cross"></i>'
+            customIcon: '<i class="nai-cross"></i>',
+            showProgress: false
         });
         hideGalleryMoveRightPanelCover();
     }
@@ -3392,7 +3396,7 @@ async function moveCacheManagerImages() {
         if (response.success) {
             showGlassToast('success', null, 'Image moved successfully');
             hideCacheManagerMoveModal();
-            if (cacheBrowserContainer.style.display !== 'none') {
+            if (!cacheBrowserContainer.classList.contains('hidden')) {
                 await loadCacheManagerImages();
             } else {
                 await loadCacheImages();
@@ -3426,8 +3430,8 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
     if (commentInput) commentInput.value = '';
     
     // Hide all sections initially
-    if (vibeEncodingUploadSection) vibeEncodingUploadSection.style.display = 'none';
-    if (vibeEncodingReferenceSection) vibeEncodingReferenceSection.style.display = 'none';
+    if (vibeEncodingUploadSection) vibeEncodingUploadSection.classList.add('hidden');
+    if (vibeEncodingReferenceSection) vibeEncodingReferenceSection.classList.add('hidden');
     
     // Update background image and mode display
     const backgroundImage = document.getElementById('vibeEncodingBackgroundImage');
@@ -3439,7 +3443,7 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
         case 'upload':
             if (vibeEncodingModalTitle) vibeEncodingModalTitle.innerHTML = '<i class="mdi mdi-data-matrix"></i> <span>Upload & Encode Vibe Image</span>';
             if (vibeEncodingConfirmText) vibeEncodingConfirmText.textContent = 'Upload';
-            if (vibeEncodingUploadSection) vibeEncodingUploadSection.style.display = '';
+            if (vibeEncodingUploadSection) vibeEncodingUploadSection.classList.remove('hidden');
             if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = true;
             if (backgroundImage) backgroundImage.src = '/static_images/background.jpg';
             if (modeDisplay) modeDisplay.textContent = 'Upload Mode';
@@ -3473,7 +3477,7 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
         case 'reference':
             if (vibeEncodingModalTitle) vibeEncodingModalTitle.innerHTML = '<i class="mdi mdi-data-matrix-plus"></i> <span>Create Vibe from Reference</span>';
             if (vibeEncodingConfirmText) vibeEncodingConfirmText.textContent = 'Encode';
-            if (vibeEncodingReferenceSection) vibeEncodingReferenceSection.style.display = 'none'; // Hide the preview section
+            if (vibeEncodingReferenceSection) vibeEncodingReferenceSection.classList.add('hidden'); // Hide the preview section
             if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.disabled = false;
             vibeEncodingCurrentCacheImage = data;
             
@@ -3528,7 +3532,7 @@ async function hideVibeEncodingModal() {
         delete window.galleryToolbarVibeImage;
     }
     
-    if (cacheBrowserContainer.style.display !== 'none') {
+    if (!cacheBrowserContainer.classList.contains('hidden')) {
         await loadCacheManagerImages();
     } else {
         await loadCacheImages();
@@ -3688,7 +3692,7 @@ async function handleVibeEncodingConfirm() {
             
             completeVibeEncodingProgress(toastId, successMessages[vibeEncodingCurrentMode]);
             await hideVibeEncodingModal();
-            if (cacheBrowserContainer.style.display !== 'none') {
+            if (!cacheBrowserContainer.classList.contains('hidden')) {
                 await loadCacheManagerImages();
             } else {
                 await loadCacheImages();
@@ -4033,7 +4037,7 @@ async function moveVibeManagerImages() {
             showGlassToast('success', null, 'Vibe image moved successfully');
 
             hideVibeManagerMoveModal();
-            if (cacheBrowserContainer.style.display !== 'none') {
+            if (!cacheBrowserContainer.classList.contains('hidden')) {
                 await loadCacheManagerImages();
             } else {
                 await loadCacheImages();
@@ -4094,7 +4098,7 @@ async function deleteVibeImage(vibeImage) {
     try {
         const response = await wsClient.deleteVibeImage(vibeImage.id, cacheManagerCurrentWorkspace);
         if (response.success) {
-            if (cacheBrowserContainer.style.display !== 'none') {
+            if (!cacheBrowserContainer.classList.contains('hidden')) {
                 await loadCacheManagerImages();
             } else {
                 await loadCacheImages();
@@ -4196,7 +4200,7 @@ async function handleVibeManagerDeleteConfirm() {
         }
 
         // Refresh the display
-        if (cacheBrowserContainer.style.display !== 'none') {
+        if (!cacheBrowserContainer.classList.contains('hidden')) {
             await loadCacheManagerImages();
         } else {
             await loadCacheImages();
@@ -4318,18 +4322,18 @@ async function handleUnifiedUploadFileChange(event) {
         if (warningContainer) {
             if (validBlueprintCount < unifiedUploadFiles.length) {
                 const invalidCount = unifiedUploadFiles.length - validBlueprintCount;
-                warningContainer.style.display = '';
+                warningContainer.classList.remove('hidden');
                 warningContainer.querySelector('.warning-message').textContent = 
                     `${invalidCount} of ${unifiedUploadFiles.length} files cannot be imported as blueprints.`;
             } else {
-                warningContainer.style.display = 'none';
+                warningContainer.classList.add('hidden');
             }
         }
     } else {
         // Clear any existing warnings if no blueprints detected
         const warningContainer = document.getElementById('unifiedUploadWarnings');
         if (warningContainer) {
-            warningContainer.style.display = 'none';
+            warningContainer.classList.add('hidden');
         }
     }
     
@@ -4627,7 +4631,7 @@ async function updateUnifiedUploadPreview() {
     const totalCountSpan = document.getElementById('unifiedUploadTotalCount');
     
     if (navContainer && currentIndexSpan && totalCountSpan) {
-        navContainer.style.display = unifiedUploadFiles.length > 1 ? '' : 'none';
+        navContainer.classList.toggle('hidden', unifiedUploadFiles.length <= 1);
         currentIndexSpan.textContent = (unifiedUploadCurrentIndex + 1).toString();
         totalCountSpan.textContent = unifiedUploadFiles.length.toString();
     }
@@ -4647,23 +4651,23 @@ async function updateUnifiedUploadPreview() {
     
     // First hide all preview areas
     if (blueprintPreview) {
-        blueprintPreview.style.display = 'none';
+        blueprintPreview.classList.add('hidden');
     }
     
     // Show footer actions when files are selected
     const footerActions = document.querySelector('.gallery-move-actions');
     if (footerActions) {
-        footerActions.style.display = '';
+        footerActions.classList.remove('hidden');
     }
     
     // Show/hide Open in Editor button based on mode
     if (unifiedUploadOpenInEditorBtn) {
-        unifiedUploadOpenInEditorBtn.style.display = unifiedUploadCurrentMode === 'blueprint' ? '' : 'none';
+        unifiedUploadOpenInEditorBtn.classList.toggle('hidden', unifiedUploadCurrentMode !== 'blueprint');
     }
     
     // Show/hide reference comment based on mode
     if (commentContainer) {
-        commentContainer.style.display = unifiedUploadCurrentMode === 'blueprint' ? 'none' : '';
+        commentContainer.classList.toggle('hidden', unifiedUploadCurrentMode === 'blueprint');
     }
     
     // Update metadata display based on mode
@@ -4671,7 +4675,7 @@ async function updateUnifiedUploadPreview() {
         const currentMetadata = unifiedUploadFileMetadata[unifiedUploadCurrentIndex];
         
         if (blueprintPreview) {
-            blueprintPreview.style.display = 'block';
+            blueprintPreview.classList.remove('hidden');
         }
         
         if (currentMetadata && currentMetadata.valid) {
@@ -4749,7 +4753,7 @@ function showBlueprintPreview(metadata) {
     const blueprintInfo = document.getElementById('unifiedUploadBlueprintInfo');
     
     if (blueprintPreview && blueprintInfo) {
-        blueprintPreview.style.display = 'block';
+        blueprintPreview.classList.remove('hidden');
         
         // Validate metadata structure
         if (!metadata || typeof metadata !== 'object') {
@@ -4899,7 +4903,7 @@ function showBlueprintPreview(metadata) {
 function hideBlueprintPreview() {
     const blueprintPreview = document.getElementById('unifiedUploadBlueprintPreview');
     if (blueprintPreview) {
-        blueprintPreview.style.display = 'none';
+        blueprintPreview.classList.add('hidden');
     }
 }
 
@@ -5035,7 +5039,7 @@ function showVibeBundlePreview(vibes) {
         
         // Add buttons for vibes missing thumbnails or source images
         const buttonsContainer = document.createElement('div');
-        buttonsContainer.style.display = '';
+        buttonsContainer.classList.remove('hidden');
         buttonsContainer.style.gap = '8px';
         buttonsContainer.style.margin = '8px 0';
         
@@ -5050,7 +5054,7 @@ function showVibeBundlePreview(vibes) {
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = 'image/*';
-                input.style.display = 'none';
+                input.classList.add('hidden');
                 document.body.appendChild(input);
                 
                 input.onchange = async () => {
@@ -5106,7 +5110,7 @@ function showVibeBundlePreview(vibes) {
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = 'image/*';
-                input.style.display = 'none';
+                input.classList.add('hidden');
                 document.body.appendChild(input);
                 
                 input.onchange = async () => {
@@ -5164,14 +5168,14 @@ function showVibeBundlePreview(vibes) {
         vibeBundleList.appendChild(item);
     });
     
-    vibeBundlePreview.style.display = '';
+    vibeBundlePreview.classList.remove('hidden');
 }
 
 // Hide vibe bundle preview
 function hideVibeBundlePreview() {
     const vibeBundlePreview = document.getElementById('unifiedUploadVibeBundlePreview');
     if (vibeBundlePreview) {
-        vibeBundlePreview.style.display = 'none';
+        vibeBundlePreview.classList.add('hidden');
     }
 }
 
@@ -5206,7 +5210,7 @@ function updateUIForVibeBundleImport(vibeCount, isBundle) {
     
     // Hide Open in Editor button for vibe mode
     if (unifiedUploadOpenInEditorBtn) {
-        unifiedUploadOpenInEditorBtn.style.display = 'none';
+        unifiedUploadOpenInEditorBtn.classList.add('hidden');
     }
 }
 
@@ -5242,7 +5246,7 @@ function resetUploadModal() {
     // Hide downloaded file info section
     const downloadedInfo = document.getElementById('unifiedUploadDownloadedInfo');
     if (downloadedInfo) {
-        downloadedInfo.style.display = 'none';
+        downloadedInfo.classList.add('hidden');
     }
     
     // Reset confirm button state
@@ -5253,7 +5257,7 @@ function resetUploadModal() {
     
     // Hide Open in Editor button
     if (unifiedUploadOpenInEditorBtn) {
-        unifiedUploadOpenInEditorBtn.style.display = 'none';
+        unifiedUploadOpenInEditorBtn.classList.add('hidden');
     }
 }
 
@@ -5278,7 +5282,7 @@ function initializeCacheManager() {
     if (cacheManagerRefreshBtn) {
         cacheManagerRefreshBtn.addEventListener('click', async () => {
             // Show loading overlay for refresh
-            if (cacheManagerLoading) cacheManagerLoading.style.display = '';
+            if (cacheManagerLoading) cacheManagerLoading.classList.remove('hidden');
             
             try {
                 await loadCacheManagerImages();
@@ -5287,7 +5291,7 @@ function initializeCacheManager() {
                 showError('Failed to refresh cache manager');
             } finally {
                 // Hide loading overlay
-                if (cacheManagerLoading) cacheManagerLoading.style.display = 'none';
+                if (cacheManagerLoading) cacheManagerLoading.classList.add('hidden');
             }
         });
     }
@@ -5359,7 +5363,7 @@ function initializeCacheManager() {
             fileInput.type = 'file';
             fileInput.multiple = true;
             fileInput.accept = 'image/*,.naiv4vibebundle,.json';
-            fileInput.style.display = 'none';
+            fileInput.classList.add('hidden');
             
             // Add change event listener
             fileInput.addEventListener('change', handleUnifiedUploadFileChange);
@@ -5871,18 +5875,18 @@ async function handleClipboardFile(file) {
             if (warningContainer) {
                 if (validBlueprintCount < unifiedUploadFiles.length) {
                     const invalidCount = unifiedUploadFiles.length - validBlueprintCount;
-                    warningContainer.style.display = '';
+                    warningContainer.classList.remove('hidden');
                     warningContainer.querySelector('.warning-message').textContent = 
                         `${invalidCount} of ${unifiedUploadFiles.length} files cannot be imported as blueprints.`;
                 } else {
-                    warningContainer.style.display = 'none';
+                    warningContainer.classList.add('hidden');
                 }
             }
         } else {
             // Clear any existing warnings if no blueprints detected
             const warningContainer = document.getElementById('unifiedUploadWarnings');
             if (warningContainer) {
-                warningContainer.style.display = 'none';
+                warningContainer.classList.add('hidden');
             }
         }
         
@@ -6078,7 +6082,7 @@ function showUrlPreview(urlPreviewHTML) {
     
     if (urlPreview && urlPreviewContent) {
         urlPreviewContent.innerHTML = urlPreviewHTML;
-        urlPreview.style.display = '';
+        urlPreview.classList.remove('hidden');
     }
 }
 
@@ -6086,7 +6090,7 @@ function showUrlPreview(urlPreviewHTML) {
 function hideUrlPreview() {
     const urlPreview = document.getElementById('unifiedUploadUrlPreview');
     if (urlPreview) {
-        urlPreview.style.display = 'none';
+        urlPreview.classList.add('hidden');
     }
 }
 
@@ -6152,13 +6156,13 @@ async function handlePendingUrlDownload() {
             // Hide footer actions
             const footerActions = document.querySelector('.gallery-move-actions');
             if (footerActions) {
-                footerActions.style.display = 'none';
+                footerActions.classList.add('hidden');
             }
             
             // Hide site domain display
             const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
             if (siteDomainDisplay) {
-                siteDomainDisplay.style.display = 'none';
+                siteDomainDisplay.classList.add('hidden');
             }
             
             return;
@@ -6224,7 +6228,7 @@ async function handlePendingUrlDownload() {
             // Show comment container for downloaded files initially
             const commentContainer = document.getElementById('unifiedUploadCommentInputContainer');
             if (commentContainer) {
-                commentContainer.style.display = '';
+                commentContainer.classList.remove('hidden');
             }
             
             // Process metadata based on file type and update UI accordingly
@@ -6325,13 +6329,13 @@ async function handlePendingUrlDownload() {
             // Hide footer actions
             const footerActions = document.querySelector('.gallery-move-actions');
             if (footerActions) {
-                footerActions.style.display = 'none';
+                footerActions.classList.add('hidden');
             }
             
             // Hide site domain display on failure
             const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
             if (siteDomainDisplay) {
-                siteDomainDisplay.style.display = 'none';
+                siteDomainDisplay.classList.add('hidden');
             }
         }
         
@@ -6367,13 +6371,13 @@ async function handlePendingUrlDownload() {
         // Hide footer actions
         const footerActions = document.querySelector('.gallery-move-actions');
         if (footerActions) {
-            footerActions.style.display = 'none';
+            footerActions.classList.add('hidden');
         }
         
         // Hide site domain display on error
         const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
         if (siteDomainDisplay) {
-            siteDomainDisplay.style.display = 'none';
+            siteDomainDisplay.classList.add('hidden');
         }
     }
 }
@@ -6457,7 +6461,7 @@ async function handleUnifiedUploadClipboard() {
                 `<i class="fas fa-lock"></i> ${domain}` : 
                 `<i class="fas fa-fa-exclamation-triangle"></i> ${domain}`;
             siteDomainText.innerHTML = domainDisplay;
-            siteDomainDisplay.style.display = '';
+            siteDomainDisplay.classList.remove('hidden');
         }
         
         // Show URL preview in main content area
@@ -6467,12 +6471,12 @@ async function handleUnifiedUploadClipboard() {
         // Show footer actions with download/cancel buttons
         const footerActions = document.querySelector('.gallery-move-actions');
         if (footerActions) {
-            footerActions.style.display = '';
+            footerActions.classList.remove('hidden');
         }
         
         // Hide Open in Editor button for URL downloads
         if (unifiedUploadOpenInEditorBtn) {
-            unifiedUploadOpenInEditorBtn.style.display = 'none';
+            unifiedUploadOpenInEditorBtn.classList.add('hidden');
         }
         
         // Update confirm button to show download state
@@ -6484,7 +6488,7 @@ async function handleUnifiedUploadClipboard() {
         // Keep comment container hidden during URL preview
         const commentContainer = document.getElementById('unifiedUploadCommentInputContainer');
         if (commentContainer) {
-            commentContainer.style.display = 'none';
+            commentContainer.classList.add('hidden');
         }
         
         // Set background to show URL preview
@@ -6507,7 +6511,7 @@ function showInitialUploadOptions() {
     const initialOptions = document.getElementById('unifiedUploadInitialOptions');
     
     if (initialOptions) {
-        initialOptions.style.display = '';
+        initialOptions.classList.remove('hidden');
     }
     
     // Hide URL preview when showing initial options
@@ -6522,7 +6526,7 @@ function showInitialUploadOptions() {
     // Hide site domain display when showing initial options
     const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
     if (siteDomainDisplay) {
-        siteDomainDisplay.style.display = 'none';
+        siteDomainDisplay.classList.add('hidden');
     }
 }
 
@@ -6531,7 +6535,7 @@ function hideInitialUploadOptions() {
     const initialOptions = document.getElementById('unifiedUploadInitialOptions');
     
     if (initialOptions) {
-        initialOptions.style.display = 'none';
+        initialOptions.classList.add('hidden');
     }
 }
 
@@ -6542,10 +6546,10 @@ function resetUploadOverlay() {
     const overlay = document.querySelector('#unifiedUploadModal .gallery-move-image-info-overlay');
     
     if (overlayContent) {
-        overlayContent.style.display = '';
+        overlayContent.classList.remove('hidden');
     }
     if (fileInfo) {
-        fileInfo.style.display = 'none';
+        fileInfo.classList.add('hidden');
         fileInfo.innerHTML = '';
     }
     if (overlay) {
@@ -6564,7 +6568,7 @@ function resetUploadOverlay() {
     // Hide site domain display
     const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
     if (siteDomainDisplay) {
-        siteDomainDisplay.style.display = 'none';
+        siteDomainDisplay.classList.add('hidden');
     }
     
     // Clear pending URL
@@ -6578,10 +6582,10 @@ function updateUploadOverlayWithFileInfo(fileInfo) {
     const overlay = document.querySelector('#unifiedUploadModal .gallery-move-image-info-overlay');
     
     if (overlayContent) {
-        overlayContent.style.display = 'none';
+        overlayContent.classList.add('hidden');
     }
     if (fileInfoDiv) {
-        fileInfoDiv.style.display = '';
+        fileInfoDiv.classList.remove('hidden');
         fileInfoDiv.innerHTML = fileInfo;
     }
     if (overlay) {
@@ -6613,7 +6617,7 @@ function resetUnifiedUploadModal() {
     // Hide downloaded file info section
     const downloadedInfo = document.getElementById('unifiedUploadDownloadedInfo');
     if (downloadedInfo) {
-        downloadedInfo.style.display = 'none';
+        downloadedInfo.classList.add('hidden');
     }
     
     // Reset comment input
@@ -6641,18 +6645,18 @@ function resetUnifiedUploadModal() {
     // Hide comment container when resetting
     const commentContainer = document.getElementById('unifiedUploadCommentInputContainer');
     if (commentContainer) {
-        commentContainer.style.display = 'none';
+        commentContainer.classList.add('hidden');
     }
     
     // Hide footer actions when resetting
     const footerActions = document.querySelector('.gallery-move-actions');
     if (footerActions) {
-        footerActions.style.display = 'none';
+        footerActions.classList.add('hidden');
     }
     
     // Hide Open in Editor button when resetting
     if (unifiedUploadOpenInEditorBtn) {
-        unifiedUploadOpenInEditorBtn.style.display = 'none';
+        unifiedUploadOpenInEditorBtn.classList.add('hidden');
     }
     
     // Reset overlay content
@@ -6667,13 +6671,13 @@ function resetUnifiedUploadModal() {
     // Reset navigation buttons
     const navContainer = document.getElementById('unifiedUploadNavigation');
     if (navContainer) {
-        navContainer.style.display = 'none';
+        navContainer.classList.add('hidden');
     }
     
     // Reset any warning indicators
     const warningContainer = document.getElementById('unifiedUploadWarnings');
     if (warningContainer) {
-        warningContainer.style.display = 'none';
+        warningContainer.classList.add('hidden');
         warningContainer.innerHTML = '';
     }
     
@@ -6764,11 +6768,11 @@ function getCurrentWorkspaceId() {
 
 // Function to refresh cache browser with loading overlay
 async function refreshCacheBrowser() {
-    if (!cacheBrowserContainer || cacheBrowserContainer.style.display === 'none') return;
+    if (!cacheBrowserContainer || cacheBrowserContainer.classList.contains('hidden')) return;
     
     // Show loading overlay
     if (cacheBrowserLoadingContainer) {
-        cacheBrowserLoadingContainer.style.display = '';
+        cacheBrowserLoadingContainer.classList.remove('hidden');
     }
     
     try {
@@ -6780,7 +6784,7 @@ async function refreshCacheBrowser() {
     } finally {
         // Hide loading overlay
         if (cacheBrowserLoadingContainer) {
-            cacheBrowserLoadingContainer.style.display = 'none';
+            cacheBrowserLoadingContainer.classList.add('hidden');
         }
     }
 }

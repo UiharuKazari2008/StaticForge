@@ -784,6 +784,88 @@ function sortAllWorkspaceFiles() {
     }
 }
 
+// Organize orphaned upscaled and pinned files to their correct workspaces
+function organizeOrphanedFiles() {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+    
+    let movedCount = 0;
+    
+    // Get all files from filesystem to check for orphaned upscaled files
+    const IMAGES_DIR = path.join(__dirname, '..', 'images');
+    if (!fs.existsSync(IMAGES_DIR)) {
+        return movedCount;
+    }
+    
+    const allImageFiles = fs.readdirSync(IMAGES_DIR)
+        .filter(f => f.match(/\.(png|jpg|jpeg)$/i))
+        .filter(f => !f.startsWith('.'));
+    
+    // Find upscaled files that are orphaned (original is in a workspace but upscaled is not)
+    const upscaledFiles = allImageFiles.filter(f => f.includes('_upscaled'));
+    
+    for (const upscaledFile of upscaledFiles) {
+        // Get the original file name
+        const originalFile = upscaledFile.replace('_upscaled.png', '.png').replace('_upscaled.jpg', '.jpg').replace('_upscaled.jpeg', '.jpeg');
+        
+        // Find which workspace contains the original file
+        let originalWorkspaceId = null;
+        for (const [workspaceId, workspace] of Object.entries(workspaces)) {
+            if (workspace.files && workspace.files.includes(originalFile)) {
+                originalWorkspaceId = workspaceId;
+                break;
+            }
+            if (workspace.scraps && workspace.scraps.includes(originalFile)) {
+                originalWorkspaceId = workspaceId;
+                break;
+            }
+            if (workspace.pinned && workspace.pinned.includes(originalFile)) {
+                originalWorkspaceId = workspaceId;
+                break;
+            }
+        }
+        
+        // If original is in a workspace but upscaled is not, move upscaled to same workspace
+        if (originalWorkspaceId) {
+            let upscaledIsOrphaned = true;
+            for (const workspace of Object.values(workspaces)) {
+                if ((workspace.files && workspace.files.includes(upscaledFile)) ||
+                    (workspace.scraps && workspace.scraps.includes(upscaledFile)) ||
+                    (workspace.pinned && workspace.pinned.includes(upscaledFile))) {
+                    upscaledIsOrphaned = false;
+                    break;
+                }
+            }
+            
+            if (upscaledIsOrphaned) {
+                // Add upscaled file to the same workspace as original
+                const targetWorkspace = workspaces[originalWorkspaceId];
+                if (targetWorkspace.files && targetWorkspace.files.includes(originalFile)) {
+                    targetWorkspace.files.push(upscaledFile);
+                    movedCount++;
+                    console.log(`📁 Moved orphaned upscaled file ${upscaledFile} to workspace ${targetWorkspace.name}`);
+                } else if (targetWorkspace.scraps && targetWorkspace.scraps.includes(originalFile)) {
+                    targetWorkspace.scraps.push(upscaledFile);
+                    movedCount++;
+                    console.log(`📁 Moved orphaned upscaled file ${upscaledFile} to scraps in workspace ${targetWorkspace.name}`);
+                } else if (targetWorkspace.pinned && targetWorkspace.pinned.includes(originalFile)) {
+                    targetWorkspace.pinned.push(upscaledFile);
+                    movedCount++;
+                    console.log(`📁 Moved orphaned upscaled file ${upscaledFile} to pinned in workspace ${targetWorkspace.name}`);
+                }
+            }
+        }
+    }
+    
+    if (movedCount > 0) {
+        saveWorkspaces();
+        console.log(`✅ Organized ${movedCount} orphaned upscaled files to their correct workspaces`);
+    }
+    
+    return movedCount;
+}
+
 // Initialize workspaces on module load
 function initializeWorkspaces() {
     console.log('🔧 Initializing workspace system...');
@@ -798,6 +880,7 @@ function initializeWorkspaces() {
     
     sortAllWorkspaceFiles(); // Sort existing files by timestamp
     syncWorkspaceFiles(); // Sync and add new files (already sorted)
+    organizeOrphanedFiles(); // Organize orphaned upscaled files
 
     console.log(`✅ Workspace system initialized with ${Object.keys(workspaces).length} workspaces`);
 }
@@ -1101,6 +1184,33 @@ function moveToWorkspaceArray(type, items, targetWorkspaceId, sourceWorkspaceId 
         if (!workspaces[sourceWorkspaceId]) {
             throw new Error(`Source workspace ${sourceWorkspaceId} not found`);
         }
+        
+        // For files, expand to include related/upscaled files before removing
+        if (type === 'files') {
+            // Get all files from all workspaces to find related files
+            const allWorkspaceFiles = new Set();
+            Object.values(workspaces).forEach(workspace => {
+                workspace.files.forEach(file => allWorkspaceFiles.add(file));
+            });
+
+            // Find all related files for each filename, including explicit upscaled variants
+            const allFilesToMove = new Set();
+            for (const filename of validItems) {
+                const baseName = getBaseName(filename);
+                const extMatch = filename.match(/\.(png|jpg|jpeg)$/i);
+                const ext = extMatch ? extMatch[0] : '';
+                // Always add the original file
+                allFilesToMove.add(filename);
+                // Add upscaled variants if present in any workspace
+                const upscaled = `${baseName}_upscaled${ext}`;
+                if (allWorkspaceFiles.has(upscaled)) allFilesToMove.add(upscaled);
+                // Add all other related files (legacy logic)
+                const relatedFiles = findRelatedFiles(filename, Array.from(allWorkspaceFiles));
+                relatedFiles.forEach(file => allFilesToMove.add(file));
+            }
+            validItems = Array.from(allFilesToMove);
+        }
+        
         movedCount = removeFromWorkspaceArray(type, validItems, sourceWorkspaceId);
     } else {
         // Remove from all workspaces
@@ -1476,6 +1586,7 @@ function reorderWorkspaces(workspaceOrder) {
 
 module.exports = {
     initializeWorkspaces,
+    organizeOrphanedFiles,
     loadWorkspaces,
     saveWorkspaces,
     syncWorkspaceFiles,

@@ -24,7 +24,7 @@ let imageBiasAdjustmentData = {
 async function renderImageBiasDropdown(selectedVal) {
     if (!window.uploadedImageData || window.uploadedImageData.isPlaceholder) {
         if (imageBiasGroup) {
-            imageBiasGroup.style.display = 'none';
+            imageBiasGroup.classList.add('hidden');
         }
         return;
     }
@@ -33,8 +33,8 @@ async function renderImageBiasDropdown(selectedVal) {
         // Add event listeners
         imageBiasDropdownBtn.addEventListener('click', (e) => {
             
-            if (imageBiasDropdownMenu.style.display === 'none') {
-                imageBiasDropdownMenu.style.display = '';
+            if (imageBiasDropdownMenu.classList.contains('hidden')) {
+                imageBiasDropdownMenu.classList.remove('hidden');
             } else {
                 closeImageBiasDropdown();
             }
@@ -61,7 +61,7 @@ async function renderImageBiasDropdown(selectedVal) {
     const shouldShow = shouldShowImageBias();
 
     if (shouldShow) {
-        imageBiasGroup.style.display = 'flex';
+        imageBiasGroup.classList.remove('hidden');
         
         // If we have dynamic bias, update the display
         if (hasDynamicBias) {
@@ -69,11 +69,11 @@ async function renderImageBiasDropdown(selectedVal) {
         }
     } else {
         // Aspect ratios are the same or very close - hide the dropdown but keep the bias section visible
-        imageBiasGroup.style.display = '';
+        imageBiasGroup.classList.remove('hidden');
         
         // Hide the dropdown menu since aspect ratios are similar
         if (imageBiasDropdownMenu) {
-            imageBiasDropdownMenu.style.display = 'none';
+            imageBiasDropdownMenu.classList.add('hidden');
         }
         
         // If we have dynamic bias, update the display to show custom bias
@@ -234,12 +234,12 @@ function updateImageBiasDisplay(value) {
 
 // Close image bias dropdown
 function closeImageBiasDropdown() {
-    imageBiasDropdownMenu.style.display = 'none';
+    imageBiasDropdownMenu.classList.add('hidden');
 }
 
 // Hide image bias dropdown
 function hideImageBiasDropdown() {
-    imageBiasGroup.style.display = 'none';
+    imageBiasGroup.classList.add('hidden');
 }
 
 // Handle image bias changes
@@ -400,7 +400,7 @@ async function refreshImageBiasState() {
     if (hasDynamicBias) {
         // Always show custom bias button, regardless of aspect ratio
         if (imageBiasGroup) {
-            imageBiasGroup.style.display = 'flex';
+            imageBiasGroup.classList.remove('hidden');
         }
         
         // Update the display to show custom bias
@@ -408,7 +408,7 @@ async function refreshImageBiasState() {
         
         // Hide the dropdown menu if aspect ratios are the same
         if (!shouldShowImageBias() && imageBiasDropdownMenu) {
-            imageBiasDropdownMenu.style.display = 'none';
+            imageBiasDropdownMenu.classList.add('hidden');
         }
         
         // If we have custom bias, we need to ensure the image is cropped to apply the bias
@@ -491,12 +491,12 @@ function updateImageBiasOrientation() {
     
     // Also update any preset dropdown if it's open
     const presetMenu = document.getElementById('imageBiasPresetMenu');
-    if (presetMenu && presetMenu.style.display === 'block') {
+    if (presetMenu && !presetMenu.classList.contains('hidden')) {
         renderImageBiasPresetDropdown();
     }
     
     // Also update the main image bias dropdown if it's open
-    if (imageBiasDropdownMenu && imageBiasDropdownMenu.style.display !== 'none') {
+    if (imageBiasDropdownMenu && !imageBiasDropdownMenu.classList.contains('hidden')) {
         // Re-render to ensure proper state
         renderImageBiasDropdown();
     }
@@ -921,7 +921,7 @@ function openImageBiasPresetDropdown() {
     const menu = document.getElementById('imageBiasPresetMenu');
     const btn = document.getElementById('imageBiasPresetBtn');
     if (menu && btn) {
-        menu.style.display = 'block';
+        menu.classList.remove('hidden');
         btn.classList.add('active');
     } else {
         console.warn('Required elements not found for opening preset dropdown');
@@ -932,7 +932,7 @@ function closeImageBiasPresetDropdown() {
     const menu = document.getElementById('imageBiasPresetMenu');
     const btn = document.getElementById('imageBiasPresetBtn');
     if (menu && btn) {
-        menu.style.display = 'none';
+        menu.classList.add('hidden');
         btn.classList.remove('active');
     } else {
         console.warn('Required elements not found for closing preset dropdown');
@@ -992,14 +992,14 @@ function togglePreviewMode() {
     if (newState === 'off') {
         // Show client preview
         toggleBtn.setAttribute('data-state', 'off');
-        cssWrapper.style.display = 'none';
-        clientImage.style.display = 'block';
+        cssWrapper.classList.add('hidden');
+        clientImage.classList.remove('hidden');
         updateClientPreview();
     } else {
         // Show CSS interactive view
         toggleBtn.setAttribute('data-state', 'on');
-        cssWrapper.style.display = 'block';
-        clientImage.style.display = 'none';
+        cssWrapper.classList.remove('hidden');
+        clientImage.classList.add('hidden');
         updateBiasAdjustmentImage();
     }
 }
@@ -1054,7 +1054,7 @@ async function testBiasAdjustment() {
             serverTestImage.src = serverPreview;
         }
 
-        resultsDiv.style.display = 'flex';
+        resultsDiv.classList.remove('hidden');
 
     } catch (error) {
         console.error('Bias test error:', error);
@@ -1368,7 +1368,7 @@ function hideImageBiasAdjustmentModal() {
     // Clean up test results
     const resultsDiv = document.getElementById('biasTestResults');
     if (resultsDiv) {
-        resultsDiv.style.display = 'none';
+        resultsDiv.classList.add('hidden');
     }
 
     // Reset dragging state
@@ -1392,6 +1392,7 @@ async function cropImageToResolution() {
     // Check if we actually need to crop using the helper function
     if (!isCroppingNeeded()) {
         console.log('No cropping needed - dimensions match and no custom bias');
+        updateMaskPreview();
         return;
     }
 
@@ -1442,9 +1443,12 @@ async function cropImageToResolution() {
 
         // Update the preview image
         variationImage.src = croppedBlobUrl;
-        variationImage.style.display = 'block';
-        // Give the image more time to load before updating mask preview
-        setTimeout(updateMaskPreview, 500);
+        variationImage.classList.remove('hidden');
+        
+        // Wait for the image to actually load before updating mask preview
+        variationImage.onload = function() {
+            updateMaskPreview();
+        };
 
         window.uploadedImageData.croppedBlobUrl = croppedBlobUrl;
         
@@ -1577,7 +1581,7 @@ function setupImageBiasAdjustmentListeners() {
             e.stopPropagation();
 
             const menu = document.getElementById('imageBiasPresetMenu');
-            if (menu.style.display === 'block') {
+            if (!menu.classList.contains('hidden')) {
                 closeImageBiasPresetDropdown();
             } else {
                 renderImageBiasPresetDropdown(); // Default to center
@@ -1821,7 +1825,7 @@ function initializeImageBiasAdjustment() {
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-                    if (imageBiasGroup && imageBiasGroup.style.display !== 'none') {
+                    if (imageBiasGroup && !imageBiasGroup.classList.contains('hidden')) {
                         addBiasAdjustmentButton();
                     }
                 }

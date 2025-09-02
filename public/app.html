@@ -65,6 +65,8 @@
         <link rel="apple-touch-startup-image" media="screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-828x1792.png">
         <!-- iPhone 11 / XR -->
         <link rel="apple-touch-startup-image" media="screen and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-750x1334.png">
+        <!-- iPhone 12 mini / 13 mini -->
+        <link rel="apple-touch-startup-image" media="screen and (device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1080x2340.png">
         <!-- iPhone 5 / SE -->
         <link rel="apple-touch-startup-image" media="screen and (device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-640x1136.png">
         <!-- iPad Pro 12.9" -->
@@ -82,8 +84,6 @@
         <!-- iPad 9.7" / Air Landscape -->
         <link rel="apple-touch-startup-image" media="screen and (device-width: 1024px) and (device-height: 768px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-2048x1536.png">
 
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link rel="stylesheet" href="/css/fonts.css">
         <link rel="stylesheet" href="/styles.css">
         <link rel="stylesheet" href="/css/pin-modal.css">
@@ -91,12 +91,21 @@
         <link rel="stylesheet" href="/css/blockContainer.css">
         <script src="/scripts/comp/tagSets.js"></script>
         <script src="/scripts/blockContainer.js"></script>
+        <script src="/scripts/utils/deviceUtils.js"></script>
         <link rel="stylesheet" href="/dist/fontawesome/css/fontawesome.min.css">
         <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
         <link rel="stylesheet" href="/dist/mdi/materialdesignicons.min.css">
     </head>
     <body class="initializing">
 
+        <!-- Focus overlay to prevent accidental interactions when window loses focus -->
+        <div id="focus-overlay" class="no-mobile">
+            <div class="focus-logo logo-text">Dreamscape</div>
+            <div class="focus-message">
+                <i class="fas fa-lock" style="margin-right: 0.5rem; color: var(--primary-color);"></i>
+                Privacy Protection
+            </div>
+        </div>
 
         <!-- Background layers for smooth transitions -->
         <div class="page-background current-bg" style="opacity: 1; background-image: url('/internal/default_bg.jpg'); background-size: cover; background-position: center; background-repeat: no-repeat;"></div>
@@ -126,6 +135,10 @@
             </div>
         </div>
 
+        <div id="title-bar" class="floating-bar-top-left no-mobile">
+            <span class="title-bar-text logo-text">Dreamscape</span>
+        </div>  
+
         <div id="main-menu-bar" class="floating-bar-left">
             <div class="main-menu-bar-overlay">
                 <span class="menu-logo">
@@ -153,20 +166,25 @@
                             </button>
                             <div class="gallery-toggle-slider"></div>
                         </div>
-                        <button type="button" id="sortOrderToggleBtn" class="btn-secondary indicator" data-state="desc" title="Sort Order: Newest First">
-                            <i class="fa-light fa-sort-amount-down"></i>
+                        <button type="button" id="searchToggleBtn" class="btn-secondary">
+                            <i class="fa-light fa-search"></i>
                         </button>
                         <div id="workspaceDropdown" class="custom-dropdown dropup dark">
                             <button type="button" id="workspaceDropdownBtn" class="btn-secondary">
                                 <i class="fa-light fa-folder-open"></i>
                             </button>
-                            <div id="workspaceDropdownMenu" class="custom-dropdown-menu" style="display: none;">
+                            <div id="workspaceDropdownMenu" class="custom-dropdown-menu hidden">
                                 <!-- Workspace options will be populated here -->
                             </div>
                         </div>
-                        <button type="button" id="searchToggleBtn" class="btn-secondary">
-                            <i class="fa-light fa-search"></i>
+                        <button type="button" id="sortOrderToggleBtn" class="btn-secondary indicator" data-state="desc" title="Sort Order: Newest First">
+                            <i class="fa-light fa-sort-amount-down"></i>
                         </button>
+                        <div class="menu-section no-mobile">
+                            <button type="button" id="mobileLoadGalleryBtn" class="btn-secondary" title="Load Gallery from Start" onclick="loadGalleryFromIndex(0); window.scrollTo(0, {behavior: 'instant'}); ">
+                                <i class="fa-light fa-arrow-up"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div class="file-search-container closed">
@@ -175,6 +193,21 @@
                     </button>
                     <div class="search-input-wrapper">
                         <input type="text" id="fileSearchInput" class="form-control file-search-input" placeholder="Search files by prompts, characters, tags..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="mobile-controls-bar" class="floating-bar-left mobile-only">
+            <div class="main-menu-bar-outer">
+                <div class="main-menu-contents">
+                    <div class="main-menu-row">
+                        <button type="button" id="mobileLoadGalleryBtn" class="btn-secondary" title="Load Gallery from Start" onclick="loadGalleryFromIndex(0); window.scrollTo(0, {behavior: 'instant'}); ">
+                            <i class="fa-light fa-arrow-up"></i>
+                        </button>
+                        <button type="button" id="mobileSortOrderToggleBtn" class="btn-secondary indicator" data-state="desc" title="Sort Order: Newest First">
+                            <i class="fa-light fa-sort-amount-down"></i>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -206,7 +239,7 @@
                                     <i class="nai-sparkles"></i>
                                 </button>
                             </div>
-                            <div id="customPresetDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                            <div id="customPresetDropdownMenu" class="custom-dropdown-menu hidden"></div>
                         </div>
                         <input type="hidden" id="presetSelect" value="">
                         <button type="button" id="openGenEditorBtn" class="btn-primary" title="Create a masterpiece!">
@@ -222,13 +255,13 @@
         <!-- Main Container -->
         <div class="container">
             <!-- Manual Generation Modal -->
-            <div id="manualModal" class="modal" style="display: none;">
+            <div id="manualModal" class="modal hidden">
                 <form class="modal-content manual-modal-content" id="manualForm">
                     <div class="manual-modal-split">
                         <div class="manual-modal-form-section">
                             <div class="prompt-options-container">
                                 <!-- Spinner overlay for initializing state -->
-                                <div class="spinner-overlay" style="display: none;">
+                                <div class="spinner-overlay hidden">
                                     <i class="fas fa-spinner fa-spin"></i>
                                 </div>
                                 <div class="form-section form-section-scroll">
@@ -256,17 +289,17 @@
                                                         <div class="prompt-textarea-background"></div>
                                                         <textarea id="manualPrompt" class="form-control prompt-textarea textarea-inset" placeholder="Enter your prompt..." required  autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
                                                         <div class="prompt-status-icons">
-                                                            <div class="prompt-status-icon uc-enabled" title="UC preset enabled" style="display: none;">
+                                                            <div class="prompt-status-icon uc-enabled hidden" title="UC preset enabled">
                                                                 <div class="uc-level-dots">
                                                                     <div class="uc-level-dot"></div>
                                                                     <div class="uc-level-dot"></div>
                                                                     <div class="uc-level-dot"></div>
                                                                 </div>
                                                             </div>
-                                                            <div class="prompt-status-icon quality-enabled" title="Quality preset enabled" style="display: none;">
+                                                            <div class="prompt-status-icon quality-enabled hidden" title="Quality preset enabled">
                                                                 <i class="fa-crown fas"></i>
                                                             </div>
-                                                            <div class="prompt-status-icon dataset-enabled" title="Datasets enabled" style="display: none;">
+                                                            <div class="prompt-status-icon dataset-enabled hidden" title="Datasets enabled">
                                                                 <i class="nai-sakura"></i>
                                                             </div>
                                                         </div>
@@ -291,7 +324,7 @@
                                                                             <i id="datasetIcon" class="nai-sakura"></i>
                                                                             <span id="datasetSelected" class="badge hidden"></span>
                                                                         </button>
-                                                                        <div id="datasetDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                                                        <div id="datasetDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                                                     </div>
                                                                     <!-- Sub Toggles Dropdown -->
                                                                     <div id="subTogglesDropdown" class="custom-dropdown dropright dark">
@@ -299,7 +332,7 @@
                                                                         <button type="button" id="subTogglesBtn" class="btn-secondary btn-small indicator" data-state="off" title="Dataset Adjustment Toggles">
                                                                             <i class="fas fa-diamond-half-stroke"></i>
                                                                         </button>
-                                                                        <div id="subTogglesDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                                                        <div id="subTogglesDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                                                     </div>
                                                                     <!-- Quality Toggle -->
                                                                     <button type="button" id="qualityToggleBtn" class="btn-small btn-secondary indicator" data-state="off" title="Enable Quality Enhancements">
@@ -311,14 +344,14 @@
                                                                     <button type="button" id="randomPromptToggleBtn" class="btn-secondary btn-small indicator" data-state="off" title="Random Prompt">
                                                                         <i class="nai-dice"></i>
                                                                     </button>
-                                                                    <div id="randomPromptDivider" class="divider" style="display: none;"></div>
-                                                                    <button type="button" id="randomPromptRefreshBtn" class="btn-secondary btn-small" title="Generate new random prompt" style="display: none;">
+                                                                    <div id="randomPromptDivider" class="divider hidden"></div>
+                                                                    <button type="button" id="randomPromptRefreshBtn" class="btn-secondary btn-small hidden" title="Generate new random prompt" class="hidden">
                                                                         <i class="nai-reload"></i>
                                                                     </button>
-                                                                    <button type="button" id="randomPromptNsfwBtn" class="btn-secondary btn-small indicator" data-state="off" title="Toggle NSFW content" style="display: none;">
+                                                                    <button type="button" id="randomPromptNsfwBtn" class="btn-secondary btn-small indicator hidden" data-state="off" title="Toggle NSFW content">
                                                                         <i class="fas fa-ban"></i>
                                                                     </button>
-                                                                    <button type="button" id="randomPromptTransferBtn" class="btn-secondary btn-small" title="Transfer random prompt to main prompt and exit random mode" style="display: none;">
+                                                                    <button type="button" id="randomPromptTransferBtn" class="btn-secondary btn-small hidden" title="Transfer random prompt to main prompt and exit random mode" class="hidden">
                                                                         <i class="fas fa-floppy-disk-circle-arrow-right"></i>
                                                                     </button>
                                                                     <div class="divider"></div>
@@ -348,17 +381,17 @@
                                                         <div class="prompt-textarea-background"></div>
                                                         <textarea id="manualUc" class="form-control prompt-textarea textarea-inset" rows="3" placeholder="Enter undesired content..."  autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
                                                         <div class="prompt-status-icons">
-                                                            <div class="prompt-status-icon uc-enabled" title="UC preset enabled" style="display: none;">
+                                                            <div class="prompt-status-icon uc-enabled hidden" title="UC preset enabled">
                                                                 <div class="uc-level-dots">
                                                                     <div class="uc-level-dot"></div>
                                                                     <div class="uc-level-dot"></div>
                                                                     <div class="uc-level-dot"></div>
                                                                 </div>
                                                             </div>
-                                                            <div class="prompt-status-icon quality-enabled" title="Quality preset enabled" style="display: none;">
+                                                            <div class="prompt-status-icon quality-enabled hidden" title="Quality preset enabled">
                                                                 <i class="fa-crown fas"></i>
                                                             </div>
-                                                            <div class="prompt-status-icon dataset-enabled" title="Datasets enabled" style="display: none;">
+                                                            <div class="prompt-status-icon dataset-enabled hidden" title="Datasets enabled">
                                                                 <i class="nai-sakura"></i>
                                                             </div>
                                                         </div>
@@ -386,7 +419,7 @@
                                                                                 <div class="uc-box" data-level="3"></div>
                                                                             </div>
                                                                         </button>
-                                                                        <div id="ucPresetsDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                                                        <div id="ucPresetsDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                                                     </div>
                                                                     <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle Autofill">
                                                                         <i class="fas fa-lightbulb"></i>
@@ -426,7 +459,7 @@
                                                 <button type="button" id="manualTextReplacementManagerBtn" class="btn-secondary" title="Manage Text Expanders">
                                                     <i class="fa-light fa-language"></i>
                                                 </button>
-                                                <button type="button" id="autoPositionBtn" class="btn-secondary indicator" data-state="on" title="Auto Position" style="display: none;">
+                                                <button type="button" id="autoPositionBtn" class="btn-secondary indicator hidden" data-state="on" title="Auto Position">
                                                     <i class="fas fa-arrows-up-down-left-right"></i> Auto
                                                 </button>
                                                 <button type="button" id="vibeNormalizeToggle" class="btn-secondary indicator" data-state="on" title="Normalize vibe strengths">
@@ -441,17 +474,17 @@
                                                         <i class="nai-img2img"></i>
                                                         <span id="transformationSelected">Reference</span>
                                                     </button>
-                                                    <div id="transformationDropdownMenu" class="custom-dropdown-menu" style="display: none;">
+                                                    <div id="transformationDropdownMenu" class="custom-dropdown-menu hidden">
                                                         <div class="custom-dropdown-option" data-value="browse">
                                                             <i class="fas fa-folder-image"></i> Browse
                                                         </div>
                                                         <div class="custom-dropdown-option" data-value="upload">
                                                             <i class="nai-import"></i> Upload
                                                         </div>
-                                                        <div class="custom-dropdown-option" data-value="reroll" style="display: none;">
+                                                        <div class="custom-dropdown-option" data-value="reroll" class="hidden">
                                                             <i class="nai-img2img"></i> Previous
                                                         </div>
-                                                        <div class="custom-dropdown-option" data-value="variation" style="display: none;">
+                                                        <div class="custom-dropdown-option" data-value="variation" class="hidden">
                                                             <i class="nai-img2img"></i> Current
                                                         </div>
                                                     </div>
@@ -470,7 +503,7 @@
                                         <div id="transformationSection" class="transformation-image-container">
                                             <div class="variation-image-container">
                                                 <div class="overlay-buttons-container-bottom">
-                                                    <button type="button" id="previewBaseImageBtn" class="btn-secondary blur" style="display: none;">
+                                                    <button type="button" id="previewBaseImageBtn" class="btn-secondary blur hidden">
                                                         <i class="fas fa-eye"></i>
                                                     </button>
                                                 </div>
@@ -521,7 +554,7 @@
                                                             <span id="imageBiasSelected">Center</span>
                                                         </div>
                                                     </button>
-                                                    <div id="imageBiasDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                                    <div id="imageBiasDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                                 </div>
                                                 <!-- Advanced Bias Adjustment Button -->
                                                 <button type="button" id="imageBiasAdjustBtn" class="btn-secondary" title="Advanced Bias Adjustment">
@@ -547,9 +580,7 @@
                             <div class="manual-preview-container" id="manualPreviewContainer">
                                 <!-- Animation Layers -->
                                 <!-- Stars Layer -->
-                                <div id="previewStars" class="preview-stars" style="display: none;">
-                                    <div class="preview-star"></div>
-                                    <div class="preview-star"></div>
+                                <div id="previewStars" class="preview-stars hidden">
                                     <div class="preview-star"></div>
                                     <div class="preview-star"></div>
                                     <div class="preview-star"></div>
@@ -588,7 +619,7 @@
                                 </div>
 
                                 <!-- Background Lines Layer (behind content) -->
-                                <div id="previewBackgroundLines" class="preview-lines-layer preview-lines-background" style="display: none;">
+                                <div id="previewBackgroundLines" class="preview-lines-layer preview-lines-background hidden">
                                     <div class="preview-line"></div>
                                     <div class="preview-line"></div>
                                     <div class="preview-line"></div>
@@ -626,10 +657,10 @@
                                 <div class="manual-preview-content">
                                     <!-- Navigation buttons -->
                                     <div class="manual-preview-image-container">
-                                        <img id="manualPreviewOriginalImage" src="" alt="Original Image" class="manual-preview-original-image" style="display: none;">
+                                        <img id="manualPreviewOriginalImage" src="" alt="Original Image" class="manual-preview-original-image hidden">
                                         <div class="manual-preview-image-container-inner">
                                             <div id="manualBlockContainer" class="block-container"></div>
-                                            <img id="manualPreviewImage" src="" alt="Generated Image" style="display: none;">
+                                            <img id="manualPreviewImage" src="" alt="Generated Image" class="hidden">
                                         </div>
                                         <div id="manualPreviewPlaceholder" class="manual-preview-placeholder">
                                             <i class="mdi mdi-draw-pen"></i>
@@ -637,55 +668,59 @@
                                         </div>
                                     </div>
                                     <div class="manual-preview-controls">
-                                        <button type="button" id="manualPreviewDownloadBtn" class="btn-secondary round-button blur" style="display: none;">
-                                            <i class="fas fa-download"></i>
-                                        </button>
-                                        <button type="button" id="manualPreviewPinBtn" class="btn-secondary round-button blur" style="display: none;">
-                                            <i class="fa-regular fa-star"></i>
-                                        </button>
-                                        <button type="button" id="manualPreviewUpscaleBtn" class="btn-secondary round-button blur" style="display: none;">
-                                            <i class="nai-upscale"></i>
-                                        </button>
-                                        <button type="button" id="manualPreviewScrapBtn" class="btn-secondary round-button blur" style="display: none;">
-                                            <i class="mdi mdi-1-5 mdi-archive"></i>
-                                        </button>
-                                        <button type="button" id="manualPreviewDeleteBtn" class="btn-danger round-button blur" style="display: none;">
-                                            <i class="nai-trash"></i>
-                                        </button>
+                                        <div class="manual-preview-controls-left">
+                                            <button type="button" id="manualPreviewPrevBtn" class="btn-secondary round-button blur" disabled>
+                                                <i class="nai-directional-arrow-left"></i>
+                                            </button>
+                                            <button type="button" id="manualPreviewNextBtn" class="btn-secondary round-button blur" disabled>
+                                                <i class="nai-directional-arrow-right"></i>
+                                            </button>
+                                        </div>
+                                        <div class="manual-preview-controls-center">
+                                            <button type="button" id="manualPreviewDownloadBtn" class="btn-secondary round-button blur hidden">
+                                                <i class="fas fa-download"></i>
+                                            </button>
+                                            <button type="button" id="manualPreviewCopyBtn" class="btn-secondary round-button blur hidden">
+                                                <i class="nai-clipboard"></i>
+                                            </button>
+                                            <button type="button" id="manualPreviewPinBtn" class="btn-secondary round-button blur hidden">
+                                                <i class="fa-regular fa-star"></i>
+                                            </button>
+                                            <button type="button" id="manualPreviewUpscaleBtn" class="btn-secondary round-button blur hidden">
+                                                <i class="nai-upscale"></i>
+                                            </button>
+                                            <button type="button" id="manualPreviewScrapBtn" class="btn-secondary round-button blur hidden">
+                                                <i class="mdi mdi-1-5 mdi-archive"></i>
+                                            </button>
+                                            <button type="button" id="manualPreviewDeleteBtn" class="btn-danger round-button blur hidden">
+                                                <i class="nai-trash"></i>
+                                            </button>
+                                        </div>
+                                        <div class="manual-preview-controls-right">
+                                            <div id="manualPreviewSeedBtn" class="btn-secondary round-button blur">
+                                                <i class="nai-seed"></i>
+                                                <span id="manualPreviewSeedNumber">---</span>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div class="manual-preview-controls-top-left">
-                                        <button type="button" id="manualPreviewLoadBtn" class="btn-secondary round-button wide-button blur" style="display: none;">
+                                        <button type="button" id="manualPreviewLoadBtn" class="btn-secondary round-button wide-button blur hidden">
                                             <i class="fas fa-arrow-left"></i>
                                             <span>Modify</span>
                                         </button>
-                                        <button type="button" id="manualPreviewVariationBtn" class="btn-secondary round-button blur" style="display: none;">
+                                        <button type="button" id="manualPreviewVariationBtn" class="btn-secondary round-button blur hidden">
                                             <i class="nai-inpaint"></i>
                                         </button>
-                                    </div>  
+                                    </div>
                                     <div class="manual-preview-controls-top-right">
                                         <button type="button" id="manualPreviewCloseBtn" class="btn-secondary round-button blur">
                                             <i class="nai-thin-cross"></i>
                                         </button>
                                     </div>
-                                    <div class="manual-preview-controls-left">
-                                        <button type="button" id="manualPreviewPrevBtn" class="btn-secondary round-button blur" disabled>
-                                            <i class="nai-directional-arrow-left"></i>
-                                        </button>
-                                        <button type="button" id="manualPreviewNextBtn" class="btn-secondary round-button blur" disabled>
-                                            <i class="nai-directional-arrow-right"></i>
-                                        </button>
-                                    </div>
-                                    <div class="manual-preview-controls-right">
-                                        <div id="manualPreviewSeedBtn" class="btn-secondary round-button blur">
-                                            <i class="nai-seed"></i>
-                                            <span id="manualPreviewSeedNumber">---</span>
-                                        </div>
-                                    </div>
                                 </div>
 
                                 <!-- Foreground Lines Layer (above content) -->
-                                <div id="previewForegroundLines" class="preview-lines-layer preview-lines-foreground" style="display: none;">
-                                    <div class="preview-line"></div>
+                                <div id="previewForegroundLines" class="preview-lines-layer preview-lines-foreground hidden">
                                     <div class="preview-line"></div>
                                     <div class="preview-line"></div>
                                     <div class="preview-line"></div>
@@ -726,7 +761,7 @@
                                         <div id="cacheGalleryContainer" class="cache-gallery">
                                             <!-- Reference images will be loaded here -->
                                         </div>
-                                        <div class="cache-browser-loading" id="cacheBrowserLoadingContainer" style="display: none;">
+                                        <div class="cache-browser-loading hidden" id="cacheBrowserLoadingContainer">
                                             <img class="loading" src="/static_images/workin.gif"></img>
                                             <p class="loading">Loading references...</p>
                                         </div>
@@ -744,7 +779,7 @@
                                         <button type="button" id="manualModelDropdownBtn" class="custom-dropdown-btn hover-show colored">
                                             <span id="manualModelSelected">Select model...</span>
                                         </button>
-                                        <div id="manualModelDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                        <div id="manualModelDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                     </div>
                                     <input type="hidden" id="manualModel" value="">
                                 </div>
@@ -779,10 +814,10 @@
                                             <button type="button" id="manualResolutionDropdownBtn" class="custom-dropdown-btn hover-show colored">
                                                 <span id="manualResolutionSelected">Select resolution...</span>
                                             </button>
-                                            <div id="manualResolutionDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                            <div id="manualResolutionDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                         </div>
                                         <input type="hidden" id="manualResolution" value="">
-                                        <div id="manualCustomResolution" class="custom-resolution-inputs" style="display: none;">
+                                        <div id="manualCustomResolution" class="custom-resolution-inputs hidden">
                                             <button type="button" id="manualCustomResolutionBtn" class="btn-secondary toggle-btn" data-state="off" title="Custom Resolution">
                                                 <i class="fas fa-ruler-combined"></i>
                                             </button>
@@ -820,7 +855,7 @@
                                         <button type="button" id="manualSamplerDropdownBtn" class="custom-dropdown-btn hover-show colored">
                                             <span id="manualSamplerSelected">Select sampler...</span>
                                         </button>
-                                        <div id="manualSamplerDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                        <div id="manualSamplerDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                     </div>
                                     <input type="hidden" id="manualSampler" value="">
                                 </div>
@@ -831,7 +866,7 @@
                                         <button type="button" id="manualNoiseSchedulerDropdownBtn" class="custom-dropdown-btn hover-show colored">
                                             <span id="manualNoiseSchedulerSelected">Select noise scheduler...</span>
                                         </button>
-                                        <div id="manualNoiseSchedulerDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                        <div id="manualNoiseSchedulerDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                     </div>
                                     <input type="hidden" id="manualNoiseScheduler" value="">
                                 </div>
@@ -847,7 +882,7 @@
                                         <button type="button" id="clearSeedBtn" class="btn-secondary" title="Clear seed">
                                             <i class="nai-thin-cross"></i>
                                         </button>
-                                        <button type="button" id="sproutSeedBtn" class="btn-secondary indicator" data-state="on" title="Use Random Seed" style="display: none;">
+                                        <button type="button" id="sproutSeedBtn" class="btn-secondary indicator hidden" data-state="on" title="Use Random Seed">
                                             <i class="fas fa-dice"></i>
                                         </button>
                                     </div>
@@ -877,7 +912,7 @@
 
                         <div class="form-actions btn-group">
                             <div class="footer-left">
-                                <div id="manualPriceDisplay" class="inset-badge price-display" style="display: none;">
+                                <div id="manualPriceDisplay" class="inset-badge price-display hidden">
                                     <i class="nai-anla"></i>
                                     <span id="manualPriceList" class="price-list">-</span>
                                     <span id="manualBalanceDisplay" class="price-list balanceAmount">-</span>
@@ -911,7 +946,7 @@
             <div class="gallery-container">
                 
                 <!-- Bulk Actions Bar -->
-                <div id="bulkActionsBar" class="bulk-actions-bar blur" style="display: none;">
+                <div id="bulkActionsBar" class="bulk-actions-bar blur hidden">
                     <div class="bulk-actions-info">
                         <span id="selectedCount">0</span> images selected
                     </div>
@@ -925,10 +960,10 @@
                         <button type="button" id="bulkMoveToScrapsBtn" class="btn-secondary">
                             <i class="mdi mdi-1-5 mdi-archive"></i>
                         </button>
-                        <button type="button" id="bulkPinBtn" class="btn-secondary" style="display: none;">
+                        <button type="button" id="bulkPinBtn" class="btn-secondary hidden">
                             <i class="fa-solid fa-star"></i>
                         </button>
-                        <button type="button" id="bulkUnpinBtn" class="btn-secondary" style="display: none;">
+                        <button type="button" id="bulkUnpinBtn" class="btn-secondary hidden">
                             <i class="fa-regular fa-star"></i>
                         </button>
                         <button type="button" id="bulkChangePresetBtn" class="btn-secondary">
@@ -946,12 +981,16 @@
                     </div>
                 </div>
                 
+                <div class="gallery-title-bar">
+                    <span class="gallery-main-logo-text logo-text">Dreamscape</span>
+                </div>
+                
                 <div id="gallery" class="gallery">
                     <!-- Images will be loaded here -->
                 </div>
                 
                 <!-- Loading indicator for infinite scroll -->
-                <div id="infiniteScrollLoading" class="infinite-scroll-loading" style="display: none;">
+                <div id="infiniteScrollLoading" class="infinite-scroll-loading hidden">
                     <img class="loading" src="/static_images/azuspin.gif"></img>
                     <p class="loading">Loading more images...</p>
                 </div>
@@ -967,7 +1006,7 @@
         </div>
 
         <!-- Position Dialog Modal -->
-        <div id="positionDialog" class="modal" style="display: none;">
+        <div id="positionDialog" class="modal hidden">
             <div class="modal-content position-dialog-content center">
                 <div class="position-dialog-body">
                     <div class="position-grid">
@@ -1016,7 +1055,7 @@
         </div>
 
         <!-- Mask Editor Dialog Modal -->
-        <div id="maskEditorDialog" class="modal" style="display: none;">
+        <div id="maskEditorDialog" class="modal hidden">
             <div class="modal-content mask-editor-content">
                 <div class="mask-editor-body">
                     <div class="mask-editor-tools">
@@ -1043,7 +1082,7 @@
                     <div class="mask-editor-canvas-container">
                         <div class="mask-editor-canvas-inner" id="maskEditorCanvasInner">
                             <canvas id="maskCanvas" width="64" height="64"></canvas>
-                            <canvas id="maskBrushPreviewCanvas" width="64" height="64" style="position:absolute; left:0; top:0; pointer-events:none;"></canvas>
+                            <canvas id="maskBrushPreviewCanvas" width="64" height="64"></canvas>
                         </div>
                     </div>
                     <div class="mask-editor-actions">
@@ -1056,7 +1095,7 @@
         </div>
 
         <!-- Image Bias Adjustment Modal -->
-        <div id="imageBiasAdjustmentModal" class="modal" style="display: none;">
+        <div id="imageBiasAdjustmentModal" class="modal hidden">
             <div class="modal-content image-bias-adjustment-content">
                 <div class="image-bias-adjustment-body">
                     <!-- Bias Controls Section -->
@@ -1086,7 +1125,7 @@
                                         <button type="button" class="btn-secondary" id="imageBiasPresetBtn">
                                             <span class="mask-bias-label">Preset</span>
                                         </button>
-                                        <div class="custom-dropdown-menu" id="imageBiasPresetMenu" style="display: none;"></div>
+                                        <div class="custom-dropdown-menu hidden" id="imageBiasPresetMenu"></div>
                                     </div>
                                 </div>
                             </div>
@@ -1113,7 +1152,7 @@
                             <div id="biasAdjustmentImageWrapper" class="bias-adjustment-image-wrapper">
                                 <img id="biasAdjustmentImage" src="" alt="Base Image" class="bias-adjustment-image">
                             </div>
-                            <img id="clientPreviewImage" src="" alt="Client Preview" class="client-preview-image" style="display: none;">
+                            <img id="clientPreviewImage" src="" alt="Client Preview" class="client-preview-image hidden">
                         </div>
                     </div>
                 </div>
@@ -1125,7 +1164,7 @@
         </div>
 
         <!-- Image Bias Adjustment Confirmation Dialog -->
-        <div id="biasAdjustmentConfirmDialog" class="modal alert-theme">
+        <div id="biasAdjustmentConfirmDialog" class="modal hidden alert-theme">
             <div class="modal-content bias-confirm-content center">
                 <div class="bias-confirm-header">
                     <h3>Confirm Bias Adjustment</h3>
@@ -1156,7 +1195,7 @@
         </div>
 
         <!-- Character Data Confirmation Modal -->
-        <div id="characterDataConfirmModal" class="modal alert-theme">
+        <div id="characterDataConfirmModal" class="modal hidden alert-theme">
             <div class="modal-content center">
                 <div class="modal-header">
                     <h3>Character Data Detected</h3>
@@ -1180,7 +1219,7 @@
         </div>
 
         <!-- Base Image Change Alert Modal -->
-        <div id="baseImageChangeAlertModal" class="modal alert-theme">
+        <div id="baseImageChangeAlertModal" class="modal hidden alert-theme">
             <div class="modal-content center">
                 <div class="modal-header">
                     <h3>Replace Reference</h3>
@@ -1202,7 +1241,7 @@
         </div>
 
         <!-- Image Bias Mask Alert Modal -->
-        <div id="imageBiasMaskAlertModal" class="modal alert-theme">
+        <div id="imageBiasMaskAlertModal" class="modal hidden alert-theme">
             <div class="modal-content center">
                 <div class="modal-header">
                     <h3>Mask Detected</h3>
@@ -1225,7 +1264,7 @@
             </div>
         </div>
         <!-- Metadata Dialog (Mobile Only) -->
-        <div id="metadataDialog" class="metadata-dialog">
+        <div id="metadataDialog" class="metadata-dialog hidden">
             <div class="metadata-dialog-content">
                 <div class="metadata-dialog-header">
                     <h3>Image Metadata</h3>
@@ -1293,7 +1332,7 @@
                         </div>
                         
                         <!-- Expandable prompt/UC sections -->
-                        <div id="dialogPromptExpanded" class="metadata-expanded" style="display: none;">
+                        <div id="dialogPromptExpanded" class="metadata-expanded hidden">
                             <div class="metadata-expanded-header">
                                 <span>Prompt</span>
                                 <button type="button" class="close-expanded">&times;</button>
@@ -1301,7 +1340,7 @@
                             <div id="dialogPromptContent" class="metadata-expanded-content"></div>
                         </div>
                         
-                        <div id="dialogUcExpanded" class="metadata-expanded" style="display: none;">
+                        <div id="dialogUcExpanded" class="metadata-expanded hidden">
                             <div class="metadata-expanded-header">
                                 <span>Undesired Content</span>
                                 <button type="button" class="close-expanded">&times;</button>
@@ -1314,10 +1353,10 @@
         </div>
 
         <!-- Workspace Management Modal -->
-        <div id="workspaceManageModal" class="modal" style="display: none;">
+        <div id="workspaceManageModal" class="modal hidden">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h3>Settings</h3>
+                    <h3>Workspaces</h3>
                     <button type="button" id="closeWorkspaceManageBtn" class="btn-secondary btn-small" aria-label="Close"><i class="nai-cross"></i></button>
                 </div>
                 <div class="modal-body">
@@ -1337,7 +1376,7 @@
         </div>
 
         <!-- Text Replacement Manager Modal -->
-        <div id="textReplacementManagerModal" class="modal" style="display: none;">
+        <div id="textReplacementManagerModal" class="modal hidden">
             <div class="modal-content text-replacement-manager-content">
                 <div class="modal-header">
                     <h3>Text Expanders</h3>
@@ -1373,7 +1412,7 @@
         </div>
 
         <!-- Create Text Replacement Modal -->
-        <div id="createTextReplacementModal" class="modal" style="display: none;">
+        <div id="createTextReplacementModal" class="modal hidden">
             <div class="modal-content create-text-replacement-content">
                 <div class="modal-header">
                     <h3>Create New Text Replacement</h3>
@@ -1414,10 +1453,10 @@
         </div>
 
         <!-- Preset Manager Modal -->
-        <div id="presetManagerModal" class="modal" style="display: none;">
+        <div id="presetManagerModal" class="modal hidden">
             <div class="modal-content text-replacement-manager-content">
                 <div class="modal-header">
-                    <h3>Preset Management</h3>
+                    <h3>Spellbook</h3>
                     <button type="button" id="closePresetManagerBtn" class="btn-secondary btn-small" aria-label="Close"><i class="nai-cross"></i></button>
                 </div>
                 <div class="modal-body">
@@ -1446,7 +1485,7 @@
         </div>
 
         <!-- Update Preset Modal -->
-        <div id="updatePresetModal" class="modal" style="display: none;">
+        <div id="updatePresetModal" class="modal hidden">
             <div class="modal-content">
                 <div class="modal-header">
                     <h3 id="updatePresetTitle">Update Preset</h3>
@@ -1468,7 +1507,7 @@
                                         <button type="button" id="updatePresetResolutionDropdownBtn" class="btn-secondary custom-dropdown-btn hover-show colored">
                                             <span id="updatePresetResolutionSelected">Select resolution...</span>
                                         </button>
-                                        <div id="updatePresetResolutionDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                        <div id="updatePresetResolutionDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                     </div>
                                     <button type="button" id="updatePresetScaleInput" class="btn-secondary btn-small indicator" data-state="off">
                                         <i class="nai-upscale"></i>
@@ -1484,7 +1523,7 @@
                                             <span id="updatePresetWorkspaceSelected">Default</span>
                                         </div>
                                     </button>
-                                    <div id="updatePresetWorkspaceDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                    <div id="updatePresetWorkspaceDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                 </div>
                             </div>
                         </div>
@@ -1503,7 +1542,7 @@
         </div>
         
         <!-- Add/Rename Workspace Modal -->
-        <div id="workspaceEditModal" class="modal" style="display: none;">
+        <div id="workspaceEditModal" class="modal hidden">
             <div class="modal-content">
                 <div class="modal-header">
                     <h3 id="workspaceEditTitle">Add Workspace</h3>
@@ -1534,7 +1573,7 @@
                                     <button type="button" id="workspacePrimaryFontDropdownBtn" class="btn-secondary custom-dropdown-btn hover-show">
                                         <span id="workspacePrimaryFontSelected">Default</span>
                                     </button>
-                                    <div id="workspacePrimaryFontDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                    <div id="workspacePrimaryFontDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                 </div>
                             </div>
                             <div class="form-group">
@@ -1543,7 +1582,7 @@
                                     <button type="button" id="workspaceTextareaFontDropdownBtn" class="btn-secondary custom-dropdown-btn hover-show">
                                         <span id="workspaceTextareaFontSelected">Default</span>
                                     </button>
-                                    <div id="workspaceTextareaFontDropdownMenu" class="custom-dropdown-menu" style="display: none;"></div>
+                                    <div id="workspaceTextareaFontDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                 </div>
                             </div>
                         </div>
@@ -1562,7 +1601,7 @@
         </div>
 
         <!-- Workspace Dump Modal -->
-        <div id="workspaceDumpModal" class="modal" style="display: none;">
+        <div id="workspaceDumpModal" class="modal hidden">
             <div class="modal-content">
                 <div class="modal-header">
                     <h3>Dump Workspace</h3>
@@ -1588,7 +1627,7 @@
         </div>
 
         <!-- Reference Manager Modal -->
-        <div id="cacheManagerModal" class="modal" style="display: none;">
+        <div id="cacheManagerModal" class="modal hidden">
             <div class="modal-content cache-manager-content">
                 <div class="modal-header">
                     <h3>Reference Manager</h3>
@@ -1604,9 +1643,7 @@
                                         <i class="fas fa-folder-open"></i>
                                         <span id="cacheManagerWorkspaceSelected">Default</span>
                                     </button>
-                                    <div id="cacheManagerWorkspaceDropdownMenu" class="custom-dropdown-menu" style="display: none;">
-                                        <!-- Workspace options will be populated here -->
-                                    </div>
+                                    <div id="cacheManagerWorkspaceDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                 </div>
                             </div>
                             <div class="cache-manager-actions">
@@ -1624,7 +1661,7 @@
                             <div id="cacheManagerGallery" class="cache-manager-gallery">
                                 <!-- Reference images will be loaded here -->
                             </div>
-                            <div class="cache-manager-loading" id="cacheManagerLoading" style="display: none;">
+                            <div class="cache-manager-loading hidden" id="cacheManagerLoading">
                                 <img class="loading" src="/static_images/azuspin.gif"></img>
                                 <p class="loading">Loading cache images...</p>
                             </div>
@@ -1635,7 +1672,7 @@
         </div>
 
         <!-- Unified Upload Modal -->
-        <div id="unifiedUploadModal" class="modal" style="display: none;">
+        <div id="unifiedUploadModal" class="modal hidden">
             <div class="modal-content gallery-move-modal-content">
                 <div class="gallery-move-left-panel">
                     <img id="unifiedUploadBackgroundImage" src="/static_images/background.jpg" alt="Upload image" class="gallery-move-background-image">
@@ -1645,7 +1682,7 @@
                             <div id="unifiedUploadOverlayContent">
                                 <p><strong><span id="unifiedUploadModeDisplay">Upload Reference</span></strong></p>
                             </div>
-                            <div id="unifiedUploadFileInfo" style="display: none;">
+                            <div id="unifiedUploadFileInfo" class="hidden">
                                 <!-- File/URL information will be populated here -->
                             </div>
                         </div>
@@ -1700,14 +1737,14 @@
                         </div>
 
                         <!-- URL Preview Section (Hidden by default) -->
-                        <div id="unifiedUploadUrlPreview" class="form-group" style="display: none;">
+                        <div id="unifiedUploadUrlPreview" class="form-group hidden">
                             <div id="unifiedUploadUrlPreviewContent">
                                 <!-- URL preview content will be populated here -->
                             </div>
                         </div>
 
                         <!-- Vibe Bundle Preview Section (Hidden by default) -->
-                        <div id="unifiedUploadVibeBundlePreview" class="form-group" style="display: none;">
+                        <div id="unifiedUploadVibeBundlePreview" class="form-group hidden">
                             <div class="vibe-bundle-preview-container">
                                 <div id="unifiedUploadVibeBundleList" class="vibe-bundle-list">
                                     <!-- Vibe bundle items will be populated here -->
@@ -1716,9 +1753,9 @@
                         </div>
 
                         <!-- Blueprint Metadata Preview Section (Hidden by default) -->
-                        <div id="unifiedUploadBlueprintPreview" class="form-group" style="display: none;">
+                        <div id="unifiedUploadBlueprintPreview" class="form-group hidden">
                             <div class="blueprint-preview-container">
-                                <div id="unifiedUploadWarnings" class="form-group" style="display: none;">
+                                <div id="unifiedUploadWarnings" class="form-group hidden">
                                     <div class="warning-container">
                                         <i class="fas fa-exclamation-triangle"></i>
                                         <div class="warning-message"></div>
@@ -1730,7 +1767,7 @@
                             </div>
                         </div>
                         <!-- Vibe Encoding Controls (Hidden by default) -->
-                        <div id="unifiedUploadVibeControls" class="form-row" style="display: none;">
+                        <div id="unifiedUploadVibeControls" class="form-row hidden">
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="unifiedUploadModelSelect">Model</label>
@@ -1739,9 +1776,7 @@
                                             <i class="fas fa-cog"></i>
                                             <span id="unifiedUploadModelSelected">V4.5</span>
                                         </button>
-                                        <div id="unifiedUploadModelDropdownMenu" class="custom-dropdown-menu" style="display: none;">
-                                            <!-- V4+ models will be populated here -->
-                                        </div>
+                                        <div id="unifiedUploadModelDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                     </div>
                                 </div>
                                 <div class="form-group">
@@ -1757,12 +1792,12 @@
                     </div>
                     <div class="gallery-move-actions">
                         <!-- Site Domain Display (Hidden by default) -->
-                        <div id="unifiedUploadSiteDomain" class="site-domain-display" style="display: none;">
+                        <div id="unifiedUploadSiteDomain" class="site-domain-display hidden">
                             <span id="unifiedUploadSiteDomainText"></span>
                         </div>
                         
                         <!-- Navigation Controls -->
-                        <div id="unifiedUploadNavigation" class="navigation-controls" style="display: none;">
+                        <div id="unifiedUploadNavigation" class="navigation-controls hidden">
                             <div class="navigation-controls">
                                 <button type="button" id="unifiedUploadPrevBtn" class="btn-secondary">
                                     <i class="fas fa-chevron-left"></i>
@@ -1776,7 +1811,7 @@
                             </div>
                         </div>
                         <button type="button" id="unifiedUploadCancelBtn" class="btn-secondary">Cancel</button>
-                        <button type="button" id="unifiedUploadOpenInEditorBtn" class="btn-secondary" style="display: none;" title="Open in Editor">
+                        <button type="button" id="unifiedUploadOpenInEditorBtn" class="btn-secondary hidden" title="Open in Editor">
                             <i class="fas fa-edit"></i> Edit
                         </button>
                         <button type="button" id="unifiedUploadConfirmBtn" class="btn-primary" disabled>
@@ -1788,7 +1823,7 @@
         </div>
 
         <!-- Reference Manager Move Modal -->
-        <div id="cacheManagerMoveModal" class="modal" style="display: none;">
+        <div id="cacheManagerMoveModal" class="modal hidden">
             <div class="modal-content gallery-move-modal-content">
                 <div class="gallery-move-left-panel">
                     <img id="cacheManagerMoveBackgroundImage" src="/static_images/background.jpg" alt="Reference image" class="gallery-move-background-image">
@@ -1818,9 +1853,7 @@
                                 <button class="custom-dropdown-btn" id="cacheManagerMoveWorkspaceDropdownBtn" type="button">
                                     <span id="cacheManagerMoveWorkspaceSelected">Select workspace...</span>
                                 </button>
-                                <div class="custom-dropdown-menu" id="cacheManagerMoveWorkspaceDropdownMenu" style="display: none;">
-                                    <!-- Workspace options will be populated here -->
-                                </div>
+                                <div class="custom-dropdown-menu hidden" id="cacheManagerMoveWorkspaceDropdownMenu"></div>
                             </div>
                         </div>
                     </div>
@@ -1835,7 +1868,7 @@
         </div>
 
         <!-- Combined Vibe Encoding Modal -->
-        <div id="vibeEncodingModal" class="modal" style="display: none;">
+        <div id="vibeEncodingModal" class="modal hidden">
             <div class="modal-content gallery-move-modal-content">
                 <div class="gallery-move-left-panel">
                     <img id="vibeEncodingBackgroundImage" src="/static_images/background.jpg" alt="Vibe encoding image" class="gallery-move-background-image">
@@ -1859,7 +1892,7 @@
                     </div>
                     <div class="gallery-move-content">
                         <!-- Upload Section -->
-                        <div id="vibeEncodingUploadSection" class="form-section" style="display: none;">
+                        <div id="vibeEncodingUploadSection" class="form-section hidden">
                             <div class="form-group">
                                 <label for="vibeEncodingFileInput">Select Image</label>
                                 <input type="file" id="vibeEncodingFileInput" class="form-control" accept="image/*">
@@ -1868,7 +1901,7 @@
                         </div>
 
                         <!-- Reference Image Section -->
-                        <div id="vibeEncodingReferenceSection" class="form-section" style="display: none;">
+                        <div id="vibeEncodingReferenceSection" class="form-section hidden">
                             <div class="form-group">
                                 <label>Reference Image</label>
                                 <div id="vibeEncodingReferencePreview" class="vibe-manager-reference-preview">
@@ -1887,9 +1920,7 @@
                                             <i class="fas fa-cog"></i>
                                             <span id="vibeEncodingModelSelected">V4.5</span>
                                         </button>
-                                        <div id="vibeEncodingModelDropdownMenu" class="custom-dropdown-menu" style="display: none;">
-                                            <!-- V4+ models will be populated here -->
-                                        </div>
+                                        <div id="vibeEncodingModelDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                     </div>
                                 </div>
                                 <div class="form-group">
@@ -1918,7 +1949,7 @@
         </div>
 
         <!-- Vibe Manager Delete Modal -->
-        <div id="vibeManagerDeleteModal" class="modal" style="display: none;">
+        <div id="vibeManagerDeleteModal" class="modal hidden">
             <div class="modal-content">
                 <div class="modal-header">
                     <h3>Delete Vibe Items</h3>
@@ -1944,7 +1975,7 @@
         </div>
 
         <!-- Vibe Manager Move Modal -->
-        <div id="vibeManagerMoveModal" class="modal" style="display: none;">
+        <div id="vibeManagerMoveModal" class="modal hidden">
             <div class="modal-content">
                 <div class="modal-header">
                     <h3>Move Vibe Encodings</h3>
@@ -1971,7 +2002,7 @@
         </div>
 
         <!-- Bulk Change Preset Modal -->
-        <div id="bulkChangePresetModal" class="modal" style="display: none;">
+        <div id="bulkChangePresetModal" class="modal hidden">
             <div class="modal-content">
                 <div class="modal-header">
                     <h3>Change Preset Name</h3>
@@ -1997,7 +2028,7 @@
         </div>
 
         <!-- PIN Re-authentication Modal -->
-        <div id="pinModal" class="alert-theme modal" style="display: none;">
+        <div id="pinModal" class="alert-theme modal hidden">
             <div class="modal-content center" style="width: auto;">
                 <div class="modal-header">
                     <h2>Authentication</h2>
@@ -2046,12 +2077,8 @@
         </div>
 
         <!-- Logo Options Popup Modal -->
-        <div id="logoOptionsModal" class="modal" style="display: none;">
+        <div id="logoOptionsModal" class="modal hidden">
             <div class="modal-content center" style="width: auto; max-width: 400px;">
-                <div class="modal-header">
-                    <h3></h3>
-                    <button type="button" id="closeLogoOptionsBtn" class="btn-secondary btn-small"><i class="nai-cross"></i></button>
-                </div>
                 <div class="modal-body">
                     <div id="manageButtonGroup" class="logo-options-grid">
                         <button type="button" id="workspaceManageBtn" class="btn-secondary logo-option-btn" title="Manage Workspaces">
@@ -2064,21 +2091,25 @@
                         </button>
                         <button type="button" id="cacheManagerBtn" class="btn-secondary logo-option-btn" title="Reference Manager">
                             <i class="fa-light fa-swatchbook"></i>
-                            <span>Reference</span>
+                            <span>References</span>
                         </button>
                         <button type="button" id="textReplacementManagerBtn" class="btn-secondary logo-option-btn" title="Manage Text Expanders">
                             <i class="fa-light fa-language"></i>
                             <span>Expanders</span>
                         </button>
-                    </div>
-                    <div class="logo-options-row">
                         <button type="button" id="uploadBtn" class="btn-secondary logo-option-btn" title="Upload Images (or paste from clipboard)">
                             <i class="nai-import"></i>
                             <span>Upload</span>
                         </button>
+                    </div>
+                    <div class="logo-options-row">
                         <button type="button" id="toggleBlurBtn" class="btn-secondary logo-option-btn indicator" data-state="off">
                             <i class="fa-light fa-droplet"></i>
                             <span>Liquid Glass</span>
+                        </button>
+                        <button type="button" id="toggleFocusCoverBtn" class="btn-secondary logo-option-btn indicator" data-state="on" title="Toggle Focus Cover">
+                            <i class="fa-light fa-blinds"></i>
+                            <span>Focus Cover</span>
                         </button>
                         <button type="button" id="refreshCacheBtn" class="btn-secondary logo-option-btn">
                             <i class="fa-light fa-sync"></i>
@@ -2093,12 +2124,41 @@
                             <span>Logout</span>
                         </button>
                     </div>
+                    
+                    <!-- Anlas Subscription Section -->
+                    <div class="anlas-subscription-section">
+                        <div class="inset-badge balance-list">
+                            <i class="nai-anla"></i>
+                            <div class="price-list-container">
+                                <div class="price-list-fixed">
+                                    <span class="price-list-label">Fixed</span> 
+                                    <span id="anlasBalanceFixed" class="price-list balanceFixed">-</span>
+                                </div>
+                                <i class="fas fa-circle" style="font-size: 0.35rem; padding-top: 0.15rem;"></i>
+                                <div class="price-list-paid">
+                                    <span class="price-list-label">Paid</span>
+                                    <span id="anlasBalancePaid" class="price-list balancePaid">-</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="inset-badge balance-list">
+                            <i class="nai-opus" style="font-size: 1.15rem; margin: calc(-1.15rem / 2) 0;"></i>
+                            <div class="price-list-container">
+                                <span class="anlas-subscription-value" id="anlasSubscriptionTier">Free</span>
+                                <i class="fas fa-circle hidden" id="anlasSubscriptionDivider" style="font-size: 0.35rem; padding-top: 0.15rem;"></i>
+                                <span class="anlas-subscription-value" id="anlasDaysTillExpire">
+                                    <i class="fas fa-exclamation-triangle anlas-warning-icon hidden"></i>
+                                    <span class="anlas-days-text">Loading...</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Hidden file input for image upload -->
-        <input type="file" id="imageUploadInput" accept="image/*" multiple style="display: none;">
+        <input type="file" id="imageUploadInput" accept="image/*" multiple class="hidden">
 
         <!-- Confetti Container -->
         <div id="confettiContainer"></div>

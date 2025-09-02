@@ -95,9 +95,13 @@ function showConfirmationDialog(message, options = [], event = null) {
 function positionConfirmationDialog(event) {
     if (!confirmationDialog) return;
 
+    // Check if mobile (under 768px wide) or no event was passed
+    const isMobile = window.innerWidth < 768;
+    const shouldCenter = !event || isMobile;
+    
     let x, y;
     
-    if (event) {
+    if (!shouldCenter && event) {
         // Use mouse position or button position
         if (event.clientX && event.clientY) {
             x = event.clientX;
@@ -107,20 +111,24 @@ function positionConfirmationDialog(event) {
             x = rect.left + rect.width / 2;
             y = rect.top + rect.height / 2;
         }
-    } else {
-        // Center on screen if no event
-        x = window.innerWidth / 2;
-        y = window.innerHeight / 2;
     }
-
+    
     // Get dialog dimensions
     const dialogRect = confirmationDialog.getBoundingClientRect();
     const dialogWidth = dialogRect.width || 350; // Default width
     const dialogHeight = dialogRect.height || 120; // Default height
 
-    // Calculate position to center on cursor/button
-    let left = x - dialogWidth / 2;
-    let top = y - dialogHeight / 2;
+    let left, top;
+    
+    if (shouldCenter) {
+        // Center on screen for mobile or when no event
+        left = (window.innerWidth - dialogWidth) / 2;
+        top = (window.innerHeight - dialogHeight) / 2;
+    } else {
+        // Calculate position to center on cursor/button
+        left = x - dialogWidth / 2;
+        top = y - dialogHeight / 2;
+    }
 
     // Ensure dialog doesn't go off screen
     const margin = 20;
@@ -140,8 +148,8 @@ function positionConfirmationDialog(event) {
     }
 
     // Apply position
-    confirmationDialog.style.left = `min(${left}px, calc(100vw - 525px))`;
-    confirmationDialog.style.top = `min(${top}px, calc(100vh - 200px))`;
+    confirmationDialog.style.left = `${left}px`;
+    confirmationDialog.style.top = `${top}px`;
 }
 
 // Hide confirmation dialog

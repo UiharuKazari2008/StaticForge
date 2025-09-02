@@ -316,7 +316,7 @@ function createTextReplacementItem(key, value, isArray, isModified, isNew) {
                 <button type="button" class="btn-small btn-secondary edit-btn" onclick="toggleEditMode('${key}')" title="Edit">
                     <i class="fas fa-edit"></i>
                 </button>
-                <button type="button" class="btn-small btn-primary save-btn" onclick="saveTextReplacementItem('${key}')" title="Save" style="display: none;">
+                <button type="button" class="btn-small btn-primary save-btn hidden" onclick="saveTextReplacementItem('${key}')" title="Save">
                     <i class="fas fa-save"></i>
                 </button>
                 <button type="button" class="btn-small btn-danger delete-btn" onclick="deleteTextReplacement('${key}')" title="Delete">
@@ -413,7 +413,7 @@ function enterEditMode(key) {
     }
     
     if (saveBtn) {
-        saveBtn.style.display = 'inline-block';
+        saveBtn.classList.remove('hidden');
     }
     
     // Focus first input
@@ -782,7 +782,7 @@ function exitEditMode(key, revertChanges = false) {
         }
         
         if (saveBtn) {
-            saveBtn.style.display = 'none';
+            saveBtn.classList.add('hidden');
         }
     }
 }
@@ -892,7 +892,7 @@ function addArrayItem(key) {
             }
             
             if (saveBtn) {
-                saveBtn.style.display = 'inline-block';
+                saveBtn.classList.remove('hidden');
             }
         }
         
@@ -946,7 +946,7 @@ function removeArrayItem(key, index) {
             }
             
             if (saveBtn) {
-                saveBtn.style.display = 'inline-block';
+                saveBtn.classList.remove('hidden');
             }
         }
         
@@ -1036,13 +1036,13 @@ function handleTextReplacementTypeChange() {
     const arrayRow = document.getElementById('arrayValueRow');
     
     if (typeSelect.value === 'array') {
-        stringRow.style.display = 'none';
-        arrayRow.style.display = 'block';
+        stringRow.classList.add('hidden');
+        arrayRow.classList.remove('hidden');
         // Initialize with one empty array item
         initializeCreateArrayItems();
     } else {
-        stringRow.style.display = 'block';
-        arrayRow.style.display = 'none';
+        stringRow.classList.remove('hidden');
+        arrayRow.classList.add('hidden');
     }
 }
 
@@ -1176,7 +1176,11 @@ function updateRemoveButtonVisibility() {
         const removeBtn = item.querySelector('.remove-array-item');
         if (removeBtn) {
             // Hide remove button if there's only one item
-            removeBtn.style.display = items.length === 1 ? 'none' : 'inline-block';
+            if (items.length === 1) {
+                removeBtn.classList.add('hidden');
+            } else {
+                removeBtn.classList.remove('hidden');
+            }
         }
     });
 }

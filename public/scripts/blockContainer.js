@@ -424,7 +424,7 @@ class BlockContainer {
 
     // Disable the entire container
     disableContainer() {
-        this.container.style.display = 'none';
+        this.container.classList.add('hidden');
         this.isActive = false;
     }
 

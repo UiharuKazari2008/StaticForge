@@ -19,7 +19,7 @@ class PinModal {
 
     setupKeyboardListener() {
         document.addEventListener('keydown', (e) => {
-            if (!this.modal.style.display || this.modal.style.display === 'none') return;
+            if (this.modal.classList.contains('hidden')) return;
             if (this.isLoading) return;
             
             if (e.key >= '0' && e.key <= '9') {
@@ -126,7 +126,7 @@ class PinModal {
                 this.clearPin();
                 if (this.errorElement) {
                     this.errorElement.textContent = data.error || 'Invalid PIN code.';
-                    this.errorElement.style.display = 'block';
+                    this.errorElement.classList.remove('hidden');
                 }
             }
         } catch (error) {
@@ -134,7 +134,7 @@ class PinModal {
             this.clearPin();
             if (this.errorElement) {
                 this.errorElement.textContent = 'Network error. Try again.';
-                this.errorElement.style.display = 'block';
+                this.errorElement.classList.remove('hidden');
             }
         } finally {
             this.isLoading = false;
@@ -147,7 +147,7 @@ class PinModal {
         this.updatePinDisplay();
         this.clearPinError();
         if (this.errorElement) {
-            this.errorElement.style.display = 'none';
+            this.errorElement.classList.add('hidden');
         }
         openModal(this.modal);
         

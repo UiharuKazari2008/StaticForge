@@ -18,7 +18,7 @@ const {
     processDynamicImage, 
     resizeMaskWithCanvas
 } = require('./imageTools');
-const { generatePreview, generateBlurredPreview } = require('./previewUtils');
+const { generatePreview, generateBlurredPreview, generateMobilePreviews } = require('./previewUtils');
 const imageCounter = require('./imageCounter');
 const { upscaleImageCore } = require('./imageUpscaling');
 
@@ -966,8 +966,10 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             const blurPreviewFile = `${baseName}_blur.jpg`;
             const previewPath = path.join(previewsDir, previewFile);
             const blurPreviewPath = path.join(previewsDir, blurPreviewFile);
-            await generatePreview(path.join(imagesDir, name), previewPath);
-            console.log(`📸 Generated preview: ${previewFile}`);
+            
+            // Generate both main and @2x previews for mobile devices
+            await generateMobilePreviews(path.join(imagesDir, name), baseName);
+            console.log(`📸 Generated mobile previews: ${previewFile} and ${baseName}@2x.jpg`);
             
             // Generate blurred background preview
             await generateBlurredPreview(path.join(imagesDir, name), blurPreviewPath);
@@ -1037,8 +1039,10 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             const baseName = getBaseName(name);
             const previewFile = `${baseName}.jpg`;
             const previewPath = path.join(previewsDir, previewFile);
-            await generatePreview(path.join(imagesDir, name), previewPath);
-            console.log(`📸 Generated preview: ${previewFile}`);
+            
+            // Generate both main and @2x previews for mobile devices
+            await generateMobilePreviews(path.join(imagesDir, name), baseName);
+            console.log(`📸 Generated mobile previews: ${previewFile} and ${baseName}@2x.jpg`);
         }
         
         // Return result with appropriate seed information
@@ -1134,6 +1138,165 @@ async function generateImageWebSocket(body, userType, sessionId) {
     }
 }
 
+// Function to convert image metadata to request format for rerolling
+async function convertMetadataToRequestFormat(metadata) {
+    if (!metadata) {
+        throw new Error('No metadata provided for conversion');
+    }
+
+    console.log('🔄 Converting metadata to request format:', metadata);
+
+    // Import the extractRelevantFields function to properly extract metadata
+    const { extractRelevantFields } = require('./pngMetadata');
+    
+    // Extract the actual metadata from the nested structure
+    const actualMetadata = metadata.metadata || metadata;
+    
+    // Use the existing extractRelevantFields function to get properly formatted metadata
+    const extractedMetadata = await extractRelevantFields(actualMetadata, metadata.filename);
+    
+    if (!extractedMetadata) {
+        throw new Error('Failed to extract relevant metadata fields');
+    }
+
+    console.log('🔄 Extracted metadata:', extractedMetadata);
+
+    const requestBody = {
+        model: extractedMetadata.model || 'v4_5',
+        prompt: extractedMetadata.prompt || '',
+        uc: extractedMetadata.uc || '',
+        resolution: extractedMetadata.resolution || (extractedMetadata.width && extractedMetadata.height ? `${extractedMetadata.width}x${extractedMetadata.height}` : ''),
+        steps: extractedMetadata.steps || 25,
+        guidance: extractedMetadata.scale || 5.0,
+        rescale: extractedMetadata.cfg_rescale || 0.0,
+        allow_paid: false, // Default to false for safety
+        workspace: metadata.workspace || 'default'
+    };
+
+    // Add optional fields if they have values
+    if (extractedMetadata.sampler) {
+        requestBody.sampler = extractedMetadata.sampler;
+    }
+
+    if (extractedMetadata.noise_schedule) {
+        requestBody.noiseScheduler = extractedMetadata.noise_schedule;
+    }
+
+    if (extractedMetadata.skip_cfg_above_sigma) {
+        requestBody.variety = true;
+    }
+
+    // Add upscale if it was used in original generation
+    if (extractedMetadata.upscaled) {
+        requestBody.upscale = true;
+    }
+
+    // Add preset if available
+    if (extractedMetadata.preset_name) {
+        requestBody.preset = extractedMetadata.preset_name;
+    }
+
+    // Add character prompts if available
+    if (extractedMetadata.characterPrompts && Array.isArray(extractedMetadata.characterPrompts) && extractedMetadata.characterPrompts.length > 0) {
+        requestBody.allCharacterPrompts = extractedMetadata.characterPrompts;
+        requestBody.use_coords = !!extractedMetadata.use_coords;
+    }
+
+    // Add dataset config if available (from forge_data)
+    const forgeData = actualMetadata.forge_data || {};
+    if (forgeData.dataset_config) {
+        requestBody.dataset_config = forgeData.dataset_config;
+    }
+
+    // Add quality and UC presets if available (from forge_data)
+    if (forgeData.append_quality !== undefined) {
+        requestBody.append_quality = forgeData.append_quality;
+    }
+    if (forgeData.append_uc !== undefined) {
+        requestBody.append_uc = forgeData.append_uc;
+    }
+
+    // Add vibe transfer data if available (from forge_data)
+    if (forgeData.vibe_transfer && Array.isArray(forgeData.vibe_transfer) && forgeData.vibe_transfer.length > 0) {
+        requestBody.vibe_transfer = forgeData.vibe_transfer;
+        requestBody.normalize_vibes = forgeData.normalize_vibes !== undefined ? forgeData.normalize_vibes : true;
+    }
+
+    // Handle img2img specific fields
+    if (extractedMetadata.base_image && extractedMetadata.image_source) {
+        // Convert image source back to proper format
+        if (extractedMetadata.image_source.startsWith('preset:')) {
+            requestBody.image = extractedMetadata.image_source;
+            // Note: image_source_seed would need to be extracted from forge_data if available
+        } else if (extractedMetadata.image_source.startsWith('file:')) {
+            requestBody.image = extractedMetadata.image_source;
+        } else if (extractedMetadata.image_source.startsWith('cache:')) {
+            requestBody.image = extractedMetadata.image_source;
+        } else if (extractedMetadata.image_source === 'data:base64') {
+            // For base64 data, we can't reroll directly - throw error
+            throw new Error('Cannot reroll images with base64 data source. Please use the original file or preset source.');
+        }
+
+        // Add img2img specific parameters
+        if (extractedMetadata.strength !== undefined) {
+            requestBody.strength = extractedMetadata.strength;
+        }
+        if (extractedMetadata.noise !== undefined) {
+            requestBody.noise = extractedMetadata.noise;
+        }
+        if (extractedMetadata.image_bias !== undefined) {
+            requestBody.image_bias = extractedMetadata.image_bias;
+        }
+
+        // Add mask data if it exists
+        if (extractedMetadata.mask_compressed) {
+            requestBody.mask_compressed = extractedMetadata.mask_compressed;
+        } else if (extractedMetadata.mask) {
+            requestBody.mask = extractedMetadata.mask;
+        }
+    }
+
+    // Remove seed to ensure new random seed is generated
+    delete requestBody.seed;
+
+    console.log('🔄 Converted request body:', requestBody);
+    return requestBody;
+}
+
+// Function to handle reroll generation from metadata
+async function handleRerollGeneration(metadata, userType, sessionId, workspaceId = null) {
+    // Check if user is read-only
+    if (userType === 'readonly') {
+        throw new Error('Non-Administrator Login: This operation is not allowed for read-only users');
+    }
+
+    try {
+        console.log('🎲 Starting reroll generation for metadata:', metadata);
+        
+        // Convert metadata to request format (now async)
+        const requestBody = await convertMetadataToRequestFormat(metadata);
+        console.log('🎲 Request body created:', requestBody);
+        
+        // Build options for generation
+        console.log('🎲 Calling buildOptions with:', requestBody);
+        const opts = await buildOptions(requestBody, null, {});
+        console.log('🎲 BuildOptions result:', opts);
+        
+        // Create a mock req object for context functions that need it
+        const mockReq = { session: { id: sessionId } };
+        
+        // Call handleGeneration and return the result
+        console.log('🎲 Calling handleGeneration with opts:', opts);
+        const result = await handleGeneration(opts, true, metadata.preset_name || null, workspaceId, mockReq);
+        console.log('🎲 HandleGeneration result:', result);
+        
+        return result;
+    } catch (error) {
+        console.error('❌ Reroll generation error:', error);
+        throw error;
+    }
+}
+
 module.exports = {
     generateImageWebSocket,
     buildOptions,
@@ -1141,6 +1304,8 @@ module.exports = {
     handleImageRequest,
     selectPresetItem,
     setContext,
-    generatePresetSourceImage
+    generatePresetSourceImage,
+    convertMetadataToRequestFormat,
+    handleRerollGeneration
 };
 

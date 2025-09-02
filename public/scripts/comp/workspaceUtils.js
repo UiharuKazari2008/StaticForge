@@ -682,11 +682,9 @@ async function loadWorkspaces() {
             throw new Error('Failed to load workspaces');
         }
 
-        // Update background
-        updateBackground();
-        
-        // Set initial workspace theme
+        // Set initial workspace theme first, then update background
         switchWorkspaceTheme(activeWorkspace);
+        updateBackground();
 
         renderWorkspaceDropdown();
         updateActiveWorkspaceDisplay();
@@ -1182,7 +1180,7 @@ async function createWorkspace(name) {
                 updateActiveWorkspaceDisplay();
                 
                 // Only refresh cache if it's currently visible and needs updating
-                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
+                if (!document.getElementById('cacheImagesContainer')?.classList?.contains('hidden')) {
                     await loadCacheImages();
                 }
             }
@@ -1237,12 +1235,12 @@ async function deleteWorkspace(id) {
                 updateActiveWorkspaceDisplay();
                 
                 // Only refresh gallery if it's currently visible
-                if (document.getElementById('gallery')?.style.display !== 'none') {
+                if (!document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
                 }
                 
                 // Only refresh cache if it's currently visible
-                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
+                if (!document.getElementById('cacheImagesContainer')?.classList.contains('hidden')) {
                     await loadCacheImages();
                 }
             }
@@ -1274,18 +1272,18 @@ async function dumpWorkspace(sourceId, targetId) {
                     workspaces[targetId].fileCount = (workspaces[targetId].fileCount || 0) + (result.movedCount || 0);
                 }
                 
-                // Update UI components
-                renderWorkspaceDropdown();
-                
-                // Only refresh gallery if it's currently visible
-                if (document.getElementById('gallery')?.style.display !== 'none') {
-                    switchGalleryView(currentGalleryView, true);
-                }
-                
-                // Only refresh cache if it's currently visible
-                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
-                    await loadCacheImages();
-                }
+                            // Update UI components
+            renderWorkspaceDropdown();
+            
+            // Only refresh gallery if it's currently visible
+            if (!document.getElementById('gallery')?.classList.contains('hidden')) {
+                switchGalleryView(currentGalleryView, true);
+            }
+            
+            // Only refresh cache if it's currently visible
+            if (!document.getElementById('cacheImagesContainer')?.classList.contains('hidden')) {
+                await loadCacheImages();
+            }
             }
         } else {
             showError('Failed to dump workspace: WebSocket not connected');
@@ -1387,7 +1385,7 @@ async function moveFilesToWorkspace(filenames, targetWorkspaceId) {
                 renderWorkspaceDropdown();
                 
                 // Only refresh gallery if it's currently visible
-                if (document.getElementById('gallery')?.style.display !== 'none') {
+                if (!document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
                 }
             }
@@ -1550,9 +1548,9 @@ function renderWorkspaceManagementList() {
                     <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#124'}"></div>
                     <h5>${workspace.name} ${workspace.id === activeWorkspace ? '<span class="badge-active"><i class="fas fa-check"></i></span>' : ''}</h5>
                 </div>
-                <span class="workspace-manage-counts">${workspace.fileCount} files, ${workspace.cacheFileCount} references</span>
+                <div class="workspace-manage-counts"><div class="workspace-manage-counts-files"><span>${workspace.fileCount}</span><i class="fas fa-image"></i></div><div class="workspace-manage-counts-references"><span>${workspace.cacheFileCount}</span><i class="fas fa-swatchbook"></i></div></div>
             </div>
-            <div class="workspace-manage-actions">
+            <div class="workspace-manage-actions button-group">
                 <button type="button" class="btn-secondary" onclick="editWorkspaceSettings('${workspace.id}')" title="Workspace Settings">
                     <i class="fas fa-cog"></i>
                 </button>
@@ -1597,9 +1595,9 @@ function hideWorkspaceManagementModal() {
 function showAddWorkspaceModal() {
     currentWorkspaceOperation = { type: 'add' };
     document.getElementById('workspaceEditTitle').textContent = 'Add Workspace';
-    document.getElementById('workspaceNameInput').style.display = 'block';
-    document.getElementById('workspaceColorInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundColorInput').style.display = 'block';
+    document.getElementById('workspaceNameInput').classList.remove('hidden');
+    document.getElementById('workspaceColorInput').classList.remove('hidden');
+    document.getElementById('workspaceBackgroundColorInput').classList.remove('hidden');
     document.getElementById('workspaceNameInput').value = '';
     document.getElementById('workspaceColorInput').value = '#124';
     document.getElementById('workspaceBackgroundColorInput').value = '#0a1a2a';
@@ -1612,9 +1610,9 @@ async function editWorkspaceSettings(id) {
     document.getElementById('workspaceEditTitle').textContent = 'Workspace Settings';
 
     // Show all form elements
-    document.getElementById('workspaceNameInput').style.display = 'block';
-    document.getElementById('workspaceColorInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundColorInput').style.display = 'block';
+    document.getElementById('workspaceNameInput').classList.remove('hidden');
+    document.getElementById('workspaceColorInput').classList.remove('hidden');
+    document.getElementById('workspaceBackgroundColorInput').classList.remove('hidden');
 
     // Get workspace data
     const workspace = workspaces[id];
@@ -1656,9 +1654,9 @@ function hideWorkspaceEditModal() {
     if (modal) closeModal(modal);
 
     // Reset form
-    document.getElementById('workspaceNameInput').style.display = 'block';
-    document.getElementById('workspaceColorInput').style.display = 'block';
-    document.getElementById('workspaceBackgroundColorInput').style.display = 'block';
+    document.getElementById('workspaceNameInput').classList.remove('hidden');
+    document.getElementById('workspaceColorInput').classList.remove('hidden');
+    document.getElementById('workspaceBackgroundColorInput').classList.remove('hidden');
     document.getElementById('workspaceNameInput').value = '';
     document.getElementById('workspaceColorInput').value = '#124';
     document.getElementById('workspaceBackgroundColorInput').value = '#0a1a2a';
@@ -2044,7 +2042,7 @@ function initializeWebSocketWorkspaceEvents() {
                 
                 // If workspace management modal is open, refresh it
                 const workspaceManageModal = document.getElementById('workspaceManageModal');
-                if (workspaceManageModal && workspaceManageModal.style.display !== 'none') {
+                if (workspaceManageModal && !workspaceManageModal.classList.contains('hidden')) {
                     renderWorkspaceManagementList();
                 }
                 break;
@@ -2061,7 +2059,7 @@ function initializeWebSocketWorkspaceEvents() {
                 
                 // If workspace management modal is open, refresh it
                 const workspaceManageModalRenamed = document.getElementById('workspaceManageModal');
-                if (workspaceManageModalRenamed && workspaceManageModalRenamed.style.display !== 'none') {
+                if (workspaceManageModalRenamed && !workspaceManageModalRenamed.classList.contains('hidden')) {
                     renderWorkspaceManagementList();
                 }
                 break;
@@ -2078,7 +2076,7 @@ function initializeWebSocketWorkspaceEvents() {
                 
                 // If workspace management modal is open, refresh it
                 const workspaceManageModalDeleted = document.getElementById('workspaceManageModal');
-                if (workspaceManageModalDeleted && workspaceManageModalDeleted.style.display !== 'none') {
+                if (workspaceManageModalDeleted && !workspaceManageModalDeleted.classList.contains('hidden')) {
                     renderWorkspaceManagementList();
                 }
                 break;
@@ -2097,7 +2095,7 @@ function initializeWebSocketWorkspaceEvents() {
                 
                 // If workspace management modal is open, refresh it
                 const workspaceManageModalDumped = document.getElementById('workspaceManageModal');
-                if (workspaceManageModalDumped && workspaceManageModalDumped.style.display !== 'none') {
+                if (workspaceManageModalDumped && !workspaceManageModalDumped.classList.contains('hidden')) {
                     renderWorkspaceManagementList();
                 }
                 break;
@@ -2124,7 +2122,7 @@ function initializeWebSocketWorkspaceEvents() {
                 
                 // If workspace management modal is open, refresh it
                 const workspaceManageModalAfterReorder = document.getElementById('workspaceManageModal');
-                if (workspaceManageModalAfterReorder && workspaceManageModalAfterReorder.style.display !== 'none') {
+                if (workspaceManageModalAfterReorder && !workspaceManageModalAfterReorder.classList.contains('hidden')) {
                     renderWorkspaceManagementList();
                 }
                 break;
@@ -2142,12 +2140,12 @@ function initializeWebSocketWorkspaceEvents() {
                 renderWorkspaceDropdown();
                 
                 // Only refresh gallery if it's currently visible
-                if (document.getElementById('gallery')?.style.display !== 'none') {
+                if (!document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
                 }
                 
                 // Only refresh cache if it's currently visible
-                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
+                if (!document.getElementById('cacheImagesContainer')?.classList.contains('hidden')) {
                     loadCacheImages();
                 }
                 break;
@@ -2164,12 +2162,12 @@ function initializeWebSocketWorkspaceEvents() {
             case 'images_added_to_group':
             case 'images_removed_from_group':
                 // Only refresh gallery if it's currently visible
-                if (document.getElementById('gallery')?.style.display !== 'none') {
+                if (!document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
                 }
                 
                 // Only refresh cache if it's currently visible
-                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
+                if (!document.getElementById('cacheImagesContainer')?.classList.contains('hidden')) {
                     loadCacheImages();
                 }
                 break;
@@ -2192,12 +2190,12 @@ function initializeWebSocketWorkspaceEvents() {
                 renderWorkspaceDropdown();
                 
                 // Only refresh gallery if it's currently visible
-                if (document.getElementById('gallery')?.style.display !== 'none') {
+                if (!document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
                 }
                 
                 // Only refresh cache if it's currently visible
-                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
+                if (!document.getElementById('cacheImagesContainer')?.classList.contains('hidden')) {
                     loadCacheImages();
                 }
                 break;
@@ -2219,12 +2217,12 @@ function initializeWebSocketWorkspaceEvents() {
                 }
                 
                 // Only refresh gallery if it's currently visible
-                if (document.getElementById('gallery')?.style.display !== 'none') {
+                if (!document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
                 }
                 
                 // Only refresh cache if it's currently visible
-                if (document.getElementById('cacheImagesContainer')?.style.display !== 'none') {
+                if (!document.getElementById('cacheImagesContainer')?.classList.contains('hidden')) {
                     loadCacheImages();
                 }
                 break;
@@ -2250,20 +2248,8 @@ function initializeWebSocketWorkspaceEvents() {
         
         // Set up the completion callback and load gallery
         window.workspaceLoadingCompleteCallback = completeWorkspaceSwitch;
-        switchGalleryView(window.currentGalleryView || 'images', true);
-        loadCacheImages();
-        
-        // Fade in gallery
-        if (gallery) {
-            gallery.style.transition = 'opacity 0.3s ease-in';
-            gallery.style.opacity = '1';
-        }
-        
-        // Remove workspace loading overlay after gallery is loaded
-        const workspaceLoadingOverlay = document.getElementById('workspaceLoadingOverlay');
-        if (workspaceLoadingOverlay) {
-            workspaceLoadingOverlay.remove();
-        }
+        await switchGalleryView(window.currentGalleryView || 'images', true);        
+        // Gallery will be faded in by completeWorkspaceSwitch callback after data is loaded
         
         // Clear the workspace switching flag
         isWorkspaceSwitching = false;
@@ -2500,7 +2486,7 @@ function refreshWorkspaceManager() {
     updateActiveWorkspaceDisplay();
     
     const workspaceManageModal = document.getElementById('workspaceManageModal');
-    if (workspaceManageModal && workspaceManageModal.style.display !== 'none') {
+    if (workspaceManageModal && !workspaceManageModal.classList.contains('hidden')) {
         renderWorkspaceManagementList();
     }
 }

@@ -112,7 +112,7 @@ function createDatasetTagToolbar() {
                 <!-- Hierarchical dropdowns will be created here -->
             </div>
             <div class="dataset-tag-controls">
-                <input type="text" id="datasetTagSearchInput" class="dataset-tag-search-input" placeholder="Find Tag" style="display: none;" />
+                <input type="text" id="datasetTagSearchInput" class="dataset-tag-search-input hidden" placeholder="Find Tag"/>
                 <div class="dataset-tag-loading-spinner">
                     <i class="fas fa-spinner fa-spin"></i>
                 </div>
@@ -236,7 +236,7 @@ function hideDatasetTagToolbar() {
 function createDropdowns() {
     const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
     container.innerHTML = '';
-    container.style.display = 'flex'; // Ensure dropdowns are visible
+    container.classList.remove('hidden'); // Ensure dropdowns are visible
     dropdowns = [];
     
     // Create first dropdown for top-level categories
@@ -275,7 +275,7 @@ function createDropdown(container, level, options, mainTags = []) {
     
     const menu = document.createElement('div');
     menu.className = 'custom-dropdown-menu';
-    menu.style.display = 'none';
+    menu.classList.add('hidden');
     
     dropdown.appendChild(button);
     dropdown.appendChild(menu);
@@ -453,7 +453,7 @@ async function selectDropdownOption(option, level) {
     
     // Close dropdown and remove active state from button
     if (dropdown && dropdown.menu) {
-        dropdown.menu.style.display = 'none';
+        dropdown.menu.classList.add('hidden');
         if (dropdown.button) {
             dropdown.button.classList.remove('active');
         }
@@ -656,7 +656,7 @@ function createLoadingDropdown(container, level) {
     
     const menu = document.createElement('div');
     menu.className = 'custom-dropdown-menu';
-    menu.style.display = 'none';
+    menu.classList.add('hidden');
     
     dropdown.appendChild(button);
     dropdown.appendChild(menu);
@@ -699,7 +699,7 @@ function createTagDropdown(container, level, tags, path) {
     
     const menu = document.createElement('div');
     menu.className = 'custom-dropdown-menu';
-    menu.style.display = 'none';
+    menu.classList.add('hidden');
     
     dropdown.appendChild(button);
     dropdown.appendChild(menu);
@@ -1220,7 +1220,7 @@ function handleGlobalKeyboardNav(event) {
     }
     
     // Ensure the current dropdown is open
-    if (currentDropdown.menu.style.display === 'none') {
+    if (currentDropdown.menu.classList.contains('hidden')) {
         openDropdown(currentDropdown.menu, currentDropdown.button);
     }
     
@@ -1435,7 +1435,7 @@ function showLoadingSpinner() {
     
     const spinner = datasetTagToolbar.querySelector('.dataset-tag-loading-spinner');
     if (spinner) {
-        spinner.style.display = 'flex';
+        spinner.classList.remove('hidden');
     }
 }
 
@@ -1444,7 +1444,7 @@ function hideLoadingSpinner() {
     
     const spinner = datasetTagToolbar.querySelector('.dataset-tag-loading-spinner');
     if (spinner) {
-        spinner.style.display = 'none';
+        spinner.classList.add('hidden');
     }
 } 
 
@@ -1457,13 +1457,13 @@ function enterSearchMode(initialQuery = '') {
     // Hide all dropdowns
     const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
     if (container) {
-        container.style.display = 'none';
+        container.classList.add('hidden');
     }
     
     // Show and focus the search input
     const searchInput = document.getElementById('datasetTagSearchInput');
     if (searchInput) {
-        searchInput.style.display = 'block';
+        searchInput.classList.remove('hidden');
         searchInput.value = initialQuery;
         searchInput.focus();
         
@@ -1498,7 +1498,7 @@ function exitSearchMode() {
     // Hide search input
     const searchInput = document.getElementById('datasetTagSearchInput');
     if (searchInput) {
-        searchInput.style.display = 'none';
+        searchInput.classList.add('hidden');
         searchInput.value = '';
     }
     
@@ -1508,7 +1508,7 @@ function exitSearchMode() {
     // Show dropdowns again
     const container = datasetTagToolbar.querySelector('.dataset-tag-dropdowns-container');
     if (container) {
-        container.style.display = 'flex';
+        container.classList.remove('hidden');
     }
 }
 
@@ -1644,7 +1644,7 @@ function showSearchResults() {
     const searchDropdown = document.createElement('div');
     searchDropdown.id = 'datasetTagSearchDropdown';
     searchDropdown.className = 'custom-dropdown-menu dataset-tag-search-dropdown';
-    searchDropdown.style.display = 'block';
+    searchDropdown.classList.remove('hidden');
     
     // Create grouped results
     const groups = [{

@@ -11,7 +11,7 @@ const {
 const { 
     getImageDimensions
 } = require('./imageTools');
-const { generatePreview, generateBlurredPreview } = require('./previewUtils');
+const { generatePreview, generateBlurredPreview, generateMobilePreviews } = require('./previewUtils');
 
 // Context object for dependency injection
 let context = {};
@@ -168,8 +168,9 @@ async function upscaleImage(filename, workspaceId, req, res) {
         const blurPreviewPath = path.join(previewsDir, blurPreviewFile);
         
         if (!fs.existsSync(previewPath)) {
-            await generatePreview(upscaledPath, previewPath);
-            console.log(`📸 Generated preview: ${previewFile}`);
+            // Generate both main and @2x previews for mobile devices
+            await generateMobilePreviews(upscaledPath, baseName);
+            console.log(`📸 Generated mobile previews: ${previewFile} and ${baseName}@2x.jpg`);
         }
         if (!fs.existsSync(blurPreviewPath)) {
             await generateBlurredPreview(upscaledPath, blurPreviewPath);
@@ -235,8 +236,9 @@ async function upscaleImageWebSocket(filename, workspaceId, userType, sessionId)
         const blurPreviewPath = path.join(previewsDir, blurPreviewFile);
         
         if (!fs.existsSync(previewPath)) {
-            await generatePreview(upscaledPath, previewPath);
-            console.log(`📸 Generated preview: ${previewFile}`);
+            // Generate both main and @2x previews for mobile devices
+            await generateMobilePreviews(upscaledPath, baseName);
+            console.log(`📸 Generated mobile previews: ${previewFile} and ${baseName}@2x.jpg`);
         }
         if (!fs.existsSync(blurPreviewPath)) {
             await generateBlurredPreview(upscaledPath, blurPreviewPath);

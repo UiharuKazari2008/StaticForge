@@ -2,7 +2,7 @@
   "name": "Dreamscape Workspace",
   "short_name": "Dreamscape",
   "description": "AI-powered Image Generation Workspace",
-  "start_url": "/app",
+  "start_url": "/launch",
   "display": "standalone",
   "background_color": "#1a1a1a",
   "theme_color": "#6366f1",
@@ -71,6 +71,18 @@
     }
   ],
   "icons": [
+    {
+      "src": "/static_images/icon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/static_images/icon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
     {
       "src": "/static_images/icon-72x72.png",
       "sizes": "72x72",

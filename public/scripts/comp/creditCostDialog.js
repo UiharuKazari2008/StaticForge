@@ -14,7 +14,7 @@ function showCreditCostDialog(cost, event = null) {
             creditCostDialog = document.createElement('div');
             creditCostDialog.id = 'creditCostDialog';
             creditCostDialog.className = 'credit-cost-dialog';
-            creditCostDialog.style.display = 'none';
+            creditCostDialog.classList.add('hidden');
             creditCostDialog.innerHTML = `
                 <div class="credit-cost-content">
                     <div class="credit-cost-header">
@@ -60,15 +60,26 @@ function showCreditCostDialog(cost, event = null) {
         positionCreditCostDialog(event);
         
         // Show dialog
-        creditCostDialog.style.display = 'block';
+        creditCostDialog.classList.remove('hidden');
         creditCostDialogActive = true;
+        
+        // Debug: Log dialog state and ensure it's visible
+        console.log('🎯 Credit cost dialog shown:', {
+            dialog: creditCostDialog,
+            isVisible: !creditCostDialog.classList.contains('hidden'),
+            position: {
+                left: creditCostDialog.style.left,
+                top: creditCostDialog.style.top
+            },
+            event: event ? { clientX: event.clientX, clientY: event.clientY } : 'no event'
+        });
     });
 }
 
 // Hide credit cost dialog
 function hideCreditCostDialog() {
     if (creditCostDialog) {
-        creditCostDialog.style.display = 'none';
+        creditCostDialog.classList.add('hidden');
         creditCostDialogActive = false;
     }
 }
@@ -126,7 +137,18 @@ function positionCreditCostDialog(event) {
     }
     
     dialog.style.left = x + 'px';
-    dialog.style.top = y + 'px';   
+    dialog.style.top = y + 'px';
+    
+    // Debug: Log positioning calculations
+    console.log('🎯 Dialog positioned:', {
+        calculatedX: x,
+        calculatedY: y,
+        appliedLeft: dialog.style.left,
+        appliedTop: dialog.style.top,
+        windowDimensions: { width: windowWidth, height: windowHeight },
+        dialogDimensions: { width: dialogWidth, height: dialogHeight },
+        event: event ? { clientX: event.clientX, clientY: event.clientY } : 'no event'
+    });   
 }
 
 // Handle keyboard events
@@ -198,4 +220,4 @@ function calculateCreditCost(requestBody) {
     });
 
     return price.opus > 0 ? price.list : false; // Return the list price (credits cost)
-} 
+}

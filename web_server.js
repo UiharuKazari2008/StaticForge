@@ -22,11 +22,11 @@ const { WebSocketMessageHandlers } = require('./modules/websocketHandlers');
 const { updateMetadata, getBaseName } = require('./modules/pngMetadata');
 const { processDynamicImage } = require('./modules/imageTools');
 const { initializeWorkspaces, getWorkspaces, getActiveWorkspace, addToWorkspaceArray } = require('./modules/workspace');
-const { addReceiptMetadata, addUnattributedReceipt, broadcastReceiptNotification } = require('./modules/metadataDatabase');
+const { addReceiptMetadata, addUnattributedReceipt, broadcastReceiptNotification, getImageMetadata } = require('./modules/metadataDatabase');
 const imageCounter = require('./modules/imageCounter');
-const { generatePreview, generateBlurredPreview } = require('./modules/previewUtils');
+const { generatePreview, generateBlurredPreview, generateMobilePreviews } = require('./modules/previewUtils');
 // Example usage in WebSocket handler or main server
-const { setContext: setImageGenContext, handleGeneration, buildOptions } = require('./modules/imageGeneration');
+const { setContext: setImageGenContext, handleGeneration, buildOptions, handleRerollGeneration } = require('./modules/imageGeneration');
 const { setContext: setUpscaleContext } = require('./modules/imageUpscaling');
 
 // Initialize NovelAI client
@@ -39,7 +39,7 @@ const client = new NovelAI({
 
 // Account data management
 let accountData = { ok: false };
-let accountBalance = { fixedTrainingStepsLeft: -1, purchasedTrainingSteps: -1, totalCredits: -1 };
+let accountBalance = { fixedTrainingStepsLeft: 0, purchasedTrainingSteps: 0, totalCredits: 0 };
 let lastBalanceCheck = 0;
 let lastAccountDataCheck = 0;
 const BALANCE_REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
@@ -61,9 +61,9 @@ async function initializeAccountData(force = false) {
                 accountData = userData;
                 
                 // Extract balance information from user data
-                const fixedTrainingStepsLeft = userData?.subscription?.trainingStepsLeft?.fixedTrainingStepsLeft || -1;
-                const purchasedTrainingSteps = userData?.subscription?.trainingStepsLeft?.purchasedTrainingSteps || -1;
-                const totalCredits = fixedTrainingStepsLeft !== -1 && purchasedTrainingSteps !== -1 ? fixedTrainingStepsLeft + purchasedTrainingSteps : -1;
+                const fixedTrainingStepsLeft = userData?.subscription?.trainingStepsLeft?.fixedTrainingStepsLeft || 0;
+                const purchasedTrainingSteps = userData?.subscription?.trainingStepsLeft?.purchasedTrainingSteps || 0;
+                const totalCredits = fixedTrainingStepsLeft + purchasedTrainingSteps;
                 
                 accountBalance = {
                     fixedTrainingStepsLeft,
@@ -74,7 +74,7 @@ async function initializeAccountData(force = false) {
 
             lastAccountDataCheck = Date.now();
             
-            if (accountBalance.totalCredits !== -1) {
+            if (accountBalance.totalCredits !== 0) {
                 console.log('✅ Account data loaded successfully');
                 console.log(`💰 Balance: ${accountBalance.totalCredits} credits (${accountBalance.fixedTrainingStepsLeft} fixed, ${accountBalance.purchasedTrainingSteps} paid)`);
             } else {
@@ -258,7 +258,6 @@ async function refreshBalance(force = false) {
 async function calculateCreditUsage(_oldBalance) {
     const oldBalance = _oldBalance || { ...accountBalance };
     await refreshBalance(true);
-    if (oldBalance.totalCredits === -1 || accountBalance.totalCredits === -1) return { totalUsage: 0, freeUsage: 0, paidUsage: 0 };
     
     const totalUsage = Math.max(0, oldBalance.totalCredits - accountBalance.totalCredits);
     const freeUsage = Math.max(0, oldBalance.fixedTrainingStepsLeft - accountBalance.fixedTrainingStepsLeft);
@@ -297,8 +296,35 @@ app.use(express.json({limit: '100mb'}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Create session store
-const sessionStore = new session.MemoryStore();
+// Create session store (prefer SQLite, fallback to memory)
+let SQLiteStore = null;
+try {
+    SQLiteStore = require('connect-sqlite3')(session);
+} catch (e) {
+    console.warn('⚠️ connect-sqlite3 is not installed. Falling back to MemoryStore. Run "npm i connect-sqlite3" to enable SQLite-backed sessions.');
+}
+
+let sessionStore;
+if (SQLiteStore) {
+    try {
+        const sessionsDir = path.resolve(__dirname, '.cache', 'sessions');
+        if (!fs.existsSync(sessionsDir)) {
+            fs.mkdirSync(sessionsDir, { recursive: true });
+        }
+        sessionStore = new SQLiteStore({
+            dir: sessionsDir,
+            db: 'sessions.sqlite',
+            table: 'sessions',
+            concurrentDB: true
+        });
+        console.log(`✅ Using SQLite session store at ${sessionsDir}/sessions.sqlite`);
+    } catch (err) {
+        console.error('❌ Failed to initialize SQLite session store, falling back to MemoryStore:', err.message);
+        sessionStore = new session.MemoryStore();
+    }
+} else {
+    sessionStore = new session.MemoryStore();
+}
 
 // Make session store globally accessible for workspace persistence
 global.sessionStore = sessionStore;
@@ -623,25 +649,30 @@ async function syncPreviews() {
         const previewFile = `${base}.jpg`
         const imgFile = baseMap[base].original || baseMap[base].upscaled;
         const previewPath = path.join(previewsDir, previewFile);
+        const retinaPreviewPath = path.join(previewsDir, `${base}@2x.jpg`);
         const blurPreviewFile = `${base}_blur.jpg`;
         const blurPreviewPath = path.join(previewsDir, blurPreviewFile);
         if (imgFile) {
             const imgPath = path.join(imagesDir, imgFile);
-            if (!fs.existsSync(previewPath)) {
-                await generatePreview(imgPath, previewPath);
+            if (!fs.existsSync(previewPath) || !fs.existsSync(retinaPreviewPath)) {
+                // Generate both main and @2x previews for mobile devices
+                await generateMobilePreviews(imgPath, base);
             }
             if (!fs.existsSync(blurPreviewPath)) {
                 await generateBlurredPreview(imgPath, blurPreviewPath);
             }
         }
     }
-    // Remove orphan previews (both regular and blur)
+    // Remove orphan previews (both regular, @2x, and blur)
     for (const preview of previews) {
-        // Handle both regular previews (.jpg) and blur previews (_blur.jpg)
+        // Handle regular previews (.jpg), @2x previews (@2x.jpg), and blur previews (_blur.jpg)
         let base;
         if (preview.endsWith('_blur.jpg')) {
             // For blur previews, extract the base name by removing '_blur.jpg'
             base = preview.replace(/_blur\.jpg$/, '');
+        } else if (preview.endsWith('@2x.jpg')) {
+            // For @2x previews, extract the base name by removing '@2x.jpg'
+            base = preview.replace(/@2x\.jpg$/, '');
         } else if (preview.endsWith('.jpg')) {
             // For regular previews, extract the base name by removing '.jpg'
             base = preview.replace(/\.jpg$/, '');
@@ -965,15 +996,53 @@ app.get('/', (req, res) => {
 // Cache manifest endpoint for service worker
 app.options('/', (req, res) => {
     try {
-        // Return the pre-generated cache data in the format expected by the service worker
-        const staticFiles = globalCacheData.map(file => ({
-            url: file.path,
-            hash: file.md5,
-            size: file.size,
-            modified: file.modified
-        }));
-        
-        res.json(staticFiles);
+        // Exclude HTML files handled as routes, splash/screenshot files, and unrelated files like *.backup.*, *.md, etc.
+        const htmlFilesToExclude = ['/index.html', '/app.html'];
+        const splashOrScreenshotPattern = /^\/static_images\/(apple-splash|android-screenshot)-.*\.(png|jpg|jpeg|webp)$/i;
+        const unrelatedFilePattern = /\.(backup\..*|md|markdown|txt|log|DS_Store|swp|tmp|bak)$/i;
+
+        const staticFiles = globalCacheData
+            .filter(file =>
+                !htmlFilesToExclude.includes(file.path) &&
+                !splashOrScreenshotPattern.test(file.path) &&
+                !unrelatedFilePattern.test(file.path)
+            )
+            .map(file => ({
+                url: file.path,
+                hash: file.md5,
+                size: file.size,
+                modified: file.modified
+            }));
+
+        // Add route-based entries for HTML files
+        const routeBasedFiles = [
+            {
+                url: '/',
+                hash: globalCacheData.find(f => f.path === '/index.html')?.md5 || 'no-hash',
+                size: globalCacheData.find(f => f.path === '/index.html')?.size || 0,
+                modified: globalCacheData.find(f => f.path === '/index.html')?.modified || Date.now(),
+                type: 'route'
+            },
+            {
+                url: '/app',
+                hash: globalCacheData.find(f => f.path === '/app.html')?.md5 || 'no-hash',
+                size: globalCacheData.find(f => f.path === '/app.html')?.size || 0,
+                modified: globalCacheData.find(f => f.path === '/app.html')?.modified || Date.now(),
+                type: 'route'
+            },
+            {
+                url: '/launch',
+                hash: globalCacheData.find(f => f.path === '/launch.html')?.md5 || 'no-hash',
+                size: globalCacheData.find(f => f.path === '/launch.html')?.size || 0,
+                modified: globalCacheData.find(f => f.path === '/launch.html')?.modified || Date.now(),
+                type: 'route'
+            }
+        ];
+
+        // Combine filtered static files with route-based files
+        const allFiles = [...staticFiles, ...routeBasedFiles];
+
+        res.json(allFiles);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -1018,6 +1087,11 @@ app.post('/', express.json(), (req, res) => {
     }
 });
 
+// Launch route (PWA entry point)
+app.get('/launch', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'launch.html'));
+});
+
 // App route (requires authentication)
 app.get('/app', (req, res) => {
     if (req.session && req.session.authenticated) {
@@ -1028,7 +1102,16 @@ app.get('/app', (req, res) => {
 });
 
 app.options('/app', authMiddleware, (req, res) => {
-    res.json({ success: true, message: 'Session Valid', timestamp: Date.now().valueOf() });
+    const serverVersion = '1.0.0'; // Update this when making breaking changes
+    const message = 'A new version is available. Some features may not work correctly.';
+    
+    res.json({ 
+        success: true, 
+        message: 'Session Valid', 
+        timestamp: Date.now().valueOf(),
+        serverVersion: serverVersion,
+        versionMessage: message
+    });
 });
 
 // Reload cache data endpoint (for development/deployment)
@@ -1178,6 +1261,80 @@ app.get('/preset/:uuid', authMiddleware, queueMiddleware, async (req, res) => {
         res.send(finalBuffer);
     } catch(e) {
         console.error('❌ Error occurred:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Image reroll endpoint
+app.post('/reroll/:filename', authMiddleware, queueMiddleware, async (req, res) => {
+    try {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        
+        if (req.userType !== 'admin') {
+            return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for non-administrator users' });
+        }
+
+        const filename = req.params.filename;
+        const workspace = req.query.workspace || req.body.workspace || 'default';
+        
+        console.log(`🎲 Processing reroll request for filename: ${filename} in workspace: ${workspace}`);
+        
+        // Get image metadata
+        const metadata = await getImageMetadata(filename, imagesDir);
+        if (!metadata) {
+            return res.status(404).json({ error: `No metadata found for image: ${filename}` });
+        }
+
+        // Call the reroll generation function
+        const result = await handleRerollGeneration(
+            metadata, 
+            req.userType, 
+            req.session.id, 
+            workspace
+        );
+        
+        // Check if optimization is requested
+        const optimize = req.query.optimize === 'true';
+        let finalBuffer = result.buffer;
+        let contentType = 'image/png';
+        
+        if (optimize) {
+            try {
+                finalBuffer = await sharp(result.buffer)
+                    .jpeg({ quality: 75 })
+                    .toBuffer();
+                contentType = 'image/jpeg';
+            } catch (error) {
+                console.error('❌ Image optimization failed:', error.message);
+                // Fall back to original PNG if optimization fails
+            }
+        }
+        
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename, X-Seed, X-Original-Filename');
+        
+        if (result && result.filename) {
+            res.setHeader('X-Generated-Filename', result.filename);
+        }
+        
+        if (result && result.seed !== undefined) {
+            res.setHeader('X-Seed', result.seed.toString());
+        }
+        
+        res.setHeader('X-Original-Filename', filename);
+        
+        if (req.query.download === 'true') {
+            const extension = optimize ? 'jpg' : 'png';
+            const optimizedFilename = result.filename.replace('.png', `.${extension}`);
+            res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+        }
+        
+        res.send(finalBuffer);
+        
+    } catch(e) {
+        console.error('❌ Reroll error occurred:', e);
         res.status(500).json({ error: e.message });
     }
 });

@@ -187,7 +187,7 @@ window.applyFilteredImages = function(images, originalIndices = null) {
 };
 
 // Switch between gallery views
-function switchGalleryView(view, force = false) {
+async function switchGalleryView(view, force = false) {
     if (currentGalleryView === view && !force) return;
     
     // Check if we're in the middle of workspace switching to avoid duplicate calls
@@ -197,7 +197,7 @@ function switchGalleryView(view, force = false) {
     }
     
     // Don't switch gallery view if manual modal is open (unless forced)
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
     
     currentGalleryView = view;
     // Update global variable for WebSocket event handlers
@@ -216,19 +216,19 @@ function switchGalleryView(view, force = false) {
     switch (view) {
         case 'scraps':
             document.body.classList.add('scraps-grayscale');
-            loadScraps();
+            await loadScraps();
             break;
         case 'images':
             document.body.classList.remove('scraps-grayscale');
-            loadGallery();
+            await loadGallery();
             break;
         case 'pinned':
             document.body.classList.remove('scraps-grayscale');
-            loadPinned();
+            await loadPinned();
             break;
         case 'upscaled':
             document.body.classList.remove('scraps-grayscale');
-            loadUpscaled();
+            await loadUpscaled();
             break;
     }
 }
@@ -327,7 +327,7 @@ async function loadGallery(addLatest) {
             sortGalleryData();
 
             // Only update gallery display if manual modal is not open
-            if (manualModal.style.display === 'none') {
+            if (manualModal.classList.contains('hidden')) {
                 // Reset infinite scroll state and display initial batch
                 if (!addLatest) {
                     resetInfiniteScroll();
@@ -345,7 +345,7 @@ async function loadGallery(addLatest) {
         allImages = [];
         
         // Only update gallery display if manual modal is not open
-        if (manualModal.style.display === 'none') {
+        if (manualModal.classList.contains('hidden')) {
             displayCurrentPageOptimized();
         }
     }
@@ -354,7 +354,7 @@ async function loadGallery(addLatest) {
 // Add a new gallery item after generation with fade-in and slide-in animations
 async function addNewGalleryItemAfterGeneration(newImage) {
     // Don't add new gallery items if manual modal is open
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
     
     // Add placeholder with fade-in
     const placeholder = document.createElement('div');
@@ -413,32 +413,22 @@ function calculateGalleryRows() {
 }
 
 function setGalleryColumns(cols) {
-    galleryColumns = Math.max(3, Math.min(10, parseInt(cols) || 5));
-    gallery.style.gridTemplateColumns = `repeat(${galleryColumns}, 1fr)`;
-    
-    // Update the gallery toggle group data attribute
-    const galleryToggleGroup = document.getElementById('galleryToggleGroup');
-    if (galleryToggleGroup) {
-        galleryToggleGroup.dataset.columns = galleryColumns;
-    }
-
-    // Recalculate rows based on new column count
-    galleryRows = calculateGalleryRows();
+    // Update infinite scrolling calculations only
+    updateGalleryGrid();
     
     if (debounceGalleryTimeout) clearTimeout(debounceGalleryTimeout);
     debounceGalleryTimeout = setTimeout(() => {
         updateGalleryColumnsFromLayout();
-    displayCurrentPageOptimized();
+        displayCurrentPageOptimized();
         resetInfiniteScroll();
     }, 500);
-    updateGalleryPlaceholders();
 }
 
 function updateGalleryPlaceholders() {
     if (!gallery) return;
     
     // Don't update gallery if manual modal is open
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
 
     // Don't remove placeholders here - they are managed by the virtual scrolling system
     // This function is called during initial display and should not interfere with
@@ -454,7 +444,7 @@ function updateGalleryPlaceholders() {
 
 function updateGalleryItemToolbars() {
     // Don't update gallery if manual modal is open
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
     
     const items = document.querySelectorAll('.gallery-item');
     let i = 0;
@@ -478,11 +468,11 @@ function updateGalleryItemToolbars() {
                 `;
                 overlay.appendChild(miniToolbar);
             }
-            miniToolbar.style.display = 'flex';
+            miniToolbar.classList.remove('hidden');
         } else {
             item.classList.remove('mini-toolbar-active');
             if (miniToolbar) {
-                miniToolbar.style.display = 'none';
+                miniToolbar.classList.add('hidden');
             }
         }
         i++;
@@ -496,7 +486,10 @@ function displayCurrentPageOptimized() {
     if (!gallery) return;
     
     // Don't update gallery if manual modal is open
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
+
+    // Update infinite scrolling calculations
+    updateGalleryGrid();
 
     // Set flag for complete gallery reset
     isGalleryResetting = true;
@@ -586,7 +579,7 @@ function resetInfiniteScroll() {
     imagesPerPage = calculateDynamicBatchSize();
     
     if (infiniteScrollLoading) {
-        infiniteScrollLoading.style.display = 'none';
+        infiniteScrollLoading.classList.add('hidden');
     }
 }
 
@@ -670,7 +663,8 @@ function createGalleryItem(image, index) {
 
     // Use preview image - encode the preview name to handle spaces and special characters
     const img = document.createElement('img');
-    img.src = `/previews/${encodeURIComponent(image.preview)}`;
+    const previewUrl = getGalleryPreviewUrl(image.preview);
+    img.src = `/previews/${encodeURIComponent(previewUrl)}`;
     img.alt = image.base;
     img.loading = 'lazy';
     
@@ -692,6 +686,58 @@ function createGalleryItem(image, index) {
         downloadImage(image);
     };
 
+    // Copy button
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'btn-secondary round-button';
+    copyBtn.innerHTML = '<i class="fas fa-clipboard"></i>';
+    copyBtn.title = 'Copy to clipboard';
+    copyBtn.onclick = async (e) => {
+        e.stopPropagation();
+        try {
+            // Determine the correct URL for the image
+            let imageUrl;
+            if (image.url) {
+                // For newly generated images
+                imageUrl = image.url;
+            } else {
+                // For gallery images - prefer highest quality version
+                const filename = image.upscaled || image.original;
+                imageUrl = `/images/${filename}`;
+            }
+            
+            // Fetch the image as a blob
+            const response = await fetch(imageUrl);
+            const blob = await response.blob();
+            
+            // Copy to clipboard
+            await navigator.clipboard.write([
+                new ClipboardItem({
+                    [blob.type]: blob
+                })
+            ]);
+            
+            // Calculate and format file size
+            const sizeInBytes = blob.size;
+            let sizeText;
+            if (sizeInBytes < 1024 * 1024) {
+                sizeText = `${(sizeInBytes / 1024).toFixed(1)} KB`;
+            } else {
+                sizeText = `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
+            }
+            
+            // Show success notification with size
+            if (window.showGlassToast) {
+                window.showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
+            }
+        } catch (error) {
+            console.error('Failed to copy image to clipboard:', error);
+            if (window.showGlassToast) {
+                window.showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fas fa-clipboard"></i>');
+            }
+        }
+    };
+
     // Direct reroll button (left side)
     const rerollBtn = document.createElement('button');
     rerollBtn.type = 'button';
@@ -700,7 +746,7 @@ function createGalleryItem(image, index) {
     rerollBtn.title = 'Reroll with same settings';
     rerollBtn.onclick = (e) => {
         e.stopPropagation();
-        rerollImage(image);
+        rerollImage(image, e);
     };
 
     // Reroll with edit button (right side with cog)
@@ -711,7 +757,7 @@ function createGalleryItem(image, index) {
     rerollEditBtn.title = 'Reroll with Edit';
     rerollEditBtn.onclick = (e) => {
         e.stopPropagation();
-        rerollImageWithEdit(image);
+        rerollImageWithEdit(image, e);
     };
 
     // Upscale button (only for non-upscaled images)
@@ -727,9 +773,9 @@ function createGalleryItem(image, index) {
 
     // Only show upscale button for non-upscaled images
     if (!image.upscaled) {
-        upscaleBtn.style.display = 'inline-block';
+        upscaleBtn.classList.remove('hidden');
     } else {
-        upscaleBtn.style.display = 'none';
+        upscaleBtn.classList.add('hidden');
     }
 
     // Pin button
@@ -770,6 +816,7 @@ function createGalleryItem(image, index) {
     };
 
     actionsDiv.appendChild(downloadBtn);
+    actionsDiv.appendChild(copyBtn);
     actionsDiv.appendChild(upscaleBtn);
     actionsDiv.appendChild(rerollBtn);
     actionsDiv.appendChild(rerollEditBtn);
@@ -826,7 +873,7 @@ function reindexGallery() {
 
 function scheduleDeferredPlaceholderAddition(direction) {
     // Don't schedule placeholder additions if manual modal is open
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
     
     pendingPlaceholderAdditions[direction] = true;
     
@@ -850,7 +897,7 @@ function addPlaceholdersAbove() {
     if (!gallery || isLoadingMore) return;
     
     // Don't add placeholders if manual modal is open
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
     
     // Check if there are actually images above the current position
     const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
@@ -930,7 +977,7 @@ function addPlaceholdersBelow() {
     if (!gallery || isLoadingMore) return;
     
     // Don't add placeholders if manual modal is open
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
     
     // Check if there are actually images below the current position
     const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
@@ -994,7 +1041,7 @@ function handleInfiniteScroll() {
     if (isLoadingMore) return;
     
     // Don't handle infinite scroll if manual modal is open
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
 
     const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
     const windowHeight = window.innerHeight;
@@ -1088,7 +1135,7 @@ async function loadMoreImages() {
     
     try {
         isLoadingMore = true;
-        if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'block';
+        if (infiniteScrollLoading) infiniteScrollLoading.classList.remove('hidden');
         
         // Check if there are actually more images to load
         const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
@@ -1149,7 +1196,7 @@ async function loadMoreImages() {
         console.error('Error loading more images:', error);
     } finally {
         isLoadingMore = false;
-        if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'none';
+        if (infiniteScrollLoading) infiniteScrollLoading.classList.add('hidden');
     }
 }
 
@@ -1158,9 +1205,9 @@ async function loadMoreImagesBefore() {
     if (isLoadingMore || !hasMoreImagesBefore) return;
     
     // Don't load more images if manual modal is open
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
     isLoadingMore = true;
-    if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'flex';
+    if (infiniteScrollLoading) infiniteScrollLoading.classList.remove('hidden');
     
     try {
         // Calculate dynamic batch size based on viewport
@@ -1211,7 +1258,7 @@ async function loadMoreImagesBefore() {
         console.error('Error loading more images before:', error);
     } finally {
         isLoadingMore = false;
-        if (infiniteScrollLoading) infiniteScrollLoading.style.display = 'none';
+        if (infiniteScrollLoading) infiniteScrollLoading.classList.add('hidden');
     }
 }
 
@@ -1283,10 +1330,51 @@ function calculateTrueItemsPerRow() {
     
     return Math.max(1, itemsInRow);
 }
+
+// Calculate optimal number of columns based on container width and item width
+function calculateOptimalColumns() {
+    if (!gallery) return 5; // Fallback
+    
+    const containerWidth = gallery.offsetWidth;
+    const minItemWidth = 320; // Minimum item width from CSS (updated to match CSS)
+    const borderWidth = 4; // 2px border on each side
+    
+    // Calculate how many items can fit in the container
+    const availableWidth = containerWidth;
+    const itemWidthWithBorder = minItemWidth + borderWidth;
+    const optimalColumns = Math.floor(availableWidth / itemWidthWithBorder);
+    
+    // Ensure we have at least 1 column and at most 10 columns
+    return Math.max(1, Math.min(10, optimalColumns));
+}
+
+// Update gallery grid based on container width - only for infinite scrolling calculations
+function updateGalleryGrid() {
+    if (!gallery) return;
+    
+    const optimalColumns = calculateOptimalColumns();
+    
+    // Update the gallery columns variable for infinite scrolling
+    galleryColumns = optimalColumns;
+    realGalleryColumns = optimalColumns;
+    
+    // Update the gallery toggle group data attribute
+    const galleryToggleGroup = document.getElementById('galleryToggleGroup');
+    if (galleryToggleGroup) {
+        galleryToggleGroup.dataset.columns = galleryColumns;
+    }
+    
+    // Recalculate rows and update display for infinite scrolling
+    galleryRows = calculateGalleryRows();
+    imagesPerPage = realGalleryColumns * galleryRows;
+    
+    // Update placeholders
+    updateGalleryPlaceholders();
+}
 // Update gallery columns based on true layout
 function updateGalleryColumnsFromLayout() {
     // Don't update gallery if manual modal is open
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
     
     const trueColumns = calculateTrueItemsPerRow();
     if (trueColumns !== realGalleryColumns) {
@@ -1483,7 +1571,7 @@ function updateVirtualScroll() {
     if (!gallery) return;
     
     // Don't update virtual scroll if manual modal is open
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
     
     // Throttle virtual scroll updates for better performance with many items
     if (virtualScrollThrottle) return;
@@ -1494,9 +1582,6 @@ function updateVirtualScroll() {
 }
 
 function updateVirtualScrollInternal() {
-    // Performance monitoring for debugging
-    const startTime = performance.now();
-    
     // Cache DOM queries for better performance with many items
     const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
     const total = items.length;
@@ -1745,18 +1830,12 @@ function updateVirtualScrollInternal() {
     if (scrollPositionPreservationEnabled) {
         restoreScrollPosition();
     }
-    
-    // Performance monitoring for debugging
-    const endTime = performance.now();
-    if (total > 100) { // Only log for large galleries
-        console.log(`Virtual scroll update: ${total} items processed in ${(endTime - startTime).toFixed(2)}ms`);
-    }
 }
 
 // Remove image from gallery and add placeholder at the end
 function removeImageFromGallery(image) {
     // Don't update gallery if manual modal is open
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
     
     try {
         const filename = image.filename || image.original || image.upscaled;
@@ -1868,7 +1947,7 @@ function removeImageFromGallery(image) {
 // Remove multiple images from gallery and add placeholders at the end
 function removeMultipleImagesFromGallery(images) {
     // Don't update gallery if manual modal is open
-    if (manualModal.style.display !== 'none') return;
+    if (!manualModal.classList.contains('hidden')) return;
     
     try {
         if (!Array.isArray(images) || images.length === 0) {
@@ -2051,7 +2130,7 @@ function updateBulkActionsBar() {
     const bulkUnpinBtn = document.getElementById('bulkUnpinBtn');
 
     if (selectedImages.size > 0) {
-        bulkActionsBar.style.display = 'flex';
+        bulkActionsBar.classList.remove('hidden');
         selectedCount.textContent = selectedImages.size;
         gallery.classList.add('selection-mode');
         isSelectionMode = true;
@@ -2060,13 +2139,13 @@ function updateBulkActionsBar() {
         if (bulkMoveToScrapsBtn) {
             if (currentGalleryView === 'scraps') {
                 // Hide scrap button when viewing scraps (can't move scraps to scraps)
-                bulkMoveToScrapsBtn.style.display = 'none';
+                bulkMoveToScrapsBtn.classList.add('hidden');
             } else if (currentGalleryView === 'pinned') {
                 // Hide scrap button when viewing pinned (can't move pinned to scraps)
-                bulkMoveToScrapsBtn.style.display = 'none';
+                bulkMoveToScrapsBtn.classList.add('hidden');
             } else {
                 // Show scrap button when viewing regular images
-                bulkMoveToScrapsBtn.style.display = 'inline-block';
+                bulkMoveToScrapsBtn.classList.remove('hidden');
             }
         }
 
@@ -2074,10 +2153,10 @@ function updateBulkActionsBar() {
         if (bulkPinBtn) {
             if (currentGalleryView === 'images') {
                 // Show pin button when viewing regular images
-                bulkPinBtn.style.display = 'inline-block';
+                bulkPinBtn.classList.remove('hidden');
             } else {
                 // Hide pin button for other views
-                bulkPinBtn.style.display = 'none';
+                bulkPinBtn.classList.add('hidden');
             }
         }
 
@@ -2085,14 +2164,14 @@ function updateBulkActionsBar() {
         if (bulkUnpinBtn) {
             if (currentGalleryView === 'pinned') {
                 // Show unpin button when viewing pinned items
-                bulkUnpinBtn.style.display = 'inline-block';
+                bulkUnpinBtn.classList.remove('hidden');
             } else {
                 // Hide unpin button for other views
-                bulkUnpinBtn.style.display = 'none';
+                bulkUnpinBtn.classList.add('hidden');
             }
         }
     } else {
-        bulkActionsBar.style.display = 'none';
+        bulkActionsBar.classList.add('hidden');
         gallery.classList.remove('selection-mode');
         isSelectionMode = false;
     }
@@ -2176,6 +2255,22 @@ function toggleGallerySortOrder() {
             } else {
                 icon.className = 'fa-light fa-sort-amount-up';
                 sortOrderBtn.title = 'Sort Order: Oldest First';
+            }
+        }
+    }
+
+    // Update the mobile button state and icon
+    const mobileSortOrderBtn = document.getElementById('mobileSortOrderToggleBtn');
+    if (mobileSortOrderBtn) {
+        mobileSortOrderBtn.dataset.state = gallerySortOrder;
+        const mobileIcon = mobileSortOrderBtn.querySelector('i');
+        if (mobileIcon) {
+            if (gallerySortOrder === 'desc') {
+                mobileIcon.className = 'fa-light fa-sort-amount-down';
+                mobileSortOrderBtn.title = 'Sort Order: Newest First';
+            } else {
+                mobileIcon.className = 'fa-light fa-sort-amount-up';
+                mobileSortOrderBtn.title = 'Sort Order: Oldest First';
             }
         }
     }
@@ -2294,3 +2389,5 @@ window.resetInfiniteScroll = resetInfiniteScroll;
 window.displayCurrentPageOptimized = displayCurrentPageOptimized;
 window.displayGalleryFromStartIndex = displayGalleryFromStartIndex;
 window.realGalleryColumns = realGalleryColumns;
+window.updateGalleryGrid = updateGalleryGrid;
+window.calculateOptimalColumns = calculateOptimalColumns;

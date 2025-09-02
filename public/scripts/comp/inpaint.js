@@ -11,6 +11,8 @@ let brushSizePercent = 0.03; // 3% of canvas size as default
 let brushShape = 'circle'; // 'square' or 'circle'
 let displayScale = 1; // Track the display scale for cursor positioning
 let globalMouseDown = false; // Track global mouse state for continuous drawing
+let currentMouseButton = null; // Track which mouse button is currently pressed
+let currentTouchCount = 0; // Track current number of touches for button simulation
 const negativeBtn = document.getElementById('maskNegativeBtn');
 const inpaintBtn = document.getElementById('inpaintBtn');
 
@@ -31,6 +33,8 @@ function resetInpaint() {
     brushShape = 'circle';
     displayScale = 1;
     globalMouseDown = false;
+    currentMouseButton = null;
+    currentTouchCount = 0;
     updateInpaintButtonState();
     updateMaskPreview();
 }
@@ -48,27 +52,20 @@ function initializeMaskEditor() {
         // Always match size to maskEditorCanvas
         maskBrushPreviewCanvas.width = maskEditorCanvas.width;
         maskBrushPreviewCanvas.height = maskEditorCanvas.height;
-        maskBrushPreviewCanvas.style.position = 'absolute';
-        maskBrushPreviewCanvas.style.left = '0';
-        maskBrushPreviewCanvas.style.top = '0';
-        maskBrushPreviewCanvas.style.pointerEvents = 'none';
-        maskBrushPreviewCanvas.style.zIndex = 3;
     }
     // Make maskCanvas transparent
     maskEditorCanvas.style.background = 'transparent';
-
-    if (!maskEditorCanvas) return;
 
     // Create brush cursor element if it doesn't exist
     let brushCursor = document.querySelector('.brush-cursor');
     if (!brushCursor) {
         brushCursor = document.createElement('div');
         brushCursor.className = 'brush-cursor';
-        brushCursor.style.display = 'none';
+        brushCursor.classList.add('hidden');
         document.body.appendChild(brushCursor);
     }
     // Hide the floating brush cursor div (we use overlay canvas now)
-    brushCursor.style.display = 'none';
+    brushCursor.classList.add('hidden');
 
     // Tool buttons
     const brushBtn = document.getElementById('maskBrushBtn');
@@ -149,7 +146,7 @@ function initializeMaskEditor() {
 
             // Update cursor size if it exists
             const brushCursor = document.querySelector('.brush-cursor');
-            if (brushCursor && brushCursor.style.display !== 'none') {
+            if (brushCursor && !brushCursor.classList.contains('hidden')) {
                 const cursorSize = brushSize * displayScale;
                 brushCursor.style.width = cursorSize + 'px';
                 brushCursor.style.height = cursorSize + 'px';
@@ -173,7 +170,7 @@ function initializeMaskEditor() {
 
             // Update cursor size if it exists
             const brushCursor = document.querySelector('.brush-cursor');
-            if (brushCursor && brushCursor.style.display !== 'none') {
+            if (brushCursor && !brushCursor.classList.contains('hidden')) {
                 const cursorSize = brushSize * displayScale;
                 brushCursor.style.width = cursorSize + 'px';
                 brushCursor.style.height = cursorSize + 'px';
@@ -198,6 +195,15 @@ function registerInpaintEventListeners() {
     maskEditorCanvas.addEventListener('mousemove', draw);
     maskEditorCanvas.addEventListener('mouseup', stopDrawing);
 
+    // Block right-click context menu
+    const handleContextMenu = (e) => {
+        e.preventDefault();
+    };
+    maskEditorCanvas.addEventListener('contextmenu', handleContextMenu);
+    
+    // Store the function reference for removal
+    maskEditorCanvas._handleContextMenu = handleContextMenu;
+
     // Brush cursor events
     maskEditorCanvas.addEventListener('mousemove', updateBrushCursor);
     maskEditorCanvas.addEventListener('mouseenter', handleCanvasMouseEnter);
@@ -219,6 +225,7 @@ function registerInpaintEventListeners() {
     // Global mouse events for continuous drawing
     document.addEventListener('mouseup', handleGlobalMouseUp);
     document.addEventListener('mousemove', handleGlobalMouseMove);
+    document.addEventListener('mousedown', handleGlobalMouseDown);
 
     // Touch events for mobile - must be non-passive to allow preventDefault
     maskEditorCanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
@@ -240,6 +247,11 @@ function deregisterInpaintEventListeners() {
     maskEditorCanvas.removeEventListener('mousedown', startDrawing);
     maskEditorCanvas.removeEventListener('mousemove', draw);
     maskEditorCanvas.removeEventListener('mouseup', stopDrawing);
+    // Remove contextmenu using the stored function reference
+    if (maskEditorCanvas._handleContextMenu) {
+        maskEditorCanvas.removeEventListener('contextmenu', maskEditorCanvas._handleContextMenu);
+        delete maskEditorCanvas._handleContextMenu;
+    }
     maskEditorCanvas.removeEventListener('mousemove', updateBrushCursor);
     maskEditorCanvas.removeEventListener('mouseenter', handleCanvasMouseEnter);
     
@@ -252,6 +264,7 @@ function deregisterInpaintEventListeners() {
     maskEditorCanvas.removeEventListener('wheel', handleCanvasWheel);
     document.removeEventListener('mouseup', handleGlobalMouseUp);
     document.removeEventListener('mousemove', handleGlobalMouseMove);
+    document.removeEventListener('mousedown', handleGlobalMouseDown);
     maskEditorCanvas.removeEventListener('touchstart', handleTouchStart);
     maskEditorCanvas.removeEventListener('touchmove', handleTouchMove);
     maskEditorCanvas.removeEventListener('touchend', handleTouchEnd);
@@ -294,7 +307,7 @@ function toggleBrushShape() {
 
     // Update cursor if it's visible
     const brushCursor = document.querySelector('.brush-cursor');
-    if (brushCursor && brushCursor.style.display !== 'none') {
+    if (brushCursor && !brushCursor.classList.contains('hidden')) {
         if (brushShape === 'circle') {
             brushCursor.style.borderRadius = '50%';
         } else {
@@ -308,7 +321,13 @@ function invertMask() {
     if (!maskEditorCanvas || !maskEditorCtx) return;
     const width = maskEditorCanvas.width;
     const height = maskEditorCanvas.height;
-    const imageData = maskEditorCtx.getImageData(0, 0, width, height);
+    let imageData;
+    try {
+        imageData = maskEditorCtx.getImageData(0, 0, width, height);
+    } catch (error) {
+        console.warn('Failed to get image data for mask inversion:', error);
+        return;
+    }
     const data = imageData.data;
     for (let i = 0; i < data.length; i += 4) {
         // If pixel is green (75,254,108,255), make it transparent (0,0,0,0)
@@ -351,7 +370,7 @@ function handleCanvasWheel(e) {
 
     // Update cursor size if it exists
     const brushCursor = document.querySelector('.brush-cursor');
-    if (brushCursor && brushCursor.style.display !== 'none') {
+    if (brushCursor && !brushCursor.classList.contains('hidden')) {
         const rect = maskEditorCanvas.getBoundingClientRect();
         const visualScaleX = rect.width / maskEditorCanvas.width;
         const visualScaleY = rect.height / maskEditorCanvas.height;
@@ -381,6 +400,18 @@ function handleCanvasMouseEnter(e) {
 }
 
 // Global mouse event handlers for continuous drawing
+function handleGlobalMouseDown(e) {
+    // Only handle global mouse events when the editor is actually open and canvas is ready
+    if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered) {
+        return; // Silently ignore if editor isn't ready
+    }
+    
+    // Update mouse button tracking if we're already drawing
+    if (globalMouseDown && isDrawing) {
+        currentMouseButton = e.button;
+    }
+}
+
 function handleGlobalMouseUp(e) {
     // Only handle global mouse events when the editor is actually open and canvas is ready
     if (!maskEditorCanvas || !maskEditorCtx || !inpaintEventListenersRegistered) {
@@ -390,6 +421,7 @@ function handleGlobalMouseUp(e) {
     if (globalMouseDown) {
         globalMouseDown = false;
         isDrawing = false;
+        currentMouseButton = null; // Clear mouse button tracking
     }
 }
 
@@ -421,6 +453,7 @@ function startDrawing(e) {
     
     isDrawing = true;
     globalMouseDown = true;
+    currentMouseButton = e.button; // Track which button was pressed
     draw(e);
 }
 
@@ -458,8 +491,26 @@ function draw(e) {
         const canvasX = (x / actualCanvasWidth) * maskEditorCanvas.width;
         const canvasY = (y / actualCanvasHeight) * maskEditorCanvas.height;
 
+        // Determine which tool to use based on mouse button
+        // Left mouse button (button 0) uses the opposite tool
+        // Right mouse button (button 2) uses the current tool
+        let effectiveTool = currentTool;
+        // Use the tracked currentMouseButton from startDrawing, as it's more reliable
+        // than the e.button from mousemove events
+        if (currentMouseButton === 2) { // Left mouse button
+            effectiveTool = currentTool === 'brush' ? 'eraser' : 'brush';
+            console.log('Using opposite tool:', effectiveTool);
+        } else if (currentMouseButton === 0) { // Right mouse button
+            effectiveTool = currentTool;
+            console.log('Using current tool:', effectiveTool);
+        } else {
+            // Fallback: use current tool if button detection fails
+            effectiveTool = currentTool;
+            console.log('Button detection failed, using current tool:', effectiveTool);
+        }
+        
         // Use green for visual feedback in the editor
-        if (currentTool === 'brush') {
+        if (effectiveTool === 'brush') {
             if (brushShape === 'circle') {
                 drawCircle(canvasX, canvasY, brushSize, '#4bfe6c', 1);
             } else {
@@ -485,7 +536,13 @@ function drawCircle(x, y, radius, color, alpha) {
     const startY = roundedY - roundedRadius;
     const size = 2 * roundedRadius + 1;
 
-    const imageData = maskEditorCtx.getImageData(startX, startY, size, size);
+    let imageData;
+    try {
+        imageData = maskEditorCtx.getImageData(startX, startY, size, size);
+    } catch (error) {
+        console.warn('Failed to get image data for circle drawing:', error);
+        return;
+    }
 
     for (let i = 0; i <= roundedRadius; i++) {
         for (let j = 0; j <= roundedRadius; j++) {
@@ -526,7 +583,13 @@ function drawSquare(x, y, size, color, alpha) {
     const endX = startX + size;
     const endY = startY + size;
 
-    const imageData = maskEditorCtx.getImageData(startX, startY, endX - startX, endY - startY);
+    let imageData;
+    try {
+        imageData = maskEditorCtx.getImageData(startX, startY, endX - startX, endY - startY);
+    } catch (error) {
+        console.warn('Failed to get image data for square drawing:', error);
+        return;
+    }
 
     for (let i = 0; i < imageData.data.length; i += 4) {
         imageData.data[i] = parseInt(color.slice(1, 3), 16);     // Red
@@ -547,6 +610,7 @@ function stopDrawing(e) {
     
     isDrawing = false;
     globalMouseDown = false;
+    currentMouseButton = null; // Clear mouse button tracking
     if (maskBrushPreviewCtx && maskBrushPreviewCanvas) {
         maskBrushPreviewCtx.clearRect(0, 0, maskBrushPreviewCanvas.width, maskBrushPreviewCanvas.height);
     }
@@ -576,8 +640,25 @@ function updateBrushCursor(e) {
         const canvasX = (x / actualCanvasWidth) * maskEditorCanvas.width;
         const canvasY = (y / actualCanvasHeight) * maskEditorCanvas.height;
 
-        // Draw green preview using the same logic as drawCircle/drawSquare
-        if (currentTool === 'brush') {
+        // Determine which tool to preview based on mouse button
+        // Left mouse button (button 0) shows opposite tool preview
+        // Right mouse button (button 2) shows current tool preview
+        let previewTool = currentTool;
+        // Use the same improved detection logic
+        if (currentMouseButton === 2) { // Left mouse button
+            previewTool = currentTool === 'brush' ? 'eraser' : 'brush';
+            console.log('Preview using opposite tool:', previewTool);
+        } else if (currentMouseButton === 0) { // Right mouse button
+            previewTool = currentTool;
+            console.log('Preview using current tool:', previewTool);
+        } else {
+            // Fallback: use current tool if button detection fails
+            previewTool = currentTool;
+            console.log('Preview button detection failed, using current tool:', previewTool);
+        }
+        
+        // Draw preview using the same logic as drawCircle/drawSquare
+        if (previewTool === 'brush') {
             if (brushShape === 'circle') {
                 drawBrushPreviewCircle(canvasX, canvasY, brushSize, '#4bc6fe');
             } else {
@@ -657,12 +738,31 @@ function handleTouchStart(e) {
     }
     
     e.preventDefault();
-    const touch = e.touches[0];
-    const mouseEvent = new MouseEvent('mousedown', {
-        clientX: touch.clientX,
-        clientY: touch.clientY
-    });
-    maskEditorCanvas.dispatchEvent(mouseEvent);
+    
+    // Handle single touch (left mouse button - opposite tool)
+    if (e.touches.length === 1) {
+        currentTouchCount = 1;
+        const touch = e.touches[0];
+        const mouseEvent = new MouseEvent('mousedown', {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            button: 0, // Left mouse button for opposite tool
+            buttons: 1 // Primary button pressed
+        });
+        maskEditorCanvas.dispatchEvent(mouseEvent);
+    }
+    // Handle two-finger touch (right mouse button - current tool)
+    else if (e.touches.length === 2) {
+        currentTouchCount = 2;
+        const touch = e.touches[0]; // Use first touch point
+        const mouseEvent = new MouseEvent('mousedown', {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            button: 2, // Right mouse button for current tool
+            buttons: 2 // Secondary button pressed
+        });
+        maskEditorCanvas.dispatchEvent(mouseEvent);
+    }
 }
 
 function handleTouchMove(e) {
@@ -672,12 +772,31 @@ function handleTouchMove(e) {
     }
     
     e.preventDefault();
-    const touch = e.touches[0];
-    const mouseEvent = new MouseEvent('mousemove', {
-        clientX: touch.clientX,
-        clientY: touch.clientY
-    });
-    maskEditorCanvas.dispatchEvent(mouseEvent);
+    
+    // Handle single touch (left mouse button - opposite tool)
+    if (e.touches.length === 1) {
+        currentTouchCount = 1;
+        const touch = e.touches[0];
+        const mouseEvent = new MouseEvent('mousemove', {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            button: 0, // Left mouse button for opposite tool
+            buttons: 1 // Primary button pressed
+        });
+        maskEditorCanvas.dispatchEvent(mouseEvent);
+    }
+    // Handle two-finger touch (right mouse button - current tool)
+    else if (e.touches.length === 2) {
+        currentTouchCount = 2;
+        const touch = e.touches[0]; // Use first touch point
+        const mouseEvent = new MouseEvent('mousemove', {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            button: 2, // Right mouse button for current tool
+            buttons: 2 // Secondary button pressed
+        });
+        maskEditorCanvas.dispatchEvent(mouseEvent);
+    }
 }
 
 function handleTouchEnd(e) {
@@ -687,7 +806,18 @@ function handleTouchEnd(e) {
     }
     
     e.preventDefault();
-    const mouseEvent = new MouseEvent('mouseup', {});
+    
+    // Use the tracked touch count to determine which button state to simulate
+    const button = currentTouchCount === 1 ? 0 : (currentTouchCount === 2 ? 2 : 0);
+    
+    const mouseEvent = new MouseEvent('mouseup', {
+        button: button,
+        buttons: 0 // No buttons pressed
+    });
+    
+    // Reset touch count
+    currentTouchCount = 0;
+    
     maskEditorCanvas.dispatchEvent(mouseEvent);
 }
 
@@ -852,13 +982,31 @@ function setMaskEditorFromDataUrl(dataUrl) {
 
     const img = new Image();
     img.onload = function() {
-        window.maskEditorCanvas.width = img.width;
-        window.maskEditorCanvas.height = img.height;
-        window.maskEditorCtx.clearRect(0, 0, img.width, img.height);
-        window.maskEditorCtx.drawImage(img, 0, 0);
+        try {
+            window.maskEditorCanvas.width = img.width;
+            window.maskEditorCanvas.height = img.height;
+            
+            // Update preview canvas dimensions to match
+            if (window.maskBrushPreviewCanvas && window.maskBrushPreviewCtx) {
+                window.maskBrushPreviewCanvas.width = img.width;
+                window.maskBrushPreviewCanvas.height = img.height;
+            }
+            
+            window.maskEditorCtx.clearRect(0, 0, img.width, img.height);
+            window.maskEditorCtx.drawImage(img, 0, 0);
+        } catch (error) {
+            console.error('Error processing mask image:', error);
+        } finally {
+            // Clean up image reference
+            img.onload = null;
+            img.onerror = null;
+        }
     };
     img.onerror = function() {
         console.error('Failed to load mask image for editor');
+        // Clean up image reference
+        img.onload = null;
+        img.onerror = null;
     };
     img.src = dataUrl;
 }
@@ -944,11 +1092,18 @@ async function convertStandardMaskToCompressed(standardMaskBase64, originalWidth
             } catch (error) {
                 console.error('Error converting standard mask to compressed:', error);
                 reject(error);
+            } finally {
+                // Clean up image reference
+                img.onload = null;
+                img.onerror = null;
             }
         };
 
         img.onerror = function() {
             console.error('Failed to load standard mask image');
+            // Clean up image reference
+            img.onload = null;
+            img.onerror = null;
             reject(new Error('Failed to load standard mask image'));
         };
 
@@ -1038,11 +1193,18 @@ function processCompressedMask(compressedMaskBase64, targetWidth, targetHeight, 
             } catch (error) {
                 console.error('Error processing compressed mask:', error);
                 reject(error);
+            } finally {
+                // Clean up image reference
+                img.onload = null;
+                img.onerror = null;
             }
         };
 
         img.onerror = function() {
             console.error('Failed to load compressed mask image');
+            // Clean up image reference
+            img.onload = null;
+            img.onerror = null;
             reject(new Error('Failed to load compressed mask image'));
         };
 
@@ -1076,7 +1238,7 @@ async function deleteMask() {
 
 // Move to mask.js: Close mask editor
 function closeMaskEditor() {
-    document.getElementById('maskEditorDialog').style.display = 'none';
+    document.getElementById('maskEditorDialog').classList.add('hidden');
 
     // Reset drawing state
     isDrawing = false;
@@ -1164,7 +1326,9 @@ function openMaskEditor() {
     // Set canvas dimensions to the 8x smaller size
     maskEditorCanvas.width = canvasWidth;
     maskEditorCanvas.height = canvasHeight;
-    if (maskBrushPreviewCanvas) {
+    
+    // Update preview canvas dimensions to match
+    if (maskBrushPreviewCanvas && maskBrushPreviewCtx) {
         maskBrushPreviewCanvas.width = canvasWidth;
         maskBrushPreviewCanvas.height = canvasHeight;
     }
@@ -1210,8 +1374,8 @@ function openMaskEditor() {
             canvasInner.style.setProperty('--background-image', backgroundImageValue);
             canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
             canvasInner.style.setProperty('--background-size', 'contain');
-            canvasInner.style.setProperty('--background-width', '100%');
-            canvasInner.style.setProperty('--background-height', '100%');
+            canvasInner.style.setProperty('--background-width', '90%');
+            canvasInner.style.setProperty('--background-height', '90%');
         } else if (!variationImage || !variationImage.src) {
             // When no variation image, create a black placeholder
             const placeholderCanvas = document.createElement('canvas');
@@ -1232,16 +1396,16 @@ function openMaskEditor() {
             canvasInner.style.setProperty('--background-image', backgroundImageValue);
             canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
             canvasInner.style.setProperty('--background-size', 'contain');
-            canvasInner.style.setProperty('--background-width', '100%');
-            canvasInner.style.setProperty('--background-height', '100%');
+            canvasInner.style.setProperty('--background-width', '90%');
+            canvasInner.style.setProperty('--background-height', '90%');
         } else {
             // Use the variation image as background with aspect ratio scaling
             const backgroundImageValue = `url(${variationImage.src})`;
             canvasInner.style.setProperty('--background-image', backgroundImageValue);
             canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
             canvasInner.style.setProperty('--background-size', 'contain');
-            canvasInner.style.setProperty('--background-width', '100%');
-            canvasInner.style.setProperty('--background-height', '100%');
+            canvasInner.style.setProperty('--background-width', '90%');
+            canvasInner.style.setProperty('--background-height', '90%');
         }
     }
 
@@ -1252,47 +1416,61 @@ function openMaskEditor() {
     if (window.currentMaskData) {
         const maskImg = new Image();
         maskImg.onload = function() {
-            // Create a temporary canvas to scale down the mask
-            const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCanvas.width = canvasWidth;
-            tempCanvas.height = canvasHeight;
+            try {
+                // Create a temporary canvas to scale down the mask
+                const tempCanvas = document.createElement('canvas');
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCanvas.width = canvasWidth;
+                tempCanvas.height = canvasHeight;
 
-            // Disable image smoothing for nearest neighbor scaling
-            tempCtx.imageSmoothingEnabled = false;
+                // Disable image smoothing for nearest neighbor scaling
+                tempCtx.imageSmoothingEnabled = false;
 
-            // Draw the mask image onto the temp canvas (scaled down)
-            tempCtx.drawImage(maskImg, 0, 0, canvasWidth, canvasHeight);
+                // Draw the mask image onto the temp canvas (scaled down)
+                tempCtx.drawImage(maskImg, 0, 0, canvasWidth, canvasHeight);
 
-            // Get the scaled down image data
-            const imageData = tempCtx.getImageData(0, 0, canvasWidth, canvasHeight);
-            const data = imageData.data;
+                // Get the scaled down image data
+                const imageData = tempCtx.getImageData(0, 0, canvasWidth, canvasHeight);
+                const data = imageData.data;
 
-            for (let i = 0; i < data.length; i += 4) {
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
+                for (let i = 0; i < data.length; i += 4) {
+                    const r = data[i];
+                    const g = data[i + 1];
+                    const b = data[i + 2];
 
-                // If pixel is pure black (0,0,0), make it transparent for editing
-                if (r === 0 && g === 0 && b === 0) {
-                    data[i + 3] = 0; // Set alpha to 0 (transparent)
-                } else if (r > 0 || g > 0 || b > 0) {
-                    // Any non-black pixel becomes white with full opacity
-                    data[i] = 255;     // Red
-                    data[i + 1] = 255; // Green
-                    data[i + 2] = 255; // Blue
-                    data[i + 3] = 255; // Alpha
+                    // If pixel is pure black (0,0,0), make it transparent for editing
+                    if (r === 0 && g === 0 && b === 0) {
+                        data[i + 3] = 0; // Set alpha to 0 (transparent)
+                    } else if (r > 0 || g > 0 || b > 0) {
+                        // Any non-black pixel becomes white with full opacity
+                        data[i] = 255;     // Red
+                        data[i + 1] = 255; // Green
+                        data[i + 2] = 255; // Blue
+                        data[i + 3] = 255; // Alpha
+                    }
                 }
-            }
 
-            // Put the modified image data back to the main canvas
-            maskEditorCtx.putImageData(imageData, 0, 0);
+                // Put the modified image data back to the main canvas
+                maskEditorCtx.putImageData(imageData, 0, 0);
+            } catch (error) {
+                console.error('Error loading existing mask:', error);
+            } finally {
+                // Clean up image reference
+                maskImg.onload = null;
+                maskImg.onerror = null;
+            }
+        };
+        maskImg.onerror = function() {
+            console.error('Failed to load existing mask image');
+            // Clean up image reference
+            maskImg.onload = null;
+            maskImg.onerror = null;
         };
         maskImg.src = window.currentMaskData;
     }
 
     // Show the dialog
-    maskEditorDialog.style.display = 'flex';
+    maskEditorDialog.classList.remove('hidden');
 
     // Register event listeners when editor is opened and canvas is ready
     if (maskEditorCanvas && maskEditorCtx) {
@@ -1376,7 +1554,7 @@ function updateInpaintButtonState() {
     const shouldShowInpaint = window.uploadedImageData;
     if (shouldShowInpaint) {
         if (inpaintBtn) {
-            inpaintBtn.style.display = '';
+            inpaintBtn.classList.remove('hidden');
         }
         // Set strength value based on mask presence
         if (manualStrengthValue) {
@@ -1394,7 +1572,7 @@ function updateInpaintButtonState() {
         }
     } else {
         if (inpaintBtn) {
-            inpaintBtn.style.display = 'none';
+            inpaintBtn.classList.add('hidden');
         }
     }
 }
@@ -1405,7 +1583,7 @@ async function updateMaskPreview() {
 
     if (!maskPreviewCanvas || !variationImage || !window.uploadedImageData?.image_source) {
         if (maskPreviewCanvas) {
-            maskPreviewCanvas.style.display = 'none';
+            maskPreviewCanvas.classList.add('hidden');
         }
         return;
     }
@@ -1422,7 +1600,7 @@ async function updateMaskPreview() {
 
             // Check if the displayed dimensions are valid and the image is visible
             if (imageRect.width > 0 && imageRect.height > 0 &&
-                variationImage.style.display !== 'none' &&
+                !variationImage.classList.contains('hidden') &&
                 variationImage.style.visibility !== 'hidden') {
                 break; // Valid dimensions found, proceed
             }
@@ -1436,7 +1614,7 @@ async function updateMaskPreview() {
     if (retryCount >= maxRetries) {
         console.warn('Failed to get valid image dimensions after retries');
         if (maskPreviewCanvas) {
-            maskPreviewCanvas.style.display = 'none';
+            maskPreviewCanvas.classList.add('hidden');
         }
         return;
     }
@@ -1469,7 +1647,7 @@ async function updateMaskPreview() {
 
     if (!maskData) {
         if (maskPreviewCanvas) {
-            maskPreviewCanvas.style.display = 'none';
+            maskPreviewCanvas.classList.add('hidden');
         }
         return;
     }
@@ -1478,7 +1656,7 @@ async function updateMaskPreview() {
     if (typeof maskData !== 'string' || !maskData.startsWith('data:image/')) {
         console.warn('Invalid mask data format:', typeof maskData, maskData ? maskData.substring(0, 50) + '...' : 'null');
         if (maskPreviewCanvas) {
-            maskPreviewCanvas.style.display = 'none';
+            maskPreviewCanvas.classList.add('hidden');
         }
         return;
     }
@@ -1491,7 +1669,7 @@ async function updateMaskPreview() {
     if (imageRect.width <= 0 || imageRect.height <= 0) {
         console.warn('Invalid image dimensions for mask preview:', imageRect);
         if (maskPreviewCanvas) {
-            maskPreviewCanvas.style.display = 'none';
+            maskPreviewCanvas.classList.add('hidden');
         }
         return;
     }
@@ -1499,69 +1677,83 @@ async function updateMaskPreview() {
     // Load the mask image to get its natural aspect ratio
     const maskImg = new Image();
     maskImg.onload = function() {
-        // Calculate aspect ratio of the mask image
-        const maskAspect = maskImg.width / maskImg.height;
-        const containerWidth = imageRect.width;
-        const containerHeight = imageRect.height;
-        let drawWidth = containerWidth;
-        let drawHeight = containerHeight;
+        try {
+            // Calculate aspect ratio of the mask image
+            const maskAspect = maskImg.width / maskImg.height;
+            const containerWidth = imageRect.width;
+            const containerHeight = imageRect.height;
+            let drawWidth = containerWidth;
+            let drawHeight = containerHeight;
 
-        // Adjust drawWidth/drawHeight to maintain aspect ratio
-        if (containerWidth / containerHeight > maskAspect) {
-            // Container is wider than mask, fit by height
-            drawHeight = containerHeight;
-            drawWidth = maskAspect * drawHeight;
-        } else {
-            // Container is taller than mask, fit by width
-            drawWidth = containerWidth;
-            drawHeight = drawWidth / maskAspect;
-        }
-
-        // Set canvas size to match the actual displayed image dimensions
-        maskPreviewCanvas.width = drawWidth;
-        maskPreviewCanvas.height = drawHeight;
-
-        // Position the canvas to overlay the image exactly
-        maskPreviewCanvas.style.width = drawWidth + 'px';
-        maskPreviewCanvas.style.height = drawHeight + 'px';
-        //maskPreviewCanvas.style.left = ((containerWidth - drawWidth) / 2) + 'px';
-        //maskPreviewCanvas.style.top = ((containerHeight - drawHeight) / 2) + 'px';
-        maskPreviewCanvas.style.position = 'absolute';
-
-        const ctx = maskPreviewCanvas.getContext('2d');
-
-        // Clear the canvas first
-        ctx.clearRect(0, 0, maskPreviewCanvas.width, maskPreviewCanvas.height);
-
-        // Draw the mask image onto the preview canvas, maintaining aspect ratio
-        ctx.drawImage(maskImg, 0, 0, maskPreviewCanvas.width, maskPreviewCanvas.height);
-
-        // Get image data to modify colors
-        const imageData = ctx.getImageData(0, 0, maskPreviewCanvas.width, maskPreviewCanvas.height);
-        const data = imageData.data;
-
-        for (let i = 0; i < data.length; i += 4) {
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
-
-            // If pixel is white (masked area), make it green overlay
-            if (r === 255 && g === 255 && b === 255) {
-                data[i] = 149;     // Red
-                data[i + 1] = 254;   // Green
-                data[i + 2] = 108;   // Blue
-                data[i + 3] = 200; // Semi-transparent
+            // Adjust drawWidth/drawHeight to maintain aspect ratio
+            if (containerWidth / containerHeight > maskAspect) {
+                // Container is wider than mask, fit by height
+                drawHeight = containerHeight;
+                drawWidth = maskAspect * drawHeight;
             } else {
-                // Make black areas transparent
-                data[i + 3] = 0;
+                // Container is taller than mask, fit by width
+                drawWidth = containerWidth;
+                drawHeight = drawWidth / maskAspect;
             }
+
+            // Set canvas size to match the actual displayed image dimensions
+            maskPreviewCanvas.width = drawWidth;
+            maskPreviewCanvas.height = drawHeight;
+
+            // Position the canvas to overlay the image exactly
+            maskPreviewCanvas.style.width = drawWidth + 'px';
+            maskPreviewCanvas.style.height = drawHeight + 'px';
+            //maskPreviewCanvas.style.left = ((containerWidth - drawWidth) / 2) + 'px';
+            //maskPreviewCanvas.style.top = ((containerHeight - drawHeight) / 2) + 'px';
+            maskPreviewCanvas.style.position = 'absolute';
+
+            const ctx = maskPreviewCanvas.getContext('2d');
+
+            // Clear the canvas first
+            ctx.clearRect(0, 0, maskPreviewCanvas.width, maskPreviewCanvas.height);
+
+            // Draw the mask image onto the preview canvas, maintaining aspect ratio
+            ctx.drawImage(maskImg, 0, 0, maskPreviewCanvas.width, maskPreviewCanvas.height);
+
+            // Get image data to modify colors
+            const imageData = ctx.getImageData(0, 0, maskPreviewCanvas.width, maskPreviewCanvas.height);
+            const data = imageData.data;
+
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+
+                // If pixel is white (masked area), make it green overlay
+                if (r === 255 && g === 255 && b === 255) {
+                    data[i] = 149;     // Red
+                    data[i + 1] = 254;   // Green
+                    data[i + 2] = 108;   // Blue
+                    data[i + 3] = 200; // Semi-transparent
+                } else {
+                    // Make black areas transparent
+                    data[i + 3] = 0;
+                }
+            }
+
+            // Put the modified image data back
+            ctx.putImageData(imageData, 0, 0);
+
+            // Show the preview canvas
+            maskPreviewCanvas.classList.remove('hidden');
+        } catch (error) {
+            console.error('Error updating mask preview:', error);
+        } finally {
+            // Clean up image reference
+            maskImg.onload = null;
+            maskImg.onerror = null;
         }
-
-        // Put the modified image data back
-        ctx.putImageData(imageData, 0, 0);
-
-        // Show the preview canvas
-        maskPreviewCanvas.style.display = 'block';
+    };
+    maskImg.onerror = function() {
+        console.error('Failed to load mask image for preview');
+        // Clean up image reference
+        maskImg.onload = null;
+        maskImg.onerror = null;
     };
     maskImg.src = maskData;
 }
@@ -1569,8 +1761,9 @@ async function updateMaskPreview() {
 // Function to detect transparent pixels in an image
 function detectTransparentPixels(imageDataUrl) {
     return new Promise((resolve) => {
-        const img = new Image();
-        img.onload = function() {
+            const img = new Image();
+    img.onload = function() {
+        try {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = img.width;
@@ -1597,8 +1790,33 @@ function detectTransparentPixels(imageDataUrl) {
                 transparentPixels: transparentPixels,
                 totalPixels: totalPixels
             });
-        };
-        img.src = imageDataUrl;
+        } catch (error) {
+            console.error('Error detecting transparent pixels:', error);
+            resolve({
+                hasTransparentPixels: false,
+                transparentPercentage: 0,
+                transparentPixels: 0,
+                totalPixels: 0
+            });
+        } finally {
+            // Clean up image reference
+            img.onload = null;
+            img.onerror = null;
+        }
+    };
+    img.onerror = function() {
+        console.error('Failed to load image for transparent pixel detection');
+        // Clean up image reference
+        img.onload = null;
+        img.onerror = null;
+        resolve({
+            hasTransparentPixels: false,
+            transparentPercentage: 0,
+            transparentPixels: 0,
+            totalPixels: 0
+        });
+    };
+    img.src = imageDataUrl;
     });
 }
 
@@ -1626,167 +1844,183 @@ async function autoFillMaskFromTransparentPixels() {
         // Load the existing mask
         const maskImg = new Image();
         maskImg.onload = function() {
-            // Step 1: Upscale the mask 8x with nearest neighbor
-            const upscaledCanvas = document.createElement('canvas');
-            const upscaledCtx = upscaledCanvas.getContext('2d');
-            upscaledCanvas.width = resolutionDims.width;
-            upscaledCanvas.height = resolutionDims.height;
+            try {
+                // Step 1: Upscale the mask 8x with nearest neighbor
+                const upscaledCanvas = document.createElement('canvas');
+                const upscaledCtx = upscaledCanvas.getContext('2d');
+                upscaledCanvas.width = resolutionDims.width;
+                upscaledCanvas.height = resolutionDims.height;
 
-            // Use nearest neighbor scaling for upscaling
-            upscaledCtx.imageSmoothingEnabled = false;
-            upscaledCtx.drawImage(maskImg, 0, 0, upscaledCanvas.width, upscaledCanvas.height);
+                // Use nearest neighbor scaling for upscaling
+                upscaledCtx.imageSmoothingEnabled = false;
+                upscaledCtx.drawImage(maskImg, 0, 0, upscaledCanvas.width, upscaledCanvas.height);
 
-            // Step 2: Apply the same transforms as the image bias
-            const transformedCanvas = document.createElement('canvas');
-            const transformedCtx = transformedCanvas.getContext('2d');
-            transformedCanvas.width = resolutionDims.width;
-            transformedCanvas.height = resolutionDims.height;
+                // Step 2: Apply the same transforms as the image bias
+                const transformedCanvas = document.createElement('canvas');
+                const transformedCtx = transformedCanvas.getContext('2d');
+                transformedCanvas.width = resolutionDims.width;
+                transformedCanvas.height = resolutionDims.height;
 
-            // Fill with white background
-            transformedCtx.fillStyle = '#FFFFFF';
-            transformedCtx.fillRect(0, 0, transformedCanvas.width, transformedCanvas.height);
+                // Fill with white background
+                transformedCtx.fillStyle = '#FFFFFF';
+                transformedCtx.fillRect(0, 0, transformedCanvas.width, transformedCanvas.height);
 
-            // Apply the same transforms as the image bias, calculating delta from original bias
-            const dynamicBias = window.uploadedImageData.image_bias;
-            const previousBias = window.uploadedImageData.previousBias; // The bias that was active when mask was created
+                // Apply the same transforms as the image bias, calculating delta from original bias
+                const dynamicBias = window.uploadedImageData.image_bias;
+                const previousBias = window.uploadedImageData.previousBias; // The bias that was active when mask was created
 
-            if (dynamicBias && typeof dynamicBias === 'object') {
-                transformedCtx.save();
-
-                // Calculate the difference between current bias and the bias that was active when mask was created
-                if (previousBias && typeof previousBias === 'object') {
-                    // Calculate delta from previous bias to current bias
-                    const deltaX = (dynamicBias.x || 0) - (previousBias.x || 0);
-                    const deltaY = (dynamicBias.y || 0) - (previousBias.y || 0);
-                    const deltaRotate = (dynamicBias.rotate || 0) - (previousBias.rotate || 0);
-
-                    // For scale, we need to calculate the relative change
-                    // If previous scale was 1.2 and current is 1.5, delta should be 1.5/1.2 = 1.25
-                    const previousScale = previousBias.scale || 1;
-                    const currentScale = dynamicBias.scale || 1;
-                    const deltaScale = currentScale / previousScale;
-
-                    // Calculate the source image position when the mask was created
-                    // The source image fills the target area, so we need to find its top-left corner
-                    const sourceImageWidth = upscaledCanvas.width;
-                    const sourceImageHeight = upscaledCanvas.height;
-                    const targetWidth = resolutionDims.width;
-                    const targetHeight = resolutionDims.height;
-
-                    // Calculate how the source image was positioned (like in cropImageWithDynamicBias)
-                    const imageAR = sourceImageWidth / sourceImageHeight;
-                    const targetAR = targetWidth / targetHeight;
-
-                    let sourceX, sourceY, sourceWidth, sourceHeight;
-                    if (imageAR > targetAR) {
-                        // Image is wider than target, scale to match target height
-                        sourceHeight = targetHeight;
-                        sourceWidth = targetHeight * imageAR;
-                        sourceX = 0;
-                        sourceY = 0;
-                    } else {
-                        // Image is taller than target, scale to match target width
-                        sourceWidth = targetWidth;
-                        sourceHeight = targetWidth / imageAR;
-                        sourceX = 0;
-                        sourceY = 0;
-                    }
-
-                    // Apply transformations from the source image's top-left origin (like cropImageWithDynamicBias)
-                    transformedCtx.translate(deltaX, deltaY);
-                    transformedCtx.rotate(deltaRotate * Math.PI / 180);
-                    transformedCtx.scale(deltaScale, deltaScale);
-                } else {
-                    // No previous bias, apply the full current bias transformations
-                    // Calculate the source image position (same logic as above)
-                    const sourceImageWidth = upscaledCanvas.width;
-                    const sourceImageHeight = upscaledCanvas.height;
-                    const targetWidth = resolutionDims.width;
-                    const targetHeight = resolutionDims.height;
-
-                    const imageAR = sourceImageWidth / sourceImageHeight;
-                    const targetAR = targetWidth / targetHeight;
-
-                    let sourceX, sourceY, sourceWidth, sourceHeight;
-                    if (imageAR > targetAR) {
-                        sourceHeight = targetHeight;
-                        sourceWidth = targetHeight * imageAR;
-                        sourceX = 0;
-                        sourceY = 0;
-                    } else {
-                        sourceWidth = targetWidth;
-                        sourceHeight = targetWidth / imageAR;
-                        sourceX = 0;
-                        sourceY = 0;
-                    }
-
-                    // Apply transformations from the source image's top-left origin
-                    transformedCtx.translate(dynamicBias.x || 0, dynamicBias.y || 0);
-                    transformedCtx.rotate((dynamicBias.rotate || 0) * Math.PI / 180);
-                    transformedCtx.scale(dynamicBias.scale || 1, dynamicBias.scale || 1);
-                }
-
-                transformedCtx.drawImage(upscaledCanvas, 0, 0);
-                transformedCtx.restore();
-            } else {
-                // For regular bias, apply the standard crop transform
-                const bias = window.uploadedImageData.bias || 2;
-                const originalWidth = window.uploadedImageData.originalWidth;
-                const originalHeight = window.uploadedImageData.originalHeight;
-
-                const scale = Math.max(resolutionDims.width / originalWidth, resolutionDims.height / originalHeight) * (bias / 2);
-                const scaledWidth = originalWidth * scale;
-                const scaledHeight = originalHeight * scale;
-                const x = (resolutionDims.width - scaledWidth) / 2;
-                const y = (resolutionDims.height - scaledHeight) / 2;
-
-                // If there was a previous bias, calculate the delta
-                if (previousBias && typeof previousBias === 'number') {
-                    const previousScale = Math.max(resolutionDims.width / originalWidth, resolutionDims.height / originalHeight) * (previousBias / 2);
-                    const previousScaledWidth = originalWidth * previousScale;
-                    const previousScaledHeight = originalHeight * previousScale;
-                    const previousX = (resolutionDims.width - previousScaledWidth) / 2;
-                    const previousY = (resolutionDims.height - previousScaledHeight) / 2;
-
-                    // Calculate the offset to align the mask
-                    const offsetX = x - previousX;
-                    const offsetY = y - previousY;
-                    const scaleRatio = scale / previousScale;
-
+                if (dynamicBias && typeof dynamicBias === 'object') {
                     transformedCtx.save();
-                    transformedCtx.translate(offsetX, offsetY);
-                    transformedCtx.scale(scaleRatio, scaleRatio);
-                    transformedCtx.drawImage(upscaledCanvas, previousX, previousY, previousScaledWidth, previousScaledHeight);
+
+                    // Calculate the difference between current bias and the bias that was active when mask was created
+                    if (previousBias && typeof previousBias === 'object') {
+                        // Calculate delta from previous bias to current bias
+                        const deltaX = (dynamicBias.x || 0) - (previousBias.x || 0);
+                        const deltaY = (dynamicBias.y || 0) - (previousBias.y || 0);
+                        const deltaRotate = (dynamicBias.rotate || 0) - (previousBias.rotate || 0);
+
+                        // For scale, we need to calculate the relative change
+                        // If previous scale was 1.2 and current is 1.5, delta should be 1.5/1.2 = 1.25
+                        const previousScale = previousBias.scale || 1;
+                        const currentScale = dynamicBias.scale || 1;
+                        const deltaScale = currentScale / previousScale;
+
+                        // Calculate the source image position when the mask was created
+                        // The source image fills the target area, so we need to find its top-left corner
+                        const sourceImageWidth = upscaledCanvas.width;
+                        const sourceImageHeight = upscaledCanvas.height;
+                        const targetWidth = resolutionDims.width;
+                        const targetHeight = resolutionDims.height;
+
+                        // Calculate how the source image was positioned (like in cropImageWithDynamicBias)
+                        const imageAR = sourceImageWidth / sourceImageHeight;
+                        const targetAR = targetWidth / targetHeight;
+
+                        let sourceX, sourceY, sourceWidth, sourceHeight;
+                        if (imageAR > targetAR) {
+                            // Image is wider than target, scale to match target height
+                            sourceHeight = targetHeight;
+                            sourceWidth = targetHeight * imageAR;
+                            sourceX = 0;
+                            sourceY = 0;
+                        } else {
+                            // Image is taller than target, scale to match target width
+                            sourceWidth = targetWidth;
+                            sourceHeight = targetWidth / imageAR;
+                            sourceX = 0;
+                            sourceY = 0;
+                        }
+
+                        // Apply transformations from the source image's top-left origin (like cropImageWithDynamicBias)
+                        transformedCtx.translate(deltaX, deltaY);
+                        transformedCtx.rotate(deltaRotate * Math.PI / 180);
+                        transformedCtx.scale(deltaScale, deltaScale);
+                    } else {
+                        // No previous bias, apply the full current bias transformations
+                        // Calculate the source image position (same logic as above)
+                        const sourceImageWidth = upscaledCanvas.width;
+                        const sourceImageHeight = upscaledCanvas.height;
+                        const targetWidth = resolutionDims.width;
+                        const targetHeight = resolutionDims.height;
+
+                        const imageAR = sourceImageWidth / sourceImageHeight;
+                        const targetAR = targetWidth / targetHeight;
+
+                        let sourceX, sourceY, sourceWidth, sourceHeight;
+                        if (imageAR > targetAR) {
+                            sourceHeight = targetHeight;
+                            sourceWidth = targetHeight * imageAR;
+                            sourceX = 0;
+                            sourceY = 0;
+                        } else {
+                            sourceWidth = targetWidth;
+                            sourceHeight = targetWidth / imageAR;
+                            sourceX = 0;
+                            sourceY = 0;
+                        }
+
+                        // Apply transformations from the source image's top-left origin
+                        transformedCtx.translate(dynamicBias.x || 0, dynamicBias.y || 0);
+                        transformedCtx.rotate((dynamicBias.rotate || 0) * Math.PI / 180);
+                        transformedCtx.scale(dynamicBias.scale || 1, dynamicBias.scale || 1);
+                    }
+
+                    transformedCtx.drawImage(upscaledCanvas, 0, 0);
                     transformedCtx.restore();
                 } else {
-                    transformedCtx.drawImage(upscaledCanvas, x, y, scaledWidth, scaledHeight);
+                    // For regular bias, apply the standard crop transform
+                    const bias = window.uploadedImageData.bias || 2;
+                    const originalWidth = window.uploadedImageData.originalWidth;
+                    const originalHeight = window.uploadedImageData.originalHeight;
+
+                    const scale = Math.max(resolutionDims.width / originalWidth, resolutionDims.height / originalHeight) * (bias / 2);
+                    const scaledWidth = originalWidth * scale;
+                    const scaledHeight = originalHeight * scale;
+                    const x = (resolutionDims.width - scaledWidth) / 2;
+                    const y = (resolutionDims.height - scaledHeight) / 2;
+
+                    // If there was a previous bias, calculate the delta
+                    if (previousBias && typeof previousBias === 'number') {
+                        const previousScale = Math.max(resolutionDims.width / originalWidth, resolutionDims.height / originalHeight) * (previousBias / 2);
+                        const previousScaledWidth = originalWidth * previousScale;
+                        const previousScaledHeight = originalHeight * previousScale;
+                        const previousX = (resolutionDims.width - previousScaledWidth) / 2;
+                        const previousY = (resolutionDims.height - previousScaledHeight) / 2;
+
+                        // Calculate the offset to align the mask
+                        const offsetX = x - previousX;
+                        const offsetY = y - previousY;
+                        const scaleRatio = scale / previousScale;
+
+                        transformedCtx.save();
+                        transformedCtx.translate(offsetX, offsetY);
+                        transformedCtx.scale(scaleRatio, scaleRatio);
+                        transformedCtx.drawImage(upscaledCanvas, previousX, previousY, previousScaledWidth, previousScaledHeight);
+                        transformedCtx.restore();
+                    } else {
+                        transformedCtx.drawImage(upscaledCanvas, x, y, scaledWidth, scaledHeight);
+                    }
                 }
+
+                // Step 3: Scale down 8x with nearest neighbor
+                const finalCanvas = document.createElement('canvas');
+                const finalCtx = finalCanvas.getContext('2d');
+                finalCanvas.width = Math.floor(resolutionDims.width / 8);
+                finalCanvas.height = Math.floor(resolutionDims.height / 8);
+
+                // Use nearest neighbor scaling
+                finalCtx.imageSmoothingEnabled = false;
+                finalCtx.drawImage(transformedCanvas, 0, 0, finalCanvas.width, finalCanvas.height);
+
+                // Convert mask to base64
+                const maskBase64 = finalCanvas.toDataURL('image/png');
+
+                // Store the mask data
+                window.currentMaskData = maskBase64;
+
+                // Set inpaint button to on
+                if (inpaintBtn) {
+                    inpaintBtn.setAttribute('data-state', 'on');
+                    inpaintBtn.classList.add('active');
+                }
+
+                // Update mask preview
+                updateMaskPreview();
+            } catch (error) {
+                console.error('Error auto-filling mask:', error);
+                showError('Failed to auto-fill mask');
+            } finally {
+                // Clean up image reference
+                maskImg.onload = null;
+                maskImg.onerror = null;
             }
-
-            // Step 3: Scale down 8x with nearest neighbor
-            const finalCanvas = document.createElement('canvas');
-            const finalCtx = finalCanvas.getContext('2d');
-            finalCanvas.width = Math.floor(resolutionDims.width / 8);
-            finalCanvas.height = Math.floor(resolutionDims.height / 8);
-
-            // Use nearest neighbor scaling
-            finalCtx.imageSmoothingEnabled = false;
-            finalCtx.drawImage(transformedCanvas, 0, 0, finalCanvas.width, finalCanvas.height);
-
-            // Convert mask to base64
-            const maskBase64 = finalCanvas.toDataURL('image/png');
-
-            // Store the mask data
-            window.currentMaskData = maskBase64;
-
-            // Set inpaint button to on
-            if (inpaintBtn) {
-                inpaintBtn.setAttribute('data-state', 'on');
-                inpaintBtn.classList.add('active');
-            }
-
-            // Update mask preview
-            updateMaskPreview();
+        };
+        maskImg.onerror = function() {
+            console.error('Failed to load mask image for auto-fill');
+            showError('Failed to load mask image for auto-fill');
+            // Clean up image reference
+            maskImg.onload = null;
+            maskImg.onerror = null;
         };
 
         // Load the existing mask

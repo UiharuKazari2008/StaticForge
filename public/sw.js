@@ -12,7 +12,22 @@ const STATIC_CACHE = 'static-cache-v1';
 const DYNAMIC_CACHE = 'dynamic-cache-v1';
 const INTERNAL_CACHE = 'internal-cache-v1';
 
-// Cache strategies
+// Helper function to add cache-busting headers to responses
+function addCacheBustingHeaders(response) {
+  const headers = new Headers(response.headers);
+  headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  headers.set('Pragma', 'no-cache');
+  headers.set('Expires', '0');
+  headers.set('Surrogate-Control', 'no-store');
+  
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: headers
+  });
+}
+
+// Cache strategies - STATIC_CACHE is permanent and always returned with immediate expiry
 const staticStrategy = new strategies.CacheFirst({
   cacheName: STATIC_CACHE,
   plugins: [
@@ -26,186 +41,205 @@ const staticStrategy = new strategies.CacheFirst({
   ],
 });
 
-// Custom strategies that add cache-busting headers to responses
-const dynamicStrategy = {
-  async handle({ request, event }) {
-    const cache = await caches.open(DYNAMIC_CACHE);
-    const cachedResponse = await cache.match(request);
-    
-    if (cachedResponse) {
-      // Add cache-busting headers to prevent browser caching
-      const headers = new Headers(cachedResponse.headers);
-      headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-      headers.set('Pragma', 'no-cache');
-      headers.set('Expires', '0');
-      
-      return new Response(cachedResponse.body, {
-        status: cachedResponse.status,
-        statusText: cachedResponse.statusText,
-        headers: headers
-      });
-    }
-    
-    // If not in cache, fetch from network
-    const response = await fetch(request);
-    if (response.ok) {
-      await cache.put(request, response.clone());
-    }
-    return response;
-  }
-};
+// Dynamic cache strategy - cache first with network fallback and immediate expiry
+const dynamicStrategy = new strategies.CacheFirst({
+  cacheName: DYNAMIC_CACHE,
+  plugins: [
+    new cacheableResponse.CacheableResponsePlugin({
+      statuses: [0, 200],
+    }),
+    new expiration.ExpirationPlugin({
+      maxEntries: 500,
+      maxAgeSeconds: 24 * 60 * 60, // 24 hours
+    }),
+  ],
+});
 
-const imageStrategy = {
-  async handle({ request, event }) {
-    const cache = await caches.open(DYNAMIC_CACHE);
-    const cachedResponse = await cache.match(request);
-    
-    if (cachedResponse) {
-      // Add cache-busting headers to prevent browser caching
-      const headers = new Headers(cachedResponse.headers);
-      headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-      headers.set('Pragma', 'no-cache');
-      headers.set('Expires', '0');
-      
-      return new Response(cachedResponse.body, {
-        status: cachedResponse.status,
-        statusText: cachedResponse.statusText,
-        headers: headers
-      });
-    }
-    
-    // If not in cache, fetch from network
-    const response = await fetch(request);
-    if (response.ok) {
-      await cache.put(request, response.clone());
-    }
-    return response;
-  }
-};
+// Image strategy - cache first with network fallback and immediate expiry
+const imageStrategy = new strategies.CacheFirst({
+  cacheName: DYNAMIC_CACHE,
+  plugins: [
+    new cacheableResponse.CacheableResponsePlugin({
+      statuses: [0, 200],
+    }),
+    new expiration.ExpirationPlugin({
+      maxEntries: 200,
+      maxAgeSeconds: 7 * 24 * 60 * 60, // 1 week
+    }),
+  ],
+});
 
+// Internal strategy - only return cached data, never fetch from network
 const internalStrategy = {
   async handle({ request, event }) {
     const cache = await caches.open(INTERNAL_CACHE);
     const cachedResponse = await cache.match(request);
     
     if (cachedResponse) {
-      // Check if this is internal data
-      const isInternalData = cachedResponse.headers.get('x-internal-data') === 'true';
-      
-      if (isInternalData) {
-        // For internal data, return the response as-is with proper headers
-        // This preserves the Content-Type: application/json and the actual data
-        return cachedResponse;
-      }
+      // Add cache-busting headers to prevent browser caching
+      return addCacheBustingHeaders(cachedResponse);
     }
     
-    // If not in cache, return 404 since internal URLs are client-side only
-    return new Response('Not found', { 
+    // If not in cache, internal URLs are client-side only
+    // Return a 404 since this data should have been cached by the client
+    return new Response('Internal data not found in cache', { 
       status: 404,
       headers: {
-        'Content-Type': 'text/plain'
+        'Content-Type': 'text/plain',
+        'x-internal-missing': 'true',
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
       }
     });
   }
 };
 
-// Route handlers
-workbox.routing.registerRoute(
-  ({ url }) => url.pathname.startsWith('/previews/') || url.pathname.startsWith('/cache/'),
-  dynamicStrategy.handle.bind(dynamicStrategy)
-);
+// Custom strategy wrapper to add cache-busting headers
+function createCacheBustingStrategy(strategy) {
+  return {
+    async handle({ request, event }) {
+      const response = await strategy.handle({ request, event });
+      if (response) {
+        return addCacheBustingHeaders(response);
+      }
+      return response;
+    }
+  };
+}
 
+// Unified route handler for all requests
 workbox.routing.registerRoute(
-  ({ url }) => url.pathname.startsWith('/images/'),
-  imageStrategy.handle.bind(imageStrategy)
-);
-
-workbox.routing.registerRoute(
-  ({ url }) => url.pathname.startsWith('/internal/'),
-  internalStrategy.handle.bind(internalStrategy)
-);
-
-// Special route for Workbox script - cache for 90 days but with cache-busting headers
-workbox.routing.registerRoute(
-  ({ url }) => url.pathname === '/dist/workbox/workbox-sw.js',
-  async ({ request, event }) => {
-    const cache = await caches.open(STATIC_CACHE);
-    const cachedResponse = await cache.match(request);
+  ({ url, request }) => {
+    // Always handle requests that start with /
+    return url.pathname.startsWith('/');
+  },
+  async (event) => {
+    const { request, url } = event;
+    // Handle internal routes (client-side only)
+    if (url.pathname.startsWith('/internal/')) {
+      return internalStrategy.handle(event);
+    }
     
-    if (cachedResponse) {
-      // Add cache-busting headers to prevent browser caching
-      const headers = new Headers(cachedResponse.headers);
-      headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-      headers.set('Pragma', 'no-cache');
-      headers.set('Expires', '0');
+    // Handle route-based paths (/, /app) with custom caching
+    if (url.pathname === '/' || url.pathname === '/app' || url.pathname === '/index.html') {
+      const cache = await caches.open(STATIC_CACHE);
       
-      return new Response(cachedResponse.body, {
-        status: cachedResponse.status,
-        statusText: cachedResponse.statusText,
-        headers: headers
-      });
+      // Determine the route path and endpoint
+      const routePath = url.pathname === '/index.html' ? '/' : url.pathname;
+      const endpoint = routePath;
+      
+      // Try to serve from cache first
+      const cachedResponse = await cache.match(routePath);
+      if (cachedResponse) {
+        return addCacheBustingHeaders(cachedResponse);
+      }
+      
+      // If not cached, fetch from server endpoint and cache
+      try {
+        const response = await fetch(endpoint, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        });
+        
+        if (response.ok) {
+          // Add cache-busting headers
+          const headers = new Headers(response.headers);
+          headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+          headers.set('Pragma', 'no-cache');
+          headers.set('Expires', '0');
+          headers.set('Surrogate-Control', 'no-store');
+          
+          const responseWithHeaders = new Response(response.body, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: headers
+          });
+          
+          // Cache at route path
+          await cache.put(routePath, responseWithHeaders);
+          return addCacheBustingHeaders(responseWithHeaders);
+        }
+      } catch (error) {
+        console.error(`Failed to fetch from ${endpoint} endpoint:`, error);
+      }
+      
+      // Fallback to static strategy
+      return createCacheBustingStrategy(staticStrategy).handle(event);
     }
     
-    // If not in cache, fetch from network
-    const response = await fetch(request);
-    if (response.ok) {
-      await cache.put(request, response.clone());
+    // Handle previews and cache with dynamic strategy
+    if (url.pathname.startsWith('/previews/') || url.pathname.startsWith('/cache/')) {
+      return createCacheBustingStrategy(dynamicStrategy).handle(event);
     }
-    return response;
+    
+    // Handle images with image strategy
+    if (url.pathname.startsWith('/images/')) {
+      return createCacheBustingStrategy(imageStrategy).handle(event);
+    }
+    
+    // Handle all other static files with static strategy
+    return createCacheBustingStrategy(staticStrategy).handle(event);
   }
 );
 
-// Handle static files with cache-first strategy
+// Handle SPA navigation routes - use static cache if available, otherwise redirect
 workbox.routing.registerRoute(
-  ({ url }) => {
-    // Handle static files (HTML, CSS, JS, images, etc.)
-    return url.pathname.startsWith('/') && 
-           !url.pathname.startsWith('/previews/') && 
-           !url.pathname.startsWith('/cache/') && 
-           !url.pathname.startsWith('/images/') && 
-           !url.pathname.startsWith('/internal/') &&
-           url.pathname !== '/';
+  ({ url, request }) => {
+    // Check if this is an HTML request that might be a client-side route
+    const acceptHeader = request.headers.get('accept');
+    const isHtmlRequest = acceptHeader && acceptHeader.includes('text/html');
+    const isNotStaticFile = !url.pathname.includes('.') && 
+                           !url.pathname.startsWith('/previews/') && 
+                           !url.pathname.startsWith('/cache/') && 
+                           !url.pathname.startsWith('/images/') && 
+                           !url.pathname.startsWith('/internal/') &&
+                           url.pathname !== '/' &&
+                           url.pathname !== '/app';
+    
+    return isHtmlRequest && isNotStaticFile;
   },
-  async ({ request }) => {
-    // Check our static cache first
+  async ({ request, url }) => {
     const cache = await caches.open(STATIC_CACHE);
     const cachedResponse = await cache.match(request);
     
+    // If we have a cached version, return it with cache-busting headers
     if (cachedResponse) {
-      // Add cache-busting headers to cached responses to prevent browser caching
-      const headers = new Headers(cachedResponse.headers);
-      headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-      headers.set('Pragma', 'no-cache');
-      headers.set('Expires', '0');
-      
-      return new Response(cachedResponse.body, {
-        status: cachedResponse.status,
-        statusText: cachedResponse.statusText,
-        headers: headers
-      });
+      return addCacheBustingHeaders(cachedResponse);
     }
     
-    // If not in cache, fetch from network with cache-busting headers
-    try {
-      // Add cache-busting headers for ALL static assets to prevent browser caching
-      const fetchOptions = {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-          'Pragma': 'no-cache',
-          'Expires': '0'
-        }
-      };
-      
-      const response = await fetch(request, fetchOptions);
-      if (response && response.status === 200) {
-        return response;
+    // If no cached version, redirect to main app for client-side routing
+    return new Response(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Dreamscape Workspace</title>
+          <script>
+            // Redirect to main app for client-side routing
+            window.location.href = '/';
+          </script>
+        </head>
+        <body>
+          <div>Redirecting to main app...</div>
+        </body>
+      </html>
+    `, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store',
+        'Content-Type': 'text/html',
+        'x-spa-redirect': 'true'
       }
-      return response;
-    } catch (error) {
-      console.error('Fetch error for static file:', error);
-      throw error;
-    }
+    });
   }
 );
 
@@ -243,7 +277,7 @@ async function cacheStaticFiles(files) {
                 };
                 
                 const response = await fetch(file.url, fetchOptions);
-                if (response.ok) {
+                if (response.ok && response.status < 300) {
                     // Check if file already exists in cache
                     const existingResponse = await cache.match(file.url);
                     if (existingResponse) {
@@ -255,10 +289,11 @@ async function cacheStaticFiles(files) {
                     const headers = new Headers(response.headers);
                     headers.set('x-file-hash', file.hash);
                     
-                    // Also add cache-busting headers to the cached response
+                    // Add comprehensive cache-busting headers to the cached response
                     headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
                     headers.set('Pragma', 'no-cache');
                     headers.set('Expires', '0');
+                    headers.set('Surrogate-Control', 'no-store');
                     
                     const responseWithHash = new Response(response.body, {
                         status: response.status,
@@ -326,12 +361,53 @@ async function cacheInternalData(url, data) {
   try {
     const cache = await caches.open(INTERNAL_CACHE);
     
-    // Store the actual data, not JSON string
-    const response = new Response(JSON.stringify(data), {
+    // If data contains imageUrl, fetch that URL and store the content at the specified path
+    if (data.imageUrl) {
+      try {
+        const fetchedResponse = await fetch(data.imageUrl);
+        if (fetchedResponse.ok && fetchedResponse.status < 300) {
+          // Add cache-busting headers to prevent browser caching
+          const headers = new Headers(fetchedResponse.headers);
+          headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+          headers.set('Pragma', 'no-cache');
+          headers.set('Expires', '0');
+          headers.set('Surrogate-Control', 'no-store');
+          
+          const responseWithHeaders = new Response(fetchedResponse.body, {
+            status: fetchedResponse.status,
+            statusText: fetchedResponse.statusText,
+            headers: headers
+          });
+          
+          // Only cache successful responses (status < 300)
+          await cache.put(url, responseWithHeaders);
+          
+          // Notify client of completion
+          self.clients.matchAll().then(clients => {
+            clients.forEach(client => {
+              client.postMessage({
+                type: 'INTERNAL_CACHE_COMPLETE',
+                url: url
+              });
+            });
+          });
+          return;
+        } else {
+          console.warn(`Failed to cache internal data: response status ${fetchedResponse.status}`);
+        }
+      } catch (error) {
+        console.error('Failed to fetch content for internal cache:', error);
+      }
+    }
+    
+    // Fallback: store the data as-is if no imageUrl or fetch failed
+    const response = new Response(data, {
       headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=31536000',
-        'x-internal-data': 'true' // Mark as internal data
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Surrogate-Control': 'no-store',
+        'x-internal-data': 'true'
       }
     });
     
@@ -380,6 +456,51 @@ async function getCacheStatus(requestId) {
 
 // Install event - cache critical files
 self.addEventListener('install', (event) => {
+  event.waitUntil(
+    (async () => {
+      // Preload critical routes from server endpoints
+      const criticalRoutes = [
+        { endpoint: '/', route: '/' },
+        { endpoint: '/app', route: '/app' }
+      ];
+      const cache = await caches.open(STATIC_CACHE);
+      
+      for (const { endpoint, route } of criticalRoutes) {
+        try {
+          const response = await fetch(endpoint, {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+              'Pragma': 'no-cache',
+              'Expires': '0'
+            }
+          });
+          
+          if (response.ok) {
+            // Add cache-busting headers
+            const headers = new Headers(response.headers);
+            headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            headers.set('Pragma', 'no-cache');
+            headers.set('Expires', '0');
+            headers.set('Surrogate-Control', 'no-store');
+            
+            const responseWithHeaders = new Response(response.body, {
+              status: response.status,
+              statusText: response.statusText,
+              headers: headers
+            });
+            
+            // Cache at the route path
+            await cache.put(route, responseWithHeaders);
+            console.log(`Preloaded ${endpoint} into cache at route ${route}`);
+          }
+        } catch (error) {
+          console.warn(`Failed to preload ${endpoint}:`, error);
+        }
+      }
+    })()
+  );
+  
   self.skipWaiting();
 });
 

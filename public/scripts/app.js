@@ -87,6 +87,7 @@ const transformationDropdown = document.getElementById('transformationDropdown')
 const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
 const transformationDropdownMenu = document.getElementById('transformationDropdownMenu');
 const manualPreviewDownloadBtn = document.getElementById('manualPreviewDownloadBtn');
+const manualPreviewCopyBtn = document.getElementById('manualPreviewCopyBtn');
 const manualPreviewUpscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
 const manualPreviewVariationBtn = document.getElementById('manualPreviewVariationBtn');
 const manualPreviewSeedBtn = document.getElementById('manualPreviewSeedBtn');
@@ -103,6 +104,47 @@ const previewBackgroundLines = document.getElementById('previewBackgroundLines')
 const previewForegroundLines = document.getElementById('previewForegroundLines');
 
 let bypassConfirmation = false;
+
+let previewRatio = 1;
+
+// Function to calculate and set previewRatio based on container dimensions
+function calculatePreviewRatio() {
+    const container = document.querySelector('.manual-preview-image-container-inner');
+    if (!container) return 1;
+    
+    const computedStyle = getComputedStyle(container);
+    const width = parseFloat(computedStyle.width);
+    const height = parseFloat(computedStyle.height);
+    
+    if (width > 0 && height > 0) {
+        previewRatio = width / height;
+    }
+    
+    return previewRatio;
+}
+
+// Function to dynamically size manual preview container based on image aspect ratio
+function sizeManualPreviewContainer(imageWidth, imageHeight) {
+    const container = document.querySelector('.manual-preview-image-container-inner');
+    if (!container || !imageWidth || !imageHeight) return;
+    
+    const imageAspectRatio = imageWidth / imageHeight;
+    
+    // Reset container dimensions
+    container.style.width = '';
+    container.style.height = '';
+    
+    // Determine which dimension to constrain based on aspect ratio comparison
+    if (imageAspectRatio > previewRatio) {
+        // Image is wider than container ratio - constrain width
+        container.style.width = imageWidth + 'px';
+        container.style.height = '';
+    } else {
+        // Image is taller than container ratio - constrain height
+        container.style.width = '';
+        container.style.height = imageHeight + 'px';
+    }
+}
 
 // Global button handler registry
 const buttonHandlers = new Map();
@@ -232,7 +274,7 @@ function initializeManualBlockContainer() {
         let width, height;
         
         const manualPreviewImage = document.getElementById('manualPreviewImage');
-        if (manualPreviewImage && manualPreviewImage.style.display !== 'none' && manualPreviewImage.src && manualPreviewImage.src !== '') {
+        if (manualPreviewImage && !manualPreviewImage.classList.contains('hidden') && manualPreviewImage.src && manualPreviewImage.src !== '') {
             // Use computed style of the preview image to get actual displayed dimensions
             const computedStyle = getComputedStyle(manualPreviewImage);
             width = parseInt(computedStyle.width.replace('px', '')) || 0;
@@ -258,7 +300,7 @@ function initializeManualBlockContainer() {
         }
         
         // Calculate optimal grid dimensions to get closest to 400 blocks without going over
-        const aspectRatio = width / height;
+        const aspectRatio = height / width;
         let initialRow, initialCol;
         
         // Target: 400 blocks (30x30)
@@ -326,7 +368,7 @@ function updateManualBlockGrid() {
         let width, height;
         
         const manualPreviewImage = document.getElementById('manualPreviewImage');
-        if (manualPreviewImage && manualPreviewImage.style.display !== 'none' && manualPreviewImage.src && manualPreviewImage.src !== '') {
+        if (manualPreviewImage && !manualPreviewImage.classList.contains('hidden') && manualPreviewImage.src && manualPreviewImage.src !== '') {
             // Use computed style of the preview image to get actual displayed dimensions
             const computedStyle = getComputedStyle(manualPreviewImage);
             width = parseInt(computedStyle.width.replace('px', '')) || 0;
@@ -372,10 +414,10 @@ function registerManualPreviewEventListeners() {
     // Remove zoom and pan functionality - replace with lightbox functionality
     
     // Click to open lightbox
-    imageContainer.addEventListener('click', handleManualPreviewClick);
+    image.addEventListener('click', handleManualPreviewClick);
     
     // Scroll up to open lightbox
-    imageContainer.addEventListener('wheel', handleManualPreviewScroll, { passive: false });
+    image.addEventListener('wheel', handleManualPreviewScroll, { passive: false });
     
     manualPreviewEventListenersRegistered = true;
 }
@@ -384,13 +426,13 @@ function deregisterManualPreviewEventListeners() {
     if (!manualPreviewEventListenersRegistered) return;
     
     const imageContainer = document.querySelector('.manual-preview-image-container');
-    const image = document.getElementById('manualPreviewImage');
+    const image = imageContainer.querySelector('.manual-preview-image-container-inner');
 
     if (!imageContainer || !image) return;
 
     // Remove all event listeners
-    imageContainer.removeEventListener('click', handleManualPreviewClick);
-    imageContainer.removeEventListener('wheel', handleManualPreviewScroll);
+    image.removeEventListener('click', handleManualPreviewClick);
+    image.removeEventListener('wheel', handleManualPreviewScroll);
     
     manualPreviewEventListenersRegistered = false;
 }
@@ -426,6 +468,13 @@ let resizeTimeout = null;
 
 // Global variables
 let forcePaidRequest = false;
+let wasInSearchMode = false; // Track if user was in search mode before opening manual modal
+
+// Helper function to check if we're currently in search mode
+function isInSearchMode() {
+    const searchContainer = document.querySelector('#main-menu-bar .file-search-container');
+    return searchContainer && !searchContainer.classList.contains('closed');
+}
 
 // Helper function to find the true index of an image in the gallery
 // This handles both normal mode and search mode with filtered results
@@ -615,15 +664,27 @@ function updateV3ModelVisibility() {
     const isV3Selected = isV3Model(getCurrentSelectedModel());
 
     if (datasetDropdown) {
-        datasetDropdown.style.display = isV3Selected ? 'none' : '';
+        if (isV3Selected) {
+            datasetDropdown.classList.add('hidden');
+        } else {
+            datasetDropdown.classList.remove('hidden');
+        }
     }
 
     // Hide/show character prompts for V3 models
     if (addCharacterBtn) {
-        addCharacterBtn.style.display = isV3Selected ? 'none' : '';
+        if (isV3Selected) {
+            addCharacterBtn.classList.add('hidden');
+        } else {
+            addCharacterBtn.classList.remove('hidden');
+        }
     }
     if (characterPromptsContainer) {
-        characterPromptsContainer.style.display = isV3Selected ? 'none' : '';
+        if (isV3Selected) {
+            characterPromptsContainer.classList.add('hidden');
+        } else {
+            characterPromptsContainer.classList.remove('hidden');
+        }
     }
 
     // Store the V3 state for later use
@@ -1005,13 +1066,14 @@ async function generateFromPreset(presetName) {
             type: 'success',
             title: 'Image Generated',
             message: 'Image generated successfully and added to gallery',
-            customIcon: '<i class="nai-check"></i>'
+            customIcon: '<i class="nai-check"></i>',
+            showProgress: false
         });
         
         createConfetti();
         await loadGallery(true);
         
-        if (manualModal.style.display !== 'none') {
+        if (manualModal.classList.contains('hidden')) {
             // Find the generated image in the gallery
             const found = allImages.find(img => img.original === filename || img.upscaled === filename);
             if (found) {
@@ -1033,7 +1095,8 @@ async function generateFromPreset(presetName) {
             type: 'error',
             title: 'Generation Failed',
             message: error.message,
-            customIcon: '<i class="nai-cross"></i>'
+            customIcon: '<i class="nai-cross"></i>',
+            showProgress: false
         });
     } finally {
         // Reset generating state
@@ -1149,8 +1212,8 @@ async function selectManualResolution(value, group, skipPostProcess = false) {
     }
 
     if (value === 'custom') {
-        manualResolutionDropdown.style.display = 'none';
-        manualCustomResolution.style.display = 'flex';
+        manualResolutionDropdown.classList.add('hidden');
+        manualCustomResolution.classList.remove('hidden');
         manualCustomResolutionBtn.setAttribute('data-state', 'on');
         manualResolutionGroup.classList.add('expanded');
         // Set default values if empty
@@ -1159,8 +1222,8 @@ async function selectManualResolution(value, group, skipPostProcess = false) {
         // Sanitize the default values
         sanitizeCustomDimensions();
     } else {
-        manualResolutionDropdown.style.display = 'block';
-        manualCustomResolution.style.display = 'none';
+        manualResolutionDropdown.classList.remove('hidden');
+        manualCustomResolution.classList.add('hidden');
         manualCustomResolutionBtn.setAttribute('data-state', 'off');
         manualResolutionGroup.classList.remove('expanded');
     }
@@ -1181,7 +1244,7 @@ async function selectManualResolution(value, group, skipPostProcess = false) {
         updateManualPriceDisplay();
         
         // --- ADDED: Refresh preview image if in bias mode ---
-        if (window.uploadedImageData && window.uploadedImageData.image_source && window.uploadedImageData.isBiasMode && manualModal && manualModal.style.display !== 'none') {
+        if (window.uploadedImageData && window.uploadedImageData.image_source && window.uploadedImageData.isBiasMode && manualModal && !manualModal.classList.contains('hidden')) {
             // Reset bias to center (2) when resolution changes
             if (imageBiasHidden != null)
                 imageBiasHidden.value = '2';
@@ -1541,7 +1604,7 @@ async function loadIntoManualForm(source, image = null) {
                     transformationRow.classList.remove('display-vibe');
                 }
                 if (vibeNormalizeToggle) {
-                    vibeNormalizeToggle.style.display = 'none';
+                    vibeNormalizeToggle.classList.add('hidden');
                 }
             } else {
                 // Clear existing vibe references
@@ -1558,7 +1621,7 @@ async function loadIntoManualForm(source, image = null) {
                 }
                 
                 if (vibeNormalizeToggle) {
-                    vibeNormalizeToggle.style.display = '';
+                    vibeNormalizeToggle.classList.remove('hidden');
                 }
             }
         } else {
@@ -1570,7 +1633,7 @@ async function loadIntoManualForm(source, image = null) {
                 transformationRow.classList.remove('display-vibe');
             }
             if (vibeNormalizeToggle) {
-                vibeNormalizeToggle.style.display = 'none';
+                vibeNormalizeToggle.classList.add('hidden');
             }
         }
 
@@ -1630,13 +1693,13 @@ async function loadIntoManualForm(source, image = null) {
                 if (variationImage) {
                     // Set the preview image source
                     variationImage.src = previewUrl;
-                    variationImage.style.display = 'block';
+                    variationImage.classList.remove('hidden');
                 }
                 // Show transformation section content
                 if (transformationRow) {
                     transformationRow.classList.add('display-image');
                 }
-                document.getElementById('manualImg2ImgGroup').style.display = '';
+                document.getElementById('manualImg2ImgGroup').classList.remove('hidden');
             }
             // Ensure preview is updated with bias/crop
             try {
@@ -1719,7 +1782,7 @@ async function loadIntoManualForm(source, image = null) {
             if (transformationRow) {
                 transformationRow.classList.remove('display-image');
             }
-            document.getElementById('manualImg2ImgGroup').style.display = 'none';
+            document.getElementById('manualImg2ImgGroup').classList.add('hidden');
         }
         
         // Handle variation editing - show image preview without triggering img2img mode
@@ -1736,7 +1799,7 @@ async function loadIntoManualForm(source, image = null) {
             if (previewUrl && variationImage) {
                 // Show the image preview for reference
                 variationImage.src = previewUrl;
-                variationImage.style.display = 'block';
+                variationImage.classList.remove('hidden');
                 
                 // Show transformation section content
                 if (transformationRow) {
@@ -1755,12 +1818,12 @@ async function loadIntoManualForm(source, image = null) {
             // Preset-specific
             const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
             if (presetNameGroup) {
-                presetNameGroup.style.display = 'block';
+                presetNameGroup.classList.remove('hidden');
                 manualPresetName.disabled = false;
                 manualPresetName.style.opacity = '1';
             }
             const saveButton = document.getElementById('manualSaveBtn');
-            if (saveButton) saveButton.style.display = 'flex';
+            if (saveButton) saveButton.classList.remove('hidden');
         } else if (type === 'metadata') {
             manualStrengthValue.value = (data.strength !== undefined && data.strength !== null) ? data.strength : 0.8;
             manualNoiseValue.value = (data.noise !== undefined && data.noise !== null) ? data.noise : 0.1;
@@ -1834,21 +1897,21 @@ async function loadTempImagePreview(previewUrl, imageData) {
         // Hide the placeholder and show the image
         const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
         if (previewPlaceholder) {
-            previewPlaceholder.style.display = 'none';
+            previewPlaceholder.classList.add('hidden');
         }
         
         // Set the image source and make it visible
         previewImage.src = previewUrl;
-        previewImage.style.display = 'block';
+        previewImage.classList.remove('hidden');
         
         // Add error handling for image loading
         previewImage.onerror = () => {
             console.error(`Failed to load image from: ${previewUrl}`);
-            previewImage.style.display = 'none';
+            previewImage.classList.add('hidden');
             
             // Show placeholder instead
             if (previewPlaceholder) {
-                previewPlaceholder.style.display = 'block';
+                previewPlaceholder.classList.remove('hidden');
                 previewPlaceholder.innerHTML = `
                     <div class="manual-preview-placeholder">
                         <i class="mdi mdi-1-5 mdi-image-broken"></i>
@@ -1879,7 +1942,7 @@ async function loadTempImagePreview(previewUrl, imageData) {
         // Update the preview seed display if available
         const previewSeedBtn = document.getElementById('manualPreviewSeedBtn');
         if (previewSeedBtn) {
-            previewSeedBtn.style.display = '';
+            previewSeedBtn.classList.remove('hidden');
         }
         
         // Initialize lightbox functionality for the temp image preview
@@ -1939,22 +2002,22 @@ function updateManualPresetToggleBtn() {
     const valid = isValidPresetName(presetName);
     if (presetName === "") {
         // Hide everything, show only the toggle button as toggle-btn
-        manualPresetGroup.style.display = 'none';
-        manualPresetToggleBtn.style.display = '';
+        manualPresetGroup.classList.add('hidden');
+        manualPresetToggleBtn.classList.remove('hidden');
         manualPresetToggleBtn.classList.add('toggle-btn');
         manualPresetToggleBtn.classList.remove('hover-show');
-        manualPresetToggleText.style.display = 'none';
+        manualPresetToggleText.classList.add('hidden');
         manualPresetToggleBtn.setAttribute('data-state', 'off');
-        if (manualPresetToggleIcon) manualPresetToggleIcon.style.display = '';
+        if (manualPresetToggleIcon) manualPresetToggleIcon.classList.remove('hidden');
     } else {
         // Hide the group, show the toggle button with value
-        manualPresetGroup.style.display = 'none';
-        manualPresetToggleBtn.style.display = '';
+        manualPresetGroup.classList.add('hidden');
+        manualPresetToggleBtn.classList.remove('hidden');
         manualPresetToggleBtn.classList.remove('toggle-btn');
         manualPresetToggleBtn.classList.add('hover-show');
         manualPresetToggleText.textContent = presetName;
-        manualPresetToggleText.style.display = '';
-        if (manualPresetToggleIcon) manualPresetToggleIcon.style.display = 'none';
+        manualPresetToggleText.classList.remove('hidden');
+        if (manualPresetToggleIcon) manualPresetToggleIcon.classList.add('hidden');
     }
 }
 
@@ -2217,12 +2280,12 @@ function renderTransformationDropdown(selectedVal) {
 
     // Show/hide options based on availability
     if (rerollOption) {
-        rerollOption.style.display = shouldShowReroll ? 'flex' : 'none';
+        rerollOption.classList.toggle('hidden', !shouldShowReroll);
         rerollOption.classList.toggle('selected', selectedVal === 'reroll');
     }
 
     if (variationOption) {
-        variationOption.style.display = hasBaseImage ? 'flex' : 'none';
+        variationOption.classList.toggle('hidden', !hasBaseImage);
         variationOption.classList.toggle('selected', selectedVal === 'variation');
     }
 
@@ -2345,7 +2408,7 @@ async function handleTransformationTypeChange(requestType) {
     if (transformationRow) {
         transformationRow.classList.add('display-image');
     }
-    document.getElementById('manualImg2ImgGroup').style.display = '';
+    document.getElementById('manualImg2ImgGroup').classList.remove('hidden');
 
     // Update image bias orientation after setting image dimensions
     updateImageBiasOrientation();
@@ -2361,8 +2424,8 @@ async function handleTransformationTypeChange(requestType) {
     renderImageBiasDropdown(bias.toString());
 
     // Hide preset name and save for variation
-    if (presetNameGroup) presetNameGroup.style.display = 'none';
-    if (saveButton) saveButton.style.display = 'none';
+    if (presetNameGroup) presetNameGroup.classList.add('hidden');
+    if (saveButton) saveButton.classList.add('hidden');
 
     updateUploadDeleteButtonVisibility();
 }
@@ -2585,7 +2648,7 @@ async function togglePinImage(image, pinBtn = null) {
         }
         
         // Update lightbox pin button if lightbox is open
-        if (window.lightboxPinBtn && window.lightboxPinBtn.style.display !== 'none') {
+        if (window.lightboxPinBtn && !window.lightboxPinBtn.classList.contains('hidden')) {
             await updateLightboxPinButtonAppearance(filename);
         }
         
@@ -2716,7 +2779,7 @@ function setSeedInputGroupState(open) {
         if (window.lastLoadedSeed) {
             sproutSeedBtn?.classList.remove('hidden');
         }
-        clearSeedBtn?.classList.remove('hidden');
+        clearSeedBtn?.classList.toggle('hidden', !manualSeed?.value);
         editSeedBtn?.classList.add('hidden');
     } else {
         manualSeed?.classList.add('hidden');
@@ -2727,46 +2790,167 @@ function setSeedInputGroupState(open) {
     }
 }
 
-// Load options from server
-async function loadOptions() {
-    try {
-        let options;
-        
-        // Use WebSocket API
-        if (!window.wsClient || !window.wsClient.isConnected()) {
-            throw new Error('WebSocket not connected');
-        }
-        
-        options = await window.wsClient.getAppOptions();
-        
-        if (!options.ok) throw new Error("Failed to load application configuration: " + options.error);
+// Flag to track if app data has been loaded
+let appDataLoaded = false;
 
-        window.optionsData = options;
-
-        // Initialize datasetBias dynamically from config
-        if (window.optionsData?.datasets) {
-            window.optionsData.datasets.forEach(dataset => {
-                datasetBias[dataset.value] = 1.0;
-            });
-        }
-
-        if (window.optionsData?.user?.ok !== true) {
-            showErrorSubHeader(window.optionsData.user.error, 'error', 0);
-        }
-
-updateSubscriptionNotifications().catch(error => {
-    console.error('Error checking subscription notifications:', error);
-});
-
-// Check user type and show appropriate message
-const userType = localStorage.getItem('userType');
-if (userType === 'readonly') {
-    showGlassToast('info', 'Read-Only Mode', 'You are logged in as a read-only user. Some features are restricted.', false, 8000, '<i class="fas fa-eye"></i>');
-    disableReadOnlyFeatures();
+// Utility function to check if app data is ready
+function isAppDataReady() {
+    return appDataLoaded && window.optionsData && window.optionsData.ok;
 }
+
+// Load options from server with retry logic
+async function loadOptions(maxRetries = 3, retryDelay = 1000) {
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`🔄 Loading app options (attempt ${attempt}/${maxRetries})...`);
+            
+            // Ensure WebSocket is connected and ready
+            if (!window.wsClient) {
+                throw new Error('WebSocket client not initialized');
+            }
+            
+            // Wait for WebSocket to be fully connected
+            if (!window.wsClient.isConnected()) {
+                console.log('⏳ Waiting for WebSocket connection...');
+                await window.wsClient.waitForConnection(10000); // 10 second timeout
+            }
+            
+            // Additional validation that the connection is stable
+            if (window.wsClient.getConnectionState() !== 'connected') {
+                throw new Error('WebSocket connection not in stable state');
+            }
+            
+            // Create a timeout promise for the request
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Request timeout')), 15000); // 15 second timeout
+            });
+            
+            // Race between the actual request and timeout
+            const options = await Promise.race([
+                window.wsClient.getAppOptions(),
+                timeoutPromise
+            ]);
+            
+            if (!options || !options.ok) {
+                throw new Error("Failed to load application configuration: " + (options?.error || 'Unknown error'));
+            }
+
+            console.log('✅ App options loaded successfully');
+            window.optionsData = options;
+
+            // Initialize datasetBias dynamically from config
+            if (window.optionsData?.datasets) {
+                window.optionsData.datasets.forEach(dataset => {
+                    datasetBias[dataset.value] = 1.0;
+                });
+            }
+
+            if (window.optionsData?.user?.ok !== true) {
+                showGlassToast('warning', 'User Data Error', window.optionsData.user.error || 'Failed to load user data', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            }
+
+            // Handle active workspace data if provided
+            if (window.optionsData?.activeWorkspace) {
+                console.log('🔄 Processing active workspace data from app options');
+                await handleWorkspaceDataFromOptions(window.optionsData.activeWorkspace);
+            }
+
+            // Update subscription notifications
+            updateSubscriptionNotifications().catch(error => {
+                console.error('Error checking subscription notifications:', error);
+            });
+
+            // Check user type and show appropriate message
+            const userType = localStorage.getItem('userType');
+            if (userType === 'readonly') {
+                showGlassToast('info', 'Read-Only Mode', 'You are logged in as a read-only user. Some features are restricted.', false, 8000, '<i class="fas fa-eye"></i>');
+                disableReadOnlyFeatures();
+            }
+            
+            // Mark app data as loaded
+            appDataLoaded = true;
+            
+            return; // Success, exit the retry loop
+            
+        } catch (error) {
+            lastError = error;
+            console.error(`❌ Failed to load app options (attempt ${attempt}/${maxRetries}):`, error);
+            
+            // Show user-friendly error message
+            if (attempt === 1) {
+                showGlassToast('warning', 'Loading Application Data', 'Attempting to load application configuration...', false, 3000, '<i class="fas fa-sync"></i>');
+            }
+            
+            if (attempt < maxRetries) {
+                console.log(`⏳ Retrying in ${retryDelay}ms...`);
+                
+                // Show retry notification
+                showGlassToast('info', 'Retrying...', `Attempt ${attempt + 1} of ${maxRetries}`, false, 2000, '<i class="fas fa-redo"></i>');
+                
+                // Wait before retry
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                
+                // Increase delay for exponential backoff
+                retryDelay = Math.min(retryDelay * 1.5, 10000);
+            }
+        }
+    }
+    
+    // All retries failed
+    const errorMessage = `Failed to load application configuration after ${maxRetries} attempts: ${lastError?.message || 'Unknown error'}`;
+    console.error(errorMessage);
+    
+    // Show critical error to user
+    showGlassToast('error', 'Critical Error', 'Failed to load application data. Please refresh the page or contact support.', false, 0, '<i class="fas fa-exclamation-triangle"></i>');
+    
+    // Throw the error to be handled by the caller
+    throw new Error(errorMessage);
+}
+
+// Handle workspace data received from app options
+async function handleWorkspaceDataFromOptions(workspaceInfo) {
+    try {
+        if (!workspaceInfo || !workspaceInfo.id || !workspaceInfo.data) {
+            console.warn('⚠️ No valid workspace data in app options');
+            return;
+        }
+
+        console.log('🔄 Setting up workspace from app options:', workspaceInfo.id);
+        
+        // Set the current workspace
+        window.currentWorkspace = workspaceInfo.id;
+        
+        // Update workspace UI if the function exists
+        if (window.updateWorkspaceUI && typeof window.updateWorkspaceUI === 'function') {
+            window.updateWorkspaceUI(workspaceInfo.id);
+        }
+        
+        // Update workspace selector if it exists
+        const workspaceSelector = document.getElementById('workspace-selector');
+        if (workspaceSelector) {
+            workspaceSelector.value = workspaceInfo.id;
+        }
+        
+        // Update workspace name display
+        const workspaceNameElement = document.getElementById('workspace-name');
+        if (workspaceNameElement && workspaceInfo.data.name) {
+            workspaceNameElement.textContent = workspaceInfo.data.name;
+        }
+        
+        // Show welcome message if this is a restored workspace
+        if (workspaceInfo.data.name) {
+            const message = `Welcome back! Restored to workspace: ${workspaceInfo.data.name}`;
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('success', 'Welcome Back!', message, false, 5000, '<i class="fas fa-rocket"></i>');
+            }
+        }
+        
+        console.log('✅ Workspace setup completed from app options');
+        
     } catch (error) {
-        console.error('Error loading options:', error);
-        throw error;
+        console.error('❌ Error handling workspace data from options:', error);
     }
 }
 
@@ -3164,10 +3348,10 @@ function updateSubTogglesButtonState() {
     }
 
     subTogglesBtn.setAttribute('data-state', buttonState);
-    subTogglesDropdown.style.display = hasSubToggles ? 'block' : 'none';
+    subTogglesDropdown.classList.toggle('hidden', !hasSubToggles);
     
     // If the button is now visible, render the dropdown content
-    if (hasSubToggles && subTogglesBtn.style.display === 'block') {
+    if (hasSubToggles && !subTogglesBtn.classList.contains('hidden')) {
         renderSubTogglesDropdown();
     }
 }
@@ -3259,12 +3443,12 @@ function updatePromptStatusIcons() {
         // Quality icon
         if (qualityIcon) {
             const qualityState = qualityToggleBtn.getAttribute('data-state');
-            qualityIcon.style.display = qualityState === 'on' ? 'flex' : 'none';
+            qualityIcon.classList.toggle('hidden', qualityState !== 'on');
         }
         
         // Dataset icon - always show, use default sakura when none selected
         if (datasetIcon) {
-            datasetIcon.style.display = 'flex';
+            datasetIcon.classList.remove('hidden');
             
             // Find the icon element inside the dataset icon container
             const iconElement = datasetIcon.querySelector('i');
@@ -3285,7 +3469,7 @@ function updatePromptStatusIcons() {
         // UC icon (only show when not in show both mode)
         if (ucIcon && !isShowingBoth) {
             const ucState = ucPresetsDropdownBtn.getAttribute('data-state');
-            ucIcon.style.display = ucState === 'on' ? 'flex' : 'none';
+            ucIcon.classList.toggle('hidden', ucState !== 'on');
             
             // Update UC level dots
             if (ucState === 'on') {
@@ -3304,12 +3488,12 @@ function updatePromptStatusIcons() {
         // Quality icon
         if (qualityIcon) {
             const qualityState = qualityToggleBtn.getAttribute('data-state');
-            qualityIcon.style.display = qualityState === 'on' ? 'flex' : 'none';
+            qualityIcon.classList.toggle('hidden', qualityState !== 'on');
         }
         
         // Dataset icon - always show, use default sakura when none selected
         if (datasetIcon) {
-            datasetIcon.style.display = 'flex';
+            datasetIcon.classList.remove('hidden');
             
             // Find the icon element inside the dataset icon container
             const iconElement = datasetIcon.querySelector('i');
@@ -3330,7 +3514,7 @@ function updatePromptStatusIcons() {
         // UC icon
         if (ucIcon) {
             const ucState = ucPresetsDropdownBtn.getAttribute('data-state');
-            ucIcon.style.display = ucState === 'on' ? 'flex' : 'none';
+            ucIcon.classList.toggle('hidden', ucState !== 'on');
             
             // Update UC level dots
             if (ucState === 'on') {
@@ -3344,17 +3528,17 @@ function updatePromptStatusIcons() {
         // Hide UC icon on main prompt
         const mainUcIcon = mainPromptContainer?.querySelector('.prompt-status-icon.uc-enabled');
         if (mainUcIcon) {
-            mainUcIcon.style.display = 'none';
+            mainUcIcon.classList.add('hidden');
         }
         
         // Hide quality and dataset icons on UC prompt
         const ucQualityIcon = ucPromptContainer?.querySelector('.prompt-status-icon.quality-enabled');
         const ucDatasetIcon = ucPromptContainer?.querySelector('.prompt-status-icon.dataset-enabled');
         if (ucQualityIcon) {
-            ucQualityIcon.style.display = 'none';
+            ucQualityIcon.classList.add('hidden');
         }
         if (ucDatasetIcon) {
-            ucDatasetIcon.style.display = 'none';
+            ucDatasetIcon.classList.add('hidden');
         }
     }
 }
@@ -3455,6 +3639,44 @@ function setupEventListeners() {
         }
     });
 
+    manualPreviewCopyBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const previewImage = document.getElementById('manualPreviewImage');
+        if (previewImage && previewImage.dataset.blobUrl) {
+            try {
+                // Fetch the image as a blob
+                const response = await fetch(previewImage.dataset.blobUrl);
+                const blob = await response.blob();
+                
+                // Copy to clipboard
+                await navigator.clipboard.write([
+                    new ClipboardItem({
+                        [blob.type]: blob
+                    })
+                ]);
+                
+                // Calculate and format file size
+                const sizeInBytes = blob.size;
+                let sizeText;
+                if (sizeInBytes < 1024 * 1024) {
+                    sizeText = `${(sizeInBytes / 1024).toFixed(1)} KB`;
+                } else {
+                    sizeText = `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
+                }
+                
+                // Show success notification with size
+                if (window.showGlassToast) {
+                    window.showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
+                }
+            } catch (error) {
+                console.error('Failed to copy image to clipboard:', error);
+                if (window.showGlassToast) {
+                    window.showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fas fa-clipboard"></i>');
+                }
+            }
+        }
+    });
+
     manualPreviewUpscaleBtn.addEventListener('click', (e) => {
         e.preventDefault();
         if (window.currentManualPreviewImage) {
@@ -3515,7 +3737,7 @@ function setupEventListeners() {
 
                 // Set the variation image
                 variationImage.src = previewUrl;
-                variationImage.style.display = 'block';
+                variationImage.classList.remove('hidden');
         
 
                 // Set strength to 0.8 and noise to 0.1 for variation
@@ -3532,13 +3754,14 @@ function setupEventListeners() {
                 if (transformationRow) {
                     transformationRow.classList.add('display-image');
                 }
-                document.getElementById('manualImg2ImgGroup').style.display = '';
+                document.getElementById('manualImg2ImgGroup').classList.remove('hidden');
 
                 // Update inpaint button state
                 updateInpaintButtonState();
                 renderImageBiasDropdown('2');
                 
                 updateUploadDeleteButtonVisibility();
+                hideManualPreviewResponsive();
 
             } else {
                 showGlassToast('error', 'Variation Failed', 'No image found');
@@ -3603,6 +3826,18 @@ function setupEventListeners() {
         });
     }
 
+    manualSeed.addEventListener('input', (e) => {
+        clearSeedBtn?.classList.toggle('hidden', !e.target.value);
+    });
+
+    manualSeed.addEventListener('change', (e) => {
+        clearSeedBtn?.classList.toggle('hidden', !e.target.value);
+    });
+
+    manualSeed.addEventListener('blur', (e) => {
+       clearSeedBtn?.classList.toggle('hidden', !e.target.value);
+    });
+
     // Clear seed button
     clearSeedBtn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -3665,6 +3900,164 @@ function setupEventListeners() {
     window.addEventListener('scroll', updateAutocompletePositions);
     window.addEventListener('resize', updateAutocompletePositions);
 
+    // Title bar scroll visibility with high-performance throttling
+    const titleBar = document.getElementById('title-bar');
+    if (titleBar) {
+        let scrollTimeout;
+        let lastScrollTop = 0;
+        let isScrolling = false;
+        
+        const updateTitleBarVisibility = (scrollTop) => {
+            const shouldShow = scrollTop > 100;
+            const isCurrentlyHidden = titleBar.classList.contains('hidden');
+            
+            // Only update if state actually changed
+            if (shouldShow !== !isCurrentlyHidden) {
+                if (shouldShow) {
+                    titleBar.classList.remove('hidden');
+                } else {
+                    titleBar.classList.add('hidden');
+                }
+            }
+        };
+        
+        const handleScroll = () => {
+            if (!isScrolling) {
+                isScrolling = true;
+                requestAnimationFrame(() => {
+                    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                    
+                    // Only process if scroll position actually changed significantly
+                    if (Math.abs(scrollTop - lastScrollTop) > 5) {
+                        updateTitleBarVisibility(scrollTop);
+                        lastScrollTop = scrollTop;
+                    }
+                    
+                    isScrolling = false;
+                });
+            }
+            
+            // Clear existing timeout and set new one for scroll end detection
+            clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(() => {
+                // Final update when scrolling stops
+                const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                updateTitleBarVisibility(scrollTop);
+            }, 16); // ~60fps timing
+        };
+        
+        // Use passive scroll listener for better performance
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        
+        // Initialize title bar state
+        const initialScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        updateTitleBarVisibility(initialScrollTop);
+        lastScrollTop = initialScrollTop;
+    }
+
+    // Focus overlay to prevent accidental interactions when window loses focus
+    const focusOverlay = document.getElementById('focus-overlay');
+    if (focusOverlay) {
+        let focusTimeout;
+        
+        const showFocusOverlay = () => {
+            // Check if focus cover is enabled via toggle button
+            const toggleFocusCoverBtn = document.getElementById('toggleFocusCoverBtn');
+            if (toggleFocusCoverBtn && toggleFocusCoverBtn.getAttribute('data-state') === 'off') {
+                return; // Don't show overlay if disabled
+            }
+            
+            focusOverlay.style.pointerEvents = 'auto';
+            focusOverlay.classList.add('active');
+        };
+        
+        const hideFocusOverlay = () => {
+            focusOverlay.classList.remove('active');
+            // Delay releasing pointer events to prevent accidental interactions during fade-out
+            setTimeout(() => {
+                focusOverlay.style.pointerEvents = 'none';
+            }, 300); // Match the CSS transition duration
+        };
+        
+        // Handle window blur (losing focus)
+        window.addEventListener('blur', () => {
+            // Small delay to prevent flickering during quick focus changes
+            focusTimeout = setTimeout(showFocusOverlay, 100);
+        });
+        
+        // Handle window focus (gaining focus)
+        window.addEventListener('focus', () => {
+            clearTimeout(focusTimeout);
+            hideFocusOverlay();
+        });
+        
+        // Handle document visibility change (tab switching)
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                showFocusOverlay();
+            } else {
+                hideFocusOverlay();
+            }
+        });
+        
+        // Handle click on overlay to return focus
+        focusOverlay.addEventListener('click', () => {
+            window.focus();
+            hideFocusOverlay();
+        });
+        
+        // Handle keyboard events to return focus
+        document.addEventListener('keydown', (e) => {
+            if (focusOverlay.classList.contains('active') && 
+                (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape')) {
+                window.focus();
+                hideFocusOverlay();
+            }
+        });
+    }
+
+    // Focus cover toggle button functionality
+    const toggleFocusCoverBtn = document.getElementById('toggleFocusCoverBtn');
+    if (toggleFocusCoverBtn) {
+        let focusCoverEnabled = true;
+        
+        const updateFocusCoverState = () => {
+            if (focusCoverEnabled) {
+                toggleFocusCoverBtn.setAttribute('data-state', 'on');
+                toggleFocusCoverBtn.classList.add('active');
+                // Re-enable focus overlay if it was disabled
+                if (focusOverlay) {
+                    focusOverlay.style.display = '';
+                }
+            } else {
+                toggleFocusCoverBtn.setAttribute('data-state', 'off');
+                toggleFocusCoverBtn.classList.remove('active');
+                // Disable focus overlay
+                if (focusOverlay) {
+                    focusOverlay.style.display = 'none';
+                    focusOverlay.classList.remove('active');
+                }
+            }
+        };
+        
+        toggleFocusCoverBtn.addEventListener('click', () => {
+            focusCoverEnabled = !focusCoverEnabled;
+            updateFocusCoverState();
+            
+            // Save preference to localStorage
+            localStorage.setItem('focusCoverEnabled', focusCoverEnabled.toString());
+        });
+        
+        // Load saved preference
+        const savedFocusCoverState = localStorage.getItem('focusCoverEnabled');
+        if (savedFocusCoverState !== null) {
+            focusCoverEnabled = savedFocusCoverState === 'true';
+        }
+        
+        // Initialize button state
+        updateFocusCoverState();
+    }
+
     if (closeMetadataDialog) {
         closeMetadataDialog.addEventListener('click', (e) => {
             e.preventDefault();
@@ -3689,7 +4082,7 @@ function setupEventListeners() {
         if (e.target.classList.contains('close-expanded')) {
             const expandedSection = e.target.closest('.metadata-expanded');
             if (expandedSection) {
-                expandedSection.style.display = 'none';
+                expandedSection.classList.add('hidden');
             }
         }
     });
@@ -3702,9 +4095,9 @@ function setupEventListeners() {
     // ESC key to close lightbox and modals
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            if (metadataDialog.style.display === 'flex') {
+            if (!metadataDialog.classList.contains('hidden')) {
                 hideMetadataDialog();
-            } else if (logoOptionsModal.style.display === 'flex') {
+            } else if (!logoOptionsModal.classList.contains('hidden')) {
                 hideLogoOptionsModal();
             } else if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
                 // Check if we're showing character detail or autocomplete
@@ -3716,6 +4109,27 @@ function setupEventListeners() {
                 } else {
                     // We're showing autocomplete, hide it
                     hideCharacterAutocomplete();
+                }
+            } else {
+                // Handle textbox deselection/unfocus behavior
+                const activeElement = document.activeElement;
+                if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+                    const selection = window.getSelection();
+                    if (selection && selection.toString().length > 0) {
+                        // Text is selected - deselect and place cursor at end of selection
+                        const range = selection.getRangeAt(0);
+                        const endOffset = range.endOffset;
+                        selection.removeAllRanges();
+                        
+                        // Place cursor at the end of the previous selection
+                        if (activeElement.setSelectionRange) {
+                            activeElement.setSelectionRange(endOffset, endOffset);
+                        }
+                    } else {
+                        // No text selected - unfocus the textbox
+                        activeElement.blur();
+                    }
+                    return; // Don't continue with other ESC handlers
                 }
             }
         } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
@@ -4165,7 +4579,7 @@ function setupEventListeners() {
         if (!manualModal.classList.contains('show-preview')) {
             showManualPreview();
         } else {
-            hideManualPreview();
+            hideManualPreviewResponsive();
         }
     });
     // Update the click event for manualPresetToggleBtn to toggle the group and button state
@@ -4175,35 +4589,35 @@ function setupEventListeners() {
         const valid = isValidPresetName(presetName);
         if (presetName === "" && !valid) {
             // Only toggle group visibility and button state if name is empty
-            if (manualPresetGroup.style.display === 'none') {
-                manualPresetGroup.style.display = '';
+            if (manualPresetGroup.classList.contains('hidden')) {
+                manualPresetGroup.classList.remove('hidden');
                 manualPresetToggleBtn.classList.add('toggle-btn');
                 manualPresetToggleBtn.classList.remove('hover-show');
                 manualPresetToggleBtn.setAttribute('data-state', 'on');
-                manualPresetToggleIcon.style.display = '';
-                manualPresetToggleText.style.display = 'none';
+                manualPresetToggleIcon.classList.remove('hidden');
+                manualPresetToggleText.classList.add('hidden');
             } else {
-                manualPresetGroup.style.display = 'none';
+                manualPresetGroup.classList.add('hidden');
                 manualPresetToggleBtn.classList.add('toggle-btn');
                 manualPresetToggleBtn.classList.remove('hover-show');
                 manualPresetToggleBtn.setAttribute('data-state', 'off');
-                manualPresetToggleIcon.style.display = '';
-                manualPresetToggleText.style.display = 'none';
+                manualPresetToggleIcon.classList.remove('hidden');
+                manualPresetToggleText.classList.add('hidden');
                 manualPresetToggleText.textContent = presetName;
             }
         } else {
-            if (manualPresetGroup.style.display === 'none') {
-                manualPresetGroup.style.display = '';
+            if (manualPresetGroup.classList.contains('hidden')) {
+                manualPresetGroup.classList.remove('hidden');
                 manualPresetToggleBtn.classList.add('toggle-btn');
                 manualPresetToggleBtn.classList.remove('hover-show');
-                manualPresetToggleIcon.style.display = '';
-                manualPresetToggleText.style.display = 'none';
+                manualPresetToggleIcon.classList.remove('hidden');
+                manualPresetToggleText.classList.add('hidden');
             } else {
-                manualPresetGroup.style.display = 'none';
+                manualPresetGroup.classList.add('hidden');
                 manualPresetToggleBtn.classList.remove('toggle-btn');
                 manualPresetToggleBtn.classList.add('hover-show');
-                manualPresetToggleIcon.style.display = 'none';
-                manualPresetToggleText.style.display = '';
+                manualPresetToggleIcon.classList.add('hidden');
+                manualPresetToggleText.classList.remove('hidden');
                 manualPresetToggleText.textContent = presetName;
             }
         }
@@ -4216,7 +4630,7 @@ function setupEventListeners() {
         galleryToggleGroup.addEventListener('wheel', (e) => {
             e.preventDefault();
             // Disable on mobile displays
-            if (window.innerWidth <= 768) {
+            if (window.innerWidth <= 577) {
                 return false;
             }
             const delta = e.deltaY > 0 ? -1 : 1;
@@ -4235,7 +4649,7 @@ function setupEventListeners() {
         decreaseColumnsBtn.addEventListener('click', (e) => {
             e.preventDefault();
             // Disable on mobile displays
-            if (window.innerWidth <= 768) {
+            if (window.innerWidth <= 577) {
                 return false;
             }
             const currentColumns = parseInt(galleryToggleGroup.dataset.columns) || 5;
@@ -4249,7 +4663,7 @@ function setupEventListeners() {
         increaseColumnsBtn.addEventListener('click', (e) => {
             e.preventDefault();
             // Disable on mobile displays
-            if (window.innerWidth <= 768) {
+            if (window.innerWidth <= 577) {
                 return false;
             }
             const currentColumns = parseInt(galleryToggleGroup.dataset.columns) || 5;
@@ -4263,6 +4677,17 @@ function setupEventListeners() {
     const sortOrderToggleBtn = document.getElementById('sortOrderToggleBtn');
     if (sortOrderToggleBtn) {
         sortOrderToggleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (window.toggleGallerySortOrder) {
+                window.toggleGallerySortOrder();
+            }
+        });
+    }
+
+    // Mobile sort order toggle button
+    const mobileSortOrderToggleBtn = document.getElementById('mobileSortOrderToggleBtn');
+    if (mobileSortOrderToggleBtn) {
+        mobileSortOrderToggleBtn.addEventListener('click', (e) => {
             e.preventDefault();
             if (window.toggleGallerySortOrder) {
                 window.toggleGallerySortOrder();
@@ -4313,11 +4738,23 @@ function setupEventListeners() {
             // Update batch size and trigger distances for new viewport
             imagesPerPage = calculateDynamicBatchSize();
             
-            // Recalculate gallery layout if needed
+            // Recalculate infinite scrolling layout if needed
             if (gallery && gallery.children.length > 0) {
+                updateGalleryGrid();
                 updateGalleryColumnsFromLayout();
             }
         }, 250); // Debounce resize events
+    });
+
+    // Handle orientation change for mobile devices
+    window.addEventListener('orientationchange', () => {
+        // Use a longer timeout for orientation change to allow the browser to complete the rotation
+        setTimeout(() => {
+            if (gallery && gallery.children.length > 0) {
+                updateGalleryGrid();
+                updateGalleryColumnsFromLayout();
+            }
+        }, 500);
     });
 
 
@@ -4699,7 +5136,7 @@ function toggleSearchContainer() {
             }
             // Hide main menu contents when search is open
             if (mainMenuContents) {
-                mainMenuContents.style.display = 'none';
+                mainMenuContents.classList.add('hidden');
             }
             // Focus the search input
             const searchInput = document.getElementById('fileSearchInput');
@@ -4729,7 +5166,7 @@ function closeSearchContainer() {
         }
         // Show main menu contents again when search is closed
         if (mainMenuContents) {
-            mainMenuContents.style.display = 'flex';
+            mainMenuContents.classList.remove('hidden');
         }
         // Clear search input and hide autofill
         if (searchInput) {
@@ -4820,19 +5257,33 @@ function updateBalanceDisplay(balance) {
     const balanceDisplay = document.querySelectorAll('.balanceDisplay');
     const balanceAmount = document.querySelectorAll('.balanceAmount');
     
+    const balanceFixed = document.querySelectorAll('.balanceFixed');
+    const balancePaid = document.querySelectorAll('.balancePaid');
+    
     if (!balanceDisplay || !balanceAmount) return;
 
     const balanceIcon = balanceDisplay[0].querySelector('i');
 
 
-    const totalCredits = balance?.totalCredits || -1;
-    const fixedCredits = balance?.fixedTrainingStepsLeft || -1;
-    const purchasedCredits = balance?.purchasedTrainingSteps || -1;
+    const totalCredits = balance?.totalCredits || 0;
+    const fixedCredits = balance?.fixedTrainingStepsLeft || 0;
+    const purchasedCredits = balance?.purchasedTrainingSteps || 0;
 
     // Update amount
     balanceAmount.forEach(amount => {
         amount.textContent = totalCredits;
     });
+
+    if (balanceFixed) {
+        balanceFixed.forEach(fixed => {
+            fixed.textContent = fixedCredits;
+        });
+    }
+    if (balancePaid) {
+        balancePaid.forEach(paid => {
+            paid.textContent = purchasedCredits;
+        });
+    }
 
     // Update tooltip with detailed breakdown
     const tooltip = `Free Credits: ${fixedCredits}\nPaid Credits: ${purchasedCredits}`;
@@ -4874,27 +5325,12 @@ function updateBalanceDisplay(balance) {
     }
 }
 
-async function rerollImage(image) {
+async function rerollImage(image, event = null) {
     // Check if we're in a modal context
-    const isInModal = document.getElementById('manualModal').style.display === 'block';
+    const isInModal = !document.getElementById('manualModal').classList.contains('hidden');
     
     let toastId;
     let progressInterval;
-    
-    if (!isInModal) {
-        // Use glass toast with progress when not in modal
-        toastId = showGlassToast('info', 'Rerolling Image', 'Generating new image...', true, false, '<i class="fas fa-dice"></i>');
-        
-        // Start progress animation (1% per second)
-        let progress = 0;
-        progressInterval = setInterval(() => {
-            progress += 1;
-            updateGlassToastProgress(toastId, progress);
-        }, 1000);
-    } else {
-        // Use existing modal loading overlay when in modal
-        showManualLoading(true, 'Rerolling image...');
-    }
 
     try {
         // Determine which filename to use for metadata
@@ -4915,253 +5351,137 @@ async function rerollImage(image) {
         }
 
 
-        // Get metadata from the image
-        const metadata = await getImageMetadata(filenameForMetadata);
+        // Get current workspace
+        const workspace = activeWorkspace || null;
+        
+        console.log(`🎲 Rerolling image: ${filenameForMetadata} in workspace: ${workspace}`);
 
-        if (!metadata) {
-            throw new Error('No metadata found for this image');
+        // Check if this is an upscaled image and show confirmation dialog if needed
+        let isUpscaled = false;
+        if (image.upscaled || filenameForMetadata.includes('_upscaled')) {
+            isUpscaled = true;
         }
-
-        // Check if this is a variation and we have the original base image
-        const isVariation = metadata.base_image === true;
-        const hasOriginalFilename = metadata.original_filename;
-
-        let generateResponse;
-
-        if (isVariation && hasOriginalFilename) {
-            // Handle variation reroll - use the original base image
-            // Build request body from metadata
-            const requestBody = {
-                image: `file:${hasOriginalFilename}`, // Use the original filename with file: prefix
-                strength: metadata.strength || 0.8, // Use strength from metadata or default
-                noise: metadata.noise || 0.1, // Use noise from metadata or default
-                prompt: metadata.prompt || '',
-                resolution: metadata.resolution || '',
-                steps: metadata.steps || 25,
-                guidance: metadata.scale || 5.0,
-                rescale: metadata.cfg_rescale || 0.0,
-                allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : false,
-                workspace: activeWorkspace
-            };
-
-            // Add mask data if it exists
-            if (window.currentMaskCompressed) {
-                requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
-            } else if (window.currentMaskData) {
-                const compressedMask = saveMaskCompressed();
-                if (compressedMask) {
-                    requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
+        
+        // If upscaled and user hasn't already allowed paid requests, show confirmation
+        if (isUpscaled && !forcePaidRequest) {
+            console.log('🎲 Showing credit cost dialog for upscaled image...');
+            const cost = 7; // Upscaling cost (same as upscaleImage function)
+            console.log('🎲 Calling showCreditCostDialog with cost:', cost, 'event:', event);
+            const confirmed = await showCreditCostDialog(cost, event);
+            console.log('🎲 Credit cost dialog result:', confirmed);
+            
+            if (!confirmed) {
+                // User cancelled, clean up and return
+                console.log('🎲 User cancelled, cleaning up...');
+                if (!isInModal) {
+                    clearInterval(progressInterval);
+                    removeGlassToast(toastId);
+                } else {
+                    hideManualLoading();
                 }
+                return;
             }
-
-            // Add optional fields if they have values
-            if (metadata.uc) {
-                requestBody.uc = metadata.uc;
-            }
-
-            if (metadata.sampler) {
-                const samplerObj = getSamplerMeta(metadata.sampler);
-                requestBody.sampler = samplerObj ? samplerObj.request : metadata.sampler;
-            }
-
-            if (metadata.noise_schedule) {
-                const noiseObj = getNoiseMeta(metadata.noise_schedule);
-                requestBody.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
-            }
-
-            if (metadata.skip_cfg_above_sigma) {
-                requestBody.variety = true;
-            }
-
-            // Add upscale if it was used in original generation
-            if (metadata.upscaled) {
-                requestBody.upscale = true;
-            }
-
-            // Add preset if available
-            if (metadata.preset_name) {
-                requestBody.preset = metadata.preset_name;
-            }
-
-            // Add image_bias if available (for variations)
-            if (metadata.image_bias !== undefined) {
-                requestBody.image_bias = metadata.image_bias;
-            }
-
-            // Add character prompts if available
-            if (metadata.characterPrompts && Array.isArray(metadata.characterPrompts) && metadata.characterPrompts.length > 0) {
-                requestBody.allCharacterPrompts = metadata.characterPrompts;
-                requestBody.use_coords = !!metadata.use_coords;
-            }
-
-
-            addSharedFieldsToRequestBody(requestBody, metadata);
-
-            delete requestBody.seed;
-
-            // Generate variation with same settings using original base image
-            const model = metadata.model ? metadata.model.toLowerCase() : 'v4_5';
-            const url = `/${model}/generate`;
-            generateResponse = await fetchWithAuth(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
-            });
-        } else {
-            // Handle regular image reroll (existing logic)
-            // Build request body from metadata
-            const requestBody = {
-                prompt: metadata.prompt || '',
-                resolution: metadata.resolution || '',
-                steps: metadata.steps || 25,
-                guidance: metadata.scale || 5.0,
-                rescale: metadata.cfg_rescale || 0.0,
-                allow_paid: typeof forcePaidRequest !== 'undefined' ? forcePaidRequest : false,
-                workspace: activeWorkspace
-            };
-
-            // Add optional fields if they have values
-            if (metadata.uc) {
-                requestBody.uc = metadata.uc;
-            }
-
-            if (metadata.sampler) {
-                const samplerObj = getSamplerMeta(metadata.sampler);
-                requestBody.sampler = samplerObj ? samplerObj.request : metadata.sampler;
-            }
-
-            if (metadata.noise_schedule) {
-                const noiseObj = getNoiseMeta(metadata.noise_schedule);
-                requestBody.noiseScheduler = noiseObj ? noiseObj.request : metadata.noise_schedule;
-            }
-
-            if (metadata.skip_cfg_above_sigma) {
-                requestBody.variety = true;
-            }
-
-            // Add upscale if it was used in original generation
-            if (metadata.upscaled) {
-                requestBody.upscale = true;
-            }
-
-            // Add preset if available
-            if (metadata.preset_name) {
-                requestBody.preset = metadata.preset_name;
-            }
-
-            // Add character prompts if available
-            if (metadata.characterPrompts && Array.isArray(metadata.characterPrompts) && metadata.characterPrompts.length > 0) {
-                requestBody.allCharacterPrompts = metadata.characterPrompts;
-                requestBody.use_coords = !!metadata.use_coords;
-            }
-
-            // Add mask data if it exists
-            if (window.currentMaskCompressed) {
-                requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
-            } else if (window.currentMaskData) {
-                // Add compressed mask for server processing
-                let compressedMask = saveMaskCompressed();
-                if (compressedMask) {
-                    requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
-                }
-            }
-
-
-
-            addSharedFieldsToRequestBody(requestBody, metadata);
-
-            delete requestBody.seed;
-
-            // Generate image with same settings
-            const model = metadata.model ? metadata.model.toLowerCase() : 'v4_5';
-            const url = `/${model}/generate`;
-            generateResponse = await fetchWithAuth(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestBody)
-            });
+            console.log('🎲 User confirmed, proceeding with reroll...');
         }
-
-        if (!generateResponse.ok) {
-            throw new Error(`Generation failed: ${generateResponse.statusText}`);
-        }
-
-        const blob = await generateResponse.blob();
-        const imageUrl = URL.createObjectURL(blob);
-
-        // Extract seed from response header if available
-        const headerSeed = generateResponse.headers.get('X-Seed');
-        if (headerSeed) {
-            window.lastGeneratedSeed = parseInt(headerSeed);
-            sproutSeedBtn.classList.add('available');
-            manualPreviewSeedNumber.textContent = parseInt(headerSeed);
-            updateSproutSeedButtonFromPreviewSeed();
-        }
-
-        // Fetch metadata for the generated image if we have a filename
-        const generatedFilename = generateResponse.headers.get('X-Generated-Filename');
-        if (generatedFilename) {
-            try {
-                const metadata = await getImageMetadata(generatedFilename);
-                window.lastGeneration = metadata;
-                window.lastGeneration.filename = generatedFilename;
-                manualPreviewOriginalImage.classList.remove('hidden');
-            } catch (error) {
-                console.warn('Failed to fetch metadata for generated image:', error);
-            }
-        }
-
-        // Create a temporary image to get dimensions
-        const img = new Image();
-        img.onload = function() {
-            createConfetti();
-
-            // Refresh gallery and show the new image in lightbox
-            setTimeout(async () => {
-                await loadGallery(true);
-
-                if (manualModal.style.display !== 'none') {
-                    // Find the newly generated image (should be the first one)
-                    if (allImages.length > 0) {
-                        const newImage = allImages[0]; // Newest image is first
-                        let filenameToShow = newImage.original;
-                        if (newImage.upscaled) {
-                            filenameToShow = newImage.upscaled;
-                        }
-
-                        const imageToShow = {
-                            filename: filenameToShow,
-                            base: newImage.base,
-                            upscaled: newImage.upscaled
-                        };
-                        showLightbox(imageToShow);
-                    }
-                }
-            }, 1000);
-        };
-        img.src = imageUrl;
-
-        // Show success message
+    
         if (!isInModal) {
-            clearInterval(progressInterval);
-            updateGlassToastProgress(toastId, 100);
-            updateGlassToastComplete(toastId, {
-                type: 'success',
-                title: 'Reroll Complete',
-                message: 'Image generated successfully!',
-                customIcon: '<i class="nai-check"></i>'
-            });
-            document.querySelectorAll('.manual-preview-image-container, #manualPanelSection').forEach(element => {
-                element.classList.remove('swapped');
-            });
+            // Use glass toast with progress when not in modal
+            toastId = showGlassToast('info', 'Rerolling Image', 'Generating new image...', true, false, '<i class="fas fa-dice"></i>');
+            
+            // Start progress animation (1% per second)
+            let progress = 0;
+            progressInterval = setInterval(() => {
+                progress += 1;
+                updateGlassToastProgress(toastId, progress);
+            }, 1000);
         } else {
-            showGlassToast('success', 'Reroll Complete', 'Image generated successfully!');
+            // Use existing modal loading overlay when in modal
+            showManualLoading(true, 'Rerolling image...');
         }
 
+        // Use WebSocket reroll functionality (preferred method)
+        if (window.wsClient && window.wsClient.isConnected()) {
+            try {
+                console.log('🚀 Using WebSocket reroll...');
+                const result = await window.wsClient.rerollImage(filenameForMetadata, workspace);
+                
+                // Handle successful reroll
+                if (result && result.image) {
+                    // Convert base64 to blob
+                    const byteCharacters = atob(result.image);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], { type: 'image/png' });
+                    
+                    // Create image URL
+                    const imageUrl = URL.createObjectURL(blob);
+                    
+                    // Extract seed from result
+                    if (result.seed) {
+                        window.lastGeneratedSeed = parseInt(result.seed);
+                        const sproutSeedBtn = document.getElementById('sproutSeedBtn');
+                        const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
+                        if (sproutSeedBtn) sproutSeedBtn.classList.add('available');
+                        if (manualPreviewSeedNumber) manualPreviewSeedNumber.textContent = parseInt(result.seed);
+                        if (typeof updateSproutSeedButtonFromPreviewSeed === 'function') {
+                            updateSproutSeedButtonFromPreviewSeed();
+                        }
+                    }
+                    
+                    // Show success message
+                    if (!isInModal) {
+                        clearInterval(progressInterval);
+                        updateGlassToastProgress(toastId, 100);
+                        updateGlassToastComplete(toastId, {
+                            type: 'success',
+                            title: 'Reroll Complete',
+                            message: 'Image generated successfully!',
+                            customIcon: '<i class="nai-check"></i>',
+                            showProgress: false
+                        });
+                    } else {
+                        showGlassToast('success', 'Reroll Complete', 'Image generated successfully!');
+                        hideManualLoading();
+                    }
+                    
+                    // Refresh gallery and show new image
+                    setTimeout(async () => {
+                        await loadGallery(true);
+                        
+                        if (!isInModal) {
+                            // Find the newly generated image and show in lightbox
+                            if (allImages.length > 0) {
+                                const newImage = allImages[0]; // Newest image is first
+                                let filenameToShow = newImage.original;
+                                if (newImage.upscaled) {
+                                    filenameToShow = newImage.upscaled;
+                                }
+                                
+                                const imageToShow = {
+                                    filename: filenameToShow,
+                                    base: newImage.base,
+                                    upscaled: newImage.upscaled
+                                };
+                                showLightbox(imageToShow);
+                            }
+                        }
+                        
+                        // Clean up modal state
+                        document.querySelectorAll('.manual-preview-image-container, #manualPanelSection').forEach(element => {
+                            element.classList.remove('swapped');
+                        });
+                    }, 1000);
+                    
+                    return;
+                }
+            } catch (wsError) {
+                console.warn('WebSocket reroll failed, falling back to HTTP:', wsError);
+                // Fall back to HTTP method if WebSocket fails
+            }
+        }
     } catch (error) {
         console.error('Direct reroll error:', error);
         if (!isInModal) {
@@ -5170,10 +5490,12 @@ async function rerollImage(image) {
                 type: 'error',
                 title: 'Reroll Failed',
                 message: 'Image reroll failed: ' + error.message,
-                customIcon: '<i class="nai-cross"></i>'
+                customIcon: '<i class="nai-cross"></i>',
+                showProgress: false
             });
         } else {
             showError('Image reroll failed: ' + error.message);
+            hideManualLoading();
         }
     } finally {
         if (isInModal) {
@@ -5196,7 +5518,7 @@ async function rerollImageWithEdit(image) {
         // Show spinner overlay
         const spinnerOverlay = manualModal.querySelector('.spinner-overlay');
         if (spinnerOverlay) {
-            spinnerOverlay.style.display = '';
+            spinnerOverlay.classList.remove('hidden');
         }
         
         if (!document.body.classList.contains('editor-open')) {
@@ -5279,7 +5601,7 @@ async function rerollImageWithEdit(image) {
         
         // Clear gallery after 5 seconds
         galleryClearTimeout = setTimeout(() => {
-            if (manualModal.style.display !== 'none') {
+            if (!manualModal.classList.contains('hidden')) {
                 console.log('🧹 Clearing gallery after 5 seconds...');
                 clearGallery();
             }
@@ -5294,7 +5616,7 @@ async function rerollImageWithEdit(image) {
         
         // Hide spinner overlay
         if (spinnerOverlay) {
-            spinnerOverlay.style.display = 'none';
+            spinnerOverlay.classList.add('hidden');
         }
 
     } catch (error) {
@@ -5306,7 +5628,7 @@ async function rerollImageWithEdit(image) {
         // Hide spinner overlay on error as well
         const spinnerOverlay = manualModal.querySelector('.spinner-overlay');
         if (spinnerOverlay) {
-            spinnerOverlay.style.display = 'none';
+            spinnerOverlay.classList.add('hidden');
         }
     }
 }
@@ -5323,7 +5645,7 @@ async function upscaleImage(image, event = null) {
     }
     
     // Check if we're in a modal context
-    const isInModal = document.getElementById('manualModal').style.display === 'block';
+    const isInModal = !document.getElementById('manualModal').classList.contains('hidden');
     
     let toastId;
     let progressInterval;
@@ -5370,7 +5692,8 @@ async function upscaleImage(image, event = null) {
                         type: 'success',
                         title: 'Upscale Complete',
                         message: 'Image upscaled successfully!',
-                        customIcon: '<i class="nai-check"></i>'
+                        customIcon: '<i class="nai-check"></i>',
+                        showProgress: false
                     });
                 } else {
                     showGlassToast('success', 'Upscale Complete', 'Image upscaled successfully!');
@@ -5411,7 +5734,8 @@ async function upscaleImage(image, event = null) {
                     type: 'error',
                     title: 'Upscale Failed',
                     message: 'Image upscaling failed. Please try again.',
-                    customIcon: '<i class="nai-cross"></i>'
+                    customIcon: '<i class="nai-cross"></i>',
+                    showProgress: false
                 });
             } else {
                 showError('Image upscaling failed. Please try again.');
@@ -5426,7 +5750,8 @@ async function upscaleImage(image, event = null) {
                 type: 'error',
                 title: 'Upscale Failed',
                 message: 'Image upscaling failed. Please try again.',
-                customIcon: '<i class="nai-cross"></i>'
+                customIcon: '<i class="nai-cross"></i>',
+                showProgress: false
             });
         } else {
             showError('Image upscaling failed. Please try again.');
@@ -5464,8 +5789,16 @@ async function handleLogout() {
 // Show manual modal
 async function showManualModal(presetName = null) {
     // Disable on mobile displays
-    if (window.innerWidth <= 768) {
+    if (window.innerWidth <= 577) {
         return false;
+    }
+    
+    // Track if we were in search mode before opening modal
+    wasInSearchMode = isInSearchMode();
+    
+    // Always return to gallery mode when opening manual modal
+    if (wasInSearchMode) {
+        closeSearchContainer();
     }
     
     // Prevent body scrolling when modal is open
@@ -5495,6 +5828,11 @@ async function showManualModal(presetName = null) {
     manualPreviewOriginalImage.classList.add('hidden');
     openModal(manualModal);
     manualPrompt.focus();
+    
+    // Calculate previewRatio after modal is opened and visible
+    setTimeout(() => {
+        calculatePreviewRatio();
+    }, 100);
 
     // Check if a preset is selected for editing
     const selectedValue = presetSelect.value;
@@ -5533,7 +5871,7 @@ async function showManualModal(presetName = null) {
     if (promptTabs && promptTabs.classList.contains('show-both') && showBothBtn && showBothBtn.classList.contains('active')) {
         // "Show both" mode is active, hide the tab buttons container
         if (tabButtonsContainer) {
-            tabButtonsContainer.style.display = 'none';
+            tabButtonsContainer.classList.add('hidden');
         }
     }
     
@@ -5556,7 +5894,7 @@ async function showManualModal(presetName = null) {
     
     // Clear gallery after 5 seconds
     galleryClearTimeout = setTimeout(() => {
-        if (manualModal.style.display !== 'none') {
+        if (!manualModal.classList.contains('hidden')) {
             clearGallery();
         }
     }, 5000);
@@ -5599,7 +5937,7 @@ function hideManualModal(e, preventModalReset = false) {
         // Hide request type toggle row
         const requestTypeRow = document.getElementById('requestTypeRow');
         if (requestTypeRow) {
-            requestTypeRow.style.display = 'none';
+            requestTypeRow.classList.add('hidden');
         }
 
         // Clear edit context
@@ -5631,18 +5969,18 @@ function hideManualModal(e, preventModalReset = false) {
             toggleBtn.classList.remove('active');
         }
         if (refreshBtn) {
-            refreshBtn.style.display = 'none';
+            refreshBtn.classList.add('hidden');
         }
         if (transferBtn) {
-            transferBtn.style.display = 'none';
+            transferBtn.classList.add('hidden');
         }
         if (nsfwBtn) {
             nsfwBtn.dataset.state = 'off';
             nsfwBtn.classList.remove('active');
-            nsfwBtn.style.display = 'none';
+            nsfwBtn.classList.add('hidden');
         }
         if (divider) {
-            divider.style.display = 'none';
+            divider.classList.add('hidden');
         }
         // Hide keyboard shortcuts overlay
         hideShortcutsOverlay();
@@ -5656,8 +5994,34 @@ function hideManualModal(e, preventModalReset = false) {
     console.log('🔒 Modal closing, clearing timeout and restoring gallery...');
     clearTimeout(galleryClearTimeout);
 
-    // Restore gallery from saved position
-    if (savedGalleryPosition !== null) {
+    // Return to search mode if we were in it before opening the modal
+    if (wasInSearchMode) {
+        // Reopen search container and restore search results
+        const searchContainer = document.querySelector('#main-menu-bar .file-search-container');
+        if (searchContainer) {
+            searchContainer.classList.remove('closed');
+            const clearSearchBtn = document.getElementById('clearSearchBtn');
+            if (clearSearchBtn) {
+                clearSearchBtn.classList.remove('hidden');
+            }
+            const searchToggleBtn = document.getElementById('searchToggleBtn');
+            if (searchToggleBtn) {
+                searchToggleBtn.classList.add('active');
+            }
+            const mainMenuContents = document.querySelector('#main-menu-bar .main-menu-contents');
+            if (mainMenuContents) {
+                mainMenuContents.classList.add('hidden');
+            }
+            
+            // Restore search results if fileSearch instance exists
+            if (window.fileSearch && window.fileSearch.currentQuery) {
+                // Trigger search to restore results
+                window.fileSearch.performSearch(window.fileSearch.currentQuery);
+            }
+        }
+        wasInSearchMode = false; // Reset the flag
+        savedGalleryPosition = null;
+    } else if (savedGalleryPosition !== null) {
         console.log('📍 Saved position found:', savedGalleryPosition);
         loadGalleryFromIndex(savedGalleryPosition);
         savedGalleryPosition = null;
@@ -5830,7 +6194,7 @@ function clearManualForm() {
         transformationRow.classList.remove('display-image');
     }
 
-    document.getElementById('manualImg2ImgGroup').style.display = 'none';
+    document.getElementById('manualImg2ImgGroup').classList.add('hidden');
 
     const transformationDropdown = document.getElementById('transformationDropdown');
     if (transformationDropdown) {
@@ -5839,14 +6203,14 @@ function clearManualForm() {
 
 
     if (vibeReferencesContainer) {
-        vibeReferencesContainer.style.display = 'none';
+        vibeReferencesContainer.classList.add('hidden');
         vibeReferencesContainer.innerHTML = '';
     }
     if (transformationRow) {
         transformationRow.classList.remove('display-vibe');
     }
     if (vibeNormalizeToggle) {
-        vibeNormalizeToggle.style.display = 'none';
+        vibeNormalizeToggle.classList.add('hidden');
     }
 
     // Clear variation context
@@ -5860,10 +6224,10 @@ function clearManualForm() {
     const saveButton = document.getElementById('manualSaveBtn');
 
     if (presetNameGroup) {
-        presetNameGroup.style.display = 'block';
+        presetNameGroup.classList.remove('hidden');
     }
     if (saveButton) {
-        saveButton.style.display = 'inline-block';
+        saveButton.classList.remove('hidden');
     }
 
     // Clear character prompts
@@ -5902,7 +6266,7 @@ function clearManualForm() {
     // Hide image bias dropdown
     hideImageBiasDropdown();
 
-    if (clearSeedBtn) clearSeedBtn.classList.remove('hidden');
+    if (clearSeedBtn) clearSeedBtn.classList.toggle('hidden', !manualSeed?.value);
 
     // Reset transformation dropdown state
     updateTransformationDropdownState();
@@ -6114,8 +6478,9 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
     const img = new Image();
     img.onload = async function() {
         createConfetti();
+        await loadGallery(true);
 
-        if (manualModal.style.display !== 'none') {
+        if (!manualModal.classList.contains('hidden')) {
             // Update manual modal preview instead of opening lightbox
             // Don't clear context when modal is open in wide viewport mode
 
@@ -6124,29 +6489,23 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
             });
 
             // Only update allImages array, don't update gallery display
-            await loadGallery(true);
             await updateManualPreview(0, response);
         } else {
             // Clear context only when modal is not open or not in wide viewport mode
             if (typeof clearContextFn === "function") clearContextFn();
-
-            if (manualModal.style.display !== 'none') {
-                // Normal behavior - open lightbox
-                setTimeout(async () => {
-                    await loadGallery();
+            // Normal behavior - open lightbox
+            setTimeout(async () => {
+                if (allImages.length > 0) {
+                    const newImage = allImages[0];
+                    const imageToShow = {
+                        filename: newImage.upscaled || newImage.original,
+                        base: newImage.base,
+                        upscaled: newImage.upscaled
+                    };
                     
-                    if (allImages.length > 0) {
-                        const newImage = allImages[0];
-                        const imageToShow = {
-                            filename: newImage.upscaled || newImage.original,
-                            base: newImage.base,
-                            upscaled: newImage.upscaled
-                        };
-                        
-                        showLightbox(imageToShow);
-                    }
-                }, 1000);
-            }
+                    showLightbox(imageToShow);
+                }
+            }, 1000);
         }
     };
     img.src = imageUrl;
@@ -6297,7 +6656,9 @@ async function updateManualPreviewBlurredBackground(imageUrl) {
     try {
         // Extract filename from imageUrl
         const filename = imageUrl.split('/').pop();
-        const baseName = filename.replace(/\.(png|jpg|jpeg)$/i, '');
+        const baseName = filename
+            .replace(/\.(png|jpg|jpeg)$/i, '')
+            .replace(/_upscaled$/, '');
         
         // Get the blurred preview URL - encode the baseName to handle spaces and special characters
         const blurPreviewUrl = `/previews/${encodeURIComponent(baseName)}_blur.jpg`;
@@ -6437,21 +6798,42 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             return;
         }
         
-        // Show the image and hide placeholder
+        // Wait for the manual preview preload to complete before applying the image
+        let imageWidth, imageHeight;
+        await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                // Store image dimensions for container sizing
+                imageWidth = img.naturalWidth;
+                imageHeight = img.naturalHeight;
+                // Preload completed successfully
+                resolve();
+            };
+            img.onerror = () => {
+                reject(new Error('Failed to preload image'));
+            };
+            img.src = imageUrl;
+        });
+        
+        // Now apply the image after preload is complete
         previewImage.src = imageUrl;
-        previewImage.style.display = 'block';
-        previewPlaceholder.style.display = 'none';
+        previewImage.classList.remove('hidden');
+        previewPlaceholder.classList.add('hidden');
 
         // Store the blob URL for download functionality
         previewImage.dataset.blobUrl = imageUrl;
-
-        // Wait for the image to load before continuing
-        await new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => resolve();
-            img.onerror = () => reject(new Error('Failed to load image'));
-            img.src = imageUrl;
-        });
+        
+        // Stop generation animation when image is actually loaded
+        previewImage.onload = () => {
+            if (generationAnimationActive) {
+                stopPreviewAnimation();
+            }
+        };
+        
+        // Apply dynamic container sizing based on image aspect ratio
+        if (imageWidth && imageHeight) {
+            sizeManualPreviewContainer(imageWidth, imageHeight);
+        }
 
         // Update blurred background with debouncing
         // Always use the debounced version to prevent duplicate calls
@@ -6463,7 +6845,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             if (originalImage) {
                 const originalImageUrl = `/images/${window.initialEdit.image.original || window.initialEdit.image.filename}`;
                 originalImage.src = originalImageUrl;
-                originalImage.style.display = 'block';
+                originalImage.classList.remove('hidden');
                 
                 // Add click handler to load original image into main preview
                 originalImage.onclick = function() {
@@ -6490,7 +6872,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
                 if (lastGenFilename) {
                     originalImage.src = `/images/${lastGenFilename}`;
-                    originalImage.style.display = 'block';
+                    originalImage.classList.remove('hidden');
                     originalImage.onclick = function() {
                         // When clicked, restore the original image
                         restoreOriginalImage();
@@ -6516,7 +6898,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
                 if (lastGenFilename) {
                     originalImage.src = `/images/${lastGenFilename}`;
-                    originalImage.style.display = 'block';
+                    originalImage.classList.remove('hidden');
                     originalImage.onclick = function() {
                         swapManualPreviewImages();
                     };
@@ -6532,7 +6914,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
         } else {
             // Single image mode
             if (originalImage) {
-                originalImage.style.display = 'none';
+                originalImage.classList.add('hidden');
             }
             imageContainers.forEach(container => {
                 container.classList.remove('dual-mode', 'original-hidden');
@@ -6559,15 +6941,16 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
         }
 
         // Show control buttons
-        if (downloadBtn) downloadBtn.style.display = 'flex';
-        if (upscaleBtn) upscaleBtn.style.display = 'flex';
-        if (rerollBtn) rerollBtn.style.display = 'flex';
-        if (variationBtn) variationBtn.style.display = 'flex';
-        if (manualPreviewLoadBtn) manualPreviewLoadBtn.style.display = 'flex';
+        if (downloadBtn) downloadBtn.classList.remove('hidden');
+        if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
+        if (upscaleBtn) upscaleBtn.classList.remove('hidden');
+        if (rerollBtn) rerollBtn.classList.remove('hidden');
+        if (variationBtn) variationBtn.classList.remove('hidden');
+        if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.remove('hidden');
         
         // Show and update pin button
         if (manualPreviewPinBtn) {
-            manualPreviewPinBtn.style.display = 'flex';
+            manualPreviewPinBtn.classList.remove('hidden');
             if (window.currentManualPreviewImage) {
                 const filename = window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
                 if (filename) {
@@ -6578,7 +6961,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
         
         const scrapBtn = document.getElementById('manualPreviewScrapBtn');
         if (scrapBtn) {
-            scrapBtn.style.display = 'flex';
+            scrapBtn.classList.remove('hidden');
             // Update scrap button based on current view
             if (currentGalleryView === 'scraps') {
                 scrapBtn.innerHTML = '<i class="mdi mdi-1-5 mdi-archive-arrow-up"></i>';
@@ -6589,7 +6972,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             }
         }
         if (seedBtn) seedBtn.classList.remove('hidden');
-        if (deleteBtn) deleteBtn.style.display = 'flex';
+        if (deleteBtn) deleteBtn.classList.remove('hidden');
 
         // Initialize lightbox functionality
         setTimeout(() => {
@@ -6631,21 +7014,42 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
         // Construct image URL from the image object
         const imageUrl = `/images/${imageObj.upscaled || imageObj.original || imageObj.filename}`;
         
-        // Show the image and hide placeholder
+        // Wait for the manual preview preload to complete before applying the image
+        let imageWidth, imageHeight;
+        await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                // Store image dimensions for container sizing
+                imageWidth = img.naturalWidth;
+                imageHeight = img.naturalHeight;
+                // Preload completed successfully
+                resolve();
+            };
+            img.onerror = () => {
+                reject(new Error('Failed to preload image'));
+            };
+            img.src = imageUrl;
+        });
+        
+        // Now apply the image after preload is complete
         previewImage.src = imageUrl;
-        previewImage.style.display = 'block';
-        previewPlaceholder.style.display = 'none';
+        previewImage.classList.remove('hidden');
+        previewPlaceholder.classList.add('hidden');
 
         // Store the blob URL for download functionality
         previewImage.dataset.blobUrl = imageUrl;
-
-        // Wait for the image to load before continuing
-        await new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => resolve();
-            img.onerror = () => reject(new Error('Failed to load image'));
-            img.src = imageUrl;
-        });
+        
+        // Stop generation animation when image is actually loaded
+        previewImage.onload = () => {
+            if (generationAnimationActive) {
+                stopPreviewAnimation();
+            }
+        };
+        
+        // Apply dynamic container sizing based on image aspect ratio
+        if (imageWidth && imageHeight) {
+            sizeManualPreviewContainer(imageWidth, imageHeight);
+        }
 
         // Update blurred background
         updateBlurredBackground(imageUrl);
@@ -6680,15 +7084,16 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
         }
 
         // Show control buttons
-        if (downloadBtn) downloadBtn.style.display = 'flex';
-        if (upscaleBtn) upscaleBtn.style.display = 'flex';
-        if (rerollBtn) rerollBtn.style.display = 'flex';
-        if (variationBtn) variationBtn.style.display = 'flex';
-        if (manualPreviewLoadBtn) manualPreviewLoadBtn.style.display = 'flex';
+        if (downloadBtn) downloadBtn.classList.remove('hidden');
+        if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
+        if (upscaleBtn) upscaleBtn.classList.remove('hidden');
+        if (rerollBtn) rerollBtn.classList.remove('hidden');
+        if (variationBtn) variationBtn.classList.remove('hidden');
+        if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.remove('hidden');
         
         // Show and update pin button
         if (manualPreviewPinBtn) {
-            manualPreviewPinBtn.style.display = 'flex';
+            manualPreviewPinBtn.classList.remove('hidden');
             if (window.currentManualPreviewImage) {
                 const filename = window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
                 if (filename) {
@@ -6699,7 +7104,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
         
         const scrapBtn = document.getElementById('manualPreviewScrapBtn');
         if (scrapBtn) {
-            scrapBtn.style.display = 'flex';
+            scrapBtn.classList.remove('hidden');
             // Update scrap button based on current view
             if (currentGalleryView === 'scraps') {
                 scrapBtn.innerHTML = '<i class="mdi mdi-1-5 mdi-archive-arrow-up"></i>';
@@ -6710,7 +7115,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             }
         }
         if (seedBtn) seedBtn.classList.remove('hidden');
-        if (deleteBtn) deleteBtn.style.display = 'flex';
+        if (deleteBtn) deleteBtn.classList.remove('hidden');
 
         // Initialize lightbox functionality
         setTimeout(() => {
@@ -6825,14 +7230,14 @@ function resetManualPreview() {
 
     if (previewImage && previewPlaceholder) {
         // Hide the image and show placeholder
-        previewImage.style.display = 'none';
+        previewImage.classList.add('hidden');
         previewImage.src = '';
         previewImage.dataset.blobUrl = '';
-        previewPlaceholder.style.display = 'flex';
+        previewPlaceholder.classList.remove('hidden');
 
         // Hide original image and reset dual mode
         if (originalImage) {
-            originalImage.style.display = 'none';
+            originalImage.classList.add('hidden');
             originalImage.src = '';
             originalImage.onclick = null;
             originalImage.classList.add('hidden');
@@ -6844,16 +7249,17 @@ function resetManualPreview() {
         }
 
         // Hide control buttons
-        if (downloadBtn) downloadBtn.style.display = 'none';
-        if (upscaleBtn) upscaleBtn.style.display = 'none';
-        if (rerollBtn) rerollBtn.style.display = 'none';
-        if (variationBtn) variationBtn.style.display = 'none';
-        if (manualPreviewLoadBtn) manualPreviewLoadBtn.style.display = 'none';
-        if (manualPreviewPinBtn) manualPreviewPinBtn.style.display = 'none';
+        if (downloadBtn) downloadBtn.classList.add('hidden');
+        if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.add('hidden');
+        if (upscaleBtn) upscaleBtn.classList.add('hidden');
+        if (rerollBtn) rerollBtn.classList.add('hidden');
+        if (variationBtn) variationBtn.classList.add('hidden');
+        if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.add('hidden');
+        if (manualPreviewPinBtn) manualPreviewPinBtn.classList.add('hidden');
         const scrapBtn = document.getElementById('manualPreviewScrapBtn');
-        if (scrapBtn) scrapBtn.style.display = 'none';
+        if (scrapBtn) scrapBtn.classList.add('hidden');
         if (seedBtn) seedBtn.classList.add('hidden');
-        if (deleteBtn) deleteBtn.style.display = 'none';
+        if (deleteBtn) deleteBtn.classList.add('hidden');
         hideManualPreview();
 
         // Clear stored seed and current image
@@ -6889,15 +7295,15 @@ function resetManualPreview() {
             previewContainer.classList.remove('preview-animation-active', 'preview-fade-out');
         }
         if (previewStars) {
-            previewStars.style.display = 'none';
+            previewStars.classList.add('hidden');
             previewStars.style.opacity = '0';
         }
         if (previewBackgroundLines) {
-            previewBackgroundLines.style.display = 'none';
+            previewBackgroundLines.classList.add('hidden');
             previewBackgroundLines.classList.remove('fadeOut');
         }
         if (previewForegroundLines) {
-            previewForegroundLines.style.display = 'none';
+            previewForegroundLines.classList.add('hidden');
             previewForegroundLines.classList.remove('fadeOut');
         }
     }
@@ -7623,7 +8029,7 @@ async function generateImage(event = null) {
     }
 
     // Check if we're in a modal context
-    const isInModal = document.getElementById('manualModal').style.display === 'block';
+    const isInModal = !document.getElementById('manualModal').classList.contains('hidden');
     
     let toastId;
     let progressInterval;
@@ -7658,7 +8064,8 @@ async function generateImage(event = null) {
             type: 'success',
             title: 'Image Generated',
             message: 'Image generated successfully and added to gallery',
-            customIcon: '<i class="nai-check"></i>'
+            customIcon: '<i class="nai-check"></i>',
+            showProgress: false
         });
         
         createConfetti();
@@ -7666,7 +8073,7 @@ async function generateImage(event = null) {
         // Refresh gallery to show the new image
         await loadGallery(true);
         
-        if (manualModal.style.display !== 'none') {
+        if (manualModal.classList.contains('hidden')) {
             // Find the generated image in the gallery
             const found = allImages.find(img => img.original === filename || img.upscaled === filename);
             if (found) {
@@ -7688,7 +8095,8 @@ async function generateImage(event = null) {
             type: 'error',
             title: 'Generation Failed',
             message: error.message,
-            customIcon: '<i class="nai-cross"></i>'
+            customIcon: '<i class="nai-cross"></i>',
+            showProgress: false
         });
     } finally {
         // Reset generating state
@@ -7712,7 +8120,7 @@ function initializeManualPreviewLightbox() {
     if (!imageContainer || !image) return;
     
     // Only register event listeners if there's actually an image to preview
-    if (window.currentManualPreviewImage && image.style.display !== 'none') {
+    if (window.currentManualPreviewImage && !image.classList.contains('hidden')) {
         registerManualPreviewEventListeners();
     } else {
         // Deregister event listeners if there's no image to prevent errors
@@ -7740,7 +8148,7 @@ function handleManualPreviewClick(e) {
     
     // Check if the image is actually visible
     const image = document.getElementById('manualPreviewImage');
-    if (!image || image.style.display === 'none') {
+    if (!image || image.classList.contains('hidden')) {
         console.warn('Preview image is not visible');
         return;
     }
@@ -8101,7 +8509,7 @@ function createConfetti() {
 
 // Show manual modal loading overlay
 function showManualLoading(show, message = 'Generating Image...') {
-    if (manualModal.style.display !== 'none' && show && isPreviewAnimationAvailable()) {
+    if (!manualModal.classList.contains('hidden') && show && isPreviewAnimationAvailable()) {
         // Start preview animation for image generation
         startPreviewAnimation();
         return;
@@ -8112,7 +8520,7 @@ function showManualLoading(show, message = 'Generating Image...') {
     }
 
     // FALLBACK: If animation system fails, use manual loading overlay for critical operations
-    if (manualModal.style.display !== 'none' && !isPreviewAnimationAvailable()) {
+    if (!manualModal.classList.contains('hidden') && !isPreviewAnimationAvailable()) {
         console.warn('Animation system not available, using manual loading overlay');
         if (manualLoadingOverlay) {
             manualLoadingOverlay.classList.remove('hidden');
@@ -8258,7 +8666,19 @@ async function handleResize() {
         updateGalleryItemToolbars();
         updateGalleryPlaceholders(); // Update placeholders after resize
         updateGalleryColumnsFromLayout();
+        updateMenuBarHeight();
+        
+        // Recalculate previewRatio if manual modal is open
+        if (manualModal && !manualModal.classList.contains('hidden')) {
+            calculatePreviewRatio();
+        }
     }, 250); // 250ms delay
+}
+
+async function updateMenuBarHeight() {
+    const menubarStyle = getComputedStyle(document.getElementById('main-menu-bar'));
+    const menuBarHeight = menubarStyle?.height ? `calc(${menubarStyle.height} + ${menubarStyle.marginTop})` : '8.5em';
+    document.body.style.setProperty('--menubar-height', menuBarHeight);
 }
 
 // Toggle manual upscale button functionality
@@ -8280,12 +8700,12 @@ function showMetadataDialog() {
 
 function hideMetadataDialog() {
     if (metadataDialog) {
-        metadataDialog.style.display = 'none';
+        metadataDialog.classList.add('hidden');
     }
 
     // Hide expanded sections
-    if (dialogPromptExpanded) dialogPromptExpanded.style.display = 'none';
-    if (dialogUcExpanded) dialogUcExpanded.style.display = 'none';
+    if (dialogPromptExpanded) dialogPromptExpanded.classList.add('hidden');
+    if (dialogUcExpanded) dialogUcExpanded.classList.add('hidden');
 }
 function populateDialogMetadataTable(metadata) {
     // Type and Name
@@ -8300,14 +8720,14 @@ function populateDialogMetadataTable(metadata) {
             const nameCell = nameElement.closest('.metadata-cell');
             if (metadata.preset_name) {
                 nameElement.textContent = metadata.preset_name;
-                if (nameCell) nameCell.style.display = 'flex';
+                if (nameCell) nameCell.classList.remove('hidden');
             } else {
-                if (nameCell) nameCell.style.display = 'none';
+                if (nameCell) nameCell.classList.add('hidden');
             }
         } else {
             typeElement.textContent = '-';
             const nameCell = nameElement.closest('.metadata-cell');
-            if (nameCell) nameCell.style.display = 'none';
+            if (nameCell) nameCell.classList.add('hidden');
         }
     }
 
@@ -8370,14 +8790,14 @@ function populateDialogMetadataTable(metadata) {
                 seed2Label.textContent = 'Seed 2';
                 seed1Element.textContent = metadata.layer1Seed || '-';
                 seed2Element.textContent = metadata.layer2Seed || '-';
-                seed1Cell.style.display = 'flex';
-                seed2Cell.style.display = 'flex';
+                seed1Cell.classList.remove('hidden');
+                seed2Cell.classList.remove('hidden');
             } else {
                 // Single seed - hide seed 2 and rename seed 1
                 seed1Label.textContent = 'Seed';
                 seed1Element.textContent = metadata.layer1Seed || metadata.seed || '-';
-                seed1Cell.style.display = 'flex';
-                seed2Cell.style.display = 'none';
+                seed1Cell.classList.remove('hidden');
+                seed2Cell.classList.add('hidden');
             }
         }
     }
@@ -8419,18 +8839,18 @@ function populateDialogMetadataTable(metadata) {
 
 function toggleDialogExpanded(type) {
     if (type === 'prompt' && dialogPromptExpanded && dialogUcExpanded) {
-        if (dialogPromptExpanded.style.display === 'none') {
-            dialogPromptExpanded.style.display = 'block';
-            dialogUcExpanded.style.display = 'none';
+        if (dialogPromptExpanded.classList.contains('hidden')) {
+            dialogPromptExpanded.classList.remove('hidden');
+            dialogUcExpanded.classList.add('hidden');
         } else {
-            dialogPromptExpanded.style.display = 'none';
+            dialogPromptExpanded.classList.add('hidden');
         }
     } else if (type === 'uc' && dialogUcExpanded && dialogPromptExpanded) {
-        if (dialogUcExpanded.style.display === 'none') {
-            dialogUcExpanded.style.display = 'block';
-            dialogPromptExpanded.style.display = 'none';
+        if (dialogUcExpanded.classList.contains('hidden')) {
+            dialogUcExpanded.classList.remove('hidden');
+            dialogPromptExpanded.classList.add('hidden');
         } else {
-            dialogUcExpanded.style.display = 'none';
+            dialogUcExpanded.classList.add('hidden');
         }
     }
 }
@@ -8455,7 +8875,7 @@ function resetMetadataTable() {
     const nameElement = document.getElementById('metadataName');
     if (nameElement) {
         const nameCell = nameElement.closest('.metadata-cell');
-        if (nameCell) nameCell.style.display = 'flex';
+        if (nameCell) nameCell.classList.remove('hidden');
     }
 
     // Reset seed labels and show both cells
@@ -8471,21 +8891,21 @@ function resetMetadataTable() {
         if (seed1Label && seed2Label) {
             seed1Label.textContent = 'Seed 1';
             seed2Label.textContent = 'Seed 2';
-            seed1Cell.style.display = 'flex';
-            seed2Cell.style.display = 'flex';
+            seed1Cell.classList.remove('hidden');
+            seed2Cell.classList.remove('hidden');
         }
     }
 
     // Hide prompt/UC buttons
     const promptBtn = document.getElementById('promptBtn');
     const ucBtn = document.getElementById('ucBtn');
-    if (promptBtn) promptBtn.style.display = 'none';
-    if (ucBtn) ucBtn.style.display = 'none';
+    if (promptBtn) promptBtn.classList.add('hidden');
+    if (ucBtn) ucBtn.classList.add('hidden');
 
     // Hide expanded sections
     const expandedSections = document.querySelectorAll('.metadata-expanded');
     expandedSections.forEach(section => {
-        section.style.display = 'none';
+        section.classList.add('hidden');
     });
 }
 
@@ -8618,7 +9038,7 @@ function toggleSproutSeed() {
         manualSeed.value = '';
         manualSeed.disabled = false;
         // Show the clear seed button
-        if (clearSeedBtn) clearSeedBtn.classList.remove('hidden');
+        if (clearSeedBtn) clearSeedBtn.classList.add('hidden');
         // Don't call setSeedInputGroupState(false) here as it would hide the sprout button
         // Update placeholder to show the seed value (since it's still available)
         if (manualSeed) {
@@ -8737,7 +9157,7 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
         }
     }
 
-    toastContainer.appendChild(toast);
+    toastContainer.prepend(toast);
 
     // Trigger animation
     setTimeout(() => {
@@ -8972,6 +9392,25 @@ function updateGlassToastComplete(toastId, options = {}) {
             // Remove progress bar
             progressElement.remove();
             toast.classList.remove('upload-progress');
+            
+            // When removing progress, add close button and set default timeout
+            const existingCloseBtn = toast.querySelector('.toast-close');
+            if (!existingCloseBtn) {
+                const closeBtn = '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
+                toast.insertAdjacentHTML('beforeend', closeBtn);
+            }
+            
+            // Set default timeout for completed progress toasts
+            const stored = activeToasts.get(toastId);
+            if (stored) {
+                if (stored.timeoutId) {
+                    clearTimeout(stored.timeoutId);
+                }
+                stored.timeoutId = setTimeout(() => {
+                    removeGlassToast(toastId);
+                }, 5000); // 5 second default timeout
+                activeToasts.set(toastId, stored);
+            }
         }
     }
 
@@ -9036,18 +9475,14 @@ function completeTestProgress(toastId) {
     // Complete the progress to 100%
     updateGlassToastProgress(toastId, 100);
     
-    // Update the toast to show completion
-    const toast = document.getElementById(toastId);
-    if (toast) {
-        const messageElement = toast.querySelector('.toast-message');
-        if (messageElement) {
-            messageElement.textContent = 'Progress completed!';
-        }
-        
-        // Add close button after completion
-        const closeBtn = '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
-        toast.insertAdjacentHTML('beforeend', closeBtn);
-    }
+    // Update the toast to show completion using the unified function
+    updateGlassToastComplete(toastId, {
+        type: 'success',
+        title: 'Test Complete',
+        message: 'Progress completed!',
+        customIcon: '<i class="nai-check"></i>',
+        showProgress: false
+    });
 }
 
 function completeAllTestProgress() {
@@ -9089,7 +9524,8 @@ function completeVibeEncodingProgress(toastId, successMessage = 'Vibe encoding c
             type: 'success',
             title: 'Vibe Created',
             message: successMessage,
-            customIcon: '<i class="nai-check"></i>'
+            customIcon: '<i class="nai-check"></i>',
+            showProgress: false
         });
     }, 200); // Small delay to show 100% completion
 }
@@ -9102,11 +9538,12 @@ function failVibeEncodingProgress(toastId, errorMessage = 'Vibe encoding failed'
     }
     
     // Update the toast to show error
-    updateGlassToastComplete(toastId, {
+        updateGlassToastComplete(toastId, {
         type: 'error',
         title: 'Encoding Failed',
         message: errorMessage,
-        customIcon: '<i class="nai-cross"></i>'
+        customIcon: '<i class="nai-cross"></i>',
+        showProgress: false
     });
 }
 
@@ -9132,12 +9569,12 @@ async function checkSubscriptionExpiration() {
 
 let showFixedTrainingStepsToast = false;
 async function checkFixedTrainingSteps() {
-    if (!window.optionsData?.balance?.fixedTrainingStepsLeft) {
+    if (!window.optionsData?.balance) {
         console.error('No balance data available');
         return;
     }
 
-    const fixedSteps = window.optionsData.balance.fixedTrainingStepsLeft;
+    const fixedSteps = window.optionsData.balance.fixedTrainingStepsLef || 0;
     const expiresAt = new Date(window.optionsData.user.subscription.expiresAt * 1000);
     const now = new Date();
     const daysUntilRenewal = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
@@ -9183,14 +9620,16 @@ async function uploadImages(files) {
                 type: 'warning',
                 title: 'Upload Complete',
                 message: `Successfully uploaded ${successCount} images, ${errorCount} failed`,
-                customIcon: '<i class="fas fa-thumbtack"></i>'
+                customIcon: '<i class="fas fa-thumbtack"></i>',
+                showProgress: false
             });
         } else {
             updateGlassToastComplete(toastId, {
                 type: 'success',
                 title: 'Upload Complete',
                 message: `Successfully uploaded ${successCount} images`,
-                customIcon: '<i class="fas fa-thumbtack"></i>'
+                customIcon: '<i class="fas fa-thumbtack"></i>',
+                showProgress: false
             });
         }
 
@@ -9205,7 +9644,8 @@ async function uploadImages(files) {
             type: 'error',
             title: 'Upload Failed',
             message: error.message,
-            customIcon: '<i class="fas fa-thumbtack"></i>'
+            customIcon: '<i class="fas fa-thumbtack"></i>',
+            showProgress: false
         });
     }
 }
@@ -9281,7 +9721,7 @@ async function handleManualImageUploadInternal(file) {
             transformationRow.classList.add('display-image');
         }
 
-        document.getElementById('manualImg2ImgGroup').style.display = '';
+        document.getElementById('manualImg2ImgGroup').classList.remove('hidden');
         updateUploadDeleteButtonVisibility();
         updateInpaintButtonState();
         showGlassToast('success', null, 'Reference Image Added');
@@ -9309,7 +9749,7 @@ function handleDeleteBaseImage() {
     if (transformationRow) {
         transformationRow.classList.remove('display-image');
     }
-    document.getElementById('manualImg2ImgGroup').style.display = 'none';
+    document.getElementById('manualImg2ImgGroup').classList.add('hidden');
 
     // Hide image bias dropdown
     hideImageBiasDropdown();
@@ -9329,6 +9769,7 @@ function handleDeleteBaseImage() {
 
     // Update mask preview
     updateInpaintButtonState();
+    
     updateMaskPreview();
 
     updateTransformationDropdownState();
@@ -9339,20 +9780,20 @@ function updateUploadDeleteButtonVisibility() {
     if (deleteImageBaseBtn) {
         if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
             // Image is uploaded (not a placeholder), show delete button
-            deleteImageBaseBtn.style.display = 'inline-block';
+            deleteImageBaseBtn.classList.remove('hidden');
         } else {
             // No image uploaded or it's a placeholder, hide delete button
-            deleteImageBaseBtn.style.display = 'none';
+            deleteImageBaseBtn.classList.add('hidden');
         }
     }
     
     if (previewBaseImageBtn) {
         if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
             // Image is uploaded (not a placeholder), show preview button
-            previewBaseImageBtn.style.display = 'inline-block';
+            previewBaseImageBtn.classList.remove('hidden');
         } else {
             // No image uploaded or it's a placeholder, hide preview button
-            previewBaseImageBtn.style.display = 'none';
+            previewBaseImageBtn.classList.add('hidden');
         }
     }
 }
@@ -9694,10 +10135,10 @@ function transferRandomPrompt() {
     // Exit random mode
     toggleBtn.dataset.state = 'off';
     toggleBtn.classList.remove('active');
-    refreshBtn.style.display = 'none';
-    transferBtn.style.display = 'none';
-    nsfwBtn.style.display = 'none';
-    divider.style.display = 'none';
+    refreshBtn.classList.add('hidden');
+    transferBtn.classList.add('hidden');
+    nsfwBtn.classList.add('hidden');
+    divider.classList.add('hidden');
     // Clear saved states
     savedRandomPromptState = null;
     lastPromptState = null;
@@ -9727,10 +10168,10 @@ async function toggleRandomPrompt() {
 
         toggleBtn.dataset.state = 'off';
         toggleBtn.classList.remove('active');
-        refreshBtn.style.display = 'none';
-        transferBtn.style.display = 'none';
-        nsfwBtn.style.display = 'none';
-        divider.style.display = 'none';
+        refreshBtn.classList.add('hidden');
+        transferBtn.classList.add('hidden');
+        nsfwBtn.classList.add('hidden');
+        divider.classList.add('hidden');
 
         if (lastPromptState) {
             const manualPrompt = document.getElementById('manualPrompt');
@@ -9760,10 +10201,10 @@ async function toggleRandomPrompt() {
 
         toggleBtn.dataset.state = 'on';
         toggleBtn.classList.add('active');
-        refreshBtn.style.display = '';
-        transferBtn.style.display = '';
-        nsfwBtn.style.display = '';
-        divider.style.display = '';
+        refreshBtn.classList.remove('hidden');
+        transferBtn.classList.remove('hidden');
+        nsfwBtn.classList.remove('hidden');
+        divider.classList.remove('hidden');
 
         // Check if we have a saved random prompt state
         if (savedRandomPromptState) {
@@ -9825,7 +10266,7 @@ function addCharacterPrompt() {
                         <button type="button" class="btn-secondary move-down-btn" onclick="moveCharacterPrompt('${characterId}', 'down')" style="display: inline-flex;">
                             <i class="nai-directional-arrow-down"></i>
                         </button>
-                        <button type="button" class="btn-secondary position-btn" onclick="showPositionDialog('${characterId}')" style="display: none;">
+                        <button type="button" class="btn-secondary position-btn hidden" onclick="showPositionDialog('${characterId}')">
                             <i class="fas fa-crosshairs"></i>
                         </button>
                         <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${characterId}')">
@@ -10091,12 +10532,12 @@ function updateAutoPositionToggle() {
     const autoPositionBtn = document.getElementById('autoPositionBtn');
 
     if (characterItems.length === 0) {
-        autoPositionBtn.style.display = 'none';
+        autoPositionBtn.classList.add('hidden');
         return;
     }
 
     if (characterItems.length === 1) {
-        autoPositionBtn.style.display = 'none';
+        autoPositionBtn.classList.add('hidden');
         // Force enable auto position for single character
         autoPositionBtn.setAttribute('data-state', 'on');
         // Hide position buttons and move buttons for single character
@@ -10104,12 +10545,12 @@ function updateAutoPositionToggle() {
             const positionBtn = item.querySelector('.position-btn');
             const moveUpBtn = item.querySelector('.move-up-btn');
             const moveDownBtn = item.querySelector('.move-down-btn');
-            if (positionBtn) positionBtn.style.display = 'none';
-            if (moveUpBtn) moveUpBtn.style.display = 'none';
-            if (moveDownBtn) moveDownBtn.style.display = 'none';
+            if (positionBtn) positionBtn.classList.add('hidden');
+            if (moveUpBtn) moveUpBtn.classList.add('hidden');
+            if (moveDownBtn) moveDownBtn.classList.add('hidden');
         });
     } else {
-        autoPositionBtn.style.display = 'inline-flex';
+        autoPositionBtn.classList.remove('hidden');
         // Show/hide position buttons based on auto position state
         const isAutoPosition = autoPositionBtn.getAttribute('data-state') === 'on';
         characterItems.forEach((item, index) => {
@@ -10118,12 +10559,12 @@ function updateAutoPositionToggle() {
             const moveDownBtn = item.querySelector('.move-down-btn');
 
             if (positionBtn) {
-                positionBtn.style.display = isAutoPosition ? 'none' : 'inline-flex';
+                positionBtn.classList.toggle('hidden', isAutoPosition);
             }
 
             // Show move buttons for multiple characters
             if (moveUpBtn) {
-                moveUpBtn.style.display = 'inline-flex';
+                moveUpBtn.classList.remove('hidden');
                 if (index === 0) {
                     moveUpBtn.disabled = true;
                     moveUpBtn.style.opacity = '0.4';
@@ -10133,7 +10574,7 @@ function updateAutoPositionToggle() {
                 }
             }
             if (moveDownBtn) {
-                moveDownBtn.style.display = 'inline-flex';
+                moveDownBtn.classList.remove('hidden');
                 if (index === characterItems.length - 1) {
                     moveDownBtn.disabled = true;
                     moveDownBtn.style.opacity = '0.4';
@@ -10156,7 +10597,7 @@ function showPositionDialog(characterId) {
     });
 
     // Show dialog
-    document.getElementById('positionDialog').style.display = 'flex';
+    document.getElementById('positionDialog').classList.remove('hidden');
 
     // Add event listeners to position cells
     document.querySelectorAll('.position-cell').forEach(cell => {
@@ -10170,7 +10611,7 @@ function showPositionDialog(characterId) {
 }
 
 function hidePositionDialog() {
-    document.getElementById('positionDialog').style.display = 'none';
+    document.getElementById('positionDialog').classList.add('hidden');
     currentPositionCharacterId = null;
     selectedPositionCell = null;
 }
@@ -10301,7 +10742,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                         <button type="button" class="btn-secondary move-down-btn" onclick="moveCharacterPrompt('${characterId}', 'down')" style="display: inline-flex;">
                             <i class="nai-directional-arrow-down"></i>
                         </button>
-                        <button type="button" class="btn-secondary position-btn" onclick="showPositionDialog('${characterId}')" style="display: none;">
+                        <button type="button" class="btn-secondary position-btn hidden" onclick="showPositionDialog('${characterId}')">
                             ${positionBtnText}
                         </button>
                         <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${characterId}')">
@@ -10724,7 +11165,7 @@ function updateManualPriceDisplay(bypass = false) {
 
     // Show loading state immediately
     priceIcon.className = 'fas fa-hourglass';
-    priceDisplay.style.display = 'flex';
+    priceDisplay.classList.remove('hidden');
 
     // Debounce the actual calculation for 3 seconds
     manualPriceDisplayTimeout = setTimeout(() => {
@@ -10783,12 +11224,12 @@ function updateManualPriceDisplay(bypass = false) {
             }
 
             // Show the price display
-            priceDisplay.style.display = 'flex';
+            priceDisplay.classList.remove('hidden');
 
         } catch (error) {
             console.error('Error calculating price:', error);
             priceIcon.className = 'nai-anla';
-            priceDisplay.style.display = 'none';
+            priceDisplay.classList.add('hidden');
         }
     }, bypass ? 5 : 1000);
 }
@@ -10940,10 +11381,8 @@ function toggleBlurState() {
 
 function saveBlurPreference(disabled) {
     try {
-        // Save preference to cookie (expires in 1 year)
-        const expires = new Date();
-        expires.setFullYear(expires.getFullYear() + 1);
-        document.cookie = `disable-blur=${disabled}; expires=${expires.toUTCString()}; path=/`;
+        // Save preference to localStorage
+        localStorage.setItem('disable-blur', disabled.toString());
     } catch (e) {
         console.error('Error saving blur preference:', e);
     }
@@ -10951,17 +11390,13 @@ function saveBlurPreference(disabled) {
 
 function loadBlurPreference() {
     try {
-        const cookies = document.cookie.split(';');
-        for (const cookie of cookies) {
-            const [name, value] = cookie.trim().split('=');
-            if (name === 'disable-blur') {
-                const html = document.documentElement;
-                if (value === 'true') {
-                    html.classList.add('disable-blur');
-                } else {
-                    html.classList.remove('disable-blur');
-                }
-                return;
+        const disabled = localStorage.getItem('disable-blur');
+        if (disabled !== null) {
+            const html = document.documentElement;
+            if (disabled === 'true') {
+                html.classList.add('disable-blur');
+            } else {
+                html.classList.remove('disable-blur');
             }
         }
     } catch (e) {
@@ -11421,7 +11856,7 @@ function startPreviewAnimation() {
             toggleBtn.title = 'Stop Preview Animation';
         }
         
-        if (manualPreviewImage && manualPreviewImage.style.display !== 'none') {
+        if (manualPreviewImage && !manualPreviewImage.classList.contains('hidden')) {
             // Initialize manual block container if not already done
             if (!manualBlockContainer) {
                 initializeManualBlockContainer();
@@ -11431,17 +11866,16 @@ function startPreviewAnimation() {
             if (manualBlockContainer) {
                 try {
                     manualBlockContainer.ensureWaveReady();
-                    manualBlockContainer.createOpacityWave('diagonal');
+                    manualBlockContainer.createOpacityWave('rand');
                 } catch (error) {
                     console.warn('Failed to start manual block container wave:', error);
                 }
             }
         }
         
-        // Show animation layers
-        previewStars.style.display = 'block';
-        previewBackgroundLines.style.display = 'block';
-        previewForegroundLines.style.display = 'block';
+        previewStars.classList.remove('hidden');
+        previewBackgroundLines.classList.remove('hidden');
+        previewForegroundLines.classList.remove('hidden');
         
         // Add active class for CSS animations
         previewContainer.classList.add('preview-animation-active');
@@ -11512,14 +11946,14 @@ async function stopPreviewAnimation() {
                 previewContainer.classList.remove('preview-animation-active', 'preview-fade-out');
             }
             if (previewStars) {
-                previewStars.style.display = 'none';
+                previewStars.classList.add('hidden');
             }
             if (previewBackgroundLines) {
-                previewBackgroundLines.style.display = 'none';
+                previewBackgroundLines.classList.add('hidden');
                 previewBackgroundLines.classList.remove('fadeOut');
             }
             if (previewForegroundLines) {
-                previewForegroundLines.style.display = 'none';
+                previewForegroundLines.classList.add('hidden');
                 previewForegroundLines.classList.remove('fadeOut');
             }
             
@@ -11531,10 +11965,11 @@ async function stopPreviewAnimation() {
             });
         }, 2500);
         
-        // Stop wave animation in manual block container
         if (manualBlockContainer) {
             try {
                 await manualBlockContainer.returnToNormalOpacity(true);
+                // Add 1.5 second delay before unloading the block container
+                await new Promise(resolve => setTimeout(resolve, 1500));
                 // Unload the container to free up resources
                 await manualBlockContainer.unload();
                 manualBlockContainer = null;
@@ -11545,7 +11980,9 @@ async function stopPreviewAnimation() {
     } catch (error) {
         console.error('Error stopping preview animation:', error);
         // Force reset animation state
-        forceStopPreviewAnimation();
+        forceStopPreviewAnimation().catch(err => {
+            console.error('Error in force stop preview animation:', err);
+        });
     }
 }
 
@@ -11555,7 +11992,7 @@ function isPreviewAnimationAvailable() {
 }
 
 // Force stop preview animation (utility function for emergency stops)
-function forceStopPreviewAnimation() {
+async function forceStopPreviewAnimation() {
     if (generationAnimationActive) {
         generationAnimationActive = false;
     }
@@ -11572,15 +12009,15 @@ function forceStopPreviewAnimation() {
         previewContainer.classList.remove('preview-animation-active', 'preview-fade-out');
     }
     if (previewStars) {
-        previewStars.style.display = 'none';
+        previewStars.classList.add('hidden');
         previewStars.style.opacity = '0';
     }
     if (previewBackgroundLines) {
-        previewBackgroundLines.style.display = 'none';
+        previewBackgroundLines.classList.add('hidden');
         previewBackgroundLines.classList.remove('fadeOut');
     }
     if (previewForegroundLines) {
-        previewForegroundLines.style.display = 'none';
+        previewForegroundLines.classList.add('hidden');
         previewForegroundLines.classList.remove('fadeOut');
     }
     
@@ -11592,7 +12029,7 @@ function forceStopPreviewAnimation() {
         line.style.animationPlayState = 'paused';
     });
     
-    // Force unload manual block container
+    // Force unload manual block container with 1.5 second delay
     if (manualBlockContainer) {
         try {
             manualBlockContainer.unload();
@@ -11605,14 +12042,6 @@ function forceStopPreviewAnimation() {
 
 // Register main app initialization steps with WebSocket client
 if (window.wsClient) {
-    // Handle WebSocket connection events
-    wsClient.on('connected', () => {
-        wsClient.send({
-            type: 'subscribe',
-            channels: ['queue_updates', 'image_generated', 'system_messages']
-        });
-    });
-
     wsClient.on('disconnected', (event) => {
         console.log('🔌 WebSocket disconnected:', event);
     });
@@ -11728,7 +12157,15 @@ if (window.wsClient) {
 
     // Handle workspace restoration when reconnecting
     wsClient.on('workspace_restored', (data) => {
-        console.log('🔄 Workspace restored');
+        console.log('🔄 Workspace restored event received');
+        
+        // Only process workspace events after app data is loaded
+        if (!isAppDataReady()) {
+            console.log('⏳ Skipping workspace_restored event - app data not yet ready');
+            return;
+        }
+        
+        console.log('🔄 Processing workspace restored');
         if (data.workspace && data.message) {
             // Show welcome back message
             if (typeof showGlassToast === 'function') {
@@ -11744,6 +12181,15 @@ if (window.wsClient) {
 
     // Handle workspace data updates
     wsClient.on('workspace_data', (data) => {
+        console.log('🔄 Workspace data event received');
+        
+        // Only process workspace events after app data is loaded
+        if (!isAppDataReady()) {
+            console.log('⏳ Skipping workspace_data event - app data not yet ready');
+            return;
+        }
+        
+        console.log('🔄 Processing workspace data update');
         if (data.data) {
             // Update the current workspace display
             if (window.currentWorkspace !== data.data.id) {
@@ -11822,7 +12268,30 @@ if (window.wsClient) {
     
     // Priority 5: Initialize main app components
     window.wsClient.registerInitStep(1, 'Loading Application Data', async () => {
-        await loadOptions();
+        try {
+            await loadOptions();
+        } catch (error) {
+            console.error('❌ Critical: Failed to load application data:', error);
+            
+            // Show critical error and provide recovery options
+            const confirmed = await showConfirmationDialog(
+                'Failed to load application data. This may be due to a server issue or connection problem.',
+                [
+                    { text: 'Retry', value: 'retry', className: 'btn-primary' },
+                    { text: 'Restart', value: 'refresh', className: 'btn-secondary' }
+                ],
+                'Critical Error'
+            );
+            
+            if (confirmed === 'retry') {
+                // Retry loading options
+                await loadOptions();
+            } else if (confirmed === 'refresh') {
+                // Refresh the page
+                window.location.reload();
+                return; // Don't continue with initialization
+            }
+        }
     }, true);
 
     window.wsClient.registerInitStep(10, 'Configuring Application', async () => {
@@ -11872,6 +12341,7 @@ if (window.wsClient) {
     window.wsClient.registerInitStep(90, 'Loading Gallery', async () => {
         await loadGallery();
         await updateGalleryColumnsFromLayout();
+        await updateMenuBarHeight();
     }, true);
 
     // Priority 7: Load gallery and finalize UI
@@ -11899,22 +12369,12 @@ function showLogoOptionsPopup() {
         openModal(modal);
         setupLogoOptionsEventListeners();
         updateToggleBlurButtonText();
+        updateAnlasSubscriptionInfo();
     }
 }
 
 function setupLogoOptionsEventListeners() {
     const modal = document.getElementById('logoOptionsModal');
-    
-    // Close button
-    const closeBtn = document.getElementById('closeLogoOptionsBtn');
-    if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-            if (modal) {
-                closeModal(modal);
-            }
-        });
-    }
-
     // Click outside to close
     if (modal) {
         modal.addEventListener('click', (e) => {
@@ -11925,7 +12385,7 @@ function setupLogoOptionsEventListeners() {
     }
 
     
-    const modalButtons = document.querySelectorAll('#logoOptionsModal .logo-option-btn');
+    const modalButtons = document.querySelectorAll('#logoOptionsModal .logo-option-btn:not(.indicator)');
     if (modalButtons) {
         modalButtons.forEach(btn => {
             btn.addEventListener('click', () => {
@@ -12034,6 +12494,86 @@ async function clearAllCachesAndReload() {
         console.error('Error clearing caches:', error);
         if (typeof showGlassToast === 'function') {
             showGlassToast('error', 'Cache Clear Failed', 'Failed to clear caches: ' + error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+        }
+    }
+}
+
+// Anlas Subscription Information Functions
+async function updateAnlasSubscriptionInfo() {
+    try {
+        // Get subscription tier
+        const subscriptionTierElement = document.getElementById('anlasSubscriptionTier');
+        const daysTillExpireElement = document.getElementById('anlasDaysTillExpire');
+        const subscriptionDivider = document.getElementById('anlasSubscriptionDivider');
+        const warningIcon = document.querySelector('.anlas-warning-icon');
+        const daysText = document.querySelector('.anlas-days-text');
+        
+        if (!subscriptionTierElement || !daysTillExpireElement || !warningIcon || !daysText) {
+            console.error('Anlas subscription elements not found');
+            return;
+        }
+
+        // Get account data from window.optionData
+        const accountData = window.optionsData
+        
+        if (accountData?.user?.subscription?.tier === undefined) {
+            console.error('Account data not available');
+            subscriptionTierElement.textContent = 'No data';
+            daysText.textContent = 'No data';
+            return;
+        }
+
+        // Update subscription tier
+        const subscriptionTier = accountData.user.subscription.tier || 'Unknown';
+        subscriptionTierElement.textContent = subscriptionTier === 3 ? 'Opus' : 
+                                              subscriptionTier === 2 ? 'Scroll' :
+                                              subscriptionTier === 1 ? 'Tablet' : 
+                                              subscriptionTier === 0 ? 'Free' : 'Unknown';
+        subscriptionTierElement.classList.add(`nai-subscription-tier-${subscriptionTier}`);
+        subscriptionDivider.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
+        daysTillExpireElement.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
+
+        // Calculate days till expire
+        let daysTillExpire = 0;
+        
+        if (accountData.user.subscription.expiresAt) {
+            const expireDate = new Date(accountData.user.subscription.expiresAt);
+            const now = new Date();
+            const diffTime = (expireDate.getTime() * 1000) - now.getTime();
+            daysTillExpire = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+        
+        daysText.textContent = `${daysTillExpire} days`;
+        
+        // Show warning icon if expiring in a week or less
+        if (daysTillExpire <= 7 && daysTillExpire > 0) {
+            warningIcon.classList.remove('hidden');
+        } else {
+            warningIcon.classList.add('hidden');
+        }
+
+        
+        // Add color coding for urgency
+        if (daysTillExpire <= 3) {
+            daysTillExpireElement.style.color = 'var(--danger-color, #ff6b6b)';
+        } else if (daysTillExpire <= 7) {
+            daysTillExpireElement.style.color = 'var(--warning-color, #ffc107)';
+        } else {
+            daysTillExpireElement.style.color = '';
+        }
+        
+    } catch (error) {
+        console.error('Error updating Anlas subscription info:', error);
+        
+        // Set fallback values
+        const subscriptionTierElement = document.getElementById('anlasSubscriptionTier');
+        const daysText = document.querySelector('.anlas-days-text');
+        
+        if (subscriptionTierElement) {
+            subscriptionTierElement.textContent = 'Error loading';
+        }
+        if (daysText) {
+            daysText.textContent = 'Error loading';
         }
     }
 }

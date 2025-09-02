@@ -54,10 +54,10 @@ async function initializePhotoSwipe() {
             if (currentItem && currentItem.data) {
                 // Hide bottom bar for standalone images
                 if (currentItem.data.isStandalone) {
-                    bottomBar.style.display = 'none';
+                    bottomBar.classList.add('hidden');
                     return;
                 } else {
-                    bottomBar.style.display = '';
+                    bottomBar.classList.remove('hidden');
                 }
             }
         };
@@ -91,6 +91,60 @@ async function initializePhotoSwipe() {
                             }
                         },
                         {
+                            className: 'copy-button',
+                            icon: '<i class="fas fa-clipboard"></i>',
+                            label: 'Copy to clipboard',
+                            onClick: async () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data?.data) {
+                                    try {
+                                        const imageData = currentItem.data.data;
+                                        
+                                        // Determine the correct URL for the image
+                                        let imageUrl;
+                                        if (imageData.url) {
+                                            // For newly generated images
+                                            imageUrl = imageData.url;
+                                        } else {
+                                            // For gallery images - prefer highest quality version
+                                            const filename = imageData.upscaled || imageData.original;
+                                            imageUrl = `/images/${filename}`;
+                                        }
+                                        
+                                        // Fetch the image as a blob
+                                        const response = await fetch(imageUrl);
+                                        const blob = await response.blob();
+                                        
+                                        // Copy to clipboard
+                                        await navigator.clipboard.write([
+                                            new ClipboardItem({
+                                                [blob.type]: blob
+                                            })
+                                        ]);
+                                        
+                                        // Calculate and format file size
+                                        const sizeInBytes = blob.size;
+                                        let sizeText;
+                                        if (sizeInBytes < 1024 * 1024) {
+                                            sizeText = `${(sizeInBytes / 1024).toFixed(1)} KB`;
+                                        } else {
+                                            sizeText = `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
+                                        }
+                                        
+                                        // Show success notification with size
+                                        if (window.showGlassToast) {
+                                            window.showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
+                                        }
+                                    } catch (error) {
+                                        console.error('Failed to copy image to clipboard:', error);
+                                        if (window.showGlassToast) {
+                                            window.showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fas fa-clipboard"></i>');
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
                             className: 'pin-button',
                             icon: '<i class="fa-regular fa-star"></i>',
                             label: 'Pin image',
@@ -105,10 +159,10 @@ async function initializePhotoSwipe() {
                             className: 'reroll-button',
                             icon: '<i class="nai-dice"></i>',
                             label: 'Reroll image',
-                            onClick: () => {
+                            onClick: (e) => {
                                 const currentItem = pswp.currSlide;
                                 if (currentItem && currentItem.data?.data) {
-                                    rerollImage(currentItem.data?.data);
+                                    rerollImage(currentItem.data?.data, e);
                                 }
                             }
                         },
@@ -116,10 +170,10 @@ async function initializePhotoSwipe() {
                             className: 'reroll-edit-button',
                             icon: '<i class="mdi mdi-1-25 mdi-text-box-edit-outline"></i>',
                             label: 'Reroll with edit',
-                            onClick: () => {
+                            onClick: (e) => {
                                 const currentItem = pswp.currSlide;
                                 if (currentItem && currentItem.data?.data) {
-                                    rerollImageWithEdit(currentItem.data?.data);
+                                    rerollImageWithEdit(currentItem.data?.data, e);
                                 }
                             }
                         },

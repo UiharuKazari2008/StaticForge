@@ -40,7 +40,7 @@ function renderGroupedDropdown(menu, groups, selectHandler, closeHandler, select
  * Opens a dropdown menu.
  */
 function openDropdown(menu, button) {
-    menu.style.display = 'block';
+    menu.classList.remove('hidden');
     if (button) button.classList.add('active');
 }
 
@@ -48,7 +48,7 @@ function openDropdown(menu, button) {
  * Closes a dropdown menu.
  */
 function closeDropdown(menu, button) {
-    menu.style.display = 'none';
+    menu.classList.add('hidden');
     if (button) button.classList.remove('active');
 }
 
@@ -56,7 +56,7 @@ function closeDropdown(menu, button) {
  * Toggles a dropdown menu.
  */
 function toggleDropdown(menu, button) {
-    if (menu.style.display === 'block') {
+    if (!menu.classList.contains('hidden')) {
         closeDropdown(menu, button);
     } else {
         openDropdown(menu, button);
@@ -80,7 +80,7 @@ function setupDropdown(container, button, menu, render, getSelectedValue, option
     button.addEventListener('click', async e => {
         e.preventDefault();
         e.stopPropagation();
-        if (menu.style.display === 'block') {
+        if (!menu.classList.contains('hidden')) {
             closeDropdown(menu, button);
         } else {
             await render(getSelectedValue());

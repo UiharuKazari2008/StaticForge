@@ -150,13 +150,13 @@ class WebSocketClient {
             this.createLoadingOverlay();
         }
         document.body.classList.add('initializing');
-        this.loadingOverlay.style.display = 'flex';
+        this.loadingOverlay.classList.remove('hidden');
         this.updateLoadingProgress(message, progress);
     }
 
     hideLoadingOverlay() {
         if (this.loadingOverlay) {
-            this.loadingOverlay.style.display = 'none';
+            this.loadingOverlay.classList.add('hidden');
         }
         document.body.classList.remove('initializing');
     }
@@ -418,6 +418,11 @@ class WebSocketClient {
                 this.isConnecting = false;
                 this.stopPingInterval();
                 
+                // Reset generation button state if generation was interrupted
+                if (typeof updateManualGenerateBtnState === 'function') {
+                    updateManualGenerateBtnState();
+                }
+                
                 // Handle authentication failure
                 if (event.code === 1008 && event.reason === 'Authentication required') {
                     console.error('❌ WebSocket authentication failed');
@@ -441,6 +446,11 @@ class WebSocketClient {
             this.ws.onerror = (error) => {
                 console.error('❌ WebSocket error:', error);
                 this.isConnecting = false;
+                
+                // Reset generation button state if generation was interrupted
+                if (typeof updateManualGenerateBtnState === 'function') {
+                    updateManualGenerateBtnState();
+                }
                 
                 if (!this.isManualClose) {
                     this.bannerManager.updateWebSocketToast('error', 'Connection error. Retrying...', '<i class="fas fa-exclamation-triangle"></i>');
@@ -702,9 +712,6 @@ class WebSocketClient {
                 this.bannerManager.showWebSocketBanner('error', 'WebSocket server error: ' + message.message, '<i class="fas fa-exclamation-triangle"></i>');
                 break;
                 
-            case 'subscribed':
-                break;
-
             case 'image_generated':
                 this.handleGeneratedImage(message.data);
                 break;
@@ -838,6 +845,22 @@ class WebSocketClient {
             return result;
         } catch (error) {
             console.error('Generate image error:', error);
+            throw error;
+        }
+    }
+
+    // Method to request image reroll via WebSocket
+    async rerollImage(filename, workspace = null, requestId = null) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        try {
+            console.log('🎲 WebSocket rerollImage called for filename:', filename, 'workspace:', workspace);
+            const result = await this.sendMessage('reroll_image', { filename, workspace });
+            return result;
+        } catch (error) {
+            console.error('Reroll image error:', error);
             throw error;
         }
     }
@@ -1354,6 +1377,7 @@ class WebSocketClient {
         return this.sendMessage('broadcast_resource_update', { updateType, message, files });
     }
 
+    // Wait for connection to be established with better validation
     async waitForConnection(timeout = 10000) {
         return new Promise((resolve, reject) => {
             const timeoutId = setTimeout(() => {
@@ -1361,9 +1385,19 @@ class WebSocketClient {
             }, timeout);
 
             const checkConnection = () => {
-                if (this.isConnected()) {
-                    clearTimeout(timeoutId);
-                    resolve(true);
+                // Check if WebSocket is connected and in a stable state
+                if (this.isConnected() && this.getConnectionState() === 'connected') {
+                    // Additional validation: ensure the connection has been established for at least 500ms
+                    // This helps prevent race conditions where the connection appears ready but isn't fully established
+                    setTimeout(() => {
+                        if (this.isConnected() && this.getConnectionState() === 'connected') {
+                            clearTimeout(timeoutId);
+                            resolve(true);
+                        } else {
+                            // Connection was lost during the stability check
+                            reject(new Error('WebSocket connection unstable'));
+                        }
+                    }, 500);
                 } else {
                     setTimeout(checkConnection, 100);
                 }
@@ -1376,8 +1410,11 @@ class WebSocketClient {
     // Send message with request/response handling
     sendMessage(type, data = {}) {
         return new Promise((resolve, reject) => {
-            if (!this.isConnected()) {
-                reject(new Error('WebSocket not connected'));
+            // Enhanced connection validation
+            if (!this.isConnectionHealthy()) {
+                const error = new Error('WebSocket connection not healthy');
+                error.code = 'CONNECTION_UNHEALTHY';
+                reject(error);
                 return;
             }
 
@@ -1397,6 +1434,21 @@ class WebSocketClient {
 
             try {
                 this.send(message);
+                
+                // Add request timeout handling
+                /* const timeoutId = setTimeout(() => {
+                    if (this.pendingRequests.has(requestId)) {
+                        this.pendingRequests.delete(requestId);
+                        this.decrementPendingRequests();
+                        const timeoutError = new Error('Request timeout');
+                        timeoutError.code = 'REQUEST_TIMEOUT';
+                        reject(timeoutError);
+                    }
+                }, 30000); // 30 second timeout
+                
+                // Store timeout ID for cleanup
+                this.pendingRequests.get(requestId).timeoutId = timeoutId; */
+                
             } catch (error) {
                 this.pendingRequests.delete(requestId);
                 this.decrementPendingRequests();
@@ -1532,6 +1584,11 @@ class WebSocketClient {
             const request = this.pendingRequests.get(requestId);
             this.pendingRequests.delete(requestId);
             
+            // Clear timeout if it exists
+            if (request.timeoutId) {
+                clearTimeout(request.timeoutId);
+            }
+            
             // Decrement pending requests count
             this.decrementPendingRequests();
             
@@ -1597,6 +1654,30 @@ class WebSocketClient {
     // Utility methods
     isConnected() {
         return this.ws && this.ws.readyState === WebSocket.OPEN;
+    }
+    
+    // Check if the connection is healthy and ready for requests
+    isConnectionHealthy() {
+        return this.isConnected() && 
+               this.getConnectionState() === 'connected' && 
+               !this.isConnecting && 
+               this.ws.readyState === WebSocket.OPEN;
+    }
+    
+    // Perform a health check by sending a ping
+    async performHealthCheck() {
+        if (!this.isConnectionHealthy()) {
+            return false;
+        }
+        
+        try {
+            // Send a simple ping to test the connection
+            const response = await this.pingWithAuth();
+            return response && response.success;
+        } catch (error) {
+            console.warn('⚠️ Health check failed:', error);
+            return false;
+        }
     }
 
     getConnectionState() {

@@ -94,7 +94,7 @@ class FileSearch {
             } else if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 // Handle navigation based on mobile vs desktop layout
-                const isMobile = window.innerWidth <= 768;
+                const isMobile = window.innerWidth <= 577;
                 if (isMobile) {
                     // Mobile: overlay appears below, so down arrow goes down
                     this.navigateSuggestions(1);
@@ -105,7 +105,7 @@ class FileSearch {
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 // Handle navigation based on mobile vs desktop layout
-                const isMobile = window.innerWidth <= 768;
+                const isMobile = window.innerWidth <= 577;
                 if (isMobile) {
                     // Mobile: overlay appears below, so up arrow goes up
                     this.navigateSuggestions(-1);
@@ -116,7 +116,7 @@ class FileSearch {
             } else if (e.key === 'PageDown') {
                 e.preventDefault();
                 // Handle navigation based on mobile vs desktop layout
-                const isMobile = window.innerWidth <= 768;
+                const isMobile = window.innerWidth <= 577;
                 if (isMobile) {
                     // Mobile: overlay appears below, so PageDown goes down
                     this.handlePageNavigation(1);
@@ -127,7 +127,7 @@ class FileSearch {
             } else if (e.key === 'PageUp') {
                 e.preventDefault();
                 // Handle navigation based on mobile vs desktop layout
-                const isMobile = window.innerWidth <= 768;
+                const isMobile = window.innerWidth <= 577;
                 if (isMobile) {
                     // Mobile: overlay appears below, so PageUp goes up
                     this.handlePageNavigation(-1);
@@ -138,7 +138,7 @@ class FileSearch {
             } else if (e.key === 'Home') {
                 e.preventDefault();
                 // Handle navigation based on mobile vs desktop layout
-                const isMobile = window.innerWidth <= 768;
+                const isMobile = window.innerWidth <= 577;
                 if (isMobile) {
                     // Mobile: overlay appears below, so Home goes to top
                     this.handleHomeEndNavigation(false);
@@ -149,7 +149,7 @@ class FileSearch {
             } else if (e.key === 'End') {
                 e.preventDefault();
                 // Handle navigation based on mobile vs desktop layout
-                const isMobile = window.innerWidth <= 768;
+                const isMobile = window.innerWidth <= 577;
                 if (isMobile) {
                     // Mobile: overlay appears below, so End goes to bottom
                     this.handleHomeEndNavigation(true);
@@ -376,7 +376,7 @@ class FileSearch {
                 this.displayPreviewImages();
                 
                 // Ensure mobile shows expanded results
-                const isMobile = window.innerWidth <= 768;
+                const isMobile = window.innerWidth <= 577;
                 if (isMobile) {
                     this.expandedResults = true;
                 }
@@ -448,7 +448,7 @@ class FileSearch {
                 this.displayPreviewImages();
                 
                 // Ensure mobile shows expanded results
-                const isMobile = window.innerWidth <= 768;
+                const isMobile = window.innerWidth <= 577;
                 if (isMobile) {
                     this.expandedResults = true;
                 }
@@ -666,8 +666,8 @@ class FileSearch {
                             <img src="/previews/${encodeURIComponent(this.getBaseName(fileInfo.filename))}.jpg" 
                                  alt="${fileInfo.filename}" 
                                  loading="lazy"
-                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                            <div class="preview-image-fallback" style="display: none;">
+                                 onerror="this.classList.add('hidden'); this.nextElementSibling.classList.remove('hidden');">
+                            <div class="preview-image-fallback hidden">
                                 <i class="fas fa-image"></i>
                             </div>
                             <div class="preview-image-rank hidden">#${fileInfo.rank}</div>
@@ -736,7 +736,7 @@ class FileSearch {
         
         // Position the overlay based on screen size
         const rect = this.searchInput.getBoundingClientRect();
-        const isMobile = window.innerWidth <= 768;
+        const isMobile = window.innerWidth <= 577;
         
         this.autofillOverlay.style.left = rect.left + 'px';
         this.autofillOverlay.style.width = Math.max(rect.width, 300) + 'px';
@@ -780,7 +780,7 @@ class FileSearch {
         this.autofillOverlay.classList.remove('bottom-up', 'top-down');
         
         // Preserve expanded class on mobile, remove on desktop
-        const isMobile = window.innerWidth <= 768;
+        const isMobile = window.innerWidth <= 577;
         if (!isMobile) {
             this.autofillOverlay.classList.remove('expanded');
             this.expandedResults = false;
@@ -1188,7 +1188,7 @@ class FileSearch {
                     this.displayPreviewImages();
                     
                     // Ensure mobile shows expanded results
-                    const isMobile = window.innerWidth <= 768;
+                    const isMobile = window.innerWidth <= 577;
                     if (isMobile) {
                         this.expandedResults = true;
                     }
@@ -1271,7 +1271,7 @@ class FileSearch {
     
     ensureMobileExpandedState() {
         // Ensure mobile devices always have expanded autofill
-        const isMobile = window.innerWidth <= 768;
+        const isMobile = window.innerWidth <= 577;
         if (isMobile && this.autofillOverlay && !this.autofillOverlay.classList.contains('hidden')) {
             this.autofillOverlay.classList.add('expanded');
             this.expandedResults = true;

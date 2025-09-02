@@ -36,7 +36,7 @@ function showGalleryToolbar(image, event = null) {
     positionGalleryToolbar(event);
     
     // Show toolbar
-    galleryToolbar.style.display = '';
+    galleryToolbar.classList.remove('hidden');
     galleryToolbarActive = true;
     currentGalleryItem = image;
 }
@@ -44,7 +44,7 @@ function showGalleryToolbar(image, event = null) {
 // Hide gallery toolbar
 function hideGalleryToolbar() {
     if (galleryToolbar) {
-        galleryToolbar.style.display = 'none';
+        galleryToolbar.classList.add('hidden');
         galleryToolbarActive = false;
         currentGalleryItem = null;
     }
@@ -191,7 +191,12 @@ async function addImageAsReference(image) {
         
         if (response.success) {
             // Show success toast
-            updateGlassToast(toastId, 'success', 'Reference Added', 'Image copied to workspace references and set as base image');
+            updateGlassToastComplete(toastId, {
+                type: 'success',
+                title: 'Reference Added',
+                message: 'Image copied to workspace references and set as base image',
+                showProgress: false
+            });
             await loadCacheImages();
             
             // Ensure reference manager is refreshed after reference operation
@@ -250,6 +255,12 @@ async function moveImageToWorkspace(image) {
         // Get the image filename
         const filename = image.filename || image.original || image.upscaled;
         
+        // Seed the modal selection with this single filename to ensure it moves even for upscaled-only items
+        if (window.galleryMoveSelectedImages && filename) {
+            window.galleryMoveSelectedImages.clear();
+            window.galleryMoveSelectedImages.add(filename);
+        }
+
         // Show workspace selection modal
         showGalleryMoveModal(filename);
         
@@ -304,7 +315,7 @@ function showGalleryMoveModal(filename) {
                                 <button class="custom-dropdown-btn" id="galleryMoveWorkspaceDropdownBtn" type="button">
                                     <span id="galleryMoveWorkspaceSelected">Select workspace...</span>
                                 </button>
-                                <div class="custom-dropdown-menu" id="galleryMoveWorkspaceDropdownMenu" style="display: none;">
+                                <div class="custom-dropdown-menu hidden" id="galleryMoveWorkspaceDropdownMenu">
                                     <!-- Workspace options will be populated here -->
                                 </div>
                             </div>
@@ -552,10 +563,24 @@ async function executeGalleryMove(filename, targetWorkspaceId) {
         const toastId = showGlassToast('info', 'Moving Image', 'Moving image to selected workspace...', true, false, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
         
         // Move the image using WebSocket
-        const response = await wsClient.moveFilesToWorkspace([filename], targetWorkspaceId, activeWorkspace || 'default');
+        // Determine move type based on current gallery view
+        const isScrapsView = currentGalleryView === 'scraps';
+        const isPinnedView = currentGalleryView === 'pinned';
+        let moveType = 'files';
+        if (isScrapsView) {
+            moveType = 'scraps';
+        } else if (isPinnedView) {
+            moveType = 'pinned';
+        }
+        const response = await wsClient.moveFilesToWorkspace([filename], targetWorkspaceId, activeWorkspace || 'default', moveType);
         
         if (response.success) {
-            updateGlassToast(toastId, 'success', 'Image Moved', 'Image moved successfully to the selected workspace');
+            updateGlassToastComplete(toastId, {
+                type: 'success',
+                title: 'Image Moved',
+                message: 'Image moved successfully to the selected workspace',
+                showProgress: false
+            });
             hideGalleryMoveModal();
             
             // Refresh gallery to reflect the change
@@ -587,10 +612,24 @@ async function executeGalleryMoveMultiple(targetWorkspaceId) {
         const toastId = showGlassToast('info', 'Moving Images', `Moving ${selectedImages.length} images to selected workspace...`, true, false, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
         
         // Move the images using WebSocket
-        const response = await wsClient.moveFilesToWorkspace(selectedImages, targetWorkspaceId, activeWorkspace || 'default');
+        // Determine move type based on current gallery view
+        const isScrapsView = currentGalleryView === 'scraps';
+        const isPinnedView = currentGalleryView === 'pinned';
+        let moveType = 'files';
+        if (isScrapsView) {
+            moveType = 'scraps';
+        } else if (isPinnedView) {
+            moveType = 'pinned';
+        }
+        const response = await wsClient.moveFilesToWorkspace(selectedImages, targetWorkspaceId, activeWorkspace || 'default', moveType);
         
         if (response.success) {
-            updateGlassToast(toastId, 'success', 'Images Moved', `${selectedImages.length} images moved successfully to the selected workspace`);
+            updateGlassToastComplete(toastId, {
+                type: 'success',
+                title: 'Images Moved',
+                message: `${selectedImages.length} images moved successfully to the selected workspace`,
+                showProgress: false
+            });
             hideGalleryMoveModal();
             
             // Clear selection in both the modal and the main gallery view

@@ -39,15 +39,7 @@ class WebSocketServer {
             console.log(`✅ WebSocket connected: Session ${sessionId}`);
 
             // Restore session workspace if available
-            this.restoreSessionWorkspace(sessionId, ws);
-
-            // Send welcome message
-            this.sendToClient(ws, {
-                type: 'connection',
-                status: 'connected',
-                message: 'WebSocket connection established',
-                timestamp: new Date().toISOString()
-            });
+            //this.restoreSessionWorkspace(sessionId, ws);
 
             // Handle incoming messages
             ws.on('message', (data) => {
@@ -62,6 +54,14 @@ class WebSocketServer {
                         timestamp: new Date().toISOString()
                     });
                 }
+            });
+
+            // Send welcome message
+            this.sendToClient(ws, {
+                type: 'connection',
+                status: 'connected',
+                message: 'WebSocket connection established',
+                timestamp: new Date().toISOString()
             });
 
             // Handle client disconnect
@@ -216,15 +216,6 @@ class WebSocketServer {
             case 'ping':
                 this.sendToClient(ws, {
                     type: 'pong',
-                    timestamp: new Date().toISOString()
-                });
-                break;
-
-            case 'subscribe':
-                // Handle subscription to specific events
-                this.sendToClient(ws, {
-                    type: 'subscribed',
-                    channels: message.channels || [],
                     timestamp: new Date().toISOString()
                 });
                 break;

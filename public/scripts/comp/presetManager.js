@@ -452,6 +452,10 @@ async function createPresetItem(key, preset) {
     const details = document.createElement('div');
     details.className = 'preset-details';
 
+    // Indicators row
+    const indicatorsRow = document.createElement('div');
+    indicatorsRow.className = 'indicators-row';
+
     // Model
     const modelSpan = document.createElement('span');
     modelSpan.className = 'preset-model';
@@ -473,7 +477,7 @@ async function createPresetItem(key, preset) {
     } else {
         modelSpan.textContent = preset.model || 'V4.5?';
     }
-    details.appendChild(modelSpan);
+    indicatorsRow.appendChild(modelSpan);
 
     // Resolution
     const resSpan = document.createElement('span');
@@ -505,7 +509,7 @@ async function createPresetItem(key, preset) {
     resolutionContent.appendChild(resolutionText);
     
     resSpan.appendChild(resolutionContent);
-    details.appendChild(resSpan);
+    indicatorsRow.appendChild(resSpan);
 
     // Steps
     if (preset.steps !== undefined) {
@@ -529,7 +533,7 @@ async function createPresetItem(key, preset) {
         stepsContent.appendChild(stepsText);
         
         stepsSpan.appendChild(stepsContent);
-        details.appendChild(stepsSpan);
+        indicatorsRow.appendChild(stepsSpan);
     }
 
     // Guidance/Rescale
@@ -537,7 +541,7 @@ async function createPresetItem(key, preset) {
         const guidanceSpan = document.createElement('span');
         guidanceSpan.className = 'preset-guidance';
         guidanceSpan.textContent = `${preset.guidance}${preset.rescale ? ' / ' + (preset.rescale * 100).toFixed(1) + '%' : ''}`;
-        details.appendChild(guidanceSpan);
+        indicatorsRow.appendChild(guidanceSpan);
     }
 
     // Workspace
@@ -552,8 +556,15 @@ async function createPresetItem(key, preset) {
         workspaceNameSpan.textContent = workspaceName;
         workspaceContent.appendChild(workspaceNameSpan);
         workspaceSpan.appendChild(workspaceContent);
-        details.appendChild(workspaceSpan);
+        indicatorsRow.appendChild(workspaceSpan);
     }
+
+    // Add indicators row to details
+    details.appendChild(indicatorsRow);
+
+    // Icons row
+    const iconsRow = document.createElement('div');
+    iconsRow.className = 'icons-row';
 
     // Preset icons
     const iconsDiv = document.createElement('div');
@@ -661,7 +672,8 @@ async function createPresetItem(key, preset) {
     boxes.appendChild(box3);
     iconsDiv.appendChild(boxes);
 
-    details.appendChild(iconsDiv);
+    iconsRow.appendChild(iconsDiv);
+    details.appendChild(iconsRow);
 
     // Assemble
     content.appendChild(valueContainer);
@@ -1086,7 +1098,8 @@ async function generateFromPreset(presetName) {
             type: 'success',
             title: 'Generation Complete',
             message: `Generated image from preset "${preset.name || presetName}"`,
-            customIcon: '<i class="fas fa-check"></i>'
+            customIcon: '<i class="fas fa-check"></i>',
+            showProgress: false
         });
         
         // Close the preset manager modal
@@ -1101,7 +1114,8 @@ async function generateFromPreset(presetName) {
                 type: 'error',
                 title: 'Generation Failed',
                 message: error.message,
-                customIcon: '<i class="nai-cross"></i>'
+                customIcon: '<i class="nai-cross"></i>',
+                showProgress: false
             });
         } else {
             showGlassToast('error', 'Generation Failed', error.message);
@@ -1184,17 +1198,17 @@ function escapeHtml(text) {
 }
 
 function toggleDropdown(menu, button) {
-    if (menu.style.display === 'none' || !menu.style.display) {
-        menu.style.display = 'block';
+    if (menu.classList.contains('hidden')) {
+        menu.classList.remove('hidden');
         button.classList.add('active');
     } else {
-        menu.style.display = 'none';
+        menu.classList.add('hidden');
         button.classList.remove('active');
     }
 }
 
 function closeDropdown(menu, button) {
-    menu.style.display = 'none';
+    menu.classList.add('hidden');
     button.classList.remove('active');
 }
 

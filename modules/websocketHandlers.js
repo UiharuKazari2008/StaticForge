@@ -43,8 +43,9 @@ const { isImageLarge, matchOriginalResolution } = require('./imageTools');
 const { readMetadata, updateMetadata, extractRelevantFields, getModelDisplayName, extractMetadataSummary } = require('./pngMetadata');
 const { getStatus } = require('./queue');
 const imageCounter = require('./imageCounter');
-const { generateImageWebSocket } = require('./imageGeneration');
+const { generateImageWebSocket, handleRerollGeneration } = require('./imageGeneration');
 const { upscaleImageWebSocket } = require('./imageUpscaling');
+const { generateMobilePreviews, generateBlurredPreview } = require('./previewUtils');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -560,12 +561,12 @@ class WebSocketMessageHandlers {
                 this.handlePing(ws, message, clientInfo, wsServer);
                 break;
                 
-            case 'subscribe':
-                this.handleSubscribe(ws, message, clientInfo, wsServer);
-                break;
-                
             case 'generate_image':
                 await this.handleImageGeneration(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'reroll_image':
+                await this.handleImageReroll(ws, message, clientInfo, wsServer);
                 break;
                 
             case 'upscale_image':
@@ -1221,16 +1222,7 @@ class WebSocketMessageHandlers {
             this.sendError(ws, 'Failed to cancel session pending requests', error.message, message.requestId);
         }
     }
-
-    // Handle subscription messages
-    handleSubscribe(ws, message, clientInfo, wsServer) {
-        this.sendToClient(ws, {
-            type: 'subscribed',
-            channels: message.channels || [],
-            timestamp: new Date().toISOString()
-        });
-    }
-
+    
     // Handle gallery request messages
     async handleGalleryRequest(ws, message, clientInfo, wsServer) {
         const { viewType = 'images', includePinnedStatus = true } = message;
@@ -1710,7 +1702,11 @@ class WebSocketMessageHandlers {
 
             // Get account data and balance from the context
             const accountData = this.context.accountData ? this.context.accountData() : { ok: false };
-            const accountBalance = this.context.accountBalance ? this.context.accountBalance() : { fixedTrainingStepsLeft: -1, purchasedTrainingSteps: -1, totalCredits: -1 };
+            const accountBalance = this.context.accountBalance ? this.context.accountBalance() : { fixedTrainingStepsLeft: 0, purchasedTrainingSteps: 0, totalCredits: 0 };
+            
+            // Get active workspace and its data
+            const activeWorkspaceId = getActiveWorkspace(clientInfo.sessionId);
+            const activeWorkspaceData = getActiveWorkspaceData(clientInfo.sessionId);
             
             const options = {
                 ok: true,
@@ -1728,7 +1724,12 @@ class WebSocketMessageHandlers {
                 textReplacements: currentPromptConfig.text_replacements || {},
                 datasets: currentPromptConfig.datasets || [],
                 quality_presets: currentPromptConfig.quality_presets || {},
-                uc_presets: currentPromptConfig.uc_presets || {}
+                uc_presets: currentPromptConfig.uc_presets || {},
+                // Include active workspace information
+                activeWorkspace: {
+                    id: activeWorkspaceId,
+                    data: activeWorkspaceData
+                }
             };
 
             // Send response
@@ -6005,20 +6006,16 @@ class WebSocketMessageHandlers {
             }
             if (generatePreview) {
                 // Generate new preview for non-downloaded files
-                await sharp(imageBuffer)
-                    .resize(256, 256, { fit: 'cover' })
-                    .jpeg({ quality: 70 })
-                    .toFile(previewPath);
-                console.log(`📸 Generated preview: ${hash}`);
+                const baseName = filename.split('.').slice(0, -1).join('.');
+                
+                // Generate both main and @2x previews for mobile devices
+                await generateMobilePreviews(imageBuffer, baseName);
+                console.log(`📸 Generated mobile previews: ${baseName}.jpg and ${baseName}@2x.jpg`);
             }
             
             // Generate blurred background preview
             const blurPreviewPath = path.join(previewsDir, `${filename.split('.').slice(0, -1).join('.')}_blur.jpg`);
-            await sharp(imageBuffer)
-                .resize(128, 128, { fit: 'cover' })
-                .blur(20) // Heavy blur effect
-                .jpeg({ quality: 60 })
-                .toFile(blurPreviewPath);
+            await generateBlurredPreview(imageBuffer, blurPreviewPath);
             console.log(`📸 Generated blurred preview: ${hash}`);
             
             // Add to workspace files
@@ -6259,7 +6256,6 @@ class WebSocketMessageHandlers {
             // Initialize search cache for this session and view
             
             // Get the active workspace for this session
-            const { getActiveWorkspace, getWorkspace } = require('./workspace');
             const activeWorkspaceId = getActiveWorkspace(sessionId);
             const activeWorkspace = getWorkspace(activeWorkspaceId);
             
@@ -7334,6 +7330,53 @@ class WebSocketMessageHandlers {
                 requestId: message.requestId,
                 data: null,
                 error: error.message || 'Image generation failed',
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // Handle image reroll requests
+    async handleImageReroll(ws, message, clientInfo, wsServer) {
+        try {
+            const { requestId, filename, workspace } = message;
+            console.log(`🎲 Processing image reroll request: ${requestId} for filename: ${filename}`);
+            
+            // Get image metadata
+            const metadata = await getImageMetadata(filename, imagesDir);
+            if (!metadata) {
+                throw new Error(`No metadata found for image: ${filename}`);
+            }
+            
+            console.log('🎲 Retrieved metadata for reroll:', metadata);
+
+            // Call the reroll generation function
+            const result = await handleRerollGeneration(
+                metadata, 
+                clientInfo.userType, 
+                clientInfo.sessionId, 
+                workspace || null
+            );
+            
+            // Send success response with image data using _response pattern
+            this.sendToClient(ws, {
+                type: 'image_reroll_response',
+                requestId: requestId,
+                data: {
+                    image: result.buffer.toString('base64'),
+                    filename: result.filename,
+                    seed: result.seed || null,
+                    originalFilename: filename
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('❌ Image reroll error:', error);
+            this.sendToClient(ws, {
+                type: 'image_reroll_error',
+                requestId: message.requestId,
+                data: null,
+                error: error.message || 'Image reroll failed',
                 timestamp: new Date().toISOString()
             });
         }

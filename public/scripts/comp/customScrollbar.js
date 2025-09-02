@@ -99,11 +99,14 @@ class CustomScrollbar {
             this.updateScrollbar(element);
         });
 
-        // Mouse wheel handling
+        // Mouse wheel handling - only prevent default on non-touch devices
         scrollableContent.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            const delta = e.deltaY;
-            scrollableContent.scrollTop += delta;
+            // Only prevent default on non-touch devices to allow touch scrolling
+            if (!('ontouchstart' in window)) {
+                e.preventDefault();
+                const delta = e.deltaY;
+                scrollableContent.scrollTop += delta;
+            }
         });
 
         // Thumb drag handling
@@ -149,6 +152,31 @@ class CustomScrollbar {
             
             scrollableContent.scrollTop = scrollDistance;
         });
+
+        // Touch event handling for mobile devices
+        if ('ontouchstart' in window) {
+            let touchStartY = 0;
+            let touchStartScrollTop = 0;
+            let isTouchScrolling = false;
+
+            scrollableContent.addEventListener('touchstart', (e) => {
+                touchStartY = e.touches[0].clientY;
+                touchStartScrollTop = scrollableContent.scrollTop;
+                isTouchScrolling = true;
+            }, { passive: true });
+
+            scrollableContent.addEventListener('touchmove', (e) => {
+                if (!isTouchScrolling) return;
+                
+                const touchY = e.touches[0].clientY;
+                const deltaY = touchStartY - touchY;
+                scrollableContent.scrollTop = touchStartScrollTop + deltaY;
+            }, { passive: true });
+
+            scrollableContent.addEventListener('touchend', () => {
+                isTouchScrolling = false;
+            }, { passive: true });
+        }
 
         // Resize observer to update scrollbar when content changes
         const resizeObserver = new ResizeObserver((entries) => {
@@ -196,10 +224,10 @@ class CustomScrollbar {
             thumb.style.top = `${thumbTop}px`;
             
             // Show scrollbar
-            scrollbar.style.display = 'block';
+            scrollbar.classList.remove('hidden');
         } else {
             // Hide scrollbar when not needed
-            scrollbar.style.display = 'none';
+            scrollbar.classList.add('hidden');
         }
     }
 
