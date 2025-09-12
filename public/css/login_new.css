@@ -1,3 +1,83 @@
+/* Window Controls Overlay API Variables */
+:root {
+    --titlebar-area-x: env(titlebar-area-x, 0);
+    --titlebar-area-y: env(titlebar-area-y, 0);
+    --titlebar-area-width: env(titlebar-area-width, 100%);
+    --titlebar-area-height: env(titlebar-area-height, 33px);
+}
+
+/* Window Controls Overlay API - Titlebar Grab Area */
+#titlebar-grab-area {
+    position: fixed;
+    top: 0;
+    left: var(--titlebar-area-x);
+    width: var(--titlebar-area-width);
+    height: var(--titlebar-area-height);
+    z-index: 1000;
+    background: transparent;
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Center grab area - the actual draggable region */
+#titlebar-grab-center {
+    height: 100%;
+    background: transparent;
+    pointer-events: auto;
+    -webkit-app-region: drag;
+    app-region: drag;
+    cursor: grab;
+    flex: 1 1 auto;
+    min-width: 50px;
+}
+
+#titlebar-grab-center:active {
+    cursor: grabbing;
+}
+
+/* Titlebar clickable areas */
+#titlebar-null-left,
+#titlebar-null-right {
+    height: 100%;
+    background: transparent;
+    pointer-events: auto;
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+    cursor: default;
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+/* Enable and grow left area */
+#titlebar-null-left.enabled {
+    flex: 1 1 auto;
+    min-width: 20px;
+}
+
+/* Enable and grow right area */
+#titlebar-null-right.enabled {
+    flex: 1 1 auto;
+    min-width: 20px;
+}
+
+/* Ensure interactive elements in titlebar are not draggable */
+#titlebar-grab-area button,
+#titlebar-grab-area input,
+#titlebar-grab-area select,
+#titlebar-grab-area textarea,
+#titlebar-grab-area a,
+#titlebar-grab-area [role="button"] {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+    cursor: default;
+}
+
+* {
+    box-sizing: border-box;
+}
+
 body {
     margin: 0;
     padding: 0;
@@ -14,7 +94,7 @@ body {
 .login-product-name {
     position: absolute;
     left: 0;
-    top: 0;
+    top: calc(env(safe-area-inset-top, 0) + var(--titlebar-area-height, 0));
     padding: 25px;
     font-size: 2em;
     text-shadow: 0 0 10px #000000;
@@ -37,6 +117,7 @@ body {
     text-align: center;
     max-width: 90vw;
     margin: 25px;
+    margin-top: calc(25px + calc(env(safe-area-inset-top, 0) + var(--titlebar-area-height, 0)));
     transition: padding 0.75s ease;
 }
 
@@ -65,8 +146,9 @@ body {
     height: 20px;
     border-radius: 50%;
     background-color: rgba(255, 255, 255, 0.3);
-    border: 2px solid rgba(255, 255, 255, 0.5);
+    border: 1px solid rgb(255 255 255 / 17%);
     transition: all 0.3s ease;
+    box-shadow: 0 0 10px inset #00000063;
 }
 
 .pin-dot.filled {
@@ -181,8 +263,14 @@ body {
 
 .pin-row {
     display: flex;
-    justify-content: center;
+    justify-content: space-between;
     gap: 15px;
+    width: 100%;
+}
+
+.pin-row.options {
+    justify-content: flex-end;
+    padding-top: 5px;
 }
 
 .pin-button {
@@ -202,6 +290,20 @@ body {
     border: 2px solid rgba(255, 255, 255, 0.25);
 }
 
+.pin-button.danger {
+    font-size: 1.2em;
+    color: #fff;
+    background-color: rgba(255, 0, 25, 0.75);
+    border-color: rgba(255, 128, 140, 0.58);
+}
+
+.pin-button.update-static-btn {
+    font-size: 1.2em;
+    color: #fff;
+    background-color: rgba(0, 123, 255, 0.75);
+    border-color: rgba(128, 191, 255, 0.58);
+}
+
 @supports (-webkit-touch-callout: none) or (hover: hover) {
     .pin-button:hover {
         color: #6a6a6a;
@@ -212,26 +314,16 @@ body {
     .pin-button:active {
         background-color: rgb(255 255 255 / 90%);
     }
-}
-
-.pin-button.backspace-btn,
-.pin-button.clear-btn {
-    font-size: 1.2em;
-    color: #fff;
-    background-color: rgba(255, 0, 25, 0.75);
-    border-color: rgba(255, 128, 140, 0.58);
-}
-
-@supports (-webkit-touch-callout: none) or (hover: hover) {
     .pin-button.backspace-btn:hover,
-    .pin-button.clear-btn:hover {
+    .pin-button.danger:hover {
         background-color: rgba(220, 53, 69, 0.5);
+    }
+    
+    .pin-button.update-static-btn:hover {
+        background-color: rgba(0, 86, 179, 0.5);
     }
 }
 
-.pin-button.clear-btn {
-    font-size: 1em;
-}
 /* Error message */
 .error-message {
     margin-top: 20px;
@@ -318,6 +410,7 @@ body {
     align-items: center;
     position: fixed;
     top: 0;
+    top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
@@ -370,10 +463,39 @@ body {
 
 /* Asset Loading Progress */
 .asset-loading-progress {
-    margin-top: 15px;
     text-align: center;
     color: #fff;
     width: 100%;
+    border-color: #ffffff5c;
+    border-style: solid;
+    background: #ffffff69;
+    border-radius: 5px;
+    padding: 0 0.45rem;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0rem;
+    overflow: hidden;
+    max-height: 0px;
+    opacity: 0;
+    margin-top: 0;
+    border-width: 0px;
+    transition: max-height 0.25s ease-in-out, opacity 0.25s ease-in-out, margin-top 0.25s ease-in-out, border-width 0.25s ease-in-out, padding 0.25s ease-in-out, gap 0.25s ease-in-out;
+}
+
+.asset-loading-progress.show {
+    max-height: 100%;
+    opacity: 1;
+    margin-top: 25px;
+    padding: 0.5rem 0.45rem;
+    border-width: 1px;
+    transition: max-height 0.4s ease-in-out, opacity 0.25s ease-in-out, margin-top 0.25s ease-in-out, border-width 0.4s ease-in-out, padding 0.4s ease-in-out, gap 0.4s ease-in-out;
+}
+
+.asset-loading-progress.show.show-progress {
+    gap: 0.5rem;
 }
 
 .asset-loading-progress .progress-text {
@@ -385,20 +507,40 @@ body {
 .asset-loading-progress .progress-bar {
     width: 100%;
     height: 10px;
-    background: rgba(255, 255, 255, 0.2);
+    background: rgb(0 0 0 / 28%);
     border-radius: 4px;
+    border-color: #ffffff85;
+    border-style: solid;
+    border-width: 0px;
+    height: 0px;
     overflow: hidden;
-    margin-bottom: 10px;
 }
 
 .asset-loading-progress .progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #4CAF50, #45a049);
-    border-radius: 4px;
+    max-width: 100%;
+    background: linear-gradient(90deg, #ffffffbd, #ffffff);
+    border-radius: 2px;
     width: 0%;
     transition: width 0.3s ease;
 }
 
 .asset-loading-progress .progress-status {
-    font-size: 16px;
+    color: #4f4f4f;
+    font-size: 12px;
+    line-height: 1;
+    font-weight: bold;
+}
+
+.asset-loading-progress .progress-status.success {
+    color: #109535;
+}
+
+.asset-loading-progress .progress-status.error {
+    color: #c40000;
+}
+
+.asset-loading-progress.show.show-progress .progress-bar {
+    border-width: 1px;
+    height: 10px;
 }

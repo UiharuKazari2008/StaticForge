@@ -96,7 +96,6 @@ class ContextMenuController {
         this.menu = document.createElement('div');
         this.menu.className = 'context-menu hidden';
         this.menu.setAttribute('role', 'menu');
-        this.menu.setAttribute('aria-hidden', 'true');
         
         // Create the menu content container
         const menuContent = document.createElement('div');
@@ -593,7 +592,6 @@ class ContextMenuController {
         
         // Show menu to get dimensions
         menu.classList.remove('hidden');
-        menu.setAttribute('aria-hidden', 'false');
         
         // Check if we're on a small mobile screen (480px or less)
         const isSmallMobile = window.innerWidth <= 480;
@@ -721,7 +719,6 @@ class ContextMenuController {
         
         this.menu.classList.add('hidden');
         this.overlay.classList.add('hidden');
-        this.menu.setAttribute('aria-hidden', 'true');
         this.isOpen = false;
         this.currentTarget = null;
         

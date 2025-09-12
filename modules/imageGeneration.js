@@ -92,7 +92,6 @@ async function generatePresetSourceImage(presetName, seed, resolution, model) {
     // Check if cached image exists
     if (fs.existsSync(cachePath)) {
         try {
-            console.log(`📋 Using cached preset source image: ${cacheFilename}`);
             const cachedBuffer = fs.readFileSync(cachePath);
             return {
                 buffer: cachedBuffer,
@@ -104,8 +103,6 @@ async function generatePresetSourceImage(presetName, seed, resolution, model) {
             // Continue to regenerate if cache read fails
         }
     }
-    
-    console.log(`🎨 Generating preset source image for "${presetName}" with seed ${seed}...`);
     
     // Build options for preset generation
     const presetOptions = {
@@ -160,7 +157,6 @@ async function generatePresetSourceImage(presetName, seed, resolution, model) {
     // Save to cache without metadata
     try {
         fs.writeFileSync(cachePath, result.buffer);
-        console.log(`💾 Cached preset source image: ${cacheFilename}`);
     } catch (error) {
         console.warn(`⚠️ Failed to cache preset source image ${cacheFilename}: ${error.message}`);
         // Continue without caching - this is not critical
@@ -168,7 +164,6 @@ async function generatePresetSourceImage(presetName, seed, resolution, model) {
     
     // Add random delay between 5 and 15 seconds
     const delaySeconds = Math.floor(Math.random() * 11) + 5; // Random between 5-15 seconds
-    console.log(`⏳ Waiting ${delaySeconds} seconds before continuing...`);
     await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
     
     return {
@@ -545,7 +540,6 @@ const buildOptions = async (body, preset = null, queryParams = {}) => {
         let targetDims = { width: baseOptions.width, height: baseOptions.height };
         if (!targetDims.width || !targetDims.height) {
             const dims = getDimensionsFromResolution(baseOptions.resPreset?.toLowerCase() || "");
-            console.log('dims', dims);
             if (dims) {
                 targetDims.width = dims.width;
                 targetDims.height = dims.height;
@@ -1139,27 +1133,23 @@ async function generateImageWebSocket(body, userType, sessionId) {
 }
 
 // Function to convert image metadata to request format for rerolling
-async function convertMetadataToRequestFormat(metadata) {
+async function convertMetadataToRequestFormat(metadata, allowPaid = false) {
     if (!metadata) {
         throw new Error('No metadata provided for conversion');
     }
 
-    console.log('🔄 Converting metadata to request format:', metadata);
-
     // Import the extractRelevantFields function to properly extract metadata
     const { extractRelevantFields } = require('./pngMetadata');
-    
+
     // Extract the actual metadata from the nested structure
     const actualMetadata = metadata.metadata || metadata;
-    
+
     // Use the existing extractRelevantFields function to get properly formatted metadata
     const extractedMetadata = await extractRelevantFields(actualMetadata, metadata.filename);
-    
+
     if (!extractedMetadata) {
         throw new Error('Failed to extract relevant metadata fields');
     }
-
-    console.log('🔄 Extracted metadata:', extractedMetadata);
 
     const requestBody = {
         model: extractedMetadata.model || 'v4_5',
@@ -1169,7 +1159,7 @@ async function convertMetadataToRequestFormat(metadata) {
         steps: extractedMetadata.steps || 25,
         guidance: extractedMetadata.scale || 5.0,
         rescale: extractedMetadata.cfg_rescale || 0.0,
-        allow_paid: false, // Default to false for safety
+        allow_paid: allowPaid, // Use the passed allowPaid flag
         workspace: metadata.workspace || 'default'
     };
 
@@ -1264,32 +1254,25 @@ async function convertMetadataToRequestFormat(metadata) {
 }
 
 // Function to handle reroll generation from metadata
-async function handleRerollGeneration(metadata, userType, sessionId, workspaceId = null) {
+async function handleRerollGeneration(metadata, userType, sessionId, workspaceId = null, allowPaid = false) {
     // Check if user is read-only
     if (userType === 'readonly') {
         throw new Error('Non-Administrator Login: This operation is not allowed for read-only users');
     }
 
     try {
-        console.log('🎲 Starting reroll generation for metadata:', metadata);
-        
-        // Convert metadata to request format (now async)
-        const requestBody = await convertMetadataToRequestFormat(metadata);
-        console.log('🎲 Request body created:', requestBody);
-        
+        // Convert metadata to request format with allow_paid flag
+        const requestBody = await convertMetadataToRequestFormat(metadata, allowPaid);
+
         // Build options for generation
-        console.log('🎲 Calling buildOptions with:', requestBody);
         const opts = await buildOptions(requestBody, null, {});
-        console.log('🎲 BuildOptions result:', opts);
-        
+
         // Create a mock req object for context functions that need it
         const mockReq = { session: { id: sessionId } };
-        
+
         // Call handleGeneration and return the result
-        console.log('🎲 Calling handleGeneration with opts:', opts);
         const result = await handleGeneration(opts, true, metadata.preset_name || null, workspaceId, mockReq);
-        console.log('🎲 HandleGeneration result:', result);
-        
+
         return result;
     } catch (error) {
         console.error('❌ Reroll generation error:', error);

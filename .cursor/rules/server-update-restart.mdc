@@ -1,0 +1,200 @@
+# Server Update and Restart Rules
+
+## Overview
+This project runs on a production server with multiple Node.js services managed by PM2. Server updates require careful handling to avoid disrupting other services. The MCP server provides direct PM2 management tools, eliminating the need for command line access.
+
+## Critical Server Information
+- **Server Port**: 9220 (as specified in user rules)
+- **PM2 Process ID**: 12 (configurable via `config.devPm2Id`)
+- **Management**: Use MCP tools for all server operations
+- **Safety**: MCP tools handle PM2 operations safely
+
+## Pre-Update Checklist
+1. **Check Current Status**: Use `get_pm2_status` to verify server is running
+2. **Review Logs**: Use `get_pm2_logs` to check current server logs
+3. **Backup Critical Files**: Ensure important configurations are backed up
+4. **Plan Downtime**: Consider impact on users and other services
+
+## MCP Server Management Tools
+
+### Available MCP Tools
+The MCP server provides these PM2 management tools:
+
+- `get_pm2_status` — Get PM2 process status for StaticForge server
+- `get_pm2_logs` — Get PM2 logs with configurable lines and type
+- `restart_pm2_server` — Restart the StaticForge server via PM2
+- `stop_pm2_server` — Stop the StaticForge server via PM2
+- `start_pm2_server` — Start the StaticForge server via PM2
+
+### Server Status Monitoring
+Use `get_pm2_status` to check:
+- Process status (online, stopped, errored)
+- Uptime and restart count
+- Memory and CPU usage
+- Process ID and creation time
+
+### Log Monitoring
+Use `get_pm2_logs` with parameters:
+- `lines`: Number of log lines to return (default: 100)
+- `type`: Log type filter ('out', 'err', 'combined' - default: 'combined')
+
+### Server Control
+- `restart_pm2_server` — Safely restart the server
+- `stop_pm2_server` — Stop the server
+- `start_pm2_server` — Start the server
+
+## When to Restart Server
+
+### Restart Required
+- Changes to server-side JavaScript files (`web_server.js`, `mcp-server.js`)
+- Modifications to server modules (`modules/` directory)
+- Configuration changes (`config.json`)
+- Database schema updates
+- WebSocket handler changes
+
+### Restart NOT Required
+- Changes to public files (`public/` directory)
+- CSS, HTML, or client-side JavaScript updates
+- Static asset modifications
+- Documentation updates
+
+## Server Update Workflow
+
+### Step 1: Pre-Update Verification
+1. **Check Server Status**: Use `get_pm2_status` to verify server is running
+2. **Review Current Logs**: Use `get_pm2_logs` with `lines: 20` to check recent activity
+3. **Test Server Responsiveness**: Use `execute_javascript` to test endpoints:
+   ```javascript
+   fetch("/").then(r => console.log("Server status:", r.status))
+   ```
+
+### Step 2: Make Changes
+- Update server files as needed
+- Ensure all dependencies are installed
+- Verify configuration changes
+
+### Step 3: Restart Server
+1. **Restart Server**: Use `restart_pm2_server` to safely restart
+2. **Wait for Restart**: Allow a few seconds for the restart to complete
+3. **Verify Restart**: Use `get_pm2_status` to confirm server is running
+
+### Step 4: Post-Update Verification
+1. **Check Server Status**: Use `get_pm2_status` to verify server is online
+2. **Review Startup Logs**: Use `get_pm2_logs` with `lines: 30` to check startup
+3. **Test Server Endpoints**: Use `execute_javascript` to test functionality:
+   ```javascript
+   fetch("/admin/status").then(r => console.log("Admin endpoint:", r.status))
+   ```
+
+## MCP Integration Testing
+
+### After Server Restart
+1. **Test MCP Connection**: Use `execute_javascript` to test basic functionality
+2. **Verify WebSocket Connection**: Use `execute_javascript` to check WebSocket availability
+3. **Test Admin Endpoints**: Use `execute_javascript` to test admin functionality
+4. **Check Development Mode**: Use `execute_javascript` to verify dev endpoints
+
+### Testing Commands
+```javascript
+// Test basic MCP functionality
+console.log("MCP connection test");
+
+// Check WebSocket availability
+window.WebSocket ? "WebSocket OK" : "WebSocket Failed";
+
+// Test admin endpoints
+fetch("/admin/dev/clients").then(r => r.json());
+
+// Check development mode
+fetch("/admin/dev/logs").then(r => r.status);
+```
+
+## Log Analysis
+
+### Using MCP Tools for Log Analysis
+Use `get_pm2_logs` with different parameters to analyze logs:
+
+- **Check for Errors**: Use `get_pm2_logs` with `type: "err"` to see error logs
+- **Monitor Startup**: Use `get_pm2_logs` with `lines: 50` after restart
+- **Check Combined Logs**: Use `get_pm2_logs` with `type: "combined"` for full view
+
+### Log Patterns to Monitor
+- **ERROR**: Critical issues requiring immediate attention
+- **WARN**: Potential problems that should be investigated
+- **INFO**: Normal operation messages
+- **DEBUG**: Detailed debugging information
+
+## Troubleshooting Server Issues
+
+### Server Won't Start
+1. **Check PM2 Status**: Use `get_pm2_status` to see if process exists
+2. **View Error Logs**: Use `get_pm2_logs` with `type: "err"` and `lines: 100`
+3. **Test Port Availability**: Use `execute_javascript` to check port:
+   ```javascript
+   fetch("/").then(r => console.log("Port 9220:", r.status)).catch(e => console.log("Port unavailable:", e.message))
+   ```
+4. **Verify Dependencies**: Check if all required modules are installed
+5. **Check File Permissions**: Ensure proper ownership and permissions
+
+### Server Crashes After Restart
+1. **View Crash Logs**: Use `get_pm2_logs` with `type: "err"` and `lines: 100`
+2. **Check System Resources**: Use `execute_javascript` to check system info
+3. **Verify Configuration**: Check `config.json` syntax and values
+4. **Test Minimal Configuration**: Temporarily disable features to isolate issues
+5. **Check for Port Conflicts**: Verify no other services are using port 9220
+
+### MCP Not Working After Restart
+1. **Verify MCP Server**: Use `get_pm2_status` to check if MCP server is running
+2. **Test MCP Endpoints**: Use `execute_javascript` to test MCP functionality
+3. **Check WebSocket Connection**: Use `execute_javascript` to verify WebSocket
+4. **Verify Admin Authentication**: Test admin endpoints
+5. **Review MCP Logs**: Use `get_pm2_logs` to check for MCP-specific errors
+
+## Performance Monitoring
+
+### Server Health Checks
+Use `get_pm2_status` to monitor:
+- Memory usage (displayed in MB)
+- CPU usage percentage
+- Uptime and restart count
+- Process status and PID
+
+### MCP Performance Testing
+Use `execute_javascript` to test performance:
+```javascript
+// Test MCP response time
+console.time("mcp-test");
+fetch("/admin/dev/clients").then(() => console.timeEnd("mcp-test"));
+
+// Check WebSocket latency
+performance.now();
+
+// Monitor database performance
+fetch("/admin/dev/logs").then(r => console.log("DB response:", r.status));
+```
+
+## Emergency Procedures
+
+### If Server Completely Down
+1. **Check PM2 Status**: Use `get_pm2_status` to see all processes
+2. **View All Logs**: Use `get_pm2_logs` with `lines: 100` to see recent activity
+3. **Check System Resources**: Use `execute_javascript` to check system status
+4. **Restart Server**: Use `start_pm2_server` to attempt restart
+5. **Check System Issues**: Look for system-level problems
+
+### If MCP Server Fails
+1. **Check Main Server**: Use `get_pm2_status` to verify main server is running
+2. **Verify MCP Configuration**: Check MCP server configuration
+3. **Test Admin Authentication**: Use `execute_javascript` to test admin access
+4. **Check WebSocket Server**: Verify WebSocket server is operational
+5. **Review MCP Logs**: Use `get_pm2_logs` to check MCP-specific errors
+
+## Best Practices
+1. **Use MCP Tools**: Always use MCP tools instead of command line PM2
+2. **Monitor Before Changes**: Check status and logs before making changes
+3. **Test After Restart**: Verify all functionality after server restarts
+4. **Keep Backups**: Maintain backups of working configurations
+5. **Document Issues**: Record problems and solutions for future reference
+6. **Test Incrementally**: Make small changes and test each step
+7. **Monitor Performance**: Watch server performance after updates
+8. **Use Logs Effectively**: Leverage different log types for different issues

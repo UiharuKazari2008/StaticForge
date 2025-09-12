@@ -5,9 +5,27 @@
     <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
     <title>Dreamscape - Login</title>
+
+    <!-- Development Bridge Client (only loads in development mode) -->
+    <script>
+        // Check if development mode is enabled via localStorage
+        if (localStorage.getItem('staticforge_dev_mode') === 'true') {
+            const script = document.createElement('script');
+            script.src = '/scripts/devBridgeClient.js';
+            script.async = true;
+            document.head.appendChild(script);
+        }
+    </script>
+
+    <!-- Preload critical assets for faster loading -->
+    <link rel="preload" href="/previews/login_image.jpg" as="image" type="image/jpeg">
+    <link rel="preload" href="/css/login_new.css" as="style">
+    <link rel="preload" href="/css/blockContainer.css" as="style">
+    <link rel="preload" href="/scripts/blockContainer.js" as="script">
+    <link rel="preload" href="/scripts/login.js" as="script">
     
     <!-- PWA Meta Tags -->
-    <meta name="theme-color" content="#6366f1">
+    <meta name="theme-color" content="#000000">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Dreamscape">
@@ -89,9 +107,17 @@
     <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="/dist/mdi/materialdesignicons.min.css">
     <script src="/scripts/blockContainer.js"></script>
+    <script src="/scripts/comp/serviceWorkerManager.js"></script>
     <script src="/scripts/login.js"></script>
 </head>
 <body>
+    <!-- Window Controls Overlay API - Titlebar Grab Area -->
+    <div id="titlebar-grab-area">
+        <div id="titlebar-null-left"></div>
+        <div id="titlebar-grab-center"></div>
+        <div id="titlebar-null-right"></div>
+    </div>
+    
     <!-- Background Image System using CSS Sprite Sheet -->
     <div class="background-container">
         <div class="bg-layer" id="bg-layer"></div>
@@ -136,12 +162,20 @@
                     <button class="pin-button" data-number="9"><i class="fas fa-9"></i></button>
                 </div>
                 <div class="pin-row">
-                    <button class="pin-button clear-btn" data-action="clear">
+                    <button class="pin-button clear-btn danger" data-action="clear">
                       <i class="fas fa-c"></i>
                     </button>
                     <button class="pin-button" data-number="0"><i class="fas fa-0"></i></button>
-                    <button class="pin-button backspace-btn" data-action="backspace">
+                    <button class="pin-button backspace-btn danger" data-action="backspace">
                         <i class="fas fa-delete-left"></i>
+                    </button>
+                </div>
+                <div class="pin-row options">
+                    <button class="pin-button update-static-btn" data-action="update-static">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="pin-button cache-clear-btn danger" data-action="cache-clear">
+                        <i class="fas fa-monitor-waveform"></i>
                     </button>
                 </div>
             </div>

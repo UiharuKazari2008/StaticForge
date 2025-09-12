@@ -9,6 +9,7 @@ let selectedCharacterAutocompleteIndex = -1;
 let autocompleteNavigationMode = false;
 let autocompleteExpanded = false;
 let characterSearchResults = [];
+let userActivelyNavigating = false;
 let selectedEnhancerGroupIndex = -1;
 let lastSearchText = '';
 
@@ -25,6 +26,168 @@ let textReplacementResults = new Map(); // Track text replacement results by ser
 let currentSearchRequestId = null;
 let isSearching = false;
 let allSearchResults = []; // Combined and ordered results
+
+// Global variables for real-time search tracking
+let currentSearchTimestamp = null;
+let serviceResults = new Map(); // Store results per service
+let serviceStatuses = new Map(); // Store status per service (stalled/completed/no-results)
+
+// Global variables for spellcheck tracking (same pattern as search)
+let currentSpellCheckTimestamp = null;
+
+// Global handler for ack-less search responses
+window.handleSearchResponse = function(message) {
+    if (message.type === 'search_characters_response') {
+        // Initial response - start new search but keep existing results
+        currentSearchTimestamp = Date.now();
+        // DON'T clear results - keep them for real-time updates
+        
+        // Mark all services as stalled (but keep their results)
+        searchServices.set('characters', 'stalled');
+        searchServices.set('anime-local', 'stalled');
+        searchServices.set('furry-local', 'stalled');
+        searchServices.set('textReplacements', 'stalled');
+        searchServices.set('spellcheck', 'stalled');
+        
+        // Mark the current model service as stalled
+        let currentModel = window.manualModel?.value || 'unknown';
+        currentModel = searchModelMapping[currentModel] || currentModel;
+        searchServices.set(currentModel, 'stalled');
+        
+        if (currentCharacterAutocompleteTarget) {
+            updateAutocompleteDisplay([], currentCharacterAutocompleteTarget);
+            updateSearchStatusDisplay();
+        }
+    } else if (message.type === 'search_characters_complete') {
+        // Final response - mark all services as completed
+        const finalTimestamp = message.timestamp ? new Date(message.timestamp).getTime() : Date.now();
+        
+        // Only process if this is the latest search
+        if (currentSearchTimestamp && finalTimestamp >= currentSearchTimestamp) {
+            // Process the results from the complete message if we have results
+            if (message.data && message.data.results) {
+                // Process results from search_characters_complete
+                
+                // Group results by service type
+                const resultsByService = new Map();
+                message.data.results.forEach(result => {
+                    // Try to determine service name from various fields
+                    let serviceName = result.serviceName || result.model || 'unknown';
+                    
+                    // Map model names to service names
+                    if (serviceName === 'unknown' && result.model) {
+                        if (result.model.includes('furry-local')) serviceName = 'furry-local';
+                        else if (result.model.includes('anime-local')) serviceName = 'anime-local';
+                        else if (result.model.includes('nai-diffusion-')) {
+                            // Dynamic model names - use the actual model name
+                            serviceName = result.model;
+                        } else if (result.model.includes('v4_5')) serviceName = 'v4_5';
+                        else if (result.type === 'character') serviceName = 'characters';
+                        else if (result.type === 'textReplacement') serviceName = 'textReplacements';
+                        else {
+                            // Use the model name as service name for unknown models
+                            serviceName = result.model;
+                        }
+                    }
+                    
+                    if (!resultsByService.has(serviceName)) {
+                        resultsByService.set(serviceName, []);
+                    }
+                    resultsByService.get(serviceName).push(result);
+                });
+                
+                // Store results in both Maps (merge with existing results)
+                for (const [serviceName, results] of resultsByService) {
+                    serviceResults.set(serviceName, results);
+                    searchResultsByService.set(serviceName, results);
+                }
+            }
+            
+            // Copy results from serviceResults to searchResultsByService for compatibility
+            for (const [serviceName, results] of serviceResults) {
+                searchResultsByService.set(serviceName, results);
+            }
+            
+            // Mark all services as completed
+            searchServices.set('characters', 'completed');
+            searchServices.set('anime-local', 'completed');
+            searchServices.set('furry-local', 'completed');
+            searchServices.set('textReplacements', 'completed');
+            searchServices.set('spellcheck', 'completed');
+            
+            // Mark the current model service as completed
+            let currentModel = window.manualModel?.value || 'unknown';
+            currentModel = searchModelMapping[currentModel] || currentModel;
+            searchServices.set(currentModel, 'completed');
+            
+            // Final spellcheck is handled by the timer system in requestFrequentSpellCheck
+            // No need to trigger it here as it would cause a loop
+            
+            updateSearchStatusDisplay();
+            if (currentCharacterAutocompleteTarget) {
+                rebuildAndDisplayResults();
+            }
+        }
+    } else if (message.type === 'search_results_update') {
+        // Real-time result update from a specific service
+        const serviceName = message.service;
+        const results = message.results || [];
+        const isComplete = message.isComplete || false;
+        const messageTimestamp = message.timestamp ? new Date(message.timestamp).getTime() : Date.now();
+        
+        // Process search_results_update
+        
+        // Only process if this is from the latest search
+        if (currentSearchTimestamp && messageTimestamp >= currentSearchTimestamp) {
+            // Store results for this service in both Maps for compatibility
+            serviceResults.set(serviceName, results);
+            searchResultsByService.set(serviceName, results);
+            // Results stored for service
+            
+            // Update service status
+            if (results.length === 0) {
+                serviceStatuses.set(serviceName, 'no-results');
+                searchServices.set(serviceName, 'completed-noresults');
+            } else {
+                serviceStatuses.set(serviceName, 'has-results');
+                if (isComplete) {
+                    searchServices.set(serviceName, 'completed');
+                } else {
+                    searchServices.set(serviceName, 'searching');
+                }
+            }
+            
+            // Update display with current results
+            updateSearchStatusDisplay();
+            if (currentCharacterAutocompleteTarget) {
+                rebuildAndDisplayResults();
+            }
+        }
+    } else if (message.type === 'search_status_update') {
+        // Service status update
+        const services = message.services || [];
+        const messageTimestamp = message.timestamp ? new Date(message.timestamp).getTime() : Date.now();
+        
+        // Only process if this is from the latest search
+        if (currentSearchTimestamp && messageTimestamp >= currentSearchTimestamp) {
+            services.forEach(service => {
+                const serviceName = service.name;
+                const status = service.status;
+                
+                // Update service status
+                if (status === 'searching') {
+                    searchServices.set(serviceName, 'searching');
+                } else if (status === 'completed') {
+                    searchServices.set(serviceName, 'completed');
+                } else if (status === 'error') {
+                    searchServices.set(serviceName, 'error');
+                }
+            });
+            
+            updateSearchStatusDisplay();
+        }
+    }
+};
 let searchCompletionStatus = {
     totalServices: 0,
     completedServices: 0,
@@ -228,6 +391,54 @@ async function enhanceCharacterResultsWithPredictionary(results, query) {
     return enhancedResults;
 }
 
+// Enhanced tag results with predictionary and dual match merging
+async function enhanceTagResultsWithPredictionary(results, query) {
+    if (!results || !Array.isArray(results) || !query) return results;
+    
+    const enhancedResults = [];
+    const tagMap = new Map(); // Track best tag by name for deduplication
+    
+    for (const result of results) {
+        // Ensure result has proper type and name/tag field
+        const tagName = result.tag || result.name;
+        if (!tagName) continue;
+        
+        // Set type if missing
+        if (!result.type) {
+            result.type = 'tag';
+        }
+        
+        const predictionaryScore = await calculateEnhancedSimilarity(query, tagName, 'tag');
+        const existingConfidence = result.confidence || 0;
+        
+        // Combine predictionary score with existing confidence
+        const enhancedConfidence = (predictionaryScore * 0.3) + (existingConfidence * 0.7);
+        
+        const enhancedTag = {
+            ...result,
+            name: tagName, // Ensure name field is set
+            predictionaryScore: predictionaryScore,
+            enhancedConfidence: enhancedConfidence
+        };
+        
+        // Check for duplicates and merge them intelligently
+        if (tagMap.has(tagName)) {
+            const existingTag = tagMap.get(tagName);
+            const mergedTag = mergeTagResults(existingTag, enhancedTag);
+            tagMap.set(tagName, mergedTag);
+        } else {
+            tagMap.set(tagName, enhancedTag);
+        }
+    }
+    
+    // Add all unique tags
+    for (const tag of tagMap.values()) {
+        enhancedResults.push(tag);
+    }
+    
+    return enhancedResults;
+}
+
 // Enhanced text replacement ranking
 async function enhanceTextReplacementResults(textReplacements, query) {
     if (!textReplacements || textReplacements.length === 0 || !query) return textReplacements;
@@ -413,27 +624,28 @@ async function rebuildAndDisplayResults() {
     // Collect all results from all services
     allSearchResults = [];
     
-    for (const [serviceName, results] of searchResultsByService) {
+    // Collect all results from all services
+    
+    // Use the new serviceResults Map for real-time results
+    for (const [serviceName, results] of serviceResults) {
         if (results && Array.isArray(results)) {
-            // Enhance character results with predictionary (exclude tags, handled separately)
-            const nonTagResults = results.filter(result => result.type !== 'tag');
-            const enhancedResults = await enhanceCharacterResultsWithPredictionary(nonTagResults, lastSearchQuery);
-            allSearchResults.push(...enhancedResults);
+            // Separate tag and non-tag results
+            const tagResults = results.filter(result => result.type === 'tag' || result.tag);
+            const nonTagResults = results.filter(result => result.type !== 'tag' && !result.tag);
+            
+            // Enhance tag results with predictionary and dual match merging
+            if (tagResults.length > 0) {
+                const enhancedTags = await enhanceTagResultsWithPredictionary(tagResults, lastSearchQuery);
+                allSearchResults.push(...enhancedTags);
+            }
+            
+            // Enhance character results with predictionary
+            if (nonTagResults.length > 0) {
+                const enhancedResults = await enhanceCharacterResultsWithPredictionary(nonTagResults, lastSearchQuery);
+                allSearchResults.push(...enhancedResults);
+            }
         }
     }
-    
-    // Extract and enhance tag results separately for better deduplication
-    const allTags = [];
-    for (const [serviceName, results] of searchResultsByService) {
-        if (results && Array.isArray(results)) {
-            const tags = results.filter(result => result.type === 'tag');
-            allTags.push(...tags);
-        }
-    }
-    
-    // Enhance and deduplicate tags
-    const enhancedTags = await enhanceTagResults(allTags, lastSearchQuery);
-    allSearchResults.push(...enhancedTags);
     
     // Merge spell check results from all services (prioritize the most comprehensive one)
     const bestSpellCheckResult = getBestSpellCheckResult();
@@ -461,16 +673,20 @@ async function rebuildAndDisplayResults() {
     
     // Sort results by ranking and type
     allSearchResults.sort((a, b) => {
+        // Add null safety checks
+        const aType = a.type || '';
+        const bType = b.type || '';
+        
         // Spell check results go to the top
-        if (a.type === 'spellcheck' && b.type !== 'spellcheck') {
+        if (aType === 'spellcheck' && bType !== 'spellcheck') {
             return -1;
         }
-        if (a.type !== 'spellcheck' && b.type === 'spellcheck') {
+        if (aType !== 'spellcheck' && bType === 'spellcheck') {
             return 1;
         }
         
         // Handle text replacements with special logic
-        if (a.type === 'textReplacement' && b.type === 'textReplacement') {
+        if (aType === 'textReplacement' && bType === 'textReplacement') {
             // If one is the best match, prioritize it
             if (bestTextReplacement && a.name === bestTextReplacement.name && a.placeholder === bestTextReplacement.placeholder) {
                 return -1; // Best match goes first
@@ -489,19 +705,21 @@ async function rebuildAndDisplayResults() {
             }
             
             // Otherwise, sort alphabetically
-            return a.name.localeCompare(b.name);
+            const aName = a.name || '';
+            const bName = b.name || '';
+            return aName.localeCompare(bName);
         }
         
         // Text replacements go to the bottom (except the best match which is already handled above)
-        if (a.type === 'textReplacement' && b.type !== 'textReplacement') {
+        if (aType === 'textReplacement' && bType !== 'textReplacement') {
             return 1;
         }
-        if (a.type !== 'textReplacement' && b.type === 'textReplacement') {
+        if (aType !== 'textReplacement' && bType === 'textReplacement') {
             return -1;
         }
         
         // For tags, sort by enhanced confidence (predictionary + existing confidence)
-        if (a.type === 'tag' && b.type === 'tag') {
+        if (aType === 'tag' && bType === 'tag') {
             const aEnhancedConfidence = a.enhancedConfidence || a.confidence || 0;
             const bEnhancedConfidence = b.enhancedConfidence || b.confidence || 0;
             
@@ -516,22 +734,27 @@ async function rebuildAndDisplayResults() {
         }
         
         // For characters, sort by enhanced similarity (predictionary + existing similarity)
-        if (a.type === 'character' && b.type === 'character') {
-            const aTotalScore = a.enhancedSimilarity || (calculateStringSimilarity(lastSearchQuery, a.name) * 0.5) + ((a.similarity || 0) * 0.5);
-            const bTotalScore = b.enhancedSimilarity || (calculateStringSimilarity(lastSearchQuery, b.name) * 0.5) + ((b.similarity || 0) * 0.5);
+        if (aType === 'character' && bType === 'character') {
+            const aName = a.name || '';
+            const bName = b.name || '';
+            const aTotalScore = a.enhancedSimilarity || (calculateStringSimilarity(lastSearchQuery, aName) * 0.5) + ((a.similarity || 0) * 0.5);
+            const bTotalScore = b.enhancedSimilarity || (calculateStringSimilarity(lastSearchQuery, bName) * 0.5) + ((b.similarity || 0) * 0.5);
             
             if (aTotalScore !== bTotalScore) {
                 return bTotalScore - aTotalScore; // Higher score first
             }
             
             // Fallback to count
-            return b.count - a.count;
+            const aCount = a.count || 0;
+            const bCount = b.count || 0;
+            return bCount - aCount;
         }
         
         // Mixed types: establish proper hierarchy and scoring
-        if (a.type === 'tag' && b.type === 'character') {
+        if (aType === 'tag' && bType === 'character') {
             const tagScore = a.enhancedConfidence || a.confidence || 0;
-            const charScore = a.enhancedSimilarity || (calculateStringSimilarity(lastSearchQuery, b.name) * 0.5) + ((b.similarity || 0) * 0.5);
+            const bName = b.name || '';
+            const charScore = a.enhancedSimilarity || (calculateStringSimilarity(lastSearchQuery, bName) * 0.5) + ((b.similarity || 0) * 0.5);
             
             // Tags generally have higher priority unless character has exceptional similarity
             // Only prioritize character if it has very high similarity (>= 80) AND tag has low confidence (< 30)
@@ -542,8 +765,9 @@ async function rebuildAndDisplayResults() {
             // Tags come first in all other cases
             return -1;
         }
-        if (a.type === 'character' && b.type === 'tag') {
-            const charScore = a.enhancedSimilarity || (calculateStringSimilarity(lastSearchQuery, a.name) * 0.5) + ((a.similarity || 0) * 0.5);
+        if (aType === 'character' && bType === 'tag') {
+            const aName = a.name || '';
+            const charScore = a.enhancedSimilarity || (calculateStringSimilarity(lastSearchQuery, aName) * 0.5) + ((a.similarity || 0) * 0.5);
             const tagScore = b.enhancedConfidence || b.confidence || 0;
             
             // Tags generally have higher priority unless character has exceptional similarity
@@ -561,8 +785,8 @@ async function rebuildAndDisplayResults() {
             return a.serviceOrder - b.serviceOrder;
         }
         
-        // Final fallback: alphabetical by type
-        return a.type.localeCompare(b.type);
+        // Final fallback: alphabetical by type (with null safety)
+        return aType.localeCompare(bType);
     });
     
     // Update the display with the sorted results
@@ -571,13 +795,33 @@ async function rebuildAndDisplayResults() {
     }
 }
 
-// Update the search status display in the autocomplete
+// Throttled version of updateSearchStatusDisplay
 function updateSearchStatusDisplay() {
+    // Clear any pending updates
+    if (updateStatusTimeout) {
+        clearTimeout(updateStatusTimeout);
+    }
+    
+    // Throttle to prevent excessive calls
+    updateStatusTimeout = setTimeout(() => {
+        updateSearchStatusDisplayImmediate();
+        updateStatusTimeout = null;
+    }, 16); // ~60fps throttling
+}
+
+// Update the search status display in the autocomplete
+function updateSearchStatusDisplayImmediate() {
     if (!characterAutocompleteList) return;
     
-    if (!characterAutocompleteList) {
+    // Create hash of current status to check if update is needed
+    const currentStatusHash = createStatusHash();
+    
+    // Only update if status actually changed
+    if (lastStatusDisplayHash === currentStatusHash) {
         return;
     }
+    
+    lastStatusDisplayHash = currentStatusHash;
     
     // Check if status display already exists
     let statusDisplay = characterAutocompleteList.querySelector('.search-status-display');
@@ -1133,18 +1377,30 @@ function handleCharacterAutocompleteKeydown(e) {
                 
                 // Normal autocomplete navigation
                 autocompleteNavigationMode = true;
-                if (!items || items.length === 0) {
+                userActivelyNavigating = true;
+                
+                // Check if we have results (either in DOM or in stored results)
+                const hasResultsDownKey = (items && items.length > 0) || (window.allAutocompleteResults && window.allAutocompleteResults.length > 0);
+                if (!hasResultsDownKey) {
                     return;
                 }
                 
                 if (selectedCharacterAutocompleteIndex === -1) {
-                    expandAutocompleteToShowAll();
-                    selectedCharacterAutocompleteIndex = 0;
+                    expandAutocompleteInstantly();
+                    // After expansion, get the updated items count
+                    const updatedItems = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+                    selectedCharacterAutocompleteIndex = updatedItems.length > 0 ? 0 : -1;
                 } else {
                 selectedCharacterAutocompleteIndex = Math.min(selectedCharacterAutocompleteIndex + 1, items.length - 1);
-                }
                 updateCharacterAutocompleteSelection();
+                }
                 updateEmphasisTooltipVisibility();
+                
+                // Reset the actively navigating flag after a short delay
+                clearTimeout(window.navigationTimeout);
+                window.navigationTimeout = setTimeout(() => {
+                    userActivelyNavigating = false;
+                }, 500);
                 break;
                 
             case 'ArrowUp':
@@ -1228,13 +1484,19 @@ function handleCharacterAutocompleteKeydown(e) {
                 
                 // Normal autocomplete navigation
                 autocompleteNavigationMode = true;
-                if (!items || items.length === 0) {
+                userActivelyNavigating = true;
+                
+                // Check if we have results (either in DOM or in stored results)
+                const hasResultsPageDown = (items && items.length > 0) || (window.allAutocompleteResults && window.allAutocompleteResults.length > 0);
+                if (!hasResultsPageDown) {
                     return;
                 }
                 
                 if (selectedCharacterAutocompleteIndex === -1) {
-                    expandAutocompleteToShowAll();
-                    selectedCharacterAutocompleteIndex = 0;
+                    expandAutocompleteInstantly();
+                    // After expansion, get the updated items count
+                    const updatedItems = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+                    selectedCharacterAutocompleteIndex = updatedItems.length > 0 ? 0 : -1;
                 } else {
                     selectedCharacterAutocompleteIndex = Math.min(selectedCharacterAutocompleteIndex + 10, items.length - 1);
                 }
@@ -1255,13 +1517,19 @@ function handleCharacterAutocompleteKeydown(e) {
                 
                 // Normal autocomplete navigation
                 autocompleteNavigationMode = true;
-                if (!items || items.length === 0) {
+                userActivelyNavigating = true;
+                
+                // Check if we have results (either in DOM or in stored results)
+                const hasResultsPageUp = (items && items.length > 0) || (window.allAutocompleteResults && window.allAutocompleteResults.length > 0);
+                if (!hasResultsPageUp) {
                     return;
                 }
                 
                 if (selectedCharacterAutocompleteIndex === -1) {
-                    expandAutocompleteToShowAll();
-                    selectedCharacterAutocompleteIndex = 0;
+                    expandAutocompleteInstantly();
+                    // After expansion, get the updated items count
+                    const updatedItems = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+                    selectedCharacterAutocompleteIndex = updatedItems.length > 0 ? 0 : -1;
                 } else {
                     selectedCharacterAutocompleteIndex = Math.max(selectedCharacterAutocompleteIndex - 10, 0);
                 }
@@ -1282,12 +1550,16 @@ function handleCharacterAutocompleteKeydown(e) {
                 
                 // Normal autocomplete navigation
                 autocompleteNavigationMode = true;
-                if (!items || items.length === 0) {
+                userActivelyNavigating = true;
+                
+                // Check if we have results (either in DOM or in stored results)
+                const hasResultsHome = (items && items.length > 0) || (window.allAutocompleteResults && window.allAutocompleteResults.length > 0);
+                if (!hasResultsHome) {
                     return;
                 }
                 
                 if (selectedCharacterAutocompleteIndex === -1) {
-                    expandAutocompleteToShowAll();
+                    expandAutocompleteInstantly();
                 }
                 selectedCharacterAutocompleteIndex = 0;
                 updateCharacterAutocompleteSelection();
@@ -1307,14 +1579,22 @@ function handleCharacterAutocompleteKeydown(e) {
                 
                 // Normal autocomplete navigation
                 autocompleteNavigationMode = true;
-                if (!items || items.length === 0) {
+                userActivelyNavigating = true;
+                
+                // Check if we have results (either in DOM or in stored results)
+                const hasResultsEnd = (items && items.length > 0) || (window.allAutocompleteResults && window.allAutocompleteResults.length > 0);
+                if (!hasResultsEnd) {
                     return;
                 }
                 
                 if (selectedCharacterAutocompleteIndex === -1) {
-                    expandAutocompleteToShowAll();
+                    expandAutocompleteInstantly();
+                    // After expansion, get the updated items count
+                    const updatedItems = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+                    selectedCharacterAutocompleteIndex = updatedItems.length > 0 ? updatedItems.length - 1 : -1;
+                } else {
+                    selectedCharacterAutocompleteIndex = items.length - 1;
                 }
-                selectedCharacterAutocompleteIndex = items.length - 1;
                 updateCharacterAutocompleteSelection();
                 updateEmphasisTooltipVisibility();
                 break;
@@ -1531,9 +1811,6 @@ function handleCharacterAutocompleteKeydown(e) {
 // Function to handle frequent spellcheck requests
 async function requestFrequentSpellCheck(query, target) {
     // Clear any existing timers
-    if (spellCheckTimer) {
-        clearTimeout(spellCheckTimer);
-    }
     if (spellCheckInputTimer) {
         clearTimeout(spellCheckInputTimer);
     }
@@ -1568,14 +1845,7 @@ async function requestFrequentSpellCheck(query, target) {
         await triggerSpellCheck(query, target);
     }
     
-    // Set timer for 250ms spellcheck
-    spellCheckTimer = setTimeout(async () => {
-        if (query === lastSpellCheckQuery && query.length >= 3) {
-            await triggerSpellCheck(query, target);
-        }
-    }, 250);
-    
-    // Set timer for 800ms final spellcheck after no input
+    // Set timer for final spellcheck after no input (only one timer needed)
     spellCheckInputTimer = setTimeout(async () => {
         if (query === lastSpellCheckQuery && query.length >= 3) {
             await triggerSpellCheck(query, target);
@@ -1590,6 +1860,10 @@ async function triggerSpellCheck(query, target) {
         if (!query || !target || query.length < 3) {
             return;
         }
+        
+        // Set timestamp for this spellcheck request (same pattern as search)
+        currentSpellCheckTimestamp = Date.now();
+        const requestTimestamp = currentSpellCheckTimestamp;
         
         // Check if query starts with "Text:" - if not, add it for spellcheck
         const spellCheckQuery = query.startsWith('Text:') ? query : `Text:${query}`;
@@ -1618,6 +1892,12 @@ async function triggerSpellCheck(query, target) {
                     // Check if request was cancelled
                     if (cancelToken.cancelled) {
                         reject(new Error('Request cancelled'));
+                        return;
+                    }
+                    
+                    // Only process if this is still the latest spellcheck request
+                    if (requestTimestamp !== currentSpellCheckTimestamp) {
+                        reject(new Error('Request superseded by newer request'));
                         return;
                     }
                     
@@ -1684,6 +1964,9 @@ async function triggerSpellCheck(query, target) {
     }
 }
 
+// Note: performSpellCheck function removed to prevent duplicate requests
+// All spellcheck functionality is now handled by triggerSpellCheck only
+
 async function searchCharacters(query, target) {
     try {        
         // Prevent duplicate searches for the same query
@@ -1740,10 +2023,6 @@ async function searchCharacters(query, target) {
         isAutocompleteVisible = false;
         
         // Clear any existing spellcheck timers for new search
-        if (spellCheckTimer) {
-            clearTimeout(spellCheckTimer);
-            spellCheckTimer = null;
-        }
         if (spellCheckInputTimer) {
             clearTimeout(spellCheckInputTimer);
             spellCheckInputTimer = null;
@@ -1796,11 +2075,12 @@ async function searchCharacters(query, target) {
             // Use WebSocket for search - this will handle characters, tags, and textReplacements server-side
             if (window.wsClient && window.wsClient.isConnected()) {
                 try {
-                    const responseData = await window.wsClient.searchCharacters(query, manualModel.value);
-                    searchResults = responseData.results || [];
+                    // Send ack-less search request (responses handled by global handler)
+                    await window.wsClient.searchCharacters(query, manualModel.value);
                     
                     // Note: Spellcheck is now handled separately by frequent requests
                     // The backend will send status updates for characters, tags, and textReplacements
+                    // Results will be processed by the global handleSearchResponse function
                 } catch (wsError) {
                     console.error('WebSocket search failed:', wsError);
                     // Mark services as error if search fails
@@ -1881,20 +2161,15 @@ async function searchCharacters(query, target) {
             // For "Text:" searches, send the full query to trigger spell checking
             if (window.wsClient && window.wsClient.isConnected()) {
                 try {
-                    const responseData = await window.wsClient.searchCharacters(query, manualModel.value);
-                    spellCheckData = responseData.spellCheck || null;
-                    
-                    // Mark spellcheck service as completed or completed-none based on results
-                    if (spellCheckData && spellCheckData.hasErrors && spellCheckData.misspelled && spellCheckData.misspelled.length > 0) {
-                        searchServices.set('spellcheck', 'completed');
-                    } else {
-                        searchServices.set('spellcheck', 'completed-noerrors');
-                    }
-                    updateSearchStatusDisplay();
+                    // Send ack-less search request - spell check results will come via real-time updates
+                    await window.wsClient.searchCharacters(query, manualModel.value);
                     
                     // For "Text:" searches, we only want spell check results
                     // Clear any other search results
                     searchResults = [];
+                    
+                    // Spell check results will be displayed via real-time updates
+                    // No need to manually process response here
                 } catch (wsError) {
                     console.error('WebSocket spell check failed:', wsError);
                     // Mark spellcheck service as error
@@ -2066,27 +2341,130 @@ function createAutocompleteItem(result) {
             e.preventDefault();
             selectTag(result.name);
         });
-    } else {
-        // Handle character results
-        item.dataset.type = 'character';
-        item.dataset.characterData = JSON.stringify(result.character);
+    } else if (result.tag || (result.name && result.model && result.count !== undefined)) {
+        // Handle tag results that don't have type set
+        item.dataset.type = 'tag';
+        item.dataset.tagName = result.tag || result.name;
+        item.dataset.modelType = result.model.toLowerCase().includes('furry') ? 'furry' : 'anime';
 
-        // Parse name and copyright from character data
-        const character = result.character;
-        const name = character.name || result.name;
-        const copyright = character.copyright || '';
+        const tagName = result.tag || result.name;
+        const count = result.count || 0;
+        const eCount = result.e_count;
+
+        // Calculate opacity for dots based on counts with logarithmic scaling
+        const nCountOpacity = count ? Math.min(1, Math.log10(count + 1) / Math.log10(10001)) : 0;
+        const eCountOpacity = eCount ? Math.min(1, Math.log10(eCount + 1) / Math.log10(100001)) : 0;
+        
+        // Create category badge if available
+        if (result.isDualMatch) {
+            item.classList.add('multi-match');
+        }
+        const categoryBadgeClass = 'tag-category-badge ' + (result.category || '') + '-badge';
+        const categoryBadge = result.category ? `<span class="${categoryBadgeClass}">${result.category}</span>` : '';
+        
+        // Create count dots with enhanced tooltip for dual matches
+        let tooltipText = `NovelAI: ${count}${eCount !== undefined ? `\ne621: ${eCount}` : ''}`;
+        if (result.isDualMatch && result.apiResult && result.localResult) {
+            const localNCount = result.localResult.count || 0;
+            const localECount = result.localResult.e_count || 0;
+            tooltipText = `NovelAI: ${localNCount}${localECount !== undefined ? `\ne621: ${localECount}` : ''}`;
+        }
+        
+        // Calculate lightness with logarithmic scaling - higher opacity = higher lightness
+        const nCountLightness = 15 + (nCountOpacity * 75); // Range: 15% to 90%
+        const eCountLightness = 15 + (eCountOpacity * 75); // Range: 15% to 90%
+        
+        const countDots = `
+            <div class="tag-count-dots" title="${tooltipText}">
+                <div class="count-dot n-count-dot" style="background: hsl(260, 100%, ${nCountLightness}%, ${nCountOpacity});"></div>
+                ${eCount !== undefined ? `<div class="count-dot e-count-dot" style="background: hsl(35, 100%, ${eCountLightness}%, ${eCountOpacity});"></div>` : ''}
+            </div>
+        `;
+
+        // Determine display type and version based on match type
+        let displayType = 'Search';
+        let displayVersion = '';
+        let dataType = '';
+        
+        if (result.isDualMatch && result.mergedModels) {
+            const matchInfo = getMatchType(result.mergedModels);
+            displayType = matchInfo.type;
+            displayVersion = matchInfo.version;
+            dataType = matchInfo.dataType;
+            
+            // Add appropriate CSS class for styling
+            if (displayType === 'Global') {
+                item.classList.add('global-match');
+            } else if (dataType === 'anime') {
+                item.classList.add('anime-match');
+                item.dataset.modelType = 'anime';
+            } else if (dataType === 'furry') {
+                item.classList.add('furry-match');
+                item.dataset.modelType = 'furry';
+            }
+        } else {
+            // Regular single model
+            displayType = modelKeys[result.model]?.type || 'Search';
+            displayVersion = modelKeys[result.model]?.version || '';
+        }
 
         item.innerHTML = `
             <div class="character-info-row">
-                <span class="character-name">${name}</span>
-                <span class="character-copyright">${copyright}</span>
+                <span class="character-name">${tagName}${countDots}${categoryBadge}</span>
+                <span class="character-copyright">
+                    ${displayVersion ? '<span class="badge">' + displayVersion + '</span> ' : ''}${displayType}
+                </span>
             </div>
         `;
 
         item.addEventListener('click', (e) => {
             e.preventDefault();
-            selectCharacterItem(result.character);
+            selectTag(tagName);
         });
+    } else {
+        // Handle character results or other unknown types
+        // Processing unknown result type
+        
+        if (result.character) {
+            // Handle character results
+            item.dataset.type = 'character';
+            item.dataset.characterData = JSON.stringify(result.character);
+
+            // Parse name and copyright from character data
+            const character = result.character;
+            const name = character.name || result.name || 'Unknown';
+            const copyright = character.copyright || '';
+
+            item.innerHTML = `
+                <div class="character-info-row">
+                    <span class="character-name">${name}</span>
+                    <span class="character-copyright">${copyright}</span>
+                </div>
+            `;
+
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                selectCharacterItem(result.character);
+            });
+        } else {
+            // Handle other result types (fallback)
+            item.dataset.type = 'unknown';
+            const name = result.name || result.tag || 'Unknown';
+            const service = result.serviceName || result.model || 'Unknown Service';
+
+            item.innerHTML = `
+                <div class="character-info-row">
+                    <span class="character-name">${name}</span>
+                    <span class="character-copyright">${service}</span>
+                </div>
+            `;
+
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                // Fallback action - could be customized based on result type
+                console.log('Clicked unknown result type:', result);
+            });
+        }
     }
 
     return item;
@@ -2180,9 +2558,13 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
 
     // Position overlay relative to viewport
     const rect = target.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom - 5;
+    const maxHeight = Math.min(400, spaceBelow, window.innerHeight * 0.6);
+    
     characterAutocompleteOverlay.style.left = rect.left + 'px';
     characterAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
     characterAutocompleteOverlay.style.width = rect.width + 'px';
+    characterAutocompleteOverlay.style.maxHeight = maxHeight + 'px';
 
     characterAutocompleteOverlay.classList.remove('hidden');
     isAutocompleteVisible = true;
@@ -2202,11 +2584,35 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
 }
 
 // New function for stable autocomplete updates
+// Throttled version of updateAutocompleteDisplay
 function updateAutocompleteDisplay(results, target) {
+    // Clear any pending updates
+    if (updateDisplayTimeout) {
+        clearTimeout(updateDisplayTimeout);
+    }
+    
+    // Throttle to prevent excessive calls
+    updateDisplayTimeout = setTimeout(() => {
+        updateAutocompleteDisplayImmediate(results, target);
+        updateDisplayTimeout = null;
+    }, 16); // ~60fps throttling
+}
+
+function updateAutocompleteDisplayImmediate(results, target) {
     if (!characterAutocompleteList || !characterAutocompleteOverlay) {
         console.error('Character autocomplete elements not found');
         return;
     }
+
+    // Create hash of current results to check if update is needed
+    const currentResultsHash = createResultsHash(results) + (target ? target.id || target.className || '' : '');
+    
+    // Only update if results actually changed
+    if (lastAutocompleteDisplayHash === currentResultsHash) {
+        return;
+    }
+    
+    lastAutocompleteDisplayHash = currentResultsHash;
 
     // Store results for potential expansion
     window.allAutocompleteResults = results;
@@ -2225,9 +2631,13 @@ function updateAutocompleteDisplay(results, target) {
     // Ensure overlay is positioned and visible
     if (!isAutocompleteVisible) {
         const rect = target.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom - 5;
+        const maxHeight = Math.min(400, spaceBelow, window.innerHeight * 0.6);
+        
         characterAutocompleteOverlay.style.left = rect.left + 'px';
         characterAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
         characterAutocompleteOverlay.style.width = rect.width + 'px';
+        characterAutocompleteOverlay.style.maxHeight = maxHeight + 'px';
         characterAutocompleteOverlay.classList.remove('hidden');
         isAutocompleteVisible = true;
     }
@@ -2237,7 +2647,6 @@ function updateAutocompleteDisplay(results, target) {
         // Try to restore previous selection first
         if (lastSelectedItemData && lastSelectedItemType) {
             // Selection will be restored by rebuildAutocompleteDisplay, don't do it here
-            console.log('updateAutocompleteDisplay: Selection persistence active, skipping auto-selection');
         } else {
             // Fallback to first item if no previous selection
             selectedCharacterAutocompleteIndex = 0;
@@ -2253,11 +2662,15 @@ function storeCurrentSelection() {
         if (items[selectedCharacterAutocompleteIndex]) {
             const selectedItem = items[selectedCharacterAutocompleteIndex];
             const type = selectedItem.dataset.type;
+            
+            // Store the original index for relative positioning
+            const originalIndex = selectedCharacterAutocompleteIndex;
                         
             if (type === 'tag') {
                 lastSelectedItemData = {
                     type: 'tag',
                     name: selectedItem.dataset.tagName,
+                    originalIndex: originalIndex,
                     model: selectedItem.dataset.modelType
                 };
                 lastSelectedItemType = 'tag';
@@ -2267,7 +2680,8 @@ function storeCurrentSelection() {
                     lastSelectedItemData = {
                         type: 'character',
                         name: characterData.name,
-                        copyright: characterData.copyright
+                        copyright: characterData.copyright,
+                        originalIndex: originalIndex
                     };
                     lastSelectedItemType = 'character';
                 } catch (e) {
@@ -2276,7 +2690,8 @@ function storeCurrentSelection() {
             } else if (type === 'textReplacement') {
                 lastSelectedItemData = {
                     type: 'textReplacement',
-                    placeholder: selectedItem.dataset.placeholder
+                    placeholder: selectedItem.dataset.placeholder,
+                    originalIndex: originalIndex
                 };
                 lastSelectedItemType = 'textReplacement';
             }
@@ -2287,6 +2702,11 @@ function storeCurrentSelection() {
 // Restore selection after content updates
 function restoreSelection(displayResults) {
     if (!lastSelectedItemData || !lastSelectedItemType || !characterAutocompleteList) {
+        return;
+    }
+    
+    // Don't restore selection if user is actively navigating
+    if (userActivelyNavigating) {
         return;
     }
     
@@ -2302,12 +2722,16 @@ function restoreSelection(displayResults) {
         if (type === lastSelectedItemType) {
             let matches = false;
             
-            if (type === 'tag' && lastSelectedItemData.name === item.dataset.tagName) {
-                matches = true;
-            } else if (type === 'character' && lastSelectedItemData.name === JSON.parse(item.dataset.characterData).name) {
-                matches = true;
-            } else if (type === 'textReplacement' && lastSelectedItemData.placeholder === item.dataset.placeholder) {
-                matches = true;
+            try {
+                if (type === 'tag' && lastSelectedItemData.name === item.dataset.tagName) {
+                    matches = true;
+                } else if (type === 'character' && lastSelectedItemData.name === JSON.parse(item.dataset.characterData).name) {
+                    matches = true;
+                } else if (type === 'textReplacement' && lastSelectedItemData.placeholder === item.dataset.placeholder) {
+                    matches = true;
+                }
+            } catch (e) {
+                console.warn('Error comparing selection data:', e);
             }
             
             if (matches) {
@@ -2322,9 +2746,24 @@ function restoreSelection(displayResults) {
         selectedCharacterAutocompleteIndex = foundIndex;
         updateCharacterAutocompleteSelection();
     } else {
-        // If no match found, try to find a similar item or reset to first
-        selectedCharacterAutocompleteIndex = 0;
-        updateCharacterAutocompleteSelection();
+        // If no match found, try to maintain relative position if possible
+        // or reset to first item if we were at the beginning
+        if (lastSelectedItemData && lastSelectedItemData.originalIndex !== undefined) {
+            // Try to maintain relative position
+            const targetIndex = Math.min(lastSelectedItemData.originalIndex, items.length - 1);
+            if (targetIndex >= 0) {
+                selectedCharacterAutocompleteIndex = targetIndex;
+                updateCharacterAutocompleteSelection();
+                console.log('Selection restored to relative position:', targetIndex);
+            } else {
+                selectedCharacterAutocompleteIndex = 0;
+                updateCharacterAutocompleteSelection();
+            }
+        } else {
+            // Fallback to first item
+            selectedCharacterAutocompleteIndex = 0;
+            updateCharacterAutocompleteSelection();
+        }
     }
     
     // Clear stored selection data
@@ -2777,8 +3216,13 @@ function selectTextReplacement(placeholder) {
     );
     const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
 
-    // Get the text before the cursor
+    // Get the text after the cursor
     const textAfterCursor = currentValue.substring(cursorPosition);
+    
+    // Find the end of the current word/term
+    // Look for the next delimiter or end of text
+    const nextDelimiterIndex = textAfterCursor.search(/[,\s:|\{\}\[\]]/);
+    const endOfCurrentTerm = nextDelimiterIndex >= 0 ? cursorPosition + nextDelimiterIndex : currentValue.length;
 
     // Build the new prompt
     let newPrompt = '';
@@ -2791,7 +3235,7 @@ function selectTextReplacement(placeholder) {
     const wrappedPlaceholder = `!${placeholder}`;
     if (newPrompt) {
         // Check if we should add a comma before the text
-        if (shouldAddCommaBefore(currentValue, cursorPosition)) {
+        if (shouldAddCommaBefore(currentValue, startOfCurrentTerm)) {
             newPrompt += ', ' + wrappedPlaceholder;
         } else {
             newPrompt += wrappedPlaceholder;
@@ -2800,15 +3244,18 @@ function selectTextReplacement(placeholder) {
         newPrompt = wrappedPlaceholder;
     }
 
+    // Get the text after the current term (not just cursor position)
+    const textAfterTerm = currentValue.substring(endOfCurrentTerm);
+    
     // Check if we're at the end of an emphasis block or brace block
-    const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
+    const textAfter = textAfterTerm.replace(/^[,\s]*/, '');
     const isAtEndOfEmphasis = textAfter.startsWith('::');
     const isAtEndOfBrace = textAfter.startsWith('}') || textAfter.startsWith(']');
     
     // Add comma and space after tag unless at end of emphasis or brace block
     if (textAfter && !isAtEndOfEmphasis && !isAtEndOfBrace) {
         // Check if we should add a comma after the inserted text
-        if (shouldAddCommaBefore(currentValue, cursorPosition)) {
+        if (shouldAddCommaAfter(currentValue, endOfCurrentTerm)) {
             newPrompt += ', ' + textAfter;
         } else {
             newPrompt += textAfter;
@@ -3378,115 +3825,6 @@ function selectEnhancerGroupFromDetail(enhancerGroup, character) {
     }
 }
 
-function applyFormattedText(textarea, lostFocus) {
-    // Store cursor position if textarea is in focus
-    const cursorPosition = !lostFocus ? textarea.selectionStart : -1;
-
-    let text = textarea.value;
-
-    // Process text based on focus state
-    if (lostFocus) {
-        // When losing focus, clean up the text
-        text = text
-            .split('|').map(item => item.trim()).filter(Boolean).join(' | ');
-
-        // Handle comma splitting more carefully to preserve :: groups
-        // First, protect :: groups by temporarily replacing them
-        const emphasisGroups = [];
-        let emphasisCounter = 0;
-        text = text.replace(/(-?\d+\.?\d*)::([^:]+)::/g, (match, weight, content) => {
-            const placeholder = `__EMPHASIS_${emphasisCounter}__`;
-            emphasisGroups.push({ placeholder, match });
-            emphasisCounter++;
-            return placeholder;
-        });
-
-        // Now split by commas, but be careful not to split within protected groups
-        const commaParts = text.split(',').map(item => item.trim()).filter(Boolean);
-        text = commaParts.join(', ');
-
-        // Restore emphasis groups
-        emphasisGroups.forEach(({ placeholder, match }) => {
-            text = text.replace(placeholder, match);
-        });
-
-        // Remove leading | or , and trim start
-        text = text.replace(/^(\||,)+\s*/, '');
-    } else {
-        // When focused, just clean up basic formatting
-        text = text
-            .split('|').map(item => item.trim()).join(' | ');
-
-        // Handle comma splitting more carefully to preserve :: groups
-        // First, protect :: groups by temporarily replacing them
-        const emphasisGroups = [];
-        let emphasisCounter = 0;
-        text = text.replace(/(-?\d+\.?\d*)::([^:]+)::/g, (match, weight, content) => {
-            const placeholder = `__EMPHASIS_${emphasisCounter}__`;
-            emphasisGroups.push({ placeholder, match });
-            emphasisCounter++;
-            return placeholder;
-        });
-
-        // Now split by commas, but be careful not to split within protected groups
-        const commaParts = text.split(',').map(item => item.trim()).join(', ');
-        text = commaParts;
-
-        // Restore emphasis groups
-        emphasisGroups.forEach(({ placeholder, match }) => {
-            text = text.replace(placeholder, match);
-        });
-    }
-
-    // Fix curly brace groups: ensure each group has equal number of { and }
-    // Only process if there is a "}," to terminate it
-    if (text.includes('},')) {
-        text = text.replace(/(\{+)([^{}]*)(\}*)/g, (match, openBraces, content, closeBraces, offset, str) => {
-            const after = str.slice(offset + match.length, offset + match.length + 1);
-            if (closeBraces.length > 0 && after === ',') {
-                const openCount = openBraces.length;
-                return openBraces + content + '}'.repeat(openCount);
-            }
-            return match;
-        });
-    }
-
-    // Fix square bracket groups: ensure each group has equal number of [ and ]
-    // Only process if there is "]," to terminate it
-    if (text.includes('],')) {
-        text = text.replace(/(\[+)([^\[\]]*)(\]*)/g, (match, openBrackets, content, closeBrackets, offset, str) => {
-            const after = str.slice(offset + match.length, offset + match.length + 1);
-            if (closeBrackets.length > 0 && after === ',') {
-                const openCount = openBrackets.length;
-                return openBrackets + content + ']'.repeat(openCount);
-            }
-            return match;
-        });
-    }
-
-    // If not focused, remove empty tags (consecutive commas with only spaces between)
-    if (lostFocus) {
-        // Remove any sequence of commas (with any amount of spaces between) that does not have text between them
-        // e.g. ",   ,", ", ,", ",,"
-        text = text.replace(/(?:^|,)\s*(?=,|$)/g, ''); // Remove empty segments
-        // Remove any leading or trailing commas left after cleanup
-        text = text.replace(/^,|,$/g, '');
-        // Remove extra spaces after cleanup
-        text = text.replace(/,\s+/g, ', ');
-        text = text.replace(/\s+,/g, ',');
-    }
-
-    textarea.value = text;
-
-    // Restore cursor position if textarea was in focus
-    if (!lostFocus && cursorPosition >= 0) {
-        // Ensure cursor position doesn't exceed the new text length
-        const newPosition = Math.min(cursorPosition, text.length);
-        textarea.setSelectionRange(newPosition, newPosition);
-        textarea.focus();
-    }
-}
-
 // Helper function to check if cursor is inside a :: emphasis group (between the :: markers)
 function isInsideEmphasisGroup(text, cursorPosition) {
     const textBeforeCursor = text.substring(0, cursorPosition);
@@ -3668,18 +4006,28 @@ function hideCharacterAutocomplete() {
         characterAutocompleteOverlay.classList.remove('expanded');
     }
     currentCharacterAutocompleteTarget = null;
+    
+    // Clear position cache so it gets repositioned when shown again
+    lastCharacterAutocompletePosition = null;
+    
+    // Clear display caches so they get updated when shown again
+    lastAutocompleteDisplayHash = null;
+    lastStatusDisplayHash = null;
     selectedCharacterAutocompleteIndex = -1;
     characterSearchResults = [];
     autocompleteNavigationMode = false;
     autocompleteExpanded = false;
     lastSearchText = ''; // Clear last search text so retyping works
+    
+    // Clear all search results when overlay is closed
+    serviceResults.clear();
+    serviceStatuses.clear();
+    searchResultsByService.clear();
+    currentSearchTimestamp = null;
+    currentSpellCheckTimestamp = null; // Clear spellcheck timestamp when hiding
     window.currentSpellCheckData = null; // Clear spell check data when hiding
     
     // Clear spellcheck timers
-    if (spellCheckTimer) {
-        clearTimeout(spellCheckTimer);
-        spellCheckTimer = null;
-    }
     if (spellCheckInputTimer) {
         clearTimeout(spellCheckInputTimer);
         spellCheckInputTimer = null;
@@ -3719,13 +4067,73 @@ function hideCharacterDetail() {
     }
 }
 
+// Position tracking for optimization
+let lastCharacterAutocompletePosition = null;
+let lastPresetAutocompletePosition = null;
+let updatePositionsTimeout = null;
+
+// Display update optimization
+let lastAutocompleteDisplayHash = null;
+let lastStatusDisplayHash = null;
+let updateDisplayTimeout = null;
+let updateStatusTimeout = null;
+
+// Helper function to create hash from results for comparison
+function createResultsHash(results) {
+    if (!results || !Array.isArray(results)) return '';
+    return results.map(r => `${r.type || 'unknown'}-${r.id || r.name || r.text || ''}-${r.count || 0}`).join('|');
+}
+
+// Helper function to create hash from service statuses
+function createStatusHash() {
+    const statusEntries = Array.from(searchServices.entries()).sort();
+    return statusEntries.map(([service, status]) => `${service}:${status}`).join('|');
+}
+
+// Throttled version of updateAutocompletePositions
 function updateAutocompletePositions() {
+    // Clear any pending updates
+    if (updatePositionsTimeout) {
+        clearTimeout(updatePositionsTimeout);
+    }
+    
+    // Throttle to prevent excessive calls
+    updatePositionsTimeout = setTimeout(() => {
+        updateAutocompletePositionsImmediate();
+        updatePositionsTimeout = null;
+    }, 16); // ~60fps throttling
+}
+
+function updateAutocompletePositionsImmediate() {
     // Update character autocomplete position
     if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden') && currentCharacterAutocompleteTarget) {
         const rect = currentCharacterAutocompleteTarget.getBoundingClientRect();
-        characterAutocompleteOverlay.style.left = rect.left + 'px';
-        characterAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
-        characterAutocompleteOverlay.style.width = rect.width + 'px';
+        const spaceBelow = window.innerHeight - rect.bottom - 5;
+        const maxHeight = Math.min(400, spaceBelow, window.innerHeight * 0.6);
+        
+        // Create position object for comparison
+        const newPosition = {
+            left: Math.round(rect.left),
+            top: Math.round(rect.bottom + 5),
+            width: Math.round(rect.width),
+            maxHeight: Math.round(maxHeight)
+        };
+        
+        // Only update if position actually changed
+        if (!lastCharacterAutocompletePosition || 
+            lastCharacterAutocompletePosition.left !== newPosition.left ||
+            lastCharacterAutocompletePosition.top !== newPosition.top ||
+            lastCharacterAutocompletePosition.width !== newPosition.width ||
+            lastCharacterAutocompletePosition.maxHeight !== newPosition.maxHeight) {
+            
+            characterAutocompleteOverlay.style.left = newPosition.left + 'px';
+            characterAutocompleteOverlay.style.top = newPosition.top + 'px';
+            characterAutocompleteOverlay.style.width = newPosition.width + 'px';
+            characterAutocompleteOverlay.style.maxHeight = newPosition.maxHeight + 'px';
+            
+            // Store the new position
+            lastCharacterAutocompletePosition = newPosition;
+        }
     }
 
     // Update preset autocomplete position
@@ -3735,20 +4143,32 @@ function updateAutocompletePositions() {
         const spaceAbove = rect.top;
         const spaceBelow = window.innerHeight - rect.bottom;
 
-        presetAutocompleteOverlay.style.left = rect.left + 'px';
-        presetAutocompleteOverlay.style.width = rect.width + 'px';
+        // Create position object for comparison
+        const isAbove = spaceAbove >= overlayHeight;
+        const newPosition = {
+            left: Math.round(rect.left),
+            top: isAbove ? Math.round(rect.top - 5) : Math.round(rect.bottom + 5),
+            width: Math.round(rect.width),
+            maxHeight: isAbove ? Math.round(overlayHeight) : Math.round(Math.min(spaceBelow - 10, overlayHeight)),
+            transform: isAbove ? 'translateY(-100%)' : 'none'
+        };
 
-        // Check if there's enough space above, otherwise show below
-        if (spaceAbove >= overlayHeight) {
-            // Position above
-            presetAutocompleteOverlay.style.top = (rect.top - 5) + 'px';
-            presetAutocompleteOverlay.style.transform = 'translateY(-100%)';
-            presetAutocompleteOverlay.style.maxHeight = overlayHeight + 'px';
-        } else {
-            // Position below if not enough space above
-            presetAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
-            presetAutocompleteOverlay.style.transform = 'none';
-            presetAutocompleteOverlay.style.maxHeight = Math.min(spaceBelow - 10, overlayHeight) + 'px';
+        // Only update if position actually changed
+        if (!lastPresetAutocompletePosition || 
+            lastPresetAutocompletePosition.left !== newPosition.left ||
+            lastPresetAutocompletePosition.top !== newPosition.top ||
+            lastPresetAutocompletePosition.width !== newPosition.width ||
+            lastPresetAutocompletePosition.maxHeight !== newPosition.maxHeight ||
+            lastPresetAutocompletePosition.transform !== newPosition.transform) {
+
+            presetAutocompleteOverlay.style.left = newPosition.left + 'px';
+            presetAutocompleteOverlay.style.width = newPosition.width + 'px';
+            presetAutocompleteOverlay.style.top = newPosition.top + 'px';
+            presetAutocompleteOverlay.style.transform = newPosition.transform;
+            presetAutocompleteOverlay.style.maxHeight = newPosition.maxHeight + 'px';
+            
+            // Store the new position
+            lastPresetAutocompletePosition = newPosition;
         }
     }
 }
@@ -3774,6 +4194,28 @@ function hidePresetAutocomplete() {
     }
     currentPresetAutocompleteTarget = null;
     selectedPresetAutocompleteIndex = -1;
+    
+    // Clear position cache so it gets repositioned when shown again
+    lastPresetAutocompletePosition = null;
+}
+
+// Instant expansion function that directly manipulates DOM
+function expandAutocompleteInstantly() {
+    if (!window.allAutocompleteResults || !characterAutocompleteList) {
+        return;
+    }
+
+    autocompleteExpanded = true;
+    
+    // Add expanded class to characterAutocompleteOverlay for CSS rules
+    if (characterAutocompleteOverlay) {
+        characterAutocompleteOverlay.classList.add('expanded');
+    }
+    
+    // Use the original showCharacterAutocompleteSuggestions function to rebuild with all results
+    if (currentCharacterAutocompleteTarget) {
+        showCharacterAutocompleteSuggestions(window.allAutocompleteResults, currentCharacterAutocompleteTarget);
+    }
 }
 
 function expandAutocompleteToShowAll() {
@@ -3786,11 +4228,8 @@ function expandAutocompleteToShowAll() {
         characterAutocompleteOverlay.classList.add('expanded');
     }
 
-    // Use the new display system to show all results
-    updateAutocompleteDisplay(window.allAutocompleteResults, currentCharacterAutocompleteTarget);
-
-    // Selection will be maintained automatically by the updateAutocompleteDisplay function
-    // which calls rebuildAutocompleteDisplay with selection persistence
+    // Use the immediate version to bypass throttling and ensure expansion happens right away
+    updateAutocompleteDisplayImmediate(window.allAutocompleteResults, currentCharacterAutocompleteTarget);
 }
 
 function updateSpellCheckSelection() {

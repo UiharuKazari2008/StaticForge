@@ -17,19 +17,6 @@ let paginationInfo = {
     hasPrevPage: false
 };
 
-// Debounce utility function
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
-
 // Initialize create text replacement modal
 function initializeCreateTextReplacementModal() {
     const modal = document.getElementById('createTextReplacementModal');

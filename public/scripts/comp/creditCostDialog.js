@@ -190,34 +190,3 @@ function requiresPaidCredits(requestBody) {
     
     return false;
 }
-
-// Calculate credit cost for a request
-function calculateCreditCost(requestBody) {
-    // Handle resolution vs width/height
-    let width = requestBody.width || 1024;
-    let height = requestBody.height || 1024;
-    
-    if (requestBody.resolution && !requestBody.width && !requestBody.height) {
-        // Convert resolution to width/height
-        const dimensions = getDimensionsFromResolution(requestBody.resolution);
-        if (dimensions) {
-            width = dimensions.width;
-            height = dimensions.height;
-        }
-    }
-    
-    // Use the same price calculation as the rest of the application
-    const price = calculatePriceUnified({
-        height: height,
-        width: width,
-        steps: requestBody.steps || 25,
-        model: requestBody.model || 'V4_5',
-        sampler: { meta: requestBody.sampler || 'k_euler_ancestral' },
-        subscription: window.optionsData?.user?.subscription || { perks: { unlimitedImageGenerationLimits: [] } },
-        nSamples: 1,
-        image: requestBody.image ? true : false,
-        strength: requestBody.strength || 1
-    });
-
-    return price.opus > 0 ? price.list : false; // Return the list price (credits cost)
-}

@@ -1,0 +1,428 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+# Dropdown Menu Setup Guide
+
+This guide explains how to set up custom dropdown menus in the StaticForge application using the built-in dropdown system.
+
+## Overview
+
+The dropdown system consists of:
+- **HTML Structure**: Container, button, and menu elements
+- **CSS Classes**: Styling for different dropdown states and variants
+- **JavaScript Functions**: Setup, rendering, and interaction handling
+- **Configuration Options**: Customization for different use cases
+
+## HTML Structure
+
+### Basic Dropdown Structure
+
+```html
+<div id="myDropdown" class="custom-dropdown [variant-classes]">
+    <button type="button" id="myDropdownBtn" class="custom-dropdown-btn [additional-classes]">
+        <span id="myDropdownSelected">Select option...</span>
+    </button>
+    <div id="myDropdownMenu" class="custom-dropdown-menu hidden">
+        <!-- Options will be populated by JavaScript -->
+    </div>
+</div>
+<!-- Optional hidden input for form submission -->
+<input type="hidden" id="myDropdownHidden" value="">
+```
+
+### Required Elements
+
+1. **Container** (`custom-dropdown`): The main wrapper div
+2. **Button** (`custom-dropdown-btn`): The clickable trigger element
+3. **Menu** (`custom-dropdown-menu`): The dropdown content container
+4. **Selected Display** (`myDropdownSelected`): Element showing current selection
+
+### Optional Elements
+
+- **Hidden Input**: For form submission (if needed)
+- **Variant Classes**: For positioning and styling variants
+
+## CSS Classes
+
+### Container Classes
+
+- `custom-dropdown`: Base dropdown container
+- `dropup`: Positions menu above the button
+- `dropright`: Positions menu to the right of the button
+- `dark`: Dark theme variant
+
+### Button Classes
+
+- `custom-dropdown-btn`: Base button styling
+- `hover-show`: Sleek design looks like text and on hover reveals it's a button (for form controls)
+- `colored`: Applies primary color styling
+- `btn-secondary`: Secondary button styling (used in some modals)
+- `btn-small`: Smaller button size
+- `indicator`: Shows state indicator
+- `active`: Active/open state
+
+**Note**: Most dropdowns in the app use `custom-dropdown-btn hover-show colored` pattern, while some modal dropdowns use `btn-secondary custom-dropdown-btn hover-show`.
+
+### Menu Classes
+
+- `custom-dropdown-menu`: Base menu styling
+- `hidden`: Hides the menu (default state)
+
+### Option Classes
+
+- `custom-dropdown-option`: Individual option styling
+- `selected`: Currently selected option
+- `keyboard-selected`: Highlighted during keyboard navigation
+- `custom-dropdown-group`: Group header styling
+- `custom-dropdown-badge`: Badge/indicator styling
+
+## JavaScript Setup
+
+### 1. Basic Setup Function
+
+```javascript
+setupDropdown(
+    container,           // Container element
+    button,             // Button element
+    menu,               // Menu element
+    renderFunction,     // Function to render options
+    getSelectedValue,   // Function to get current selection
+    options             // Configuration options (optional)
+);
+```
+
+### 2. Render Function
+
+The render function is called when the dropdown opens to populate options:
+
+```javascript
+function renderMyDropdown(selectedValue) {
+    // Clear existing options
+    menu.innerHTML = '';
+    
+    // Add options
+    options.forEach(option => {
+        const optionElement = document.createElement('div');
+        optionElement.className = 'custom-dropdown-option' + 
+            (selectedValue === option.value ? ' selected' : '');
+        optionElement.dataset.value = option.value;
+        optionElement.textContent = option.name;
+        
+        // Add click handler
+        optionElement.addEventListener('click', () => {
+            selectOption(option.value);
+            closeDropdown(menu, button);
+        });
+        
+        menu.appendChild(optionElement);
+    });
+}
+```
+
+### 2a. Simple Dropdown Render Function
+
+For simple dropdowns with key-value pairs, use the built-in `renderSimpleDropdown`:
+
+```javascript
+function renderMySimpleDropdown(selectedValue) {
+    renderSimpleDropdown(
+        menu,                    // Menu element
+        options,                 // Array of objects with value_key and display_key
+        'value',                 // Key for the value property
+        'name',                  // Key for the display property
+        selectMyOption,          // Selection handler
+        closeMyDropdown,         // Close handler
+        selectedValue,           // Currently selected value
+        { preventFocusTransfer: true }  // Options
+    );
+}
+```
+
+### 3. Selection Handler
+
+```javascript
+function selectMyOption(value) {
+    // Update selected value
+    selectedValue = value;
+    
+    // Update display
+    const selectedElement = document.getElementById('myDropdownSelected');
+    const option = options.find(opt => opt.value === value);
+    selectedElement.textContent = option ? option.name : 'Select option...';
+    
+    // Update hidden input if present
+    const hiddenInput = document.getElementById('myDropdownHidden');
+    if (hiddenInput) {
+        hiddenInput.value = value;
+    }
+    
+    // Trigger any custom logic
+    onOptionSelected(value);
+}
+```
+
+### 4. Close Handler
+
+```javascript
+function closeMyDropdown() {
+    closeDropdown(menu, button);
+}
+```
+
+## Advanced Features
+
+### Grouped Dropdowns
+
+For dropdowns with grouped options:
+
+```javascript
+function renderGroupedDropdown(menu, groups, selectHandler, closeHandler, selectedVal, renderOptionContent) {
+    menu.innerHTML = '';
+    groups.forEach(group => {
+        // Add group header
+        const groupHeader = document.createElement('div');
+        groupHeader.className = 'custom-dropdown-group';
+        groupHeader.textContent = group.group;
+        menu.appendChild(groupHeader);
+        
+        // Add group options
+        group.options.forEach(opt => {
+            const option = document.createElement('div');
+            option.className = 'custom-dropdown-option' + 
+                (selectedVal === opt.value ? ' selected' : '');
+            option.dataset.value = opt.value;
+            option.dataset.group = group.group;
+            option.innerHTML = renderOptionContent(opt, group);
+            
+            const action = () => {
+                selectHandler(opt.value, group.group);
+                closeHandler();
+            };
+            
+            option.addEventListener('click', action);
+            option.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    action();
+                }
+            });
+            
+            menu.appendChild(option);
+        });
+    });
+}
+```
+
+### Keyboard Navigation
+
+Enable keyboard navigation with options:
+
+```javascript
+setupDropdown(container, button, menu, renderFunction, getSelectedValue, {
+    enableKeyboardNav: true,
+    enableRightKey: true,
+    onNavigateRight: (value, group) => { /* custom right navigation */ },
+    onNavigateLeft: () => { /* custom left navigation */ },
+    onSelectOption: (value, group, method) => { /* custom selection handling */ }
+});
+```
+
+### Configuration Options
+
+```javascript
+const options = {
+    enableKeyboardNav: false,    // Enable arrow key navigation
+    enableRightKey: false,       // Enable right arrow key handling
+    onNavigateRight: null,       // Right arrow callback
+    onNavigateLeft: null,        // Left arrow callback
+    onSelectOption: null,        // Custom selection callback
+    preventFocusTransfer: true   // Prevent focus transfer on open
+};
+```
+
+## Complete Example
+
+### HTML
+
+```html
+<div class="form-group">
+    <label for="exampleDropdown">Example Dropdown</label>
+    <div id="exampleDropdown" class="custom-dropdown dropup">
+        <button type="button" id="exampleDropdownBtn" class="custom-dropdown-btn hover-show colored">
+            <span id="exampleDropdownSelected">Select option...</span>
+        </button>
+        <div id="exampleDropdownMenu" class="custom-dropdown-menu hidden"></div>
+    </div>
+    <input type="hidden" id="exampleDropdownHidden" value="">
+</div>
+```
+
+**Modal Dropdown Example:**
+```html
+<div class="custom-dropdown">
+    <button type="button" id="modalDropdownBtn" class="btn-secondary custom-dropdown-btn hover-show">
+        <span id="modalDropdownSelected">Select option...</span>
+    </button>
+    <div id="modalDropdownMenu" class="custom-dropdown-menu hidden"></div>
+</div>
+```
+
+### JavaScript
+
+```javascript
+// Data
+const exampleOptions = [
+    { value: 'option1', name: 'Option 1' },
+    { value: 'option2', name: 'Option 2' },
+    { value: 'option3', name: 'Option 3' }
+];
+
+let selectedExampleValue = '';
+
+// DOM elements
+const exampleDropdown = document.getElementById('exampleDropdown');
+const exampleDropdownBtn = document.getElementById('exampleDropdownBtn');
+const exampleDropdownMenu = document.getElementById('exampleDropdownMenu');
+const exampleDropdownSelected = document.getElementById('exampleDropdownSelected');
+const exampleDropdownHidden = document.getElementById('exampleDropdownHidden');
+
+// Render function
+function renderExampleDropdown(selectedValue) {
+    exampleDropdownMenu.innerHTML = '';
+    exampleOptions.forEach(option => {
+        const optionElement = document.createElement('div');
+        optionElement.className = 'custom-dropdown-option' + 
+            (selectedValue === option.value ? ' selected' : '');
+        optionElement.dataset.value = option.value;
+        optionElement.textContent = option.name;
+        
+        optionElement.addEventListener('click', () => {
+            selectExampleOption(option.value);
+            closeExampleDropdown();
+        });
+        
+        exampleDropdownMenu.appendChild(optionElement);
+    });
+}
+
+// Selection handler
+function selectExampleOption(value) {
+    selectedExampleValue = value;
+    const option = exampleOptions.find(opt => opt.value === value);
+    exampleDropdownSelected.textContent = option ? option.name : 'Select option...';
+    exampleDropdownHidden.value = value;
+    
+    // Custom logic here
+    console.log('Selected:', value);
+}
+
+// Close handler
+function closeExampleDropdown() {
+    closeDropdown(exampleDropdownMenu, exampleDropdownBtn);
+}
+
+// Setup
+setupDropdown(
+    exampleDropdown,
+    exampleDropdownBtn,
+    exampleDropdownMenu,
+    renderExampleDropdown,
+    () => selectedExampleValue,
+    { preventFocusTransfer: true }
+);
+```
+
+## Styling Variants
+
+### Dropup (Menu Above Button)
+```html
+<div class="custom-dropdown dropup">
+```
+
+### Dropright (Menu to the Right)
+```html
+<div class="custom-dropdown dropright">
+```
+
+### Dark Theme
+```html
+<div class="custom-dropdown dark">
+```
+
+### Small Button
+```html
+<button class="custom-dropdown-btn btn-small">
+```
+
+### With Badges
+```html
+<span class="custom-dropdown-badge free-badge">Free</span>
+<span class="custom-dropdown-badge legacy-badge">Legacy</span>
+<span class="custom-dropdown-badge curated-badge">Curated</span>
+```
+
+## Best Practices
+
+1. **Always use the setupDropdown function** for consistent behavior
+2. **Include proper ARIA attributes** for accessibility
+3. **Handle keyboard navigation** for better UX
+4. **Use semantic HTML structure** with proper labels
+5. **Test with different screen sizes** and orientations
+6. **Provide clear visual feedback** for selections
+7. **Use appropriate variant classes** for positioning
+8. **Include hidden inputs** when needed for form submission
+9. **Handle edge cases** like empty states and validation
+10. **Follow the established naming conventions** for consistency
+
+## Common Patterns
+
+### Form Integration
+- Use hidden inputs for form submission
+- Validate selections before submission
+- Show validation errors appropriately
+
+### Dynamic Content
+- Re-render options when data changes
+- Handle loading states
+- Update selections when external data changes
+
+### Accessibility
+- Ensure proper focus management
+- Use semantic HTML elements
+- Provide keyboard navigation
+- Include proper ARIA labels
+
+### Performance
+- Debounce search/filter operations
+- Lazy load large option lists
+- Use efficient rendering for many options
+
+## Available Functions
+
+### Core Functions (from dropdown.js)
+
+- `setupDropdown(container, button, menu, render, getSelectedValue, options)`: Main setup function
+- `openDropdown(menu, button)`: Opens a dropdown
+- `closeDropdown(menu, button)`: Closes a dropdown
+- `toggleDropdown(menu, button)`: Toggles dropdown state
+- `renderGroupedDropdown(menu, groups, selectHandler, closeHandler, selectedVal, renderOptionContent)`: Renders grouped options
+- `updateSelectedOption(menu, selectedIndex)`: Updates keyboard navigation highlighting
+
+### Additional Functions (from app.js)
+
+- `renderSimpleDropdown(menu, items, value_key, display_key, selectHandler, closeHandler, selectedVal, options)`: Renders simple key-value dropdowns
+
+### Usage in app.js
+
+The dropdown system is extensively used throughout the application for:
+- Model selection (`manualModelDropdown`)
+- Resolution selection (`manualResolutionDropdown`)
+- Sampler selection (`manualSamplerDropdown`)
+- Noise scheduler selection (`manualNoiseSchedulerDropdown`)
+- Custom preset selection (`customPresetDropdown`)
+- Dataset selection (`datasetDropdown`)
+- Transformation selection (`transformationDropdown`)
+- UC presets selection (`ucPresetsDropdown`)
+
+Each dropdown follows the same pattern but with custom render functions and selection handlers specific to their use case.

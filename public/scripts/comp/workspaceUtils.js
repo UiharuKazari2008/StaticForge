@@ -84,7 +84,7 @@ function generateAllWorkspaceStyles() {
     // Generate styles for each workspace
     Object.values(workspaces).forEach(workspace => {
         const workspaceId = workspace.id;
-        const workspaceColor = workspace.color || '#124';
+        const workspaceColor = workspace.color || '#102040';
         const workspaceBackgroundColor = workspace.backgroundColor || '#0a1a2a';
         // Resolve fonts: inherit from default workspace if not set
         const defaultWorkspace = workspaces['default'];
@@ -131,7 +131,7 @@ function generateWorkspaceStyles(workspaceId) {
         document.head.appendChild(workspaceStyleElement);
     }
 
-    const workspaceColor = workspace.color || '#124';
+    const workspaceColor = workspace.color || '#102040';
     const workspaceBackgroundColor = workspace.backgroundColor || '#0a1a2a';
     
     // Resolve fonts: inherit from default workspace if not set
@@ -1484,7 +1484,7 @@ function renderWorkspaceDropdown(selectedVal) {
 
         option.innerHTML = `
             <div class="workspace-option-content">
-                <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#124'}"></div>
+                <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#102040'}"></div>
                 <span class="workspace-name">${workspace.name}</span>
                 <span class="workspace-counts">${workspace.fileCount} files</span>
             </div>
@@ -1509,12 +1509,14 @@ function renderWorkspaceDropdown(selectedVal) {
 }
 
 function updateActiveWorkspaceDisplay() {
-    const workspaceSelected = document.getElementById('workspaceSelected');
-    if (!workspaceSelected) return;
+    const workspaceSelected = document.querySelectorAll('.workspace-name');
+    if (!workspaceSelected.length) return;
 
     const activeWorkspaceData = workspaces[activeWorkspace];
     if (activeWorkspaceData) {
-        workspaceSelected.textContent = activeWorkspaceData.name;
+        workspaceSelected.forEach(workspace => {
+            workspace.textContent = activeWorkspaceData.name;
+        });
     }
 }
 function openWorkspaceDropdown() {
@@ -1545,7 +1547,7 @@ function renderWorkspaceManagementList() {
             </div>
             <div class="workspace-manage-info">
                 <div class="workspace-header">
-                    <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#124'}"></div>
+                    <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#102040'}"></div>
                     <h5>${workspace.name} ${workspace.id === activeWorkspace ? '<span class="badge-active"><i class="fas fa-check"></i></span>' : ''}</h5>
                 </div>
                 <div class="workspace-manage-counts"><div class="workspace-manage-counts-files"><span>${workspace.fileCount}</span><i class="fas fa-image"></i></div><div class="workspace-manage-counts-references"><span>${workspace.cacheFileCount}</span><i class="fas fa-swatchbook"></i></div></div>
@@ -1599,7 +1601,7 @@ function showAddWorkspaceModal() {
     document.getElementById('workspaceColorInput').classList.remove('hidden');
     document.getElementById('workspaceBackgroundColorInput').classList.remove('hidden');
     document.getElementById('workspaceNameInput').value = '';
-    document.getElementById('workspaceColorInput').value = '#124';
+    document.getElementById('workspaceColorInput').value = '#102040';
     document.getElementById('workspaceBackgroundColorInput').value = '#0a1a2a';
     const modal = document.getElementById('workspaceEditModal');
     openModal(modal);
@@ -1619,7 +1621,7 @@ async function editWorkspaceSettings(id) {
     if (workspace) {
         // Set current values
         document.getElementById('workspaceNameInput').value = workspace.name;
-        document.getElementById('workspaceColorInput').value = workspace.color || '#124';
+        document.getElementById('workspaceColorInput').value = workspace.color || '#102040';
         document.getElementById('workspaceBackgroundColorInput').value = workspace.backgroundColor || '#0a1a2a';
         // Set font dropdown labels
         const primaryFontSelected = document.getElementById('workspacePrimaryFontSelected');
@@ -1658,7 +1660,7 @@ function hideWorkspaceEditModal() {
     document.getElementById('workspaceColorInput').classList.remove('hidden');
     document.getElementById('workspaceBackgroundColorInput').classList.remove('hidden');
     document.getElementById('workspaceNameInput').value = '';
-    document.getElementById('workspaceColorInput').value = '#124';
+    document.getElementById('workspaceColorInput').value = '#102040';
     document.getElementById('workspaceBackgroundColorInput').value = '#0a1a2a';
 
     currentWorkspaceOperation = null;

@@ -61,7 +61,6 @@ function loadPromptConfig() {
                 
                 // Save the updated config if changes were made
                 if (configChanged) {
-                    console.log('🔧 Updating presets with UUIDs and target_workspace...');
                     savePromptConfig(promptConfig);
                 }
             }
@@ -190,6 +189,13 @@ class SearchService {
         this.sessionRateLimiters = new Map(); // Track rate limiters by session ID
         this.requestThrottleMs = 1000; // 1000ms between completed requests
         
+        // Track active requests for cancellation
+        this.activeRequests = new Map(); // Track active requests by requestId
+        
+        // Latest request tracking for "latest wins" pattern
+        this.latestRequests = new Map(); // Track latest request per session+model
+        this.isProcessing = new Map(); // Track if processing is active per session+model
+        
         // Start cleanup timer for old session rate limiters
         setInterval(() => {
             this.cleanupOldSessionRateLimiters();
@@ -226,16 +232,11 @@ class SearchService {
 
         const rateLimiter = this.getOrCreateSessionModelRateLimiter(sessionId, model);
         const now = Date.now();
-        
-        // Update the latest query for this session+model combination
-        if (rateLimiter.latestQuery !== query) {
-            console.log(`🔄 Updating latest query for ${model}: "${rateLimiter.latestQuery || 'none'}" → "${query}"`);
-        }
+
         rateLimiter.latestQuery = query;
         
         // Cancel any existing pending request for this session+model combination
         if (rateLimiter.pendingRequest) {
-            console.log(`❌ Cancelling expired request for ${model}: "${rateLimiter.pendingRequest.query}" (newer query: "${query}")`);
             rateLimiter.pendingRequest.abortController.abort();
             rateLimiter.pendingRequest = null;
         }
@@ -261,7 +262,6 @@ class SearchService {
         
         if (canProcessImmediately) {
             // Can process immediately
-            console.log(`🚀 Processing latest request for ${model}: "${query}" (no delay needed)`);
             rateLimiter.isProcessing = true;
             rateLimiter.pendingRequest = {
                 requestId,
@@ -276,7 +276,6 @@ class SearchService {
             // Cannot process immediately - wait for the required delay
             // This ensures we only process the last request after the delay
             const delay = this.requestThrottleMs - timeSinceLastCompleted;
-            console.log(`⏳ Delaying latest request for ${model}: "${query}" (${delay}ms delay)`);
             
             // Create an AbortController for this request
             const abortController = new AbortController();
@@ -286,10 +285,8 @@ class SearchService {
                 const timeout = setTimeout(() => {
                     // Check if this request is still the latest one
                     if (rateLimiter.latestQuery === query) {
-                        console.log(`✅ Processing delayed latest request for ${model}: "${query}" (still the latest)`);
                         resolve();
                     } else {
-                        console.log(`❌ Discarding expired delayed request for ${model}: "${query}" (newer query: "${rateLimiter.latestQuery}")`);
                         reject(new Error('Request was superseded by a newer search'));
                     }
                 }, delay);
@@ -430,9 +427,87 @@ class SearchService {
         
         return totalCancelled;
     }
+    
+    // Cancel all active requests for a specific session
+    cancelActiveRequestsForSession(sessionId) {
+        let totalCancelled = 0;
+        
+        for (const [requestId, abortController] of this.activeRequests) {
+            if (requestId && typeof requestId === 'string' && requestId.includes(sessionId)) {
+                abortController.abort();
+                this.activeRequests.delete(requestId);
+                totalCancelled++;
+            }
+        }
+        
+        return totalCancelled;
+    }
+    
+    // Cancel a specific active request
+    cancelActiveRequest(requestId) {
+        if (this.activeRequests.has(requestId)) {
+            const abortController = this.activeRequests.get(requestId);
+            abortController.abort();
+            this.activeRequests.delete(requestId);
+            return true;
+        }
+        return false;
+    }
 
-    // Search for characters and tags
-    async searchCharacters(query, model, ws = null, sessionId = null) {
+    // Search for characters and tags - Latest Request Wins Pattern
+    async searchCharacters(query, model, ws = null, sessionId = null, abortSignal = null) {
+        const key = `${sessionId}_${model}`;
+        
+        // Store the latest request (overwrites previous)
+        this.latestRequests.set(key, {
+            query,
+            model,
+            ws,
+            sessionId,
+            timestamp: Date.now()
+        });
+        
+        // If already processing, just return (latest request will be processed after current completes)
+        if (this.isProcessing.get(key)) {
+            return { results: [], spellCheck: null };
+        }
+        
+        // Mark as processing
+        this.isProcessing.set(key, true);
+        
+        // Store the timestamp of the request we're about to process
+        const currentRequest = this.latestRequests.get(key);
+        const requestTimestamp = currentRequest ? currentRequest.timestamp : Date.now();
+        
+        try {
+            return await this.processLatestRequest(key);
+        } finally {
+            // Mark as not processing
+            this.isProcessing.set(key, false);
+            
+            // Check if there's a newer request waiting
+            const currentLatest = this.latestRequests.get(key);
+            if (currentLatest && currentLatest.timestamp > requestTimestamp) {
+                // Process the newer request
+                this.isProcessing.set(key, true);
+                try {
+                    await this.processLatestRequest(key);
+                } finally {
+                    this.isProcessing.set(key, false);
+                }
+            }
+        }
+    }
+    
+    // Process the latest request for a given key
+    async processLatestRequest(key) {
+        const latestRequest = this.latestRequests.get(key);
+        if (!latestRequest) {
+            return { results: [], spellCheck: null };
+        }
+        
+        const { query, model, ws, sessionId } = latestRequest;
+        
         try {
             // Check if query starts with ! - only return text replacements in this case
             const isTextReplacementSearch = query.startsWith('!');
@@ -444,16 +519,107 @@ class SearchService {
             let spellCheckData = null;
 
             if (!isTextReplacementSearch && !isTextPrefixSearch) {
-                // Start all services independently - no waiting for each other
+                // Start all services independently and send results as they complete
                 
                 // Start character search as independent service
-                const characterPromise = this.performCharacterSearch(query, model, ws);
+                const characterPromise = this.performCharacterSearch(query, model, ws).then(results => {
+                    // Send character results immediately when ready
+                    if (ws && results && results.length > 0) {
+                        const message = {
+                            type: 'search_results_update',
+                            service: 'characters',
+                            results: results,
+                            isComplete: true,
+                            timestamp: new Date().toISOString()
+                        };
+                        ws.send(JSON.stringify(message));
+                    } else if (ws) {
+                        // Send empty results to clear previous results
+                        const message = {
+                            type: 'search_results_update',
+                            service: 'characters',
+                            results: [],
+                            isComplete: true,
+                            timestamp: new Date().toISOString()
+                        };
+                        ws.send(JSON.stringify(message));
+                    }
+                    return results;
+                }).catch(error => {
+                    console.error('Character search error:', error);
+                    if (ws) {
+                        ws.send(JSON.stringify({
+                            type: 'search_results_update',
+                            service: 'characters',
+                            results: [],
+                            isComplete: true,
+                            timestamp: new Date().toISOString()
+                        }));
+                    }
+                    return [];
+                });
                 
                 // Start tag search as independent service
-                const tagPromise = this.performTagSearch(query, model, ws, sessionId);
+                const tagPromise = this.performTagSearch(query, model, ws, sessionId).then(results => {
+                    // Send tag results immediately when ready
+                    if (ws && results && results.length > 0) {
+                        const message = {
+                            type: 'search_results_update',
+                            service: model, // Use model name as service name for tags
+                            results: results,
+                            isComplete: true,
+                            timestamp: new Date().toISOString()
+                        };
+                        ws.send(JSON.stringify(message));
+                    } else if (ws) {
+                        // Send empty results to clear previous results
+                        const message = {
+                            type: 'search_results_update',
+                            service: model,
+                            results: [],
+                            isComplete: true,
+                            timestamp: new Date().toISOString()
+                        };
+                        ws.send(JSON.stringify(message));
+                    }
+                    return results;
+                }).catch(error => {
+                    console.error('Tag search error:', error);
+                    if (ws) {
+                        ws.send(JSON.stringify({
+                            type: 'search_results_update',
+                            service: model,
+                            results: [],
+                            isComplete: true,
+                            timestamp: new Date().toISOString()
+                        }));
+                    }
+                    return [];
+                });
                 
                 // Start spellcheck as independent service
-                const spellcheckPromise = this.performSpellCheckAsync(query, ws);
+                const spellcheckPromise = this.performSpellCheckAsync(query, ws).then(results => {
+                    // Send spellcheck results immediately when ready
+                    if (ws && results) {
+                        ws.send(JSON.stringify({
+                            type: 'search_results_update',
+                            service: 'spellcheck',
+                            results: [{
+                                type: 'spellcheck',
+                                data: results,
+                                serviceOrder: -2,
+                                resultOrder: 0,
+                                serviceName: 'spellcheck'
+                            }],
+                            isComplete: true,
+                            timestamp: new Date().toISOString()
+                        }));
+                    }
+                    return results;
+                }).catch(error => {
+                    console.error('Spellcheck error:', error);
+                    return null;
+                });
                 
                 // Wait for all services to complete (they run concurrently)
                 const [characterResults, tagResults, spellcheckData] = await Promise.allSettled([
@@ -563,11 +729,13 @@ class SearchService {
                 textReplacementResults = this.searchTextReplacements(searchQuery, hasPickSuffix);
                 
                 // Send text replacement results update
-                if (ws && textReplacementResults.length > 0) {
+                if (ws) {
                     ws.send(JSON.stringify({
                         type: 'search_results_update',
                         service: 'textReplacements',
-                        results: textReplacementResults
+                        results: textReplacementResults,
+                        isComplete: true,
+                        timestamp: new Date().toISOString()
                     }));
                 }
                 
@@ -928,7 +1096,6 @@ class SearchService {
                     req.destroy();
                     // Clean up pending request
                     this.markRequestCompleted(sessionId, apiModel, requestId);
-                    console.log(`⏰ Request for ${apiModel} timed out after 5 seconds`);
                     reject(new Error('Tag suggestion API request timed out after 5 seconds'));
                 }, 5000);
 
@@ -1108,10 +1275,6 @@ class SearchService {
                 } catch (error) {
                     // Check if this was a cancellation due to being superseded
                     if (error && error.message === 'Request was superseded by a newer search') {
-                        console.log(`⏸️ Request for ${apiModel} was superseded by newer search - query: "${query}"`);
-                        
-                        // Don't send stalled status - just skip this request
-                        // The newer request will handle the results
                         continue;
                     }
                     
@@ -1149,10 +1312,6 @@ class SearchService {
         } catch (error) {
             // Check if this was a cancellation due to being superseded
             if (error && error.message === 'Request was superseded by a newer search') {
-                console.log(`⏸️ Main tag request was superseded by newer search - query: "${query}"`);
-                
-                // Return empty results since the request was cancelled
-                // The newer request will handle the results
                 return [];
             }
             

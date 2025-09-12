@@ -7,7 +7,10 @@ class ServiceWorkerManager {
         this.messageHandlers = new Map();
         this.pendingRequests = new Map();
         this.updateToastId = null;
-        
+        this.checkingToastId = null;
+        this.swReadyTimeout = null;
+        this.initialCheckDone = false;
+
         this.init();
     }
     
@@ -17,35 +20,146 @@ class ServiceWorkerManager {
                 // Register service worker
                 this.swRegistration = await navigator.serviceWorker.register('/sw.js');
                 console.log('Service Worker registered:', this.swRegistration);
-                
+
                 // Listen for updates
                 this.swRegistration.addEventListener('updatefound', () => {
                     console.log('Service Worker update found');
                     this.checkForUpdates();
                 });
-                
+
                 // Listen for messages from service worker
                 navigator.serviceWorker.addEventListener('message', (event) => {
                     this.handleServiceWorkerMessage(event);
                 });
-                
+
                 // Check if there's an update waiting
                 if (this.swRegistration.waiting) {
-                    this.checkForUpdates();
+                    this.checkForWaiting();
                 }
-                
-                // Check for static file updates
-                this.checkStaticFileUpdates();
-                
+
+                // Wait for service worker to be ready, with iOS-specific handling
+                await this.waitForServiceWorkerReady();
+
             } catch (error) {
                 console.error('Service Worker registration failed:', error);
+                this.handleServiceWorkerError(error);
             }
+        } else {
+            console.warn('Service Worker not supported in this browser');
+            this.handleServiceWorkerNotSupported();
+        }
+    }
+
+    async waitForServiceWorkerReady() {
+        return new Promise((resolve, reject) => {
+            const checkReady = () => {
+                if (this.swRegistration.active) {
+                    console.log('Service Worker is ready');
+                    // Clear any existing timeout
+                    if (this.swReadyTimeout) {
+                        clearTimeout(this.swReadyTimeout);
+                        this.swReadyTimeout = null;
+                    }
+                    // Check for static file updates once ready (only if not already done)
+                    if (!this.initialCheckDone) {
+                        this.initialCheckDone = true;
+                        this.checkStaticFileUpdates();
+                    }
+                    resolve();
+                } else {
+                    // Continue waiting
+                    setTimeout(checkReady, 100);
+                }
+            };
+
+            // Start checking
+            checkReady();
+
+            // Set a timeout for iOS devices (they can be slower)
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            const timeoutMs = isIOS ? 15000 : 10000; // Longer timeout for iOS
+
+            this.swReadyTimeout = setTimeout(() => {
+                console.warn('Service Worker ready timeout - proceeding anyway');
+                this.handleServiceWorkerTimeout();
+                // Still check for updates even if not fully ready (only if not already done)
+                if (!this.initialCheckDone) {
+                    this.initialCheckDone = true;
+                    this.checkStaticFileUpdates();
+                }
+                resolve();
+            }, timeoutMs);
+        });
+    }
+
+    handleServiceWorkerError(error) {
+        if (typeof showGlassToast === 'function') {
+            showGlassToast(
+                'error',
+                'Service Worker Error',
+                'Failed to initialize service worker. Some features may not work properly.',
+                false,
+                8000,
+                '<i class="fas fa-exclamation-triangle"></i>'
+            );
+        }
+    }
+
+    handleServiceWorkerNotSupported() {
+        if (typeof showGlassToast === 'function') {
+            showGlassToast(
+                'warning',
+                'Service Worker Not Supported',
+                'Your browser doesn\'t support service workers. Cache updates are unavailable.',
+                false,
+                5000,
+                '<i class="fas fa-info-circle"></i>'
+            );
+        }
+    }
+
+    handleServiceWorkerTimeout() {
+        if (typeof showGlassToast === 'function') {
+            showGlassToast(
+                'warning',
+                'Service Worker Slow',
+                'Service worker is taking longer than expected. Some features may be delayed.',
+                false,
+                5000,
+                '<i class="fas fa-clock"></i>'
+            );
         }
     }
     
     async checkStaticFileUpdates() {
         try {
-            const response = await fetch('/', { method: 'OPTIONS' });
+            // First fetch the current rolling key
+            const keyResponse = await fetch('/sw.js', {
+                method: 'OPTIONS',
+                cache: 'no-store',
+                headers: {
+                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                    'Pragma': 'no-cache'
+                }
+            });
+
+            if (!keyResponse.ok) {
+                throw new Error(`Failed to fetch rolling key: ${keyResponse.status}`);
+            }
+
+            const keyData = await keyResponse.json();
+            const rollingKey = keyData.key;
+
+            // Now make the actual request with the rolling key
+            const response = await fetch('/', {
+                method: 'OPTIONS',
+                headers: {
+                    'X-SW-Key': rollingKey,
+                    'X-Service-Worker-Version': '2.0',
+                    'X-Requested-With': 'ServiceWorker'
+                }
+            });
+
             if (response.ok) {
                 const files = await response.json();
                 await this.updateStaticCache(files);
@@ -58,30 +172,42 @@ class ServiceWorkerManager {
     async updateStaticCache(files) {
         if (!this.swRegistration || !this.swRegistration.active) {
             console.warn('Service Worker not ready');
+            this.showServiceWorkerNotReadyToast();
             return;
         }
-        
+
         try {
             console.log('Checking for static file updates...');
+
+            // Show initial toast immediately to indicate checking is happening
+            this.showCheckingForUpdatesToast();
+
             // Check which files need updating
             const filesToUpdate = await this.getFilesNeedingUpdate(files);
-            
+
             console.log(`Found ${filesToUpdate.length} files that need updating:`, filesToUpdate);
-            
+
             if (filesToUpdate.length > 0) {
                 console.log(`Found ${filesToUpdate.length} files that need updating`);
                 this.showUpdateToast(filesToUpdate);
-                
+
                 // Start background caching
                 this.swRegistration.active.postMessage({
                     type: 'CACHE_STATIC_FILES',
                     files: filesToUpdate
                 });
             } else {
-                console.log('No files need updating');
+                // Show "no updates" toast and notify service worker
+                this.showNoUpdatesToast();
+                if (this.swRegistration && this.swRegistration.active) {
+                    this.swRegistration.active.postMessage({
+                        type: 'NO_UPDATES_AVAILABLE'
+                    });
+                }
             }
         } catch (error) {
             console.error('Error updating static cache:', error);
+            this.showCacheUpdateErrorToast(error);
         }
     }
     
@@ -123,7 +249,92 @@ class ServiceWorkerManager {
         return filesToUpdate;
     }
     
+    showCheckingForUpdatesToast() {
+        if (typeof showGlassToast === 'function') {
+            this.checkingToastId = showGlassToast(
+                'info',
+                'Checking for Updates',
+                'Scanning for available updates...',
+                false,
+                false,
+                '<i class="fas fa-search"></i>'
+            );
+        }
+    }
+
+    showServiceWorkerNotReadyToast() {
+        if (typeof showGlassToast === 'function') {
+            showGlassToast(
+                'warning',
+                'Service Worker Unavailable',
+                'Cache updates require service worker. Try refreshing the page.',
+                false,
+                5000,
+                '<i class="fas fa-exclamation-triangle"></i>'
+            );
+        }
+    }
+
+    showNoUpdatesToast() {
+        // Hide checking toast if it exists
+        if (this.checkingToastId && typeof removeGlassToast === 'function') {
+            removeGlassToast(this.checkingToastId);
+            this.checkingToastId = null;
+        }
+
+        if (typeof showGlassToast === 'function') {
+            showGlassToast(
+                'success',
+                'Up to Date',
+                'Your app is already up to date!',
+                false,
+                3000,
+                '<i class="fas fa-check-circle"></i>'
+            );
+        }
+    }
+
+    showCacheUpdateErrorToast(error) {
+        // Hide checking toast if it exists
+        if (this.checkingToastId && typeof removeGlassToast === 'function') {
+            removeGlassToast(this.checkingToastId);
+            this.checkingToastId = null;
+        }
+
+        if (typeof showGlassToast === 'function') {
+            showGlassToast(
+                'error',
+                'Update Check Failed',
+                'Failed to check for updates. Please try again.',
+                false,
+                5000,
+                '<i class="fas fa-exclamation-triangle"></i>'
+            );
+        }
+    }
+
+    showCacheFileErrorToast(file, error) {
+        if (typeof showGlassToast === 'function') {
+            // Extract filename from URL for cleaner display
+            const filename = file.split('/').pop() || file;
+            showGlassToast(
+                'warning',
+                'Cache Error',
+                `Failed to cache ${filename}: ${error}`,
+                false,
+                3000,
+                '<i class="fas fa-exclamation-triangle"></i>'
+            );
+        }
+    }
+
     showUpdateToast(files) {
+        // Hide checking toast if it exists
+        if (this.checkingToastId && typeof removeGlassToast === 'function') {
+            removeGlassToast(this.checkingToastId);
+            this.checkingToastId = null;
+        }
+
         this.updateAvailable = true;
         this.isUpdating = true;
         this.updateProgress = 0;
@@ -132,11 +343,11 @@ class ServiceWorkerManager {
         if (typeof showGlassToast === 'function') {
             // Show progress toast
             this.updateToastId = showGlassToast(
-                'info', 
-                'Downloading Updates', 
-                `Downloading ${files.length} critical updates...`, 
-                true, 
-                false, 
+                'info',
+                'Downloading Updates',
+                `Downloading ${files.length} updates...`,
+                true,
+                false,
                 '<i class="fas fa-download"></i>'
             );
         }
@@ -268,16 +479,44 @@ class ServiceWorkerManager {
                     handler(event);
                 }
                 break;
+
+            case 'STATIC_CACHE_ERROR':
+                // Handle cache error during file caching
+                console.error(`Cache error for ${event.data.file}: ${event.data.error}`);
+                this.showCacheFileErrorToast(event.data.file, event.data.error);
+                break;
+
+            case 'ping':
+                // Handle ping messages from service worker
+                console.log('Received ping from service worker:', event.data);
+                break;
         }
     }
     
-    async checkForUpdates() {
+    async checkForWaiting() {
         if (this.swRegistration && this.swRegistration.waiting) {
+            console.log('Service worker update waiting, activating...');
+
+            // Show notification about update being available
+            if (typeof showGlassToast === 'function') {
+                showGlassToast(
+                    'info',
+                    'Update Ready',
+                    'A new version is ready. Activating update...',
+                    false,
+                    3000,
+                    '<i class="fas fa-sync"></i>'
+                );
+            }
+
             // Send skip waiting message
             this.swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
-            
-            // Reload the page to activate the new service worker
-            window.location.reload();
+
+            // Wait a moment for the new service worker to activate
+            setTimeout(() => {
+                console.log('Reloading page to activate new service worker');
+                window.location.reload();
+            }, 1000);
         }
     }
     
@@ -308,13 +547,13 @@ class ServiceWorkerManager {
                 // Use WebSocket to refresh server cache
                 const result = await window.wsClient.refreshServerCache();
                 console.log('Server cache refresh result:', result);
-                
+
                 // Wait a moment for the server to process
                 setTimeout(async () => {
                     // Check for static file updates
                     await this.checkStaticFileUpdates();
                 }, 1000);
-                
+
             } else {
                 console.warn('WebSocket not connected, using HTTP fallback');
                 // Fallback to HTTP OPTIONS request
@@ -324,35 +563,35 @@ class ServiceWorkerManager {
             console.error('Error refreshing server cache:', error);
         }
     }
-    
-    // Test Workbox script caching
-    async testWorkboxCaching() {
-        console.log('Testing Workbox script caching...');
+
+    // Manual retry for cache updates (useful for iOS or failed updates)
+    async retryCacheUpdate() {
+        console.log('Manual retry of cache update requested');
+        if (typeof showGlassToast === 'function') {
+            showGlassToast(
+                'info',
+                'Retrying Updates',
+                'Checking for available updates...',
+                false,
+                3000,
+                '<i class="fas fa-redo"></i>'
+            );
+        }
+
         try {
-            // Check if Workbox script is in cache
-            const cache = await caches.open('static-cache-v1');
-            const workboxResponse = await cache.match('/dist/workbox/workbox-sw.js');
-            
-            if (workboxResponse) {
-                console.log('✅ Workbox script found in cache');
-                
-                // Check if we can fetch it from the cached version
-                const response = await fetch('/dist/workbox/workbox-sw.js');
-                if (response.ok) {
-                    console.log('✅ Workbox script accessible from cache');
-                } else {
-                    console.warn('⚠️ Workbox script not accessible from cache');
-                }
-            } else {
-                console.log('❌ Workbox script not found in cache');
-            }
-            
-            // Test the service worker's ability to serve Workbox
-            const swResponse = await fetch('/dist/workbox/workbox-sw.js');
-            console.log('Service worker response for Workbox:', swResponse.status, swResponse.statusText);
-            
+            await this.checkStaticFileUpdates();
         } catch (error) {
-            console.error('❌ Error testing Workbox caching:', error);
+            console.error('Manual cache update retry failed:', error);
+            if (typeof showGlassToast === 'function') {
+                showGlassToast(
+                    'error',
+                    'Retry Failed',
+                    'Manual update retry failed. Please refresh the page.',
+                    false,
+                    5000,
+                    '<i class="fas fa-exclamation-triangle"></i>'
+                );
+            }
         }
     }
     
@@ -385,7 +624,7 @@ class ServiceWorkerManager {
                 updateGlassToastComplete(this.updateToastId, {
                     type: 'success',
                     title: 'Updates Complete',
-                    message: 'Critical updates have been downloaded. Restart to apply changes.',
+                    message: 'Updates have been downloaded. Restart to apply changes.',
                     customIcon: '<i class="fas fa-check-circle"></i>'
                 });
             }
@@ -411,45 +650,6 @@ class ServiceWorkerManager {
         } catch (error) {
             console.error('❌ Error during force restart:', error);
             alert('Restart failed. Please refresh the page manually to apply updates.');
-        }
-    }
-    
-    // Test the new button system
-    testToastButtons() {
-        console.log('Testing toast button system...');
-        
-        const testButton = {
-            text: 'Test Button',
-            type: 'primary',
-            onClick: (toastId) => {
-                console.log('Test button clicked for toast:', toastId);
-                alert('Test button works!');
-            },
-            closeOnClick: false
-        };
-        
-        const closeButton = {
-            text: 'Close',
-            type: 'secondary',
-            onClick: (toastId) => {
-                console.log('Close button clicked for toast:', toastId);
-            },
-            closeOnClick: true
-        };
-        
-        if (typeof showGlassToast === 'function') {
-            const toastId = showGlassToast(
-                'info',
-                'Test Toast with Buttons',
-                'This toast has custom buttons. Click them to test!',
-                false,
-                false,
-                '<i class="fas fa-flask"></i>',
-                [testButton, closeButton]
-        );
-            console.log('Test toast created with ID:', toastId);
-        } else {
-            console.error('showGlassToast function not available!');
         }
     }
 }

@@ -506,7 +506,7 @@ function renderGalleryMoveWorkspaceDropdown() {
             option.tabIndex = 0;
             option.dataset.value = workspace.id;
             
-            const workspaceColor = workspace.color || '#124';
+            const workspaceColor = workspace.color || '#102040';
             
             option.innerHTML = `
                 <div class="workspace-option-content">

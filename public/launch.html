@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
     <!-- PWA Meta Tags -->
-    <meta name="theme-color" content="#6366f1">
+    <meta name="theme-color" content="#000000">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Dreamscape">
@@ -95,6 +95,14 @@
             box-sizing: border-box;
         }
         
+        /* Window Controls Overlay API Variables */
+        :root {
+            --titlebar-area-x: env(titlebar-area-x, 0);
+            --titlebar-area-y: env(titlebar-area-y, 0);
+            --titlebar-area-width: env(titlebar-area-width, 100%);
+            --titlebar-area-height: env(titlebar-area-height, 33px);
+        }
+        
         @font-face {
             font-family: 'MozillaHeadline';
             src: url('/dist/fonts/MozillaHeadline-VariableFont_wdth,wght.ttf') format('truetype');
@@ -112,6 +120,74 @@
             overscroll-behavior: none;
             height: 100vh;
             width: 100vw;
+        }
+        
+        /* Window Controls Overlay API - Titlebar Grab Area */
+        #titlebar-grab-area {
+            position: fixed;
+            top: 0;
+            left: var(--titlebar-area-x);
+            width: var(--titlebar-area-width);
+            height: var(--titlebar-area-height);
+            z-index: 1000;
+            background: transparent;
+            pointer-events: auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* Center grab area - the actual draggable region */
+        #titlebar-grab-center {
+            height: 100%;
+            background: transparent;
+            pointer-events: auto;
+            -webkit-app-region: drag;
+            app-region: drag;
+            cursor: grab;
+            flex: 1 1 auto;
+            min-width: 50px;
+        }
+
+        #titlebar-grab-center:active {
+            cursor: grabbing;
+        }
+
+        /* Titlebar clickable areas */
+        #titlebar-null-left,
+        #titlebar-null-right {
+            height: 100%;
+            background: transparent;
+            pointer-events: auto;
+            -webkit-app-region: no-drag;
+            app-region: no-drag;
+            cursor: default;
+            flex: 0 0 auto;
+            min-width: 0;
+        }
+
+        /* Enable and grow left area */
+        #titlebar-null-left.enabled {
+            flex: 1 1 auto;
+            min-width: 20px;
+        }
+
+        /* Enable and grow right area */
+        #titlebar-null-right.enabled {
+            flex: 1 1 auto;
+            min-width: 20px;
+        }
+
+        /* Ensure interactive elements in titlebar are not draggable */
+        #titlebar-grab-area button,
+        #titlebar-grab-area input,
+        #titlebar-grab-area select,
+        #titlebar-grab-area textarea,
+        #titlebar-grab-area a,
+        #titlebar-grab-area [role="button"] {
+            -webkit-app-region: no-drag;
+            app-region: no-drag;
+            cursor: default;
         }
         
         .launch-container {
@@ -237,7 +313,7 @@
         
         .version-warning {
             position: fixed;
-            top: 0;
+            top: calc(env(safe-area-inset-top, 0) + env(titlebar-area-height, 0));
             left: 0;
             width: 100%;
             height: 100%;
@@ -293,6 +369,13 @@
     </style>
 </head>
 <body>
+    <!-- Window Controls Overlay API - Titlebar Grab Area -->
+    <div id="titlebar-grab-area">
+        <div id="titlebar-null-left"></div>
+        <div id="titlebar-grab-center"></div>
+        <div id="titlebar-null-right"></div>
+    </div>
+    
     <div class="launch-container">
         <div class="launch-content">
             <div class="logo"></div>

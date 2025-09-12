@@ -98,9 +98,9 @@ function positionConfirmationDialog(event) {
     // Check if mobile (under 768px wide) or no event was passed
     const isMobile = window.innerWidth < 768;
     const shouldCenter = !event || isMobile;
-    
+
     let x, y;
-    
+
     if (!shouldCenter && event) {
         // Use mouse position or button position
         if (event.clientX && event.clientY) {
@@ -112,14 +112,27 @@ function positionConfirmationDialog(event) {
             y = rect.top + rect.height / 2;
         }
     }
-    
-    // Get dialog dimensions
+
+    // Temporarily make dialog visible to get accurate dimensions
+    const wasHidden = confirmationDialog.classList.contains('hidden');
+    if (wasHidden) {
+        confirmationDialog.style.visibility = 'hidden'; // Keep it invisible but allow dimension calculation
+        confirmationDialog.classList.remove('hidden');
+    }
+
+    // Get accurate dialog dimensions
     const dialogRect = confirmationDialog.getBoundingClientRect();
     const dialogWidth = dialogRect.width || 350; // Default width
     const dialogHeight = dialogRect.height || 120; // Default height
 
+    // Restore hidden state if it was hidden
+    if (wasHidden) {
+        confirmationDialog.classList.add('hidden');
+        confirmationDialog.style.visibility = '';
+    }
+
     let left, top;
-    
+
     if (shouldCenter) {
         // Center on screen for mobile or when no event
         left = (window.innerWidth - dialogWidth) / 2;
@@ -130,22 +143,46 @@ function positionConfirmationDialog(event) {
         top = y - dialogHeight / 2;
     }
 
-    // Ensure dialog doesn't go off screen
+    // Ensure dialog never goes outside viewport bounds
     const margin = 20;
-    
-    // Check horizontal bounds
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Check horizontal bounds with proper validation
     if (left < margin) {
         left = margin;
-    } else if (left + dialogWidth > window.innerWidth - margin) {
-        left = window.innerWidth - dialogWidth - margin;
+    } else if (left + dialogWidth > viewportWidth - margin) {
+        left = viewportWidth - dialogWidth - margin;
     }
 
-    // Check vertical bounds
+    // Ensure left position is never negative or exceeds viewport
+    if (left < 0) {
+        left = margin;
+    }
+    if (left + dialogWidth > viewportWidth) {
+        left = viewportWidth - dialogWidth - margin;
+        if (left < 0) left = margin; // Fallback if dialog is too wide
+    }
+
+    // Check vertical bounds with proper validation
     if (top < margin) {
         top = margin;
-    } else if (top + dialogHeight > window.innerHeight - margin) {
-        top = window.innerHeight - dialogHeight - margin;
+    } else if (top + dialogHeight > viewportHeight - margin) {
+        top = viewportHeight - dialogHeight - margin;
     }
+
+    // Ensure top position is never negative or exceeds viewport
+    if (top < 0) {
+        top = margin;
+    }
+    if (top + dialogHeight > viewportHeight) {
+        top = viewportHeight - dialogHeight - margin;
+        if (top < 0) top = margin; // Fallback if dialog is too tall
+    }
+
+    // Final validation - ensure dialog stays within viewport
+    left = Math.max(margin, Math.min(left, viewportWidth - dialogWidth - margin));
+    top = Math.max(margin, Math.min(top, viewportHeight - dialogHeight - margin));
 
     // Apply position
     confirmationDialog.style.left = `${left}px`;

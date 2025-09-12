@@ -22,6 +22,27 @@ class CustomScrollbar {
         elements.forEach(element => this.createScrollbar(element));
     }
 
+    // Force re-initialization of a specific element (useful when content is added dynamically)
+    forceReinit(element) {
+        try {
+            // Check if element exists and has content
+            if (!element || !element.firstElementChild) {
+                console.debug('Skipping scrollbar reinit: element is empty or doesn\'t exist');
+                return;
+            }
+
+            // Destroy existing scrollbar if it exists
+            if (this.scrollbars.has(element)) {
+                this.destroy(element);
+            }
+
+            // Re-create the scrollbar
+            this.createScrollbar(element);
+        } catch (error) {
+            console.warn('Error during scrollbar force reinit:', error);
+        }
+    }
+
     observeNewElements() {
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
@@ -103,11 +124,33 @@ class CustomScrollbar {
         scrollableContent.addEventListener('wheel', (e) => {
             // Only prevent default on non-touch devices to allow touch scrolling
             if (!('ontouchstart' in window)) {
-                e.preventDefault();
-                const delta = e.deltaY;
-                scrollableContent.scrollTop += delta;
+                // Check if this is the innermost scrollable element to prevent conflicts
+                const isInnermostScrollable = this.isInnermostScrollable(scrollableContent, e.target);
+                if (isInnermostScrollable) {
+                    // Check if this element actually needs scrolling and can scroll in the current direction
+                    const scrollHeight = scrollableContent.scrollHeight;
+                    const clientHeight = scrollableContent.clientHeight;
+                    const scrollTop = scrollableContent.scrollTop;
+                    const delta = e.deltaY;
+
+                    // Check if scrolling is possible at all
+                    const canScrollVertically = scrollHeight > clientHeight;
+
+                    // Check if we can scroll in the requested direction
+                    const atTop = scrollTop <= 0;
+                    const atBottom = scrollTop >= scrollHeight - clientHeight;
+                    const scrollingUp = delta < 0; // negative delta = scrolling up
+                    const canScrollInDirection = (scrollingUp && !atTop) || (!scrollingUp && !atBottom);
+
+                    if (canScrollVertically && canScrollInDirection) {
+                        // If this element can scroll in the requested direction, prevent the event from bubbling to outer areas
+                        e.preventDefault();
+                        e.stopPropagation();
+                        scrollableContent.scrollTop += delta;
+                    }
+                }
             }
-        });
+        }, { passive: false });
 
         // Thumb drag handling
         thumb.addEventListener('mousedown', (e) => {
@@ -167,11 +210,30 @@ class CustomScrollbar {
 
             scrollableContent.addEventListener('touchmove', (e) => {
                 if (!isTouchScrolling) return;
-                
-                const touchY = e.touches[0].clientY;
-                const deltaY = touchStartY - touchY;
-                scrollableContent.scrollTop = touchStartScrollTop + deltaY;
-            }, { passive: true });
+
+                // Check if this is the innermost scrollable element to prevent conflicts
+                const isInnermostScrollable = this.isInnermostScrollable(scrollableContent, e.target);
+                if (isInnermostScrollable) {
+                    const touchY = e.touches[0].clientY;
+                    const deltaY = touchStartY - touchY;
+                    const scrollHeight = scrollableContent.scrollHeight;
+                    const clientHeight = scrollableContent.clientHeight;
+                    const currentScrollTop = scrollableContent.scrollTop;
+                    
+                    const canScrollVertically = scrollHeight > clientHeight;
+                    
+                    const atTop = currentScrollTop <= 0;
+                    const atBottom = currentScrollTop >= scrollHeight - clientHeight;
+                    const scrollingUp = deltaY < 0; // dragging up = scroll down
+                    const canScrollInDirection = (scrollingUp && !atTop) || (!scrollingUp && !atBottom);
+
+                    if (canScrollVertically && canScrollInDirection) {
+                        // If this element can scroll in the requested direction, prevent the event from bubbling to outer areas
+                        e.stopPropagation();
+                        scrollableContent.scrollTop = touchStartScrollTop + deltaY;
+                    }
+                }
+            }, { passive: false });
 
             scrollableContent.addEventListener('touchend', () => {
                 isTouchScrolling = false;
@@ -218,10 +280,20 @@ class CustomScrollbar {
             const maxScrollDistance = scrollHeight - clientHeight;
             const scrollbarTrackHeight = scrollbar.offsetHeight - thumb.offsetHeight;
             const scrollRatio = maxScrollDistance > 0 ? scrollTop / maxScrollDistance : 0;
-            const thumbTop = scrollRatio * scrollbarTrackHeight;
             
             // Update thumb position
-            thumb.style.top = `${thumbTop}px`;
+            const isReversed = element.classList.contains('reverse-scroll');
+            if (isReversed) {
+                const thumbTop = -1 * (scrollRatio * scrollbarTrackHeight);
+                // For reversed scrollbars, use bottom positioning
+                thumb.style.bottom = `${thumbTop}px`;
+                thumb.style.top = 'auto';
+            } else {
+                const thumbTop = scrollRatio * scrollbarTrackHeight;
+                // For normal scrollbars, use top positioning
+                thumb.style.top = `${thumbTop}px`;
+                thumb.style.bottom = 'auto';
+            }
             
             // Show scrollbar
             scrollbar.classList.remove('hidden');
@@ -231,26 +303,57 @@ class CustomScrollbar {
         }
     }
 
+    // Check if this scrollable element is the innermost one relative to the event target
+    isInnermostScrollable(scrollableContent, eventTarget) {
+        // Find all scrollable elements that contain the event target
+        const scrollableElements = [];
+        let currentElement = eventTarget;
+
+        while (currentElement && currentElement !== document.body) {
+            if (currentElement.classList && currentElement.classList.contains('scrollable-content')) {
+                scrollableElements.push(currentElement);
+            }
+            currentElement = currentElement.parentElement;
+        }
+
+        // If there's only one scrollable element, it's the innermost
+        if (scrollableElements.length <= 1) {
+            return true;
+        }
+
+        // Check if our scrollable content is the innermost one
+        return scrollableElements[0] === scrollableContent;
+    }
+
     destroy(element) {
         const data = this.scrollbars.get(element);
         if (data) {
-            // Restore original structure
-            const { scrollableContent } = data;
-            while (scrollableContent.firstChild) {
-                element.appendChild(scrollableContent.firstChild);
+            try {
+                // Restore original structure
+                const { scrollableContent } = data;
+                while (scrollableContent.firstChild) {
+                    element.appendChild(scrollableContent.firstChild);
+                }
+
+                // Only remove scrollableContent if it's actually a child of element
+                if (scrollableContent.parentNode === element) {
+                    element.removeChild(scrollableContent);
+                }
+
+                // Remove scrollbar only if it exists and is a child of element
+                const scrollbar = element.querySelector('.custom-scrollbar');
+                if (scrollbar && scrollbar.parentNode === element) {
+                    element.removeChild(scrollbar);
+                }
+
+                // Restore original overflow
+                element.style.overflow = 'auto';
+            } catch (error) {
+                console.warn('Error during scrollbar destruction:', error);
+            } finally {
+                // Always remove from the map to prevent future issues
+                this.scrollbars.delete(element);
             }
-            element.removeChild(scrollableContent);
-            
-            // Remove scrollbar
-            const scrollbar = element.querySelector('.custom-scrollbar');
-            if (scrollbar) {
-                element.removeChild(scrollbar);
-            }
-            
-            // Restore original overflow
-            element.style.overflow = 'auto';
-            
-            this.scrollbars.delete(element);
         }
     }
 

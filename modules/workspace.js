@@ -11,7 +11,7 @@ const UPLOAD_CACHE_DIR = path.join(CACHE_DIR, 'upload');
 
 // Default workspace colors
 const DEFAULT_WORKSPACE_COLORS = [
-    '#124', // Default blue
+    '#102040', // Default blue
     '#614', // Purple
     '#469', // Blue
     '#c63', // Orange
@@ -91,7 +91,7 @@ function loadWorkspaces() {
             workspaces = {
                 default: {
                     name: 'Default',
-                    color: '#124', // Default blue
+                    color: '#102040', // Default blue
                     backgroundColor: null, // Will be auto-generated from color
                     primaryFont: null, // Use global default
                     textareaFont: null, // Use global default
@@ -113,7 +113,7 @@ function loadWorkspaces() {
         workspaces = {
             default: {
                 name: 'Default',
-                color: '#124',
+                color: '#102040',
                 backgroundColor: null,
                 sort: 0,
                 presets: [],
@@ -144,8 +144,7 @@ function saveWorkspaces() {
         fs.writeFileSync(WORKSPACE_FILE, workspaceData);
         
         console.log('✅ Workspaces saved successfully');
-        console.log('📁 File size:', fs.statSync(WORKSPACE_FILE).size, 'bytes');
-        
+
         // Verify the file was written correctly
         const savedData = fs.readFileSync(WORKSPACE_FILE, 'utf8');
         const parsedData = JSON.parse(savedData);
@@ -186,7 +185,6 @@ function syncWorkspaceFiles() {
             // Sort missing files by timestamp before adding
             const sortedMissingFiles = sortFilesByTimestamp(missingFiles);
             workspaces.default.files.push(...sortedMissingFiles);
-            console.log(`📁 Added ${missingFiles.length} new files to default workspace (sorted by timestamp)`);
         }
 
         // Remove non-existent files from all workspaces (both files and scraps)
@@ -213,13 +211,15 @@ function syncWorkspaceFiles() {
         });
 
         if (removedCount > 0) {
-            console.log(`📁 Removed ${removedCount} non-existent files from workspaces`);
         }
 
         // Save changes if any were made
         if (missingFiles.length > 0 || removedCount > 0) {
             saveWorkspaces();
         }
+        
+        // Sync pinned/scrapped files to ensure consistency
+        syncWorkspacePinnedScraps();
         
         // Get all files in upload cache dir
         const uploadCacheFiles = fs.readdirSync(UPLOAD_CACHE_DIR);
@@ -233,7 +233,6 @@ function syncWorkspaceFiles() {
             // Remove duplicates
             workspaces.default.cacheFiles = [...new Set(workspaces.default.cacheFiles)];
             saveWorkspaces();
-            console.log(`📦 Added ${missingCacheFiles.length} upload cache files to default workspace`);
         }
 
     } catch (error) {
@@ -667,7 +666,14 @@ function restoreSessionWorkspace(sessionId) {
         if (global.sessionStore && global.sessionStore instanceof sessionStore) {
             return new Promise((resolve) => {
                 global.sessionStore.get(sessionId, (err, session) => {
-                    if (err || !session) {
+                    if (err) {
+                        console.log(`❌ Error retrieving session ${sessionId}:`, err.message);
+                        resolve(null);
+                        return;
+                    }
+                    
+                    if (!session) {
+                        console.log(`ℹ️ No session found for ${sessionId}`);
                         resolve(null);
                         return;
                     }
@@ -675,16 +681,16 @@ function restoreSessionWorkspace(sessionId) {
                     const lastWorkspace = session.lastActiveWorkspace;
                     const lastWorkspaceTime = session.lastActiveWorkspaceTime;
                     
+                    
                     if (lastWorkspace && lastWorkspaceTime) {
                         // Check if the workspace still exists
                         if (workspaces && workspaces[lastWorkspace]) {
                             // Check if the session is not too old (e.g., within 24 hours)
                             const sessionAge = Date.now() - lastWorkspaceTime;
-                            const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+                            const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
                             
                             if (sessionAge < maxAge) {
                                 sessionActiveWorkspaces.set(sessionId, lastWorkspace);
-                                console.log(`🔄 Restored workspace for session ${sessionId}: ${lastWorkspace} (age: ${Math.round(sessionAge / 1000 / 60)} minutes)`);
                                 resolve(lastWorkspace);
                                 return;
                             } else {
@@ -693,11 +699,15 @@ function restoreSessionWorkspace(sessionId) {
                         } else {
                             console.log(`⚠️ Previously active workspace ${lastWorkspace} no longer exists for session ${sessionId}`);
                         }
+                    } else {
+                        console.log(`ℹ️ No saved workspace data in session ${sessionId}`);
                     }
                     
                     resolve(null);
                 });
             });
+        } else {
+            console.log(`⚠️ No valid session store available for session ${sessionId}`);
         }
     } catch (error) {
         console.warn(`⚠️ Could not restore workspace for session ${sessionId}:`, error.message);
@@ -780,7 +790,6 @@ function sortAllWorkspaceFiles() {
     
     if (totalSorted > 0) {
         saveWorkspaces();
-        console.log(`📁 Sorted ${totalSorted} files across all workspaces by timestamp`);
     }
 }
 
@@ -948,7 +957,6 @@ function removeFilesFromWorkspaces(filenames) {
     });
 
     if (totalRemoved > 0) {
-        console.log(`🗑️ Removed ${totalRemoved} files from all workspaces`);
     }
 
     return totalRemoved;
@@ -1056,7 +1064,6 @@ function addToWorkspaceArray(type, items, workspaceId = null) {
 
     if (addedCount > 0) {
         saveWorkspaces();
-        console.log(`✅ Added ${addedCount} ${type} to workspace: ${workspaces[targetId].name}`);
     }
 
     return addedCount;
@@ -1150,7 +1157,6 @@ function removeFromWorkspaceArray(type, items, workspaceId = null) {
 
     if (removedCount > 0) {
         saveWorkspaces();
-        console.log(`✅ Removed ${removedCount} ${type} from workspace: ${workspaces[targetId].name}`);
     }
 
     return removedCount;
@@ -1283,6 +1289,11 @@ function moveToWorkspaceArray(type, items, targetWorkspaceId, sourceWorkspaceId 
     // Add items to target workspace (avoiding duplicates)
     addToWorkspaceArray(type, validItems, targetWorkspaceId);
 
+    // If moving files, also handle pinned/scrapped files
+    if (type === 'files' && movedCount > 0) {
+        handlePinnedScrappedFilesOnMove(validItems, targetWorkspaceId, sourceWorkspaceId);
+    }
+
     if (movedCount > 0) {
         saveWorkspaces();
         const message = type === 'files' ? 
@@ -1292,6 +1303,134 @@ function moveToWorkspaceArray(type, items, targetWorkspaceId, sourceWorkspaceId 
     }
 
     return movedCount;
+}
+
+// Handle pinned/scrapped files when moving files between workspaces
+function handlePinnedScrappedFilesOnMove(filenames, targetWorkspaceId, sourceWorkspaceId = null) {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+
+    if (!workspaces[targetWorkspaceId]) {
+        console.error(`Target workspace ${targetWorkspaceId} not found for pinned/scrapped file handling`);
+        return;
+    }
+
+    let pinnedMoved = 0;
+    let scrapsMoved = 0;
+
+    // Check each file to see if it's pinned or scrapped in any workspace
+    filenames.forEach(filename => {
+        // Find which workspaces have this file pinned or scrapped
+        const pinnedInWorkspaces = [];
+        const scrappedInWorkspaces = [];
+
+        Object.entries(workspaces).forEach(([workspaceId, workspace]) => {
+            // Check if file is pinned in this workspace
+            if (workspace.pinned && workspace.pinned.includes(filename)) {
+                pinnedInWorkspaces.push(workspaceId);
+            }
+            // Check if file is scrapped in this workspace
+            if (workspace.scraps && workspace.scraps.includes(filename)) {
+                scrappedInWorkspaces.push(workspaceId);
+            }
+        });
+
+        // Move pinned files to target workspace
+        if (pinnedInWorkspaces.length > 0) {
+            pinnedInWorkspaces.forEach(workspaceId => {
+                // Remove from source workspace
+                if (workspaces[workspaceId].pinned) {
+                    workspaces[workspaceId].pinned = workspaces[workspaceId].pinned.filter(f => f !== filename);
+                }
+                pinnedMoved++;
+            });
+
+            // Add to target workspace (avoid duplicates)
+            if (!workspaces[targetWorkspaceId].pinned) {
+                workspaces[targetWorkspaceId].pinned = [];
+            }
+            if (!workspaces[targetWorkspaceId].pinned.includes(filename)) {
+                workspaces[targetWorkspaceId].pinned.push(filename);
+            }
+        }
+    });
+
+    if (pinnedMoved > 0 || scrapsMoved > 0) {
+        console.log(`📌 Moved ${pinnedMoved} pinned files and ${scrapsMoved} scrapped files to workspace: ${workspaces[targetWorkspaceId].name}`);
+    }
+}
+
+// Sync pinned/scrapped files across workspaces to ensure consistency
+function syncWorkspacePinnedScraps() {
+    if (!workspaces) {
+        loadWorkspaces();
+    }
+
+    console.log('🔄 Syncing pinned files across workspaces...');
+    
+    let correctionsMade = 0;
+    const allFiles = new Set();
+    
+    // Collect all files from all workspaces
+    Object.values(workspaces).forEach(workspace => {
+        workspace.files.forEach(file => allFiles.add(file));
+    });
+
+    // Check each workspace for pinned/scrapped files that don't exist in that workspace's files
+    Object.entries(workspaces).forEach(([workspaceId, workspace]) => {
+        const workspaceFiles = new Set(workspace.files);
+        
+        // Check pinned files
+        if (workspace.pinned) {
+            const invalidPinned = workspace.pinned.filter(file => !workspaceFiles.has(file));
+            if (invalidPinned.length > 0) {
+                console.log(`🔧 Found ${invalidPinned.length} pinned files in workspace ${workspace.name} that are not in its files list`);
+                
+                // Find which workspaces actually have these files
+                invalidPinned.forEach(file => {
+                    const fileInWorkspaces = [];
+                    Object.entries(workspaces).forEach(([wsId, ws]) => {
+                        if (ws.files.includes(file)) {
+                            fileInWorkspaces.push(wsId);
+                        }
+                    });
+                    
+                    if (fileInWorkspaces.length > 0) {
+                        // Move pinned file to the first workspace that has the file
+                        const targetWorkspaceId = fileInWorkspaces[0];
+                        if (targetWorkspaceId !== workspaceId) {
+                            // Remove from current workspace
+                            workspace.pinned = workspace.pinned.filter(f => f !== file);
+                            
+                            // Add to target workspace
+                            if (!workspaces[targetWorkspaceId].pinned) {
+                                workspaces[targetWorkspaceId].pinned = [];
+                            }
+                            if (!workspaces[targetWorkspaceId].pinned.includes(file)) {
+                                workspaces[targetWorkspaceId].pinned.push(file);
+                            }
+                            
+                            console.log(`📌 Moved pinned file ${file} from ${workspace.name} to ${workspaces[targetWorkspaceId].name}`);
+                            correctionsMade++;
+                        }
+                    } else {
+                        // File doesn't exist in any workspace, remove it
+                        workspace.pinned = workspace.pinned.filter(f => f !== file);
+                        console.log(`🗑️ Removed non-existent pinned file ${file} from ${workspace.name}`);
+                        correctionsMade++;
+                    }
+                });
+            }
+        }
+    });
+
+    if (correctionsMade > 0) {
+        console.log(`✅ Made ${correctionsMade} corrections to pinned files across workspaces`);
+        saveWorkspaces();
+    } else {
+        console.log('✅ Pinned files are already in sync across workspaces');
+    }
 }
 
 // Get workspaces data for server use
@@ -1590,6 +1729,7 @@ module.exports = {
     loadWorkspaces,
     saveWorkspaces,
     syncWorkspaceFiles,
+    syncWorkspacePinnedScraps,
     sortAllWorkspaceFiles,
     getWorkspaces,
     getWorkspace,
@@ -1605,6 +1745,7 @@ module.exports = {
     addToWorkspaceArray,
     removeFromWorkspaceArray,
     moveToWorkspaceArray,
+    handlePinnedScrappedFilesOnMove,
     moveFilesToWorkspace,
     movePinnedToWorkspace,
     getActiveWorkspace,

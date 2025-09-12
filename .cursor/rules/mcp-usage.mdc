@@ -1,0 +1,118 @@
+# MCP (Model Context Protocol) Usage Rules
+
+## Overview
+This project uses MCP for live browser debugging integration with Cursor IDE. The MCP server provides real-time debugging capabilities through WebSocket connections.
+
+## MCP Server Tools Available
+
+### Logging Tools
+- `get_dev_logs` — Retrieve console logs, errors, and warnings from connected browsers
+- `get_network_logs` — Get network request/response logs and performance data
+- `get_screenshots` — Access stored browser screenshots
+- `get_code_executions` — View JavaScript execution logs and performance metrics
+
+### Browser Control Tools
+- `take_screenshot` — Capture full page or specific element screenshots
+- `execute_javascript` — Run JavaScript code in the browser context
+- `query_elements` — Query DOM elements using CSS selectors
+- `trigger_event` — Trigger DOM events (click, input, etc.)
+- `send_command` — Send custom commands to connected clients
+
+### Client Management
+- `get_connected_clients` — List all connected browser sessions
+
+## Prerequisites
+1. **Development Mode**: Must be enabled in `config.json` (`config.enable_dev = true`)
+2. **Server Running**: StaticForge server must be running on port 9220
+3. **Browser Connection**: Browser must be connected and client must take ownership
+4. **Admin Authentication**: Required for all MCP operations
+
+## Usage Patterns
+
+### Debug JavaScript Errors
+1. Use `get_dev_logs` with type filter set to "error"
+2. Take a screenshot with `take_screenshot` to see current state
+3. Execute diagnostic JavaScript with `execute_javascript`
+4. Query relevant elements with `query_elements`
+
+### Monitor Network Issues
+1. Use `get_network_logs` to see all network activity
+2. Filter by error status codes or specific client ID
+3. Check response times and request/response sizes
+4. Take screenshots during network failures
+
+### Test User Interactions
+1. Query target elements with `query_elements`
+2. Trigger events with `trigger_event` (click, input, etc.)
+3. Take screenshots before/after interactions
+4. Execute JavaScript to verify state changes
+
+### Performance Analysis
+1. Use `get_network_logs` to analyze response times
+2. Check `get_code_executions` for slow JavaScript execution
+3. Review `get_dev_logs` for performance-related messages
+4. Take screenshots to correlate visual state with performance
+
+## Browser Client Commands
+When working with connected browsers, use these JavaScript commands:
+
+```javascript
+// Take ownership of the browser session
+mcpTakeOwnership(sessionId, url);
+
+// Take screenshots
+mcpScreenshot(); // Full page
+mcpScreenshot('#selector'); // Specific element
+
+// Execute JavaScript
+mcpExecute('console.log("Hello from browser!")');
+
+// Query DOM elements
+mcpQuery('.class-name');
+mcpQuery('#element-id');
+
+// Trigger events
+mcpTrigger('#button', 'click');
+mcpTrigger('#input', 'input', { value: 'test data' });
+```
+
+## Troubleshooting MCP Issues
+
+### Client Not Connecting
+- Verify `config.enable_dev = true` in config.json
+- Ensure server is running on port 9220
+- Access via localhost or development URL
+- Check browser console for WebSocket connection errors
+
+### MCP Server Not Working
+- Verify MCP is properly configured in Cursor IDE
+- Ensure StaticForge server is running
+- Check admin authentication is working
+- Review server logs for MCP-related errors
+
+### No Logs Appearing
+- Confirm browser client has taken ownership
+- Verify WebSocket connection is established
+- Check browser console for client-side errors
+- Ensure development mode is properly enabled
+
+### Screenshots Failing
+- Verify html2canvas library is available (optional dependency)
+- Confirm target element exists in DOM
+- Check client permissions and browser security settings
+- Try taking full page screenshots first
+
+## Security Considerations
+- All MCP operations require admin authentication
+- WebSocket connections only work in development mode
+- Client scripts only load on localhost/development URLs
+- All debugging data is stored locally in SQLite database
+- Never expose MCP endpoints in production
+
+## Best Practices
+1. Always take ownership of browser sessions before debugging
+2. Use screenshots to provide visual context for issues
+3. Combine multiple MCP tools for comprehensive debugging
+4. Monitor both client-side and server-side logs
+5. Use element queries to verify DOM state before interactions
+6. Test interactions step-by-step with screenshots between each step

@@ -776,11 +776,91 @@ function createGalleryItem(image, index) {
 
     // Add context menu to gallery item
     if (window.contextMenu) {
+        // Create move workspace submenu options function
+        function getMoveWorkspaceOptions(target) {
+            const workspaceOptions = [];
+            
+            // Get available workspaces and return submenu items
+            const workspacesData = workspaces || window.workspaces || {};
+            const workspacesFiltered = Object.values(workspacesData).sort((a, b) => (a.sort || 0) - (b.sort || 0))
+            
+            // Get current workspace ID - try multiple sources
+            let currentWorkspaceId = 'default';
+            if (typeof activeWorkspace !== 'undefined') {
+                currentWorkspaceId = activeWorkspace;
+            } else if (window.activeWorkspace) {
+                currentWorkspaceId = window.activeWorkspace;
+            } else if (typeof getActiveWorkspace === 'function') {
+                currentWorkspaceId = getActiveWorkspace();
+            }
+
+            // Generate workspace options
+            workspacesFiltered
+                .filter(workspace => workspace.id !== currentWorkspaceId)
+                .forEach((workspace) => {
+                    const workspaceId = workspace.id;
+                    const workspaceName = workspace.name;
+                    const workspaceColor = workspace.color || '#6366f1';
+
+                    workspaceOptions.push({
+                        content: `
+                            <div class="workspace-option-content" style="display: flex; align-items: center; gap: 8px;">
+                                <div class="workspace-color-indicator" style="width: 12px; height: 12px; border-radius: 50%; background-color: ${workspaceColor};"></div>
+                                <span class="context-menu-item-text">${workspaceName}</span>
+                            </div>
+                        `,
+                        action: 'move-to-workspace',
+                        workspaceId: workspaceId,
+                        workspaceName: workspaceName,
+                        disabled: false
+                    });
+                });
+                
+            return workspaceOptions;
+        }
+        
+        // Create move workspace submenu handler function
+        function handleMoveWorkspaceAction(subItem, target) {
+            const action = subItem.action;
+            if (action === 'move-to-workspace') {
+                const workspaceId = subItem.workspaceId;
+                const workspaceName = subItem.workspaceName;
+                
+                const galleryItem = target.closest('.gallery-item');
+                if (!galleryItem) return;
+                
+                const fileIndex = parseInt(galleryItem.dataset.fileIndex, 10);
+                const image = allImages[fileIndex];
+                
+                if (image && workspaceId && workspaceName) {
+                    handleMoveToWorkspace(image, workspaceId, workspaceName);
+                }
+            }
+        }
+        
         const contextMenuConfig = {
+            maxHeight: true,
             sections: [
                 {
                     type: 'icons',
                     icons: [
+                        {
+                            icon: 'fa-regular fa-square-check',
+                            tooltip: 'Select',
+                            action: 'toggle-checkbox',
+                            loadfn: (menuItem, target) => {
+                                // Get gallery item and checkbox
+                                const galleryItem = target.closest('.gallery-item');
+                                if (galleryItem) {
+                                    const checkbox = galleryItem.querySelector('.gallery-item-checkbox');
+                                    if (checkbox) {
+                                        const isChecked = checkbox.checked;
+                                        menuItem.icon = isChecked ? 'fa-solid fa-square-check' : 'fa-regular fa-square-check';
+                                        menuItem.tooltip = isChecked ? 'Deselect' : 'Select';
+                                    }
+                                }
+                            }
+                        },
                         {
                             icon: 'fa-regular fa-star', // Default icon, will be updated by loadfn
                             tooltip: 'Favorite', // Default text, will be updated by loadfn
@@ -808,32 +888,6 @@ function createGalleryItem(image, index) {
                             tooltip: 'Copy',
                             action: 'copy'
                         },
-                        {
-                            icon: 'fas fa-folder',
-                            tooltip: 'Move',
-                            action: 'move'
-                        },
-                        {
-                            icon: 'mdi mdi-1-5 mdi-archive',
-                            tooltip: 'Scrap',
-                            action: 'scrap',
-                            loadfn: (menuItem, target) => {
-                                // Update scrap tooltip based on current view
-                                const currentView = window.currentGalleryView || 'images';
-                                if (currentView === 'scraps') {
-                                    menuItem.tooltip = 'Restore';
-                                    menuItem.icon = 'fas fa-undo';
-                                } else {
-                                    menuItem.tooltip = 'Scrap';
-                                    menuItem.icon = 'mdi mdi-1-5 mdi-archive';
-                                }
-                            }
-                        },
-                        {
-                            icon: 'nai-trash',
-                            tooltip: 'Delete',
-                            action: 'delete'
-                        }
                     ]
                 },
                 {
@@ -865,6 +919,44 @@ function createGalleryItem(image, index) {
                                     menuItem.disabled = !!image.upscaled;
                                 }
                             }
+                        }/* ,
+                        {
+                            icon: 'mdi mdi-1-5 mdi-chat',
+                            text: 'Start Conversation',
+                            action: 'start-chat'
+                        } */
+                    ]
+                },
+                {
+                    type: 'list',
+                    title: 'Data Management',
+                    items: [
+                        {
+                            icon: 'fas fa-folder-arrow-up',
+                            text: 'Move to...',
+                            optionsfn: getMoveWorkspaceOptions,
+                            handlerfn: handleMoveWorkspaceAction
+                        },
+                        {
+                            icon: 'mdi mdi-1-5 mdi-archive',
+                            text: 'Scrap',
+                            action: 'scrap',
+                            loadfn: (menuItem, target) => {
+                                // Update scrap tooltip based on current view
+                                const currentView = window.currentGalleryView || 'images';
+                                if (currentView === 'scraps') {
+                                    menuItem.tooltip = 'Restore';
+                                    menuItem.icon = 'fas fa-undo';
+                                } else {
+                                    menuItem.tooltip = 'Scrap';
+                                    menuItem.icon = 'mdi mdi-1-5 mdi-archive';
+                                }
+                            }
+                        },
+                        {
+                            icon: 'nai-trash',
+                            text: 'Delete',
+                            action: 'delete'
                         }
                     ]
                 },
@@ -888,6 +980,90 @@ function createGalleryItem(image, index) {
         };
         
         window.contextMenu.attachToElement(item, contextMenuConfig);
+    }
+    
+    // If we're in selection mode, switch to bulk context menu for this new item
+    if (isSelectionMode && window.contextMenu && !item.dataset.bulkContextMenuActive) {
+        // Store original context menu config
+        const originalConfigId = item.dataset.contextMenu;
+        if (originalConfigId && window.contextMenu.configs && window.contextMenu.configs[originalConfigId]) {
+            item.dataset.originalContextMenuConfig = originalConfigId;
+            item.dataset.originalContextMenuStored = 'true';
+        }
+        
+        // Attach bulk context menu
+        const bulkActionsConfig = {
+            maxHeight: true,
+            sections: [
+                {
+                    type: 'icons',
+                    icons: [
+                        {
+                            icon: 'fa-solid fa-check-double',
+                            tooltip: 'Select All',
+                            action: 'bulk-select-all'
+                        },
+                        {
+                            icon: 'nai-thin-cross',
+                            tooltip: 'Clear Selection',
+                            action: 'bulk-clear-selection',
+                            disabled: false
+                        }
+                    ]
+                },
+                {
+                    type: 'list',
+                    title: 'Bulk Actions',
+                    items: [
+                        {
+                            icon: 'fas fa-share',
+                            text: 'Share to Sequenzia',
+                            action: 'bulk-sequenzia',
+                            disabled: false
+                        },
+                        {
+                            icon: 'fas fa-folder',
+                            text: 'Move to Workspace',
+                            action: 'bulk-move-workspace',
+                            disabled: false
+                        },
+                        {
+                            icon: 'mdi mdi-1-5 mdi-archive',
+                            text: 'Move to Scraps',
+                            action: 'bulk-move-scraps',
+                            disabled: false || currentGalleryView === 'scraps' || currentGalleryView === 'pinned'
+                        },
+                        {
+                            icon: 'fa-solid fa-star',
+                            text: 'Pin',
+                            action: 'bulk-pin',
+                            disabled: false || currentGalleryView !== 'images'
+                        },
+                        {
+                            icon: 'fa-regular fa-star',
+                            text: 'Unpin',
+                            action: 'bulk-unpin',
+                            disabled: false || currentGalleryView !== 'pinned'
+                        },
+                        {
+                            icon: 'fas fa-pen-field',
+                            text: 'Change Preset',
+                            action: 'bulk-change-preset',
+                            disabled: false
+                        },
+                        {
+                            icon: 'nai-trash',
+                            text: 'Delete',
+                            action: 'bulk-delete',
+                            disabled: false,
+                            className: 'context-menu-item-danger'
+                        }
+                    ]
+                }
+            ]
+        };
+        window.contextMenu.attachToElement(item, bulkActionsConfig);
+        item.dataset.bulkContextMenuActive = 'true';
     }
     
     item.addEventListener('click', (e) => {
@@ -1614,9 +1790,24 @@ function initIntersectionObserver() {
         });
         
         if (needsUpdate) {
-            // Use a small delay for iOS to prevent layout shifts during momentum scrolling
+            // Adjust delay based on scroll velocity for better responsiveness during fast scrolling
+            const currentVelocity = Math.abs(scrollVelocity);
+            let delay = 0; // Default: no delay on desktop
+
             if (isIOS) {
-                setTimeout(() => updateVirtualScroll(), 16); // 16ms = 1 frame at 60fps
+                if (currentVelocity > 6) {
+                    delay = 8; // Reduced delay during very fast scrolling on iOS
+                } else if (currentVelocity > 3) {
+                    delay = 12; // Slightly reduced delay during fast scrolling on iOS
+                } else {
+                    delay = 16; // Default delay for normal scrolling on iOS
+                }
+            } else if (currentVelocity > 6) {
+                delay = 8; // Small delay during very fast scrolling on desktop to prevent excessive updates
+            }
+
+            if (delay > 0) {
+                setTimeout(() => updateVirtualScroll(), delay);
             } else {
                 updateVirtualScroll();
             }
@@ -1645,14 +1836,25 @@ function updateVirtualScrollInternal() {
     // Cache DOM queries for better performance with many items
     const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
     const total = items.length;
-    
+
     // Early return if no items to process
     if (total === 0) return;
-    
+
     // First, update visible items tracking
     updateVisibleItems();
-    
-    const bufferRows = 8; // Number of rows to keep above and below viewport
+
+    // Detect fast scrolling and adjust buffer size accordingly
+    const isRapidScrolling = Math.abs(scrollVelocity) > 3; // Increased threshold for rapid scrolling
+    const isVeryFastScrolling = Math.abs(scrollVelocity) > 6; // Threshold for very fast scrolling
+
+    // Reduce buffer during fast scrolling to improve performance
+    let bufferRows = 8; // Default number of rows to keep above and below viewport
+    if (isVeryFastScrolling) {
+        bufferRows = 3; // Very aggressive cleanup during very fast scrolling
+    } else if (isRapidScrolling) {
+        bufferRows = 5; // Moderate cleanup during fast scrolling
+    }
+
     const itemsPerRow = realGalleryColumns;
     const visibleIndices = Array.from(visibleItems);
 
@@ -1660,14 +1862,18 @@ function updateVirtualScrollInternal() {
 
     const minVisible = Math.min(...visibleIndices);
     const maxVisible = Math.max(...visibleIndices);
-    const minKeep = Math.max(0, minVisible - itemsPerRow); // 1 screen above
-    const maxKeep = Math.min(total - 1, maxVisible + itemsPerRow); // 1 screen below
+
+    // Adjust buffer based on scroll velocity
+    const bufferMultiplier = isRapidScrolling ? 0.5 : 1; // Reduce buffer during fast scrolling
+    const minKeep = Math.max(0, minVisible - Math.floor(itemsPerRow * bufferMultiplier));
+    const maxKeep = Math.min(total - 1, maxVisible + Math.floor(itemsPerRow * bufferMultiplier));
     const bufferSize = bufferRows * itemsPerRow;
 
     // Replace far-away items with placeholders, restore real items near viewport
     for (let i = 0; i < total; i++) {
         const el = items[i];
         if (i < minKeep || i > maxKeep) {
+            // Convert real items to placeholders when they're far from viewport
             if (!el.classList.contains('gallery-placeholder')) {
                 const placeholder = document.createElement('div');
                 placeholder.className = 'gallery-placeholder';
@@ -1678,8 +1884,10 @@ function updateVirtualScrollInternal() {
                 placeholder.dataset.selected = el.dataset.selected;
                 gallery.replaceChild(placeholder, el);
             }
-            } else {
-            if (el.classList.contains('gallery-placeholder')) {
+        } else {
+            // Only convert placeholders to real items when not scrolling rapidly
+            // This prevents unnecessary loading during fast scrolling
+            if (el.classList.contains('gallery-placeholder') && !isRapidScrolling) {
                 const fileImageIndex = parseInt(el.dataset.fileIndex || el.dataset.index || i);
                 const image = allImages[fileImageIndex];
                 if (image) {
@@ -1720,13 +1928,20 @@ function updateVirtualScrollInternal() {
     // Instead of removing placeholders immediately, schedule them for cleanup
     const placeholdersToRemove = [];
     
-    // Use different thresholds for iOS vs desktop
-    const cleanupThreshold = isIOS ? bufferSize * 2 : bufferSize * 4; // More conservative on desktop
-    
+    // Use different thresholds based on scroll velocity and platform
+    let cleanupThreshold;
+    if (isVeryFastScrolling) {
+        cleanupThreshold = isIOS ? bufferSize * 0.5 : bufferSize * 1; // Very aggressive during very fast scrolling
+    } else if (isRapidScrolling) {
+        cleanupThreshold = isIOS ? bufferSize * 1 : bufferSize * 2; // Aggressive during fast scrolling
+    } else {
+        cleanupThreshold = isIOS ? bufferSize * 2 : bufferSize * 4; // Default conservative approach
+    }
+
     // Check if user is actively scrolling down (which might indicate they want to go further)
     const isScrollingDown = scrollVelocity > 0;
     const isScrollingUp = scrollVelocity < 0;
-    
+
     // Check if user is near the bottom and might want to scroll further down
     const isNearBottom = window.pageYOffset + window.innerHeight > document.documentElement.scrollHeight - 200;
     
@@ -1771,10 +1986,11 @@ function updateVirtualScrollInternal() {
     
     // Schedule cleanup to prevent layout shifts during iOS scrolling
     // Don't cleanup if user is actively scrolling to prevent interruptions
-    // Also check scroll velocity to prevent cleanup during rapid scrolling
-    const isRapidScrolling = Math.abs(scrollVelocity) > 2; // Threshold for rapid scrolling
-    
-    if (placeholdersToRemove.length > 0 && !isScrolling && !isRapidScrolling) {
+    // Use the same rapid scrolling detection as above for consistency
+    const isCurrentlyRapidScrolling = Math.abs(scrollVelocity) > 3; // Use same threshold as above
+
+    // During very fast scrolling, delay cleanup even more to prevent performance issues
+    if (placeholdersToRemove.length > 0 && !isScrolling && !isCurrentlyRapidScrolling) {
         schedulePlaceholderCleanup(placeholdersToRemove);
     }
     // Add missing placeholders above (in full row batches, only for missing indices)
@@ -2183,57 +2399,25 @@ async function handleImageSelection(image, isSelected, event) {
 }
 
 function updateBulkActionsBar() {
-    const bulkActionsBar = document.getElementById('bulkActionsBar');
-    const selectedCount = document.getElementById('selectedCount');
-    const bulkMoveToScrapsBtn = document.getElementById('bulkMoveToScrapsBtn');
-    const bulkPinBtn = document.getElementById('bulkPinBtn');
-    const bulkUnpinBtn = document.getElementById('bulkUnpinBtn');
-
+    // Update selection mode state
     if (selectedImages.size > 0) {
-        bulkActionsBar.classList.remove('hidden');
-        selectedCount.textContent = selectedImages.size;
         gallery.classList.add('selection-mode');
         isSelectionMode = true;
-
-        // Show/hide buttons based on current view
-        if (bulkMoveToScrapsBtn) {
-            if (currentGalleryView === 'scraps') {
-                // Hide scrap button when viewing scraps (can't move scraps to scraps)
-                bulkMoveToScrapsBtn.classList.add('hidden');
-            } else if (currentGalleryView === 'pinned') {
-                // Hide scrap button when viewing pinned (can't move pinned to scraps)
-                bulkMoveToScrapsBtn.classList.add('hidden');
-            } else {
-                // Show scrap button when viewing regular images
-                bulkMoveToScrapsBtn.classList.remove('hidden');
-            }
-        }
-
-        // Show/hide pin button based on current view
-        if (bulkPinBtn) {
-            if (currentGalleryView === 'images') {
-                // Show pin button when viewing regular images
-                bulkPinBtn.classList.remove('hidden');
-            } else {
-                // Hide pin button for other views
-                bulkPinBtn.classList.add('hidden');
-            }
-        }
-
-        // Show/hide unpin button based on current view
-        if (bulkUnpinBtn) {
-            if (currentGalleryView === 'pinned') {
-                // Show unpin button when viewing pinned items
-                bulkUnpinBtn.classList.remove('hidden');
-            } else {
-                // Hide unpin button for other views
-                bulkUnpinBtn.classList.add('hidden');
-            }
+        
+        // Switch to bulk actions context menu when in selection mode
+        if (window.contextMenu && !gallery.dataset.bulkContextMenuActive) {
+            switchToBulkContextMenu();
+            gallery.dataset.bulkContextMenuActive = 'true';
         }
     } else {
-        bulkActionsBar.classList.add('hidden');
         gallery.classList.remove('selection-mode');
         isSelectionMode = false;
+        
+        // Switch back to original context menus when not in selection mode
+        if (window.contextMenu && gallery.dataset.bulkContextMenuActive) {
+            switchToOriginalContextMenu();
+            gallery.dataset.bulkContextMenuActive = '';
+        }
     }
 }
 
@@ -2290,10 +2474,20 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
         }, scrollEndDelay);
         
         throttledInfiniteScroll();
+
+        // Adjust debounce delay based on scroll velocity for more responsive handling
+        const currentVelocity = Math.abs(scrollVelocity);
+        let adjustedDebounceDelay = infiniteScrollConfig.debounceDelay;
+        if (currentVelocity > 6) {
+            adjustedDebounceDelay = Math.max(50, adjustedDebounceDelay * 0.3); // Much faster response during very fast scrolling
+        } else if (currentVelocity > 3) {
+            adjustedDebounceDelay = Math.max(100, adjustedDebounceDelay * 0.6); // Faster response during fast scrolling
+        }
+
         if (scrollTimeout) clearTimeout(scrollTimeout);
         scrollTimeout = setTimeout(() => {
             handleInfiniteScroll();
-        }, infiniteScrollConfig.debounceDelay);
+        }, adjustedDebounceDelay);
     });
 });
 
@@ -2457,6 +2651,15 @@ function handleGalleryContextMenuAction(event) {
     if (!image) return;
     
     switch (action) {
+        case 'toggle-checkbox':
+            // Toggle the checkbox for this gallery item
+            const checkboxCheckbox = galleryItem.querySelector('.gallery-item-checkbox');
+            if (checkboxCheckbox) {
+                checkboxCheckbox.checked = !checkboxCheckbox.checked;
+                checkboxCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            break;
+            
         case 'toggle-favorite':
             // Toggle pin status directly
             togglePinImage(image, null);
@@ -2488,6 +2691,13 @@ function handleGalleryContextMenuAction(event) {
         case 'scrap':
             // Move image to scraps directly
             moveImageToScraps(image);
+            break;
+            
+        case 'start-chat':
+            // Open chat modal for this image
+            if (window.chatSystem) {
+                window.chatSystem.openChatModal(filename, image.characterName || null);
+            }
             break;
             
         case 'delete':
@@ -2570,16 +2780,83 @@ function copyImageToClipboard(image) {
     })();
 }
 
-function moveImageToScraps(image) {
+function moveImageToScraps(image, event = null) {
     const filename = image.filename || image.original || image.upscaled;
-    
+
     // Call the move to scraps function directly
     if (typeof moveImageToScrapsDirect === 'function') {
-        moveImageToScrapsDirect(filename);
+        moveImageToScrapsDirect(filename, event);
     } else {
         // Fallback: use the existing scrap functionality
         console.warn('moveImageToScrapsDirect function not available, using fallback');
         // You can implement the direct scrap functionality here
+    }
+}
+
+async function handleMoveToWorkspace(image, workspaceId, workspaceName) {
+    const filename = image.filename || image.original || image.upscaled;
+    
+    // Show confirmation dialog
+    const confirmed = await showConfirmationDialog(
+        `Move image to workspace "${workspaceName}"?`,
+        [
+            { text: 'Move', value: true, className: 'btn-primary' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ]
+    );
+    
+    if (confirmed) {
+        try {
+            // Show loading toast
+            const toastId = showGlassToast('info', 'Moving Image', `Moving image to ${workspaceName}...`, true, false, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
+            
+            // Move the image using WebSocket
+            if (window.wsClient && window.wsClient.isConnected()) {
+                // Determine move type based on current gallery view
+                const isScrapsView = currentGalleryView === 'scraps';
+                const isPinnedView = currentGalleryView === 'pinned';
+                let moveType = 'files';
+                if (isScrapsView) {
+                    moveType = 'scraps';
+                } else if (isPinnedView) {
+                    moveType = 'pinned';
+                }
+                
+                const response = await window.wsClient.moveFilesToWorkspace([filename], workspaceId, activeWorkspace, moveType);
+                
+                if (response.success) {
+                    // Update loading toast to success
+                    updateGlassToastProgress(toastId, 100);
+                    updateGlassToastComplete(toastId, {
+                        type: 'success',
+                        title: 'Image Moved',
+                        message: `Image moved to ${workspaceName}`,
+                        icon: '<i class="fas fa-folder-open"></i>',
+                        showProgress: false,
+                        timeout: 5000
+                    });
+                    
+                    // Remove the image from current view
+                    removeImageFromGallery(filename);
+                } else {
+                    throw new Error(response.error || 'Failed to move image');
+                }
+            } else {
+                throw new Error('WebSocket not connected');
+            }
+        } catch (error) {
+            console.error('Error moving image to workspace:', error);
+            // Update loading toast to error
+            updateGlassToastProgress(toastId, 100);
+            updateGlassToastComplete(toastId, {
+                type: 'error',
+                title: 'Move Failed',
+                message: `Failed to move image to ${workspaceName}: ${error.message}`,
+                icon: '<i class="fas fa-exclamation-triangle"></i>',
+                showProgress: false,
+                timeout: 5000
+            });
+        }
     }
 }
 
@@ -2658,8 +2935,290 @@ function createVibeEncodingFromImage(image) {
     }
 }
 
+
+// Switch to bulk actions context menu
+function switchToBulkContextMenu() {
+    if (!window.contextMenu) return;
+    
+    const gallery = document.getElementById('gallery');
+    if (!gallery) return;
+    
+    const bulkActionsConfig = {
+        maxHeight: true,
+        sections: [
+            {
+                type: 'icons',
+                icons: [
+                    {
+                        icon: 'fa-solid fa-check-double',
+                        tooltip: 'Select All',
+                        action: 'bulk-select-all'
+                    },
+                    {
+                        icon: 'nai-thin-cross',
+                        tooltip: 'Clear Selection',
+                        action: 'bulk-clear-selection',
+                        disabled: false
+                    }
+                ]
+            },
+            {
+                type: 'list',
+                title: 'Bulk Actions',
+                items: [
+                    {
+                        icon: 'fas fa-share',
+                        text: 'Share to Sequenzia',
+                        action: 'bulk-sequenzia',
+                        disabled: false
+                    },
+                    {
+                        icon: 'fas fa-folder',
+                        text: 'Move to Workspace',
+                        action: 'bulk-move-workspace',
+                        disabled: false
+                    },
+                    {
+                        icon: 'mdi mdi-1-5 mdi-archive',
+                        text: 'Move to Scraps',
+                        action: 'bulk-move-scraps',
+                        disabled: currentGalleryView === 'scraps' || currentGalleryView === 'pinned'
+                    },
+                    {
+                        icon: 'fa-solid fa-star',
+                        text: 'Pin',
+                        action: 'bulk-pin',
+                        disabled: currentGalleryView !== 'images'
+                    },
+                    {
+                        icon: 'fa-regular fa-star',
+                        text: 'Unpin',
+                        action: 'bulk-unpin',
+                        disabled: currentGalleryView !== 'pinned'
+                    },
+                    {
+                        icon: 'fas fa-pen-field',
+                        text: 'Change Preset',
+                        action: 'bulk-change-preset',
+                        disabled: false
+                    },
+                    {
+                        icon: 'nai-trash',
+                        text: 'Delete',
+                        action: 'bulk-delete',
+                        disabled: false,
+                        className: 'context-menu-item-danger'
+                    }
+                ]
+            }
+        ]
+    };
+    
+    // Attach bulk context menu to gallery and all gallery items
+    window.contextMenu.attachToElement(gallery, bulkActionsConfig);
+    
+    const galleryItems = gallery.querySelectorAll('.gallery-item');
+    galleryItems.forEach(item => {
+        // Store original context menu config if not already stored
+        if (!item.dataset.originalContextMenuStored) {
+            const originalConfigId = item.dataset.contextMenu;
+            if (originalConfigId && window.contextMenu.configs && window.contextMenu.configs[originalConfigId]) {
+                item.dataset.originalContextMenuConfig = originalConfigId;
+                item.dataset.originalContextMenuStored = 'true';
+            }
+        }
+        
+        // Attach bulk context menu to override individual menu
+        window.contextMenu.attachToElement(item, bulkActionsConfig);
+        item.dataset.bulkContextMenuActive = 'true';
+    });
+}
+
+// Switch back to original context menus
+function switchToOriginalContextMenu() {
+    if (!window.contextMenu) return;
+    
+    const gallery = document.getElementById('gallery');
+    if (!gallery) return;
+    
+    // Detach bulk context menu from gallery
+    window.contextMenu.detachFromElement(gallery);
+    
+    // Restore original context menus for all gallery items
+    const galleryItems = gallery.querySelectorAll('.gallery-item');
+    galleryItems.forEach(item => {
+        if (item.dataset.bulkContextMenuActive) {
+            // Detach bulk context menu
+            window.contextMenu.detachFromElement(item);
+            item.dataset.bulkContextMenuActive = '';
+            
+            // Restore original context menu if it was stored
+            if (item.dataset.originalContextMenuStored && item.dataset.originalContextMenuConfig) {
+                const originalConfigId = item.dataset.originalContextMenuConfig;
+                if (window.contextMenu.configs && window.contextMenu.configs[originalConfigId]) {
+                    // Reattach the original context menu
+                    window.contextMenu.attachToElement(item, window.contextMenu.configs[originalConfigId]);
+                }
+            }
+        }
+    });
+}
+
+// Setup bulk actions context menu for gallery (legacy function - now handled by switchToBulkContextMenu)
+function setupBulkActionsContextMenu() {
+    if (!window.contextMenu) return;
+    
+    const gallery = document.getElementById('gallery');
+    if (!gallery) return;
+    
+    const bulkActionsConfig = {
+        maxHeight: true,
+        sections: [
+            {
+                type: 'icons',
+                icons: [
+                    {
+                        icon: 'fa-solid fa-check-double',
+                        tooltip: 'Select All',
+                        action: 'bulk-select-all'
+                    },
+                    {
+                        icon: 'nai-thin-cross',
+                        tooltip: 'Clear Selection',
+                        action: 'bulk-clear-selection',
+                        disabled: false
+                    }
+                ]
+            },
+            {
+                type: 'list',
+                title: 'Bulk Actions',
+                items: [
+                    {
+                        icon: 'fas fa-share',
+                        text: 'Share to Sequenzia',
+                        action: 'bulk-sequenzia',
+                        disabled: false
+                    },
+                    {
+                        icon: 'fas fa-folder',
+                        text: 'Move to Workspace',
+                        action: 'bulk-move-workspace',
+                        disabled: false
+                    },
+                    {
+                        icon: 'mdi mdi-1-5 mdi-archive',
+                        text: 'Move to Scraps',
+                        action: 'bulk-move-scraps',
+                        disabled: currentGalleryView === 'scraps' || currentGalleryView === 'pinned'
+                    },
+                    {
+                        icon: 'fa-solid fa-star',
+                        text: 'Pin',
+                        action: 'bulk-pin',
+                        disabled: currentGalleryView !== 'images'
+                    },
+                    {
+                        icon: 'fa-regular fa-star',
+                        text: 'Unpin',
+                        action: 'bulk-unpin',
+                        disabled: currentGalleryView !== 'pinned'
+                    },
+                    {
+                        icon: 'fas fa-pen-field',
+                        text: 'Change Preset',
+                        action: 'bulk-change-preset',
+                        disabled: false
+                    },
+                    {
+                        icon: 'nai-trash',
+                        text: 'Delete',
+                        action: 'bulk-delete',
+                        disabled: false,
+                        className: 'context-menu-item-danger'
+                    }
+                ]
+            }
+        ]
+    };
+    
+    // Attach to gallery and all gallery items to override individual item context menus
+    window.contextMenu.attachToElement(gallery, bulkActionsConfig);
+    
+    // Also attach to all existing gallery items to override their individual context menus
+    const galleryItems = gallery.querySelectorAll('.gallery-item');
+    galleryItems.forEach(item => {
+        // Only attach if the item doesn't already have a bulk context menu
+        if (!item.dataset.bulkContextMenuAttached) {
+            window.contextMenu.attachToElement(item, bulkActionsConfig);
+            item.dataset.bulkContextMenuAttached = 'true';
+        }
+    });
+}
+
+// Handle bulk actions context menu
+function handleBulkActionsContextMenu(event) {
+    const { action, target } = event.detail;
+    
+    // Only handle bulk actions
+    if (!action.startsWith('bulk-')) return;
+    
+    switch (action) {
+        case 'bulk-sequenzia':
+            if (typeof handleBulkSequenzia === 'function') {
+                handleBulkSequenzia();
+            }
+            break;
+        case 'bulk-move-workspace':
+            if (typeof handleBulkMoveToWorkspace === 'function') {
+                handleBulkMoveToWorkspace();
+            }
+            break;
+        case 'bulk-move-scraps':
+            if (typeof handleBulkMoveToScraps === 'function') {
+                handleBulkMoveToScraps();
+            }
+            break;
+        case 'bulk-pin':
+            if (typeof handleBulkPin === 'function') {
+                handleBulkPin();
+            }
+            break;
+        case 'bulk-unpin':
+            if (typeof handleBulkUnpin === 'function') {
+                handleBulkUnpin();
+            }
+            break;
+        case 'bulk-change-preset':
+            if (typeof handleBulkChangePreset === 'function') {
+                handleBulkChangePreset();
+            }
+            break;
+        case 'bulk-delete':
+            if (typeof handleBulkDelete === 'function') {
+                handleBulkDelete();
+            }
+            break;
+        case 'bulk-select-all':
+            const checkboxes = document.querySelectorAll('.gallery-item-checkbox');
+            checkboxes.forEach(cb => {
+                if (!cb.checked) {
+                    cb.checked = true;
+                    cb.dispatchEvent(new Event('change'));
+                }
+            });
+            break;
+        case 'bulk-clear-selection':
+            if (typeof clearSelection === 'function') {
+                clearSelection();
+            }
+            break;
+    }
+}
+
 // Add context menu event listener
 document.addEventListener('contextMenuAction', handleGalleryContextMenuAction);
+document.addEventListener('contextMenuAction', handleBulkActionsContextMenu);
 
 // Make necessary functions and variables globally accessible for app.js
 window.loadGallery = loadGallery;
@@ -2669,3 +3228,6 @@ window.displayGalleryFromStartIndex = displayGalleryFromStartIndex;
 window.realGalleryColumns = realGalleryColumns;
 window.updateGalleryGrid = updateGalleryGrid;
 window.calculateOptimalColumns = calculateOptimalColumns;
+window.setupBulkActionsContextMenu = setupBulkActionsContextMenu;
+window.switchToBulkContextMenu = switchToBulkContextMenu;
+window.switchToOriginalContextMenu = switchToOriginalContextMenu;

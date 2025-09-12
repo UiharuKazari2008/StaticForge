@@ -35,6 +35,8 @@ class LoginPage {
         this.startBackground();
         this.updatePinDisplay();
         this.transitionToImage(0);
+        this.sendTelemetryPing();
+        this.setupServiceWorkerListener();
     }
 
     setupKeyboardListener() {
@@ -66,6 +68,10 @@ class LoginPage {
                     this.clearPin();
                 } else if (action === 'backspace') {
                     this.removeDigit();
+                } else if (action === 'cache-clear') {
+                    this.clearCachesAndReload();
+                } else if (action === 'update-static') {
+                    this.updateStaticData();
                 }
             });
         });
@@ -97,6 +103,288 @@ class LoginPage {
     clearPin() {
         this.rollingBuffer = '';
         this.updatePinDisplay();
+    }
+
+    async clearCachesAndReload() {
+        try {
+            this.showProgressBar();
+            this.updateProgressStatus(0, 'Repairing...', '');
+            // Clear all caches
+            try {
+            if ('caches' in window) {
+                const cacheNames = await caches.keys();
+                if (cacheNames.length > 0) {
+                    await Promise.all(cacheNames.map(cacheName => caches.delete(cacheName)))
+                } else { console.warn('No caches'); }
+            }
+            } catch (error) { console.error('Clear Caches:', error); }
+            this.updateProgressStatus(10, 'Repairing...', '');
+            // Clear localStorage
+            try { localStorage.clear(); } catch (error) { console.error('localStorage clear:', error); }
+            this.updateProgressStatus(30, 'Repairing...', '');
+            // Clear sessionStorage
+            try { sessionStorage.clear(); } catch (error) { console.error('sessionStorage clear:', error); }
+            this.updateProgressStatus(45, 'Repairing...', '');
+
+            // Deregister service worker
+            try {
+            if ('serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                if (registrations.length > 0) {
+                    await Promise.all(registrations.map(registration => registration.unregister()));
+                } else { console.warn('No service workers'); }
+            }
+            } catch (error) { console.error('serviceWorker deregister:', error); }
+            this.updateProgressStatus(60, 'Repairing...', '');
+            // Clear IndexedDB if it exists
+            try {
+            if ('indexedDB' in window) {
+                let databases = [];
+                try { if (indexedDB.databases) { databases = await indexedDB.databases(); }
+                } catch (e) { console.warn('indexedDB.databases() not supported'); }
+                
+                if (databases.length > 0) {
+                    for (const dbName of databases) {
+                        try {
+                            await new Promise((resolve) => {
+                                try {
+                                    const openReq = indexedDB.open(dbName);
+                                    openReq.onsuccess = (event) => {
+                                        const db = event.target.result;
+                                        if (db) {
+                                            db.onversionchange = () => {
+                                                db.close();
+                                                console.log(`Closed connection to database: ${dbName}`);
+                                            };
+                                            db.close();
+                                        }
+                                    };
+                                    openReq.onerror = () => { console.warn('Error closing database connection:', e); };
+                                } catch (e) { console.warn('Error closing database connection:', e); }
+                                
+                                // Now attempt to delete the database
+                                const deleteReq = indexedDB.deleteDatabase(dbName);
+                                const timeout = setTimeout(() => {
+                                    console.warn(`Database deletion timeout for: ${dbName} - forcing continue`);
+                                    resolve();
+                                }, 2000);
+                                deleteReq.onsuccess = () => {
+                                    clearTimeout(timeout);
+                                    console.log(`Successfully deleted database: ${dbName}`);
+                                    resolve();
+                                };
+                                deleteReq.onerror = (event) => {
+                                    clearTimeout(timeout);
+                                    console.warn(`Failed to delete database: ${dbName}`, event.target.error);
+                                    resolve(); // Continue even if one fails
+                                };
+                                deleteReq.onblocked = () => {
+                                    clearTimeout(timeout);
+                                    console.warn(`Database deletion blocked: ${dbName} - connections still open, continuing anyway`);
+                                    resolve(); // Continue even if blocked
+                                };
+                            });
+                        } catch (error) { console.warn(`Error deleting database ${dbName}:`, error); }
+                    }
+                } else { console.warn('No IndexedDB databases'); }
+            }
+            } catch (error) { console.warn('Could not clear IndexedDB:', error); }
+        } catch (error) { console.error('Error clearing caches:', error); }
+        this.updateProgressStatus(75, 'Repairing...', '');
+        // Re-register service worker and start download
+        try {
+            if ('serviceWorker' in navigator) {
+                // Re-register the service worker
+                const registration = await navigator.serviceWorker.register('/sw.js');
+                this.updateProgressStatus(85, 'Repairing...', '');
+                
+                // Wait a moment for the service worker to be ready
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // Start the download process
+                this.updateProgressStatus(90, 'Starting download...', '');
+                await this.updateStaticData();
+            } else {
+                console.error('Service worker not supported');
+                this.updateProgressStatus(90, 'Service worker not supported', 'error');
+                this.hideProgressBarProgress();
+                setTimeout(() => {
+                    this.hideProgressBar();
+                }, 3000);
+            }
+        } catch (error) {
+            console.error('Error re-registering service worker:', error);
+            this.updateProgressStatus(0, 'Re-registration failed', 'error');
+            this.hideProgressBarProgress();
+            setTimeout(() => {
+                this.hideProgressBar();
+            }, 3000);
+        }
+    }
+
+    async updateStaticData() {
+        try {
+            if (navigator.serviceWorker) {
+                console.log('🔄 Updating static data...');
+                
+                // Show progress bar and initial status (only if not already shown)
+                if (!document.getElementById('assetLoadingProgress')?.classList.contains('show')) {
+                    this.showProgressBar();
+                }
+                this.updateProgressStatus(0, 'Checking for updates...');
+                
+                // Check if service worker manager is available
+                if (window.serviceWorkerManager) {
+                    // Use the service worker manager to check for static file updates
+                    await window.serviceWorkerManager.checkStaticFileUpdates();
+                    // Don't show success here - let the service worker messages handle the progress
+                } else {
+                    console.error('❌ Service worker manager not available');
+                    this.showUpdateError();
+                }
+            } else {
+                console.error('❌ Service worker not supported');
+                this.showUpdateError();
+            }
+        } catch (error) {
+            console.error('❌ Error updating static data:', error);
+            this.showUpdateError();
+        }
+    }
+
+    showUpdateSuccess() {
+        // Show success feedback in the progress status
+        this.updateProgressStatus(100, 'Update Complete', 'success');
+        this.hideProgressBar();
+        setTimeout(() => {
+            this.hideProgressBar();
+        }, 3000);
+    }
+
+    showUpdateError() {
+        // Show error feedback in the progress status
+        this.updateProgressStatus(0, 'Update Failed', 'error');
+        this.hideProgressBar();
+        setTimeout(() => {
+            this.hideProgressBar();
+        }, 3000);
+    }
+
+    setupServiceWorkerListener() {
+        // Listen for messages from service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('message', (event) => {
+                this.handleServiceWorkerMessage(event);
+            });
+        }
+    }
+
+    handleServiceWorkerMessage(event) {
+        const { type, files, url, completed, total, currentFile } = event.data;
+        
+        console.log('Login page received service worker message:', type, event.data);
+        
+        switch (type) {
+            case 'CACHE_STATIC_FILES':
+                this.showProgressBar();
+                this.updateProgressStatus(0, 'Updating (' + files.length + ' files left)');
+                break;
+
+            case 'STATIC_CACHE_PROGRESS':
+                if (!document.getElementById('assetLoadingProgress')?.classList.contains('show')) {
+                    this.showProgressBar();
+                }
+                const progress = Math.round((completed / total) * 100);
+                this.updateProgressStatus(progress, `Updating (${total - completed} left)`);
+                break;
+                
+            case 'STATIC_CACHE_COMPLETE':
+                if (document.getElementById('assetLoadingProgress')?.classList.contains('show')) {
+                    this.updateProgressStatus(100, 'Application Updated', 'success');
+                    setTimeout(() => {
+                        this.hideProgressBar();
+                    }, 3000);
+                }
+                break;
+            case 'NO_UPDATES_AVAILABLE':
+                console.log('No updates available - hiding progress bar');
+                if (document.getElementById('assetLoadingProgress')?.classList.contains('show')) {
+                    this.updateProgressStatus(0, 'No Updates Available', '');
+                    setTimeout(() => {
+                        this.hideProgressBar();
+                    }, 2000);
+                }
+                break;
+        }
+    }
+
+    showProgressBar() {
+        const assetLoadingProgress = document.getElementById('assetLoadingProgress');
+        if (assetLoadingProgress) {
+            assetLoadingProgress.classList.add('show');
+        }
+    }
+
+    showProgressBarProgress () {
+        const assetLoadingProgress = document.getElementById('assetLoadingProgress');
+        if (assetLoadingProgress) {
+            assetLoadingProgress.classList.add('show-progress');
+        }
+    }
+
+    hideProgressBarProgress () {
+        const assetLoadingProgress = document.getElementById('assetLoadingProgress');
+        if (assetLoadingProgress) {
+            assetLoadingProgress.classList.remove('show-progress');
+        }
+    }
+
+    hideProgressBar() {
+        const assetLoadingProgress = document.getElementById('assetLoadingProgress');
+        if (assetLoadingProgress) {
+            assetLoadingProgress.classList.remove('show', 'show-progress');
+        }
+    }
+
+    updateProgressStatus(progress, message, statusClass = '') {
+        const assetLoadingProgress = document.getElementById('assetLoadingProgress');
+        const progressStatus = document.getElementById('progressStatus');
+        const progressFill = document.getElementById('progressFill');
+        if (assetLoadingProgress && progress > 0 && progress < 100) {
+            this.showProgressBarProgress();
+        } else {
+            this.hideProgressBarProgress();
+        }
+        
+        if (progressStatus) {
+            progressStatus.textContent = message;
+            // Remove existing status classes
+            progressStatus.classList.remove('success', 'error');
+            // Add new status class if provided
+            if (statusClass) {
+                progressStatus.classList.add(statusClass);
+            }
+        }
+        
+        if (progressFill) {
+            progressFill.style.width = `${progress}%`;
+        }
+    }
+
+    clearProgressStatus() {
+        const progressStatus = document.getElementById('progressStatus');
+        const progressFill = document.getElementById('progressFill');
+        
+        if (progressStatus) {
+            progressStatus.textContent = '';
+            progressStatus.classList.remove('success', 'error');
+        }
+        
+        if (progressFill) {
+            progressFill.style.width = '0%';
+        }
+        
+        this.hideProgressBar();
     }
 
     updatePinDisplay() {
@@ -242,6 +530,129 @@ class LoginPage {
         
         // Update current index
         this.currentImageIndex = imageIndex;
+    }
+
+    // Collect device and browser telemetry data
+    collectTelemetryData() {
+        const telemetry = {
+            timestamp: Date.now(),
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            platform: navigator.platform,
+            cookieEnabled: navigator.cookieEnabled,
+            onLine: navigator.onLine,
+            screen: {
+                width: screen.width || window.innerWidth,
+                height: screen.height || window.innerHeight,
+                colorDepth: screen.colorDepth,
+                pixelDepth: screen.pixelDepth
+            },
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            connection: null,
+            serviceWorker: {
+                supported: 'serviceWorker' in navigator,
+                registered: false,
+                scope: null
+            },
+            storage: {
+                localStorage: this.checkStorageSupport('localStorage'),
+                sessionStorage: this.checkStorageSupport('sessionStorage'),
+                indexedDB: 'indexedDB' in window
+            },
+            features: {
+                webGL: this.checkWebGLSupport(),
+                webp: this.checkWebPSupport(),
+                touch: 'ontouchstart' in window,
+                geolocation: 'geolocation' in navigator
+            }
+        };
+
+        // Check connection information if available
+        if ('connection' in navigator) {
+            const conn = navigator.connection;
+            telemetry.connection = {
+                effectiveType: conn.effectiveType,
+                downlink: conn.downlink,
+                rtt: conn.rtt,
+                saveData: conn.saveData
+            };
+        }
+
+        // Check service worker registration
+        if (telemetry.serviceWorker.supported) {
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+                if (registrations.length > 0) {
+                    telemetry.serviceWorker.registered = true;
+                    telemetry.serviceWorker.scope = registrations[0].scope;
+                }
+            }).catch(() => {
+                // Service worker check failed
+            });
+        }
+
+        return telemetry;
+    }
+
+    // Check storage support
+    checkStorageSupport(type) {
+        try {
+            const storage = window[type];
+            const testKey = '__storage_test__';
+            storage.setItem(testKey, 'test');
+            storage.removeItem(testKey);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    // Check WebGL support
+    checkWebGLSupport() {
+        try {
+            const canvas = document.createElement('canvas');
+            return !!(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'));
+        } catch (e) {
+            return false;
+        }
+    }
+
+    // Check WebP support
+    checkWebPSupport() {
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1;
+            canvas.height = 1;
+            return canvas.toDataURL('image/webp').indexOf('data:image/webp') === 0;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    // Send telemetry ping to server
+    async sendTelemetryPing() {
+        try {
+            const telemetryData = this.collectTelemetryData();
+            
+            const response = await fetch('/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    action: 'ping',
+                    data: telemetryData
+                })
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.authenticated && data.redirect) {
+                    console.log('🔐 User already authenticated, redirecting...');
+                    window.location.href = data.redirect;
+                    return;
+                }
+            }
+        } catch (error) {
+            console.error('❌ Error sending telemetry ping:', error);
+        }
     }
 }
 

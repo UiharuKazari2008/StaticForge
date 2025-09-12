@@ -1,0 +1,206 @@
+---
+description: "StaticForge Development Bridge — Live browser debugging via Cursor IDE MCP integration"
+globs: ["**/*.js", "**/*.css", "**/*.html", "**/*.json"]
+alwaysApply: true
+---
+# File Update Verification Rules
+
+## Overview
+When updating CSS, JavaScript, or HTML files, always verify changes work correctly using browser debugging tools and MCP integration.
+
+## Pre-Update Checklist
+1. **Check Current State**: Take a screenshot of the current page state
+2. **Note Current Logs**: Check browser console and network logs for existing issues
+3. **Identify Target Elements**: Query relevant DOM elements that will be affected
+4. **Backup Current State**: Document current behavior and appearance
+
+## CSS Updates Verification
+
+### Visual Verification
+1. **Take Screenshot**: Capture full page or specific element before changes
+2. **Apply Changes**: Make CSS modifications
+3. **Refresh Page**: Hard refresh (Ctrl+F5 or Cmd+Shift+R) to clear cache
+4. **Take After Screenshot**: Capture same area after changes
+5. **Compare Visually**: Verify styling changes are applied correctly
+
+### CSS Debugging Commands
+```javascript
+// Check computed styles
+mcpExecute('getComputedStyle(document.querySelector("#element")).property');
+
+// Verify CSS classes
+mcpQuery('.class-name');
+
+// Check if stylesheet loaded
+mcpExecute('document.styleSheets.length');
+
+// Test responsive behavior
+mcpExecute('window.innerWidth'); // Check viewport width
+```
+
+### CSS-Specific Checks
+- Verify media queries work at different screen sizes
+- Check that CSS custom properties (variables) are applied
+- Ensure animations and transitions work smoothly
+- Verify cross-browser compatibility
+- Test hover states and interactive elements
+
+## JavaScript Updates Verification
+
+### Console Logging
+1. **Check Console Logs**: Use `get_dev_logs` to see any new errors
+2. **Add Debug Logs**: Insert `console.log()` statements for debugging
+3. **Monitor Execution**: Use `get_code_executions` to track script performance
+4. **Error Handling**: Verify try-catch blocks work correctly
+
+### JavaScript Testing Commands
+```javascript
+// Test function execution
+mcpExecute('functionName()');
+
+// Check variable values
+mcpExecute('console.log(variableName)');
+
+// Test event listeners
+mcpExecute('document.querySelector("#btn").click()');
+
+// Verify object properties
+mcpExecute('Object.keys(objectName)');
+
+// Test async operations
+mcpExecute('fetch("/api/endpoint").then(r => r.json())');
+```
+
+### JavaScript-Specific Checks
+- Verify all functions execute without errors
+- Test event handlers and callbacks
+- Check async operations complete successfully
+- Validate data transformations and calculations
+- Ensure proper error handling and user feedback
+
+## HTML Updates Verification
+
+### DOM Structure
+1. **Query Elements**: Use `query_elements` to verify new elements exist
+2. **Check Attributes**: Verify attributes are set correctly
+3. **Test Interactions**: Trigger events on new interactive elements
+4. **Validate Structure**: Ensure proper nesting and semantic markup
+
+### HTML Testing Commands
+```javascript
+// Check element existence
+mcpQuery('#new-element');
+
+// Verify attributes
+mcpExecute('document.querySelector("#element").getAttribute("attribute")');
+
+// Test form elements
+mcpExecute('document.querySelector("form").elements');
+
+// Check accessibility
+mcpExecute('document.querySelector("#element").getAttribute("aria-label")');
+```
+
+### HTML-Specific Checks
+- Verify all new elements render correctly
+- Test form submissions and validation
+- Check accessibility attributes (ARIA labels, roles)
+- Ensure proper semantic markup
+- Validate HTML structure and nesting
+
+## Network Request Verification
+
+### API and Resource Loading
+1. **Monitor Network Logs**: Use `get_network_logs` to track requests
+2. **Check Response Codes**: Verify 200 status codes for successful requests
+3. **Monitor Load Times**: Check response times for performance
+4. **Test Error Handling**: Verify proper error responses
+
+### Network Testing Commands
+```javascript
+// Test API endpoints
+mcpExecute('fetch("/api/endpoint").then(r => console.log(r.status))');
+
+// Check resource loading
+mcpExecute('document.querySelector("img").complete');
+
+// Test WebSocket connections
+mcpExecute('window.WebSocket ? "Supported" : "Not supported"');
+```
+
+## Comprehensive Verification Workflow
+
+### Step-by-Step Process
+1. **Pre-Change State**:
+   - Take screenshot
+   - Check console logs
+   - Query relevant elements
+   - Note current network activity
+
+2. **Apply Changes**:
+   - Make file modifications
+   - Save files
+
+3. **Immediate Verification**:
+   - Hard refresh browser (Ctrl+F5)
+   - Take new screenshot
+   - Check for JavaScript errors
+   - Verify network requests
+
+4. **Functional Testing**:
+   - Test all interactive elements
+   - Verify form submissions
+   - Check responsive behavior
+   - Test error scenarios
+
+5. **Performance Check**:
+   - Monitor network response times
+   - Check JavaScript execution times
+   - Verify no memory leaks
+   - Test on different screen sizes
+
+### Browser Console Commands
+```javascript
+// Clear console for clean testing
+mcpExecute('console.clear()');
+
+// Check for errors
+mcpExecute('console.error("Test error")');
+
+// Monitor performance
+mcpExecute('performance.now()');
+
+// Test localStorage/sessionStorage
+mcpExecute('localStorage.setItem("test", "value")');
+
+// Check cookies
+mcpExecute('document.cookie');
+```
+
+## Error Recovery
+If verification fails:
+1. **Revert Changes**: Undo modifications
+2. **Check Logs**: Review console and network logs for errors
+3. **Debug Step-by-Step**: Use console commands to isolate issues
+4. **Test Incrementally**: Make smaller changes and verify each step
+5. **Check Dependencies**: Ensure all required files and resources are loaded
+
+## Performance Monitoring
+- Use `get_network_logs` to monitor request/response times
+- Check `get_code_executions` for slow JavaScript
+- Monitor `get_dev_logs` for performance warnings
+- Take screenshots to verify visual performance
+
+## Cross-Browser Testing
+- Test in different browsers (Chrome, Firefox, Safari, Edge)
+- Verify responsive design on different screen sizes
+- Check accessibility with screen readers
+- Test with different network conditions
+
+## Documentation
+Always document:
+- What changes were made
+- How verification was performed
+- Any issues encountered and solutions
+- Performance impact of changes
+- Browser compatibility notes

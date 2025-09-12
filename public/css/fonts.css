@@ -51,9 +51,6 @@
     font-style: italic;
 }
 
-
-
-/* Grenze Font Family */
 @font-face {
     font-family: 'Grenze';
     src: url('/dist/fonts/Grenze-Thin.ttf') format('truetype');

@@ -5,20 +5,6 @@
 
 let presetData = {};
 let originalPresetData = {};
-// No edit mode needed - only simple updates allowed
-
-// Debounce utility function
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
 
 // Get queue status using event system
 function getQueueStatus() {
@@ -56,7 +42,6 @@ function initializePresetManager() {
     const presetNextBtn = document.getElementById('presetNextBtn');
 
     // Event listeners
-    presetManagerBtn.addEventListener('click', showPresetManager);
     closePresetManagerBtn.addEventListener('click', hidePresetManager);
     presetSearch.addEventListener('input', debounce(async () => {
         currentPage = 1; // Reset to first page when searching
@@ -139,23 +124,15 @@ function initializePresetDropdowns() {
 
 // Show preset manager modal
 async function showPresetManager() {
-    console.log('🔧 Show Preset Manager called');
-    
     const modal = document.getElementById('presetManagerModal');
-    console.log('🔧 Modal element:', modal);
     
     if (!modal) {
-        console.error('❌ Preset Manager Modal not found!');
         return;
     }
     
-    console.log('🔧 Loading presets...');
     await loadPresets();
-    console.log('🔧 Rendering preset list...');
     await renderPresetList();
-    console.log('🔧 Showing modal...');
     openModal(modal);
-    console.log('🔧 Modal should now be visible');
 }
 
 // Hide preset manager modal
@@ -202,7 +179,6 @@ async function loadPresets() {
                 // Render the updated list
                 await renderPresetList();
             } else {
-                console.warn('No presets received from server');
                 presetData = {};
                 originalPresetData = {};
                 paginationInfo = {
@@ -215,7 +191,6 @@ async function loadPresets() {
                 };
             }
         } else {
-            console.error('WebSocket connection not available');
             showGlassToast('error', null, 'Unable to load presets: not connected to server', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
         }
     } catch (error) {
@@ -300,12 +275,12 @@ async function createPresetItem(key, preset) {
 
     // Resolve workspace name and color
     let workspaceName = 'Default';
-    let workspaceColor = '#124';
+    let workspaceColor = '#102040';
     if (preset.target_workspace) {
         const workspace = workspaces[preset.target_workspace];
         if (workspace) {
             workspaceName = workspace.name;
-            workspaceColor = workspace.color || '#124';
+            workspaceColor = workspace.color || '#102040';
         } else {
             workspaceName = preset.target_workspace; // Fallback to ID
         }
@@ -797,7 +772,7 @@ function setWorkspaceDropdownValue(workspaceId, workspaceName) {
     }
     
     if (colorIndicator) {
-        colorIndicator.style.backgroundColor = workspaces[workspaceId]?.color || '#124';
+        colorIndicator.style.backgroundColor = workspaces[workspaceId]?.color || '#102040';
     }
 }
 
@@ -892,7 +867,7 @@ function renderUpdatePresetWorkspaceDropdown(selectedValue) {
             option.dataset.value = workspaceId;
             option.innerHTML = `
                 <div class="workspace-option-content">
-                    <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#124'}"></div>
+                    <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#102040'}"></div>
                     <span class="workspace-name">${workspace.name}</span>
                 </div>
             `;

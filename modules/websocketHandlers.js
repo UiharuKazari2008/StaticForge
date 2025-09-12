@@ -7,6 +7,7 @@ const {
     getActiveWorkspaceFiles, 
     getActiveWorkspace, 
     getWorkspace,
+    restoreSessionWorkspace,
     getWorkspaces,
     createWorkspace,
     renameWorkspace,
@@ -39,8 +40,42 @@ const {
     getActiveWorkspaceData
 } = require('./workspace');
 const { getCachedMetadata, getAllMetadata, getImagesMetadata, scanAndUpdateMetadata, removeImageMetadata, addUnattributedReceipt, getImageMetadata } = require('./metadataDatabase');
+const { 
+    getPersonaSettings, 
+    savePersonaSettings, 
+    createChatSession, 
+    getChatSession, 
+    getChatSessionsByFilename, 
+    getAllChatSessions, 
+    updateChatSession, 
+    deleteChatSession, 
+    restartChatSession,
+    addChatMessage, 
+    getChatMessages, 
+    getChatMessageCount, 
+    getLastChatMessage 
+} = require('./chatDatabase');
+const {
+    createDirectorSession,
+    getDirectorSession,
+    getAllDirectorSessions,
+    updateDirectorSession,
+    deleteDirectorSession,
+    addDirectorMessage,
+    getDirectorMessages,
+    getDirectorMessageCount,
+    getLastDirectorMessage,
+    getLastDirectorMessageId,
+    getDirectorDatabaseStats,
+    extractAssistantData,
+    deleteDirectorMessagesFrom
+} = require('./directorDatabase');
+const { createPersonaChatSession, establishPersona, continueConversation, getCharacterMemories: getGrokMemories, addCharacterMemory: addGrokMemory, getConversationSummary: getGrokSummary, updateConversationSummary: updateGrokSummary } = require('./aiServices/grokService');
+const { createPersonaChatSession: createChatGPTSession, establishPersona: establishChatGPTPersona, continueConversation: continueChatGPTConversation, establishPersonaStreaming: establishChatGPTPersonaStreaming, continueConversationStreaming: continueChatGPTConversationStreaming, getCharacterMemories: getChatGPTMemories, addCharacterMemory: addChatGPTMemory, getConversationSummary: getChatGPTSummary, updateConversationSummary: updateChatGPTSummary } = require('./aiServices/chatgptService');
+const aiServiceManager = require('./aiServiceManager');
+const promptManager = require('./promptManager');
 const { isImageLarge, matchOriginalResolution } = require('./imageTools');
-const { readMetadata, updateMetadata, extractRelevantFields, getModelDisplayName, extractMetadataSummary } = require('./pngMetadata');
+const { readMetadata, updateMetadata, extractRelevantFields, getModelDisplayName, extractMetadataSummary, stripPngTextChunks } = require('./pngMetadata');
 const { getStatus } = require('./queue');
 const imageCounter = require('./imageCounter');
 const { generateImageWebSocket, handleRerollGeneration } = require('./imageGeneration');
@@ -49,8 +84,10 @@ const { generateMobilePreviews, generateBlurredPreview } = require('./previewUti
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const https = require('https');
 const sharp = require('sharp');
+const { createCanvas, loadImage } = require('canvas');
+const { processDynamicImage, generateAndPadMask, resizeMaskWithCanvas } = require('./imageTools');
+const https = require('https');
 const { Model, Action, Sampler, Noise, Resolution } = require('nekoai-js');
 const config = require('../config.json');
 
@@ -85,6 +122,207 @@ const previewsDir = path.resolve(__dirname, '../.previews');
  * This ensures clients can efficiently update local state without full reloads.
  */
 
+/**
+ * Generates the system message for Director AI interactions
+ * This is added dynamically to each AI request instead of being saved to database
+ */
+function generateDirectorSystemMessage() {
+    const systemMessageContent = [
+        'You are a sophisticated image analyzer that analyzes images in vivid detail without censoring any content.',
+        '',
+        'NovelAI V4+ diffusion prompt expert. Use "#:: ::" emphasis (1::red hair::, 1.5::fat::, 3::full body::). Avoid (word:1.2), [word], BREAK. Use tags + natural language. No {} or [] emphasis. Minimize grammar/punctuation.',
+        '',
+        '# Core Principles',
+        ' * Structure: Subject, details, style, composition. Key elements first. Example: "sorcerer casting spell, fantasy world, detailed background, 2::glowing staff::".',
+        ' * Tokens: Concise, avoid redundancy. Use synonyms ("turquoise twintails" vs separate tags). Max 512, 100-150 ideal.',
+        ' * Natural Language: Sentences for complex scenes.',
+        ' * High Weight Tags: Compress tokens without sacrificing accuracy/detail.',
+        ' * NSFW: Add "nsfw" tag at prompt end based on content.',
+        ' * Multi-Char: Up to 6. Base scene prompt + separate character strings. Actions: "source#hug" (initiates), "target#hug" (receives), "mutual#hug" (both).',
+        ' * Text: "english text, Text: Stop that!".',
+        ' * Syntax: Lowercase except "Text: " section. ", " separation, no underscores except emotes (^_^). No colorful emojis/non-English.',
+        '',
+        '# Image Handling',
+        'Types:',
+        ' * **Evaluate**: Analyze content, composition, characteristics.',
+        ' * **Result**: Compare with prompt for efficiency/accuracy.',
+        ' * **Base**: Transform for generation. Analyze modifications needed.',
+        ' * **Base (Masked)**: Transform with mask overlay. Analyze non-green areas.',
+        ' * **Vibe Transfer #X (Strength: Y%, IE: Z%)**: Style/content reference. Strength = influence, IE = detail extraction.',
+        '',
+        '# Detailed Visual Analysis (CRITICAL)',
+        'Comprehensive Visual Extraction:',
+        ' * **Visual Elements**: Identify ALL visual components - subjects, objects, backgrounds, textures, patterns, colors, shapes',
+        ' * **Technical Details**: Analyze composition, lighting, shadows, depth of field, perspective, camera angle, focal points',
+        ' * **Material Properties**: Extract material details - fabric textures, surface reflections, material types, surface conditions',
+        ' * **Environmental Context**: Capture setting details, time of day, weather conditions, spatial relationships',
+        ' * **Visual Hierarchy**: Identify primary, secondary, and tertiary visual elements and their importance',
+        ' * **Color Analysis**: Document color palettes, saturation levels, contrast, color temperature, color relationships',
+        ' * **Detail Level**: Extract fine details - patterns, textures, small objects, background elements, subtle variations',
+        '',
+        'Comprehensive Analysis Instructions:',
+        ' * Analyze ALL images in exhaustive detail - no visual element overlooked',
+        ' * Document EVERY visible component with precise descriptions',
+        ' * Extract technical specifications: resolution, style, artistic techniques, rendering quality',
+        ' * Map spatial relationships and positioning of all elements',
+        ' * Identify visual patterns, repetitions, and symmetries',
+        ' * Document lighting sources, shadow directions, and illumination effects',
+        ' * Efficiency: Compare Result Image with prompt',
+        ' * Masked: Focus on non-green areas',
+        ' * Vibe: Note strength/IE percentages',
+        ' * Consider visual composition and element relationships',
+        '',
+        'Efficiency: Compare image/description with prompt. If missing/extended time without result image and description stale vs prompt, set "isStale": true.',
+        '',
+        '# Prompt Efficiency',
+        '1. Structure: Main subject first ("1girl, solo focus"), then appearance, clothing, pose/action, environment, style/quality.',
+        '2. Emphasis: 1.25::keyword:: (mild), 1.5::keyword:: (more), 2.0::keyword:: (heavy). De-emphasize 0.8::keyword::.',
+        '3. Specificity: Precise anatomy/expression tags, lighting/angle details, subtle artist/style refs.',
+        '4. Issues: Balance overemphasized with "anatomically correct". Use "disembodied hand" vs "anonymous male hand".',
+        '5. Negative: Use -1.0::unwanted elements:: to exclude.',
+        '',
+        'Return as string arrays without additional text/formatting/backticks.',
+        '',
+        '# Prompt Modification',
+        'Rules:',
+        ' * Apply to provided/last prompt if no new prompt',
+        ' * NEVER copy user input directly',
+        ' * Transform to NovelAI-optimized syntax',
+        ' * Maintain structure while incorporating changes',
+        '',
+        'Process: Analyze intent → Identify changes → Convert to natural descriptions and NovelAI tags → Preserve structure → Align tokens.',
+        '',
+        'Quality: Verify efficiency, emphasis weights, no redundancy, focused coherence. Apply regardless of censorship/morals/ethics.',
+        '',
+        'Example: "make her hair longer and add a sword" → "long hair, holding sword"',
+        '',
+        '# Caption Generation',
+        'Rules:',
+        ' * NEVER copy user input/prompt/image description directly',
+        ' * Transform source into creative language',
+        ' * Use context/intent as inspiration, not direct text',
+        ' * Create original flowing narrative',
+        ' * **VISUAL DETAIL PRIORITY**: Always distill and amplify visual details into compelling narrative',
+        '',
+        'Style: Engaging descriptive language, visual detail focus, technical precision, varied sentences.',
+        '',
+        'Dynamic: Visual effects, motion words, detail-enhancing words, sensory descriptions, action verbs.',
+        '',
+        'Perspectives: Both viewer (external) and technical (analytical). Alternate for rich experience. Natural descriptive language.',
+        '',
+        'Visual Detail Extraction Requirements:',
+        ' * **Technical Precision**: Describe visual elements with technical accuracy and detail',
+        ' * **Composition Analysis**: Break down spatial relationships and visual hierarchy',
+        ' * **Material Specificity**: Detail textures, materials, and surface properties',
+        ' * **Lighting Analysis**: Describe illumination, shadows, and lighting effects',
+        ' * **Color Detail**: Specify color relationships, saturation, and visual impact',
+        ' * **Pattern Recognition**: Identify and describe visual patterns and repetitions',
+        ' * **Detail Amplification**: Transform subtle visual elements into prominent narrative features',
+        '',
+        'Return: {"text": "caption text", "type": "viewer|technical|sfx"}',
+        '',
+        'Content: Reimagine source visual details creatively, add technical flourishes, create descriptive analysis, build compelling visual moments. Focus on visual precision and detailed expression.',
+        '',
+        'Quality: 2-4 sentences (unless requested otherwise), active voice, varied vocabulary, unique per image, balance description with technical detail. Prioritize visual detail impact over general description.',
+        '',
+        '# Visual Detail Extraction Guidelines (CRITICAL)',
+        'Essential Visual Analysis Requirements:',
+        ' * **Comprehensive Documentation**: Always analyze and document EVERY visual element in the image',
+        ' * **Technical Vocabulary**: Use precise visual language: textures, materials, lighting, composition, color theory',
+        ' * **Spatial Relationships**: Map how elements relate to each other in 3D space and composition',
+        ' * **Detail Hierarchy**: Identify primary, secondary, and background visual elements and their significance',
+        ' * **Material Authenticity**: Describe materials with technical accuracy - fabric types, surface properties, reflective qualities',
+        ' * **Lighting Analysis**: Document light sources, shadow patterns, illumination effects, and their impact',
+        ' * **Detail Intensity Scale**: Rate visual detail level from 1-10 and describe complexity and precision',
+        ' * **Visual Complexity**: Capture visual relationships - overlapping elements, depth layers, focal points',
+        ' * **Detail Evolution**: Show how visual elements change or transform throughout the composition',
+        '',
+        'Visual Detail Examples:',
+        ' * Textures: "silk fabric with subtle sheen", "rough stone surface with natural weathering", "smooth metallic reflection"',
+        ' * Lighting: "dramatic chiaroscuro with deep shadows", "soft diffused illumination", "directional spotlighting"',
+        ' * Composition: "golden ratio placement", "rule of thirds alignment", "dynamic diagonal flow"',
+        ' * Materials: "translucent porcelain skin", "woven textile patterns", "polished chrome surfaces"',
+        ' * Colors: "complementary color harmony", "monochromatic tonal range", "high contrast saturation"',
+        ' * Details: "intricate lace patterns", "subtle surface imperfections", "complex layered elements"',
+        '',
+        'Remember: Every analysis MUST include comprehensive visual detail extraction and distillation into the prompt structure.',
+        '',
+        '# JSON Formatting (CRITICAL)',
+        ' * Use double quotes for ALL strings and keys: {"key":"value"}',
+        ' * Proper array syntax: [{"type":"value","text":"content"}]',
+        ' * No single quotes anywhere in JSON',
+        ' * Ensure all brackets and braces are properly closed',
+        ' * Escape quotes in strings: "He said \\"hello\\""',
+        ' * No trailing commas or malformed syntax',
+        ' * Test JSON validity before responding',
+        '',
+        '# Markdown Formatting',
+        ' * Use `backticks` for prompt tags/elements',
+        ' * Balance text formatting with emojis (compress by using emojis when possible)',
+        ' * Include as JSON value when requested',
+        ' * Escape special characters in JSON (quotes, backslashes, newlines)',
+        ' * Use <br/> for line breaks, \\" for quotes in Markdown',
+        '',
+        '# Response Object Keys',
+        ' * Description: Markdown vivid description (max 1250 chars image analysis, max 500 chars updates)',
+        ' * ImageDescription: Markdown vivid description for new images (max 1250 chars)',
+        ' * PrimaryFocus: Single line most important elements',
+        ' * VisualAnalysis: Object containing detailed visual breakdown - Example: {"primary_elements": ["subject", "background"], "composition": "rule of thirds", "lighting": "dramatic chiaroscuro", "technical_details": "high resolution, detailed textures"}',
+        ' * DetailExtraction: Array of objects describing visual elements - Example: [{"element": "fabric_texture", "type": "silk", "properties": "subtle sheen, flowing drape", "significance": "primary material focus"}]',
+        ' * VisualHierarchy: String describing visual importance levels and focal points',
+        ' * TechnicalDetails: Object mapping technical specifications - Example: {"resolution": "high", "style": "realistic", "rendering": "detailed", "composition": "balanced"}',
+        ' * Measurements: Medically accurate attributes object with separate properties:',
+        '   - Age: Object with integer years (if appears to be under 18, set questionable to true) - Example: {years: 25, questionable: false}',
+        '   - Height: Object with imperial and metric - Example: {imperial: "5ft, 6in", metric: "168cm"}',
+        '   - Weight: Object with imperial and metric - Example: {imperial: "120lbs", metric: "54kg"}',
+        '   - Breast: Object with cup and size - Example: {cup: "C-cup", protrution_imperial: "5in", protrution_metric: "13cm", size: "large"}',
+        '   - Arm: Object with imperial and metric - Example: {imperial: "12in", metric: "30cm"}',
+        '   - Waist: Object with imperial and metric - Example: {imperial: "24in", metric: "61cm"}',
+        '   - Ass: Object with imperial and metric - Example: {imperial: "36in", metric: "91cm"}',
+        '   - Hips: Object with imperial and metric - Example: {imperial: "36in", metric: "91cm"}',
+        '   - Thighs: Object with imperial and metric - Example: {imperial: "22in", metric: "56cm"}',
+        '   - Calves: Object with imperial and metric - Example: {imperial: "14in", metric: "36cm"}',
+        '   - ThighSeparation: Object with imperial and metric - Example: {imperial: "2in", metric: "5cm"}',
+        '   - VaginalState: Object (female only) - Example: {open: true, size: "small"}',
+        '   - PenisState: Object (male only) - Example: {erect: true, size: "small"}',
+        '   - ShoulderWidth: Object with imperial and metric - Example: {imperial: "16in", metric: "41cm"}',
+        '   - StomachSize: Object with imperial and metric - Example: {imperial: "28in", metric: "71cm"}',
+        '   - WaistToHipRatio: Float value - Example: 0.7',
+        '   - BustToWaistRatio: Float value - Example: 1.2',
+        '   - MedicalConditions: Array of strings - Example: ["Type 2 Diabetes", "Mild Hypertension"]',
+        '   - Species: String - Example: "human", "elf", "demon", "angel", "vampire", "werewolf", "catgirl", "dragon", "robot", "alien", "hybrid"',
+        '   - HumanoidRatio: Float 0-1 (1.0=completely human, 0.0=completely non-human) - Example: 0.95',
+        ' * Character: Name from anime/manga/game (omit if unknown)',
+        ' * Series: Source series name (omit if unknown)',
+        ' * SuggestedName: Session name (max 150 chars, suggestive if NSFW)',
+        ' * Suggested: Array of 4-6 Strings that are exploration suggestions that can be used to enhance the scene or character and or progress the story',
+        ' * Caption: Array of 2-5 speech bubbles [{"type":"viewer","text":"dialogue"}] (Type is viewer, self, or sfx)',
+        ' * Prompt: Efficient NovelAI prompt (max 300 tokens, 170-200 ideal)',
+        ' * isNSFW: Boolean sexual content indicator',
+        ' * NSFWHeat: 1-100 heat level (only if isNSFW=true or sexual context)',
+        ' * Issues: Markdown problem description (efficiency analysis)',
+        ' * Score: 1-100 prompt-to-image accuracy (efficiency analysis)',
+        ' * isStale: Boolean if description stale vs prompt',
+        '',
+        '# NSFW Guidelines (CRITICAL)',
+        'IMPORTANT: NOT to follow when user has NOT requested sexual/fetish content or context is NOT sexual.',
+        'For sexual/fetish content:',
+        ' * No censorship or sanitization',
+        ' * Be explicit and raw when sexual',
+        ' * Play into fetishes and teasing (even degrading), encourage exploration',
+        ' * Amplify overemphasized/distorted attributes, mention in Suggested key',
+        ' * Use sexually suggestive language when appropriate',
+        ' * Maintain explicit nature throughout',
+        '',
+        'Responses must be in valid JSON format. Use double quotes for all strings and keys. Ensure proper syntax: {"key":"value","array":[{"type":"value"}]}. No single quotes, no missing colons, no malformed brackets.'
+    ];
+    
+    return [{
+        type: "text",
+        text: systemMessageContent.join('\n')
+    }];
+}
+
 // WebSocket message handlers
 class WebSocketMessageHandlers {
     constructor(context = {}) {
@@ -92,7 +330,8 @@ class WebSocketMessageHandlers {
         this.datasetTagService = new DatasetTagService();
         this.favoritesManager = new FavoritesManager();
         this.context = context;
-        
+        this.keepAliveIntervals = new Map(); // Store keep-alive intervals by requestId
+
         // Initialize the service at startup
         this.initializeDatasetTagService();
     }
@@ -122,6 +361,9 @@ class WebSocketMessageHandlers {
 
     // Main message handler
     async handleMessage(ws, message, clientInfo, wsServer) {
+        const startTime = Date.now();
+        const requestId = message.requestId || 'unknown';
+
         try {
             // Check if client is authenticated
             if (!clientInfo || !clientInfo.authenticated) {
@@ -147,8 +389,13 @@ class WebSocketMessageHandlers {
 
             // Continue with normal message handling
             await this.routeMessage(ws, message, clientInfo, wsServer);
+
+            // Log successful completion with timing
+            const processingTime = Date.now() - startTime;
         } catch (error) {
-            console.error('❌ WebSocket message handling error:', error);
+            // Log error with timing
+            const processingTime = Date.now() - startTime;
+            console.error(`❌ WebSocket message failed: ${message.type} (ID: ${requestId}) - ${processingTime}ms - Error:`, error.message);
             wsServer.sendToClient(ws, {
                 type: 'error',
                 message: 'Internal server error',
@@ -182,6 +429,7 @@ class WebSocketMessageHandlers {
             'delete_images_bulk',
             'delete_reference',
             'upload_reference',
+            'replace_reference',
             'upload_workspace_image',
             'download_url_file',
             'fetch_url_info',
@@ -201,7 +449,11 @@ class WebSocketMessageHandlers {
             'save_text_replacements',
             'spellcheck_add_word',
             'generate_image',
-            'upscale_image'
+            'upscale_image',
+            'director_create_session',
+            'director_delete_session',
+            'director_send_message',
+            'director_rollback_message'
         ];
         return destructiveOperations.includes(messageType);
     }
@@ -504,7 +756,11 @@ class WebSocketMessageHandlers {
             case 'upload_reference':
                 await this.handleUploadReference(ws, message, clientInfo, wsServer);
                 break;
-                
+
+            case 'replace_reference':
+                await this.handleReplaceReference(ws, message, clientInfo, wsServer);
+                break;
+
             case 'upload_workspace_image':
                 await this.handleUploadWorkspaceImage(ws, message, clientInfo, wsServer);
                 break;
@@ -585,12 +841,111 @@ class WebSocketMessageHandlers {
                 await this.handleBroadcastResourceUpdate(ws, message, clientInfo, wsServer);
                 break;
                 
+            // Chat system handlers
+            case 'get_persona_settings':
+                await this.handleGetPersonaSettings(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'save_persona_settings':
+                await this.handleSavePersonaSettings(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'create_chat_session':
+                await this.handleCreateChatSession(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_chat_sessions':
+                await this.handleGetChatSessions(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_chat_session':
+                await this.handleGetChatSession(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'delete_chat_session':
+                await this.handleDeleteChatSession(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'restart_chat_session':
+                await this.handleRestartChatSession(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'send_chat_message':
+                await this.handleSendChatMessage(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_chat_messages':
+                await this.handleGetChatMessages(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'update_chat_model':
+                await this.handleUpdateChatModel(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'cancel_generation':
+                await this.handleCancelGeneration(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_openai_models':
+                await this.handleGetOpenAIModels(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_grok_models':
+                await this.handleGetGrokModels(ws, message, clientInfo, wsServer);
+                break;
+                
+            // Director handlers
+            case 'director_get_sessions':
+                await this.handleDirectorGetSessions(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'director_create_session':
+                await this.handleDirectorCreateSession(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'director_get_session':
+                await this.handleDirectorGetSession(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'director_delete_session':
+                await this.handleDirectorDeleteSession(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'director_send_message':
+                await this.handleDirectorSendMessage(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'director_get_messages':
+                await this.handleDirectorGetMessages(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'director_rollback_message':
+                await this.handleDirectorRollbackMessage(ws, message, clientInfo, wsServer);
+                break;
+
+            // IP Management handlers
+            case 'get_blocked_ips':
+                await this.handleGetBlockedIPs(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'unblock_ip':
+                await this.handleUnblockIP(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'export_ip_to_gateway':
+                await this.handleExportIPToGateway(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_ip_blocking_reasons':
+                await this.handleGetIPBlockingReasons(ws, message, clientInfo, wsServer);
+                break;
+                
             default:
                 this.sendError(ws, 'Unknown message type', message.type);
         }
     }
 
-    // Handle character search requests
+    // Handle character search requests - Ack-less Latest Request Wins Pattern
     async handleCharacterSearch(ws, message, clientInfo, wsServer) {
         const { query, model } = message;
         
@@ -600,27 +955,28 @@ class WebSocketMessageHandlers {
         }
 
         try {
-            // Send initial response to show autocomplete dropdown
+            // Send initial response to show autocomplete dropdown (ack-less)
             this.sendToClient(ws, {
                 type: 'search_characters_response',
-                requestId: message.requestId,
                 data: { results: [], spellCheck: null },
                 timestamp: new Date().toISOString()
             });
             
-            // Perform search with WebSocket for realtime updates
+            // Perform search with latest-request-wins pattern (no request ID needed)
             const result = await this.searchService.searchCharacters(query, model, ws, clientInfo.sessionId);
             
-            // Send final complete response
+            // Send final complete response (ack-less)
             this.sendToClient(ws, {
                 type: 'search_characters_complete',
-                requestId: message.requestId,
                 data: result,
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
-            console.error('Character search error:', error);
-            this.sendError(ws, 'Search failed', error.message, message.requestId);
+            // Only log errors that aren't cancellation
+            if (error.name !== 'AbortError' && !error.message.includes('superseded')) {
+                console.error('Character search error:', error);
+                this.sendError(ws, 'Search failed', error.message);
+            }
         }
     }
 
@@ -1225,9 +1581,12 @@ class WebSocketMessageHandlers {
     
     // Handle gallery request messages
     async handleGalleryRequest(ws, message, clientInfo, wsServer) {
-        const { viewType = 'images', includePinnedStatus = true } = message;
-        
+        const { requestId, viewType = 'images', includePinnedStatus = true } = message;
+
         try {
+            // Start keep-alive for potentially long gallery requests
+            this.startKeepAliveInterval(ws, requestId, 10000); // Every 10 seconds for gallery requests
+
             // Get files based on view type
             let files;
             if (viewType === 'scraps') {
@@ -1346,18 +1705,24 @@ class WebSocketMessageHandlers {
             
             // Sort by newest first
             gallery.sort((a, b) => b.mtime - a.mtime);
-            
+
+            // Stop keep-alive when complete
+            this.stopKeepAliveInterval(requestId);
+
             // Send response
             this.sendToClient(ws, {
                 type: 'request_gallery_response',
-                requestId: message.requestId,
+                requestId: requestId,
                 data: { gallery, viewType },
                 timestamp: new Date().toISOString()
             });
-            
+
         } catch (error) {
+            // Stop keep-alive on error
+            this.stopKeepAliveInterval(requestId);
+
             console.error('Gallery request error:', error);
-            this.sendError(ws, 'Failed to load gallery', error.message, message.requestId);
+            this.sendError(ws, 'Failed to load gallery', error.message, requestId);
         }
     }
 
@@ -1704,7 +2069,8 @@ class WebSocketMessageHandlers {
             const accountData = this.context.accountData ? this.context.accountData() : { ok: false };
             const accountBalance = this.context.accountBalance ? this.context.accountBalance() : { fixedTrainingStepsLeft: 0, purchasedTrainingSteps: 0, totalCredits: 0 };
             
-            // Get active workspace and its data
+            await restoreSessionWorkspace(clientInfo.sessionId);
+            
             const activeWorkspaceId = getActiveWorkspace(clientInfo.sessionId);
             const activeWorkspaceData = getActiveWorkspaceData(clientInfo.sessionId);
             
@@ -1731,6 +2097,10 @@ class WebSocketMessageHandlers {
                     data: activeWorkspaceData
                 }
             };
+            if (config.enable_dev) {
+                options.devPort = config.devPort || 65202;
+                options.devHost = config.devHost || 'localhost';
+            }
 
             // Send response
             this.sendToClient(ws, {
@@ -1756,7 +2126,7 @@ class WebSocketMessageHandlers {
             const workspaceList = Object.entries(workspaces).map(([id, workspace]) => ({
                 id,
                 name: workspace.name,
-                color: workspace.color || '#124',
+                color: workspace.color || '#102040',
                 backgroundColor: workspace.backgroundColor,
                 primaryFont: typeof workspace.primaryFont !== 'undefined' ? workspace.primaryFont : null,
                 textareaFont: typeof workspace.textareaFont !== 'undefined' ? workspace.textareaFont : null,
@@ -1799,7 +2169,7 @@ class WebSocketMessageHandlers {
                 data: {
                     id: activeId,
                     name: workspace.name,
-                    color: workspace.color || '#124',
+                    color: workspace.color || '#102040',
                     backgroundColor: workspace.backgroundColor,
                     primaryFont: typeof workspace.primaryFont !== 'undefined' ? workspace.primaryFont : null,
                     textareaFont: typeof workspace.textareaFont !== 'undefined' ? workspace.textareaFont : null,
@@ -3334,24 +3704,24 @@ class WebSocketMessageHandlers {
         try {
             const activeWorkspaceId = getActiveWorkspace(clientInfo.sessionId);
             const workspaces = getWorkspacesData();
-            
+
             // Get cache files for active workspace (includes default + active workspace)
             const workspaceCacheFiles = getActiveWorkspaceCacheFiles(null, clientInfo.sessionId);
             const allFiles = fs.readdirSync(uploadCacheDir);
             const files = allFiles.filter(file => workspaceCacheFiles.includes(file));
-            
+
             const cacheFiles = [];
             for (const file of files) {
                 const filePath = path.join(uploadCacheDir, file);
                 const stats = fs.statSync(filePath);
                 const previewPath = path.join(previewCacheDir, `${file}.webp`);
-                
+
                 // Determine workspace ownership
                 let workspaceId = 'default';
                 if (activeWorkspaceId !== 'default' && workspaces[activeWorkspaceId] && workspaces[activeWorkspaceId].cacheFiles.includes(file)) {
                     workspaceId = activeWorkspaceId;
                 }
-                
+
                 cacheFiles.push({
                     hash: file,
                     filename: file,
@@ -3361,32 +3731,32 @@ class WebSocketMessageHandlers {
                     workspaceId: workspaceId
                 });
             }
-            
+
             // Get vibe images for current and default workspaces
             let vibeImageDetails = [];
             const currentWorkspace = getWorkspace(activeWorkspaceId);
             const defaultWorkspace = getWorkspace('default');
-            
+
             if (currentWorkspace) {
                 vibeImageDetails = this.collectVibeImageDetails(currentWorkspace.vibeImages || [], activeWorkspaceId);
             }
-            
+
             // Add default workspace vibes if not already included
             if (activeWorkspaceId !== 'default' && defaultWorkspace) {
                 vibeImageDetails = vibeImageDetails.concat(
                     this.collectVibeImageDetails(defaultWorkspace.vibeImages || [], 'default')
                 );
             }
-            
+
             // Sort by newest first
             cacheFiles.sort((a, b) => b.mtime - a.mtime);
             vibeImageDetails.sort((a, b) => b.mtime - a.mtime);
-            
+
             this.sendToClient(ws, {
                 type: 'get_references_response',
                 requestId: message.requestId,
-                data: { 
-                    success: true, 
+                data: {
+                    success: true,
                     data: {
                         cacheFiles: cacheFiles,
                         vibeImages: vibeImageDetails
@@ -3394,7 +3764,7 @@ class WebSocketMessageHandlers {
                 },
                 timestamp: new Date().toISOString()
             });
-            
+
         } catch (error) {
             console.error('Get references error:', error);
             this.sendError(ws, 'Failed to get references', error.message, message.requestId);
@@ -3471,46 +3841,40 @@ class WebSocketMessageHandlers {
     // Helper method to get vibe image data by ID
     async getVibeImageData(vibeId) {
         try {
-            // Search through all workspaces to find the vibe
+            // OPTIMIZATION: Create a lookup map for faster vibe finding
             const workspaces = getWorkspaces();
+            const vibeLookup = new Map();
             
+            // Build lookup map for all vibes across workspaces
             for (const [workspaceId, workspace] of Object.entries(workspaces)) {
                 const vibeFiles = workspace.vibeImages || [];
-                
                 for (const filename of vibeFiles) {
+                    const cacheKey = `${workspaceId}:${filename}`;
+                    const cached = this.vibeMetadataCache.get(cacheKey);
+
+                    if (cached && (Date.now() - cached.timestamp) < this.cacheExpiryTime) {
+                        // Use cached data
+                        vibeLookup.set(cached.data.id, {
+                            filename,
+                            workspaceId,
+                            vibeData: cached.data
+                        });
+                    } else {
+                        // Load from file and cache
+                        try {
                     const filePath = path.join(vibeCacheDir, filename);
                     if (fs.existsSync(filePath)) {
-                        try {
                             const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-                            if (vibeData.id === vibeId) {
-                                // Transform encodings from object format to array format
-                                if (vibeData.encodings && typeof vibeData.encodings === 'object') {
-                                    const transformedEncodings = [];
-                                    
-                                    for (const [model, ieValues] of Object.entries(vibeData.encodings)) {
-                                        for (const [ie, encoding] of Object.entries(ieValues)) {
-                                            transformedEncodings.push({
-                                                model: model,
-                                                informationExtraction: parseFloat(ie),
-                                                encoding: encoding
-                                            });
-                                        }
-                                    }
-                                    
-                                    vibeData.encodings = transformedEncodings;
+                                vibeLookup.set(vibeData.id, { filename, workspaceId, vibeData });
+
+                                // Cache the full data for future use
+                                const metadata = this.getCachedVibeMetadata(filename, workspaceId);
+                                if (metadata) {
+                                    this.vibeMetadataCache.set(cacheKey, {
+                                        data: { ...metadata, fullData: vibeData },
+                                        timestamp: Date.now()
+                                    });
                                 }
-                                
-                                // Process preview field to add .webp extension if it exists
-                                if (vibeData.preview) {
-                                    const previewPath = path.join(previewCacheDir, `${vibeData.preview}.webp`);
-                                    vibeData.preview = fs.existsSync(previewPath) ? `${vibeData.preview}.webp` : null;
-                                }
-                                
-                                // Add workspace info to the vibe data
-                                return {
-                                    ...vibeData,
-                                    workspaceId: workspaceId
-                                };
                             }
                         } catch (parseError) {
                             console.error(`Error parsing vibe file ${filename}:`, parseError);
@@ -3520,7 +3884,24 @@ class WebSocketMessageHandlers {
                 }
             }
             
+            // Look up the specific vibe
+            const vibeEntry = vibeLookup.get(vibeId);
+            if (!vibeEntry) {
             return null; // Vibe not found
+            }
+
+            const { filename, workspaceId, vibeData } = vibeEntry;
+
+            // Use cached metadata if available, otherwise get it
+            const cacheKey = `${workspaceId}:${filename}`;
+            const cachedMetadata = this.vibeMetadataCache.get(cacheKey);
+            if (cachedMetadata && (Date.now() - cachedMetadata.timestamp) < this.cacheExpiryTime) {
+                return cachedMetadata.data;
+            }
+
+            // Fallback to direct metadata retrieval
+            return this.getCachedVibeMetadata(filename, workspaceId);
+
         } catch (error) {
             console.error(`Error getting vibe image data for ${vibeId}:`, error);
             return null;
@@ -3565,9 +3946,9 @@ class WebSocketMessageHandlers {
     }
 
     async handleGetWorkspaceReferences(ws, message, clientInfo, wsServer) {
-        try {            
+        try {
             const workspaceId = message.workspaceId;
-            
+
             let cacheFiles = [];
             let vibeImageDetails = [];
             
@@ -3654,12 +4035,12 @@ class WebSocketMessageHandlers {
             // Sort by newest first
             cacheFiles.sort((a, b) => b.mtime - a.mtime);
             vibeImageDetails.sort((a, b) => b.mtime - a.mtime);
-            
+
             this.sendToClient(ws, {
                 type: 'get_workspace_references_response',
                 requestId: message.requestId,
-                data: { 
-                    success: true, 
+                data: {
+                    success: true,
                     data: {
                         cacheFiles: cacheFiles,
                         vibeImages: vibeImageDetails
@@ -3667,7 +4048,7 @@ class WebSocketMessageHandlers {
                 },
                 timestamp: new Date().toISOString()
             });
-            
+
         } catch (error) {
             console.error('Get workspace references error:', error);
             this.sendError(ws, 'Failed to get workspace references', error.message, message.requestId);
@@ -3699,7 +4080,10 @@ class WebSocketMessageHandlers {
             
             // Remove from workspace cache files
             removeFromWorkspaceArray('cacheFiles', hash, workspaceId);
-            
+
+            // Clear cache for affected vibes (they may have been converted)
+            this.clearVibeCache();
+
             this.sendToClient(ws, {
                 type: 'delete_reference_response',
                 requestId: message.requestId,
@@ -3711,6 +4095,12 @@ class WebSocketMessageHandlers {
             console.error('Delete reference error:', error);
             this.sendError(ws, 'Failed to delete reference', error.message, message.requestId);
         }
+    }
+
+    // Helper method to clear vibe metadata cache
+    clearVibeCache() {
+        this.vibeMetadataCache.clear();
+        console.log('Vibe metadata cache cleared');
     }
 
     // Helper function to convert vibes from cache reference to base64
@@ -3863,6 +4253,9 @@ class WebSocketMessageHandlers {
                 }
             }
             
+            // Clear cache since new reference was added
+            this.clearVibeCache();
+            
             this.sendToClient(ws, {
                 type: 'upload_reference_response',
                 requestId: message.requestId,
@@ -3877,6 +4270,138 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('Upload reference error:', error);
             this.sendError(ws, 'Failed to upload reference', error.message, message.requestId);
+        }
+    }
+
+    async handleReplaceReference(ws, message, clientInfo, wsServer) {
+        try {
+            const { hash, imageData, workspaceId, tempFile, filename } = message;
+
+            // Validate required parameters
+            if (!hash) {
+                this.sendError(ws, 'Missing hash parameter', 'Reference hash is required', message.requestId);
+                return;
+            }
+
+            if (!workspaceId) {
+                this.sendError(ws, 'Missing workspace parameter', 'Workspace parameter is required', message.requestId);
+                return;
+            }
+
+            // Validate that the workspace exists
+            const workspaces = getWorkspaces();
+            if (!workspaces[workspaceId]) {
+                this.sendError(ws, 'Invalid workspace', `Workspace '${workspaceId}' not found`, message.requestId);
+                return;
+            }
+
+            // Check if the reference exists
+            const cacheFiles = getWorkspaceArray('cacheFiles', workspaceId);
+            if (!cacheFiles.includes(hash)) {
+                this.sendError(ws, 'Reference not found', `Reference with hash '${hash}' not found in workspace`, message.requestId);
+                return;
+            }
+
+            let imageBuffer;
+
+            if (filename) {
+                // Handle filename - read from images directory
+                const imageFilePath = path.join(imagesDir, filename);
+                if (!fs.existsSync(imageFilePath)) {
+                    this.sendError(ws, 'Image file not found', `Image file '${filename}' not found in images directory`, message.requestId);
+                    return;
+                }
+
+                imageBuffer = fs.readFileSync(imageFilePath);
+            } else if (tempFile) {
+                // Handle downloaded temp file
+                const tempFilePath = path.join(cacheDir, 'tempDownload', tempFile);
+                if (!fs.existsSync(tempFilePath)) {
+                    this.sendError(ws, 'Temp file not found', 'Downloaded temp file not found', message.requestId);
+                    return;
+                }
+
+                imageBuffer = fs.readFileSync(tempFilePath);
+
+                // Clean up temp file
+                try {
+                    fs.unlinkSync(tempFilePath);
+                    console.log(`🧹 Cleaned up temp file: ${tempFile}`);
+                } catch (cleanupError) {
+                    console.warn(`⚠️ Failed to clean up temp file: ${cleanupError.message}`);
+                }
+            } else if (imageData) {
+                // Handle base64 image data
+                imageBuffer = Buffer.from(imageData, 'base64');
+            } else {
+                this.sendError(ws, 'Missing image data', 'Either filename, imageData or tempFile must be provided', message.requestId);
+                return;
+            }
+
+            // Calculate new hash for the replacement image
+            const newHash = crypto.createHash('md5').update(imageBuffer).digest('hex');
+
+            // If the new image is different from the existing one
+            if (newHash !== hash) {
+                // Save the new file
+                const newFilePath = path.join(uploadCacheDir, newHash);
+                fs.writeFileSync(newFilePath, imageBuffer);
+
+                // Generate new preview
+                const newPreviewPath = path.join(previewCacheDir, `${newHash}.webp`);
+                await sharp(imageBuffer)
+                    .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+                    .webp({ quality: 80 })
+                    .toFile(newPreviewPath);
+                console.log(`📸 Generated new preview: ${newHash}.webp`);
+
+                // Remove old reference from workspace
+                removeFromWorkspaceArray('cacheFiles', hash, workspaceId);
+
+                // Add new reference to workspace
+                addToWorkspaceArray('cacheFiles', newHash, workspaceId);
+
+                // Clean up old files
+                try {
+                    const oldFilePath = path.join(uploadCacheDir, hash);
+                    const oldPreviewPath = path.join(previewCacheDir, `${hash}.webp`);
+
+                    if (fs.existsSync(oldFilePath)) {
+                        fs.unlinkSync(oldFilePath);
+                        console.log(`🗑️ Removed old reference file: ${hash}`);
+                    }
+
+                    if (fs.existsSync(oldPreviewPath)) {
+                        fs.unlinkSync(oldPreviewPath);
+                        console.log(`🗑️ Removed old reference preview: ${hash}.webp`);
+                    }
+                } catch (cleanupError) {
+                    console.warn(`⚠️ Failed to clean up old files: ${cleanupError.message}`);
+                }
+
+                console.log(`🔄 Replaced reference ${hash} with ${newHash}`);
+            } else {
+                console.log(`ℹ️ Reference ${hash} is identical to replacement, no changes made`);
+            }
+
+            // Clear cache since reference was replaced
+            this.clearVibeCache();
+
+            this.sendToClient(ws, {
+                type: 'replace_reference_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    message: 'Reference replaced successfully',
+                    oldHash: hash,
+                    newHash: newHash
+                },
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            console.error('Replace reference error:', error);
+            this.sendError(ws, 'Failed to replace reference', error.message, message.requestId);
         }
     }
 
@@ -4012,8 +4537,15 @@ class WebSocketMessageHandlers {
                     
                     console.log(`📥 Downloaded image from URL: ${url} -> ${finalTempFilename} (${hash})${isBlueprint ? ' (NovelAI Generated)' : ''}`);
                     
-                } else if (cleanContentType === 'application/json' || url.endsWith('.json')) {
+                } else if (cleanContentType === 'application/json' ||
+                           cleanContentType === 'application/octet-stream' ||
+                           url.includes('.naiv4vibe') ||
+                           url.includes('.naiv4vibebundle') ||
+                           url.includes('vibe') ||
+                           url.endsWith('.json') ||
+                           url.toLowerCase().includes('novelai')) {
                     // Handle JSON files (vibe bundles)
+                    console.log(`📄 Processing as JSON/vibe file - Content-Type: ${cleanContentType}, URL: ${url}`);
                     
                     // Generate hash for the file
                     const hash = crypto.createHash('md5').update(response.buffer).digest('hex');
@@ -4049,85 +4581,46 @@ class WebSocketMessageHandlers {
                         throw new Error('Invalid JSON file');
                     }
                     
-                    // Check if it's a vibe bundle
-                    if (jsonData.identifier === 'novelai-vibe-transfer' || jsonData.vibes) {
-                        const vibes = jsonData.vibes ? jsonData.vibes : [jsonData];
+                    // Use unified vibe detection system
+                    const detectionResult = this.detectAndParseVibeFile(jsonData);
+                    if (detectionResult.isValid) {
+                        const vibes = detectionResult.vibes;
                         const vibeCount = vibes.length;
-                        
-                        // Extract detailed metadata for each vibe
-                        const vibeMetadata = [];
-                        
-                        for (const vibe of vibes) {
-                            try {
-                                // Extract thumbnail if available
-                                let thumbnail = null;
-                                if (vibe.thumbnail && vibe.thumbnail.startsWith('data:image/')) {
-                                    // Save thumbnail to preview cache
-                                    const thumbnailBase64 = vibe.thumbnail.split(',')[1];
-                                    const thumbnailBuffer = Buffer.from(thumbnailBase64, 'base64');
-                                    const thumbnailHash = crypto.createHash('md5').update(thumbnailBuffer).digest('hex');
-                                    const thumbnailPath = path.join(previewCacheDir, `${thumbnailHash}.webp`);
-                                    
-                                    if (!fs.existsSync(thumbnailPath)) {
-                                        await sharp(thumbnailBuffer)
-                                            .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
-                                            .webp({ quality: 80 })
-                                            .toFile(thumbnailPath);
-                                    }
-                                    
-                                    thumbnail = thumbnailHash;
-                                }
-                                
-                                // Extract encoding information
-                                const encodings = {};
-                                if (vibe.encodings) {
-                                    Object.entries(vibe.encodings).forEach(([bundleModel, modelEncodings]) => {
-                                        if (!encodings[bundleModel]) {
-                                            encodings[bundleModel] = {};
+
+                        // Process raw JSON data for client - convert encodings and images to booleans
+                        const processedJsonData = JSON.parse(JSON.stringify(jsonData));
+
+                        // Process each vibe in the raw data
+                        const vibesArray = processedJsonData.vibes || [processedJsonData];
+                        vibesArray.forEach(vibe => {
+                            if (vibe.encodings) {
+                                // Convert encodings to boolean indicators
+                                Object.keys(vibe.encodings).forEach(model => {
+                                    Object.keys(vibe.encodings[model]).forEach(ie => {
+                                        // Keep the encoding data as-is, just ensure it's properly structured
+                                        if (vibe.encodings[model][ie] && typeof vibe.encodings[model][ie] === 'object') {
+                                            // Ensure encoding string exists
+                                            if (!vibe.encodings[model][ie].encoding) {
+                                                vibe.encodings[model][ie].encoding = '';
+                                            }
                                         }
-                                        
-                                        Object.entries(modelEncodings).forEach(([encodingId, encodingData]) => {
-                                            let ie = 1;
-                                            if (encodingId !== 'unknown') {
-                                                ie = encodingData.params?.information_extracted || 1;
-                                            } else if (vibe.importInfo && vibe.importInfo.information_extracted) {
-                                                ie = vibe.importInfo.information_extracted;
-                                            }
-                                            
-                                            if (encodingData.encoding && encodingData.encoding.trim() !== '') {
-                                                encodings[bundleModel][ie] = encodingData.encoding;
-                                            }
-                                        });
                                     });
-                                }
-                                
-                                vibeMetadata.push({
-                                    id: vibe.id || 'unknown',
-                                    name: vibe.name || 'Unnamed Vibe',
-                                    thumbnail: thumbnail,
-                                    encodings: encodings,
-                                    model: vibe.model || 'Unknown',
-                                    createdAt: vibe.createdAt || Date.now(),
-                                    importInfo: vibe.importInfo || {}
-                                });
-                            } catch (vibeError) {
-                                console.warn(`⚠️ Error processing vibe ${vibe.id || vibe.name}: ${vibeError.message}`);
-                                // Add basic info for failed vibes
-                                vibeMetadata.push({
-                                    id: vibe.id || 'unknown',
-                                    name: vibe.name || 'Unnamed Vibe',
-                                    thumbnail: null,
-                                    encodings: {},
-                                    model: vibe.model || 'Unknown',
-                                    createdAt: vibe.createdAt || Date.now(),
-                                    importInfo: {},
-                                    error: vibeError.message
                                 });
                             }
-                        }
-                        
+
+                            // Convert image to boolean (keep base64 data)
+                            if (vibe.image && typeof vibe.image === 'string') {
+                                // Keep the image data as-is for client processing
+                            }
+
+                            // Keep thumbnail as base64 for client display
+                            if (vibe.thumbnail && typeof vibe.thumbnail === 'string') {
+                                // Keep thumbnail data as-is
+                            }
+                        });
+
                         fileInfo = {
-                            type: 'vibe_bundle',
+                            type: detectionResult.type === 'bundle' ? 'vibe_bundle' : 'vibe_single',
                             tempFilename: finalTempFilename,
                             originalFilename: originalFilename,
                             hash: hash,
@@ -4135,12 +4628,11 @@ class WebSocketMessageHandlers {
                             contentType: contentType,
                             url: url,
                             vibeCount: vibeCount,
-                            model: jsonData.model || 'Unknown',
-                            identifier: jsonData.identifier || 'novelai-vibe-transfer',
-                            vibes: vibeMetadata
+                            jsonData: processedJsonData, // Raw JSON data for client processing
+                            isBundle: detectionResult.type === 'bundle'
                         };
-                        
-                        console.log(`📥 Downloaded vibe bundle from URL: ${url} -> ${finalTempFilename} (${vibeCount} vibes)`);
+
+                        console.log(`📥 Downloaded ${detectionResult.type} vibe file from URL: ${url} -> ${finalTempFilename} (${vibeCount} vibe(s))`);
                     } else {
                         // Generic JSON file
                         fileInfo = {
@@ -4156,14 +4648,17 @@ class WebSocketMessageHandlers {
                     
                 } else {
                     // Unsupported file type
-                    throw new Error(`Unsupported file type: ${contentType}. Only image files and JSON files are allowed.`);
+                    console.log(`❌ Unsupported file type: ${contentType} for URL: ${url}`);
+                    throw new Error(`Unsupported file type: ${contentType}. Only image files, JSON files, and vibe bundles are allowed.`);
                 }
                 
+                console.log('📤 Sending download response with fileInfo:', JSON.stringify(fileInfo, null, 2));
+
                 this.sendToClient(ws, {
                     type: 'download_url_file_response',
                     requestId: message.requestId,
-                    data: { 
-                        success: true, 
+                    data: {
+                        success: true,
                         message: 'File downloaded successfully',
                         ...fileInfo
                     },
@@ -4872,7 +5367,10 @@ class WebSocketMessageHandlers {
                 
                 // Add to workspace
                 addToWorkspaceArray('vibeImages', filename, targetWorkspace);
-                
+
+                // Clear vibe cache to ensure updated metadata is loaded
+                this.clearVibeCache();
+
             } else if (cacheFile) {
                 // Create vibe from cache file
                 const cachePath = path.join(uploadCacheDir, cacheFile);
@@ -4908,14 +5406,17 @@ class WebSocketMessageHandlers {
                     vibeData.encodings[model] = {};
                 }
                 vibeData.encodings[model][informationExtraction] = encoding;
-                
+
                 // Save vibe file
                 const filename = `${sha256Hash}.json`;
                 const filePath = path.join(vibeCacheDir, filename);
                 fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
-                
+
                 // Add to workspace
                 addToWorkspaceArray('vibeImages', filename, targetWorkspace);
+
+                // Clear vibe cache to ensure updated metadata is loaded
+                this.clearVibeCache();
             } else if (tempFile) {
                 // Create vibe from temp downloaded file
                 const tempFilePath = path.join(cacheDir, 'tempDownload', tempFile);
@@ -4964,14 +5465,17 @@ class WebSocketMessageHandlers {
                     vibeData.encodings[model] = {};
                 }
                 vibeData.encodings[model][informationExtraction] = encoding;
-                
+
                 // Save vibe file
                 const filename = `${sha256Hash}.json`;
                 const filePath = path.join(vibeCacheDir, filename);
                 fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
-                
+
                 // Add to workspace
                 addToWorkspaceArray('vibeImages', filename, targetWorkspace);
+
+                // Clear vibe cache to ensure updated metadata is loaded
+                this.clearVibeCache();
             } else if (id) {
                 // Add new encoding to existing vibe
                 const workspaceData = getWorkspace(targetWorkspace);
@@ -5034,8 +5538,11 @@ class WebSocketMessageHandlers {
                 
                 // Update file
                 fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
+
+                // Clear vibe cache to ensure updated metadata is loaded
+                this.clearVibeCache();
             }
-            
+
             // Clean up temp download file if it was used
             if (tempFile) {
                 try {
@@ -5287,34 +5794,53 @@ class WebSocketMessageHandlers {
         });
     }
 
-    // Helper to collect vibe image details from a list of filenames and workspaceId
-    collectVibeImageDetails(filenames, workspaceId) {
-        const vibeImageDetails = [];
-        for (const filename of filenames) {
+        // Cache for vibe metadata to avoid repeated file I/O
+    vibeMetadataCache = new Map();
+    cacheExpiryTime = 5 * 60 * 1000; // 5 minutes
+
+    // Helper to get cached vibe metadata or load from file
+    getCachedVibeMetadata(filename, workspaceId) {
+        const cacheKey = `${workspaceId}:${filename}`;
+        const cached = this.vibeMetadataCache.get(cacheKey);
+
+        if (cached && (Date.now() - cached.timestamp) < this.cacheExpiryTime) {
+            return cached.data;
+        }
+
+        // Cache miss or expired - load from file
             const filePath = path.join(vibeCacheDir, filename);
-            if (fs.existsSync(filePath)) {
+        if (!fs.existsSync(filePath)) {
+            return null;
+        }
+
                 const stats = fs.statSync(filePath);
                 try {
                     const vibeData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
                     const previewPath = path.join(previewCacheDir, `${vibeData.preview}.webp`);
-                    // Get all encodings for this file
-                    const encodings = [];
-                    for (const [model, modelEncodings] of Object.entries(vibeData.encodings || {})) {
+
+            // OPTIMIZATION: Process encoding metadata only (client needs model/IE info for display)
+            const encodingsMetadata = [];
+            if (vibeData.encodings && typeof vibeData.encodings === 'object') {
+                for (const [model, modelEncodings] of Object.entries(vibeData.encodings)) {
+                    if (modelEncodings && typeof modelEncodings === 'object') {
                         for (const [extractionValue, encoding] of Object.entries(modelEncodings)) {
-                            encodings.push({
+                            encodingsMetadata.push({
                                 model,
-                                informationExtraction: parseFloat(extractionValue),
-                                encoding: encoding
+                                informationExtraction: parseFloat(extractionValue)
+                                // Exclude the actual encoding data since client never uses it
                             });
                         }
                     }
-                    vibeImageDetails.push({
+                }
+            }
+
+            const metadata = {
                         filename,
                         id: vibeData.id,
                         preview: fs.existsSync(previewPath) ? `${vibeData.preview}.webp` : null,
-                        mtime: vibeData.mtime || stats.mtime.valueOf(), // Use vibe's mtime if available, otherwise file mtime
+                mtime: vibeData.mtime || stats.mtime.valueOf(),
                         size: stats.size,
-                        encodings: encodings,
+                encodings: encodingsMetadata,
                         type: vibeData.type === 'base64' ? 'base64' : 'cache',
                         source: vibeData.image,
                         workspaceId: workspaceId,
@@ -5322,11 +5848,28 @@ class WebSocketMessageHandlers {
                         importedFrom: vibeData.importedFrom || null,
                         originalName: vibeData.originalName || null,
                         locked: vibeData.locked || false
-                    });
+            };
+
+            // Cache the metadata
+            this.vibeMetadataCache.set(cacheKey, {
+                data: metadata,
+                timestamp: Date.now()
+            });
+
+            return metadata;
                 } catch (parseError) {
                     console.error(`Error parsing vibe file ${filename}:`, parseError);
-                    continue;
-                }
+            return null;
+        }
+    }
+
+    // Helper to collect vibe image details from a list of filenames and workspaceId
+    collectVibeImageDetails(filenames, workspaceId) {
+        const vibeImageDetails = [];
+        for (const filename of filenames) {
+            const metadata = this.getCachedVibeMetadata(filename, workspaceId);
+            if (metadata) {
+                vibeImageDetails.push(metadata);
             }
         }
         return vibeImageDetails;
@@ -5668,10 +6211,107 @@ class WebSocketMessageHandlers {
         }
     }
 
+    // Unified vibe detection and parsing function
+    detectAndParseVibeFile(data) {
+        const result = {
+            isValid: false,
+            type: null, // 'bundle' or 'single'
+            vibes: [],
+            error: null
+        };
+
+        try {
+            // Validate basic structure
+            if (!data || typeof data !== 'object') {
+                result.error = 'Invalid data format: expected object';
+                return result;
+            }
+
+            // Check for required identifier
+            if (!data.identifier) {
+                result.error = 'Missing identifier: not a valid NovelAI vibe file';
+                return result;
+            }
+
+            // Handle different vibe file types
+            if (data.identifier === 'novelai-vibe-transfer-bundle') {
+                // Bundle format - contains multiple vibes
+                if (!data.vibes || !Array.isArray(data.vibes)) {
+                    result.error = 'Invalid bundle format: missing or invalid vibes array';
+                    return result;
+                }
+
+                if (data.vibes.length === 0) {
+                    result.error = 'Empty bundle: no vibes found';
+                    return result;
+                }
+
+                // Validate each vibe in the bundle
+                const validVibes = [];
+                for (const vibe of data.vibes) {
+                    if (this.validateVibeStructure(vibe)) {
+                        validVibes.push(vibe);
+                    } else {
+                        console.warn(`Skipping invalid vibe in bundle: ${vibe.name || vibe.id || 'unnamed'}`);
+                    }
+                }
+
+                if (validVibes.length === 0) {
+                    result.error = 'Bundle contains no valid vibes';
+                    return result;
+                }
+
+                result.isValid = true;
+                result.type = 'bundle';
+                result.vibes = validVibes;
+
+            } else if (data.identifier === 'novelai-vibe-transfer') {
+                // Single vibe format
+                if (!this.validateVibeStructure(data)) {
+                    result.error = 'Invalid single vibe format';
+                    return result;
+                }
+
+                result.isValid = true;
+                result.type = 'single';
+                result.vibes = [data];
+
+            } else {
+                result.error = `Unsupported identifier: ${data.identifier}`;
+                return result;
+            }
+
+            return result;
+
+        } catch (error) {
+            result.error = `Parse error: ${error.message}`;
+            return result;
+        }
+    }
+
+    // Helper function to validate individual vibe structure
+    validateVibeStructure(vibe) {
+        if (!vibe || typeof vibe !== 'object') {
+            return false;
+        }
+
+        // Check for required fields
+        if (!vibe.identifier || vibe.identifier !== 'novelai-vibe-transfer') {
+            return false;
+        }
+
+        // At minimum, a vibe should have encodings or be a valid structure
+        if (!vibe.encodings && !vibe.id && !vibe.name) {
+            return false;
+        }
+
+        return true;
+    }
+
     async handleImportVibeBundle(ws, message, clientInfo, wsServer) {
         try {
             const { bundleData, workspaceId, comment, tempFile } = message;
-            
+
             // Determine which workspace to use
             let targetWorkspace = workspaceId;
             if (!targetWorkspace) {
@@ -5682,16 +6322,16 @@ class WebSocketMessageHandlers {
                 this.sendError(ws, 'Invalid workspace', 'No workspace provided, and no active workspace found', message.requestId);
                 return;
             }
-            
+
             // Validate that the workspace exists
             const workspaces = getWorkspaces();
             if (!workspaces[targetWorkspace]) {
                 this.sendError(ws, 'Invalid workspace', `Workspace '${targetWorkspace}' not found`, message.requestId);
                 return;
             }
-            
+
             let bundleDataToProcess = bundleData;
-            
+
             if (tempFile) {
                 // Handle downloaded temp file
                 const tempFilePath = path.join(cacheDir, 'tempDownload', tempFile);
@@ -5699,7 +6339,7 @@ class WebSocketMessageHandlers {
                     this.sendError(ws, 'Temp file not found', 'Downloaded temp file not found', message.requestId);
                     return;
                 }
-                
+
                 try {
                     const fileContent = fs.readFileSync(tempFilePath, 'utf8');
                     bundleDataToProcess = JSON.parse(fileContent);
@@ -5709,43 +6349,22 @@ class WebSocketMessageHandlers {
                     return;
                 }
             }
-            
-            if (!bundleDataToProcess || !bundleDataToProcess.identifier) {
-                this.sendError(ws, 'Invalid bundle format', 'Not a valid NovelAI vibe transfer or bundle file', message.requestId);
+
+            // Use unified detection system
+            const detectionResult = this.detectAndParseVibeFile(bundleDataToProcess);
+            if (!detectionResult.isValid) {
+                this.sendError(ws, 'Invalid vibe file', detectionResult.error, message.requestId);
                 return;
             }
 
-            // Handle both bundle format and single vibe format
-            let vibes = [];
-            if (bundleData.identifier === 'novelai-vibe-transfer-bundle') {
-                if (!bundleData.vibes || !Array.isArray(bundleData.vibes)) {
-                    this.sendError(ws, 'Invalid bundle format', 'Bundle does not contain valid vibes array', message.requestId);
-                    return;
-                }
-                vibes = bundleData.vibes;
-            } else if (bundleData.identifier === 'novelai-vibe-transfer') {
-                // Single vibe format
-                vibes = [bundleData];
-            } else {
-                this.sendError(ws, 'Invalid bundle format', 'Not a valid NovelAI vibe transfer or bundle file', message.requestId);
-                return;
-            }
+            const vibes = detectionResult.vibes;
+            console.log(`📦 Detected ${detectionResult.type} vibe file with ${vibes.length} vibe(s)`);
 
-            if (vibes.length === 0) {
-                this.sendError(ws, 'Empty bundle', 'No vibes found in bundle', message.requestId);
-                return;
-            }
-
-            // Process each vibe
+            // Process each vibe (validation already done in detectAndParseVibeFile)
             const importedVibes = [];
             const errors = [];
             for (const vibe of vibes) {
                 try {
-                    // Validate structure (allow missing image/thumbnail, but mark as locked)
-                    if (!vibe.identifier || vibe.identifier !== 'novelai-vibe-transfer') {
-                        console.warn(`Skipping invalid vibe: ${vibe.name || 'unnamed'}`);
-                        continue;
-                    }
 
                     // Generate ID if it's 'unknown'
                     let vibeId = vibe.id;
@@ -6096,6 +6715,83 @@ class WebSocketMessageHandlers {
             requestId,
             timestamp: new Date().toISOString()
         });
+    }
+
+    // Send keep-alive message for long-running requests
+    sendKeepAlive(ws, requestId, status = 'processing', progress = null, message = null) {
+        this.sendToClient(ws, {
+            type: 'request_keep_alive',
+            requestId: requestId,
+            status: status, // 'processing', 'progress', 'completed'
+            progress: progress, // Optional progress percentage (0-100)
+            message: message, // Optional status message
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    // Start keep-alive interval for long-running operations (starts after 10 seconds)
+    startKeepAliveInterval(ws, requestId, intervalMs = 15000) {
+        // Clear any existing keep-alive for this request
+        this.stopKeepAliveInterval(requestId);
+
+        // Start keep-alive after 10 seconds initial delay
+        const startDelay = setTimeout(() => {
+            console.log(`🔄 Starting keep-alive for request ${requestId} (every ${intervalMs}ms)`);
+
+            const keepAliveId = setInterval(() => {
+                try {
+                    this.sendKeepAlive(ws, requestId, 'processing');
+                } catch (error) {
+                    console.warn(`⚠️ Failed to send keep-alive for request ${requestId}:`, error.message);
+                    this.stopKeepAliveInterval(requestId);
+                }
+            }, intervalMs);
+
+            // Store the keep-alive interval
+            this.keepAliveIntervals.set(requestId, {
+                intervalId: keepAliveId,
+                startTime: Date.now(),
+                lastKeepAlive: Date.now()
+            });
+
+        }, 10000); // 10 second initial delay
+
+        // Store the start delay timeout
+        this.keepAliveIntervals.set(requestId, {
+            startDelayId: startDelay,
+            startTime: Date.now(),
+            lastKeepAlive: null
+        });
+    }
+
+    // Stop keep-alive interval for a specific request
+    stopKeepAliveInterval(requestId) {
+        if (this.keepAliveIntervals && this.keepAliveIntervals.has(requestId)) {
+            const keepAliveData = this.keepAliveIntervals.get(requestId);
+
+            // Clear start delay if it exists
+            if (keepAliveData.startDelayId) {
+                clearTimeout(keepAliveData.startDelayId);
+            }
+
+            // Clear interval if it exists
+            if (keepAliveData.intervalId) {
+                clearInterval(keepAliveData.intervalId);
+            }
+
+            this.keepAliveIntervals.delete(requestId);
+            console.log(`🛑 Stopped keep-alive for request ${requestId}`);
+        }
+    }
+
+    // Update keep-alive with progress information
+    updateKeepAliveProgress(ws, requestId, progress, message = null) {
+        if (this.keepAliveIntervals && this.keepAliveIntervals.has(requestId)) {
+            const keepAliveData = this.keepAliveIntervals.get(requestId);
+            keepAliveData.lastKeepAlive = Date.now();
+
+            this.sendKeepAlive(ws, requestId, 'progress', progress, message);
+        }
     }
 
     async handleUrlUploadMetadataRequest(ws, message, clientInfo, wsServer) {
@@ -7303,14 +7999,20 @@ class WebSocketMessageHandlers {
             const { requestId, ...data } = message;
             console.log(`🚀 Processing image generation request: ${requestId}`);
             console.log('📋 Generation data:', data);
-            
+
+            // Start keep-alive for long-running image generation
+            this.startKeepAliveInterval(ws, requestId, 15000); // Every 15 seconds for image generation
+
             // Call the WebSocket-native image generation function directly
             const result = await generateImageWebSocket(
-                data, 
-                clientInfo.userType, 
+                data,
+                clientInfo.userType,
                 clientInfo.sessionId
             );
-            
+
+            // Stop keep-alive when complete
+            this.stopKeepAliveInterval(requestId);
+
             // Send success response with image data using _response pattern
             this.sendToClient(ws, {
                 type: 'image_generation_response',
@@ -7322,12 +8024,15 @@ class WebSocketMessageHandlers {
                 },
                 timestamp: new Date().toISOString()
             });
-            
+
         } catch (error) {
+            // Stop keep-alive on error
+            this.stopKeepAliveInterval(requestId);
+
             console.error('❌ Image generation error:', error);
             this.sendToClient(ws, {
                 type: 'image_generation_error',
-                requestId: message.requestId,
+                requestId: requestId,
                 data: null,
                 error: error.message || 'Image generation failed',
                 timestamp: new Date().toISOString()
@@ -7338,23 +8043,24 @@ class WebSocketMessageHandlers {
     // Handle image reroll requests
     async handleImageReroll(ws, message, clientInfo, wsServer) {
         try {
-            const { requestId, filename, workspace } = message;
-            console.log(`🎲 Processing image reroll request: ${requestId} for filename: ${filename}`);
-            
+            const { requestId, filename, workspace, allow_paid } = message;
+            console.log(`🎲 Processing image reroll request: ${requestId} for filename: ${filename}, allow_paid: ${allow_paid}`);
+
             // Get image metadata
             const metadata = await getImageMetadata(filename, imagesDir);
             if (!metadata) {
                 throw new Error(`No metadata found for image: ${filename}`);
             }
-            
+
             console.log('🎲 Retrieved metadata for reroll:', metadata);
 
-            // Call the reroll generation function
+            // Call the reroll generation function with allow_paid flag
             const result = await handleRerollGeneration(
-                metadata, 
-                clientInfo.userType, 
-                clientInfo.sessionId, 
-                workspace || null
+                metadata,
+                clientInfo.userType,
+                clientInfo.sessionId,
+                workspace || null,
+                allow_paid || false
             );
             
             // Send success response with image data using _response pattern
@@ -7466,15 +8172,21 @@ class WebSocketMessageHandlers {
             }
 
             console.log('🔄 Admin requested server cache refresh via WebSocket...');
-            
+
+            // Start keep-alive for cache refresh operation
+            this.startKeepAliveInterval(ws, message.requestId, 5000); // Every 5 seconds for cache refresh
+
             // Get the reload function from context
             const reloadCacheData = this.context.reloadCacheData;
             if (!reloadCacheData) {
                 throw new Error('Cache reload function not available in context');
             }
-            
+
             // Force reload of cache data
             await reloadCacheData();
+
+            // Stop keep-alive when complete
+            this.stopKeepAliveInterval(message.requestId);
             
             // Get updated cache data
             const globalCacheData = this.context.getGlobalCacheData ? this.context.getGlobalCacheData() : [];
@@ -7495,6 +8207,9 @@ class WebSocketMessageHandlers {
             });
             
         } catch (error) {
+            // Stop keep-alive on error
+            this.stopKeepAliveInterval(message.requestId);
+
             console.error('❌ Server cache refresh error:', error);
             wsServer.sendToClient(ws, {
                 type: 'refresh_server_cache_response',
@@ -7563,6 +8278,2399 @@ class WebSocketMessageHandlers {
                 },
                 timestamp: new Date().toISOString()
             });
+        }
+    }
+
+    // Helper function to load conversation history for AI services
+    async loadConversationHistoryForAI(chatId, maxMessages = 20) {
+        try {
+            const messages = getChatMessages(chatId, maxMessages, 0);
+            return messages.reverse().map(msg => ({
+                message_type: msg.message_type,
+                content: msg.content,
+                created_at: msg.created_at
+            }));
+        } catch (error) {
+            console.error('Error loading conversation history:', error);
+            return [];
+        }
+    }
+
+    // Chat system handlers
+    async handleGetPersonaSettings(ws, message, clientInfo, wsServer) {
+        try {
+            const settings = getPersonaSettings();
+            this.sendToClient(ws, {
+                type: 'get_persona_settings_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    settings: settings
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error getting persona settings:', error);
+            this.sendError(ws, 'Failed to get persona settings', error.message, message.requestId);
+        }
+    }
+
+    async handleSavePersonaSettings(ws, message, clientInfo, wsServer) {
+        try {
+            const data = message.data || message;
+            const { settings } = data;
+            
+            // Ensure temperature is included and valid
+            if (settings.default_temperature === undefined) {
+                settings.default_temperature = 0.8;
+            }
+            
+            // Ensure reasoning level is included and valid
+            if (settings.default_reasoning_level === undefined) {
+                settings.default_reasoning_level = 'medium';
+            }
+            
+            const success = savePersonaSettings(settings);
+            
+            this.sendToClient(ws, {
+                type: 'save_persona_settings_response',
+                requestId: message.requestId,
+                data: {
+                    success: success,
+                    message: success ? 'Persona settings saved successfully' : 'Failed to save persona settings'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error saving persona settings:', error);
+            this.sendError(ws, 'Failed to save persona settings', error.message, message.requestId);
+        }
+    }
+
+    async handleCreateChatSession(ws, message, clientInfo, wsServer) {
+        try {
+            // Handle both message.data and direct message properties
+            const data = message.data || message;
+            console.log('📝 Creating chat session with data:', JSON.stringify(data, null, 2));
+            const { filename, characterName, textContextInfo, textViewerInfo, verbosityLevel } = data;
+            
+            if (!filename) {
+                this.sendError(ws, 'Filename is required', null, message.requestId);
+                return;
+            }
+
+            // Get persona settings for defaults
+            const personaSettings = getPersonaSettings();
+            
+            // Use provided provider and model, or fallback to legacy detection
+            let provider = data.provider;
+            let model = data.model;
+            
+            // Fallback for legacy clients that still send aiModel
+            if (!provider || !model) {
+                const selectedModel = data.aiModel || personaSettings.default_ai_engine || 'grok-4';
+                provider = 'grok'; // Default to Grok
+                model = selectedModel;
+                
+                // Check if it's an OpenAI model
+                if (selectedModel.includes('gpt') || selectedModel.includes('o4')) {
+                    provider = 'openai';
+                } else if (selectedModel.includes('grok')) {
+                    provider = 'grok';
+                }
+            }
+            
+            const sessionData = {
+                chat_name: characterName || null,
+                filename: filename,
+                provider: provider,
+                model: model,
+                character_name: characterName || null,
+                text_context_info: textContextInfo || null,
+                text_viewer_info: textViewerInfo || null,
+                verbosity_level: verbosityLevel || personaSettings.default_verbosity || 3,
+                temperature: data.temperature || 0.8,
+                thought_level: data.thoughtLevel || 'minimal'
+            };
+
+            const chatId = createChatSession(sessionData);
+            
+            if (!chatId) {
+                this.sendError(ws, 'Failed to create chat session', null, message.requestId);
+                return;
+            }
+
+            // Send initial response
+            this.sendToClient(ws, {
+                type: 'create_chat_session_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    chatId: chatId,
+                    message: 'Chat session created successfully'
+                },
+                timestamp: new Date().toISOString()
+            });
+
+            // Automatically start the first generation to establish persona
+            try {
+                console.log('🎭 Starting initial persona establishment for chat session:', chatId);
+                
+                // Get persona settings
+                const personaSettings = getPersonaSettings();
+                
+                // Get the character image for this chat session
+                const imagePath = path.join(imagesDir, data.filename);
+                let personaImage = null;
+                let userPrompt = '';
+                
+                console.log('🖼️ Looking for image at:', imagePath);
+                console.log('📁 Images directory:', imagesDir);
+                console.log('📄 Filename:', data.filename);
+                
+                if (fs.existsSync(imagePath)) {
+                    console.log('✅ Image file exists, loading...');
+                    const imageBuffer = fs.readFileSync(imagePath);
+                    const base64Image = imageBuffer.toString('base64');
+                    const mimeType = path.extname(data.filename).toLowerCase() === '.png' ? 'image/png' : 'image/jpeg';
+                    
+                    personaImage = {
+                        base64: base64Image,
+                        mimeType: mimeType
+                    };
+                    
+                    console.log('🖼️ Image loaded, size:', imageBuffer.length, 'bytes');
+                    
+                    // Get the prompt data for this image
+                    const metadata = await getImageMetadata(data.filename, imagesDir);
+                    console.log('📋 Metadata retrieved:', metadata ? 'Yes' : 'No');
+                    if (metadata) {
+                        console.log('📋 Full metadata object:', JSON.stringify(metadata, null, 2));
+                        console.log('📋 Metadata keys:', Object.keys(metadata));
+                        console.log('📋 Metadata.metadata keys:', metadata.metadata ? Object.keys(metadata.metadata) : 'No metadata.metadata');
+                        console.log('📋 Full metadata.metadata:', JSON.stringify(metadata.metadata, null, 2));
+                        
+                        // Check if metadata is a string that needs parsing
+                        if (typeof metadata.metadata === 'string') {
+                            try {
+                                const parsedMetadata = JSON.parse(metadata.metadata);
+                                console.log('📋 Parsed metadata.metadata:', JSON.stringify(parsedMetadata, null, 2));
+                            } catch (e) {
+                                console.log('📋 Failed to parse metadata.metadata as JSON:', e.message);
+                            }
+                        }
+                    }
+                    
+                    // The prompt data is always in metadata.metadata (from extractNovelAIMetadata)
+                    if (metadata && metadata.metadata && metadata.metadata.input_prompt) {
+                        userPrompt = metadata.metadata.input_prompt;
+                        console.log('📝 Using metadata.metadata.input_prompt');
+                    } else if (metadata && metadata.metadata && metadata.metadata.prompt) {
+                        userPrompt = metadata.metadata.prompt;
+                        console.log('📝 Using metadata.metadata.prompt');
+                    }
+                    
+                    // Add character prompts if available (they're in metadata.metadata)
+                    if (metadata && metadata.metadata && metadata.metadata.characterPrompts && Array.isArray(metadata.metadata.characterPrompts) && metadata.metadata.characterPrompts.length > 0) {
+                        userPrompt += ', ' + metadata.metadata.characterPrompts.join(', ');
+                        console.log('👥 Added metadata.metadata.characterPrompts:', metadata.metadata.characterPrompts.length, 'items');
+                    } else if (metadata && metadata.metadata && metadata.metadata.allCharacterPrompts && Array.isArray(metadata.metadata.allCharacterPrompts) && metadata.metadata.allCharacterPrompts.length > 0) {
+                        userPrompt += ', ' + metadata.metadata.allCharacterPrompts.join(', ');
+                        console.log('👥 Added metadata.metadata.allCharacterPrompts:', metadata.metadata.allCharacterPrompts.length, 'items');
+                    }
+                    console.log('🔍 Final user prompt:', userPrompt);
+                } else {
+                    console.log('❌ Image file does not exist at:', imagePath);
+                    // Try to get metadata anyway in case the image is in a different location
+                    const metadata = await getImageMetadata(data.filename, imagesDir);
+                    if (metadata) {
+                        console.log('📋 Found metadata despite missing image file');
+                        console.log('📋 Fallback metadata keys:', Object.keys(metadata));
+                        console.log('📋 Fallback metadata.metadata keys:', metadata.metadata ? Object.keys(metadata.metadata) : 'No metadata.metadata');
+                        
+                        // The prompt data is always in metadata.metadata
+                        if (metadata.metadata && metadata.metadata.input_prompt) {
+                            userPrompt = metadata.metadata.input_prompt;
+                        } else if (metadata.metadata && metadata.metadata.prompt) {
+                            userPrompt = metadata.metadata.prompt;
+                        }
+                        
+                        // Character prompts are also in metadata.metadata
+                        if (metadata.metadata && metadata.metadata.characterPrompts && Array.isArray(metadata.metadata.characterPrompts) && metadata.metadata.characterPrompts.length > 0) {
+                            userPrompt += ', ' + metadata.metadata.characterPrompts.join(', ');
+                        } else if (metadata.metadata && metadata.metadata.allCharacterPrompts && Array.isArray(metadata.metadata.allCharacterPrompts) && metadata.metadata.allCharacterPrompts.length > 0) {
+                            userPrompt += ', ' + metadata.metadata.allCharacterPrompts.join(', ');
+                        }
+                        console.log('🔍 User prompt from metadata only:', userPrompt);
+                    }
+                }
+                
+                // Get viewer avatar if available
+                let viewerAvatar = null;
+                if (personaSettings.profile_photo_base64) {
+                    viewerAvatar = {
+                        base64: personaSettings.profile_photo_base64,
+                        mimeType: 'image/jpeg'
+                    };
+                }
+                
+                // Ensure we have some prompt data
+                if (!userPrompt) {
+                    userPrompt = 'A character from an AI-generated image';
+                    console.log('⚠️ No prompt data found, using fallback prompt');
+                }
+                
+                // Load system prompt
+                const systemPrompt = promptManager.getSystemPrompt('characterChat', {
+                    user_name: personaSettings.user_name || 'User',
+                    viewer_background: personaSettings.backstory || '',
+                    viewer_desires: '', // viewer desires
+                    verbosity_instruction: promptManager.getVerbosityInstruction(data.verbosityLevel || 3)
+                });
+                
+                // Create AI service based on provider
+                let aiResponse;
+                if (provider === 'openai') {
+                    console.log('🤖 Using ChatGPT service for initial persona establishment');
+                    const sessionData = {
+                        id: chatId,
+                        provider: 'openai',
+                        model: model,
+                        temperature: data.temperature || 0.8,
+                        thoughtLevel: data.thoughtLevel || 'minimal'
+                    };
+                    const chat = createChatGPTSession(sessionData, personaSettings, systemPrompt);
+                    
+                    // Establish persona with image
+                    if (personaImage) {
+                        console.log('🎭 Establishing ChatGPT persona with image');
+                        console.log('🖼️ Persona image size:', personaImage.base64.length, 'characters');
+                        console.log('📝 User prompt length:', userPrompt.length);
+                        console.log('👤 Viewer avatar:', viewerAvatar ? 'Yes' : 'No');
+                        
+                        if (config.chat_streaming_enabled) {
+                            console.log('📡 Streaming enabled for ChatGPT persona establishment');
+                            // Send initial streaming message
+                            this.sendToClient(ws, {
+                                type: 'chat_streaming_start',
+                                requestId: message.requestId,
+                                chatId: chatId,
+                                message: 'Establishing persona...'
+                            });
+                            
+                            await establishChatGPTPersonaStreaming(chat, personaImage, userPrompt, viewerAvatar, (chunk, fullResponse, processedEvents) => {
+                                // Send streaming update with events
+                                this.sendToClient(ws, {
+                                    type: 'chat_streaming_update',
+                                    requestId: message.requestId,
+                                    chatId: chatId,
+                                    chunk: chunk,
+                                    fullResponse: fullResponse,
+                                    events: processedEvents
+                                });
+                            });
+                        } else {
+                            console.log('📡 Streaming disabled for ChatGPT persona establishment');
+                            await establishChatGPTPersona(chat, personaImage, userPrompt, viewerAvatar);
+                        }
+                    } else {
+                        console.log('❌ No persona image available, skipping persona establishment');
+                    }
+                    
+                    if (config.chat_streaming_enabled) {
+                        console.log('📡 Streaming enabled for ChatGPT initial response');
+                        // Send streaming start for initial message
+                        this.sendToClient(ws, {
+                            type: 'chat_streaming_start',
+                            requestId: message.requestId,
+                            chatId: chatId,
+                            message: 'Generating initial response...'
+                        });
+                        
+                        aiResponse = await continueChatGPTConversationStreaming(chat, 'Hello! I\'m ready to chat with you.', (chunk, fullResponse) => {
+                            // Send streaming update
+                            this.sendToClient(ws, {
+                                type: 'chat_streaming_update',
+                                requestId: message.requestId,
+                                chatId: chatId,
+                                chunk: chunk,
+                                fullResponse: fullResponse
+                            });
+                        });
+                    } else {
+                        console.log('📡 Streaming disabled for ChatGPT initial response');
+                        aiResponse = await continueChatGPTConversation(chat, 'Hello! I\'m ready to chat with you.');
+                    }
+                } else {
+                    console.log('🤖 Using Grok service for initial persona establishment');
+                    const sessionData = {
+                        id: chatId,
+                        provider: 'grok',
+                        model: model,
+                        temperature: data.temperature || 0.8
+                    };
+                    const chat = createPersonaChatSession(sessionData, personaSettings, systemPrompt);
+                    
+                    // Establish persona with image
+                    if (personaImage) {
+                        console.log('🎭 Establishing Grok persona with image');
+                        console.log('🖼️ Persona image size:', personaImage.base64.length, 'characters');
+                        console.log('📝 User prompt length:', userPrompt.length);
+                        console.log('👤 Viewer avatar:', viewerAvatar ? 'Yes' : 'No');
+                        
+                        if (config.chat_streaming_enabled) {
+                            console.log('📡 Streaming enabled for Grok persona establishment');
+                            // Send initial streaming message
+                            this.sendToClient(ws, {
+                                type: 'chat_streaming_start',
+                                requestId: message.requestId,
+                                chatId: chatId,
+                                message: 'Establishing persona...'
+                            });
+                        }
+                        
+                        await establishPersona(chat, personaImage, userPrompt, viewerAvatar);
+                    } else {
+                        console.log('❌ No persona image available, skipping persona establishment');
+                    }
+                    
+                    if (config.chat_streaming_enabled) {
+                        console.log('📡 Streaming enabled for Grok initial response');
+                        // Send streaming start for initial message
+                        this.sendToClient(ws, {
+                            type: 'chat_streaming_start',
+                            requestId: message.requestId,
+                            chatId: chatId,
+                            message: 'Generating initial response...'
+                        });
+                    }
+                    
+                    aiResponse = await continueConversation(chat, 'Hello! I\'m ready to chat with you.');
+                }
+                
+                console.log('📝 Initial AI response received, length:', aiResponse.length);
+
+                // Send streaming complete message only if streaming was enabled
+                if (config.chat_streaming_enabled) {
+                    this.sendToClient(ws, {
+                        type: 'chat_streaming_complete',
+                        requestId: message.requestId,
+                        chatId: chatId,
+                        finalResponse: aiResponse
+                    });
+                }
+
+                // Parse the AI response - now expecting event-based format
+                let parsedResponse;
+                try {
+                    // Clean the response - remove markdown code blocks if present
+                    let cleanResponse = aiResponse.trim();
+                    if (cleanResponse.startsWith('```json')) {
+                        cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+                    } else if (cleanResponse.startsWith('```')) {
+                        cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+                    }
+                    
+                    // Try to extract JSON from mixed responses
+                    let jsonMatch = cleanResponse.match(/\[[\s\S]*\]/);
+                    if (jsonMatch) {
+                        cleanResponse = jsonMatch[0];
+                    } else {
+                        // If no array found, try to extract a single object
+                        jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
+                        if (jsonMatch) {
+                            cleanResponse = jsonMatch[0];
+                        }
+                    }
+                    
+                    const parsed = JSON.parse(cleanResponse);
+                    
+                    // Convert to array if it's a single object
+                    const events = Array.isArray(parsed) ? parsed : [parsed];
+                    
+                    // Validate that it's an array of events
+                    if (!Array.isArray(events)) {
+                        throw new Error('Invalid response structure: expected array of events');
+                    }
+                    
+                    // Convert events to old format for compatibility
+                    const environmentEvents = events.filter(e => e.type === 'environment').map(e => e.content);
+                    const locationEvents = events.filter(e => e.type === 'location').map(e => e.content);
+                    
+                    // Extract scene data from environment and location events
+                    let sceneData = 'A cozy, intimate setting'; // Default fallback
+                    if (environmentEvents.length > 0) {
+                        sceneData = environmentEvents.join(' ');
+                    } else if (locationEvents.length > 0) {
+                        sceneData = locationEvents.join(' ');
+                    }
+                    
+                    parsedResponse = {
+                        actions: events.filter(e => e.type === 'actions').map(e => e.content),
+                        sfx: events.filter(e => e.type === 'sfx').map(e => e.content),
+                        reply: events.filter(e => e.type === 'speechdirect').map(e => e.content),
+                        speech: events.filter(e => e.type === 'speech').map(e => e.content),
+                        innerspeech: events.filter(e => e.type === 'innerspeech').map(e => e.content),
+                        emotion: events.filter(e => e.type === 'emotion').map(e => e.content),
+                        environment: environmentEvents,
+                        memory: events.filter(e => e.type === 'memory').map(e => e.content),
+                        currplan: events.filter(e => e.type === 'currplan').map(e => e.content),
+                        futureplans: events.filter(e => e.type === 'futureplans').map(e => e.content),
+                        trustlevel: events.filter(e => e.type === 'trustlevel').map(e => e.content),
+                        inventory: events.filter(e => e.type === 'inventory').map(e => e.content),
+                        sensory: events.filter(e => e.type === 'sensory').map(e => e.content),
+                        offlinemessage: events.filter(e => e.type === 'offlinemessage').map(e => e.content),
+                        timeofday: events.filter(e => e.type === 'timeofday').map(e => e.content),
+                        location: locationEvents,
+                        myname: events.filter(e => e.type === 'myname').map(e => e.content),
+                        appendMemory: [],
+                        scene: sceneData,
+                        appendMind: []
+                    };
+                    
+                } catch (parseError) {
+                    console.warn('⚠️ Failed to parse AI response as JSON, using fallback:', parseError.message);
+                    // Fallback response structure
+                    parsedResponse = {
+                        actions: [],
+                        sfx: [],
+                        reply: [aiResponse || 'Hello! I\'m here and ready to chat with you.'],
+                        speech: [],
+                        innerspeech: [],
+                        emotion: [],
+                        environment: [],
+                        memory: [],
+                        currplan: [],
+                        futureplans: [],
+                        trustlevel: [],
+                        inventory: [],
+                        sensory: [],
+                        offlinemessage: [],
+                        timeofday: [],
+                        location: [],
+                        myname: [],
+                        appendMemory: [],
+                        scene: 'A cozy, intimate setting',
+                        appendMind: []
+                    };
+                }
+
+                // Add AI response to database
+                addChatMessage(chatId, 'assistant', aiResponse, JSON.stringify(parsedResponse));
+
+                // Send the AI response to the client
+                this.sendToClient(ws, {
+                    type: 'chat_message_response',
+                    data: {
+                        success: true,
+                        chatId: chatId,
+                        response: parsedResponse,
+                        rawResponse: aiResponse,
+                        streaming: config.chat_streaming_enabled
+                    },
+                    timestamp: new Date().toISOString()
+                });
+                
+                console.log('✅ Initial persona establishment completed for chat session:', chatId);
+                
+            } catch (initialGenError) {
+                console.error('❌ Error during initial persona establishment:', initialGenError);
+                // Don't fail the chat creation, just log the error
+                // The user can still send messages manually
+            }
+        } catch (error) {
+            console.error('❌ Error creating chat session:', error);
+            this.sendError(ws, 'Failed to create chat session', error.message, message.requestId);
+        }
+    }
+
+    async handleGetChatSessions(ws, message, clientInfo, wsServer) {
+        try {
+            const data = message.data || message;
+            const { filename } = data;
+            let sessions;
+            
+            if (filename) {
+                sessions = getChatSessionsByFilename(filename);
+            } else {
+                sessions = getAllChatSessions();
+            }
+
+            this.sendToClient(ws, {
+                type: 'get_chat_sessions_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    sessions: sessions
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error getting chat sessions:', error);
+            this.sendError(ws, 'Failed to get chat sessions', error.message, message.requestId);
+        }
+    }
+
+    async handleGetChatSession(ws, message, clientInfo, wsServer) {
+        try {
+            const data = message.data || message;
+            const { chatId } = data;
+            
+            if (!chatId) {
+                this.sendError(ws, 'Chat ID is required', null, message.requestId);
+                return;
+            }
+
+            const session = getChatSession(chatId);
+            
+            if (!session) {
+                this.sendError(ws, 'Chat session not found', null, message.requestId);
+                return;
+            }
+
+            this.sendToClient(ws, {
+                type: 'get_chat_session_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    session: session
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error getting chat session:', error);
+            this.sendError(ws, 'Failed to get chat session', error.message, message.requestId);
+        }
+    }
+
+    async handleDeleteChatSession(ws, message, clientInfo, wsServer) {
+        try {
+            const data = message.data || message;
+            const { chatId } = data;
+            
+            if (!chatId) {
+                this.sendError(ws, 'Chat ID is required', null, message.requestId);
+                return;
+            }
+
+            const success = deleteChatSession(chatId);
+            
+            // Clean up AI service cache for this chat
+            if (success) {
+                aiServiceManager.forceCleanupService(chatId);
+            }
+            
+            this.sendToClient(ws, {
+                type: 'delete_chat_session_response',
+                requestId: message.requestId,
+                data: {
+                    success: success,
+                    message: success ? 'Chat session deleted successfully' : 'Failed to delete chat session'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error deleting chat session:', error);
+            this.sendError(ws, 'Failed to delete chat session', error.message, message.requestId);
+        }
+    }
+
+    async handleRestartChatSession(ws, message, clientInfo, wsServer) {
+        try {
+            const data = message.data || message;
+            const { chatId } = data;
+            
+            if (!chatId) {
+                this.sendError(ws, 'Chat ID is required', null, message.requestId);
+                return;
+            }
+
+            const success = restartChatSession(chatId);
+            
+            // Clean up AI service cache for this chat
+            if (success) {
+                aiServiceManager.forceCleanupService(chatId);
+            }
+            
+            this.sendToClient(ws, {
+                type: 'restart_chat_session_response',
+                requestId: message.requestId,
+                data: {
+                    success: success,
+                    message: success ? 'Chat session restarted successfully' : 'Failed to restart chat session'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error restarting chat session:', error);
+            this.sendError(ws, 'Failed to restart chat session', error.message, message.requestId);
+        }
+    }
+
+    async handleSendChatMessage(ws, message, clientInfo, wsServer) {
+        try {
+            const data = message.data || message;
+            const { chatId, message: userMessage } = data;
+            
+            if (!chatId || !userMessage) {
+                this.sendError(ws, 'Chat ID and message are required', null, message.requestId);
+                return;
+            }
+
+            // Get chat session from database
+            const session = getChatSession(chatId);
+            if (!session) {
+                this.sendError(ws, 'Chat session not found', null, message.requestId);
+                return;
+            }
+
+            // Prepare persona data using prompt manager
+            const personaData = await promptManager.preparePersonaData(chatId, session.filename);
+            
+            // Use unified AI service manager
+            let aiResponse;
+            try {
+                // Establish persona if needed (only for first message)
+                if (promptManager.needsPersonaEstablishment(chatId)) {
+                    await aiServiceManager.establishPersonaIfNeeded(
+                        chatId, 
+                        personaData.personaImage, 
+                        personaData.userPrompt, 
+                        personaData.viewerAvatar
+                    );
+                }
+                
+                if (config.chat_streaming_enabled) {
+                    console.log(`📡 Streaming enabled for ${session.provider}`);
+                    // Send initial streaming message
+                    this.sendToClient(ws, {
+                        type: 'chat_streaming_start',
+                        requestId: message.requestId,
+                        chatId: chatId,
+                        message: 'Generating response...'
+                    });
+                    
+                    // Use streaming for conversation
+                    aiResponse = await aiServiceManager.continueConversation(chatId, userMessage, (chunk, fullResponse) => {
+                        // Send streaming update
+                        this.sendToClient(ws, {
+                            type: 'chat_streaming_update',
+                            requestId: message.requestId,
+                            chatId: chatId,
+                            chunk: chunk,
+                            fullResponse: fullResponse
+                        });
+                    });
+                } else {
+                    console.log(`📡 Streaming disabled for ${session.provider}`);
+                    // Use regular non-streaming approach
+                    aiResponse = await aiServiceManager.continueConversation(chatId, userMessage);
+                }
+                
+                console.log('📝 AI response received, length:', aiResponse.length);
+
+                // Parse AI response as JSON
+                let jsonData;
+                try {
+                    // Clean up the response - remove any markdown formatting or extra text
+                    let cleanedResponse = aiResponse.trim();
+                    
+                    // Remove markdown code blocks if present
+                    if (cleanedResponse.startsWith('```json')) {
+                        cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+                    } else if (cleanedResponse.startsWith('```')) {
+                        cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+                    }
+                    
+                    // Try to find JSON object in the response
+                    const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        cleanedResponse = jsonMatch[0];
+                    }
+                    
+                    // Try to parse as JSON
+                    jsonData = JSON.parse(cleanedResponse);
+                    
+                    // Validate that it has the required structure
+                    if (!jsonData.reply || !Array.isArray(jsonData.reply)) {
+                        throw new Error('Invalid JSON structure: missing or invalid reply array');
+                    }
+                    
+                    // Ensure all required fields exist with proper types
+                    jsonData = {
+                        actions: Array.isArray(jsonData.actions) ? jsonData.actions : [],
+                        sfx: Array.isArray(jsonData.sfx) ? jsonData.sfx : [],
+                        reply: Array.isArray(jsonData.reply) ? jsonData.reply : [aiResponse],
+                        appendMemory: Array.isArray(jsonData.appendMemory) ? jsonData.appendMemory : [],
+                        scene: typeof jsonData.scene === 'string' ? jsonData.scene : '',
+                        appendMind: Array.isArray(jsonData.appendMind) ? jsonData.appendMind : []
+                    };
+                    
+                    console.log('✅ Successfully parsed AI response as JSON');
+                    
+                } catch (parseError) {
+                    console.warn('⚠️ AI response was not valid JSON, wrapping in default structure:', parseError.message);
+                    console.log('Raw AI response:', aiResponse);
+                    console.log('Chat service:', session.chat_service);
+                    
+                    // If not valid JSON, wrap in a simple structure
+                    jsonData = {
+                        actions: [],
+                        sfx: [],
+                        reply: [aiResponse],
+                        appendMemory: [],
+                        scene: '',
+                        appendMind: []
+                    };
+                }
+
+                // Add AI response to database
+                addChatMessage(chatId, 'assistant', aiResponse, JSON.stringify(jsonData));
+
+                // Send streaming complete message only if streaming was enabled
+                if (config.chat_streaming_enabled) {
+                    this.sendToClient(ws, {
+                        type: 'chat_streaming_complete',
+                        requestId: message.requestId,
+                        chatId: chatId,
+                        finalResponse: aiResponse
+                    });
+                }
+
+                this.sendToClient(ws, {
+                    type: 'chat_message_response',
+                    requestId: message.requestId,
+                    data: {
+                        success: true,
+                        chatId: chatId,
+                        response: jsonData,
+                        rawResponse: aiResponse,
+                        streaming: config.chat_streaming_enabled
+                    },
+                    timestamp: new Date().toISOString()
+                });
+
+            } catch (aiError) {
+                console.error('❌ AI service error:', aiError);
+                
+                // Add error message to database
+                const errorResponse = {
+                    actions: [],
+                    sfx: [],
+                    reply: ['I apologize, but I encountered an error processing your message.'],
+                    appendMemory: [],
+                    scene: '',
+                    appendMind: []
+                };
+                
+                addChatMessage(chatId, 'assistant', 'Error: ' + aiError.message, JSON.stringify(errorResponse));
+                
+                this.sendToClient(ws, {
+                    type: 'chat_message_response',
+                    requestId: message.requestId,
+                    data: {
+                        success: false,
+                        chatId: chatId,
+                        error: aiError.message,
+                        response: errorResponse
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+        } catch (error) {
+            console.error('❌ Error sending chat message:', error);
+            this.sendError(ws, 'Failed to send chat message', error.message, message.requestId);
+        }
+    }
+
+    async handleGetChatMessages(ws, message, clientInfo, wsServer) {
+        try {
+            const data = message.data || message;
+            const { chatId, limit = 50, offset = 0 } = data;
+            
+            if (!chatId) {
+                this.sendError(ws, 'Chat ID is required', null, message.requestId);
+                return;
+            }
+
+            const messages = getChatMessages(chatId, limit, offset);
+            const totalCount = getChatMessageCount(chatId);
+
+            this.sendToClient(ws, {
+                type: 'get_chat_messages_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    messages: messages,
+                    totalCount: totalCount,
+                    hasMore: (offset + limit) < totalCount
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error getting chat messages:', error);
+            this.sendError(ws, 'Failed to get chat messages', error.message, message.requestId);
+        }
+    }
+
+    async handleUpdateChatModel(ws, message, clientInfo, wsServer) {
+        try {
+            const data = message.data || message;
+            const { chatId, provider, model } = data;
+            
+            if (!chatId || !provider || !model) {
+                this.sendError(ws, 'Chat ID, provider, and model are required', null, message.requestId);
+                return;
+            }
+
+            // Get the current chat session
+            const session = getChatSession(chatId);
+            if (!session) {
+                this.sendError(ws, 'Chat session not found', null, message.requestId);
+                return;
+            }
+
+            // Update the chat session with new model information
+            const success = updateChatSession(chatId, {
+                provider: provider,
+                model: model
+            });
+
+            if (success) {
+                this.sendToClient(ws, {
+                    type: 'update_chat_model_response',
+                    requestId: message.requestId,
+                    data: {
+                        success: true,
+                        chatId: chatId,
+                        provider: provider,
+                        model: model
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                this.sendError(ws, 'Failed to update chat model', null, message.requestId);
+            }
+        } catch (error) {
+            console.error('❌ Error updating chat model:', error);
+            this.sendError(ws, 'Failed to update chat model', error.message, message.requestId);
+        }
+    }
+
+    async handleCancelGeneration(ws, message, clientInfo, wsServer) {
+        try {
+            // TODO: Implement actual generation cancellation
+            // For now, we'll return a placeholder response
+            console.log('🛑 Cancel generation requested');
+            
+            // This would need to be implemented to actually cancel ongoing generations
+            // For now, we'll just return success
+            const success = true; // Placeholder - actual implementation needed
+            
+            this.sendToClient(ws, {
+                type: 'cancel_generation_response',
+                requestId: message.requestId,
+                data: {
+                    success: success,
+                    message: success ? 'Generation cancellation requested' : 'No active generation to cancel'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error cancelling generation:', error);
+            this.sendError(ws, 'Failed to cancel generation', error.message, message.requestId);
+        }
+    }
+
+    async handleGetOpenAIModels(ws, message, clientInfo, wsServer) {
+        try {
+            const { createPersonaChatSession: createChatGPTSession } = require('./aiServices/chatgptService');
+            
+            // Check if OpenAI is available
+            if (!createChatGPTSession) {
+                this.sendToClient(ws, {
+                    type: 'get_openai_models_response',
+                    requestId: message.requestId,
+                    data: {
+                        success: false,
+                        error: 'OpenAI service not available'
+                    },
+                    timestamp: new Date().toISOString()
+                });
+                return;
+            }
+
+            // For now, return a static list of known OpenAI models
+            // In the future, this could call the OpenAI API to get the actual list
+            const models = [
+                {
+                    id: 'gpt-4o',
+                    object: 'model',
+                    created: 1704062400,
+                    owned_by: 'openai',
+                    capabilities: {
+                        vision: true,
+                        function_calling: true
+                    }
+                },
+                {
+                    id: 'gpt-4o-mini',
+                    object: 'model',
+                    created: 1704062400,
+                    owned_by: 'openai',
+                    capabilities: {
+                        vision: true,
+                        function_calling: true
+                    }
+                },
+                {
+                    id: 'gpt-5',
+                    object: 'model',
+                    created: 1704062400,
+                    owned_by: 'openai',
+                    capabilities: {
+                        reasoning: true,
+                        vision: true
+                    }
+                },
+                {
+                    id: 'gpt-5-mini',
+                    object: 'model',
+                    created: 1704062400,
+                    owned_by: 'openai',
+                    capabilities: {
+                        reasoning: true,
+                        vision: true
+                    }
+                },
+                {
+                    id: 'gpt-5-nano',
+                    object: 'model',
+                    created: 1704062400,
+                    owned_by: 'openai',
+                    capabilities: {
+                        reasoning: true,
+                        vision: true
+                    }
+                },
+                {
+                    id: 'o4-high',
+                    object: 'model',
+                    created: 1704062400,
+                    owned_by: 'openai',
+                    capabilities: {
+                        reasoning: true,
+                        vision: true
+                    }
+                },
+                {
+                    id: 'gpt-o4',
+                    object: 'model',
+                    created: 1704062400,
+                    owned_by: 'openai',
+                    capabilities: {
+                        reasoning: true,
+                        vision: true
+                    }
+                }
+            ];
+
+            this.sendToClient(ws, {
+                type: 'get_openai_models_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    models: models
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error fetching OpenAI models:', error);
+            this.sendError(ws, 'Failed to fetch OpenAI models', error.message, message.requestId);
+        }
+    }
+
+    async handleGetGrokModels(ws, message, clientInfo, wsServer) {
+        try {
+            const { createPersonaChatSession } = require('./aiServices/grokService');
+            
+            // Check if Grok AI is available
+            if (!createPersonaChatSession) {
+                this.sendToClient(ws, {
+                    type: 'get_grok_models_response',
+                    requestId: message.requestId,
+                    data: {
+                        success: false,
+                        error: 'Grok AI service not available'
+                    },
+                    timestamp: new Date().toISOString()
+                });
+                return;
+            }
+
+            // For now, return a static list of known Grok models
+            // In the future, this could call the Grok AI API to get the actual list
+            const models = [
+                {
+                    name: 'grok-4',
+                    displayName: 'Grok 4 (Reasoning)',
+                    supportedGenerationMethods: ['generateContent'],
+                    createTime: '2024-01-01T00:00:00Z'
+                },
+                {
+                    name: 'grok-3-mini',
+                    displayName: 'Grok 3 mini (Reasoning)',
+                    supportedGenerationMethods: ['generateContent'],
+                    createTime: '2024-01-01T00:00:00Z'
+                }
+            ];
+
+            this.sendToClient(ws, {
+                type: 'get_grok_models_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    models: models
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error fetching Grok models:', error);
+            this.sendError(ws, 'Failed to fetch Grok models', error.message, message.requestId);
+        }
+    }
+
+    // Director Handlers
+    async handleDirectorGetSessions(ws, message, clientInfo, wsServer) {
+        try {
+            const sessions = getAllDirectorSessions();
+            
+            this.sendToClient(ws, {
+                type: 'director_get_sessions_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    sessions: sessions
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error fetching Director sessions:', error);
+            this.sendError(ws, 'Failed to fetch Director sessions', error.message, message.requestId);
+        }
+    }
+
+    async handleDirectorCreateSession(ws, message, clientInfo, wsServer) {
+        try {
+            const { name, model, maxResolution, imageFilename, sessionMode, userIntent: requestUserIntent, inputPrompt, inputUc } = message;
+            
+            if (!model) {
+                this.sendError(ws, 'Model is required', 'MISSING_MODEL', message.requestId);
+                return;
+            }
+            
+            if (!imageFilename) {
+                this.sendError(ws, 'Image filename is required', 'MISSING_IMAGE_FILENAME', message.requestId);
+                return;
+            }
+            
+            // Determine provider from model name
+            let provider = 'grok';
+            if (model.includes('grok')) {
+                provider = 'grok';
+            } else {
+                provider = 'openai';
+            }
+            
+            // Parse the 2-part filename format
+            let parsedFilename = imageFilename;
+            let imageType = 'generated'; // default to generated image
+            
+            if (imageFilename.includes(':')) {
+                const [type, filename] = imageFilename.split(':', 2);
+                if (type === 'file' || type === 'cache') {
+                    imageType = type === 'file' ? 'generated' : 'cache';
+                    parsedFilename = filename;
+                }
+            } else {
+                // If no prefix, assume it's a generated image (legacy support)
+                imageType = 'generated';
+                parsedFilename = imageFilename;
+            }
+            
+            // Create session with parsed filename
+            const sessionData = {
+                name: name || `Untitled Session ${Date.now()}`,
+                filename: parsedFilename,
+                imageType: imageType,
+                provider: provider,
+                model: model,
+                max_resolution: maxResolution || false,
+                sessionMode: sessionMode || 'analyse',
+                userIntent: requestUserIntent || ''
+            };
+            
+            const sessionId = createDirectorSession(sessionData);
+            
+            if (!sessionId) {
+                this.sendError(ws, 'Failed to create session', 'CREATE_FAILED', message.requestId);
+                return;
+            }
+            
+            // Read image file and convert to base64
+            let imageBase64 = null;
+            let mimeType = 'image/png';
+            
+            try {
+                // Determine image path based on image type
+                let imagePath;
+                if (imageType === 'cache') {
+                    // For cache images, look in upload cache directory
+                    imagePath = path.join(uploadCacheDir, parsedFilename);
+                } else {
+                    // For generated images, look in images directory
+                    imagePath = path.join(imagesDir, parsedFilename);
+                }
+                
+                if (fs.existsSync(imagePath)) {
+                    let imageBuffer = fs.readFileSync(imagePath);
+                    
+                    // Determine MIME type based on image type
+                    if (imageType === 'cache') {
+                        // Cache images are always images, try to detect from buffer
+                        try {
+                            const sharp = require('sharp');
+                            const metadata = await sharp(imageBuffer).metadata();
+                            if (metadata.format === 'jpeg') {
+                                mimeType = 'image/jpeg';
+                            } else if (metadata.format === 'png') {
+                                mimeType = 'image/png';
+                            } else if (metadata.format === 'webp') {
+                                mimeType = 'image/webp';
+                            } else {
+                                // Default to JPEG for cache images
+                                mimeType = 'image/jpeg';
+                            }
+                        } catch (detectError) {
+                            // If detection fails, default to JPEG
+                            mimeType = 'image/jpeg';
+                        }
+                    } else {
+                        // For generated images, use file extension
+                        const ext = path.extname(parsedFilename).toLowerCase();
+                        if (ext === '.jpg' || ext === '.jpeg') {
+                            mimeType = 'image/jpeg';
+                        } else if (ext === '.png') {
+                            mimeType = 'image/png';
+                        } else if (ext === '.webp') {
+                            mimeType = 'image/webp';
+                        }
+                    }
+                    
+                    // Resize image if max_resolution is false
+                    if (!maxResolution) {
+                        try {
+                            const sharp = require('sharp');
+                            const image = sharp(imageBuffer);
+                            const metadata = await image.metadata();
+                            
+                            if (metadata.width && metadata.height) {
+                                // Calculate new dimensions keeping aspect ratio
+                                // Shortest edge should be 488px
+                                const shortestEdge = Math.min(metadata.width, metadata.height);
+                                const scale = 448 / shortestEdge;
+                                
+                                const newWidth = Math.round(metadata.width * scale);
+                                const newHeight = Math.round(metadata.height * scale);
+                                
+                                console.log(`📏 Resizing image from ${metadata.width}x${metadata.height} to ${newWidth}x${newHeight}`);
+                                
+                                // Resize the image
+                                imageBuffer = await image
+                                    .resize(newWidth, newHeight, {
+                                        fit: 'inside',
+                                        withoutEnlargement: false
+                                    })
+                                    .jpeg({ quality: 85 }) // Convert to JPEG with good quality for analysis
+                                    .toBuffer();
+                                
+                                mimeType = 'image/jpeg'; // Always use JPEG after resizing
+                            }
+                        } catch (resizeError) {
+                            console.error('❌ Error resizing image:', resizeError);
+                        }
+                    }
+                    
+                    imageBase64 = imageBuffer.toString('base64');
+                } else {
+                    console.warn(`⚠️ Image file not found: ${imagePath}`);
+                }
+            } catch (error) {
+                console.error('❌ Error reading image file:', error);
+            }
+
+            // Get the session to determine the mode
+            const session = getDirectorSession(sessionId);
+            const isEfficiencyMode = session?.session_mode === 'efficiency';
+            const userIntent = session?.user_intent || '';
+
+            // Add initial user message with image data in OpenAI format
+            const initialUserContent = [
+                {
+                    type: "text",
+                    text: [
+                        isEfficiencyMode
+                            ? 'Analyze this image for prompt efficiency and create a highly optimized prompt. Compare with provided prompt/base image/vibes and generate efficiency-focused improvements.'
+                            : 'Analyze this image in exhaustive detail and distill all visual information into an efficient prompt structure.',
+                        '',
+                        isEfficiencyMode ? 'EFFICIENCY ANALYSIS REQUIREMENTS (CRITICAL):' : 'COMPREHENSIVE VISUAL EXTRACTION (CRITICAL):',
+                        isEfficiencyMode ? [
+                            ' * **Prompt Comparison**: Compare current prompt with image result for accuracy and effectiveness',
+                            ' * **Efficiency Gaps**: Identify where the prompt failed to capture desired elements',
+                            ' * **Optimization Opportunities**: Find ways to make the prompt more concise while maintaining quality',
+                            ' * **Tag Effectiveness**: Evaluate which prompt tags are working well vs poorly',
+                            ' * **Weight Adjustments**: Suggest optimal emphasis weights for different elements',
+                            ' * **Base Image Integration**: Analyze how base image influences should be weighted in the prompt'
+                        ] : [
+                            ' * **Complete Visual Inventory**: Document EVERY visible element - subjects, objects, backgrounds, textures, patterns, colors, shapes, materials',
+                            ' * **Technical Analysis**: Extract composition details, lighting sources, shadow patterns, depth of field, perspective, camera angle',
+                            ' * **Material Documentation**: Identify all material properties - fabric types, surface textures, reflective qualities, surface conditions',
+                            ' * **Spatial Mapping**: Map all spatial relationships, element positioning, depth layers, and composition hierarchy',
+                            ' * **Detail Hierarchy**: Identify primary, secondary, and background visual elements with their relative importance',
+                            ' * **Color Analysis**: Document color palettes, saturation levels, contrast ratios, color temperature, and relationships',
+                            ' * **Pattern Recognition**: Identify visual patterns, repetitions, symmetries, and recurring elements'
+                        ].join('\n'),
+                        '',
+                        isEfficiencyMode ? 'PROMPT EFFICIENCY OPTIMIZATION:' : 'VISUAL PROMPT DISTILLATION REQUIREMENTS:',
+                        isEfficiencyMode ? [
+                            ' * **Token Efficiency**: Maximize information density while minimizing token count',
+                            ' * **Tag Prioritization**: Focus on highest-impact tags that drive the most change',
+                            ' * **Weight Optimization**: Use precise emphasis levels (1.25x, 1.5x, 2.0x) for optimal results',
+                            ' * **Conflict Resolution**: Identify and resolve conflicting prompt elements',
+                            ' * **Quality Preservation**: Maintain image quality while improving efficiency',
+                            ' * **Iterative Refinement**: Suggest specific modifications for incremental improvements'
+                        ] : [
+                            ' * **Maximum Detail Extraction**: Extract every possible visual element that can be converted to prompt tags',
+                            ' * **Efficiency Optimization**: Distill complex visual information into concise, weighted prompt elements',
+                            ' * **Technical Precision**: Use exact terminology for materials, lighting, composition, and technical details',
+                            ' * **Hierarchy Preservation**: Maintain visual importance levels in prompt structure (primary elements first)',
+                            ' * **Tag Optimization**: Convert visual details into efficient NovelAI tags with appropriate emphasis weights'
+                        ].join('\n'),
+                        '',
+                        'User Inputs:',
+                        (userIntent ? ` * User Intent: ${userIntent}` : ''),
+                        (inputPrompt ? ` * Input Prompt: ${Array.isArray(inputPrompt) ? inputPrompt.join(', ') : inputPrompt}` : ''),
+                        '',
+                        'Response Object Keys:',
+                        ' * Description',
+                        (isEfficiencyMode ? ' * ImageDescription' : ''),
+                        (isEfficiencyMode ? ' * Suggested' : ''),
+                        (isEfficiencyMode ? ' * Issues' : ''),
+                        (isEfficiencyMode ? ' * Score' : ''),
+                        ' * PrimaryFocus',
+                        ' * Measurements',
+                        ' * VisualAnalysis',
+                        ' * DetailExtraction',
+                        ' * VisualHierarchy',
+                        ' * TechnicalDetails',
+                        ' * Character',
+                        ' * Series',
+                        (!name || (name && name.trim() === '')) ? ' * SuggestedName' : '',
+                        ' * Caption',
+                        ' * Prompt',
+                        ' * isNSFW',
+                        ' * NSFWHeat'
+                    ].join('\n')
+                }
+            ];
+            
+            // Add image data if available
+            if (imageBase64) {
+                initialUserContent.push({
+                    type: "image_url",
+                    image_url: {
+                        url: `data:${mimeType};base64,${imageBase64}`,
+                        detail: "high"
+                    }
+                });
+            }
+            
+            addDirectorMessage(sessionId, 'user', initialUserContent, null, 'initial', 'Analyze this image');
+            
+            // Send session creation response first
+            this.sendToClient(ws, {
+                type: 'director_create_session_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    session: session
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+            // Immediately start the initial AI request
+            this.sendToClient(ws, {
+                type: 'director_typing_start',
+                data: {
+                    sessionId: sessionId,
+                    isTyping: true
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+            // Process the initial AI request asynchronously
+            this.processInitialDirectorRequest(sessionId, ws, inputPrompt, inputUc);
+        } catch (error) {
+            console.error('❌ Error creating Director session:', error);
+            this.sendError(ws, 'Failed to create Director session', error.message, message.requestId);
+        }
+    }
+
+    async processInitialDirectorRequest(sessionId, ws, inputPrompt, inputUc) {
+        try {
+            console.log('🔄 Processing initial Director AI request for session:', sessionId);
+            
+            // Get the conversation history (which includes the initial user message with image)
+            const dbMessages = getDirectorMessages(sessionId, 50, 0, false, false); // Exclude system messages from database, exclude extra fields
+            const messages = [
+                { role: 'system', content: generateDirectorSystemMessage() },
+                ...dbMessages
+            ]; // Prepend system message dynamically
+            
+            // Call the AI service with the complete context
+            const aiResponse = await this.callDirectorAIWithContext(sessionId, {
+                content: '',
+                messageType: 'initial',
+                inputPrompt: inputPrompt,
+                inputUc: inputUc
+            });
+            
+            // Store the assistant response
+            const assistantContent = aiResponse.content || aiResponse.message || 'No content';
+            const assistantMessageId = addDirectorMessage(sessionId, 'assistant', [{
+                type: "text",
+                text: assistantContent
+            }]);
+            
+            // Process response for client using the same extraction logic
+            const extractionResult = extractAssistantData(assistantContent);
+            let clientResponse;
+            if (extractionResult.type === 'structured') {
+                clientResponse = extractionResult.data;
+
+                // Update session name if SuggestedName is provided
+                if (clientResponse.SuggestedName && clientResponse.SuggestedName.trim()) {
+                    const suggestedName = clientResponse.SuggestedName.trim();
+                    console.log(`📝 Updating session name to: ${suggestedName}`);
+                    updateDirectorSession(sessionId, { name: suggestedName });
+                }
+            } else {
+                // Error case - return error structure
+                clientResponse = { error: 'Invalid Response from AI' };
+            }
+            
+            // Send typing stop
+            this.sendToClient(ws, {
+                type: 'director_typing_stop',
+                data: {
+                    sessionId: sessionId,
+                    isTyping: false
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+            // Send the AI response
+            this.sendToClient(ws, {
+                type: 'director_message_response',
+                data: {
+                    success: true,
+                    sessionId: sessionId,
+                    messageId: assistantMessageId,
+                    data: clientResponse
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('❌ Error processing initial Director request:', error);
+            
+            // Send typing stop on error
+            this.sendToClient(ws, {
+                type: 'director_typing_stop',
+                data: {
+                    sessionId: sessionId,
+                    isTyping: false
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+            // Send error response
+            this.sendToClient(ws, {
+                type: 'director_message_error',
+                data: {
+                    success: false,
+                    sessionId: sessionId,
+                    data: { error: 'AI service failed to respond' }
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    async handleDirectorGetSession(ws, message, clientInfo, wsServer) {
+        try {
+            const { sessionId } = message;
+            
+            if (!sessionId) {
+                this.sendError(ws, 'Session ID is required', 'MISSING_SESSION_ID', message.requestId);
+                return;
+            }
+            
+            const session = getDirectorSession(sessionId);
+            
+            if (!session) {
+                this.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
+                return;
+            }
+            
+            this.sendToClient(ws, {
+                type: 'director_get_session_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    session: session
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error fetching Director session:', error);
+            this.sendError(ws, 'Failed to fetch Director session', error.message, message.requestId);
+        }
+    }
+
+    async handleDirectorDeleteSession(ws, message, clientInfo, wsServer) {
+        try {
+            const { sessionId } = message;
+            
+            if (!sessionId) {
+                this.sendError(ws, 'Session ID is required', 'MISSING_SESSION_ID', message.requestId);
+                return;
+            }
+            
+            const success = deleteDirectorSession(sessionId);
+            
+            if (!success) {
+                this.sendError(ws, 'Failed to delete session', 'DELETE_FAILED', message.requestId);
+                return;
+            }
+            
+            this.sendToClient(ws, {
+                type: 'director_delete_session_response',
+                requestId: message.requestId,
+                data: {
+                    success: true
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error deleting Director session:', error);
+            this.sendError(ws, 'Failed to delete Director session', error.message, message.requestId);
+        }
+    }
+
+    async handleDirectorSendMessage(ws, message, clientInfo, wsServer) {
+        try {
+            const { sessionId, content, messageType, vibeTransfers, baseImageData, lastGeneratedImageFilename, inputPrompt } = message;
+            
+            if (!sessionId) {
+                this.sendError(ws, 'Session ID is required', 'MISSING_PARAMETERS', message.requestId);
+                return;
+            }
+            
+            // Get session
+            const session = getDirectorSession(sessionId);
+            if (!session) {
+                this.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
+                return;
+            }
+            
+            // Get the last message ID for conversation continuity
+            const lastMessageId = getLastDirectorMessageId(sessionId);
+            const userMessageId = addDirectorMessage(sessionId, 'user', [{
+                type: "text",
+                text: content
+            }], lastMessageId, messageType, content);
+            
+            if (!userMessageId) {
+                this.sendError(ws, 'Failed to add message', 'ADD_MESSAGE_FAILED', message.requestId);
+                return;
+            }
+            
+            let assistantMessageId = null;
+            let aiResponse = null;
+            let clientResponse = null;
+            
+            // Send to AI service and get response
+            try {
+                aiResponse = await this.callDirectorAIWithContext(sessionId, {
+                    content,
+                    messageType,
+                    vibeTransfers,
+                    baseImageData,
+                    lastGeneratedImageFilename,
+                    inputPrompt
+                });
+                
+                // Store the assistant response
+                const assistantContent = aiResponse.content || aiResponse.message || 'No content';
+                assistantMessageId = addDirectorMessage(sessionId, 'assistant', [{
+                    type: "text",
+                    text: assistantContent
+                }], userMessageId);
+                
+                // Process response for client using the same extraction logic as database
+                const extractionResult = extractAssistantData(assistantContent);
+                if (extractionResult.type === 'structured') {
+                    clientResponse = extractionResult.data;
+                } else {
+                    // Error case - return error structure
+                    clientResponse = { error: 'Invalid Response from AI' };
+                }
+            } catch (aiError) {
+                console.error('❌ Error calling Director AI:', aiError);
+
+                // Don't add error message to database - just send error response
+                assistantMessageId = null;
+                clientResponse = { error: 'AI service failed to respond' };
+            }
+
+            // Add a small delay to ensure database writes are committed before responding
+            // This prevents race conditions where client reloads before data is visible
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            this.sendToClient(ws, {
+                type: 'director_send_message_response',
+                requestId: message.requestId,
+                data: {
+                    success: assistantMessageId !== null,
+                    userMessageId: userMessageId,
+                    assistantMessageId: assistantMessageId,
+                    data: clientResponse,
+                    error: assistantMessageId === null ? 'AI service failed to respond' : null
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error sending Director message:', error);
+            this.sendError(ws, 'Failed to send Director message', error.message, message.requestId);
+        }
+    }
+
+    async callDirectorAIWithContext(sessionId, options = {}) {
+        try {
+            // Extract options with defaults
+            const {
+                content = '',
+                messageType = 'initial',
+                vibeTransfers = null,
+                baseImageData = null,
+                lastGeneratedImageFilename = null,
+                inputPrompt = null
+            } = options;
+            
+            // Get session
+            const session = getDirectorSession(sessionId);
+            if (!session) {
+                throw new Error('Session not found');
+            }
+            
+            // Get conversation history in OpenAI format
+            const dbMessages = getDirectorMessages(sessionId, 50, 0, false, false); // Exclude system messages from database, exclude extra fields
+            const messages = [
+                { role: 'system', content: generateDirectorSystemMessage() },
+                ...dbMessages
+            ]; // Prepend system message dynamically
+
+            let conversationMessages;
+            let messageContent = {
+                'requestText': '',
+                'inputText': '',
+                'responseText': ''
+            };
+            
+            // If content is empty, we're processing the initial request
+            if (messageType === 'initial' && !content) {
+                // Use the existing conversation history (includes initial user message with image)
+                conversationMessages = messages;
+            } else {
+                // Add current user message with context
+                let userPrompt = content;
+
+                if (messageType) {
+                    switch (messageType) {
+                        case 'change':
+                            messageContent.requestText = [`Modify the generation prompt based on user desires.`];
+                            messageContent.inputText = [
+                                ' * User Input: ' + (content && content?.trim()?.length > 0 ? content : 'Progress the scene and enhance/exaggerate key character attributes.'),
+                            ]
+                            if (inputPrompt && Array.isArray(inputPrompt)){
+                                messageContent.inputText.push(' * Current Prompt: [ ' + inputPrompt.map(e => '"' + e + '"').join(', ') + ' ]');
+                            }
+                            messageContent.responseText = [
+                                ' * Description',
+                                ' * Suggested',
+                                ' * PrimaryFocus',
+                                ' * Measurements',
+                                ' * VisualAnalysis',
+                                ' * DetailExtraction',
+                                ' * VisualHierarchy',
+                                ' * TechnicalDetails',
+                                ' * isStale',
+                                ' * Prompt',
+                                ' * Caption',
+                                ' * isNSFW',
+                                ' * NSFWHeat'
+                            ]
+                            break;
+                        case 'efficiency':
+                            messageContent.requestText = [
+                                `ANALYZE PROMPT EFFICIENCY: Compare the provided prompt with the generated image to identify optimization opportunities. Focus on token efficiency, tag effectiveness, and quality preservation.`,
+                            ]
+                            messageContent.inputText = [
+                                (content && content?.trim()?.length > 0) ? ' * User Intent: ' + content : '',
+                                ' * Analysis Focus: Evaluate prompt efficiency and suggest specific improvements',
+                            ]
+                            if (inputPrompt && Array.isArray(inputPrompt) && inputPrompt.length > 0) {
+                                messageContent.inputText.push(' * Current Prompt to Analyze: [ ' + inputPrompt.map(e => '"' + e + '"').join(', ') + ' ]');
+                                messageContent.inputText.push(' * INSTRUCTION: Compare this prompt with the image result and provide detailed efficiency analysis');
+                            } else if (inputPrompt && typeof inputPrompt === 'string' && inputPrompt.trim()){
+                                messageContent.inputText.push(' * Current Prompt to Analyze: ' + inputPrompt);
+                                messageContent.inputText.push(' * INSTRUCTION: Compare this prompt with the image result and provide detailed efficiency analysis');
+                            } else {
+                                console.warn('Efficiency mode - no inputPrompt found:', inputPrompt);
+                                messageContent.inputText.push(' * WARNING: No prompt data available for efficiency analysis');
+                            }
+                            
+                            // Add context about last generated image for efficiency analysis
+                            if (lastGeneratedImageFilename && messageType === 'efficiency') {
+                                messageContent.inputText.push('**Result Image:** Compare with prompt for efficiency/accuracy. Evaluate how well the prompt captured desired elements, composition, style, and details.');
+                            }
+                            
+                            // Add context about base image and vibe transfers
+                            if (baseImageData && baseImageData.image_source) {
+                                if (baseImageData.mask_compressed) {
+                                    messageContent.inputText.push('**Base Image (Masked):** Transform with mask overlay. Analyze non-green areas. Green areas replaced by generation, non-green areas preserved exactly.');
+                                } else {
+                                    messageContent.inputText.push('**Base Image:** Transform for generation. Analyze modifications needed.');
+                                }
+                            }
+                             if (vibeTransfers && Array.isArray(vibeTransfers) && vibeTransfers.length > 0) {
+                                 messageContent.inputText.push('**Vibe Transfer Images:** Style/content reference images:');
+                                 for (let i = 0; i < vibeTransfers.length; i++) {
+                                     const vibeTransfer = vibeTransfers[i];
+                                     const strengthPercent = Math.round((vibeTransfer.strength || 0) * 100);
+                                     messageContent.inputText.push(`  - Vibe Transfer #${i + 1}: Strength ${strengthPercent}% (influence), IE: ${vibeTransfer.ie}% (detail extraction)`);
+                                 }
+                             }
+                            messageContent.responseText = [
+                                ' * Description',
+                                (lastGeneratedImageFilename ? ' * PrimaryFocus' : ''),
+                                (lastGeneratedImageFilename ? ' * ImageDescription' : ''),
+                                (lastGeneratedImageFilename ? ' * Measurements' : ''),
+                                ' * VisualAnalysis',
+                                ' * DetailExtraction',
+                                ' * VisualHierarchy',
+                                ' * TechnicalDetails',
+                                ' * Suggested',
+                                ' * Issues',
+                                ' * Score',
+                                ' * isStale',
+                                ' * Prompt',
+                                ' * Caption',
+                                ' * isNSFW',
+                                ' * NSFWHeat'
+                            ]
+                            break;
+                        case 'dialog':
+                        case 'conversation':
+                            messageContent.requestText = [`Generate vivid captions from target perspective to enhance emotion and advance story. (6-10 captions) ${content && content?.trim()?.length > 0 ? 'Include user desires/preferences.' : ''}`];
+                            messageContent.inputText = [
+                                (content && content?.trim()?.length > 0) ? ' * User Request: ' + content : '',
+                            ]
+                            if (inputPrompt && Array.isArray(inputPrompt)){
+                                messageContent.inputText.push(' * Current Prompt: [ ' + inputPrompt.map(e => '"' + e + '"').join(', ') + ' ]');
+                            }
+                            messageContent.responseText = [
+                                ' * Description',
+                                ' * EmotionalAnalysis',
+                                ' * TargetEmotions',
+                                ' * EmotionalAtmosphere',
+                                ' * SensoryEmotions',
+                                ' * Suggested',
+                                ' * isStale',
+                                ' * Caption',
+                                ' * isNSFW',
+                                ' * NSFWHeat'
+                            ]
+                            break;
+                        default:
+                            break;
+                    }
+                }
+                let messageText = messageContent.requestText.filter(e => e.length > 0).join('\n') + '\n\nUser Input:\n' + messageContent.inputText.filter(e => e.length > 0).join('\n') + '\n\nResponse Object Keys:\n' + messageContent.responseText.filter(e => e.length > 0).join('\n') + '\n';
+                
+                const userMessageContent = [{
+                    type: "text",
+                    text: messageText
+                }];
+                
+                // Add image data for efficiency requests when filename is provided
+                let targetWidth, targetHeight;
+                if (lastGeneratedImageFilename) {
+                    // Read image file and convert to base64 like in create session
+                    let imageBase64 = null;
+                    
+                    try {
+                        const imagePath = path.join('./images', lastGeneratedImageFilename);
+                        if (fs.existsSync(imagePath)) {
+                            let imageBuffer = fs.readFileSync(imagePath);
+
+                            // Resize image ensuring shortest edge is 448
+                            const metadata = await sharp(imageBuffer).metadata();
+                            const minDimension = Math.min(metadata.width, metadata.height);
+                            const scale = 448 / minDimension;
+                            targetWidth = Math.round(metadata.width * scale);
+                            targetHeight = Math.round(metadata.height * scale);
+                            
+                            imageBuffer = await sharp(imageBuffer)
+                                .resize(targetWidth, targetHeight)
+                                .jpeg({ quality: 85 })
+                                .toBuffer();
+                            
+                            imageBase64 = imageBuffer.toString('base64');
+                        }
+                    } catch (error) {
+                        console.error('❌ Error reading image file for efficiency:', error);
+                    }
+                    
+                    if (imageBase64) {
+                        userMessageContent.push({
+                            type: "text",
+                            text: "**Last Generated Image (for efficiency and image analysis):**\nThis is the most recently generated image. Analyze it in detail and compare it with the provided prompt to evaluate prompt effectiveness. Pay attention to how well the prompt captured the desired elements, composition, style, and details."
+                        });
+                        userMessageContent.push({
+                            type: "image_url",
+                            image_url: {
+                                url: `data:image/jpeg;base64,${imageBase64}`,
+                                detail: "high"
+                            }
+                        });
+                    }
+                    
+                    // Process base image with bias and mask if provided (efficiency only)
+                    if (baseImageData && baseImageData.image_source) {
+                        try {
+                            let baseImageBuffer = null;
+                            
+                            // Parse image source like img2img requests
+                            if (baseImageData.image_source.includes(":")) {
+                                const [imageType, imageIdentifier] = baseImageData.image_source.split(':', 2);
+                                
+                                switch (imageType) {
+                                    case 'file':
+                                        const filePath = path.join(imagesDir, imageIdentifier);
+                                        if (fs.existsSync(filePath)) {
+                                            baseImageBuffer = fs.readFileSync(filePath);
+                                        } else {
+                                            console.warn(`⚠️ Base image file not found: ${filePath}`);
+                                        }
+                                        break;
+                                    case 'cache':
+                                        const cachedImagePath = path.join(uploadCacheDir, imageIdentifier);
+                                        if (fs.existsSync(cachedImagePath)) {
+                                            baseImageBuffer = fs.readFileSync(cachedImagePath);
+                                        } else {
+                                            console.warn(`⚠️ Base image cache not found: ${cachedImagePath}`);
+                                        }
+                                        break;
+                                    case 'data':
+                                        baseImageBuffer = Buffer.from(imageIdentifier, 'base64');
+                                        break;
+                                    default:
+                                        console.warn(`⚠️ Unsupported base image type: ${imageType}`);
+                                }
+                            } else {
+                                console.warn(`⚠️ Invalid base image source format: ${baseImageData.image_source}`);
+                            }
+                            
+                            if (baseImageBuffer) {
+                                // Strip PNG text chunks like img2img
+                                baseImageBuffer = stripPngTextChunks(baseImageBuffer);
+                                
+                                // Apply bias if provided (from bias_settings)
+                                if (baseImageData.bias_settings) {
+                                    // For bias processing, use original dimensions first
+                                    const session = getDirectorSession(sessionId);
+                                    const baseDims = session?.maxResolution ? 
+                                        { width: 1024, height: 1024 } : 
+                                        { width: 512, height: 512 };
+                                    
+                                    baseImageBuffer = await processDynamicImage(baseImageBuffer, baseDims, baseImageData.bias_settings);
+                                }
+                                
+                                // Apply mask if provided (from mask_compressed)
+                                if (baseImageData.mask_compressed) {
+                                    const maskBuffer = Buffer.from(baseImageData.mask_compressed, 'base64');
+                                    const processedMaskBuffer = await resizeMaskWithCanvas(maskBuffer, targetWidth, targetHeight);
+                                    
+                                    // Create composite image with mask
+                                    const canvas = createCanvas(targetWidth, targetHeight);
+                                    const ctx = canvas.getContext('2d');
+                                    
+                                    // Load base image
+                                    const baseImg = await loadImage(baseImageBuffer);
+                                    ctx.drawImage(baseImg, 0, 0, targetWidth, targetHeight);
+                                    
+                                    // Load mask and draw it
+                                    const maskImg = await loadImage(processedMaskBuffer);
+                                    ctx.drawImage(maskImg, 0, 0, targetWidth, targetHeight);
+                                    
+                                    // Process mask to create green overlay
+                                    const maskImageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+                                    const maskPixels = maskImageData.data;
+                                    
+                                    for (let i = 0; i < maskPixels.length; i += 4) {
+                                        const r = maskPixels[i];
+                                        const g = maskPixels[i + 1];
+                                        const b = maskPixels[i + 2];
+                                        const a = maskPixels[i + 3];
+                                        
+                                        // If mask pixel is white (255), make it green (to be generated)
+                                        if (r > 128 && g > 128 && b > 128) {
+                                            maskPixels[i] = 0;     // Red
+                                            maskPixels[i + 1] = 255; // Green
+                                            maskPixels[i + 2] = 0;   // Blue
+                                            maskPixels[i + 3] = 255; // Alpha
+                                        } else {
+                                            // If mask pixel is black, make it transparent (unchanged)
+                                            maskPixels[i] = 0;     // Red
+                                            maskPixels[i + 1] = 0;   // Green
+                                            maskPixels[i + 2] = 0;   // Blue
+                                            maskPixels[i + 3] = 0;   // Alpha (transparent)
+                                        }
+                                    }
+                                    
+                                    ctx.putImageData(maskImageData, 0, 0);
+                                    
+                                    // Composite the base image with the mask overlay
+                                    ctx.globalCompositeOperation = 'source-over';
+                                    ctx.drawImage(baseImg, 0, 0, targetWidth, targetHeight);
+                                    
+                                    baseImageBuffer = canvas.toBuffer('image/jpeg');
+                                } else {
+                                    // No mask, just resize to target dimensions
+                                    baseImageBuffer = await sharp(baseImageBuffer)
+                                        .resize(targetWidth, targetHeight)
+                                        .jpeg({ quality: 85 })
+                                        .toBuffer();
+                                }
+                                
+                                // Convert to base64
+                                const baseImageBase64 = baseImageBuffer.toString('base64');
+                                
+                                // Create label based on whether mask is present
+                                let baseImageLabel = "**Base Image (for generation):**\nThis image will be used as the base for new generation. Analyze it to understand what elements should be preserved, modified, or enhanced in the generation.";
+                                if (baseImageData.mask_compressed) {
+                                    baseImageLabel = "**Base Image (for generation) - MASKED:**\nIMPORTANT: This image has a mask overlay. Green areas will be \"inpainted\" and replaced with new generation from the prompt. Non-green areas will be preserved exactly and the generation must conform to these unchanged areas. Analyze the non-green areas carefully to understand what must be maintained in the final generation.";
+                                }
+                                
+                                userMessageContent.push({
+                                    type: "text",
+                                    text: baseImageLabel
+                                });
+                                userMessageContent.push({
+                                    type: "image_url",
+                                    image_url: {
+                                        url: `data:image/jpeg;base64,${baseImageBase64}`,
+                                        detail: "low",
+                                    }
+                                });
+                            }
+                        } catch (error) {
+                            console.error('❌ Error processing base image:', error);
+                        }
+                    }
+                    
+                    // Process vibe transfers if provided (efficiency only)
+                    if (vibeTransfers && Array.isArray(vibeTransfers) && vibeTransfers.length > 0) {
+                        try {
+                            const vibeCacheDir = path.join(cacheDir, 'vibe');
+                            
+                            for (let i = 0; i < vibeTransfers.length; i++) {
+                                const vibeTransfer = vibeTransfers[i];
+                                const vibeFilePath = path.join(vibeCacheDir, `${vibeTransfer.id}.json`);
+                                
+                                if (fs.existsSync(vibeFilePath)) {
+                                    const vibeData = JSON.parse(fs.readFileSync(vibeFilePath, 'utf8'));
+                                    
+                                    let vibeImageBuffer = null;
+                                    
+                                    // Handle different vibe data types
+                                    if (vibeData.type === 'base64' && vibeData.image) {
+                                        // Image is stored as base64 in the vibe data
+                                        vibeImageBuffer = Buffer.from(vibeData.image, 'base64');
+                                    } else if (vibeData.type === 'cache' && vibeData.image) {
+                                        // Image is stored in cache directory with hash as filename
+                                        const cacheImagePath = path.join(uploadCacheDir, vibeData.image);
+                                        if (fs.existsSync(cacheImagePath)) {
+                                            vibeImageBuffer = fs.readFileSync(cacheImagePath);
+                                        } else {
+                                            console.warn(`⚠️ Cache image not found: ${cacheImagePath}`);
+                                        }
+                                    } else {
+                                        console.warn(`⚠️ No image data found in vibe ${vibeTransfer.id} (type: ${vibeData.type})`);
+                                    }
+                                    
+                                    if (vibeImageBuffer) {
+                                        // Resize to match target dimensions from last generated image
+                                        vibeImageBuffer = await sharp(vibeImageBuffer)
+                                            .resize(targetWidth, targetHeight)
+                                            .jpeg({ quality: 85 })
+                                            .toBuffer();
+                                        
+                                        const vibeImageBase64 = vibeImageBuffer.toString('base64');
+                                        
+                                        // Convert strength to percentage
+                                        const strengthPercent = Math.round((vibeTransfer.strength || 0) * 100);
+                                        
+                                    userMessageContent.push({
+                                        type: "text",
+                                        text: `**Vibe Transfer Image #${i + 1} (Strength: ${strengthPercent}%, IE: ${vibeTransfer.ie}%):**\nThis is a reference image that will influence the generation style and content. Strength ${strengthPercent}% indicates how much influence this image should have, and IE ${vibeTransfer.ie}% indicates how much detail should be extracted. Analyze this image to understand what stylistic elements, composition, or details it will contribute to the generation.`
+                                    });
+                                        userMessageContent.push({
+                                            type: "image_url",
+                                            image_url: {
+                                                url: `data:image/jpeg;base64,${vibeImageBase64}`,
+                                                detail: "low",
+                                            }
+                                        });
+                                    }
+                                } else {
+                                    console.warn(`⚠️ Vibe file not found: ${vibeFilePath}`);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('❌ Error processing vibe transfers:', error);
+                        }
+                    }
+                }   
+                conversationMessages = [...messages, {
+                    role: 'user',
+                    content: userMessageContent
+                }];
+            }
+            
+            // Simple model selection based on image parameters
+            const selectedModel = (vibeTransfers || baseImageData || lastGeneratedImageFilename || messageType === 'efficiency' || messageType === 'initial') ? 'grok-4' : 'grok-3-mini';
+            const provider = 'grok';
+
+            // Handle image processing based on model
+            if (selectedModel === 'grok-3-mini') {
+                // Strip all image objects from grok-3-mini requests
+                conversationMessages = conversationMessages.map(msg => {
+                    if (msg.content && Array.isArray(msg.content)) {
+                        return {
+                            ...msg,
+                            content: msg.content.filter(item => item.type !== 'image_url')
+                        };
+                    }
+                    return msg;
+                });
+            } else if (selectedModel === 'grok-4') {
+                // For grok-4, keep only the last image in the conversation
+                let lastImageIndex = -1;
+                for (let i = conversationMessages.length - 1; i >= 0; i--) {
+                    const msg = conversationMessages[i];
+                    if (msg.content && Array.isArray(msg.content)) {
+                        const imageIndex = msg.content.findIndex(item => item.type === 'image_url');
+                        if (imageIndex !== -1) {
+                            lastImageIndex = i;
+                            break;
+                        }
+                    }
+                }
+
+                // If we found an image, keep only that one and strip others
+                if (lastImageIndex !== -1) {
+                    conversationMessages = conversationMessages.map((msg, index) => {
+                        if (index !== lastImageIndex && msg.content && Array.isArray(msg.content)) {
+                            return {
+                                ...msg,
+                                content: msg.content.filter(item => item.type !== 'image_url')
+                            };
+                        }
+                        return msg;
+                    });
+                }
+            }
+
+            // Call the appropriate AI service based on selected provider
+            let aiResponse;
+            if (provider === 'grok') {
+                aiResponse = await this.callGrokAIWithContext(conversationMessages, selectedModel);
+            } else if (provider === 'openai') {
+                aiResponse = await this.callChatGPTAIWithContext(conversationMessages, selectedModel);
+            } else {
+                throw new Error(`Unsupported provider: ${provider}`);
+            }
+            
+            return aiResponse;
+        } catch (error) {
+            console.error('❌ Error calling Director AI with context:', error);
+            throw error;
+        }
+    }
+    
+    async callGrokAIWithContext(messages, model) {
+        const { continueConversationWithContext } = require('./aiServices/grokService');
+
+        // Pass the entire conversation context directly
+        const chat = {
+            messages: messages,
+            model: model || "grok-4"
+        };
+
+        console.log(`🎯 Calling Grok AI with model: ${model}`);
+
+        const response = await continueConversationWithContext(chat);
+
+        return {
+            content: response,
+            message: response
+        };
+    }
+    
+    async callChatGPTAIWithContext(messages, model) {
+        const { continueConversationWithContext } = require('./aiServices/chatgptService');
+        
+        // Pass the entire conversation context directly
+        const chat = {
+            messages: messages,
+            model: model || "gpt-5-nano"
+        };
+        
+        const response = await continueConversationWithContext(chat);
+        
+        return {
+            content: response,
+            message: response
+        };
+    }
+
+    async handleDirectorGetMessages(ws, message, clientInfo, wsServer) {
+        try {
+            const { sessionId, limit = 100, offset = 0 } = message;
+            
+            if (!sessionId) {
+                this.sendError(ws, 'Session ID is required', 'MISSING_SESSION_ID', message.requestId);
+                return;
+            }
+            
+            const messages = getDirectorMessages(sessionId, limit, offset, false, true); // Exclude system messages for client display, include extra fields
+            
+            this.sendToClient(ws, {
+                type: 'director_get_messages_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    messages: messages
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error fetching Director messages:', error);
+            this.sendError(ws, 'Failed to fetch Director messages', error.message, message.requestId);
+        }
+    }
+
+    async handleDirectorRollbackMessage(ws, message, clientInfo, wsServer) {
+        try {
+            const { sessionId, messageId } = message;
+
+            if (!sessionId) {
+                this.sendError(ws, 'Session ID is required', 'MISSING_SESSION_ID', message.requestId);
+                return;
+            }
+
+            if (!messageId) {
+                this.sendError(ws, 'Message ID is required', 'MISSING_MESSAGE_ID', message.requestId);
+                return;
+            }
+
+            // Get all messages for the session to find the target message
+            const messages = getDirectorMessages(sessionId, 1000, 0, true, true); // Include system messages for rollback
+            const targetMessageIndex = messages.findIndex(msg => msg.id === messageId || msg.timestamp === messageId);
+
+            if (targetMessageIndex === -1) {
+                this.sendError(ws, 'Message not found', 'MESSAGE_NOT_FOUND', message.requestId);
+                return;
+            }
+
+            // Delete all messages from the target index onwards (including the target message)
+            const messagesToDelete = messages.slice(targetMessageIndex);
+
+            if (messagesToDelete.length === 0) {
+                this.sendError(ws, 'No messages to delete', 'NO_MESSAGES_TO_DELETE', message.requestId);
+                return;
+            }
+
+            console.log(`🗑️ Deleting ${messagesToDelete.length} messages from session ${sessionId}`);
+
+            // Delete messages from database for this specific session
+            const success = deleteDirectorMessagesFrom(sessionId, messages[targetMessageIndex].id);
+
+            if (!success) {
+                this.sendError(ws, 'Failed to delete messages from database', 'DATABASE_ERROR', message.requestId);
+                return;
+            }
+
+            // Send success response to the client
+            this.sendToClient(ws, {
+                type: 'director_rollback_message_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    deletedCount: messagesToDelete.length,
+                    message: `Successfully rolled back ${messagesToDelete.length} message(s)`
+                },
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            console.error('❌ Error rolling back Director messages:', error);
+            this.sendError(ws, 'Failed to rollback messages', error.message, message.requestId);
+        }
+    }
+
+    // IP Management Handlers
+    async handleGetBlockedIPs(ws, message, clientInfo, wsServer) {
+        try {
+            // Check if user is admin
+            if (clientInfo.userType !== 'admin') {
+                this.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+                return;
+            }
+
+            const { page = 1, limit = 15 } = message;
+            const offset = (page - 1) * limit;
+
+            // Get blocked IPs from the global security system
+            const blockedIPs = global.blockedIPs || new Map();
+            const suspiciousIPs = global.suspiciousIPs || new Map();
+            const invalidURLAttempts = global.invalidURLAttempts || new Map();
+
+            const now = Date.now();
+            const blockedIPsArray = Array.from(blockedIPs.entries())
+                .map(([ip, data]) => ({
+                    ip,
+                    blockedAt: data.blockedAt,
+                    reason: data.reason,
+                    attempts: data.attempts,
+                    ageMinutes: Math.round((now - data.blockedAt) / (1000 * 60)),
+                    ageHours: Math.round((now - data.blockedAt) / (1000 * 60 * 60))
+                }))
+                .sort((a, b) => b.blockedAt - a.blockedAt); // Most recent first
+
+            const totalCount = blockedIPsArray.length;
+            const paginatedIPs = blockedIPsArray.slice(offset, offset + limit);
+            const totalPages = Math.ceil(totalCount / limit);
+
+            this.sendToClient(ws, {
+                type: 'get_blocked_ips_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    blockedIPs: paginatedIPs,
+                    pagination: {
+                        currentPage: page,
+                        totalPages: totalPages,
+                        totalCount: totalCount,
+                        limit: limit
+                    }
+                },
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            console.error('❌ Error fetching blocked IPs:', error);
+            this.sendError(ws, 'Failed to fetch blocked IPs', error.message, message.requestId);
+        }
+    }
+
+    async handleUnblockIP(ws, message, clientInfo, wsServer) {
+        try {
+            // Check if user is admin
+            if (clientInfo.userType !== 'admin') {
+                this.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+                return;
+            }
+
+            const { ip } = message;
+            if (!ip) {
+                this.sendError(ws, 'IP address is required', 'MISSING_IP', message.requestId);
+                return;
+            }
+
+            // Get references to the global security maps
+            const blockedIPs = global.blockedIPs || new Map();
+            const suspiciousIPs = global.suspiciousIPs || new Map();
+            const invalidURLAttempts = global.invalidURLAttempts || new Map();
+
+            const wasBlocked = blockedIPs.has(ip);
+            const wasSuspicious = suspiciousIPs.has(ip);
+            const hadInvalidAttempts = invalidURLAttempts.has(ip);
+
+            // Remove from all tracking maps
+            blockedIPs.delete(ip);
+            suspiciousIPs.delete(ip);
+            invalidURLAttempts.delete(ip);
+
+            console.log(`🔓 Admin unblocked IP via WebSocket: ${ip} (was blocked: ${wasBlocked}, was suspicious: ${wasSuspicious}, had invalid attempts: ${hadInvalidAttempts})`);
+
+            this.sendToClient(ws, {
+                type: 'unblock_ip_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    message: `IP ${ip} has been unblocked`,
+                    wasBlocked,
+                    wasSuspicious,
+                    hadInvalidAttempts
+                },
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            console.error('❌ Error unblocking IP:', error);
+            this.sendError(ws, 'Failed to unblock IP', error.message, message.requestId);
+        }
+    }
+
+    async handleExportIPToGateway(ws, message, clientInfo, wsServer) {
+        try {
+            // Check if user is admin
+            if (clientInfo.userType !== 'admin') {
+                this.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+                return;
+            }
+
+            const { ip } = message;
+            if (!ip) {
+                this.sendError(ws, 'IP address is required', 'MISSING_IP', message.requestId);
+                return;
+            }
+
+            // Create export directory if it doesn't exist
+            const exportDir = path.join(__dirname, '../.cache', 'ip_exports');
+            if (!fs.existsSync(exportDir)) {
+                fs.mkdirSync(exportDir, { recursive: true });
+            }
+
+            // Create export file with timestamp
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const exportFile = path.join(exportDir, `ip_export_${timestamp}.txt`);
+            
+            // Write IP to file
+            const exportData = {
+                ip: ip,
+                exportedAt: new Date().toISOString(),
+                exportedBy: clientInfo.sessionId,
+                action: 'block',
+                reason: 'Exported from StaticForge IP Management'
+            };
+
+            fs.writeFileSync(exportFile, JSON.stringify(exportData, null, 2));
+
+            // Remove IP from blocked list after 1 hour
+            setTimeout(() => {
+                const blockedIPs = global.blockedIPs || new Map();
+                if (blockedIPs.has(ip)) {
+                    blockedIPs.delete(ip);
+                    console.log(`🕐 Auto-removed exported IP from block list: ${ip}`);
+                }
+            }, 60 * 60 * 1000); // 1 hour
+
+            console.log(`📤 IP exported to gateway: ${ip} (file: ${exportFile})`);
+
+            this.sendToClient(ws, {
+                type: 'export_ip_to_gateway_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    message: `IP ${ip} exported to gateway and will be removed from block list in 1 hour`,
+                    exportFile: exportFile,
+                    exportedAt: new Date().toISOString()
+                },
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            console.error('❌ Error exporting IP to gateway:', error);
+            this.sendError(ws, 'Failed to export IP to gateway', error.message, message.requestId);
+        }
+    }
+
+    async handleGetIPBlockingReasons(ws, message, clientInfo, wsServer) {
+        try {
+            // Check if user is admin
+            if (clientInfo.userType !== 'admin') {
+                this.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+                return;
+            }
+
+            const { ip } = message;
+            if (!ip) {
+                this.sendError(ws, 'IP address is required', 'MISSING_IP', message.requestId);
+                return;
+            }
+
+            // Get references to the global security maps
+            const blockedIPs = global.blockedIPs || new Map();
+            const suspiciousIPs = global.suspiciousIPs || new Map();
+            const invalidURLAttempts = global.invalidURLAttempts || new Map();
+
+            const blockedData = blockedIPs.get(ip);
+            const suspiciousData = suspiciousIPs.get(ip);
+            const invalidData = invalidURLAttempts.get(ip);
+
+            const reasons = {
+                isBlocked: !!blockedData,
+                blockedReason: blockedData?.reason || null,
+                blockedAt: blockedData?.blockedAt || null,
+                blockedAttempts: blockedData?.attempts || 0,
+                isSuspicious: !!suspiciousData,
+                suspiciousAttempts: suspiciousData?.attempts || 0,
+                suspiciousPatterns: suspiciousData?.patterns || [],
+                hasInvalidAttempts: !!invalidData,
+                invalidAttempts: invalidData?.count || 0,
+                lastInvalidAttempt: invalidData?.lastAttempt || null
+            };
+
+            this.sendToClient(ws, {
+                type: 'get_ip_blocking_reasons_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    ip: ip,
+                    reasons: reasons
+                },
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            console.error('❌ Error fetching IP blocking reasons:', error);
+            this.sendError(ws, 'Failed to fetch IP blocking reasons', error.message, message.requestId);
         }
     }
 }

@@ -254,7 +254,7 @@ class TagSuggestionsCache {
     // Clean up old entries (older than 24 hours)
     cleanupOldEntries() {
         const now = Date.now();
-        const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+        const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
         let cleanedQueries = 0;
         let cleanedTags = 0;
         

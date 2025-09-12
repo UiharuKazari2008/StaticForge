@@ -38,9 +38,6 @@ class WebSocketServer {
 
             console.log(`✅ WebSocket connected: Session ${sessionId}`);
 
-            // Restore session workspace if available
-            //this.restoreSessionWorkspace(sessionId, ws);
-
             // Handle incoming messages
             ws.on('message', (data) => {
                 try {
@@ -63,6 +60,9 @@ class WebSocketServer {
                 message: 'WebSocket connection established',
                 timestamp: new Date().toISOString()
             });
+
+            // Restore session workspace for reconnection sync
+            this.restoreSessionWorkspace(sessionId, ws);
 
             // Handle client disconnect
             ws.on('close', (code, reason) => {
@@ -100,7 +100,6 @@ class WebSocketServer {
                 this.sendToClient(ws, {
                     type: 'workspace_restored',
                     workspace: restoredWorkspace,
-                    message: `Welcome back! Restored to workspace: ${restoredWorkspace}`,
                     timestamp: new Date().toISOString()
                 });
                 

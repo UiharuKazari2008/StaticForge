@@ -76,6 +76,12 @@ const unifiedUploadConfirmText = document.getElementById('unifiedUploadConfirmTe
 const unifiedUploadModeDisplay = document.getElementById('unifiedUploadModeDisplay');
 const unifiedUploadBackgroundImage = document.getElementById('unifiedUploadBackgroundImage');
 
+// Unified Upload Workspace Selector Elements
+const unifiedUploadWorkspaceDropdown = document.getElementById('unifiedUploadWorkspaceDropdown');
+const unifiedUploadWorkspaceDropdownBtn = document.getElementById('unifiedUploadWorkspaceDropdownBtn');
+const unifiedUploadWorkspaceDropdownMenu = document.getElementById('unifiedUploadWorkspaceDropdownMenu');
+const unifiedUploadWorkspaceColorDot = document.getElementById('unifiedUploadWorkspaceColorDot');
+
 const importModelMapping = {
     'v4full': 'v4',
     'v4-5full': 'v4_5',
@@ -130,6 +136,7 @@ let unifiedUploadSelectedModel = 'v4_5';
 let unifiedUploadFiles = []; // Array of selected files
 let unifiedUploadCurrentIndex = 0; // Current file index
 let unifiedUploadFileMetadata = []; // Array of file metadata/validation results
+let unifiedUploadSelectedWorkspace = 'default'; // Selected workspace for uploads
 
 // Reference Manager Variables
 let cacheManagerImages = [];
@@ -505,7 +512,7 @@ function createCacheGalleryItem(cacheImage) {
     
     actionButtonsContainer.appendChild(baseImageBtn);
     actionButtonsContainer.appendChild(vibeBtn);
-    
+
     // Create management buttons container (top section)
     const buttonsContainer = document.createElement('div');
     buttonsContainer.className = 'cache-gallery-item-buttons';
@@ -526,6 +533,19 @@ function createCacheGalleryItem(cacheImage) {
             buttonsContainer.appendChild(commentBtn);
         }
     }
+    
+
+    // Create "Replace with Last Generated" button
+    const replaceBtn = document.createElement('button');
+    replaceBtn.type = 'button';
+    replaceBtn.className = 'btn-primary';
+    replaceBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
+    replaceBtn.title = 'Replace with last generated image';
+    replaceBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        replaceReferenceWithLastGenerated(cacheImage);
+    });
+    buttonsContainer.appendChild(replaceBtn);
 
     // Create preview button
     if (cacheImage.hasPreview) {
@@ -563,6 +583,20 @@ function createCacheGalleryItem(cacheImage) {
         });
 
         buttonsContainer.appendChild(previewBtn);
+    }
+    
+    // Create "Create Director Session" button
+    if (!cacheImage.isStandalone) {
+        const directorBtn = document.createElement('button');
+        directorBtn.type = 'button';
+        directorBtn.className = 'btn-secondary btn-small';
+        directorBtn.innerHTML = '<i class="xai-icon"></i>';
+        directorBtn.title = 'Create director session';
+        directorBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            createDirectorSessionWithImage(cacheImage);
+        });
+        buttonsContainer.appendChild(directorBtn);
     }
 
     // Create vibe encode button (always show to allow adding more IEs)
@@ -705,7 +739,6 @@ async function refreshVibeReferencesDisplay() {
     const vibeReferenceItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item');
     
     if (vibeReferenceItems.length > 0 && cacheImages === false) {
-        console.log('Loading cache images...');
         await loadCacheImages();
     }
 
@@ -1257,6 +1290,9 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
         if (transformationRow) {
             transformationRow.classList.add('display-vibe');
         }
+
+        // Update transformation dropdown button active state based on vibe presence
+        updateTransformationDropdownForVibes();
     }
 }
 
@@ -1280,6 +1316,26 @@ function removeVibeReference(vibeId) {
                 vibeNormalizeToggle.classList.add('hidden');
             }
         }
+    }
+
+    // Update transformation dropdown button active state based on vibe presence
+    updateTransformationDropdownForVibes();
+}
+
+// Function to update transformation dropdown button active state based on vibe presence
+function updateTransformationDropdownForVibes() {
+    if (!transformationDropdownBtn) return;
+
+    const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
+    if (!vibeReferencesContainer) return;
+
+    const vibeItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item');
+
+    // Add active class if there are vibes present, remove it if there are none
+    if (vibeItems.length > 0) {
+        transformationDropdownBtn.classList.add('active');
+    } else {
+        transformationDropdownBtn.classList.remove('active');
     }
 }
 
@@ -1535,7 +1591,7 @@ function renderReferenceWorkspaceDropdown(config, selectedValue = null) {
         option.tabIndex = 0;
         option.dataset.value = workspace.id;
 
-        const workspaceColor = workspace.color || '#124';
+        const workspaceColor = workspace.color || '#102040';
 
         option.innerHTML = `
             <div class="workspace-option-content">
@@ -1587,6 +1643,24 @@ function setupCacheManagerWorkspaceDropdown() {
                     // Hide loading overlay
                     if (cacheManagerLoading) cacheManagerLoading.classList.add('hidden');
                 }
+            }
+        }
+    });
+}
+
+// Setup unified upload workspace dropdown
+function setupUnifiedUploadWorkspaceDropdown() {
+    setupWorkspaceDropdown({
+        dropdown: unifiedUploadWorkspaceDropdown,
+        button: unifiedUploadWorkspaceDropdownBtn,
+        menu: unifiedUploadWorkspaceDropdownMenu,
+        selected: () => unifiedUploadSelectedWorkspace,
+        getCurrentWorkspace: () => unifiedUploadSelectedWorkspace,
+        onWorkspaceChange: (workspace) => {
+            unifiedUploadSelectedWorkspace = workspace.id;
+            if (unifiedUploadWorkspaceColorDot) {
+                const workspaceColor = workspace.color || '#6366f1';
+                unifiedUploadWorkspaceColorDot.style.backgroundColor = workspaceColor;
             }
         }
     });
@@ -1745,6 +1819,19 @@ function createCacheManagerGalleryItem(cacheImage) {
             }
         });
         buttonsContainerBottom.appendChild(vibeBtn);
+    }
+
+    if (!cacheImage.isStandalone) {
+        // Create director session button
+        const directorBtn = document.createElement('button');
+        directorBtn.className = 'btn-secondary btn-small';
+        directorBtn.innerHTML = '<i class="xai-icon"></i>';
+        directorBtn.title = 'Create director session';
+        directorBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            createDirectorSessionWithImage(cacheImage);
+        });
+        buttonsContainerBottom.appendChild(directorBtn);
     }
 
     // Create delete button
@@ -1939,6 +2026,27 @@ function showUnifiedUploadModal() {
     // Show initial upload options
     showInitialUploadOptions();
     
+    // Setup workspace dropdown
+    setupUnifiedUploadWorkspaceDropdown();
+    
+    // Set default workspace - use cache manager workspace if available, otherwise current workspace
+    if (typeof cacheManagerCurrentWorkspace !== 'undefined' && cacheManagerCurrentWorkspace) {
+        unifiedUploadSelectedWorkspace = cacheManagerCurrentWorkspace;
+    } else if (typeof activeWorkspace !== 'undefined' && activeWorkspace) {
+        unifiedUploadSelectedWorkspace = activeWorkspace;
+    } else {
+        unifiedUploadSelectedWorkspace = 'default';
+    }
+    
+    // Update workspace color dot
+    if (unifiedUploadWorkspaceColorDot && typeof workspaces !== 'undefined' && workspaces) {
+        const workspace = workspaces[unifiedUploadSelectedWorkspace];
+        if (workspace) {
+            const workspaceColor = workspace.color || '#6366f1';
+            unifiedUploadWorkspaceColorDot.style.backgroundColor = workspaceColor;
+        }
+    }
+    
     // Hide comment input container initially
     const commentContainer = document.getElementById('unifiedUploadCommentInputContainer');
     if (commentContainer) {
@@ -2028,7 +2136,12 @@ function updateUnifiedUploadMode() {
             if (unifiedUploadCurrentMode === 'reference') {
                 unifiedUploadModeDisplay.textContent = 'Upload Reference';
             } else if (unifiedUploadCurrentMode === 'vibe') {
-                unifiedUploadModeDisplay.textContent = 'Upload & Encode';
+                // Check if we have vibe files for import or images for encoding
+                const hasVibeFilesForImport = unifiedUploadFileMetadata.some(meta =>
+                    meta.valid && meta.metadata &&
+                    (meta.metadata.type === 'vibe_bundle' || meta.metadata.type === 'vibe_single')
+                ) || (unifiedUploadDownloadedFile && (unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single'));
+                unifiedUploadModeDisplay.textContent = hasVibeFilesForImport ? 'Import Vibe File' : 'Upload & Encode';
             } else if (unifiedUploadCurrentMode === 'blueprint') {
                 unifiedUploadModeDisplay.textContent = 'Import Image';
             }
@@ -2045,7 +2158,14 @@ function updateUnifiedUploadMode() {
             if (unifiedUploadCurrentMode === 'reference') {
                 unifiedUploadModalTitle.innerHTML = '<i class="nai-img2img"></i> <span>Upload Reference</span>';
             } else if (unifiedUploadCurrentMode === 'vibe') {
-                unifiedUploadModalTitle.innerHTML = '<i class="mdi mdi-data-matrix"></i> <span>Encode Vibe</span>';
+                // Check if we have vibe files for import or images for encoding
+                const hasVibeFilesForImport = unifiedUploadFileMetadata.some(meta =>
+                    meta.valid && meta.metadata &&
+                    (meta.metadata.type === 'vibe_bundle' || meta.metadata.type === 'vibe_single')
+                ) || (unifiedUploadDownloadedFile && (unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single'));
+                const title = hasVibeFilesForImport ? 'Import Vibe File' : 'Encode Vibe';
+                const icon = hasVibeFilesForImport ? 'nai-import' : 'mdi mdi-data-matrix';
+                unifiedUploadModalTitle.innerHTML = `<i class="${icon}"></i> <span>${title}</span>`;
             } else if (unifiedUploadCurrentMode === 'blueprint') {
                 unifiedUploadModalTitle.innerHTML = '<i class="nai-import"></i> <span>Import Image</span>';
             }
@@ -2058,18 +2178,31 @@ function updateUnifiedUploadMode() {
         if (unifiedUploadCurrentMode === 'reference') {
             unifiedUploadConfirmText.textContent = 'Upload';
         } else if (unifiedUploadCurrentMode === 'vibe') {
-            unifiedUploadConfirmText.textContent = 'Encode';
+            // Check if we have vibe files for import or images for encoding
+            const hasVibeFilesForImport = unifiedUploadFileMetadata.some(meta =>
+                meta.valid && meta.metadata &&
+                (meta.metadata.type === 'vibe_bundle' || meta.metadata.type === 'vibe_single')
+            ) || (unifiedUploadDownloadedFile && (unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single'));
+            unifiedUploadConfirmText.textContent = hasVibeFilesForImport ? 'Import' : 'Encode';
         } else if (unifiedUploadCurrentMode === 'blueprint') {
             unifiedUploadConfirmText.textContent = 'Import';
         }
     }
     
-    // Show/hide vibe controls
+    // Show/hide vibe controls - only show when encoding images, not when importing vibe files
     if (vibeControls) {
-        if (unifiedUploadCurrentMode === 'vibe') {
+        // Check if we have vibe files selected for import (not encoding)
+        const hasVibeFilesForImport = unifiedUploadFileMetadata.some(meta =>
+            meta.valid && meta.metadata &&
+            (meta.metadata.type === 'vibe_bundle' || meta.metadata.type === 'vibe_single')
+        ) || (unifiedUploadDownloadedFile && (unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single'));
+
+        if (unifiedUploadCurrentMode === 'vibe' && !hasVibeFilesForImport) {
+            // Show controls only when encoding images (no vibe files for import)
             vibeControls.classList.remove('hide');
             vibeControls.classList.add('show');
         } else {
+            // Hide controls when importing vibe files or not in vibe mode
             vibeControls.classList.remove('show');
             vibeControls.classList.add('hide');
         }
@@ -2090,6 +2223,17 @@ function updateUnifiedUploadMode() {
     if (referenceComment) {
         if (unifiedUploadCurrentMode === 'blueprint') {
             referenceComment.classList.add('hidden');
+        } else if (unifiedUploadCurrentMode === 'vibe') {
+            // Check if we have vibe files for import (show comment) or images for encoding (hide comment)
+            const hasVibeFilesForImport = unifiedUploadFileMetadata.some(meta =>
+                meta.valid && meta.metadata &&
+                (meta.metadata.type === 'vibe_bundle' || meta.metadata.type === 'vibe_single')
+            ) || (unifiedUploadDownloadedFile && (unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single'));
+            if (hasVibeFilesForImport) {
+                referenceComment.classList.remove('hidden');
+            } else {
+                referenceComment.classList.add('hidden');
+            }
         } else {
             referenceComment.classList.remove('hidden');
         }
@@ -2180,24 +2324,28 @@ async function handleUnifiedUploadConfirm() {
     // If we have a downloaded file, skip file validation and proceed directly
     // Downloaded files are already validated on the server side
     if (!unifiedUploadDownloadedFile) {
-        // Validate file types - accept images, JSON files, and .naiv4vibebundle files
+        // Validate file types - accept images, JSON files, and .naiv4vibe/.naiv4vibebundle files
         const invalidFiles = unifiedUploadFiles.filter(file => {
             const isImage = file.type.startsWith('image/');
             const isJson = file.type === 'application/json';
-            const isNaiv4Bundle = file.name.endsWith('.naiv4vibebundle');
-            return !isImage && !isJson && !isNaiv4Bundle;
+            const fileName = file.name.toLowerCase();
+            const isNaiv4File = fileName.includes('.naiv4vibe') || fileName.includes('.naiv4vibebundle');
+            return !isImage && !isJson && !isNaiv4File;
         });
         if (invalidFiles.length > 0) {
             hideGalleryMoveRightPanelCover();
-            showError('Please select valid image files, JSON files, or .naiv4vibebundle files only.');
+            showError('Please select valid image files, JSON files, or .naiv4vibe/.naiv4vibebundle files only.');
             return;
         }
-        
-        // Check if any JSON files or .naiv4vibebundle files are selected
-        const jsonFiles = unifiedUploadFiles.filter(file => file.type === 'application/json' || file.name.endsWith('.naiv4vibebundle'));
-        if (jsonFiles.length > 0) {
-            // Handle JSON file import
-            await handleJsonFileImport(jsonFiles);
+
+        // Check if any JSON files or .naiv4vibe/.naiv4vibebundle files are selected
+        const vibeFiles = unifiedUploadFiles.filter(file => {
+            const fileNameLower = file.name.toLowerCase();
+            return file.type === 'application/json' || fileNameLower.includes('.naiv4vibe') || fileNameLower.includes('.naiv4vibebundle');
+        });
+        if (vibeFiles.length > 0) {
+            // Handle vibe file import (unified system handles both bundle and single files)
+            await handleJsonFileImport(vibeFiles);
             return;
         }
         
@@ -2240,12 +2388,13 @@ async function handleUnifiedUploadConfirm() {
             // Upload as reference images
             await uploadUnifiedReferenceImages();
         } else if (unifiedUploadCurrentMode === 'vibe') {
-            // Upload and encode as vibe
-            if (unifiedUploadDownloadedFile && unifiedUploadDownloadedFile.type === 'vibe_bundle') {
-                // Handle downloaded vibe bundle import
+            // Handle vibe files (import, not encode)
+            if (unifiedUploadDownloadedFile && (unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single')) {
+                // Handle downloaded vibe file import (unified system handles both bundle and single)
                 await importDownloadedVibeBundle();
             } else {
-                await uploadUnifiedVibeImage(!unifiedUploadDownloadedFile ? unifiedUploadFiles[0] : null);
+                // Handle locally selected vibe files - import them
+                await importUnifiedVibeFiles();
             }
         }
         hideGalleryMoveRightPanelCover();
@@ -2735,21 +2884,8 @@ async function importUnifiedBlueprint(file) {
             throw new Error('Invalid blueprint file: No NovelAI metadata found');
         }
         
-        // Get the current workspace from the cache manager dropdown
-        let targetWorkspace = cacheManagerCurrentWorkspace;
-        
-        // If cache manager modal is open, get the workspace from the dropdown
-        if (cacheManagerModal && cacheManagerModal.classList.contains('modal-open')) {
-            const selectedWorkspaceElement = cacheManagerWorkspaceSelected;
-            if (selectedWorkspaceElement && selectedWorkspaceElement.textContent) {
-                // Find the workspace by display name
-                const workspaceName = selectedWorkspaceElement.textContent.trim();
-                const workspace = Object.values(workspaces).find(w => w.name === workspaceName);
-                if (workspace) {
-                    targetWorkspace = workspace.id;
-                }
-            }
-        }
+        // Get the selected workspace from the unified upload modal
+        let targetWorkspace = unifiedUploadSelectedWorkspace;
         
         let uploadResponse;
         
@@ -2804,21 +2940,8 @@ async function uploadUnifiedReferenceImages() {
     showGalleryMoveRightPanelCover('Uploading Reference...');
     
     try {
-        // Get the current workspace from the cache manager dropdown
-        let targetWorkspace = cacheManagerCurrentWorkspace;
-        
-        // If cache manager modal is open, get the workspace from the dropdown
-        if (cacheManagerModal && cacheManagerModal.classList.contains('modal-open')) {
-            const selectedWorkspaceElement = cacheManagerWorkspaceSelected;
-            if (selectedWorkspaceElement && selectedWorkspaceElement.textContent) {
-                // Find the workspace by display name
-                const workspaceName = selectedWorkspaceElement.textContent.trim();
-                const workspace = Object.values(workspaces).find(w => w.name === workspaceName);
-                if (workspace) {
-                    targetWorkspace = workspace.id;
-                }
-            }
-        }
+        // Get the selected workspace from the unified upload modal
+        let targetWorkspace = unifiedUploadSelectedWorkspace;
         
         let results = [];
         
@@ -2834,9 +2957,9 @@ async function uploadUnifiedReferenceImages() {
                 }
                 
                 results.push(response);
-            } else if (unifiedUploadDownloadedFile.type === 'vibe_bundle') {
-                // For vibe bundles, we'll handle them in the vibe mode
-                throw new Error('Vibe bundles should be imported using vibe mode, not reference mode');
+            } else if (unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single') {
+                // For vibe files, we'll handle them in the vibe mode
+                throw new Error('Vibe files should be imported using vibe mode, not reference mode');
             } else {
                 throw new Error(`Unsupported file type for reference upload: ${unifiedUploadDownloadedFile.type}`);
             }
@@ -2865,25 +2988,26 @@ async function uploadUnifiedReferenceImages() {
             showProgress: false
         });
         
-        // If this was uploaded as a base image (reference mode), add it to the manual form
-        if (unifiedUploadCurrentMode === 'reference' && results.length > 0) {
-            const uploadedHash = results[0].hash;
-            if (uploadedHash) {
-                // Add as base image to the manual form
-                await addAsBaseImage({ hash: uploadedHash, type: 'cache' });
+
+        // Refresh cache manager
+        if (!cacheManagerModal.classList.contains('hidden') || !manualModal.classList.contains('hidden')) {    
+            await loadCacheImages();
+            await loadCacheManagerImages();
+            await refreshReferenceBrowserIfOpen();
+            await refreshReferenceManagerAfterVibeOperation();
+        }
+        
+        if (!manualModal.classList.contains('hidden')) {
+            // If this was uploaded as a base image (reference mode), add it to the manual form
+            if (unifiedUploadCurrentMode === 'reference' && results.length > 0) {
+                const uploadedHash = results[0].hash;
+                if (uploadedHash) {
+                    // Add as base image to the manual form
+                    await addAsBaseImage({ hash: uploadedHash, type: 'cache' });
+                }
             }
         }
-        
-        // Refresh cache manager
-        if (!cacheBrowserContainer.classList.contains('hidden')) {
-            await loadCacheManagerImages();
-        } else {
-            await loadCacheImages();
-        }
-        await refreshReferenceBrowserIfOpen();
-        
-        // Ensure reference manager is refreshed after vibe operation
-        await refreshReferenceManagerAfterVibeOperation();
+
         
         // Close modal
         hideUnifiedUploadModal();
@@ -2900,11 +3024,108 @@ async function uploadUnifiedReferenceImages() {
     }
 }
 
+// Unified vibe detection and parsing function for client-side
+function detectAndParseVibeFile(data) {
+    const result = {
+        isValid: false,
+        type: null, // 'bundle' or 'single'
+        vibes: [],
+        error: null
+    };
+
+    try {
+        // Validate basic structure
+        if (!data || typeof data !== 'object') {
+            result.error = 'Invalid data format: expected object';
+            return result;
+        }
+
+        // Check for required identifier
+        if (!data.identifier) {
+            result.error = 'Missing identifier: not a valid NovelAI vibe file';
+            return result;
+        }
+
+        // Handle different vibe file types
+        if (data.identifier === 'novelai-vibe-transfer-bundle') {
+            // Bundle format - contains multiple vibes
+            if (!data.vibes || !Array.isArray(data.vibes)) {
+                result.error = 'Invalid bundle format: missing or invalid vibes array';
+                return result;
+            }
+
+            if (data.vibes.length === 0) {
+                result.error = 'Empty bundle: no vibes found';
+                return result;
+            }
+
+            // Validate each vibe in the bundle
+            const validVibes = [];
+            for (const vibe of data.vibes) {
+                if (validateVibeStructure(vibe)) {
+                    validVibes.push(vibe);
+                } else {
+                    console.warn(`Skipping invalid vibe in bundle: ${vibe.name || vibe.id || 'unnamed'}`);
+                }
+            }
+
+            if (validVibes.length === 0) {
+                result.error = 'Bundle contains no valid vibes';
+                return result;
+            }
+
+            result.isValid = true;
+            result.type = 'bundle';
+            result.vibes = validVibes;
+
+        } else if (data.identifier === 'novelai-vibe-transfer') {
+            // Single vibe format
+            if (!validateVibeStructure(data)) {
+                result.error = 'Invalid single vibe format';
+                return result;
+            }
+
+            result.isValid = true;
+            result.type = 'single';
+            result.vibes = [data];
+
+        } else {
+            result.error = `Unsupported identifier: ${data.identifier}`;
+            return result;
+        }
+
+        return result;
+
+    } catch (error) {
+        result.error = `Parse error: ${error.message}`;
+        return result;
+    }
+}
+
+// Helper function to validate individual vibe structure
+function validateVibeStructure(vibe) {
+    if (!vibe || typeof vibe !== 'object') {
+        return false;
+    }
+
+    // Check for required fields
+    if (!vibe.identifier || vibe.identifier !== 'novelai-vibe-transfer') {
+        return false;
+    }
+
+    // At minimum, a vibe should have encodings or be a valid structure
+    if (!vibe.encodings && !vibe.id && !vibe.name) {
+        return false;
+    }
+
+    return true;
+}
+
 async function handleJsonFileImport(files) {
     // Update cover message for JSON import
-    showGalleryMoveRightPanelCover('Processing Vibe Bundle...');
-    
-    let toastId = showGlassToast('info', 'Importing Vibe Bundle', 'Processing JSON files...', true, false, '<i class="nai-import"></i>');
+    showGalleryMoveRightPanelCover('Processing Vibe File...');
+
+    let toastId = showGlassToast('info', 'Importing Vibe File', 'Processing JSON files...', true, false, '<i class="nai-import"></i>');
     try {
         let targetWorkspace = cacheManagerCurrentWorkspace;
         if (cacheManagerModal && cacheManagerModal.classList.contains('modal-open')) {
@@ -2925,19 +3146,24 @@ async function handleJsonFileImport(files) {
         const commentInput = document.getElementById('unifiedUploadCommentInput');
         const comment = commentInput ? commentInput.value.trim() : '';
         const importPromises = files.map(async (file, index) => {
-            updateGlassToast(toastId, 'info', 'Importing Vibe Bundle', `Processing ${file.name}...`);
+            updateGlassToast(toastId, 'info', 'Importing Vibe File', `Processing ${file.name}...`);
             const fileContent = await file.text();
             let jsonData = JSON.parse(fileContent);
-            
-            // Handle missing preview images for vibes (both single and bundle formats)
-            const vibesToProcess = jsonData.identifier === 'novelai-vibe-transfer' ? [jsonData] : (jsonData.vibes || []);
-            
+
+            // Use unified detection system
+            const detectionResult = detectAndParseVibeFile(jsonData);
+            if (!detectionResult.isValid) {
+                throw new Error(`Invalid vibe file: ${detectionResult.error}`);
+            }
+
+            console.log(`📦 Client detected ${detectionResult.type} vibe file with ${detectionResult.vibes.length} vibe(s)`);
+
             // Get any user-added images from the UI before importing
             const updatedJsonData = { ...jsonData };
-            
+
             // Check if we have modified vibe data from button interactions
             if (window.modifiedVibeData && window.modifiedVibeData.length > 0) {
-                if (jsonData.identifier === 'novelai-vibe-transfer') {
+                if (detectionResult.type === 'single') {
                     // Single vibe format - check if this vibe was modified
                     const modifiedVibe = window.modifiedVibeData.find(v => v.id === jsonData.id);
                     if (modifiedVibe) {
@@ -2949,9 +3175,9 @@ async function handleJsonFileImport(files) {
                             updatedJsonData.type = 'base64';
                         }
                     }
-                } else if (jsonData.identifier === 'novelai-vibe-transfer-bundle') {
+                } else if (detectionResult.type === 'bundle') {
                     // Bundle format - update vibes with any modifications
-                    const updatedVibes = vibesToProcess.map(vibe => {
+                    const updatedVibes = detectionResult.vibes.map(vibe => {
                         const modifiedVibe = window.modifiedVibeData.find(v => v.id === vibe.id);
                         if (modifiedVibe) {
                             return {
@@ -3020,23 +3246,10 @@ async function uploadUnifiedVibeImage(file) {
         return;
     }
     
-    // Get the current workspace from the cache manager dropdown
-    let targetWorkspace = cacheManagerCurrentWorkspace;
-    
-    // If cache manager modal is open, get the workspace from the dropdown
-    if (cacheManagerModal && cacheManagerModal.classList.contains('modal-open')) {
-        const selectedWorkspaceElement = cacheManagerWorkspaceSelected;
-        if (selectedWorkspaceElement && selectedWorkspaceElement.textContent) {
-            // Find the workspace by display name
-            const workspaceName = selectedWorkspaceElement.textContent.trim();
-            const workspace = Object.values(workspaces).find(w => w.name === workspaceName);
-            if (workspace) {
-                targetWorkspace = workspace.id;
-            }
-        }
-    }
-    
-    // Validate workspace
+    // Get the selected workspace from the unified upload modal
+    let targetWorkspace = unifiedUploadSelectedWorkspace;
+        
+        // Validate workspace
     if (!targetWorkspace) {
         showGlassToast('error', null, 'No workspace selected. Please select a workspace first.');
         return;
@@ -3048,8 +3261,8 @@ async function uploadUnifiedVibeImage(file) {
     
     // Validate file type for vibe encoding
     if (isDownloadedFile) {
-        if (unifiedUploadDownloadedFile.type !== 'image' && unifiedUploadDownloadedFile.type !== 'vibe_bundle') {
-            showGlassToast('error', null, 'Only image files and vibe bundles can be used for vibe encoding');
+        if (unifiedUploadDownloadedFile.type !== 'image' && unifiedUploadDownloadedFile.type !== 'vibe_bundle' && unifiedUploadDownloadedFile.type !== 'vibe_single') {
+            showGlassToast('error', null, 'Only image files and vibe files can be used for vibe encoding');
             return;
         }
     } else if (!isImageFile) {
@@ -3150,30 +3363,143 @@ async function uploadUnifiedVibeImage(file) {
 }
 
 // Import downloaded vibe bundle
+async function importUnifiedVibeFiles() {
+    // Filter to only get vibe files from the selected files
+    const vibeFiles = unifiedUploadFiles.filter(file => {
+        const fileNameLower = file.name.toLowerCase();
+        return file.type === 'application/json' || fileNameLower.includes('.naiv4vibe') || fileNameLower.includes('.naiv4vibebundle');
+    });
+
+    if (vibeFiles.length === 0) {
+        throw new Error('No vibe files found to import');
+    }
+
+    // Update cover message for vibe file import
+    showGalleryMoveRightPanelCover('Importing Vibe Files...');
+
+    let toastId = showGlassToast('info', 'Importing Vibe Files', `Processing ${vibeFiles.length} vibe file(s)...`, true, false, '<i class="nai-import"></i>');
+
+    try {
+        // Get the selected workspace from the unified upload modal
+        let targetWorkspace = unifiedUploadSelectedWorkspace;
+
+        if (!targetWorkspace) {
+            showGlassToast('error', null, 'No workspace selected. Please select a workspace first.');
+            return;
+        }
+
+        const commentInput = document.getElementById('unifiedUploadCommentInput');
+        const comment = commentInput ? commentInput.value.trim() : '';
+
+        // Process each vibe file
+        const importPromises = vibeFiles.map(async (file, index) => {
+            updateGlassToast(toastId, 'info', 'Importing Vibe Files', `Processing ${file.name}...`);
+
+            const fileContent = await file.text();
+            let jsonData = JSON.parse(fileContent);
+
+            // Use unified detection system
+            const detectionResult = detectAndParseVibeFile(jsonData);
+            if (!detectionResult.isValid) {
+                throw new Error(`Invalid vibe file: ${detectionResult.error}`);
+            }
+
+            console.log(`📦 Importing ${detectionResult.type} vibe file: ${file.name} with ${detectionResult.vibes.length} vibes`);
+
+            // Get any user-added images from the UI before importing
+            const updatedJsonData = { ...jsonData };
+
+            // Check if we have modified vibe data from button interactions
+            if (window.modifiedVibeData && window.modifiedVibeData.length > 0) {
+                if (detectionResult.type === 'single') {
+                    // Single vibe format - check if this vibe was modified
+                    const modifiedVibe = window.modifiedVibeData.find(v => v.id === jsonData.id);
+                    if (modifiedVibe) {
+                        if (modifiedVibe.thumbnail) {
+                            updatedJsonData.thumbnail = modifiedVibe.thumbnail;
+                        }
+                        if (modifiedVibe.image) {
+                            updatedJsonData.image = modifiedVibe.image;
+                            updatedJsonData.type = 'base64';
+                        }
+                    }
+                } else if (detectionResult.type === 'bundle') {
+                    // Bundle format - update vibes with any modifications
+                    const updatedVibes = detectionResult.vibes.map(vibe => {
+                        const modifiedVibe = window.modifiedVibeData.find(v => v.id === vibe.id);
+                        if (modifiedVibe) {
+                            return {
+                                ...vibe,
+                                thumbnail: modifiedVibe.thumbnail || vibe.thumbnail,
+                                image: modifiedVibe.image || vibe.image,
+                                type: modifiedVibe.image ? 'base64' : vibe.type
+                            };
+                        }
+                        return vibe;
+                    });
+                    updatedJsonData.vibes = updatedVibes;
+                }
+            }
+
+            // Send updated data to server for processing
+            const response = await wsClient.importVibeBundle(updatedJsonData, targetWorkspace, comment);
+            if (!response.success) {
+                throw new Error(response.message || 'Import failed');
+            }
+            return response;
+        });
+
+        const results = await Promise.all(importPromises);
+
+        updateGlassToastComplete(toastId, {
+            type: 'success',
+            title: 'Vibe Files Imported',
+            message: `Successfully imported ${results.length} vibe file(s)`,
+            customIcon: '<i class="nai-check"></i>',
+            showProgress: false
+        });
+
+        // Clear modified vibe data after successful import
+        window.modifiedVibeData = [];
+
+        // Refresh cache manager
+        if (!cacheBrowserContainer.classList.contains('hidden')) {
+            await loadCacheManagerImages();
+        } else {
+            await loadCacheImages();
+        }
+        await refreshReferenceBrowserIfOpen();
+
+        // Ensure reference manager is refreshed after vibe operation
+        await refreshReferenceManagerAfterVibeOperation();
+
+        // Close modal
+        hideUnifiedUploadModal();
+
+    } catch (error) {
+        console.error('Error importing vibe files:', error);
+        removeGlassToast(toastId);
+        hideGalleryMoveRightPanelCover();
+        showGlassToast('error', null, 'Import failed: ' + (error.message || 'Unknown error'));
+        throw error;
+    }
+}
+
 async function importDownloadedVibeBundle() {
-    if (!unifiedUploadDownloadedFile || unifiedUploadDownloadedFile.type !== 'vibe_bundle') {
-        throw new Error('No vibe bundle downloaded');
+    if (!unifiedUploadDownloadedFile || (unifiedUploadDownloadedFile.type !== 'vibe_bundle' && unifiedUploadDownloadedFile.type !== 'vibe_single')) {
+        throw new Error('No vibe file downloaded');
     }
     
-    // Update cover message for downloaded vibe bundle import
-    showGalleryMoveRightPanelCover('Importing Vibe Bundle...');
-    
-    let toastId = showGlassToast('info', 'Importing Vibe Bundle', 'Processing downloaded vibe bundle...', true, false, '<i class="nai-import"></i>');
+    // Update cover message for downloaded vibe file import
+    const isBundle = unifiedUploadDownloadedFile.type === 'vibe_bundle';
+    const fileType = isBundle ? 'Bundle' : 'File';
+    showGalleryMoveRightPanelCover(`Importing Vibe ${fileType}...`);
+
+    let toastId = showGlassToast('info', `Importing Vibe ${fileType}`, `Processing downloaded vibe ${fileType.toLowerCase()}...`, true, false, '<i class="nai-import"></i>');
     
     try {
-        // Get the current workspace from the cache manager dropdown
-        let targetWorkspace = cacheManagerCurrentWorkspace;
-        
-        // If cache manager modal is open, get the workspace from the dropdown
-        if (cacheManagerModal && cacheManagerModal.classList.contains('modal-open')) {
-            const selectedWorkspaceElement = cacheManagerWorkspaceSelected;
-            if (selectedWorkspaceElement && selectedWorkspaceElement.textContent) {
-                // Find the workspace by display name
-                const workspaceName = selectedWorkspaceElement.textContent.trim();
-                const workspace = Object.values(workspaces).find(w => w.name === workspaceName);
-                targetWorkspace = workspace.id;
-            }
-        }
+        // Get the selected workspace from the unified upload modal
+        let targetWorkspace = unifiedUploadSelectedWorkspace;
         
         if (!targetWorkspace) {
             showGlassToast('error', null, 'No workspace selected. Please select a workspace first.');
@@ -3183,8 +3509,8 @@ async function importDownloadedVibeBundle() {
         const commentInput = document.getElementById('unifiedUploadCommentInput');
         const comment = commentInput ? commentInput.value.trim() : '';
         
-        // Import the vibe bundle using temp file
-        const response = await wsClient.importVibeBundle(null, targetWorkspace, comment, unifiedUploadDownloadedFile.tempFilename);
+        // Import the vibe bundle using raw JSON data
+        const response = await wsClient.importVibeBundle(unifiedUploadDownloadedFile.jsonData, targetWorkspace, comment);
         
         if (!response.success) {
             throw new Error(response.message || 'Vibe bundle import failed');
@@ -3192,7 +3518,7 @@ async function importDownloadedVibeBundle() {
         
         updateGlassToastComplete(toastId, {
             type: 'success',
-            title: 'Vibe Bundle Imported',
+            title: `Vibe ${fileType} Imported`,
             message: `Successfully imported ${unifiedUploadDownloadedFile.vibeCount} vibe(s)`,
             customIcon: '<i class="nai-check"></i>',
             showProgress: false
@@ -3297,7 +3623,7 @@ function setupCacheManagerMoveWorkspaceDropdown() {
             const selectedSpan = modal.querySelector('#cacheManagerMoveWorkspaceSelected');
             const confirmBtn = modal.querySelector('#cacheManagerMoveConfirmBtn');
             
-            const workspaceColor = workspace.color || '#124';
+            const workspaceColor = workspace.color || '#102040';
             selectedSpan.innerHTML = `<div class="workspace-option-content"><div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
                 <div class="workspace-name">${workspace.name}</div></div>`;
             selectedSpan.dataset.value = workspace.id;
@@ -3319,7 +3645,7 @@ function renderCacheManagerMoveWorkspaceDropdown() {
             const selectedSpan = modal.querySelector('#cacheManagerMoveWorkspaceSelected');
             const confirmBtn = modal.querySelector('#cacheManagerMoveConfirmBtn');
             
-            const workspaceColor = workspace.color || '#124';
+            const workspaceColor = workspace.color || '#102040';
             selectedSpan.innerHTML = `<div class="workspace-option-content"><div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
                 <div class="workspace-name">${workspace.name}</div></div>`;
             selectedSpan.dataset.value = workspace.id;
@@ -3492,10 +3818,13 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
             if (modeDisplay) modeDisplay.textContent = 'Reference Mode';
             break;
     }
-    
-    // Set target model if provided
+
+    // Set target model if provided, otherwise use manual selected model for upload/reference modes
     if (targetModel) {
         vibeEncodingSelectedModel = targetModel;
+    } else if ((mode === 'upload' || mode === 'reference') && window.manualSelectedModel) {
+        // Use the currently selected model from manual generation modal
+        vibeEncodingSelectedModel = window.manualSelectedModel;
     }
     
     // Update model display
@@ -3610,7 +3939,7 @@ async function handleVibeEncodingConfirm() {
     let requestParams = {
         informationExtraction: informationExtraction,
         model: model,
-        workspace: cacheManagerCurrentWorkspace, // Default, will be updated based on mode
+        workspace: unifiedUploadSelectedWorkspace, // Use selected workspace from unified upload modal
         comment: comment || null
     };
     
@@ -4274,29 +4603,31 @@ async function handleUnifiedUploadFileChange(event) {
                     error: `Invalid PNG: ${error.message}` 
                 };
             }
-        } else if (file.type === 'application/json' || file.name.endsWith('vibebundle')) {
+        } else if (file.type === 'application/json' || file.name.toLowerCase().includes('.naiv4vibe') || file.name.toLowerCase().includes('.naiv4vibebundle')) {
+            console.log(`🔍 Processing potential vibe file: ${file.name}, type: ${file.type}, size: ${file.size}`);
             // Check if it's a valid vibe bundle
             try {
                 const fileContent = await file.text();
                 const jsonData = JSON.parse(fileContent);
                 
-                // Check if it's a vibe bundle or single vibe
-                const isVibeBundle = jsonData.identifier === 'novelai-vibe-transfer-bundle' && jsonData.vibes && jsonData.vibes.length > 0;
-                const isSingleVibe = jsonData.identifier === 'novelai-vibe-transfer';
-                
-                if (isVibeBundle || isSingleVibe) {
-                    return { 
-                        valid: true, 
-                        metadata: { 
-                            type: 'vibe_bundle',
-                            vibes: isVibeBundle ? jsonData.vibes : [jsonData],
-                            isBundle: isVibeBundle
-                        } 
+                // Use unified vibe detection system
+                const detectionResult = detectAndParseVibeFile(jsonData);
+
+                if (detectionResult.isValid) {
+                    console.log(`✅ Valid vibe file detected: ${detectionResult.type} with ${detectionResult.vibes.length} vibes`);
+                    return {
+                        valid: true,
+                        metadata: {
+                            type: detectionResult.type === 'bundle' ? 'vibe_bundle' : 'vibe_single',
+                            vibes: detectionResult.vibes,
+                            isBundle: detectionResult.type === 'bundle'
+                        }
                     };
                 } else {
-                    return { 
-                        valid: false, 
-                        error: 'Not a valid NovelAI vibe transfer or bundle file' 
+                    console.log(`❌ Invalid vibe file: ${detectionResult.error}`);
+                    return {
+                        valid: false,
+                        error: 'Not a valid NovelAI vibe transfer or bundle file'
                     };
                 }
             } catch (error) {
@@ -4328,11 +4659,11 @@ async function handleUnifiedUploadFileChange(event) {
         }
     });
     
-    // Count valid blueprints and vibe bundles
+    // Count valid blueprints and vibe files (both bundles and singles)
     const validBlueprintCount = unifiedUploadFileMetadata.filter(meta => meta.valid && meta.metadata && !meta.metadata.type).length;
-    const validVibeBundleCount = unifiedUploadFileMetadata.filter(meta => meta.valid && meta.metadata && meta.metadata.type === 'vibe_bundle').length;
+    const validVibeCount = unifiedUploadFileMetadata.filter(meta => meta.valid && meta.metadata && (meta.metadata.type === 'vibe_bundle' || meta.metadata.type === 'vibe_single')).length;
     const hasValidBlueprint = validBlueprintCount > 0;
-    const hasValidVibeBundle = validVibeBundleCount > 0;
+    const hasValidVibe = validVibeCount > 0;
     
     // ALWAYS enable blueprint mode option if at least one valid blueprint exists
     const modeSliderContainer = document.querySelector('.mode-slider-container');
@@ -4345,8 +4676,9 @@ async function handleUnifiedUploadFileChange(event) {
         }
     }
     
-    // If we have vibe bundles, switch to vibe mode and hide mode selector
-    if (hasValidVibeBundle) {
+    // If we have vibe files (bundles or singles), switch to vibe mode and hide mode selector
+    if (hasValidVibe) {
+        console.log(`🎵 Switching to vibe mode: found ${validVibeCount} valid vibe files`);
         unifiedUploadCurrentMode = 'vibe';
         updateUnifiedUploadMode();
         hideModeSelector();
@@ -4407,12 +4739,11 @@ async function handleVibeBundleFile(file, backgroundImage) {
         try {
             const jsonData = JSON.parse(e.target.result);
             
-            // Check if it's a vibe bundle or single vibe
-            const isVibeBundle = jsonData.identifier === 'novelai-vibe-transfer-bundle' && jsonData.vibes && jsonData.vibes.length > 0;
-            const isSingleVibe = jsonData.identifier === 'novelai-vibe-transfer';
-            
-            if (isVibeBundle || isSingleVibe) {
-                const vibes = isVibeBundle ? jsonData.vibes : [jsonData];
+            // Use unified vibe detection system
+            const detectionResult = detectAndParseVibeFile(jsonData);
+
+            if (detectionResult.isValid) {
+                const vibes = detectionResult.vibes;
                 
                 // Hide mode selection for vibe bundles
                 hideModeSelector();
@@ -4420,16 +4751,28 @@ async function handleVibeBundleFile(file, backgroundImage) {
                 // Show vibe bundle preview
                 showVibeBundlePreview(vibes);
                 
-                // Set background image to first vibe's thumbnail
+                // Set background image to first vibe's thumbnail or image
                 const firstVibe = vibes[0];
                 if (firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
                     backgroundImage.src = firstVibe.thumbnail;
+                } else if (firstVibe.image && firstVibe.image.startsWith('data:image/')) {
+                    backgroundImage.src = firstVibe.image;
+                } else if (firstVibe.image && (firstVibe.image.startsWith('/9j/') || firstVibe.image.startsWith('iVBOR'))) {
+                    // Handle base64 data without data:image/ prefix
+                    const mimeType = firstVibe.image.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
+                    backgroundImage.src = `data:${mimeType};base64,${firstVibe.image}`;
                 } else {
                     backgroundImage.src = '/static_images/background.jpg';
                 }
+
+                // Add error handling for background image
+                backgroundImage.onerror = function() {
+                    this.src = '/static_images/background.jpg';
+                    console.warn(`Failed to load background image for vibe: ${firstVibe.name || firstVibe.id}`);
+                };
                 
                 // Update UI for bundle import
-                updateUIForVibeBundleImport(vibes.length, isVibeBundle);
+                updateUIForVibeFileImport(vibes.length, detectionResult.type === 'bundle');
             } else {
                 handleInvalidBundle(backgroundImage);
             }
@@ -4663,7 +5006,7 @@ function textDecode(data) {
 // Update the preview and metadata display for the current file
 async function updateUnifiedUploadPreview() {
     const currentFile = unifiedUploadFiles[unifiedUploadCurrentIndex];
-    if (!currentFile) return;
+    if (!currentFile && !unifiedUploadDownloadedFile) return;
 
     // Show overlay since we now have file data to display
     const overlay = document.querySelector('#unifiedUploadModal .gallery-move-image-info-overlay');
@@ -4685,9 +5028,70 @@ async function updateUnifiedUploadPreview() {
     // Update background preview
     const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
     if (backgroundImage) {
-        const imageUrl = URL.createObjectURL(currentFile);
-        backgroundImage.src = imageUrl;
-        backgroundImage.onload = () => URL.revokeObjectURL(imageUrl);
+        // Check if this is a vibe file - handle both local files and URL downloads
+        const currentMetadata = unifiedUploadFileMetadata[unifiedUploadCurrentIndex];
+        const isVibeFile = (unifiedUploadCurrentMode === 'vibe' && currentMetadata && currentMetadata.valid && currentMetadata.metadata && (currentMetadata.metadata.type === 'vibe_bundle' || currentMetadata.metadata.type === 'vibe_single')) ||
+                          (unifiedUploadDownloadedFile && (unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single'));
+
+        if (isVibeFile) {
+            // For vibe files, try to set background from thumbnail data
+            let thumbnailFound = false;
+
+            if (unifiedUploadDownloadedFile && unifiedUploadDownloadedFile.jsonData) {
+                // For downloaded vibe files, use the raw JSON data
+                try {
+                    const detectionResult = detectAndParseVibeFile(unifiedUploadDownloadedFile.jsonData);
+                    if (detectionResult.isValid && detectionResult.vibes.length > 0) {
+                        const firstVibe = detectionResult.vibes[0];
+                        if (firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
+                            backgroundImage.src = firstVibe.thumbnail;
+                            thumbnailFound = true;
+                        } else if (firstVibe.image && firstVibe.image.startsWith('data:image/')) {
+                            backgroundImage.src = firstVibe.image;
+                            thumbnailFound = true;
+                        } else if (firstVibe.image && (firstVibe.image.startsWith('/9j/') || firstVibe.image.startsWith('iVBOR'))) {
+                            // Handle base64 data without data:image/ prefix
+                            const mimeType = firstVibe.image.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
+                            backgroundImage.src = `data:${mimeType};base64,${firstVibe.image}`;
+                            thumbnailFound = true;
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Error parsing downloaded vibe data for thumbnail:', error);
+                }
+            } else if (currentMetadata && currentMetadata.metadata && currentMetadata.metadata.vibes) {
+                // For local vibe files, use the metadata
+                const firstVibe = currentMetadata.metadata.vibes[0];
+                if (firstVibe && firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
+                    backgroundImage.src = firstVibe.thumbnail;
+                    thumbnailFound = true;
+                } else if (firstVibe && firstVibe.image && firstVibe.image.startsWith('data:image/')) {
+                    backgroundImage.src = firstVibe.image;
+                    thumbnailFound = true;
+                } else if (firstVibe && firstVibe.image && (firstVibe.image.startsWith('/9j/') || firstVibe.image.startsWith('iVBOR'))) {
+                    // Handle base64 data without data:image/ prefix
+                    const mimeType = firstVibe.image.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
+                    backgroundImage.src = `data:${mimeType};base64,${firstVibe.image}`;
+                    thumbnailFound = true;
+                }
+            }
+
+            // If no thumbnail found, use default background
+            if (!thumbnailFound) {
+                backgroundImage.src = '/static_images/background.jpg';
+            }
+
+            // Add error handling for background image
+            backgroundImage.onerror = function() {
+                this.src = '/static_images/background.jpg';
+                console.warn('Failed to load background image for vibe file');
+            };
+        } else {
+            // For regular files, create object URL
+            const imageUrl = URL.createObjectURL(currentFile);
+            backgroundImage.src = imageUrl;
+            backgroundImage.onload = () => URL.revokeObjectURL(imageUrl);
+        }
     }
 
     // Get all preview areas
@@ -4738,10 +5142,12 @@ async function updateUnifiedUploadPreview() {
             }
         }
     } else if (unifiedUploadCurrentMode === 'vibe') {
+        console.log(`🎵 Vibe mode preview: current mode = ${unifiedUploadCurrentMode}`);
         // Handle vibe preview
         const currentMetadata = unifiedUploadFileMetadata[unifiedUploadCurrentIndex];
-        
-        if (currentMetadata && currentMetadata.valid && currentMetadata.metadata && currentMetadata.metadata.type === 'vibe_bundle') {
+
+        if (currentMetadata && currentMetadata.valid && currentMetadata.metadata && (currentMetadata.metadata.type === 'vibe_bundle' || currentMetadata.metadata.type === 'vibe_single')) {
+            console.log(`🎵 Processing vibe preview: ${currentMetadata.metadata.type} with ${currentMetadata.metadata.vibes.length} vibes`);
             // Use the pre-parsed vibe data from metadata
             const vibes = currentMetadata.metadata.vibes;
             const isVibeBundle = currentMetadata.metadata.isBundle;
@@ -4752,17 +5158,67 @@ async function updateUnifiedUploadPreview() {
             // Show vibe bundle preview
             showVibeBundlePreview(vibes);
             
-            // Set background image to first vibe's thumbnail
+            // Set background image to first vibe's thumbnail or image
             const firstVibe = vibes[0];
             if (firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
                 backgroundImage.src = firstVibe.thumbnail;
+            } else if (firstVibe.image && firstVibe.image.startsWith('data:image/')) {
+                backgroundImage.src = firstVibe.image;
+            } else if (firstVibe.image && (firstVibe.image.startsWith('/9j/') || firstVibe.image.startsWith('iVBOR'))) {
+                // Handle base64 data without data:image/ prefix
+                const mimeType = firstVibe.image.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
+                backgroundImage.src = `data:${mimeType};base64,${firstVibe.image}`;
             } else {
                 backgroundImage.src = '/static_images/background.jpg';
             }
+
+            // Add error handling for background image
+            backgroundImage.onerror = function() {
+                this.src = '/static_images/background.jpg';
+                console.warn(`Failed to load background image for vibe: ${firstVibe.name || firstVibe.id}`);
+            };
             
             // Update UI for bundle import
-            updateUIForVibeBundleImport(vibes.length, isVibeBundle);
-        } else if (currentFile.type === 'application/json' || currentFile.name.endsWith('.naiv4vibebundle')) {
+            updateUIForVibeFileImport(vibes.length, isVibeBundle);
+        } else if (unifiedUploadDownloadedFile && (unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single')) {
+            // Handle downloaded vibe files
+            console.log('🎵 Processing downloaded vibe file:', unifiedUploadDownloadedFile.type);
+            try {
+                const detectionResult = detectAndParseVibeFile(unifiedUploadDownloadedFile.jsonData);
+                if (detectionResult.isValid && detectionResult.vibes.length > 0) {
+                    showVibeBundlePreview(detectionResult.vibes);
+
+                    // Set background image to first vibe's thumbnail or image
+                    const firstVibe = detectionResult.vibes[0];
+                    if (firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
+                        backgroundImage.src = firstVibe.thumbnail;
+                    } else if (firstVibe.image && firstVibe.image.startsWith('data:image/')) {
+                        backgroundImage.src = firstVibe.image;
+                    } else if (firstVibe.image && (firstVibe.image.startsWith('/9j/') || firstVibe.image.startsWith('iVBOR'))) {
+                        // Handle base64 data without data:image/ prefix
+                        const mimeType = firstVibe.image.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
+                        backgroundImage.src = `data:${mimeType};base64,${firstVibe.image}`;
+                    } else {
+                        backgroundImage.src = '/static_images/background.jpg';
+                    }
+
+                    // Add error handling for background image
+                    backgroundImage.onerror = function() {
+                        this.src = '/static_images/background.jpg';
+                        console.warn(`Failed to load background image for downloaded vibe: ${firstVibe.name || firstVibe.id}`);
+                    };
+
+                    // Update UI for bundle import
+                    updateUIForVibeFileImport(detectionResult.vibes.length, detectionResult.type === 'bundle');
+                } else {
+                    console.warn('Invalid downloaded vibe file format');
+                    backgroundImage.src = '/static_images/background.jpg';
+                }
+            } catch (error) {
+                console.error('Error processing downloaded vibe file:', error);
+                backgroundImage.src = '/static_images/background.jpg';
+            }
+        } else if (currentFile.type === 'application/json' || currentFile.name.toLowerCase().includes('.naiv4')) {
             // Fallback: parse the file directly
             await handleVibeBundleFile(currentFile, backgroundImage);
         }
@@ -5019,6 +5475,12 @@ function showVibeBundlePreview(vibes) {
             img.src = '/static_images/background.jpg';
         }
         img.alt = vibe.name || 'Vibe';
+
+        // Add error handling for failed image loads
+        img.onerror = function() {
+            this.src = '/static_images/background.jpg';
+            console.warn(`Failed to load thumbnail for vibe: ${vibe.name || vibe.id}`);
+        };
         
         // Create details section
         const details = document.createElement('div');
@@ -5032,6 +5494,7 @@ function showVibeBundlePreview(vibes) {
         info.className = 'vibe-bundle-item-info';
         
         // Add encoding badges using the same system as gallery - exactly like createVibeManagerGalleryItem
+        console.log(`🎵 Processing vibe encodings for ${vibe.name}:`, vibe.encodings);
         if (vibe.encodings && Object.keys(vibe.encodings).length > 0) {
             // Create badges container like cache manager
             const badgesContainer = document.createElement('div');
@@ -5266,22 +5729,14 @@ function showModeSelector() {
 }
 
 // Update UI for vibe bundle import
-function updateUIForVibeBundleImport(vibeCount, isBundle) {
-    const modalTitle = document.getElementById('unifiedUploadModalTitle');
-    const confirmText = document.getElementById('unifiedUploadConfirmText');
-    
-    if (modalTitle) {
-        modalTitle.innerHTML = '<i class="nai-import"></i> Import Vibe Bundle';
-    }
-    
-    if (confirmText) {
-        confirmText.textContent = 'Import Bundle';
-    }
-    
+function updateUIForVibeFileImport(vibeCount, isBundle) {
     // Hide Open in Editor button for vibe mode
     if (unifiedUploadOpenInEditorBtn) {
         unifiedUploadOpenInEditorBtn.classList.add('hidden');
     }
+
+    // Note: Title and button text are now handled by updateUnifiedUploadMode()
+    // to avoid conflicts and ensure consistency
 }
 
 // Handle invalid bundle
@@ -5432,7 +5887,7 @@ function initializeCacheManager() {
             const fileInput = document.createElement('input');
             fileInput.type = 'file';
             fileInput.multiple = true;
-            fileInput.accept = 'image/*,.naiv4vibebundle,.json';
+            fileInput.accept = 'image/*,.naiv4vibe,.naiv4vibebundle,.json';
             fileInput.classList.add('hidden');
             
             // Add change event listener
@@ -6250,6 +6705,9 @@ async function handlePendingUrlDownload() {
                 type: response.type,
                 ...response
             };
+
+            // Debug: Log the downloaded file info
+            console.log('📁 Downloaded file info:', unifiedUploadDownloadedFile);
             
             // Clear pending URL
             unifiedUploadPendingUrl = null;
@@ -6268,6 +6726,8 @@ async function handlePendingUrlDownload() {
             // Update overlay with downloaded file information
             const urlInfo = createURLInfoHTML(unifiedUploadDownloadedFile.url, response);
             updateUploadOverlayWithFileInfo(urlInfo);
+
+            console.log('🎯 Download processing complete. Final downloaded file:', unifiedUploadDownloadedFile);
             
             // Set background image for downloaded files
             if (unifiedUploadDownloadedFile.type === 'image') {
@@ -6329,40 +6789,43 @@ async function handlePendingUrlDownload() {
                 }
                 
                 // Update mode to blueprint to match file upload behavior
+                console.log('🔄 Setting mode to blueprint for non-vibe file');
                 unifiedUploadCurrentMode = 'blueprint';
                 updateUnifiedUploadMode();
-            } else if (unifiedUploadDownloadedFile.type === 'vibe_bundle' && unifiedUploadDownloadedFile.vibes) {
-                // Show vibe bundle preview
-                console.log('Processing vibe bundle with vibes:', unifiedUploadDownloadedFile.vibes);
-                
-                // Hide mode selection for vibe bundles (like file uploads do)
+            } else if ((unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single') && unifiedUploadDownloadedFile.jsonData) {
+                // Show vibe file preview (bundle or single) using raw JSON data
+                console.log('🎵 Processing vibe file with raw JSON data');
+                console.log('🎵 Vibe file type:', unifiedUploadDownloadedFile.type, 'has jsonData:', !!unifiedUploadDownloadedFile.jsonData);
+
+                // Set mode to vibe for proper UI handling
+                unifiedUploadCurrentMode = 'vibe';
+                updateUnifiedUploadMode();
+
+                // Hide mode selection for vibe files (like file uploads do)
                 hideModeSelector();
-                
-                // Ensure vibes data is properly structured before showing preview
-                if (Array.isArray(unifiedUploadDownloadedFile.vibes) && unifiedUploadDownloadedFile.vibes.length > 0) {
-                    showVibeBundlePreview(unifiedUploadDownloadedFile.vibes);
-                } else {
-                    console.warn('Invalid vibes structure for vibe bundle:', unifiedUploadDownloadedFile.vibes);
-                    // Fallback: try to parse the downloaded file as JSON
-                    try {
-                        const response = await fetch(`/temp/${unifiedUploadDownloadedFile.tempFilename}`);
-                        if (response.ok) {
-                            const jsonData = await response.json();
-                            if (jsonData.identifier === 'novelai-vibe-transfer-bundle' && jsonData.vibes) {
-                                showVibeBundlePreview(jsonData.vibes);
-                            } else if (jsonData.identifier === 'novelai-vibe-transfer') {
-                                showVibeBundlePreview([jsonData]);
-                            } else {
-                                console.warn('Invalid vibe bundle format');
-                            }
-                        }
-                    } catch (error) {
-                        console.error('Error parsing vibe bundle:', error);
+
+                // Process the raw JSON data the same way as locally uploaded files
+                try {
+                    const detectionResult = detectAndParseVibeFile(unifiedUploadDownloadedFile.jsonData);
+                    if (detectionResult.isValid) {
+                        showVibeBundlePreview(detectionResult.vibes);
+                    } else {
+                        console.warn('Invalid vibe file format:', detectionResult.error);
+                        handleInvalidBundle(backgroundImage);
                     }
+                } catch (error) {
+                    console.error('Error processing vibe JSON data:', error);
+                    handleInvalidBundle(backgroundImage);
                 }
                 
                 // Update UI for bundle import
-                updateUIForVibeBundleImport(unifiedUploadDownloadedFile.vibes.length, true);
+                const detectionResult = detectAndParseVibeFile(unifiedUploadDownloadedFile.jsonData);
+                if (detectionResult.isValid) {
+                    updateUIForVibeFileImport(detectionResult.vibes.length, unifiedUploadDownloadedFile.isBundle);
+                }
+
+                // Update the preview to show the vibe background image
+                await updateUnifiedUploadPreview();
             }
             
             // Hide cover overlay after successful download
@@ -6859,9 +7322,117 @@ async function refreshCacheBrowser() {
     }
 }
 
+// Create director session with selected image
+async function createDirectorSessionWithImage(cacheImage) {
+    try {
+        // Show confirmation dialog
+        const result = await showConfirmationDialog(
+            `Create a new director session with this image using Grok 4?`,
+            [
+                { text: 'Create Session', value: true, className: 'btn-primary' },
+                { text: 'Cancel', value: false, className: 'btn-secondary' }
+            ]
+        );
+
+        if (!result) {
+            return; // User cancelled
+        }
+
+        // Only support actual cache files that exist on disk
+        if (cacheImage.isStandalone) {
+            showError('Cannot create director session with standalone vibes. Only actual cache files are supported.');
+            return;
+        }
+        
+        // For cache images, use cache: format (they are stored in cache upload directory)
+        const imageFilename = `cache:${cacheImage.hash}`;
+
+        // Show persistent toast notification
+        const toastId = showGlassToast('info', 'Creating Director Session', 'Creating director session...', true, false, 'nai-sparkles');
+
+        // Send WebSocket request to create director session
+        if (window.wsClient && window.wsClient.isConnected()) {
+            window.wsClient.send({
+                type: 'director_create_session',
+                requestId: Date.now().toString(),
+                model: 'grok-4',
+                maxResolution: false,
+                imageFilename: imageFilename
+            });
+            
+            // Update toast to success (existing listener will handle the response)
+            updateGlassToastComplete(toastId, {
+                type: 'success',
+                title: 'Director Session Created',
+                message: 'Director session created successfully! Open the editor to access the new session.',
+                customIcon: '<i class="xai-icon"></i>',
+                showProgress: false
+            });
+        } else {
+            // Update toast to error
+            updateGlassToastComplete(toastId, {
+                type: 'error',
+                title: 'Connection Error',
+                message: 'WebSocket not connected. Please refresh the page and try again.',
+                customIcon: '<i class="xai-icon"></i>',
+                showProgress: false
+            });
+        }
+    } catch (error) {
+        console.error('Error creating director session:', error);
+        showError('Failed to create director session: ' + error.message);
+    }
+}
+
+// Replace reference with last generated image
+async function replaceReferenceWithLastGenerated(cacheImage) {
+    try {
+        // Check if there's a current manual preview image
+        if (!window.currentManualPreviewImage) {
+            showError('No generated image found. Please generate an image first.');
+            return;
+        }
+
+        // Get the image filename to read from disk
+        const filename = window.currentManualPreviewImage.upscaled || window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original;
+
+        if (!filename) {
+            showError('Could not determine image filename for replacement.');
+            return;
+        }
+
+        // Get current workspace
+        const currentWorkspaceId = getCurrentWorkspaceId();
+
+        // Show loading state
+        showGlassToast('info', 'Replacing reference...', '', false);
+
+        // Call websocket to replace the reference using the filename
+        // The server will read the image from the images directory
+        const result = await window.wsClient.replaceReference(cacheImage.hash, null, currentWorkspaceId, filename);
+
+        if (result.data && result.data.success) {
+            // Show success message
+            showGlassToast('success', 'Reference replaced successfully', '', true);
+
+            // Refresh the cache browser to show the updated reference
+            setTimeout(() => {
+                refreshCacheBrowser();
+            }, 500);
+        } else {
+            throw new Error(result.data?.message || 'Failed to replace reference');
+        }
+
+    } catch (error) {
+        console.error('Error replacing reference:', error);
+        showError('Failed to replace reference: ' + error.message);
+    }
+}
+
 // Expose functions globally
 window.addAsBaseImage = addAsBaseImage;
 window.refreshCacheBrowser = refreshCacheBrowser;
+window.createDirectorSessionWithImage = createDirectorSessionWithImage;
 
 window.wsClient.registerInitStep(40, 'Initializing reference manager', async () => {
     await initializeCacheManager();

@@ -923,60 +923,6 @@ function startEmphasisHighlighting(textarea) {
     updateEmphasisHighlighting(textarea);
 }
 
-function autoResizeTextarea(textarea) {
-    if (!textarea) return;
-
-    // Reset height to auto to get the correct scrollHeight
-    textarea.style.height = 'auto';
-
-    // Calculate new height based on content, accounting for padding
-    const computedStyle = window.getComputedStyle(textarea);
-    const paddingTop = parseFloat(computedStyle.paddingTop);
-    const paddingBottom = parseFloat(computedStyle.paddingBottom);
-    const borderTop = parseFloat(computedStyle.borderTopWidth);
-    const borderBottom = parseFloat(computedStyle.borderBottomWidth);
-    const totalPadding = paddingTop + paddingBottom + borderTop + borderBottom;
-
-    const minHeight = 70;
-
-    // Ensure scrollHeight is calculated correctly
-    let scrollHeight = textarea.scrollHeight;
-    if (scrollHeight === 0 && textarea.value) {
-        // If scrollHeight is 0 but there's content, try again after a brief delay
-        setTimeout(() => {
-            textarea.style.height = 'auto';
-            const newScrollHeight = textarea.scrollHeight;
-            if (newScrollHeight > 0) {
-                const newHeight = Math.max(newScrollHeight + totalPadding, minHeight);
-                textarea.style.height = newHeight + 'px';
-
-                // Update container height if it exists
-                const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
-                if (container) {
-                    container.style.height = newHeight + 'px';
-                    container.style.minHeight = newHeight + 'px';
-                }
-            }
-        }, 5);
-        return;
-    }
-
-    const newHeight = Math.max(scrollHeight + totalPadding, minHeight);
-
-    // Set the new height
-    textarea.style.height = newHeight + 'px';
-
-    // Update container height if it exists
-    const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
-    if (container) {
-        const toolbar = container.querySelector('.prompt-textarea-toolbar');
-        const toolbarHeight = toolbar && !toolbar.classList.contains('hidden') ? toolbar.offsetHeight + 8 : 0; // 10px for margin-top
-        const totalHeight = newHeight + toolbarHeight;
-        container.style.height = totalHeight + 'px';
-        container.style.minHeight = totalHeight + 'px';
-    }
-}
-
 function stopEmphasisHighlighting() {
     emphasisHighlightingActive = false;
     emphasisHighlightingTarget = null;
