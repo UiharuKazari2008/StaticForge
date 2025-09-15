@@ -802,8 +802,6 @@ class SearchService {
         }
     }
 
-
-
     // Add word to spell checker dictionary
     async addWordToDictionary(word) {
         try {
@@ -950,10 +948,10 @@ class SearchService {
                     name: character.name,
                     character: character,
                     count: 5000,
-                    serviceOrder: 1, // Updated to match the main function
+                    serviceOrder: 1,
                     resultOrder: index,
                     serviceName: 'characters',
-                    similarity: maxSimilarity // Add similarity score
+                    similarity: maxSimilarity
                 });
             }
         });
@@ -1320,8 +1318,6 @@ class SearchService {
             return [];
         }
     }
-
-
 
     generateQueryHash(query, model) {
         const crypto = require('crypto');

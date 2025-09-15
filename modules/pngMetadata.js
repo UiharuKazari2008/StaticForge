@@ -317,6 +317,9 @@ function extractNovelAIMetadata(filePath) {
                     'use_coords',
                     'disabledCharacters',
                     'characterNames',
+                    'chara_reference_source',
+                    'chara_reference_with_style',
+                    'chara_reference_image',
                     'software',
                     'history'
                 ];
@@ -400,35 +403,33 @@ async function extractRelevantFields(meta, filename) {
             const positiveCaptions = meta.v4_prompt.caption.char_captions;
             const negativeCaptions = meta.v4_negative_prompt && meta.v4_negative_prompt.caption.char_captions ? meta.v4_negative_prompt.caption.char_captions : [];
             
-            // Merge positive and negative captions by matching centers
-            const captionMap = new Map();
+            // Process characters by index - simple and straightforward
+            characterPrompts = [];
             
-            // Process positive captions
-            positiveCaptions.forEach(caption => {
-                if (caption.char_caption && caption.centers && Array.isArray(caption.centers) && caption.centers.length > 0) {
-                    const center = caption.centers[0]; // Use first center
-                    const key = `${center.x}_${center.y}`;
-                    captionMap.set(key, {
+            // Process positive captions by index
+            positiveCaptions.forEach((caption, index) => {
+                if (caption.char_caption) {
+                    // Only use actual coordinates if they exist and are valid
+                    const center = caption.centers && Array.isArray(caption.centers) && caption.centers.length > 0
+                        ? caption.centers[0]
+                        : null;
+                    
+                    characterPrompts.push({
                         prompt: caption.char_caption,
                         uc: '',
-                        center: { x: center.x, y: center.y },
+                        center: center,
                         enabled: true,
                         chara_name: ''
                     });
                 }
             });
-            // Process negative captions and merge with positive ones
-            negativeCaptions.forEach(caption => {
-                if (caption.char_caption && caption.centers && Array.isArray(caption.centers) && caption.centers.length > 0) {
-                    const center = caption.centers[0]; // Use first center
-                    const key = `${center.x}_${center.y}`;
-                    
-                    if (captionMap.has(key)) {
-                        captionMap.get(key).uc = caption.char_caption;
-                    }
+            
+            // Process negative captions by index and merge with positive ones
+            negativeCaptions.forEach((caption, index) => {
+                if (caption.char_caption && characterPrompts[index]) {
+                    characterPrompts[index].uc = caption.char_caption;
                 }
             });
-            characterPrompts = Array.from(captionMap.values());
             if (forgeData.disabledCharacters && Array.isArray(forgeData.disabledCharacters)) {
                 // Insert disabled characters at their correct indices
                 forgeData.disabledCharacters.forEach(disabledChar => {
@@ -500,7 +501,15 @@ async function extractRelevantFields(meta, filename) {
         image_source: forgeData.image_source,
         image_bias: forgeData.image_bias,
         preset_name: forgeData.preset_name,
-        use_coords: hasCharacterPrompts ? meta.v4_prompt.use_coords : forgeData.use_coords || false,
+        use_coords: hasCharacterPrompts ? (
+            // Check if any character has valid coordinates
+            characterPrompts.some(char => 
+                char.center && 
+                char.center.x !== null && 
+                char.center.y !== null && 
+                (char.center.x !== 0.5 || char.center.y !== 0.5)
+            ) || meta.v4_prompt.use_coords
+        ) : forgeData.use_coords || false,
         strength: meta.strength || forgeData.img2img_strength,
         noise: meta.noise || forgeData.img2img_noise
     };
@@ -627,7 +636,13 @@ async function extractRelevantFields(meta, filename) {
     result.append_quality_id = forgeData.append_quality_id || null;
     result.append_uc_id = forgeData.append_uc_id || null;
     result.dataset_config = forgeData.dataset_config || { include: [] }; // Default to empty array
-    
+
+    // Add character reference fields
+    if (forgeData.chara_reference_source) {
+        result.chara_reference_source = forgeData.chara_reference_source;
+        result.chara_reference_with_style = forgeData.chara_reference_with_style || false;
+    }
+
     return result;
 }
 

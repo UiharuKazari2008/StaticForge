@@ -10,6 +10,8 @@ let hasMoreImagesBefore = false; // Track if there are images before current pag
 let visibleItems = new Set(); // Track visible items
 let virtualScrollEnabled = true; // Enable virtual scrolling
 let currentImage = null;
+let savedGalleryPosition = null;
+let galleryClearTimeout = null;
 
 // Bidirectional infinite scroll tracking
 let displayedStartIndex = 0; // First displayed image index in allImages array
@@ -843,9 +845,10 @@ function createGalleryItem(image, index) {
             sections: [
                 {
                     type: 'icons',
+                    position: 'outer',
                     icons: [
                         {
-                            icon: 'fa-regular fa-square-check',
+                            icon: 'fas fa-check',
                             tooltip: 'Select',
                             action: 'toggle-checkbox',
                             loadfn: (menuItem, target) => {
@@ -892,21 +895,20 @@ function createGalleryItem(image, index) {
                 },
                 {
                     type: 'list',
-                    title: 'Generation',
                     items: [
                         {
                             icon: 'nai-dice',
-                            text: 'Reroll Generation',
+                            text: 'Reroll',
                             action: 'reroll'
                         },
                         {
                             icon: 'mdi mdi-1-25 mdi-text-box-edit-outline',
-                            text: 'Edit Generation',
+                            text: 'Creator',
                             action: 'modify'
                         },
                         {
                             icon: 'nai-upscale',
-                            text: 'Upscale Image',
+                            text: 'Upscale',
                             action: 'upscale',
                             disabled: !!image.upscaled,
                             loadfn: (menuItem, target) => {
@@ -929,7 +931,23 @@ function createGalleryItem(image, index) {
                 },
                 {
                     type: 'list',
-                    title: 'Data Management',
+                    title: 'Reference',
+                    items: [
+                        {
+                            icon: 'nai-img2img',
+                            text: 'New Reference',
+                            action: 'create-reference'
+                        },
+                        {
+                            icon: 'mdi mdi-data-matrix-scan',
+                            text: 'New Encoding',
+                            action: 'create-encoding'
+                        }
+                    ]
+                },
+                {
+                    type: 'list',
+                    title: 'Management',
                     items: [
                         {
                             icon: 'fas fa-folder-arrow-up',
@@ -957,22 +975,6 @@ function createGalleryItem(image, index) {
                             icon: 'nai-trash',
                             text: 'Delete',
                             action: 'delete'
-                        }
-                    ]
-                },
-                {
-                    type: 'list',
-                    title: 'Reference',
-                    items: [
-                        {
-                            icon: 'nai-img2img',
-                            text: 'Create New Reference',
-                            action: 'create-reference'
-                        },
-                        {
-                            icon: 'mdi mdi-data-matrix-scan',
-                            text: 'Create New Encoding',
-                            action: 'create-encoding'
                         }
                     ]
                 }
@@ -2512,22 +2514,6 @@ function toggleGallerySortOrder() {
             }
         }
     }
-
-    // Update the mobile button state and icon
-    const mobileSortOrderBtn = document.getElementById('mobileSortOrderToggleBtn');
-    if (mobileSortOrderBtn) {
-        mobileSortOrderBtn.dataset.state = gallerySortOrder;
-        const mobileIcon = mobileSortOrderBtn.querySelector('i');
-        if (mobileIcon) {
-            if (gallerySortOrder === 'desc') {
-                mobileIcon.className = 'fa-light fa-sort-amount-down';
-                mobileSortOrderBtn.title = 'Sort Order: Newest First';
-            } else {
-                mobileIcon.className = 'fa-light fa-sort-amount-up';
-                mobileSortOrderBtn.title = 'Sort Order: Oldest First';
-            }
-        }
-    }
     
     // Sort the current gallery data
     sortGalleryData();
@@ -2935,7 +2921,6 @@ function createVibeEncodingFromImage(image) {
     }
 }
 
-
 // Switch to bulk actions context menu
 function switchToBulkContextMenu() {
     if (!window.contextMenu) return;
@@ -3213,6 +3198,74 @@ function handleBulkActionsContextMenu(event) {
                 clearSelection();
             }
             break;
+    }
+}
+
+function clearGallery() {
+    if (gallery) {
+        gallery.innerHTML = '';
+    }
+}
+
+async function loadGalleryFromIndex(index) {
+    try {
+        
+        // Load gallery data if needed
+        if (allImages.length === 0) {
+            await loadGallery();
+        }
+        
+        // Reset infinite scroll state but set custom start position
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        
+        // Set the display range to include our target index
+        const itemHeight = 256;
+        const itemsPerCol = Math.floor(window.innerHeight / itemHeight);
+        const buffer = Math.ceil(itemsPerCol * 0.15);
+        // Get gallery columns from gallery element or fallback to 5
+        const cols = window.realGalleryColumns || parseInt(gallery?.style?.gridTemplateColumns?.match(/repeat\((\d+),/)?.[1]) || 5;
+        const itemsPerPage = (itemsPerCol + buffer) * cols;
+        
+        // Calculate which "page" our target index is on
+        const pageNumber = Math.floor(index / itemsPerPage);
+        const startIndex = pageNumber * itemsPerPage;
+        
+        // Set the infinite scroll state to display the correct range
+        displayedStartIndex = startIndex;
+        displayedEndIndex = Math.min(startIndex + itemsPerPage, allImages.length);
+        
+        // Update scroll state variables
+        isLoadingMore = false;
+        hasMoreImages = displayedEndIndex < allImages.length;
+        hasMoreImagesBefore = displayedStartIndex > 0;
+                
+        // Display gallery with the calculated range
+        displayGalleryFromStartIndex(displayedStartIndex);
+        
+        // Wait for DOM to update, then find and scroll to target
+        setTimeout(() => {
+            const targetItem = document.querySelector(`[data-index="${index}"]`);
+            if (targetItem) {
+                // Scroll to the item with offset to avoid triggering upper placeholders
+                const itemRect = targetItem.getBoundingClientRect();
+                const scrollTop = window.pageYOffset + itemRect.top - 100; // 100px offset from top
+                window.scrollTo({ top: scrollTop, behavior: 'instant' });
+            } else {
+                // Calculate approximate scroll position based on index
+                const approximateScrollTop = (index / cols) * itemHeight;
+                window.scrollTo({ top: approximateScrollTop - 100, behavior: 'instant' });
+            }
+        }, 200); // Give DOM time to render
+        
+    } catch (error) {
+        console.error('❌ Error restoring gallery from index:', error);
+        // Fallback to normal gallery display
+        try {
+            resetInfiniteScroll();
+            displayCurrentPageOptimized();
+        } catch (fallbackError) {
+            console.error('❌ Fallback gallery display also failed:', fallbackError);
+        }
     }
 }
 

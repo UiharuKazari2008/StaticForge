@@ -86,7 +86,7 @@ class FileSearch {
                 if (this.currentQuery.length === 0) {
                     this.clearSearch(true, true);
                     // Close search container to return to main menu mode
-                    window.closeSearchContainer();
+                    closeSearchContainer();
                 } else {
                     this.hideAutofill();
                     this.unfocusInput();
@@ -188,7 +188,7 @@ class FileSearch {
             this.clearSearchBtn.addEventListener('click', () => {
                 this.clearSearch(true, true);
                 // Close search container and return to main menu mode
-                window.closeSearchContainer();
+                closeSearchContainer();
             });
         }
         

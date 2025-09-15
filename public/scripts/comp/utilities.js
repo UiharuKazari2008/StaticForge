@@ -386,8 +386,7 @@ function isV3Model(modelValue) {
  */
 function getCurrentSelectedModel() {
     // Use window references to access variables defined in app.js
-    return (window.manualSelectedModel || manualSelectedModel) ||
-           (window.manualModelHidden || manualModelHidden)?.value || '';
+    return manualSelectedModel || manualModelHidden?.value || '';
 }
 
 /**
@@ -641,7 +640,8 @@ function calculatePriceUnified({
     subscription = { perks: { unlimitedImageGenerationLimits: [] } },
     nSamples = 1,
     image = false,
-    strength = 1
+    strength = 1,
+    reference = false
 }) {
     // Input validation and defaults
     if (!height || !width || height <= 0 || width <= 0) {
@@ -700,8 +700,13 @@ function calculatePriceUnified({
                          (freeEntry?.maxPrompts > 0) &&
                          resolution <= (freeEntry?.resolution || 0);
 
-    const listCost = perSample * n_samples;
-    const opusCost = isFreeRequest ? 0 : perSample * (n_samples - (isFreeRequest ? 1 : 0));
+    let persistanceCost = 0;
+    if (reference) {
+        persistanceCost = 5;
+    }
+
+    const listCost = (perSample * n_samples) + persistanceCost;
+    const opusCost = (isFreeRequest ? 0 : perSample * (n_samples - (isFreeRequest ? 1 : 0))) + persistanceCost;
 
     return {
         list: listCost,
@@ -714,7 +719,10 @@ function calculatePriceUnified({
             model: upperModel,
             sampler: sampler?.meta || 'unknown',
             smeaFactor: smeaFactor,
-            strength: _strength
+            strength: _strength,
+            reference: reference,
+            height: height,
+            width: width
         }
     };
 }
@@ -752,9 +760,9 @@ function updatePercentageOverlay(inputElement, overlayElement, precision = 0) {
 function updatePercentageOverlays() {
     // Cache DOM elements to avoid repeated lookups
     const elements = [
-        { input: window.manualRescale, overlay: window.manualRescaleOverlay },
-        { input: window.manualStrengthValue, overlay: window.manualStrengthOverlay },
-        { input: window.manualNoiseValue, overlay: window.manualNoiseOverlay }
+        { input: manualRescale, overlay: manualRescaleOverlay },
+        { input: manualStrengthValue, overlay: manualStrengthOverlay },
+        { input: manualNoiseValue, overlay: manualNoiseOverlay }
     ];
 
     elements.forEach(({ input, overlay }) => {
@@ -789,24 +797,24 @@ function updateManualPriceDisplay(bypass = false) {
     const newTimeout = setTimeout(() => {
         try {
             // Get current form values (use window references when available)
-            const model = (window.manualSelectedModel || manualSelectedModel) || 'V4_5';
-            const manualStepsEl = document.getElementById('manualSteps');
-            const steps = manualStepsEl ? parseInt(manualStepsEl.value) || 25 : 25;
-            const sampler = (window.manualSelectedSampler || 'k_euler_ancestral');
-            const manualStrengthValueEl = document.getElementById('manualStrengthValue');
-            const strength = manualStrengthValueEl ? parseFloat(manualStrengthValueEl.value) || 1.0 : 1.0;
-            const manualNoiseValueEl = document.getElementById('manualNoiseValue');
-            const noise = manualNoiseValueEl ? parseFloat(manualNoiseValueEl.value) || 0.1 : 0.1;
+            const model = manualSelectedModel || 'V4_5';
+            const manualSteps = document.getElementById('manualSteps');
+            const steps = manualSteps ? parseInt(manualSteps.value) || 25 : 25;
+            const sampler = manualSelectedSampler || 'k_euler_ancestral';
+            const manualStrengthValue = document.getElementById('manualStrengthValue');
+            const strength = manualStrengthValue ? parseFloat(manualStrengthValue.value) || 1.0 : 1.0;
+            const manualNoiseValue = document.getElementById('manualNoiseValue');
+            const noise = manualNoiseValue ? parseFloat(manualNoiseValue.value) || 0.1 : 0.1;
 
             // Calculate area from resolution
             let height = 1024; // Default area
             let width = 1024; // Default area
-            const selectedRes = window.manualSelectedResolution;
+            const selectedRes = manualSelectedResolution;
             if (selectedRes === 'custom') {
-                const manualWidthEl = document.getElementById('manualWidth');
-                const manualHeightEl = document.getElementById('manualHeight');
-                width = manualWidthEl ? parseInt(manualWidthEl.value) || 1024 : 1024;
-                height = manualHeightEl ? parseInt(manualHeightEl.value) || 1024 : 1024;
+                const manualWidth = document.getElementById('manualWidth');
+                const manualHeight = document.getElementById('manualHeight');
+                width = manualWidth ? parseInt(manualWidth.value) || 1024 : 1024;
+                height = manualHeight ? parseInt(manualHeight.value) || 1024 : 1024;
             } else if (selectedRes) {
                 const dimensions = getDimensionsFromResolution(selectedRes);
                 if (dimensions) {
@@ -816,10 +824,10 @@ function updateManualPriceDisplay(bypass = false) {
             }
 
             // Determine if this is an img2img request
-            const isImg2Img = !document.getElementById('transformationSection')?.classList.contains('hidden');
+            const isImg2Img = !document.getElementById('transformationRow')?.classList.contains('display-image');
 
-            // Build request body for calculateCreditCost
-            const requestBody = {
+            // Build request body for calculateCreditCost (same as handleManualGeneration)
+            let requestBody = {
                 model: model,
                 steps: steps,
                 sampler: sampler,
@@ -830,22 +838,32 @@ function updateManualPriceDisplay(bypass = false) {
                 image: isImg2Img ? true : false
             };
 
+            // Create values object with all form data (same as handleManualGeneration)
+            const values = {
+                upscale: document.getElementById('manualUpscale')?.getAttribute('data-state') === 'on' || false,
+                vibe_transfer: collectVibeTransferData(),
+                chara_reference_source: directorReferenceData ? true : undefined
+            };
+
+            // Add shared fields using the same function as handleManualGeneration
+            addSharedFieldsToRequestBody(requestBody, values);
+
             // Calculate cost using the more accurate function
             const cost = calculateCreditCost(requestBody);
 
             // Update display
             priceIcon.className = 'nai-anla';
-            const paidRequestToggleEl = window.paidRequestToggle || paidRequestToggle;
-            if (cost > 0) {
+            const paidRequestToggle = document.getElementById('paidRequestToggle');
+            if (!cost.isFree || (cost.isFree && cost.opus > 0)) {
                 // Paid request
-                priceList.textContent = `${cost}`;
+                priceList.textContent = `${cost.isFree ? cost.opus : cost.list}`;
                 priceDisplay.classList.remove('free');
-                if (paidRequestToggleEl) paidRequestToggleEl.classList.add('active');
+                if (paidRequestToggle) paidRequestToggle.classList.add('active');
             } else {
                 // Free request
                 priceList.textContent = '0';
                 priceDisplay.classList.add('free');
-                if (paidRequestToggleEl) paidRequestToggleEl.classList.remove('active');
+                if (paidRequestToggle) paidRequestToggle.classList.remove('active');
             }
 
             // Show the price display
@@ -857,13 +875,7 @@ function updateManualPriceDisplay(bypass = false) {
             priceDisplay.classList.add('hidden');
         }
     }, bypass ? 5 : 1000);
-
-    // Store timeout reference (use window if available)
-    if (window.manualPriceDisplayTimeout !== undefined) {
-        window.manualPriceDisplayTimeout = newTimeout;
-    } else {
-        manualPriceDisplayTimeout = newTimeout;
-    }
+    manualPriceDisplayTimeout = newTimeout;
 }
 
 /**
@@ -875,7 +887,7 @@ function calculateCreditCost(requestBody) {
     // Handle resolution vs width/height
     let width = requestBody.width || 1024;
     let height = requestBody.height || 1024;
-    
+
     if (requestBody.resolution && !requestBody.width && !requestBody.height) {
         // Convert resolution to width/height
         const dimensions = getDimensionsFromResolution(requestBody.resolution);
@@ -884,7 +896,7 @@ function calculateCreditCost(requestBody) {
             height = dimensions.height;
         }
     }
-    
+
     // Use the same price calculation as the rest of the application
     const price = calculatePriceUnified({
         height: height,
@@ -895,10 +907,11 @@ function calculateCreditCost(requestBody) {
         subscription: window.optionsData?.user?.subscription || { perks: { unlimitedImageGenerationLimits: [] } },
         nSamples: 1,
         image: requestBody.image ? true : false,
-        strength: requestBody.strength || 1
+        strength: requestBody.strength || 1,
+        reference: requestBody.chara_reference_source ? true : false
     });
 
-    return price.opus > 0 ? price.list : false; // Return the list price (credits cost)
+    return price; // Return the list price (credits cost)
 }
 
 /**

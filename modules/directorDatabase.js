@@ -30,7 +30,6 @@ function initializeDirectorDatabase() {
         // Create tables if they don't exist
         createDirectorTables();
         
-        console.log('✅ SQLite Director database initialized');
         return true;
     } catch (error) {
         console.error('❌ Error initializing SQLite Director database:', error.message);

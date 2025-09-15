@@ -250,8 +250,6 @@ async function initializePhotoSwipe() {
 
         // Initialize the lightbox
         lightbox.init();
-        
-        console.log('PhotoSwipe lightbox initialized successfully');
     } catch (error) {
         console.error('Failed to initialize PhotoSwipe:', error);
     }

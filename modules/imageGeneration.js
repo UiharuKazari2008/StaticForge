@@ -31,6 +31,131 @@ const presetSourceCacheDir = path.join(cacheDir, 'preset_source');
 const imagesDir = path.resolve(__dirname, '../images');
 const previewsDir = path.resolve(__dirname, '../.previews');
 
+// Function to convert character reference to base64 JPG with max edge 1500px
+async function convertCharacterReferenceToBase64(charaReference) {
+    try {
+        if (!charaReference) return null;
+
+        const [type, identifier] = charaReference.split(':', 2);
+        if (!type || !identifier) return null;
+
+        let imageBuffer;
+
+        switch (type) {
+            case 'cache':
+                const cachedImagePath = path.join(uploadCacheDir, identifier);
+                if (!fs.existsSync(cachedImagePath)) {
+                    console.warn(`⚠️ Character reference cache image not found: ${identifier}`);
+                    return null;
+                }
+                imageBuffer = fs.readFileSync(cachedImagePath);
+                break;
+            case 'file':
+                const filePath = path.join(imagesDir, identifier);
+                if (!fs.existsSync(filePath)) {
+                    console.warn(`⚠️ Character reference file not found: ${identifier}`);
+                    return null;
+                }
+                imageBuffer = fs.readFileSync(filePath);
+                break;
+            default:
+                console.warn(`⚠️ Unsupported character reference type: ${type}`);
+                return null;
+        }
+
+        if (!imageBuffer) return null;
+
+        // Strip PNG text chunks to avoid issues
+        imageBuffer = stripPngTextChunks(imageBuffer);
+
+        // Get image metadata to calculate aspect ratio
+        const metadata = await sharp(imageBuffer).metadata();
+        const imgWidth = metadata.width;
+        const imgHeight = metadata.height;
+
+        // Exact resolution presets from chunks (matching original ns function)
+        const resolutionPresets = [
+            [1024, 1536],  // Portrait
+            [1536, 1024],  // Landscape
+            [1472, 1472]   // Square
+        ];
+
+        // Calculate aspect ratio (matching chunks: e = n.width / n.height)
+        const imgAspectRatio = imgWidth / imgHeight;
+
+        // Find best matching preset based on aspect ratio (matching chunks logic)
+        let bestPreset = resolutionPresets[0]; // Default to first preset
+        for (let preset of resolutionPresets) {
+            const presetAspectRatio = preset[0] / preset[1];
+            const currentBestAspectRatio = bestPreset[0] / bestPreset[1];
+            if (Math.abs(presetAspectRatio - imgAspectRatio) < Math.abs(currentBestAspectRatio - imgAspectRatio)) {
+                bestPreset = preset;
+            }
+        }
+
+        // Set target dimensions from best matching preset
+        const targetWidth = bestPreset[0];
+        const targetHeight = bestPreset[1];
+
+        // Calculate scaled dimensions (matching chunks: e > a ? (o = i.width, s = Math.round(i.width / e)) : (s = i.height, o = Math.round(i.height * e)))
+        const targetAspectRatio = targetWidth / targetHeight;
+        let drawWidth = imgWidth;
+        let drawHeight = imgHeight;
+
+        if (imgAspectRatio > targetAspectRatio) {
+            // Image is wider than target aspect ratio - fit to width (matching chunks)
+            drawWidth = targetWidth;
+            drawHeight = Math.round(targetWidth / imgAspectRatio);
+        } else {
+            // Image is taller than target aspect ratio - fit to height (matching chunks)
+            drawHeight = targetHeight;
+            drawWidth = Math.round(targetHeight * imgAspectRatio);
+        }
+
+        // Create a black background canvas using Sharp
+        const background = sharp({
+            create: {
+                width: targetWidth,
+                height: targetHeight,
+                channels: 4, // RGBA
+                background: { r: 0, g: 0, b: 0, alpha: 1 } // Black background
+            }
+        });
+
+        // Resize the input image to calculated dimensions
+        const resizedImage = await sharp(imageBuffer)
+            .resize(drawWidth, drawHeight, {
+                fit: 'fill', // Don't maintain aspect ratio for this resize
+                withoutEnlargement: false // Allow enlargement to match target size
+            })
+            .png()
+            .toBuffer();
+
+        // Composite the resized image onto the black background, centered
+        const offsetX = Math.round((targetWidth - drawWidth) / 2);
+        const offsetY = Math.round((targetHeight - drawHeight) / 2);
+
+        const finalImage = await background
+            .composite([{
+                input: resizedImage,
+                top: offsetY,
+                left: offsetX
+            }])
+            .png()
+            .toBuffer();
+
+        // Convert to base64
+        const processedBase64 = finalImage.toString('base64');
+
+        console.log(`🎨 Character reference processed (Sharp): ${imgWidth}x${imgHeight} → ${targetWidth}x${targetHeight} (${processedBase64.length} chars)`);
+        return processedBase64;
+
+    } catch (error) {
+        console.error('❌ Failed to convert character reference to base64:', error.message);
+        return null;
+    }
+}
+
 // Ensure preset source cache directory exists
 try {
     if (!fs.existsSync(presetSourceCacheDir)) {
@@ -465,6 +590,37 @@ const buildOptions = async (body, preset = null, queryParams = {}) => {
     } else {
         baseOptions.resPreset = "NORMAL_SQUARE";
     }
+
+    // Handle character reference data
+    if (body.chara_reference_source) {
+        try {
+            // Convert character reference to base64 PNG image (following chunk pattern)
+            const charaReferenceBase64 = await convertCharacterReferenceToBase64(body.chara_reference_source);
+            if (charaReferenceBase64) {
+                // Add to API options following chunk pattern exactly
+                baseOptions.director_reference_images = [charaReferenceBase64];
+                baseOptions.director_reference_descriptions = [{
+                    caption: {
+                        base_caption: body.chara_reference_with_style ? "character&style" : "character",
+                        char_captions: []
+                    },
+                    legacy_uc: false
+                }];
+                baseOptions.director_reference_information_extracted = [1];
+                baseOptions.director_reference_strength_values = [1];
+
+                // Add to returned options for forgeData storage
+                baseOptions.chara_reference_source = body.chara_reference_source;
+                baseOptions.chara_reference_with_style = body.chara_reference_with_style !== undefined ? body.chara_reference_with_style : false;
+
+                console.log(`🎭 Added character reference to API request (${charaReferenceBase64.length} chars, style: ${body.chara_reference_with_style})`);
+            } else {
+                console.warn(`⚠️ Failed to convert character reference to base64: ${body.chara_reference_source}`);
+            }
+        } catch (error) {
+            console.warn(`⚠️ Failed to process character reference: ${error.message}`);
+        }
+    }
     
     if (!!body.image) {
         if (!body.image.includes(":")) throw new Error(`No Image Format Passed`);
@@ -654,7 +810,8 @@ const buildOptions = async (body, preset = null, queryParams = {}) => {
     }
 
     // Process vibe transfer data if present (disabled when mask is provided for inpainting)
-    if (baseOptions.vibe_transfer && Array.isArray(baseOptions.vibe_transfer) && baseOptions.vibe_transfer.length > 0) {
+    if (baseOptions.vibe_transfer && Array.isArray(baseOptions.vibe_transfer) && baseOptions.vibe_transfer.length > 0 && 
+    !(baseOptions.director_reference_images && baseOptions.director_reference_images.length > 0)) {
         if (baseOptions.mask) {
             console.log(`⚠️ Vibe transfers disabled due to inpainting mask presence`);
         } else {
@@ -765,6 +922,8 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     delete apiOpts.input_character_prompts;
     delete apiOpts.vibe_transfer;
     delete apiOpts.normalize_vibes;
+    delete apiOpts.chara_reference_source;
+    delete apiOpts.chara_reference_with_style;
 
     // Process character prompts: only enabled characters go to API, all characters go to forge_data
     if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts)) {
@@ -922,13 +1081,15 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         if (opts.append_uc !== undefined) {
             forgeData.append_uc = opts.append_uc;
         }
-        
-        // Add vibe transfer data to forge data
         if (opts.vibe_transfer !== undefined) {
             forgeData.vibe_transfer = opts.vibe_transfer;
         }
         if (opts.normalize_vibes !== undefined) {
             forgeData.normalize_vibes = opts.normalize_vibes;
+        }
+        if (opts.chara_reference_source !== undefined) {
+            forgeData.chara_reference_source = opts.chara_reference_source;
+            forgeData.chara_reference_with_style = opts.chara_reference_with_style !== undefined ? opts.chara_reference_with_style : false;
         }
         
         // Update buffer with forge metadata

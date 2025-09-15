@@ -205,7 +205,8 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
         `--primary-glass-border: hsl(${workspaceHsl.h} 100% 50% / 58%);`,
         `--border-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}%);`,
         `--text-accent: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}%);`,
-        `--shadow-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 30%);`
+        `--shadow-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 30%);`,
+        `--text-accent-tinted: hsl(${workspaceHsl.h} 100% 85%);`,
     ];
 
     // Fonts: if provided, set per-workspace font variables used by styles.css
@@ -239,7 +240,7 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
     };
     
     variables.push(
-        `--btn-hover-bg-secondary: radial-gradient(hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 45%), hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 65%));`,
+        `--btn-hover-bg-secondary: radial-gradient(hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 21%), hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 38%));`,
         `--btn-shadow-secondary-glow: 0 8px 20px hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 33%);`
     );
 
@@ -530,9 +531,7 @@ async function setDefaultBackgroundForWorkspace(imageUrl) {
                     { imageUrl: imageUrl, timestamp: Date.now() }
                 );
                 
-                if (success) {
-                    console.log('Default background cached successfully');
-                } else {
+                if (!success) {
                     console.warn('Failed to cache default background');
                 }
             } catch (error) {
@@ -1178,11 +1177,6 @@ async function createWorkspace(name) {
                 // Update UI components that need the new workspace
                 renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
-                
-                // Only refresh cache if it's currently visible and needs updating
-                if (!document.getElementById('cacheImagesContainer')?.classList?.contains('hidden')) {
-                    await loadCacheImages();
-                }
             }
         } else {
             showError('Failed to create workspace: WebSocket not connected');
@@ -1238,11 +1232,6 @@ async function deleteWorkspace(id) {
                 if (!document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
                 }
-                
-                // Only refresh cache if it's currently visible
-                if (!document.getElementById('cacheImagesContainer')?.classList.contains('hidden')) {
-                    await loadCacheImages();
-                }
             }
         } else {
             showError('Failed to delete workspace: WebSocket not connected');
@@ -1271,19 +1260,14 @@ async function dumpWorkspace(sourceId, targetId) {
                 if (workspaces[targetId]) {
                     workspaces[targetId].fileCount = (workspaces[targetId].fileCount || 0) + (result.movedCount || 0);
                 }
+                    
+                // Update UI components
+                renderWorkspaceDropdown();
                 
-                            // Update UI components
-            renderWorkspaceDropdown();
-            
-            // Only refresh gallery if it's currently visible
-            if (!document.getElementById('gallery')?.classList.contains('hidden')) {
-                switchGalleryView(currentGalleryView, true);
-            }
-            
-            // Only refresh cache if it's currently visible
-            if (!document.getElementById('cacheImagesContainer')?.classList.contains('hidden')) {
-                await loadCacheImages();
-            }
+                // Only refresh gallery if it's currently visible
+                if (!document.getElementById('gallery')?.classList.contains('hidden')) {
+                    switchGalleryView(currentGalleryView, true);
+                }
             }
         } else {
             showError('Failed to dump workspace: WebSocket not connected');
@@ -2145,11 +2129,6 @@ function initializeWebSocketWorkspaceEvents() {
                 if (!document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
                 }
-                
-                // Only refresh cache if it's currently visible
-                if (!document.getElementById('cacheImagesContainer')?.classList.contains('hidden')) {
-                    loadCacheImages();
-                }
                 break;
                 
             case 'scrap_added':
@@ -2166,11 +2145,6 @@ function initializeWebSocketWorkspaceEvents() {
                 // Only refresh gallery if it's currently visible
                 if (!document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
-                }
-                
-                // Only refresh cache if it's currently visible
-                if (!document.getElementById('cacheImagesContainer')?.classList.contains('hidden')) {
-                    loadCacheImages();
                 }
                 break;
                 
@@ -2195,11 +2169,6 @@ function initializeWebSocketWorkspaceEvents() {
                 if (!document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
                 }
-                
-                // Only refresh cache if it's currently visible
-                if (!document.getElementById('cacheImagesContainer')?.classList.contains('hidden')) {
-                    loadCacheImages();
-                }
                 break;
                 
             case 'background_color_updated':
@@ -2221,11 +2190,6 @@ function initializeWebSocketWorkspaceEvents() {
                 // Only refresh gallery if it's currently visible
                 if (!document.getElementById('gallery')?.classList.contains('hidden')) {
                     switchGalleryView(currentGalleryView, true);
-                }
-                
-                // Only refresh cache if it's currently visible
-                if (!document.getElementById('cacheImagesContainer')?.classList.contains('hidden')) {
-                    loadCacheImages();
                 }
                 break;
         }

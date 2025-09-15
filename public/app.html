@@ -128,8 +128,14 @@
             <div class="menu-bar-controls" id="menu-bar-controls"></div>
             <div class="menu-bar-handle" id="menu-bar-handle"></div>
             <div class="menu-bar-right-gutter" id="menu-bar-right-gutter"></div>
-            <div class="menu-bar-right-gutter" id="menu-bar-controls-right-gutter"></div>
-            <div class="menu-bar-controls" id="menu-bar-controls-right">
+            <div class="menu-bar-right-gutter" id="menu-bar-controls-right-gutter">
+                <div class="websocket-ticker">
+                    <div class="websocket-ticker-content">
+                        <i class="fas fa-info-circle websocket-ticker-icon"></i>
+                        <span class="websocket-ticker-text">Connected</span>
+                        <span class="websocket-ticker-badge">0</span>
+                    </div>
+                </div>
                 <div class="websocket-indicator" id="websocketIndicatorMenubar">
                     <div class="websocket-status" id="websocketStatusMenubar" title="WebSocket Status">
                         <i class="fas fa-circle"></i>
@@ -137,10 +143,8 @@
                     <i class="fas fa-arrow-up websocket-arrow-up" id="websocketUpMenubar"></i>
                     <i class="fas fa-arrow-down websocket-arrow-down" id="websocketDownMenubar"></i>
                 </div>
-                <div id="pendingRequestsSpinnerMenubar" class="pending-requests-spinner hidden">
-                    <i class="fas fa-spinner fa-spin"></i>
-                    <span id="pendingRequestsBadgeMenubar" class="pending-requests-badge fas">0</span>
-                </div>
+            </div>
+            <div class="menu-bar-controls" id="menu-bar-controls-right">
                 <div class="balanceDisplay balance-display" title="Loading balance...">
                     <i class="nai-anla"></i>
                     <span class="balanceAmount">---</span>
@@ -155,7 +159,7 @@
             </div>
             <div class="focus-logo logo-text">Dreamscape</div>
             <div class="focus-message">
-                <i class="fas fa-lock" style="margin-right: 0.5rem; color: var(--primary-color);"></i>
+                <i class="fas fa-lock"></i>
                 Privacy Protection
             </div>
         </div>
@@ -254,30 +258,14 @@
             </div>
         </div>
 
-        <div id="mobile-controls-bar" class="floating-bar-left mobile-only">
-            <div class="main-menu-bar-outer">
-                <div class="main-menu-contents">
-                    <div class="main-menu-row">
-                        <button type="button" id="mobileLoadGalleryBtn" class="btn-secondary" title="Load Gallery from Start" onclick="loadGalleryFromIndex(0); window.scrollTo(0, {behavior: 'instant'}); ">
-                            <i class="fa-light fa-chevron-double-up"></i>
-                        </button>
-                        <button type="button" id="mobileSortOrderToggleBtn" class="btn-secondary indicator" data-state="desc" title="Sort Order: Newest First">
-                            <i class="fa-light fa-sort-amount-down"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <div id="main-controls-bar" class="floating-bar-right">
             <div class="main-menu-bar-overlay">
-                <div id="pendingRequestsSpinner" class="pending-requests-spinner hidden">
-                    <i class="fas fa-spinner fa-spin"></i>
-                    <span id="pendingRequestsBadge" class="pending-requests-badge fas">0</span>
-                </div>
-                <div class="balanceDisplay balance-display" title="Loading balance...">
-                    <i class="nai-anla"></i>
-                    <span class="balanceAmount">---</span>
+                <div class="websocket-ticker">
+                    <div class="websocket-ticker-content">
+                        <i class="fas fa-info-circle websocket-ticker-icon"></i>
+                        <span class="websocket-ticker-text">Connected</span>
+                        <span class="websocket-ticker-badge">0</span>
+                    </div>
                 </div>
                 <div class="websocket-indicator" id="websocketIndicatorOverlay">
                     <i class="fas fa-arrow-up websocket-arrow-up" id="websocketUpOverlay"></i>
@@ -285,6 +273,10 @@
                     <div class="websocket-status" id="websocketStatusOverlay" title="WebSocket Status">
                         <i class="fas fa-circle"></i>
                     </div>
+                </div>
+                <div class="balanceDisplay balance-display no-mobile" title="Loading balance...">
+                    <i class="nai-anla"></i>
+                    <span class="balanceAmount">---</span>
                 </div>
             </div>
             <div class="main-menu-bar-outer">
@@ -420,8 +412,11 @@
                                                             <div id="directorActionsDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                                         </div>
                                                         <textarea id="directorChatInput" class="form-control hover-show" placeholder="What do you want to do?" rows="1" ></textarea>
-                                                        <button type="button" id="directorAddBaseImageToggleBtn" class="btn-secondary indicator" data-state="off">
+                                                        <button type="button" id="directorAddBaseImageToggleBtn" class="btn-secondary indicator" data-state="off" title="Include Base Image">
                                                             <i class="nai-img2img"></i>
+                                                        </button>
+                                                        <button type="button" id="directorHighThinkingToggleBtn" class="btn-secondary indicator" data-state="off" title="High Thinking Mode">
+                                                            <i class="fas fa-brain"></i>
                                                         </button>
                                                         <button type="button" id="directorSendBtn" class="btn-primary">
                                                             <i class="fas fa-paper-plane"></i>
@@ -731,6 +726,33 @@
                                                 <input type="hidden" id="imageBias" value="2">
                                             </div>
                                         </div>
+                                        <!-- Director Reference Section -->
+                                        <div id="directorReferenceSection" class="transformation-image-container hidden">
+                                            <div class="variation-image-container">
+                                                <div class="overlay-buttons-container-bottom">
+                                                    <button type="button" id="previewCharacterReferenceImageBtn" class="btn-secondary blur hidden">
+                                                        <i class="fas fa-eye"></i>
+                                                    </button>
+                                                </div>
+                                                <div class="overlay-buttons-container">
+                                                    <div></div>
+                                                    <button type="button" id="clearDirectorReferenceBtn" class="btn-danger blur">
+                                                        <i class="nai-thin-cross"></i>
+                                                    </button>
+                                                </div>
+                                                <img id="directorReferenceImage" src="" alt="Director Reference" class="variation-image">
+                                                <div class="overlay-icon-container">
+                                                    <i class="nai-image-tool-line-art"></i>
+                                                </div>
+                                            </div>
+                                            
+                                            <div id="CharacterReferenceGroup" class="vibe-reference-info">
+                                                <div></div>
+                                                <button type="button" id="directorReferenceStyleBtn" class="btn-secondary indicator" data-state="off" title="Use character reference with style">
+                                                    <i class="fas fa-palette"></i>
+                                                </button>
+                                            </div>
+                                        </div>
                                         <div id="vibeReferencesContainer" class="vibe-references-container">
                                             <!-- Vibe reference items will be added here -->
                                         </div>
@@ -909,7 +931,24 @@
                             <div id="cacheBrowserContainer" class="cache-browser-container">
                                 <div class="cache-browser-header">
                                     <div class="cache-browser-header-left">
-                                        <h3>References</h3>
+                                        <div id="cacheBrowserModeSelector" class="cache-browser-mode-selector">
+                                            <div class="mode-slider-container">
+                                                <button type="button" class="mode-slider-btn active" data-mode="all">
+                                                    <i class="fas fa-folder-open"></i> All
+                                                </button>
+                                                <button type="button" class="mode-slider-btn" data-mode="image">
+                                                    <i class="nai-img2img"></i> Image
+                                                </button>
+                                                <button type="button" class="mode-slider-btn" data-mode="vibe">
+                                                    <i class="nai-vibe-transfer"></i> Vibe
+                                                </button>
+                                                <button type="button" class="mode-slider-btn" data-mode="character">
+                                                    <i class="nai-image-tool-line-art"></i> Character
+                                                </button>
+                                                <div class="mode-slider-track"></div>
+                                            </div>
+                                        </div>
+                                        <h3 id="cacheBrowserTitle">References</h3>
                                     </div>
                                     <div class="cache-browser-header-right">
                                         <button type="button" id="cacheBrowserRefreshBtn" class="btn-secondary" title="Refresh references">
@@ -1094,9 +1133,12 @@
                                     <i id="manualPresetToggleIcon" class="fas fa-book-sparkles"></i>
                                 </button>
                             </div>
-                            <div id="manualPendingRequestsSpinner" class="pending-requests-spinner">
-                                <i class="fas fa-spinner fa-spin"></i>
-                                <span id="manualPendingRequestsBadge" class="pending-requests-badge fas">0</span>
+                            <div id="manualPendingRequestsSpinner" class="websocket-ticker">
+                                <div class="websocket-ticker-content">
+                                    <i class="fas fa-info-circle websocket-ticker-icon"></i>
+                                    <span class="websocket-ticker-text">Connected</span>
+                                    <span class="websocket-ticker-badge">0</span>
+                                </div>
                             </div>
                             <button type="button" id="closeManualBtn" class="btn-secondary">
                                 <i class="nai-thin-cross"></i>
@@ -1835,7 +1877,6 @@
                     <div class="cache-manager-controls">
                         <div class="cache-manager-header">
                             <div class="cache-manager-workspace-selector">
-                                <label for="cacheManagerWorkspaceDropdown">Workspace:</label>
                                 <div id="cacheManagerWorkspaceDropdown" class="custom-dropdown">
                                     <button type="button" id="cacheManagerWorkspaceDropdownBtn" class="btn-secondary">
                                         <i class="fas fa-folder-open"></i>
@@ -2558,6 +2599,62 @@
         <!-- Toast Container -->
         <div id="toastContainer" class="toast-container"></div>
 
+        <!-- Cache Metadata Editing Modal -->
+        <div id="cacheMetadataModal" class="modal hidden">
+            <div class="modal-content cache-metadata-content">
+                <div class="modal-header">
+                    <h3 id="cacheMetadataModalTitle">Edit Reference Metadata</h3>
+                    <button type="button" class="btn-secondary btn-small modal-close" id="closeCacheMetadataModalBtn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="cache-metadata-form">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <input type="checkbox" id="characterReferenceToggle" class="form-checkbox">
+                                <span class="checkbox-label">Character Reference Only</span>
+                            </label>
+                            <div class="form-help">
+                                Mark this image as a character reference for consistent character representation
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="cacheTagsInput" class="form-label">Tags</label>
+                            <input type="text" id="cacheTagsInput" class="form-input" placeholder="Enter tags separated by commas">
+                            <div class="form-help">
+                                Add tags to categorize this reference (e.g., portrait, anime, character-name)
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="cacheCommentTextarea" class="form-label">Comment</label>
+                            <textarea id="cacheCommentTextarea" class="form-textarea" rows="3" placeholder="Add a comment about this reference..."></textarea>
+                            <div class="form-help">
+                                Optional note about this reference image
+                            </div>
+                        </div>
+
+                        <div class="cache-metadata-preview">
+                            <div class="preview-image">
+                                <img id="cacheMetadataPreview" src="" alt="Reference preview" style="max-width: 200px; max-height: 200px;">
+                            </div>
+                            <div class="preview-info">
+                                <div id="cacheMetadataFilename"></div>
+                                <div id="cacheMetadataSize"></div>
+                                <div id="cacheMetadataDate"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="modal-actions btn-group">
+                        <button type="button" class="btn-secondary" id="cancelCacheMetadataBtn">Cancel</button>
+                        <button type="button" class="btn-primary" id="saveCacheMetadataBtn">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Developer Mode Modal -->
         <div id="developerModal" class="developer-modal hidden">
             <div class="developer-modal-overlay"></div>
@@ -2673,14 +2770,15 @@
 
         <!-- New Component Files - Added for modularization -->
         <script src="scripts/comp/utilities.js"></script>
-        <!-- <script src="scripts/comp/toastManager.js"></script>
-        <script src="scripts/comp/manualModalManager.js"></script>
+        <script src="scripts/comp/toastManager.js"></script>
         <script src="scripts/comp/manualDropdownManager.js"></script>
-        <script src="scripts/comp/presetManagement.js"></script>
+        <script src="scripts/comp/manualModalManager.js"></script>
+        <!-- <script src="scripts/comp/presetManagement.js"></script>
         <script src="scripts/comp/characterPromptManager.js"></script>
-        <script src="scripts/comp/manualPreviewManager.js"></script>-->
+        <script src="scripts/comp/manualPreviewManager.js"></script> -->
 
         <script src="scripts/app.js"></script>
-        <!--<script src="scripts/comp/developerModal.js"></script> -->
+        <!-- <script src="scripts/comp/developerModal.js"></script> -->
     </body>
 </html> 
+

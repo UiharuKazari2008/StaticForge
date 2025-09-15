@@ -62,6 +62,7 @@ class Director {
             directorActionsDropdownMenu: 'directorActionsDropdownMenu',
             directorActionsSelected: 'directorActionsSelected',
             directorAddBaseImageToggleBtn: 'directorAddBaseImageToggleBtn',
+            directorHighThinkingToggleBtn: 'directorHighThinkingToggleBtn',
             directorChatInput: 'directorChatInput',
             directorSendBtn: 'directorSendBtn',
 
@@ -241,6 +242,14 @@ class Director {
             const isActive = this.directorAddBaseImageToggleBtn.getAttribute('data-state') === 'on';
             this.updateIndicator(this.directorAddBaseImageToggleBtn, !isActive);
         });
+
+        // Add high thinking toggle
+        if (this.directorHighThinkingToggleBtn) {
+            this.directorHighThinkingToggleBtn.addEventListener('click', () => {
+                const isActive = this.directorHighThinkingToggleBtn.getAttribute('data-state') === 'on';
+                this.updateIndicator(this.directorHighThinkingToggleBtn, !isActive);
+            });
+        }
         }
 
         // Auto-expand textarea
@@ -800,6 +809,8 @@ class Director {
     async createSession() {
         const model = 'grok-4';
         const maxResolution = this.directorMaxResolutionBtn.getAttribute('data-state') === 'on';
+        const highThinking = this.directorHighThinkingToggleBtn.getAttribute('data-state') === 'on';
+        const highReason = maxResolution || highThinking;
         const modeSliderContainer = this.directorModeSliderContainer ||
                                    document.getElementById('directorModeSliderContainer');
         const sessionMode = modeSliderContainer?.getAttribute('data-active') || 'analyse';
@@ -827,8 +838,8 @@ class Director {
                 maxResolution: maxResolution,
                 sessionMode: sessionMode,
                 description: description,
-                inputPrompt: prompts.prompts,
-                inputUc: prompts.ucs,
+                inputPrompt: prompts,
+                highReason: highReason,
                 imageFilename // Get actual filename
             });
         } else {
@@ -1283,6 +1294,7 @@ class Director {
 
         const action = this.getSelectedDirectorAction();
         const includeBaseImage = this.directorAddBaseImageToggleBtn.getAttribute('data-state') === 'on';
+        const highThinking = this.directorHighThinkingToggleBtn.getAttribute('data-state') === 'on';
 
         // Add user message
         const userMessage = {
@@ -1336,12 +1348,28 @@ class Director {
                 vibeTransfers: includeBaseImage ? this.getVibeTransfers() : null,
                 baseImageData: includeBaseImage ? this.getBaseImageData() : null,
                 lastGeneratedImageFilename: lastGeneratedImageFilename,
-                inputPrompt: prompts.prompts,
-                inputUc: prompts.ucs
+                inputPrompt: prompts,
+                highReason: highThinking,
+                characterReference: includeBaseImage ? this.getCharacterReferenceData() : null
             });
         }
     }
-    
+
+    // Get character reference data for director messages
+    getCharacterReferenceData() {
+        if (!directorReferenceData) {
+            return null;
+        }
+
+        const styleEnabled = directorReferenceStyleBtn && directorReferenceStyleBtn.getAttribute('data-state') === 'on';
+
+        return {
+            type: directorReferenceData.type,
+            id: directorReferenceData.id,
+            with_style: styleEnabled
+        };
+    }
+
     showTypingIndicator() {
         const typingDiv = document.createElement('div');
         typingDiv.className = 'director-typing-indicator';
@@ -1439,6 +1467,66 @@ class Director {
     // Apply prompt from message data
     applyPromptFromMessage(prompt) {
         // Handle different prompt formats (same logic as applyPrompt method)
+
+        // Handle new JSON format with base_input, base_uc, and chara
+        if (prompt && typeof prompt === 'object' && !Array.isArray(prompt)) {
+            if (prompt.base_input !== undefined || prompt.base_uc !== undefined || prompt.chara) {
+                // Apply base prompt
+                const manualPrompt = document.getElementById('manualPrompt');
+                if (manualPrompt && prompt.base_input) {
+                    manualPrompt.value = prompt.base_input;
+
+                    // Call normal update functions that handle reflow and highlighting
+                    applyFormattedText(manualPrompt, true);
+                    updateEmphasisHighlighting(manualPrompt);
+                    stopEmphasisHighlighting();
+                    autoResizeTextarea(manualPrompt);
+                }
+
+                // Apply base UC
+                const manualUc = document.getElementById('manualUc');
+                if (manualUc && prompt.base_uc) {
+                    manualUc.value = prompt.base_uc;
+
+                    // Call normal update functions that handle reflow and highlighting
+                    applyFormattedText(manualUc, true);
+                    updateEmphasisHighlighting(manualUc);
+                    stopEmphasisHighlighting();
+                    autoResizeTextarea(manualUc);
+                }
+
+                // Smart character management - update existing, remove unused, add new
+                if (prompt.chara && Array.isArray(prompt.chara)) {
+                    const characterItems = document.querySelectorAll('.character-prompt-item');
+                    const newCharacterCount = prompt.chara.length;
+
+                    // Remove characters beyond the new count
+                    if (characterItems.length > newCharacterCount) {
+                        for (let i = characterItems.length - 1; i >= newCharacterCount; i--) {
+                            console.log(`🗑️ Removing character at index ${i} (beyond new count)`);
+                            characterItems[i].remove();
+                        }
+                    }
+
+                    // Add/update character prompts from JSON structure
+                    prompt.chara.forEach((character, index) => {
+                        if (character && (character.name || character.input || character.uc)) {
+                            this.addCharacterPromptFromData(character, index);
+                        }
+                    });
+                } else {
+                    // No characters in new prompt, remove all existing
+                    document.querySelectorAll('.character-prompt-item').forEach(item => {
+                        item.remove();
+                    });
+                }
+
+                const characterCount = prompt.chara ? prompt.chara.length : 0;
+                showGlassToast('success', null, `Prompt${characterCount > 0 ? ` and ${characterCount} character(s)` : ''} Auto-Applied`);
+                return;
+            }
+        }
+
         if (Array.isArray(prompt)) {
             if (prompt.length === 1) {
                 // Single prompt: replace base prompt
@@ -1480,7 +1568,7 @@ class Director {
 
                 // Add character prompts (skip first one as it's the base)
                 for (let i = 1; i < prompt.length; i++) {
-                    addCharacterPrompt(prompt[i]);
+                    this.addCharacterPromptFromData({ input: prompt[i] }, i - 1);
                 }
 
                 showGlassToast('success', null, `Prompt and ${prompt.length - 1} character(s) Auto-Applied`);
@@ -1504,6 +1592,77 @@ class Director {
             });
 
             showGlassToast('success', null, 'Prompt Auto-Applied');
+        }
+    }
+
+    // Add character prompt from data object with index-based matching
+    addCharacterPromptFromData(characterData, characterIndex = -1) {
+        if (!characterData || (!characterData.name && !characterData.input && !characterData.uc)) {
+            return;
+        }
+
+        // Get all existing character items
+        const characterItems = document.querySelectorAll('.character-prompt-item');
+
+        // Use index to match existing character, or create new if index is beyond existing items
+        let targetCharacterItem = null;
+        let targetCharacterId = null;
+
+        if (characterIndex >= 0 && characterIndex < characterItems.length) {
+            // Update existing character at the specified index
+            targetCharacterItem = characterItems[characterIndex];
+            targetCharacterId = targetCharacterItem.id;
+            console.log(`🔄 Updating character at index ${characterIndex}: ${characterData.name || 'Unnamed'}`);
+        } else {
+            // Index is beyond existing items, create new character
+            console.log(`➕ Creating new character at index ${characterIndex}: ${characterData.name || 'Unnamed'}`);
+            addCharacterPrompt();
+
+            // Get the newly created character prompt element
+            const updatedCharacterItems = document.querySelectorAll('.character-prompt-item');
+            targetCharacterItem = updatedCharacterItems[updatedCharacterItems.length - 1];
+            targetCharacterId = targetCharacterItem.id;
+        }
+
+        if (targetCharacterItem && targetCharacterId) {
+            // Update character name if provided
+            if (characterData.name) {
+                const nameInput = targetCharacterItem.querySelector('.character-name-input');
+                if (nameInput) {
+                    nameInput.value = characterData.name;
+                    // Trigger the name change event
+                    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+
+            // Update character prompt if provided
+            if (characterData.input) {
+                const promptTextarea = document.getElementById(`${targetCharacterId}_prompt`);
+                if (promptTextarea) {
+                    promptTextarea.value = characterData.input;
+                    // Apply formatting
+                    applyFormattedText(promptTextarea, true);
+                    updateEmphasisHighlighting(promptTextarea);
+                }
+            }
+
+            // Update character UC if provided
+            if (characterData.uc) {
+                const ucTextarea = document.getElementById(`${targetCharacterId}_uc`);
+                if (ucTextarea) {
+                    ucTextarea.value = characterData.uc;
+                    // Apply formatting
+                    applyFormattedText(ucTextarea, true);
+                    updateEmphasisHighlighting(ucTextarea);
+                }
+            }
+
+            // Update preview
+            const previewInput = document.getElementById(`${targetCharacterId}_preview`);
+            if (previewInput) {
+                const promptValue = characterData.input || '';
+                previewInput.value = promptValue.length > 50 ? promptValue.substring(0, 50) : promptValue;
+            }
         }
     }
 
@@ -1564,43 +1723,64 @@ class Director {
     }
     
     getInputPrompt() {
-        // Get base prompt and character prompts as an array from the current modal
-        const prompts = [];
-        const ucs = [];
-        
-        // Add main prompt if available
+        // Get prompts in new JSON structure
+        let baseInput = '';
+        let baseUc = '';
+        const chara = [];
+
+        // Add main/base prompt if available
         const manualPrompt = document.getElementById('manualPrompt');
         if (manualPrompt && manualPrompt.value.trim()) {
-            prompts.push(manualPrompt.value.trim());
+            baseInput = manualPrompt.value.trim();
         }
-        
-        // Add main UC if available
+
+        // Add main/base UC if available
         const manualUc = document.getElementById('manualUc');
         if (manualUc && manualUc.value.trim()) {
-            ucs.push(manualUc.value.trim());
+            baseUc = manualUc.value.trim();
         }
-        
+
         // Add character prompts if available
         const characterItems = document.querySelectorAll('.character-prompt-item');
         characterItems.forEach(characterItem => {
             const characterId = characterItem.id;
-            
-            // Add character prompt
-            const characterPrompt = document.getElementById(`${characterId}_prompt`);
-            if (characterPrompt && characterPrompt.value.trim()) {
-                prompts.push(characterPrompt.value.trim());
+
+            // Get character name
+            const characterNameElement = document.getElementById(`${characterId}_name`);
+            let characterName = '';
+            if (characterNameElement && characterNameElement.value.trim()) {
+                characterName = characterNameElement.value.trim();
             }
-            
-            // Add character UC
+
+            // Get character prompt
+            const characterPrompt = document.getElementById(`${characterId}_prompt`);
+            let characterInput = '';
+            if (characterPrompt && characterPrompt.value.trim()) {
+                characterInput = characterPrompt.value.trim();
+            }
+
+            // Get character UC
             const characterUc = document.getElementById(`${characterId}_uc`);
+            let characterUcValue = '';
             if (characterUc && characterUc.value.trim()) {
-                ucs.push(characterUc.value.trim());
+                characterUcValue = characterUc.value.trim();
+            }
+
+            // Only add character if they have some content
+            if (characterName || characterInput || characterUcValue) {
+                chara.push({
+                    name: characterName,
+                    input: characterInput,
+                    uc: characterUcValue
+                });
             }
         });
-        
+
+        // If no characters but we have base content, return the new structure
         return {
-            prompts: prompts.length > 0 ? prompts : null,
-            ucs: ucs.length > 0 ? ucs : null
+            base_input: baseInput,
+            base_uc: baseUc,
+            chara: chara
         };
     }
     
@@ -1725,8 +1905,13 @@ class Director {
                 window.directorInstance.hideTypingIndicator();
             }
 
-            // Note: Don't reload messages here - let director_message_response handle the actual message content
-            // This prevents blank states and unnecessary API calls
+            // Reload session messages to ensure we have the latest data from the server
+            // This ensures any server-side processing or updates are reflected in the UI
+            if (window.directorInstance && window.currentSession) {
+                setTimeout(() => {window.directorInstance.loadSessionMessages(window.currentSession.id);}, 100);
+            } else {
+                console.warn('❌ Cannot reload session messages - missing directorInstance or currentSession');
+            }
         });
         
         // Handle Director get messages response
@@ -1736,6 +1921,8 @@ class Director {
                 if (window.directorInstance) {
                     window.directorInstance.renderSessionMessages(messages);
                 }
+            } else {
+                console.warn('❌ director_get_messages_response failed:', data);
             }
         });
         
@@ -1804,6 +1991,12 @@ class Director {
                 if (window.directorInstance) {
                     window.directorInstance.hideTypingIndicator();
                 }
+                
+                // Reload session messages to ensure we have the latest data from the server
+                // This ensures any server-side processing or updates are reflected in the UI
+                //if (window.directorInstance && window.currentSession) {
+                //    window.directorInstance.loadSessionMessages(window.currentSession.id);
+                //}
             }
         });
         
@@ -2052,6 +2245,66 @@ class Director {
         }
         
         // Handle different prompt formats
+
+        // Handle new JSON format with base_input, base_uc, and chara
+        if (prompt && typeof prompt === 'object' && !Array.isArray(prompt)) {
+            if (prompt.base_input !== undefined || prompt.base_uc !== undefined || prompt.chara) {
+                // Apply base prompt
+                const manualPrompt = document.getElementById('manualPrompt');
+                if (manualPrompt && prompt.base_input) {
+                    manualPrompt.value = prompt.base_input;
+
+                    // Call normal update functions that handle reflow and highlighting
+                    applyFormattedText(manualPrompt, true);
+                    updateEmphasisHighlighting(manualPrompt);
+                    stopEmphasisHighlighting();
+                    setTimeout(() => autoResizeTextarea(manualPrompt), 10);
+                }
+
+                // Apply base UC
+                const manualUc = document.getElementById('manualUc');
+                if (manualUc && prompt.base_uc) {
+                    manualUc.value = prompt.base_uc;
+
+                    // Call normal update functions that handle reflow and highlighting
+                    applyFormattedText(manualUc, true);
+                    updateEmphasisHighlighting(manualUc);
+                    stopEmphasisHighlighting();
+                }
+
+                // Smart character management - update existing, remove unused, add new
+                if (prompt.chara && Array.isArray(prompt.chara)) {
+                    const characterItems = document.querySelectorAll('.character-prompt-item');
+                    const newCharacterCount = prompt.chara.length;
+
+                    // Remove characters beyond the new count
+                    if (characterItems.length > newCharacterCount) {
+                        for (let i = characterItems.length - 1; i >= newCharacterCount; i--) {
+                            console.log(`🗑️ Removing character at index ${i} (beyond new count)`);
+                            characterItems[i].remove();
+                        }
+                    }
+
+                    // Add/update character prompts from JSON structure
+                    prompt.chara.forEach((character, index) => {
+                        if (character && (character.name || character.input || character.uc)) {
+                            this.addCharacterPromptFromData(character, index);
+                        }
+                    });
+                } else {
+                    // No characters in new prompt, remove all existing
+                    document.querySelectorAll('.character-prompt-item').forEach(item => {
+                        item.remove();
+                    });
+                }
+
+                const characterCount = prompt.chara ? prompt.chara.length : 0;
+                showGlassToast('success', null, `Prompt${characterCount > 0 ? ` and ${characterCount} character(s)` : ''} Updated`);
+                console.log('✅ JSON prompt applied successfully');
+                return;
+            }
+        }
+
         if (Array.isArray(prompt)) {
             if (prompt.length === 1) {
                 // Single prompt: replace base prompt
@@ -2094,7 +2347,7 @@ class Director {
                 
                 // Add character prompts (skip first one as it's the base)
                 for (let i = 1; i < prompt.length; i++) {
-                    addCharacterPrompt(prompt[i]);
+                    this.addCharacterPromptFromData({ input: prompt[i] }, i - 1);
                 }
                 
                 showGlassToast('success', null, `Prompt and ${prompt.length - 1} character(s) Updated`);
@@ -2118,12 +2371,15 @@ class Director {
 
             showGlassToast('success', null, 'Prompt Updated');
         }
-        setTimeout(() => {
-        const manualGenerateBtn = document.getElementById('manualGenerateBtn');
-            if (manualGenerateBtn && !manualGenerateBtn.disabled) {
-                manualGenerateBtn.click();
-            }
-        }, 1000);
+        // Only auto-run if auto-generate is enabled
+        if (this.autoGenerateEnabled) {
+            setTimeout(() => {
+                const manualGenerateBtn = document.getElementById('manualGenerateBtn');
+                if (manualGenerateBtn && !manualGenerateBtn.disabled) {
+                    manualGenerateBtn.click();
+                }
+            }, 1000);
+        }
     }
         
     // Use suggestion function
@@ -2314,8 +2570,6 @@ function initializeDirector() {
 // Try to register immediately, or wait for wsClient to be available
 if (window.wsClient) {
     window.wsClient.registerInitStep(60, 'Initializing Director System', async () => {
-        console.log('🎬 Initializing Director System...');
         await initializeDirector();
-        console.log('✅ Director System initialized successfully');
     });
 }

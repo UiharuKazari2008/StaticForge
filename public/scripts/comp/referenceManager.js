@@ -510,8 +510,20 @@ function createCacheGalleryItem(cacheImage) {
         baseImageBtn.title = 'Add as base image';
     }
     
+    // Create "Add as Character Reference" button
+    const characterRefBtn = document.createElement('button');
+    characterRefBtn.type = 'button';
+    characterRefBtn.className = 'btn-primary';
+    characterRefBtn.innerHTML = '<i class="nai-image-tool-line-art"></i>';
+    characterRefBtn.title = 'Add as character reference';
+    characterRefBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await addAsCharacterReference(cacheImage);
+    });
+
     actionButtonsContainer.appendChild(baseImageBtn);
     actionButtonsContainer.appendChild(vibeBtn);
+    actionButtonsContainer.appendChild(characterRefBtn);
 
     // Create management buttons container (top section)
     const buttonsContainer = document.createElement('div');
@@ -538,7 +550,7 @@ function createCacheGalleryItem(cacheImage) {
     // Create "Replace with Last Generated" button
     const replaceBtn = document.createElement('button');
     replaceBtn.type = 'button';
-    replaceBtn.className = 'btn-primary';
+    replaceBtn.className = 'btn-secondary btn-small';
     replaceBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
     replaceBtn.title = 'Replace with last generated image';
     replaceBtn.addEventListener('click', (e) => {
@@ -709,6 +721,44 @@ function createCacheGalleryItem(cacheImage) {
 
     return item;
 }
+
+// Add image as character reference
+async function addAsCharacterReference(cacheImage) {
+    try {
+        console.log('addAsCharacterReference called with:', cacheImage);
+
+        if (!cacheImage || !cacheImage.hash) {
+            throw new Error('Invalid cache image data');
+        }
+
+        // Create reference data directly - simple approach
+        const referenceData = {
+            type: 'cache',
+            id: cacheImage.hash,
+            url: `/cache/preview/${cacheImage.hash}.webp`,
+            filename: cacheImage.filename,
+            hash: cacheImage.hash
+        };
+
+        console.log('Created reference data:', referenceData);
+
+        // Call the global setDirectorReference function
+        if (typeof setDirectorReference === 'function') {
+            console.log('Calling setDirectorReference with:', referenceData);
+            setDirectorReference(referenceData);
+            showGlassToast('success', 'Character Reference Added', 'Character reference has been set successfully');
+        } else {
+            throw new Error('setDirectorReference function not available');
+        }
+
+        // Close cache browser
+        hideCacheBrowser();
+    } catch (error) {
+        console.error('Error adding character reference:', error);
+        showGlassToast('error', 'Failed to Add Reference', 'Could not add character reference');
+    }
+}
+
 
 // Helper function to get current selected model display name
 function getCurrentSelectedModelDisplayName() {
@@ -2173,7 +2223,7 @@ function updateUnifiedUploadMode() {
         // If no files and no specific mode, keep the default "Import File" title
     }
     
-    // Update confirm button text
+    // Update confirm button text and state
     if (unifiedUploadConfirmText) {
         if (unifiedUploadCurrentMode === 'reference') {
             unifiedUploadConfirmText.textContent = 'Upload';
@@ -2187,6 +2237,16 @@ function updateUnifiedUploadMode() {
         } else if (unifiedUploadCurrentMode === 'blueprint') {
             unifiedUploadConfirmText.textContent = 'Import';
         }
+    }
+    
+    // Update confirm button state (enabled/disabled)
+    if (unifiedUploadConfirmBtn) {
+        // Enable button if we have files OR a downloaded file OR a pending URL
+        const hasFiles = unifiedUploadFiles.length > 0;
+        const hasDownloadedFile = unifiedUploadDownloadedFile !== null;
+        const hasPendingUrl = unifiedUploadPendingUrl !== null;
+        
+        unifiedUploadConfirmBtn.disabled = !(hasFiles || hasDownloadedFile || hasPendingUrl);
     }
     
     // Show/hide vibe controls - only show when encoding images, not when importing vibe files
@@ -2396,6 +2456,39 @@ async function handleUnifiedUploadConfirm() {
                 // Handle locally selected vibe files - import them
                 await importUnifiedVibeFiles();
             }
+        } else if (unifiedUploadCurrentMode === 'blueprint') {
+            // Handle blueprint import
+            if (unifiedUploadDownloadedFile && unifiedUploadDownloadedFile.type === 'image') {
+                // Handle downloaded file for blueprint import
+                await importUnifiedBlueprint(null);
+            } else if (unifiedUploadFiles.length > 0) {
+                // Handle uploaded files for blueprint import
+                const validFiles = [];
+                const validMetadata = [];
+                
+                unifiedUploadFiles.forEach((file, index) => {
+                    if (unifiedUploadFileMetadata[index]?.valid) {
+                        validFiles.push(file);
+                        validMetadata.push(unifiedUploadFileMetadata[index]);
+                    }
+                });
+                
+                if (validFiles.length === 0) {
+                    hideGalleryMoveRightPanelCover();
+                    showError('None of the selected images contain valid NovelAI metadata.');
+                    return;
+                }
+                
+                // Process only valid files for blueprints
+                for (const file of validFiles) {
+                    await importUnifiedBlueprint(file);
+                }
+            } else {
+                hideGalleryMoveRightPanelCover();
+                showError('No valid blueprint files found.');
+                return;
+            }
+            hideUnifiedUploadModal();
         }
         hideGalleryMoveRightPanelCover();
     } catch (error) {
@@ -2497,20 +2590,12 @@ async function handleUnifiedUploadOpenInEditor() {
             // Close upload modal
             hideUnifiedUploadModal();
             
-            // Use rerollImageWithEdit to properly set up the manual modal with image data
-                // Create a proper image object that rerollImageWithEdit expects
-            const imageObject = {
-                filename: imageData.filename,
-                original: imageData.filename,
-                tempFilename: imageData.tempFilename,
-                isTempFile: imageData.isTempFile,
-                width: imageData.width,
-                height: imageData.height,
-                metadata: finalMetadata // Pass the metadata so rerollImageWithEdit can use it
-            };
+            // Open manual modal directly without img2img functionality
+            // This is a blueprint edit, not an image variation edit
+            window.showManualModal();
             
-            // Call rerollImageWithEdit to properly set up the modal
-            await window.rerollImageWithEdit(imageObject);
+            // Load the blueprint metadata into the manual form
+            await window.loadIntoManualForm(finalMetadata);
 
         } else {
             showError('Open in Editor is only available for blueprint mode');
@@ -2529,7 +2614,21 @@ function transformRawMetadataForEditor(metadata) {
     // Extract fields from the nested structure
     if (metadata.forge_data) {
         const forgeData = metadata.forge_data;
-        
+
+        // Handle character prompts from forge_data
+        if (forgeData.allCharacters && Array.isArray(forgeData.allCharacters)) {
+            transformed.allCharacterPrompts = forgeData.allCharacters;
+
+            // Check if any character has valid coordinates to determine use_coords
+            const hasValidCoords = forgeData.allCharacters.some(char =>
+                char.center &&
+                char.center.x !== null &&
+                char.center.y !== null &&
+                (char.center.x !== 0.5 || char.center.y !== 0.5)
+            );
+            transformed.use_coords = hasValidCoords || forgeData.use_coords || false;
+        }
+
         // Extract basic fields
         if (forgeData.input_prompt !== undefined) {
             transformed.prompt = forgeData.input_prompt;
@@ -2564,6 +2663,12 @@ function transformRawMetadataForEditor(metadata) {
         if (forgeData.mask_bias !== undefined) {
             transformed.mask_bias = forgeData.mask_bias;
         }
+        if (forgeData.chara_reference_source !== undefined) {
+            transformed.chara_reference_source = forgeData.chara_reference_source;
+        }
+        if (forgeData.chara_reference_with_style !== undefined) {
+            transformed.chara_reference_with_style = forgeData.chara_reference_with_style;
+        }
         if (forgeData.img2img_strength !== undefined) {
             transformed.strength = forgeData.img2img_strength;
         }
@@ -2597,20 +2702,32 @@ function transformRawMetadataForEditor(metadata) {
         if (v4Prompt.caption && v4Prompt.caption.char_captions) {
             const charCaptions = v4Prompt.caption.char_captions;
             if (Array.isArray(charCaptions) && charCaptions.length > 0) {
-                // Convert v4_prompt character data to the format expected by the form
-                const characterPrompts = charCaptions.map(caption => ({
-                    prompt: caption.char_caption || '',
-                    uc: '',
-                    center: caption.centers && caption.centers.length > 0 ? caption.centers[0] : { x: 0.5, y: 0.5 },
-                    enabled: true,
-                    chara_name: ''
-                }));
+                // Process characters by index - simple and straightforward
+                const characterPrompts = [];
+                
+                // Process positive captions by index
+                charCaptions.forEach((caption, index) => {
+                    if (caption.char_caption) {
+                        // Only use actual coordinates if they exist and are valid
+                        const center = caption.centers && Array.isArray(caption.centers) && caption.centers.length > 0
+                            ? caption.centers[0]
+                            : null;
+
+                        characterPrompts.push({
+                            prompt: caption.char_caption,
+                            uc: '',
+                            center: center,
+                            enabled: true,
+                            chara_name: ''
+                        });
+                    }
+                });
                 
                 // Handle negative prompts if available
                 if (metadata.v4_negative_prompt && metadata.v4_negative_prompt.caption && metadata.v4_negative_prompt.caption.char_captions) {
                     const negativeCaptions = metadata.v4_negative_prompt.caption.char_captions;
                     negativeCaptions.forEach((caption, index) => {
-                        if (characterPrompts[index] && caption.char_caption) {
+                        if (caption.char_caption && characterPrompts[index]) {
                             characterPrompts[index].uc = caption.char_caption;
                         }
                     });
@@ -2618,7 +2735,15 @@ function transformRawMetadataForEditor(metadata) {
                 
                 // Set allCharacterPrompts from v4_prompt (since we don't have them from forge_data)
                 transformed.allCharacterPrompts = characterPrompts;
-                transformed.use_coords = v4Prompt.use_coords || false;
+                
+                // Check if any character has valid coordinates to determine use_coords
+                const hasValidCoords = characterPrompts.some(char =>
+                    char.center &&
+                    char.center.x !== null &&
+                    char.center.y !== null &&
+                    (char.center.x !== 0.5 || char.center.y !== 0.5)
+                );
+                transformed.use_coords = hasValidCoords || v4Prompt.use_coords || false;
             }
         }
     }
@@ -2691,33 +2816,62 @@ function transformMetadataForEditor(metadata) {
     // Map fields to match what loadIntoManualForm expects
     if (transformed.characterPrompts && Array.isArray(transformed.characterPrompts)) {
         transformed.allCharacterPrompts = transformed.characterPrompts;
+
+        // Check if any character has valid coordinates to determine use_coords
+        const hasValidCoords = transformed.characterPrompts.some(char =>
+            char.center &&
+            char.center.x !== null &&
+            char.center.y !== null &&
+            (char.center.x !== 0.5 || char.center.y !== 0.5)
+        );
+        transformed.use_coords = hasValidCoords || transformed.use_coords || false;
     }
     
     // Handle v4_prompt character data if available
     if (transformed.v4_prompt && transformed.v4_prompt.caption && transformed.v4_prompt.caption.char_captions) {
         const charCaptions = transformed.v4_prompt.caption.char_captions;
         if (Array.isArray(charCaptions) && charCaptions.length > 0) {
-            // Convert v4_prompt character data to the format expected by the form
-            const characterPrompts = charCaptions.map(caption => ({
-                prompt: caption.char_caption || '',
-                uc: '',
-                center: caption.centers && caption.centers.length > 0 ? caption.centers[0] : { x: 0.5, y: 0.5 },
-                enabled: true,
-                chara_name: ''
-            }));
+            // Process characters by index - simple and straightforward
+            const characterPrompts = [];
+            
+            // Process positive captions by index
+            charCaptions.forEach((caption, index) => {
+                if (caption.char_caption) {
+                    // Only use actual coordinates if they exist and are valid
+                    const center = caption.centers && Array.isArray(caption.centers) && caption.centers.length > 0 
+                        ? caption.centers[0] 
+                        : null;
+                    
+                    characterPrompts.push({
+                        prompt: caption.char_caption,
+                        uc: '',
+                        center: center,
+                        enabled: true,
+                        chara_name: ''
+                    });
+                }
+            });
             
             // Handle negative prompts if available
             if (transformed.v4_negative_prompt && transformed.v4_negative_prompt.caption && transformed.v4_negative_prompt.caption.char_captions) {
                 const negativeCaptions = transformed.v4_negative_prompt.caption.char_captions;
                 negativeCaptions.forEach((caption, index) => {
-                    if (characterPrompts[index] && caption.char_caption) {
+                    if (caption.char_caption && characterPrompts[index]) {
                         characterPrompts[index].uc = caption.char_caption;
                     }
                 });
             }
             
             transformed.allCharacterPrompts = characterPrompts;
-            transformed.use_coords = transformed.v4_prompt.use_coords || false;
+            
+            // Check if any character has valid coordinates to determine use_coords
+            const hasValidCoords = characterPrompts.some(char =>
+                char.center &&
+                char.center.x !== null &&
+                char.center.y !== null &&
+                (char.center.x !== 0.5 || char.center.y !== 0.5)
+            );
+            transformed.use_coords = hasValidCoords || transformed.v4_prompt.use_coords || false;
         }
     }
     
@@ -2726,7 +2880,15 @@ function transformMetadataForEditor(metadata) {
         // Extract character prompts from forge data
         if (transformed.forge_data.allCharacters && Array.isArray(transformed.forge_data.allCharacters)) {
             transformed.allCharacterPrompts = transformed.forge_data.allCharacters;
-            transformed.use_coords = transformed.forge_data.use_coords || false;
+
+            // Check if any character has valid coordinates to determine use_coords
+            const hasValidCoords = transformed.forge_data.allCharacters.some(char =>
+                char.center &&
+                char.center.x !== null &&
+                char.center.y !== null &&
+                (char.center.x !== 0.5 || char.center.y !== 0.5)
+            );
+            transformed.use_coords = hasValidCoords || transformed.forge_data.use_coords || false;
         }
         
         // Extract other forge data fields
@@ -2875,11 +3037,22 @@ function transformMetadataForEditor(metadata) {
 async function importUnifiedBlueprint(file) {
     let toastId = showGlassToast('info', 'Importing Image', 'Importing image to workspace...', true, false, '<i class="nai-import"></i>');
     
-    try {
+    try {        
         // Update cover message for server processing
         showGalleryMoveRightPanelCover('Importing Blueprint...');
-        // Extract metadata from the PNG file to verify it's a NovelAI image
-        const metadata = await extractPNGMetadata(file);
+        
+        let metadata = null;
+        
+        // Handle downloaded files differently - metadata is already available
+        if (unifiedUploadDownloadedFile && unifiedUploadDownloadedFile.type === 'image') {
+            metadata = unifiedUploadDownloadedFile.metadata;
+        } else if (file) {
+            // Extract metadata from the PNG file to verify it's a NovelAI image
+            metadata = await extractPNGMetadata(file);
+        } else {
+            throw new Error('No file provided for blueprint import');
+        }
+        
         if (!metadata || !metadata.source || !metadata.source.includes('NovelAI')) {
             throw new Error('Invalid blueprint file: No NovelAI metadata found');
         }
@@ -2921,9 +3094,11 @@ async function importUnifiedBlueprint(file) {
         
         removeGlassToast(toastId);
         showGlassToast('success', 'Image Imported', 'Successfully imported image to workspace', false, true, '<i class="nai-check"></i>');
-        
+                
         // Refresh gallery to show the new image
-        await loadGallery(true);        // Close the modal
+        await loadGallery(true);
+
+        // Close the modal
         hideUnifiedUploadModal();
     } catch (error) {
         console.error('Error importing blueprint:', error);
@@ -3822,9 +3997,9 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
     // Set target model if provided, otherwise use manual selected model for upload/reference modes
     if (targetModel) {
         vibeEncodingSelectedModel = targetModel;
-    } else if ((mode === 'upload' || mode === 'reference') && window.manualSelectedModel) {
+    } else if ((mode === 'upload' || mode === 'reference') && manualSelectedModel) {
         // Use the currently selected model from manual generation modal
-        vibeEncodingSelectedModel = window.manualSelectedModel;
+        vibeEncodingSelectedModel = manualSelectedModel;
     }
     
     // Update model display
@@ -6791,6 +6966,8 @@ async function handlePendingUrlDownload() {
                 // Update mode to blueprint to match file upload behavior
                 console.log('🔄 Setting mode to blueprint for non-vibe file');
                 unifiedUploadCurrentMode = 'blueprint';
+                
+                // Update the upload mode to ensure button text and UI are correct
                 updateUnifiedUploadMode();
             } else if ((unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single') && unifiedUploadDownloadedFile.jsonData) {
                 // Show vibe file preview (bundle or single) using raw JSON data
@@ -7437,3 +7614,4 @@ window.createDirectorSessionWithImage = createDirectorSessionWithImage;
 window.wsClient.registerInitStep(40, 'Initializing reference manager', async () => {
     await initializeCacheManager();
 });
+

@@ -15,6 +15,9 @@ class ContextMenuController {
         this.currentTarget = null;
         this.touchTimer = null;
         this.touchStartTime = 0;
+        this.touchStartX = null;
+        this.touchStartY = null;
+        this.hasScrolled = false;
         this.longPressDelay = 500; // ms
         this.touchThreshold = 10; // pixels
         this.hoverTimers = {
@@ -25,8 +28,61 @@ class ContextMenuController {
             openDelay: 320, // ms
             closeDelay: 500 // ms
         };
-        
+
+        this.mobileBreakpoints = {
+            small: 480,  // Small mobile devices
+            tablet: 768  // Tablets and larger mobile devices
+        };
+
         this.init();
+    }
+
+    // Mobile detection methods
+    isMobile(breakpoint = 'tablet') {
+        return window.innerWidth < this.mobileBreakpoints[breakpoint];
+    }
+
+    isSmallMobile() {
+        return this.isMobile('small');
+    }
+
+    isDesktop() {
+        return !this.isMobile('tablet');
+    }
+
+    // Filter items based on mobile/desktop visibility
+    shouldShowItem(item) {
+        const isMobile = this.isMobile();
+
+        // Check mobile-only items
+        if (item.mobileOnly && !isMobile) {
+            return false;
+        }
+
+        // Check desktop-only items
+        if (item.desktopOnly && isMobile) {
+            return false;
+        }
+
+        // Check for specific breakpoint conditions
+        if (item.showOnBreakpoint) {
+            const breakpoint = item.showOnBreakpoint;
+            if (breakpoint === 'mobile' && !isMobile) return false;
+            if (breakpoint === 'desktop' && isMobile) return false;
+            if (breakpoint === 'small-mobile' && !this.isSmallMobile()) return false;
+            if (breakpoint === 'tablet-and-up' && this.isSmallMobile()) return false;
+        }
+
+        // Check for hide conditions
+        if (item.hideOnBreakpoint) {
+            const breakpoint = item.hideOnBreakpoint;
+            if (breakpoint === 'mobile' && isMobile) return false;
+            if (breakpoint === 'desktop' && !isMobile) return false;
+            if (breakpoint === 'small-mobile' && this.isSmallMobile()) return false;
+            if (breakpoint === 'tablet-and-up' && !this.isSmallMobile()) return false;
+        }
+
+        return true;
     }
 
     init() {
@@ -38,8 +94,20 @@ class ContextMenuController {
         // Create the overlay to catch clicks outside the menu
         this.overlay = document.createElement('div');
         this.overlay.className = 'context-menu-overlay hidden';
-        this.overlay.addEventListener('click', () => {
-            this.hideMenu();
+        this.overlay.addEventListener('click', (e) => {
+            // Prevent event bubbling to avoid conflicts
+            e.stopPropagation();
+
+            // On mobile, close submenu first if it exists, then close main menu
+            if (this.isMobile() && this.currentSubmenu) {
+                // Close submenu and prevent further processing in this event loop
+                this.hideSubmenu();
+                // Don't close main menu in the same event - let user tap again
+                return;
+            } else {
+                // No submenu open, close the main menu
+                this.hideMenu();
+            }
         });
         
         // Allow right-click and touch events to pass through the overlay
@@ -70,8 +138,19 @@ class ContextMenuController {
         });
         
         this.overlay.addEventListener('touchstart', (e) => {
+            // Prevent touch events from passing through to elements below
+            e.preventDefault();
+
+            // On mobile, close submenu first if it exists, then close main menu
+            if (this.isMobile() && this.currentSubmenu) {
+                // Close submenu and prevent further processing
+                this.hideSubmenu();
+                return; // Don't process further - let user tap again for main menu
+            }
+
             // Hide current menu immediately
             this.hideMenu();
+
             // Use a small delay to ensure the overlay is hidden, then trigger the event on the element below
             setTimeout(() => {
                 const elementBelow = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY);
@@ -90,7 +169,7 @@ class ContextMenuController {
                     }
                 }
             }, 10);
-        }, { passive: true });
+        }, { passive: false });
         
         // Create the main context menu container
         this.menu = document.createElement('div');
@@ -123,15 +202,20 @@ class ContextMenuController {
             if (target && e.touches.length === 1) {
                 this.touchStartTime = Date.now();
                 this.currentTarget = target;
-                
+                this.touchStartX = e.touches[0].clientX;
+                this.touchStartY = e.touches[0].clientY;
+                this.hasScrolled = false;
+
                 // Clear any existing timer
                 if (this.touchTimer) {
                     clearTimeout(this.touchTimer);
                 }
-                
+
                 // Set up long-press timer
                 this.touchTimer = setTimeout(() => {
-                    this.showMenu(e, target, true);
+                    if (!this.hasScrolled) {
+                        this.showMenu(e, target, true);
+                    }
                 }, this.longPressDelay);
             }
         }, { passive: true });
@@ -139,14 +223,14 @@ class ContextMenuController {
         document.addEventListener('touchmove', (e) => {
             if (this.touchTimer && e.touches.length === 1) {
                 const touch = e.touches[0];
-                const startTouch = e.targetTouches[0];
-                
-                // Calculate distance moved
-                const deltaX = Math.abs(touch.clientX - startTouch.clientX);
-                const deltaY = Math.abs(touch.clientY - startTouch.clientY);
-                
-                // Cancel if moved too far
+
+                // Calculate distance moved from initial touch point
+                const deltaX = Math.abs(touch.clientX - this.touchStartX);
+                const deltaY = Math.abs(touch.clientY - this.touchStartY);
+
+                // Cancel if moved too far (indicates scrolling or dragging)
                 if (deltaX > this.touchThreshold || deltaY > this.touchThreshold) {
+                    this.hasScrolled = true;
                     clearTimeout(this.touchTimer);
                     this.touchTimer = null;
                 }
@@ -158,6 +242,10 @@ class ContextMenuController {
                 clearTimeout(this.touchTimer);
                 this.touchTimer = null;
             }
+            // Reset touch tracking
+            this.touchStartX = null;
+            this.touchStartY = null;
+            this.hasScrolled = false;
         }, { passive: true });
 
         // Note: Click outside handling is now done by the overlay
@@ -317,6 +405,11 @@ class ContextMenuController {
         }
 
         config.sections.forEach((section, sectionIndex) => {
+            // Check if section should be shown based on mobile/desktop visibility
+            if (!this.shouldShowItem(section)) {
+                return; // Skip this section entirely
+            }
+
             const sectionElement = this.createSection(section, target, sectionIndex);
             if (sectionElement) {
                 menuContent.appendChild(sectionElement);
@@ -365,6 +458,11 @@ class ContextMenuController {
                 separator.className = 'context-menu-separator';
                 sectionElement.appendChild(separator);
                 return;
+            }
+
+            // Check if item should be shown based on mobile/desktop visibility
+            if (!this.shouldShowItem(item)) {
+                return; // Skip this item
             }
 
             // Call loadfn if it exists to update item properties
@@ -505,6 +603,11 @@ class ContextMenuController {
                 return;
             }
 
+            // Check if icon should be shown based on mobile/desktop visibility
+            if (!this.shouldShowItem(icon)) {
+                return; // Skip this icon
+            }
+
             // Call loadfn if it exists to update icon properties
             if (icon.loadfn && typeof icon.loadfn === 'function') {
                 // Pass the target element and let the loadfn handle its own data access
@@ -520,13 +623,15 @@ class ContextMenuController {
             // Icon
             if (icon.icon) {
                 const iconClass = document.createElement('i');
-                iconClass.className = `${icon.icon}`;
+                const iconValue = typeof icon.icon === 'function' ? icon.icon(target) : icon.icon;
+                iconClass.className = `${iconValue}`;
                 iconElement.appendChild(iconClass);
             }
 
             // Tooltip
             if (icon.tooltip) {
-                iconElement.title = icon.tooltip;
+                const tooltipValue = typeof icon.tooltip === 'function' ? icon.tooltip(target) : icon.tooltip;
+                iconElement.title = tooltipValue;
             }
 
             // Disabled state
@@ -804,14 +909,14 @@ class ContextMenuController {
     showSubmenu(parentItem, submenuItems, target, customHandler = null) {
         // Remove any existing submenu
         this.hideSubmenu();
-        
+
         // Keep parent item active
         parentItem.classList.add('keyboard-selected');
-        
+
         // Create submenu container
         const submenu = document.createElement('div');
         submenu.className = 'context-menu-submenu';
-        
+
         // Create submenu items
         submenuItems.forEach((subItem) => {
             if (subItem.separator) {
@@ -820,12 +925,12 @@ class ContextMenuController {
                 submenu.appendChild(separator);
                 return;
             }
-            
+
             const subItemElement = document.createElement('div');
             subItemElement.className = 'context-menu-item';
             subItemElement.setAttribute('role', 'menuitem');
             subItemElement.tabIndex = 0;
-            
+
             // Custom content or Icon + Text
             if (subItem.content) {
                 if (typeof subItem.content === 'string') {
@@ -847,7 +952,7 @@ class ContextMenuController {
                     iconElement.className = `${subItem.icon}`;
                     subItemElement.appendChild(iconElement);
                 }
-                
+
                 if (subItem.text) {
                     const textElement = document.createElement('span');
                     textElement.className = 'context-menu-item-text';
@@ -855,13 +960,13 @@ class ContextMenuController {
                     subItemElement.appendChild(textElement);
                 }
             }
-            
+
             // Disabled state
             if (subItem.disabled) {
                 subItemElement.classList.add('disabled');
                 subItemElement.setAttribute('aria-disabled', 'true');
             }
-            
+
             // Click handler
             if (customHandler && typeof customHandler === 'function') {
                 subItemElement.addEventListener('click', () => {
@@ -878,50 +983,98 @@ class ContextMenuController {
                     }
                 });
             }
-            
+
             submenu.appendChild(subItemElement);
         });
-        
-        // Position submenu relative to viewport (completely outside menu)
+
+        // Position submenu based on screen size
         const parentRect = parentItem.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
-        
-        // Calculate initial position (to the right of parent item, no padding)
-        let submenuX = parentRect.right;
-        let submenuY = parentRect.top;
-        let submenuDirection = 'right';
-        
-        // Check if submenu would go off the right edge
-        if (submenuX + 200 > viewportWidth) { // Assuming max width of 200px
-            submenuX = parentRect.left - 200; // Position to the left instead
-            submenuDirection = 'left';
+        const isMobile = viewportWidth < 768;
+
+        let submenuX, submenuY, submenuDirection;
+
+        // Get submenu dimensions (assume standard size if not yet rendered)
+        const submenuWidth = 200; // Standard submenu width
+        const submenuHeight = 300; // Conservative height estimate
+
+        // Calculate positioning using similar logic to main menu
+        const parentCenterX = parentRect.left + (parentRect.width / 2);
+        const parentCenterY = parentRect.top + (parentRect.height / 2);
+
+        // For both mobile and desktop: use top/down positioning logic
+        const spaceBelow = viewportHeight - parentCenterY;
+        const spaceAbove = parentCenterY;
+
+        // Determine vertical positioning
+        let vertical = 'down';
+        if (spaceBelow < submenuHeight + 20 && spaceAbove > spaceBelow) {
+            vertical = 'up';
         }
-        
-        // Ensure submenu doesn't go off the bottom edge
-        if (submenuY + 400 > viewportHeight) { // Assuming max height of 400px
-            submenuY = viewportHeight - 410; // Adjust to fit
+
+        // Calculate vertical position
+        if (vertical === 'down') {
+            submenuY = parentRect.bottom + 2; // Slight gap below parent
+            submenuDirection = 'below';
+        } else {
+            submenuY = parentRect.top - submenuHeight - 2; // Above parent
+            submenuDirection = 'above';
         }
-        
+
+        // Ensure submenu doesn't go off screen vertically
+        if (submenuY < 10) {
+            submenuY = 10; // Minimum top margin
+        }
+        if (submenuY + submenuHeight > viewportHeight - 10) {
+            submenuY = viewportHeight - submenuHeight - 10; // Maximum bottom margin
+        }
+
+        // Determine horizontal positioning
+        if (isMobile) {
+            // On mobile: center horizontally on parent item
+            submenuX = parentCenterX - (submenuWidth / 2);
+            submenuDirection += '-mobile';
+        } else {
+            // Desktop: position to the right of parent item
+            submenuX = parentRect.right + 2; // Slight gap to the right
+            submenuDirection = 'right';
+
+            // Check if submenu would go off the right edge
+            if (submenuX + submenuWidth > viewportWidth - 10) {
+                submenuX = parentRect.left - submenuWidth - 2; // Position to the left instead
+                submenuDirection = 'left';
+            }
+        }
+
+        // Ensure submenu stays within horizontal bounds
+        if (submenuX < 10) {
+            submenuX = 10; // Minimum left margin
+        }
+        if (submenuX + submenuWidth > viewportWidth - 10) {
+            submenuX = viewportWidth - submenuWidth - 10; // Maximum right margin
+        }
+
         // Add direction class for styling
         submenu.classList.add(`submenu-${submenuDirection}`);
-        
+
         submenu.style.position = 'fixed';
         submenu.style.left = `${submenuX}px`;
         submenu.style.top = `${submenuY}px`;
-        submenu.style.zIndex = '9999'; // Ensure it's above everything
-        
-        // Add to document body so it's completely outside the menu
+
+        // Add to document body
         document.body.appendChild(submenu);
         this.currentSubmenu = submenu;
-        
+
         // Add click outside handler for submenu
         const submenuClickHandler = (e) => {
+            // Only handle clicks that are actually outside the submenu
             if (!submenu.contains(e.target) && !parentItem.contains(e.target)) {
+                e.stopPropagation(); // Prevent bubbling to overlay handlers
                 this.hideSubmenu();
             }
         };
-        
+
         document.addEventListener('click', submenuClickHandler);
         this.submenuClickHandler = submenuClickHandler;
     }
@@ -957,3 +1110,151 @@ window.contextMenu = new ContextMenuController();
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = ContextMenuController;
 }
+
+/*
+MOBILE/DESKTOP FILTERING USAGE EXAMPLES:
+
+1. SIMPLE MOBILE/DESKTOP ONLY ITEMS:
+
+// Mobile-only item
+{
+    text: "Touch-specific action",
+    action: "touchAction",
+    mobileOnly: true
+}
+
+// Desktop-only item
+{
+    text: "Desktop keyboard shortcut",
+    action: "desktopAction",
+    desktopOnly: true
+}
+
+2. BREAKPOINT-SPECIFIC ITEMS:
+
+// Show only on mobile (tablets and phones)
+{
+    text: "Mobile layout option",
+    action: "mobileLayout",
+    showOnBreakpoint: "mobile"
+}
+
+// Show only on desktop
+{
+    text: "Desktop features",
+    action: "desktopFeatures",
+    showOnBreakpoint: "desktop"
+}
+
+// Show only on small mobile phones (≤480px)
+{
+    text: "Compact view",
+    action: "compactView",
+    showOnBreakpoint: "small-mobile"
+}
+
+// Show on tablets and larger (≥481px)
+{
+    text: "Full features",
+    action: "fullFeatures",
+    showOnBreakpoint: "tablet-and-up"
+}
+
+3. HIDE ON SPECIFIC BREAKPOINTS:
+
+// Hide on mobile devices
+{
+    text: "Complex desktop tool",
+    action: "complexTool",
+    hideOnBreakpoint: "mobile"
+}
+
+// Hide on small mobile phones
+{
+    text: "Requires larger screen",
+    action: "largeScreenRequired",
+    hideOnBreakpoint: "small-mobile"
+}
+
+4. SECTION-LEVEL FILTERING:
+
+// Entire section only on desktop
+{
+    type: "list",
+    title: "Advanced Options",
+    desktopOnly: true,
+    items: [...]
+}
+
+// Entire section only on mobile
+{
+    type: "icons",
+    title: "Quick Actions",
+    mobileOnly: true,
+    icons: [...]
+}
+
+5. COMPLETE EXAMPLE CONFIG:
+
+const contextMenuConfig = {
+    sections: [
+        {
+            type: "list",
+            title: "File Operations",
+            items: [
+                {
+                    text: "Open",
+                    icon: "fas fa-folder-open",
+                    action: "openFile"
+                },
+                {
+                    text: "Save",
+                    icon: "fas fa-save",
+                    action: "saveFile",
+                    hideOnBreakpoint: "small-mobile" // Hide on phones
+                },
+                {
+                    text: "Print",
+                    icon: "fas fa-print",
+                    action: "printFile",
+                    desktopOnly: true // Desktop only
+                },
+                {
+                    separator: true
+                },
+                {
+                    text: "Share",
+                    icon: "fas fa-share",
+                    action: "shareFile",
+                    mobileOnly: true // Mobile only
+                }
+            ]
+        },
+        {
+            type: "icons",
+            title: "Quick Tools",
+            showOnBreakpoint: "tablet-and-up", // Tablets and desktop
+            icons: [
+                {
+                    icon: "fas fa-copy",
+                    tooltip: "Copy",
+                    action: "copyItem"
+                },
+                {
+                    icon: "fas fa-paste",
+                    tooltip: "Paste",
+                    action: "pasteItem"
+                }
+            ]
+        }
+    ]
+};
+
+USAGE:
+- mobileOnly: true/false - Show only on mobile devices (< 768px)
+- desktopOnly: true/false - Show only on desktop devices (≥ 768px)
+- showOnBreakpoint: "mobile" | "desktop" | "small-mobile" | "tablet-and-up"
+- hideOnBreakpoint: "mobile" | "desktop" | "small-mobile" | "tablet-and-up"
+
+Works on individual items, icons, and entire sections!
+*/

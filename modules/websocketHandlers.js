@@ -149,16 +149,10 @@ function generateDirectorSystemMessage() {
         ' * **Base**: Transform for generation. Analyze modifications needed.',
         ' * **Base (Masked)**: Transform with mask overlay. Analyze non-green areas.',
         ' * **Vibe Transfer #X (Strength: Y%, IE: Z%)**: Style/content reference. Strength = influence, IE = detail extraction.',
+        ' * **Character Reference Image (with/without style transfer)**: Character consistency reference. Extract character details (appearance, clothing, attributes) while ignoring environment/background. Focus on character identity and features. Style transfer copies character-specific style elements, without style transfer gives maximum flexibility.',
         '',
         '# Detailed Visual Analysis (CRITICAL)',
-        'Comprehensive Visual Extraction:',
-        ' * **Visual Elements**: Identify ALL visual components - subjects, objects, backgrounds, textures, patterns, colors, shapes',
-        ' * **Technical Details**: Analyze composition, lighting, shadows, depth of field, perspective, camera angle, focal points',
-        ' * **Material Properties**: Extract material details - fabric textures, surface reflections, material types, surface conditions',
-        ' * **Environmental Context**: Capture setting details, time of day, weather conditions, spatial relationships',
-        ' * **Visual Hierarchy**: Identify primary, secondary, and tertiary visual elements and their importance',
-        ' * **Color Analysis**: Document color palettes, saturation levels, contrast, color temperature, color relationships',
-        ' * **Detail Level**: Extract fine details - patterns, textures, small objects, background elements, subtle variations',
+        'Comprehensive Vivid Visual Extraction: subjects, objects, backgrounds, textures, patterns, colors, shapes, composition, lighting, shadows, depth of field, perspective, camera angle, focal points, fabric textures, surface reflections, material types, surface conditions, time of day, weather conditions, spatial relationships, identify primary, secondary, and tertiary visual elements and their importance, color palettes, saturation levels, contrast, color temperature, color relationships, patterns, textures, small objects, background elements, subtle variations',
         '',
         'Comprehensive Analysis Instructions:',
         ' * Analyze ALL images in exhaustive detail - no visual element overlooked',
@@ -170,25 +164,25 @@ function generateDirectorSystemMessage() {
         ' * Efficiency: Compare Result Image with prompt',
         ' * Masked: Focus on non-green areas',
         ' * Vibe: Note strength/IE percentages',
+        ' * Character Reference: Extract character details (appearance, clothing, attributes) while ignoring environment/background. Focus on character identity, facial features, body type, clothing style, accessories, and distinctive characteristics',
         ' * Consider visual composition and element relationships',
         '',
         'Efficiency: Compare image/description with prompt. If missing/extended time without result image and description stale vs prompt, set "isStale": true.',
         '',
         '# Prompt Efficiency',
-        '1. Structure: Main subject first ("1girl, solo focus"), then appearance, clothing, pose/action, environment, style/quality.',
+        '1. Structure: Main subject first, then appearance, clothing, pose/action, environment, character name, series name, style/quality.',
         '2. Emphasis: 1.25::keyword:: (mild), 1.5::keyword:: (more), 2.0::keyword:: (heavy). De-emphasize 0.8::keyword::.',
         '3. Specificity: Precise anatomy/expression tags, lighting/angle details, subtle artist/style refs.',
         '4. Issues: Balance overemphasized with "anatomically correct". Use "disembodied hand" vs "anonymous male hand".',
-        '5. Negative: Use -1.0::unwanted elements:: to exclude.',
+        '5. Negative: Use -1.0::unwanted elements:: to really exclude. NOTE: UC uses above 0 for emphasis and bellow 0 for de-emphasis of a negative.',
         '',
-        'Return as string arrays without additional text/formatting/backticks.',
+        'Return prompt as JSON object with base_input, base_uc, and chara structure. Other responses as specified in keys.',
         '',
         '# Prompt Modification',
         'Rules:',
         ' * Apply to provided/last prompt if no new prompt',
-        ' * NEVER copy user input directly',
         ' * Transform to NovelAI-optimized syntax',
-        ' * Maintain structure while incorporating changes',
+        ' * Maintain JSON structure with base_input, base_uc, and chara while incorporating changes',
         '',
         'Process: Analyze intent → Identify changes → Convert to natural descriptions and NovelAI tags → Preserve structure → Align tokens.',
         '',
@@ -198,10 +192,10 @@ function generateDirectorSystemMessage() {
         '',
         '# Caption Generation',
         'Rules:',
-        ' * NEVER copy user input/prompt/image description directly',
+        ' * Reimagine the prompt to be more creative and detailed and not copy the user input/prompt/image description directly',
         ' * Transform source into creative language',
         ' * Use context/intent as inspiration, not direct text',
-        ' * Create original flowing narrative',
+        ' * Create original flowing fanfiction narrative',
         ' * **VISUAL DETAIL PRIORITY**: Always distill and amplify visual details into compelling narrative',
         '',
         'Style: Engaging descriptive language, visual detail focus, technical precision, varied sentences.',
@@ -210,14 +204,7 @@ function generateDirectorSystemMessage() {
         '',
         'Perspectives: Both viewer (external) and technical (analytical). Alternate for rich experience. Natural descriptive language.',
         '',
-        'Visual Detail Extraction Requirements:',
-        ' * **Technical Precision**: Describe visual elements with technical accuracy and detail',
-        ' * **Composition Analysis**: Break down spatial relationships and visual hierarchy',
-        ' * **Material Specificity**: Detail textures, materials, and surface properties',
-        ' * **Lighting Analysis**: Describe illumination, shadows, and lighting effects',
-        ' * **Color Detail**: Specify color relationships, saturation, and visual impact',
-        ' * **Pattern Recognition**: Identify and describe visual patterns and repetitions',
-        ' * **Detail Amplification**: Transform subtle visual elements into prominent narrative features',
+        'Visual Detail Extraction Requirements: Visual Elements, Technical Details, Material Properties, Environmental Context, Visual Hierarchy, Color Analysis, Detail Level',
         '',
         'Return: {"text": "caption text", "type": "viewer|technical|sfx"}',
         '',
@@ -247,6 +234,40 @@ function generateDirectorSystemMessage() {
         '',
         'Remember: Every analysis MUST include comprehensive visual detail extraction and distillation into the prompt structure.',
         '',
+        '# JSON Prompt Structure (CRITICAL)',
+        'All prompts must be returned in this exact JSON structure:',
+        '{',
+        '  "base_input": "scene description, environment, setting, shared elements",',
+        '  "base_uc": "universal negatives that apply to entire scene",',
+        '  "chara": [',
+        '    {',
+        '      "name": "character name (add if blank/detected from anime series)",',
+        '      "input": "character-specific positive prompts",',
+        '      "uc": "character-specific negative prompts"',
+        '    },',
+        '    {another character...}',
+        '  ]',
+        '}',
+        '',
+        '# Character Management Rules',
+        ' * **Naming**: Add names to characters without names or with blank names. If character matches anime/manga user there name otherwise use canonical name that fits their appearance/personality.',
+        ' * **Never Remove Characters**: Do not remove characters unless explicitly requested by user.',
+        ' * **Single Character Merge**: If only ONE character remains in scene, merge their prompts into base_input and empty chara array.',
+        ' * **Adding Characters**: When adding new characters, create separate entries in chara array with their specific prompts.',
+        ' * **Base vs Character Prompts**:',
+        '   - base_input: Scene elements not specific to any character (environment, setting, shared objects)',
+        '   - chara[].input: Features/attributes specific to that exact character only',
+        '   - chara[].uc: Negatives specific to that character',
+        '',
+        '# Negative Prompt (UC) Rules',
+        ' * **Cross-Character Negation**: If one character has strong/opposite feature, negate it in other characters\' UC',
+        '   - Example: If character A is "2::obese::", add "obese" to other characters\' UC',
+        '   - If character A is "1.5::muscular::", add "muscular" to other characters\' UC',
+        ' * **Self-Negation**: For very strong features, add negation in same character\'s input',
+        '   - Example: If character has "3::obese::", add "0.5::slim::" to balance',
+        ' * **Universal Negatives**: Put scene-wide negatives in base_uc',
+        ' * **Character-Specific Negatives**: Put character-specific negatives in chara[].uc',
+        '',
         '# JSON Formatting (CRITICAL)',
         ' * Use double quotes for ALL strings and keys: {"key":"value"}',
         ' * Proper array syntax: [{"type":"value","text":"content"}]',
@@ -255,6 +276,7 @@ function generateDirectorSystemMessage() {
         ' * Escape quotes in strings: "He said \\"hello\\""',
         ' * No trailing commas or malformed syntax',
         ' * Test JSON validity before responding',
+        ' * Prompt JSON must follow exact structure with base_input, base_uc, and chara array',
         '',
         '# Markdown Formatting',
         ' * Use `backticks` for prompt tags/elements',
@@ -297,7 +319,7 @@ function generateDirectorSystemMessage() {
         ' * SuggestedName: Session name (max 150 chars, suggestive if NSFW)',
         ' * Suggested: Array of 4-6 Strings that are exploration suggestions that can be used to enhance the scene or character and or progress the story',
         ' * Caption: Array of 2-5 speech bubbles [{"type":"viewer","text":"dialogue"}] (Type is viewer, self, or sfx)',
-        ' * Prompt: Efficient NovelAI prompt (max 300 tokens, 170-200 ideal)',
+        ' * Prompt: JSON object with base_input, base_uc, and chara array (CRITICAL: This is now the required format)',
         ' * isNSFW: Boolean sexual content indicator',
         ' * NSFWHeat: 1-100 heat level (only if isNSFW=true or sexual context)',
         ' * Issues: Markdown problem description (efficiency analysis)',
@@ -314,7 +336,7 @@ function generateDirectorSystemMessage() {
         ' * Use sexually suggestive language when appropriate',
         ' * Maintain explicit nature throughout',
         '',
-        'Responses must be in valid JSON format. Use double quotes for all strings and keys. Ensure proper syntax: {"key":"value","array":[{"type":"value"}]}. No single quotes, no missing colons, no malformed brackets.'
+        'Responses must be in valid JSON format. Use double quotes for all strings and keys. Ensure proper syntax: {"key":"value","array":[{"type":"value"}]}. No single quotes, no missing colons, no malformed brackets. Prompt must be JSON object with base_input, base_uc, chara structure.'
     ];
     
     return [{
@@ -764,7 +786,15 @@ class WebSocketMessageHandlers {
             case 'upload_workspace_image':
                 await this.handleUploadWorkspaceImage(ws, message, clientInfo, wsServer);
                 break;
-                
+
+            case 'update_reference_metadata':
+                await this.handleUpdateReferenceMetadata(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'delete_reference_metadata':
+                await this.handleDeleteReferenceMetadata(ws, message, clientInfo, wsServer);
+                break;
+
             case 'download_url_file':
                 await this.handleDownloadUrlFile(ws, message, clientInfo, wsServer);
                 break;
@@ -1480,10 +1510,17 @@ class WebSocketMessageHandlers {
 
     // Handle ping messages
     handlePing(ws, message, clientInfo, wsServer) {
+        // Fast-fail check for ping requests - server should always respond if initialized
+        if (!this.context || !this.context.config) {
+            this.sendError(ws, 'Server initialization incomplete', 'Server is not ready to handle ping requests', message.requestId);
+            return;
+        }
+
         this.sendToClient(ws, {
             type: 'pong',
             requestId: message.requestId,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            serverReady: true
         });
     }
     
@@ -2020,6 +2057,14 @@ class WebSocketMessageHandlers {
 
     // Handle app options request messages
     async handleGetAppOptions(ws, message, clientInfo, wsServer) {
+        const startTime = Date.now();
+
+        // Fast-fail check: Ensure server is properly initialized
+        if (!this.context || !this.context.config) {
+            this.sendError(ws, 'Server initialization incomplete', 'Server is not ready to handle requests', message.requestId);
+            return;
+        }
+
         try {
             const currentPromptConfig = loadPromptConfig();
             
@@ -2069,8 +2114,8 @@ class WebSocketMessageHandlers {
             const accountData = this.context.accountData ? this.context.accountData() : { ok: false };
             const accountBalance = this.context.accountBalance ? this.context.accountBalance() : { fixedTrainingStepsLeft: 0, purchasedTrainingSteps: 0, totalCredits: 0 };
             
-            await restoreSessionWorkspace(clientInfo.sessionId);
-            
+            // Session workspace restoration is handled during WebSocket connection establishment
+            // No need to restore it again here as it causes unnecessary delays
             const activeWorkspaceId = getActiveWorkspace(clientInfo.sessionId);
             const activeWorkspaceData = getActiveWorkspaceData(clientInfo.sessionId);
             
@@ -2091,11 +2136,10 @@ class WebSocketMessageHandlers {
                 datasets: currentPromptConfig.datasets || [],
                 quality_presets: currentPromptConfig.quality_presets || {},
                 uc_presets: currentPromptConfig.uc_presets || {},
-                // Include active workspace information
-                activeWorkspace: {
+                activeWorkspace: activeWorkspaceData ? {
                     id: activeWorkspaceId,
                     data: activeWorkspaceData
-                }
+                } : null
             };
             if (config.enable_dev) {
                 options.devPort = config.devPort || 65202;
@@ -2111,7 +2155,8 @@ class WebSocketMessageHandlers {
             });
             
         } catch (error) {
-            console.error('App options request error:', error);
+            const totalTime = Date.now() - startTime;
+            console.error(`❌ App options request error after ${totalTime}ms:`, error);
             this.sendError(ws, 'Failed to load app options', error.message, message.requestId);
         }
     }
@@ -3722,13 +3767,17 @@ class WebSocketMessageHandlers {
                     workspaceId = activeWorkspaceId;
                 }
 
+                // Get reference metadata for this file
+                const referenceMetadata = getReferenceMetadata(file, workspaceId);
+
                 cacheFiles.push({
                     hash: file,
                     filename: file,
                     mtime: stats.mtime.valueOf(),
                     size: stats.size,
                     hasPreview: fs.existsSync(previewPath),
-                    workspaceId: workspaceId
+                    workspaceId: workspaceId,
+                    referenceMetadata: referenceMetadata
                 });
             }
 
@@ -3809,6 +3858,16 @@ class WebSocketMessageHandlers {
                                 type: 'cache',
                                 id: id,
                                 data: cacheData
+                            });
+                        }
+                    } else if (type === 'file') {
+                        // Get file image data
+                        const fileData = await this.getFileImageData(id);
+                        if (fileData) {
+                            results.push({
+                                type: 'file',
+                                id: id,
+                                data: fileData
                             });
                         }
                     } else {
@@ -4078,6 +4137,9 @@ class WebSocketMessageHandlers {
                 fs.unlinkSync(previewPath);
             }
             
+            // Delete reference metadata
+            deleteReferenceMetadata(hash, workspaceId);
+
             // Remove from workspace cache files
             removeFromWorkspaceArray('cacheFiles', hash, workspaceId);
 
@@ -6609,33 +6671,16 @@ class WebSocketMessageHandlers {
             fs.writeFileSync(finalFilePath, imageBuffer);
             
             // Handle preview - use existing temp preview if available, otherwise generate new one
-            const previewPath = path.join(previewsDir, `${filename.split('.').slice(0, -1).join('.')}.jpg`);
-            let generatePreview = true;
-            if (tempFile) {
-                // Check if temp preview exists from download process
-                const tempPreviewPath = path.join(cacheDir, 'tempDownload', `${hash}.webp`);
-                if (fs.existsSync(tempPreviewPath)) {
-                    // Convert temp WebP preview to permanent JPG preview
-                    await sharp(tempPreviewPath)
-                        .jpeg({ quality: 70 })
-                        .toFile(previewPath);
-                    console.log(`📸 Moved temp preview to permanent storage: ${hash}`);
-                    generatePreview = false;
-                }
-            }
-            if (generatePreview) {
-                // Generate new preview for non-downloaded files
-                const baseName = filename.split('.').slice(0, -1).join('.');
-                
-                // Generate both main and @2x previews for mobile devices
-                await generateMobilePreviews(imageBuffer, baseName);
-                console.log(`📸 Generated mobile previews: ${baseName}.jpg and ${baseName}@2x.jpg`);
-            }
+            const baseName = path.basename(finalFilename, path.extname(finalFilename));
+
+            // Generate both main and @2x previews for mobile devices
+            await generateMobilePreviews(finalFilePath, baseName);
+            console.log(`📸 Generated mobile previews: ${baseName}.jpg and ${baseName}@2x.jpg`);
             
             // Generate blurred background preview
-            const blurPreviewPath = path.join(previewsDir, `${filename.split('.').slice(0, -1).join('.')}_blur.jpg`);
+            const blurPreviewPath = path.join(previewsDir, `${baseName}_blur.jpg`);
             await generateBlurredPreview(imageBuffer, blurPreviewPath);
-            console.log(`📸 Generated blurred preview: ${hash}`);
+            console.log(`📸 Generated blurred preview: ${baseName}_blur.jpg`);
             
             // Add to workspace files
             addToWorkspaceArray('files', finalFilename, workspaceId);
@@ -7995,8 +8040,11 @@ class WebSocketMessageHandlers {
 
     // Handle image generation requests
     async handleImageGeneration(ws, message, clientInfo, wsServer) {
+        // Extract requestId before try block to ensure it's available in catch block
+        const requestId = message.requestId || 'unknown';
+        
         try {
-            const { requestId, ...data } = message;
+            const { requestId: _, ...data } = message;
             console.log(`🚀 Processing image generation request: ${requestId}`);
             console.log('📋 Generation data:', data);
 
@@ -9363,7 +9411,18 @@ class WebSocketMessageHandlers {
 
     async handleDirectorCreateSession(ws, message, clientInfo, wsServer) {
         try {
-            const { name, model, maxResolution, imageFilename, sessionMode, userIntent: requestUserIntent, inputPrompt, inputUc } = message;
+            const { name, model, maxResolution, imageFilename, sessionMode, userIntent: requestUserIntent, inputPrompt: rawInputPrompt, highReason } = message;
+
+            // Keep original inputPrompt for AI processing (object/array format)
+            const inputPromptForAI = rawInputPrompt;
+
+            // Convert to readable string for system message only
+            const inputPromptDisplay = typeof rawInputPrompt === 'string' ? rawInputPrompt :
+                                     ((typeof rawInputPrompt === 'object' || Array.isArray(rawInputPrompt)) && rawInputPrompt !== null) ?
+                                       (rawInputPrompt.base_input ?
+                                         `Base: "${rawInputPrompt.base_input}", UC: "${rawInputPrompt.base_uc || ''}", Characters: ${rawInputPrompt.chara ? rawInputPrompt.chara.length : 0}` :
+                                         Array.isArray(rawInputPrompt) ? rawInputPrompt.join(', ') : JSON.stringify(rawInputPrompt)) :
+                                     String(rawInputPrompt || '');
             
             if (!model) {
                 this.sendError(ws, 'Model is required', 'MISSING_MODEL', message.requestId);
@@ -9408,7 +9467,8 @@ class WebSocketMessageHandlers {
                 model: model,
                 max_resolution: maxResolution || false,
                 sessionMode: sessionMode || 'analyse',
-                userIntent: requestUserIntent || ''
+                userIntent: requestUserIntent || '',
+                high_reason: highReason || false
             };
             
             const sessionId = createDirectorSession(sessionData);
@@ -9560,7 +9620,7 @@ class WebSocketMessageHandlers {
                         '',
                         'User Inputs:',
                         (userIntent ? ` * User Intent: ${userIntent}` : ''),
-                        (inputPrompt ? ` * Input Prompt: ${Array.isArray(inputPrompt) ? inputPrompt.join(', ') : inputPrompt}` : ''),
+                        (inputPromptDisplay ? ` * Input Prompt: ${inputPromptDisplay}` : ''),
                         '',
                         'Response Object Keys:',
                         ' * Description',
@@ -9620,14 +9680,14 @@ class WebSocketMessageHandlers {
             });
             
             // Process the initial AI request asynchronously
-            this.processInitialDirectorRequest(sessionId, ws, inputPrompt, inputUc);
+            this.processInitialDirectorRequest(sessionId, ws, inputPromptForAI, highReason);
         } catch (error) {
             console.error('❌ Error creating Director session:', error);
             this.sendError(ws, 'Failed to create Director session', error.message, message.requestId);
         }
     }
 
-    async processInitialDirectorRequest(sessionId, ws, inputPrompt, inputUc) {
+    async processInitialDirectorRequest(sessionId, ws, inputPromptForAI, highReason) {
         try {
             console.log('🔄 Processing initial Director AI request for session:', sessionId);
             
@@ -9642,8 +9702,8 @@ class WebSocketMessageHandlers {
             const aiResponse = await this.callDirectorAIWithContext(sessionId, {
                 content: '',
                 messageType: 'initial',
-                inputPrompt: inputPrompt,
-                inputUc: inputUc
+                inputPrompt: inputPromptForAI,
+                highReason: highReason
             });
             
             // Store the assistant response
@@ -9781,7 +9841,7 @@ class WebSocketMessageHandlers {
 
     async handleDirectorSendMessage(ws, message, clientInfo, wsServer) {
         try {
-            const { sessionId, content, messageType, vibeTransfers, baseImageData, lastGeneratedImageFilename, inputPrompt } = message;
+            const { sessionId, content, messageType, vibeTransfers, baseImageData, lastGeneratedImageFilename, inputPrompt, highReason, characterReference } = message;
             
             if (!sessionId) {
                 this.sendError(ws, 'Session ID is required', 'MISSING_PARAMETERS', message.requestId);
@@ -9819,7 +9879,9 @@ class WebSocketMessageHandlers {
                     vibeTransfers,
                     baseImageData,
                     lastGeneratedImageFilename,
-                    inputPrompt
+                    inputPrompt,
+                    highReason,
+                    characterReference
                 });
                 
                 // Store the assistant response
@@ -9876,7 +9938,9 @@ class WebSocketMessageHandlers {
                 vibeTransfers = null,
                 baseImageData = null,
                 lastGeneratedImageFilename = null,
-                inputPrompt = null
+                inputPrompt = null,
+                highReason = false,
+                characterReference = null
             } = options;
             
             // Get session
@@ -9905,17 +9969,15 @@ class WebSocketMessageHandlers {
                 conversationMessages = messages;
             } else {
                 // Add current user message with context
-                let userPrompt = content;
-
                 if (messageType) {
                     switch (messageType) {
                         case 'change':
-                            messageContent.requestText = [`Modify the generation prompt based on user desires.`];
+                            messageContent.requestText = [`Modify the generation prompt based on user desires. Ensure prompt efficiency is maintained.`];
                             messageContent.inputText = [
                                 ' * User Input: ' + (content && content?.trim()?.length > 0 ? content : 'Progress the scene and enhance/exaggerate key character attributes.'),
                             ]
-                            if (inputPrompt && Array.isArray(inputPrompt)){
-                                messageContent.inputText.push(' * Current Prompt: [ ' + inputPrompt.map(e => '"' + e + '"').join(', ') + ' ]');
+                            if (inputPrompt && typeof inputPrompt === 'object' && inputPrompt.base_input) {
+                                messageContent.inputText.push(' * Current Prompt Structure: base_input="' + inputPrompt.base_input + '", base_uc="' + (inputPrompt.base_uc || '') + '", characters: ' + JSON.stringify(inputPrompt.chara || []));
                             }
                             messageContent.responseText = [
                                 ' * Description',
@@ -9941,12 +10003,10 @@ class WebSocketMessageHandlers {
                                 (content && content?.trim()?.length > 0) ? ' * User Intent: ' + content : '',
                                 ' * Analysis Focus: Evaluate prompt efficiency and suggest specific improvements',
                             ]
-                            if (inputPrompt && Array.isArray(inputPrompt) && inputPrompt.length > 0) {
-                                messageContent.inputText.push(' * Current Prompt to Analyze: [ ' + inputPrompt.map(e => '"' + e + '"').join(', ') + ' ]');
-                                messageContent.inputText.push(' * INSTRUCTION: Compare this prompt with the image result and provide detailed efficiency analysis');
+                            if (inputPrompt && typeof inputPrompt === 'object' && inputPrompt.base_input) {
+                                messageContent.inputText.push(' * Current Prompt Structure to Analyze: base_input="' + inputPrompt.base_input + '", base_uc="' + (inputPrompt.base_uc || '') + '", characters: ' + JSON.stringify(inputPrompt.chara || []));
                             } else if (inputPrompt && typeof inputPrompt === 'string' && inputPrompt.trim()){
                                 messageContent.inputText.push(' * Current Prompt to Analyze: ' + inputPrompt);
-                                messageContent.inputText.push(' * INSTRUCTION: Compare this prompt with the image result and provide detailed efficiency analysis');
                             } else {
                                 console.warn('Efficiency mode - no inputPrompt found:', inputPrompt);
                                 messageContent.inputText.push(' * WARNING: No prompt data available for efficiency analysis');
@@ -9973,6 +10033,12 @@ class WebSocketMessageHandlers {
                                      messageContent.inputText.push(`  - Vibe Transfer #${i + 1}: Strength ${strengthPercent}% (influence), IE: ${vibeTransfer.ie}% (detail extraction)`);
                                  }
                              }
+
+                             // Add character reference information
+                             if (characterReference) {
+                                 const styleText = characterReference.with_style ? 'with style transfer' : 'without style transfer';
+                                 messageContent.inputText.push(`**Character Reference Image:** Character reference for consistent character representation ${styleText}`);
+                             }
                             messageContent.responseText = [
                                 ' * Description',
                                 (lastGeneratedImageFilename ? ' * PrimaryFocus' : ''),
@@ -9998,8 +10064,10 @@ class WebSocketMessageHandlers {
                             messageContent.inputText = [
                                 (content && content?.trim()?.length > 0) ? ' * User Request: ' + content : '',
                             ]
-                            if (inputPrompt && Array.isArray(inputPrompt)){
-                                messageContent.inputText.push(' * Current Prompt: [ ' + inputPrompt.map(e => '"' + e + '"').join(', ') + ' ]');
+                            if (inputPrompt && typeof inputPrompt === 'object' && inputPrompt.base_input) {
+                                messageContent.inputText.push(' * Current Prompt Structure: base_input="' + inputPrompt.base_input + '", base_uc="' + (inputPrompt.base_uc || '') + '", characters: ' + JSON.stringify(inputPrompt.chara || []));
+                            } else if (inputPrompt && typeof inputPrompt === 'string' && inputPrompt.trim()){
+                                messageContent.inputText.push(' * Current Prompt: ' + inputPrompt);
                             }
                             messageContent.responseText = [
                                 ' * Description',
@@ -10264,7 +10332,104 @@ class WebSocketMessageHandlers {
                             console.error('❌ Error processing vibe transfers:', error);
                         }
                     }
-                }   
+                }
+
+                // Process character reference image
+                if (characterReference && characterReference.type && characterReference.id) {
+                    try {
+                        const charaRefData = characterReference;
+                        const styleText = charaRefData.with_style ? 'with style transfer' : 'without style transfer';
+
+                        userMessageContent.push({
+                            type: "text",
+                            text: `**Character Reference Image (${styleText}):**\nThis is a character reference image for maintaining consistent character representation. Extract character details (appearance, clothing, attributes) while ignoring environment/background. Focus on character identity and features. ${styleText === 'with style transfer' ? 'Style information should be transferred to maintain character recognition.' : 'Style information should be minimized for maximum flexibility.'} If a attribute in the text prompt is present its expected to override that attribute in the reference image.`
+                        });
+
+                        // Resolve character reference image path and read file
+                        let charaImageBuffer = null;
+                        let charaImagePath = null;
+
+                        switch (charaRefData.type) {
+                            case 'cache':
+                                charaImagePath = path.join(uploadCacheDir, charaRefData.id);
+                                if (fs.existsSync(charaImagePath)) {
+                                    charaImageBuffer = fs.readFileSync(charaImagePath);
+                                } else {
+                                    console.warn(`⚠️ Character reference cache image not found: ${charaImagePath}`);
+                                }
+                                break;
+                            case 'file':
+                                charaImagePath = path.join(imagesDir, charaRefData.filename || charaRefData.id);
+                                if (fs.existsSync(charaImagePath)) {
+                                    charaImageBuffer = fs.readFileSync(charaImagePath);
+                                } else {
+                                    console.warn(`⚠️ Character reference file not found: ${charaImagePath}`);
+                                }
+                                break;
+                            case 'vibe':
+                                // For vibe type, try to load from vibe cache directory
+                                const vibeCacheDir = path.join(cacheDir, 'vibe');
+                                const vibeFilePath = path.join(vibeCacheDir, `${charaRefData.id}.json`);
+                                if (fs.existsSync(vibeFilePath)) {
+                                    try {
+                                        const vibeData = JSON.parse(fs.readFileSync(vibeFilePath, 'utf8'));
+                                        if (vibeData.type === 'base64' && vibeData.image) {
+                                            charaImageBuffer = Buffer.from(vibeData.image, 'base64');
+                                        } else if (vibeData.type === 'cache' && vibeData.image) {
+                                            const cacheImagePath = path.join(uploadCacheDir, vibeData.image);
+                                            if (fs.existsSync(cacheImagePath)) {
+                                                charaImageBuffer = fs.readFileSync(cacheImagePath);
+                                            } else {
+                                                console.warn(`⚠️ Vibe cache image not found: ${cacheImagePath}`);
+                                            }
+                                        }
+                                    } catch (error) {
+                                        console.warn(`⚠️ Error reading vibe data for character reference: ${error.message}`);
+                                    }
+                                } else {
+                                    console.warn(`⚠️ Character reference vibe file not found: ${vibeFilePath}`);
+                                }
+                                break;
+                            default:
+                                console.warn(`⚠️ Unsupported character reference type: ${charaRefData.type}`);
+                        }
+
+                        if (charaImageBuffer) {
+                            // Strip PNG text chunks like other image processing
+                            charaImageBuffer = stripPngTextChunks(charaImageBuffer);
+
+                            // Resize image ensuring shortest edge is 448 (like other images)
+                            const metadata = await sharp(charaImageBuffer).metadata();
+                            const minDimension = Math.min(metadata.width, metadata.height);
+                            const scale = 448 / minDimension;
+                            const targetWidth = Math.round(metadata.width * scale);
+                            const targetHeight = Math.round(metadata.height * scale);
+
+                            charaImageBuffer = await sharp(charaImageBuffer)
+                                .resize(targetWidth, targetHeight)
+                                .jpeg({ quality: 85 })
+                                .toBuffer();
+
+                            const charaImageBase64 = charaImageBuffer.toString('base64');
+
+                            // Add the processed character reference image
+                            userMessageContent.push({
+                                type: "image_url",
+                                image_url: {
+                                    url: `data:image/jpeg;base64,${charaImageBase64}`,
+                                    detail: "high" // High detail for character reference
+                                }
+                            });
+
+                            console.log(`🎭 Added character reference to director prompt (${styleText}, ${targetWidth}x${targetHeight})`);
+                        } else {
+                            console.warn(`⚠️ Failed to load character reference image: ${charaRefData.type}:${charaRefData.id}`);
+                        }
+                    } catch (error) {
+                        console.error('❌ Error processing character reference:', error);
+                    }
+                }
+
                 conversationMessages = [...messages, {
                     role: 'user',
                     content: userMessageContent
@@ -10315,12 +10480,18 @@ class WebSocketMessageHandlers {
                 }
             }
 
+            // Set reasoning effort and timeout based on highReason
+            const reasoningEffort = highReason ? 'high' : 'low';
+            const timeout = highReason ? 360000 : 60000; // 6 minutes for high, 1 minute for low
+
+            console.log(`🧠 Using ${reasoningEffort} reasoning effort with ${timeout}ms timeout`);
+
             // Call the appropriate AI service based on selected provider
             let aiResponse;
             if (provider === 'grok') {
-                aiResponse = await this.callGrokAIWithContext(conversationMessages, selectedModel);
+                aiResponse = await this.callGrokAIWithContext(conversationMessages, selectedModel, reasoningEffort, timeout);
             } else if (provider === 'openai') {
-                aiResponse = await this.callChatGPTAIWithContext(conversationMessages, selectedModel);
+                aiResponse = await this.callChatGPTAIWithContext(conversationMessages, selectedModel, reasoningEffort, timeout);
             } else {
                 throw new Error(`Unsupported provider: ${provider}`);
             }
@@ -10332,16 +10503,18 @@ class WebSocketMessageHandlers {
         }
     }
     
-    async callGrokAIWithContext(messages, model) {
+    async callGrokAIWithContext(messages, model, reasoningEffort = 'low', timeout = 60000) {
         const { continueConversationWithContext } = require('./aiServices/grokService');
 
         // Pass the entire conversation context directly
         const chat = {
             messages: messages,
-            model: model || "grok-4"
+            model: model || "grok-4",
+            reasoningEffort: reasoningEffort,
+            timeout: timeout
         };
 
-        console.log(`🎯 Calling Grok AI with model: ${model}`);
+        console.log(`🎯 Calling Grok AI with model: ${model}, reasoning: ${reasoningEffort}, timeout: ${timeout}ms`);
 
         const response = await continueConversationWithContext(chat);
 
@@ -10351,17 +10524,21 @@ class WebSocketMessageHandlers {
         };
     }
     
-    async callChatGPTAIWithContext(messages, model) {
+    async callChatGPTAIWithContext(messages, model, reasoningEffort = 'low', timeout = 60000) {
         const { continueConversationWithContext } = require('./aiServices/chatgptService');
-        
+
         // Pass the entire conversation context directly
         const chat = {
             messages: messages,
-            model: model || "gpt-5-nano"
+            model: model || "gpt-5-nano",
+            reasoningEffort: reasoningEffort,
+            timeout: timeout
         };
-        
+
+        console.log(`🎯 Calling ChatGPT AI with model: ${model}, reasoning: ${reasoningEffort}, timeout: ${timeout}ms`);
+
         const response = await continueConversationWithContext(chat);
-        
+
         return {
             content: response,
             message: response
@@ -10671,6 +10848,66 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('❌ Error fetching IP blocking reasons:', error);
             this.sendError(ws, 'Failed to fetch IP blocking reasons', error.message, message.requestId);
+        }
+    }
+
+    // Reference Metadata Handlers
+    async handleUpdateReferenceMetadata(ws, message, clientInfo, wsServer) {
+        try {
+            const { filename, workspaceId, metadata } = message;
+
+            if (!filename || !workspaceId) {
+                this.sendError(ws, 'Missing required parameters', 'filename and workspaceId are required', message.requestId);
+                return;
+            }
+
+            if (!metadata || typeof metadata !== 'object') {
+                this.sendError(ws, 'Invalid metadata', 'metadata must be a valid object', message.requestId);
+                return;
+            }
+
+            const success = updateReferenceMetadata(filename, workspaceId, metadata);
+
+            this.sendToClient(ws, {
+                type: 'update_reference_metadata_response',
+                requestId: message.requestId,
+                data: {
+                    success: success,
+                    message: success ? 'Reference metadata updated successfully' : 'Failed to update reference metadata'
+                },
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            console.error('❌ Error updating reference metadata:', error);
+            this.sendError(ws, 'Failed to update reference metadata', error.message, message.requestId);
+        }
+    }
+
+    async handleDeleteReferenceMetadata(ws, message, clientInfo, wsServer) {
+        try {
+            const { filename, workspaceId } = message;
+
+            if (!filename || !workspaceId) {
+                this.sendError(ws, 'Missing required parameters', 'filename and workspaceId are required', message.requestId);
+                return;
+            }
+
+            const success = deleteReferenceMetadata(filename, workspaceId);
+
+            this.sendToClient(ws, {
+                type: 'delete_reference_metadata_response',
+                requestId: message.requestId,
+                data: {
+                    success: success,
+                    message: success ? 'Reference metadata deleted successfully' : 'Failed to delete reference metadata'
+                },
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            console.error('❌ Error deleting reference metadata:', error);
+            this.sendError(ws, 'Failed to delete reference metadata', error.message, message.requestId);
         }
     }
 }

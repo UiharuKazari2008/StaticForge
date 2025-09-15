@@ -66,6 +66,245 @@ class BannerManager {
     hideWebSocketBanner() {
         this.hideWebSocketToast();
     }
+
+    // Ticker methods for status display
+    showWebSocketTicker(status, message, iconClass = 'fas fa-info-circle', autoHide = true, hideDelay = 3000) {
+        const tickers = document.querySelectorAll('.websocket-ticker');
+        const tickerIcons = document.querySelectorAll('.websocket-ticker-icon');
+        const tickerTexts = document.querySelectorAll('.websocket-ticker-text');
+
+        if (tickers.length === 0 || tickerIcons.length === 0 || tickerTexts.length === 0) {
+            console.warn('WebSocket ticker elements not found');
+            return;
+        }
+
+        // Clear any existing hide timeout
+        if (this.tickerHideTimeout) {
+            clearTimeout(this.tickerHideTimeout);
+        }
+
+        // Update all ticker elements
+        tickers.forEach(ticker => {
+            ticker.className = `websocket-ticker expanded ${status}`;
+        });
+        tickerIcons.forEach(icon => {
+            icon.className = `fas websocket-ticker-icon ${iconClass}`;
+        });
+        tickerTexts.forEach(text => {
+            text.textContent = message;
+        });
+
+        // Auto-hide if requested
+        if (autoHide) {
+            this.tickerHideTimeout = setTimeout(() => {
+                this.hideWebSocketTicker();
+                // After hiding connection status, check if we should show pending requests
+                if (window.wsClient && window.wsClient.pendingRequestsCount > 0) {
+                    setTimeout(() => window.wsClient.updateTickerDisplay(), 50);
+                }
+            }, hideDelay);
+        }
+    }
+
+    updateWebSocketTicker(status, message, iconClass = 'fas fa-info-circle') {
+        const tickers = document.querySelectorAll('.websocket-ticker');
+        const tickerIcons = document.querySelectorAll('.websocket-ticker-icon');
+        const tickerTexts = document.querySelectorAll('.websocket-ticker-text');
+
+        if (tickers.length === 0 || tickerIcons.length === 0 || tickerTexts.length === 0) {
+            return;
+        }
+
+        // Update all ticker elements
+        tickers.forEach(ticker => {
+            ticker.className = `websocket-ticker expanded ${status}`;
+        });
+        tickerIcons.forEach(icon => {
+            icon.className = `fas websocket-ticker-icon ${iconClass}`;
+        });
+        tickerTexts.forEach(text => {
+            text.textContent = message;
+        });
+    }
+
+    hideWebSocketTicker() {
+        const tickers = document.querySelectorAll('.websocket-ticker');
+
+        if (tickers.length === 0) {
+            return;
+        }
+
+        // Clear any existing hide timeout
+        if (this.tickerHideTimeout) {
+            clearTimeout(this.tickerHideTimeout);
+            this.tickerHideTimeout = null;
+        }
+
+        // Hide all ticker elements
+        tickers.forEach(ticker => {
+            ticker.classList.remove('expanded');
+        });
+    }
+
+    // Format request type for user-friendly display
+    formatRequestType(requestType) {
+        const typeMap = {
+            // Core image operations
+            'generate_image': 'Generate Image',
+            'upscale_image': 'Upscale Image',
+            'reroll_image': 'Reroll Image',
+
+            // Preset operations
+            'search_presets': 'Find Presets',
+            'load_preset': 'Load Preset',
+            'save_preset': 'Save Preset',
+            'delete_preset': 'Delete Preset',
+            'get_presets': 'Get Presets',
+            'update_preset': 'Update Preset',
+            'generate_preset': 'Generate Preset',
+            'regenerate_preset_uuid': 'Regenerate Preset',
+
+            // Dataset and tag operations
+            'search_dataset_tags': 'Find Dataset Tags',
+            'get_dataset_tags_for_path': 'Get Dataset Tags',
+            'search_tags': 'Find Tags',
+            'search_files': 'Find Images',
+            'search_characters': 'Find Characters',
+
+            // Workspace operations
+            'workspace_list': 'Get Workspaces',
+            'workspace_get': 'Get Workspace',
+            'workspace_create': 'Create Workspace',
+            'workspace_rename': 'Rename Workspace',
+            'workspace_delete': 'Delete Workspace',
+            'workspace_activate': 'Activate Workspace',
+            'workspace_dump': 'Dump Workspace',
+            'workspace_get_files': 'Get Workspace Files',
+            'workspace_move_files': 'Move Files',
+            'workspace_get_scraps': 'Get Scraps',
+            'workspace_get_pinned': 'Get Pinned',
+            'workspace_add_scrap': 'Add Scrap',
+            'workspace_remove_scrap': 'Remove Scrap',
+            'workspace_add_pinned': 'Add Pinned',
+            'workspace_remove_pinned': 'Remove Pinned',
+            'workspace_bulk_pinned': 'Bulk Pin',
+            'workspace_bulk_remove_pinned': 'Bulk Remove Pinned',
+            'workspace_get_groups': 'Get Groups',
+            'workspace_create_group': 'Create Group',
+            'workspace_get_group': 'Get Group',
+            'workspace_rename_group': 'Rename Group',
+            'workspace_add_images_to_group': 'Add to Group',
+            'workspace_remove_images_from_group': 'Remove from Group',
+            'workspace_delete_group': 'Delete Group',
+            'workspace_get_image_groups': 'Get Image Groups',
+            'workspace_update_color': 'Update Color',
+            'workspace_update_background_color': 'Update Background',
+            'workspace_update_settings': 'Update Settings',
+            'workspace_update_primary_font': 'Update Font',
+            'workspace_update_textarea_font': 'Update Text Font',
+            'workspace_reorder': 'Reorder Workspaces',
+            'workspace_bulk_add_scrap': 'Bulk Add Scraps',
+            'workspace_bulk_add_pinned': 'Bulk Add Pinned',
+
+            // Bulk operations
+            'delete_images_bulk': 'Delete Images',
+            'send_to_sequenzia_bulk': 'Send to Sequenzia',
+            'update_image_preset_bulk': 'Update Image Presets',
+
+            // Reference operations
+            'get_references': 'Get References',
+            'get_references_by_ids': 'Get References',
+            'get_workspace_references': 'Get Workspace References',
+            'delete_reference': 'Delete Reference',
+            'upload_reference': 'Upload Reference',
+            'replace_reference': 'Replace Reference',
+            'upload_workspace_image': 'Upload Image',
+            'download_url_file': 'Download File',
+            'fetch_url_info': 'Fetch URL Info',
+            'move_references': 'Move References',
+
+            // Vibe operations
+            'get_vibe_image': 'Get Vibe Image',
+            'delete_vibe_image': 'Delete Vibe Image',
+            'delete_vibe_encodings': 'Delete Encodings',
+            'bulk_delete_vibe_images': 'Bulk Delete Vibe Images',
+            'move_vibe_image': 'Move Vibe Image',
+            'bulk_move_vibe_images': 'Bulk Move Vibe Images',
+            'encode_vibe': 'Encode Vibe',
+            'import_vibe_bundle': 'Import Vibe Bundle',
+            'check_vibe_encoding': 'Check Vibe Encoding',
+
+            // Cache and system operations
+            'get_cache_manifest': 'Get Cache Manifest',
+            'refresh_server_cache': 'Refresh Cache',
+            'broadcast_resource_update': 'Update Resources',
+            'ping': 'Ping Server',
+
+            // App and settings operations
+            'get_app_options': 'Get Settings',
+            'get_rate_limiting_stats': 'Get Rate Stats',
+            'get_session_rate_limiting_stats': 'Get Session Stats',
+            'cancel_pending_requests': 'Cancel Requests',
+            'cancel_session_pending_requests': 'Cancel Session Requests',
+
+            // Favorites operations
+            'favorites_add': 'Add Favorite',
+            'favorites_remove': 'Remove Favorite',
+            'favorites_get': 'Get Favorites',
+
+            // Text replacement operations
+            'get_text_replacements': 'Get Text Replacements',
+            'save_text_replacements': 'Save Text Replacements',
+            'delete_text_replacement': 'Delete Text Replacement',
+            'create_text_replacement': 'Create Text Replacement',
+
+            // Gallery operations
+            'request_gallery': 'Get Gallery',
+            'request_image_metadata': 'Get Image Metadata',
+            'request_url_upload_metadata': 'Get Upload Metadata',
+            'request_image_by_index': 'Get Image',
+            'find_image_index': 'Find Image',
+
+            // Persona operations
+            'get_persona_settings': 'Get Persona Settings',
+            'save_persona_settings': 'Save Persona Settings',
+
+            // Chat operations
+            'create_chat_session': 'Create Chat Session',
+            'get_chat_sessions': 'Get Chat Sessions',
+            'get_chat_session': 'Get Chat Session',
+            'delete_chat_session': 'Delete Chat Session',
+            'restart_chat_session': 'Restart Chat Session',
+            'send_chat_message': 'Send Chat Message',
+            'get_chat_messages': 'Get Chat Messages',
+
+            // AI operations
+            'update_chat_model': 'Update Chat Model',
+            'cancel_generation': 'Cancel Generation',
+            'get_openai_models': 'Get OpenAI Models',
+            'get_grok_models': 'Get Grok Models',
+
+            // Director operations
+            'director_get_sessions': 'Get Director Sessions',
+            'director_create_session': 'Create Director Session',
+            'director_get_session': 'Get Director Session',
+            'director_delete_session': 'Delete Director Session',
+            'director_send_message': 'Send Director Message',
+            'director_get_messages': 'Get Director Messages',
+            'director_rollback_message': 'Rollback Message',
+
+            // Security operations
+            'get_blocked_ips': 'Get Blocked IPs',
+            'unblock_ip': 'Unblock IP',
+            'export_ip_to_gateway': 'Export IP',
+            'get_ip_blocking_reasons': 'Get Block Reasons',
+
+            // Utility operations
+            'spellcheck_add_word': 'Add Word'
+        };
+
+        return typeMap[requestType] || requestType;
+    }
     
     updateWebSocketBanner(status, message, icon) {
         this.updateWebSocketToast(status, message, icon);
@@ -100,8 +339,7 @@ class WebSocketClient {
         
         // Pending requests tracking
         this.pendingRequestsCount = 0;
-        this.pendingRequestsSpinner = null;
-        this.pendingRequestsBadge = null;
+        this.completionTimer = null;
 
         // WebSocket indicator elements
         this.websocketIndicators = {
@@ -245,6 +483,47 @@ class WebSocketClient {
         this.initializationCompleted = false;
     }
 
+    // Method to clear pending requests by type
+    clearPendingRequestsByType(requestType) {
+        if (!this.pendingRequests) return 0;
+
+        let clearedCount = 0;
+        for (const [requestId, request] of this.pendingRequests) {
+            if (request.type === requestType) {
+                // Clear timeout if it exists
+                if (request.timeoutId) {
+                    clearTimeout(request.timeoutId);
+                }
+                this.pendingRequests.delete(requestId);
+                clearedCount++;
+            }
+        }
+
+        // Update the counter
+        for (let i = 0; i < clearedCount; i++) {
+            this.decrementPendingRequests();
+        }
+
+        if (clearedCount > 0) {
+            console.log(`🧹 Cleared ${clearedCount} pending ${requestType} requests`);
+        }
+
+        return clearedCount;
+    }
+
+    // Method to get pending requests by type
+    getPendingRequestsByType(requestType) {
+        if (!this.pendingRequests) return 0;
+
+        let count = 0;
+        for (const [requestId, request] of this.pendingRequests) {
+            if (request.type === requestType) {
+                count++;
+            }
+        }
+        return count;
+    }
+
     // Method to get current WebSocket client status
     getStatus() {
         return {
@@ -257,6 +536,7 @@ class WebSocketClient {
             totalInitSteps: this.totalInitSteps,
             currentInitStep: this.currentInitStep,
             pendingRequestsCount: this.pendingRequestsCount,
+            pendingPingRequests: this.getPendingRequestsByType('ping'),
             isManualClose: this.isManualClose,
             circuitBreaker: this.circuitBreaker,
             lastConnectionAttempt: this.lastConnectionAttempt,
@@ -279,7 +559,7 @@ class WebSocketClient {
         }
 
         // Use the existing sendMessage pattern that the client already uses
-        return this.sendMessage('get_cache_manifest');
+        return this.sendMessage('get_cache_manifest', {}, false); // Background operation
     }
 
     async executeInitSteps() {
@@ -392,8 +672,8 @@ class WebSocketClient {
         this.isConnecting = true;
         this.updateLoadingProgress('Checking connection...', 0);
         
-        // Show connecting toast
-            this.bannerManager.showWebSocketToast('connecting', 'Connecting...', '<i class="fas fa-signal"></i>');
+        // Show connecting ticker (don't auto-hide until connected)
+            this.bannerManager.showWebSocketTicker('connecting', 'Connecting...', 'fa-signal', false);
             this.updateWebSocketStatus('connecting');
 
         try {
@@ -407,12 +687,12 @@ class WebSocketClient {
 
                 // If we're already in circuit breaker mode, don't retry immediately
                 if (this.circuitBreaker) {
-                    this.bannerManager.updateWebSocketToast('error', pingError.message, '<i class="fas fa-exclamation-triangle"></i>');
+                    this.bannerManager.showWebSocketTicker('error', pingError.message, 'fa-exclamation-triangle', false);
                     return;
                 }
 
-                // Show ping failure toast and trigger reconnection
-                this.bannerManager.updateWebSocketToast('error', 'Server not responding. Retrying...', '<i class="fas fa-exclamation-triangle"></i>');
+                // Show ping failure ticker and trigger reconnection (don't auto-hide until connected)
+                this.bannerManager.showWebSocketTicker('error', 'Server Not Responding', 'fa-exclamation-triangle', false);
 
                 // Retry connection after a delay
                 setTimeout(() => {
@@ -436,12 +716,9 @@ class WebSocketClient {
                 this.reconnectDelay = 1000;
                 this.circuitBreaker = false; // Reset circuit breaker on successful connection
                 
-                // Show connected toast and auto-hide after 3 seconds
-                this.bannerManager.updateWebSocketToast('connected', 'Connected to server', '<i class="fas fa-plug"></i>');
+                // Show connected ticker and auto-hide after 3 seconds
+                this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-plug', true, 3000);
                 this.updateWebSocketStatus('connected');
-                setTimeout(() => {
-                    this.bannerManager.hideWebSocketToast();
-                }, 3000);
 
                 // Restart health monitoring on successful connection
                 this.startHealthMonitoring();
@@ -509,6 +786,9 @@ class WebSocketClient {
                 }
                 
                 if (!this.isManualClose) {
+                    // Clear and fail all pending requests when connection is lost
+                    this.clearPendingRequests();
+
                     let disconnectMessage = 'Connection lost';
 
                     // Provide specific messaging based on close code
@@ -541,11 +821,11 @@ class WebSocketClient {
                     // Only show reconnecting message if we're not in circuit breaker mode
                     if (!this.circuitBreaker) {
                         disconnectMessage += '. Reconnecting...';
-                        this.bannerManager.updateWebSocketToast('warning', disconnectMessage, '<i class="fas fa-sync-alt"></i>');
+                        this.bannerManager.showWebSocketTicker('warning', disconnectMessage, 'fa-sync-alt', false);
                         this.reconnect();
                     } else {
                         disconnectMessage += '. Server may be unavailable.';
-                        this.bannerManager.updateWebSocketToast('error', disconnectMessage, '<i class="fas fa-exclamation-triangle"></i>', true);
+                        this.bannerManager.showWebSocketTicker('error', disconnectMessage, 'fa-exclamation-triangle', false);
                     }
                 }
                 
@@ -563,34 +843,32 @@ class WebSocketClient {
                 }
 
                 if (!this.isManualClose) {
-                    let errorMessage = 'Connection error occurred';
+                    let errorMessage = '';
                     let shouldRetry = true;
 
                     // Categorize the error for better user messaging
                     if (error.target && error.target.readyState === WebSocket.CLOSED) {
-                        errorMessage = 'Connection was closed unexpectedly';
+                        errorMessage = 'Connection Closed Unexpectedly';
                     } else if (error.target && error.target.readyState === WebSocket.CONNECTING) {
-                        errorMessage = 'Failed to establish connection';
+                        errorMessage = 'Connection Failed';
                     } else {
-                        errorMessage = 'Network connection error';
+                        errorMessage = 'Network Connection Error';
                     }
 
                     // If we're in circuit breaker mode, don't show retry message
                     if (this.circuitBreaker) {
-                        errorMessage += '. Server may be unavailable.';
+                        errorMessage += '. Server Unavailable';
                         shouldRetry = false;
                     } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-                        errorMessage += '. Max retry attempts reached.';
+                        errorMessage += '. Max Retry Attempts Reached';
                         shouldRetry = false;
-                    } else {
-                        errorMessage += '. Retrying...';
                     }
 
-                    this.bannerManager.updateWebSocketToast(
+                    this.bannerManager.showWebSocketTicker(
                         'error',
                         errorMessage,
-                        '<i class="fas fa-exclamation-triangle"></i>',
-                        !shouldRetry // Don't auto-hide if we're not retrying
+                        'fa-exclamation-triangle',
+                        false // Don't auto-hide
                     );
                 }
             };
@@ -598,8 +876,39 @@ class WebSocketClient {
         } catch (error) {
             console.error('❌ Failed to create WebSocket connection:', error);
             this.isConnecting = false;
-            this.bannerManager.updateWebSocketToast('error', 'Failed to connect', '<i class="fas fa-times-circle"></i>');
+            this.bannerManager.showWebSocketTicker('error', 'Connection Failure', 'fa-times-circle', false);
         }
+    }
+
+    // Clear all pending requests and fail them with connection error
+    clearPendingRequests() {
+        if (!this.pendingRequests) return;
+
+        const connectionError = new Error('Connection lost - request cancelled');
+
+        // Fail all pending requests
+        for (const [requestId, request] of this.pendingRequests) {
+            try {
+                // Clear timeout if it exists
+                if (request.timeoutId) {
+                    clearTimeout(request.timeoutId);
+                }
+
+                // Reject the promise with connection error
+                if (request.reject) {
+                    request.reject(connectionError);
+                }
+
+                console.warn(`❌ Failed pending request ${requestId} (${request.type}): Connection lost`);
+            } catch (error) {
+                console.error(`❌ Error failing request ${requestId}:`, error);
+            }
+        }
+
+        // Clear the pending requests map
+        this.pendingRequests.clear();
+        this.pendingRequestsCount = 0;
+        this.updatePendingRequestsSpinner();
     }
 
     disconnect() {
@@ -607,9 +916,8 @@ class WebSocketClient {
         this.stopPingInterval();
         this.stopHealthMonitoring(); // Stop health monitoring on disconnect
 
-        // Reset pending requests count when disconnecting
-        this.pendingRequestsCount = 0;
-        this.updatePendingRequestsSpinner();
+        // Clear and fail all pending requests
+        this.clearPendingRequests();
 
         if (this.ws) {
             this.ws.close(1000, 'Manual disconnect');
@@ -655,6 +963,12 @@ class WebSocketClient {
                 0,
                 '<button onclick="window.wsClient.manualReconnect()" class="retry-btn" style="margin-left: 10px; padding: 5px 10px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer;">Retry Now</button>'
             );
+            this.bannerManager.showWebSocketTicker(
+                'error',
+                'Connection Failed',
+                'fa-exclamation-triangle',
+                false // Don't auto-hide
+            );
             return;
         }
 
@@ -689,8 +1003,8 @@ class WebSocketClient {
         this.circuitBreaker = false;
         this.lastConnectionAttempt = 0;
 
-        // Show connecting toast
-        this.bannerManager.updateWebSocketToast('connecting', 'Reconnecting...', '<i class="fas fa-signal"></i>');
+        // Show connecting ticker (don't auto-hide until connected)
+        this.bannerManager.showWebSocketTicker('connecting', 'Reconnecting...', 'fa-signal', false);
 
         // Attempt connection
         this.connect();
@@ -776,8 +1090,9 @@ class WebSocketClient {
     }
 
     ping() {
-        this.send({ type: 'ping' });
-        
+        // Send ping as background operation (don't show in ticker)
+        this.sendMessage('ping', {}, false);
+
         // Set ping timeout
         this.pingTimeout = setTimeout(() => {
             console.warn('⚠️ Ping timeout, reconnecting...');
@@ -1007,17 +1322,15 @@ class WebSocketClient {
     }
 
     handleAuthError(message) {
-        // Show authentication error toast (won't auto-hide)
-        this.bannerManager.updateWebSocketToast('error', 'Authentication required. Please log in.', '<i class="fas fa-lock"></i>');
-        
+        // Show authentication error ticker (won't auto-hide)
+        this.bannerManager.showWebSocketTicker('error', 'Authentication Required', 'fa-lock', false);
+
         // Trigger authentication event for other parts of the app to handle
         this.triggerEvent('authentication_required', message);
-        
+
         // Show PIN modal for authentication
         if (typeof window.showPinModal === 'function') {
             window.showPinModal().then(() => {
-                // After successful login, hide the toast and reconnect WebSocket
-                this.bannerManager.hideWebSocketToast();
                 this.forceReconnect();
             }).catch((error) => {
                 console.error('❌ PIN modal error:', error);
@@ -1281,7 +1594,7 @@ class WebSocketClient {
                 if (error) {
                     console.error('Image by index request callback error:', error);
                 }
-            });
+            }, false);
             return result;
         } catch (error) {
             showGlassToast('error', 'Image by index request error', error.message, false);
@@ -1296,7 +1609,7 @@ class WebSocketClient {
                 if (error) {
                     console.error('Find image index callback error:', error);
                 }
-            });
+            }, false);
             return result;
         } catch (error) {
             showGlassToast('error', 'Find image index error', error.message, false);
@@ -1681,6 +1994,14 @@ class WebSocketClient {
         return this.sendMessage('move_references', { hashes, targetWorkspaceId, sourceWorkspaceId });
     }
 
+    async updateReferenceMetadata(filename, workspaceId, metadata) {
+        return this.sendMessage('update_reference_metadata', { filename, workspaceId, metadata });
+    }
+
+    async deleteReferenceMetadata(filename, workspaceId) {
+        return this.sendMessage('delete_reference_metadata', { filename, workspaceId });
+    }
+
     async getVibeImage(filename) {
         return this.sendMessage('get_vibe_image', { filename });
     }
@@ -1722,11 +2043,66 @@ class WebSocketClient {
     }
 
     async pingWithAuth() {
-        return this.sendMessage('ping');
+        return new Promise((resolve, reject) => {
+            // Enhanced connection validation
+            if (!this.isConnectionHealthy()) {
+                const error = new Error('WebSocket connection not healthy');
+                error.code = 'CONNECTION_UNHEALTHY';
+                reject(error);
+                return;
+            }
+
+            const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const message = {
+                type: 'ping',
+                requestId
+            };
+
+            // Store pending request with timestamp
+            this.pendingRequests = this.pendingRequests || new Map();
+            this.pendingRequests.set(requestId, {
+                resolve,
+                reject,
+                type: 'ping',
+                showBanner: false,
+                timestamp: Date.now()
+            });
+
+            // Increment pending requests count
+            this.incrementPendingRequests();
+
+            try {
+                this.send(message);
+
+                // Set timeout for ping requests
+                const timeoutMs = 2000; // 2 seconds for ping requests
+                const timeoutId = setTimeout(() => {
+                    if (this.pendingRequests.has(requestId)) {
+                        const request = this.pendingRequests.get(requestId);
+                        this.pendingRequests.delete(requestId);
+                        this.decrementPendingRequests();
+
+                        console.warn(`⚠️ Ping request timeout (ID: ${requestId}) after 2000ms`);
+                        const timeoutError = new Error('Ping request timeout after 2000ms');
+                        timeoutError.code = 'PING_TIMEOUT';
+                        timeoutError.requestId = requestId;
+                        reject(timeoutError);
+                    }
+                }, timeoutMs);
+
+                // Store timeout ID for cleanup
+                this.pendingRequests.get(requestId).timeoutId = timeoutId;
+
+            } catch (error) {
+                this.pendingRequests.delete(requestId);
+                this.decrementPendingRequests();
+                reject(error);
+            }
+        });
     }
 
     async refreshServerCache() {
-        return this.sendMessage('refresh_server_cache');
+        return this.sendMessage('refresh_server_cache', {}, false); // Background operation
     }
     
     async broadcastResourceUpdate(updateType, message, files = []) {
@@ -1735,7 +2111,7 @@ class WebSocketClient {
 
     // Chat system methods
     async getPersonaSettings() {
-        return this.sendMessage('get_persona_settings', {});
+        return this.sendMessage('get_persona_settings', {}, false); // Background operation
     }
 
     async savePersonaSettings(settings) {
@@ -1781,11 +2157,11 @@ class WebSocketClient {
 
     // Get available models
     async getOpenAIModels() {
-        return this.sendMessage('get_openai_models', {});
+        return this.sendMessage('get_openai_models', {}, false); // Background operation
     }
 
     async getGrokModels() {
-        return this.sendMessage('get_grok_models', {});
+        return this.sendMessage('get_grok_models', {}, false); // Background operation
     }
 
     // IP Management methods
@@ -1802,7 +2178,7 @@ class WebSocketClient {
     }
 
     async getIPBlockingReasons(ip) {
-        return this.sendMessage('get_ip_blocking_reasons', { ip });
+        return this.sendMessage('get_ip_blocking_reasons', { ip }, false); // Background operation
     }
 
     // Wait for connection to be established with better validation
@@ -1856,7 +2232,7 @@ class WebSocketClient {
     }
 
     // Send message with request/response handling
-    sendMessage(type, data = {}) {
+    sendMessage(type, data = {}, showBanner = true) {
         return new Promise((resolve, reject) => {
             // Enhanced connection validation
             if (!this.isConnectionHealthy()) {
@@ -1873,32 +2249,63 @@ class WebSocketClient {
                 ...data
             };
 
-            // Store pending request
+            // Store pending request with timestamp
             this.pendingRequests = this.pendingRequests || new Map();
-            this.pendingRequests.set(requestId, { resolve, reject });
+            this.pendingRequests.set(requestId, {
+                resolve,
+                reject,
+                type,
+                showBanner,
+                timestamp: Date.now()
+            });
 
             // Increment pending requests count
             this.incrementPendingRequests();
 
             try {
                 this.send(message);
+                
+                if (message.type === 'ping') {
+                    return;
+                }
 
-                // Add request timeout handling
+                // Set timeout based on request type - critical requests should fail fast
+                let timeoutMs = 30000; // Default 30 seconds
+
+                // Critical initialization requests should fail fast if server is not ready
+                if (message.type === 'get_app_options') {
+                    timeoutMs = 500; // 5 seconds for critical requests
+                }
+
                 const timeoutId = setTimeout(() => {
                     if (this.pendingRequests.has(requestId)) {
                         const request = this.pendingRequests.get(requestId);
+                        const requestAge = Date.now() - request.timestamp;
+
                         this.pendingRequests.delete(requestId);
                         this.decrementPendingRequests();
 
-                        console.warn(`⚠️ Request timeout for ${message.type} (ID: ${requestId})`);
+                        console.warn(`⚠️ Request timeout for ${message.type} (ID: ${requestId}) after ${requestAge}ms`);
 
-                        const timeoutError = new Error(`Request timeout after 30 seconds`);
+                        // Log additional debugging information
+                        console.warn(`🔍 Timeout details:`, {
+                            requestType: message.type,
+                            requestId: requestId,
+                            connectionState: this.getConnectionState(),
+                            pendingRequestsCount: this.pendingRequests.size,
+                            totalPendingRequests: this.pendingRequestsCount,
+                            messageSize: JSON.stringify(message).length,
+                            expectedTimeout: timeoutMs
+                        });
+
+                        const timeoutError = new Error(`Request timeout after ${Math.round(requestAge / 1000)} seconds (${timeoutMs}ms expected)`);
                         timeoutError.code = 'REQUEST_TIMEOUT';
                         timeoutError.requestId = requestId;
                         timeoutError.requestType = message.type;
+                        timeoutError.requestAge = requestAge;
                         reject(timeoutError);
                     }
-                }, 30000); // 30 second timeout
+                }, timeoutMs);
 
                 // Store timeout ID for cleanup
                 this.pendingRequests.get(requestId).timeoutId = timeoutId;
@@ -1912,9 +2319,15 @@ class WebSocketClient {
     }
 
     // Send message with custom request ID and callback
-    sendMessageWithCallback(type, data = {}, callback = null) {
+    sendMessageWithCallback(type, data = {}, callback = null, showBanner = true) {
         return new Promise((resolve, reject) => {
             if (!this.isConnected()) {
+                console.error('❌ WebSocket not connected - rejecting request:', {
+                    type,
+                    connectionState: this.getConnectionState(),
+                    readyState: this.ws?.readyState,
+                    pendingRequests: this.pendingRequests.size
+                });
                 reject(new Error('WebSocket not connected'));
                 return;
             }
@@ -1928,10 +2341,12 @@ class WebSocketClient {
 
             // Store pending request with callback
             this.pendingRequests = this.pendingRequests || new Map();
-            this.pendingRequests.set(requestId, { 
-                resolve, 
-                reject, 
-                callback: callback || null 
+            this.pendingRequests.set(requestId, {
+                resolve,
+                reject,
+                callback: callback || null,
+                type,
+                showBanner
             });
 
             // Increment pending requests count
@@ -1948,7 +2363,7 @@ class WebSocketClient {
     }
 
     // Send message with existing request ID (for responses to specific requests)
-    sendMessageWithRequestId(type, requestId, data = {}) {
+    sendMessageWithRequestId(type, requestId, data = {}, showBanner = true) {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
@@ -1959,8 +2374,8 @@ class WebSocketClient {
                 this.pendingRequests = new Map();
             }
             
-            this.pendingRequests.set(requestId, { resolve, reject });
-            
+            this.pendingRequests.set(requestId, { resolve, reject, type, showBanner });
+
             // Increment pending requests count
             this.incrementPendingRequests();
 
@@ -2001,27 +2416,69 @@ class WebSocketClient {
         return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
-    // Update pending requests spinner
-    updatePendingRequestsSpinner() {
-        if (!this.pendingRequestsSpinner) {
-            this.pendingRequestsSpinner = document.querySelectorAll('#pendingRequestsSpinner, #manualPendingRequestsSpinner, #pendingRequestsSpinnerMenubar');
-            this.pendingRequestsBadge = document.querySelectorAll('#pendingRequestsBadge, #manualPendingRequestsBadge, #pendingRequestsBadgeMenubar');
-        }
+    // 🎯 SINGLE SOURCE OF TRUTH for ALL ticker display logic
+    updateTickerDisplay() {
+        // Update ticker badge
+        this.updateTickerBadge();
 
-        if (this.pendingRequestsSpinner && this.pendingRequestsBadge) {
-            if (this.pendingRequestsCount > 0) {
-                this.pendingRequestsSpinner.forEach(spinner => spinner.classList.remove('hidden'));
-                this.pendingRequestsBadge.forEach(badge => badge.textContent = this.pendingRequestsCount);
-            } else {
-                this.pendingRequestsSpinner.forEach(spinner => spinner.classList.add('hidden'));
+        if (this.pendingRequestsCount === 0) {
+            // No pending requests - show check mark for 2 seconds then close
+            const tickers = document.querySelectorAll('.websocket-ticker');
+            const tickerIcons = document.querySelectorAll('.websocket-ticker-icon');
+
+            if (tickers.length > 0 && tickerIcons.length > 0 && tickers[0].classList.contains('expanded')) {
+                // Clear any existing completion timer
+                if (this.completionTimer) {
+                    clearTimeout(this.completionTimer);
+                }
+
+                // Just update the icon to check mark (keep existing text)
+                tickerIcons.forEach(icon => {
+                    icon.className = 'fas websocket-ticker-icon fa-check';
+                });
+                // Update status class for green color
+                tickers.forEach(ticker => {
+                    ticker.className = 'websocket-ticker expanded success';
+                });
+
+                // Set timer to hide after 2 seconds
+                this.completionTimer = setTimeout(() => {
+                    // Only hide if there are still no pending requests
+                    if (this.pendingRequestsCount === 0) {
+                        this.bannerManager.hideWebSocketTicker();
+                        this.completionTimer = null;
+                    }
+                }, 2000);
             }
+        } else {
+            // Have pending requests - cancel any completion timer and show oldest request
+            if (this.completionTimer) {
+                clearTimeout(this.completionTimer);
+                this.completionTimer = null;
+            }
+            this.showOldestPendingRequest();
         }
+    }
+
+
+    updatePendingRequestsSpinner() {
+        this.updateTickerDisplay();
     }
 
     // Increment pending requests count
     incrementPendingRequests() {
         this.pendingRequestsCount++;
         this.updatePendingRequestsSpinner();
+    }
+
+    // Update ticker badge with current pending count
+    updateTickerBadge() {
+        const badges = document.querySelectorAll('.websocket-ticker-badge');
+        badges.forEach(badge => {
+            const count = this.pendingRequestsCount;
+            badge.textContent = count > 0 ? count : '';
+            badge.setAttribute('data-count', count);
+        });
     }
 
     // Initialize WebSocket indicator elements
@@ -2174,20 +2631,80 @@ class WebSocketClient {
         }
     }
 
+
+    // Show the oldest pending request in the ticker (prioritizing showBanner requests)
+    showOldestPendingRequest() {
+        if (!this.pendingRequests || this.pendingRequests.size === 0) {
+            return;
+        }
+
+        // Find the highest priority request (only showBanner: true requests)
+        let selectedRequest = null;
+        let selectedRequestId = null;
+
+        for (const [requestId, request] of this.pendingRequests) {
+            // Skip requests with showBanner: false
+            if (request.showBanner === false) {
+                continue;
+            }
+
+            if (!selectedRequest) {
+                // First request with showBanner: true we find
+                selectedRequest = request;
+                selectedRequestId = requestId;
+            } else if (request.showBanner && !selectedRequest.showBanner) {
+                // This request has banner priority (showBanner: true) and current selected doesn't
+                selectedRequest = request;
+                selectedRequestId = requestId;
+            }
+            // If both have same priority, keep the first one (oldest)
+        }
+
+        if (!selectedRequest || !selectedRequest.type) {
+            return;
+        }
+
+        // Format the request type for display
+        const displayName = this.bannerManager.formatRequestType(selectedRequest.type);
+
+        // Show in ticker with spinner
+        this.bannerManager.showWebSocketTicker('info', displayName, 'fa-spinner fa-spin', false);
+    }
+
     // Resolve pending request
     resolveRequest(requestId, data, error = null) {
         if (this.pendingRequests && this.pendingRequests.has(requestId)) {
             const request = this.pendingRequests.get(requestId);
             this.pendingRequests.delete(requestId);
-            
+
             // Clear timeout if it exists
             if (request.timeoutId) {
                 clearTimeout(request.timeoutId);
             }
-            
+
+            // Check if this was the currently displayed request BEFORE decrementing
+            const oldestRequestId = this.pendingRequests.size > 0 ?
+                this.pendingRequests.keys().next().value : null;
+            const wasDisplayedRequest = requestId === oldestRequestId;
+
             // Decrement pending requests count
             this.decrementPendingRequests();
-            
+
+            // Handle completion display if this was the currently displayed request
+            if (wasDisplayedRequest && request.type && request.showBanner !== false) {
+                // Show completion with check mark for 2 seconds (only if showBanner is true)
+                const displayName = this.bannerManager.formatRequestType(request.type);
+                this.bannerManager.showWebSocketTicker('success', displayName, 'fa-check', true, 2000);
+
+                // After completion display, update ticker to show next request or close
+                setTimeout(() => {
+                    this.updateTickerDisplay();
+                }, 2100);
+            } else {
+                // For non-displayed requests or requests with showBanner=false, just update the ticker display
+                this.updateTickerDisplay();
+            }
+                        
             // Execute callback if provided
             if (request.callback && typeof request.callback === 'function') {
                 try {
@@ -2293,7 +2810,7 @@ class WebSocketClient {
 
             if (!isHealthy) {
                 console.warn('⚠️ Connection health check failed, triggering reconnection');
-                this.bannerManager.showWebSocketToast('warning', 'Connection issues detected. Reconnecting...', '<i class="fas fa-exclamation-triangle"></i>');
+                this.bannerManager.showWebSocketTicker('warning', 'Connection Lost', 'fa-exclamation-triangle', false);
 
                 // Force reconnection
                 this.forceReconnect();

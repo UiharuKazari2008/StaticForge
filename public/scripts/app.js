@@ -3,95 +3,6 @@
 // Includes functions: showManualPreview, hideManualPreview, hideManualPreviewResponsive, clearManualForm,
 // collectManualFormValues, collectVibeTransferData, addSharedFieldsToRequestBody, etc.
 
-// DOM elements
-const manualModal = document.getElementById('manualModal');
-const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
-const manualGenerateBtn = document.getElementById('manualGenerateBtn');
-const manualForm = document.getElementById('manualForm');
-const closeManualBtn = document.getElementById('closeManualBtn');
-const manualPreviewCloseBtn = document.getElementById('manualPreviewCloseBtn');
-const openGenEditorBtn = document.getElementById('openGenEditorBtn');
-const generatePresetBtn = document.getElementById('generatePresetBtn');
-const presetSelect = document.getElementById('presetSelect');
-// GALLERY MANAGEMENT SYSTEM - Move to galleryManager.js or integrate with existing galleryView.js
-// This system handles gallery display, infinite scrolling, image management, and gallery navigation
-// Includes functions: clearGallery, loadGalleryFromIndex, displayGalleryFromStartIndex,
-// removeImageFromGallery, updateGalleryPinButtons, etc.
-// Note: Check galleryView.js for existing gallery functions before moving
-
-const gallery = document.getElementById('gallery');
-// bulkSelectAllBtn removed - now handled by context menu
-const cacheGallery = document.getElementById('cacheGallery');
-const loadingOverlay = document.getElementById('loadingOverlay');
-const confettiContainer = document.getElementById('confettiContainer');
-const manualModel = document.getElementById('manualModel');
-const manualPrompt = document.getElementById('manualPrompt');
-const manualUc = document.getElementById('manualUc');
-const manualResolution = document.getElementById('manualResolution');
-const manualSteps = document.getElementById('manualSteps');
-const manualGuidance = document.getElementById('manualGuidance');
-const manualSeed = document.getElementById('manualSeed');
-const manualSampler = document.getElementById('manualSampler');
-const manualRescale = document.getElementById('manualRescale');
-const manualRescaleOverlay = manualRescale?.parentElement?.querySelector('.percentage-input-overlay');
-const manualNoiseScheduler = document.getElementById('manualNoiseScheduler');
-const manualPresetName = document.getElementById('manualPresetName');
-const manualUpscale = document.getElementById('manualUpscale');
-const clearSeedBtn = document.getElementById('clearSeedBtn');
-const editSeedBtn = document.getElementById('editSeedBtn');
-const focusOverlay = document.getElementById('focus-overlay');
-let savedGalleryPosition = null;
-let galleryClearTimeout = null;
-const manualNoiseSchedulerDropdown = document.getElementById('manualNoiseSchedulerDropdown');
-const manualNoiseSchedulerDropdownBtn = document.getElementById('manualNoiseSchedulerDropdownBtn');
-const manualNoiseSchedulerDropdownMenu = document.getElementById('manualNoiseSchedulerDropdownMenu');
-
-// DROPDOWN MANAGEMENT SYSTEM - Move to manualDropdownManager.js
-// This system handles all manual generation dropdowns (model, sampler, noise scheduler, resolution, preset, etc.)
-// Includes functions: renderManualModelDropdown, selectManualModel, renderManualSamplerDropdown,
-// selectManualSampler, renderManualNoiseSchedulerDropdown, selectManualNoiseScheduler,
-// renderManualResolutionDropdown, renderCustomPresetDropdown, selectCustomPreset, etc.
-// Also includes renderSimpleDropdown utility function
-// NOTE: Some dropdown utilities like renderGroupedDropdown, openDropdown, closeDropdown already exist in dropdown.js
-const manualNoiseSchedulerSelected = document.getElementById('manualNoiseSchedulerSelected');
-const manualNoiseSchedulerHidden = document.getElementById('manualNoiseScheduler');
-let manualSelectedNoiseScheduler = '';
-const variationImage = document.getElementById('manualVariationImage');
-const manualResolutionDropdown = document.getElementById('manualResolutionDropdown');
-const manualResolutionDropdownBtn = document.getElementById('manualResolutionDropdownBtn');
-const manualResolutionDropdownMenu = document.getElementById('manualResolutionDropdownMenu');
-const manualResolutionSelected = document.getElementById('manualResolutionSelected');
-const manualResolutionHidden = document.getElementById('manualResolution');
-const manualCustomResolution = document.getElementById('manualCustomResolution');
-const manualCustomResolutionBtn = document.getElementById('manualCustomResolutionBtn');
-const previewSection = document.getElementById('manualPanelSection');
-const manualWidth = document.getElementById('manualWidth');
-const manualHeight = document.getElementById('manualHeight');
-let manualSelectedResolution = '';
-const manualResolutionGroup = document.getElementById('manualResolutionGroup');
-const customPresetDropdown = document.getElementById('customPresetDropdown');
-const customPresetDropdownBtn = document.getElementById('customPresetDropdownBtn');
-const customPresetDropdownMenu = document.getElementById('customPresetDropdownMenu');
-const customPresetSelected = document.getElementById('customPresetSelected');
-const clearPresetBtn = document.getElementById('clearPresetBtn');
-let selectedPreset = '';
-const manualSamplerDropdown = document.getElementById('manualSamplerDropdown');
-const manualSamplerDropdownBtn = document.getElementById('manualSamplerDropdownBtn');
-const manualSamplerDropdownMenu = document.getElementById('manualSamplerDropdownMenu');
-const manualSamplerSelected = document.getElementById('manualSamplerSelected');
-const manualSamplerHidden = document.getElementById('manualSampler');
-let manualSelectedSampler = '';
-const manualModelDropdown = document.getElementById('manualModelDropdown');
-const manualModelDropdownBtn = document.getElementById('manualModelDropdownBtn');
-const manualModelDropdownMenu = document.getElementById('manualModelDropdownMenu');
-const manualModelSelected = document.getElementById('manualModelSelected');
-const manualModelHidden = document.getElementById('manualModel');
-const customWidth = document.getElementById('manualCustomWidth');
-const customHeight = document.getElementById('manualCustomHeight');
-let manualSelectedModel = '';
-window.manualSelectedModel = manualSelectedModel;
-const manualPresetDeleteBtn = document.getElementById('manualDeleteBtn');
-
 // PRESET MANAGEMENT SYSTEM - Move to presetManagement.js or integrate with existing presetManager.js
 // This system handles preset loading, saving, validation, and management
 // Includes functions: loadPresetIntoForm, updatePresetLoadSaveState, validatePresetWithTimeout,
@@ -99,83 +10,14 @@ const manualPresetDeleteBtn = document.getElementById('manualDeleteBtn');
 // renderCustomPresetDropdown, selectCustomPreset, closeCustomPresetDropdown
 // Note: Some preset functions may already exist in presetManager.js - check for duplicates
 
-const searchToggleBtn = document.getElementById('searchToggleBtn');
 const presetAutocompleteOverlay = document.getElementById('presetAutocompleteOverlay');
 const presetAutocompleteList = document.querySelector('.preset-autocomplete-list');
-const metadataDialog = document.getElementById('metadataDialog');
-const closeMetadataDialog = document.getElementById('closeMetadataDialog');
-const dialogPromptBtn = document.getElementById('dialogPromptBtn');
-const dialogUcBtn = document.getElementById('dialogUcBtn');
-const dialogPromptExpanded = document.getElementById('dialogPromptExpanded');
-const dialogUcExpanded = document.getElementById('dialogUcExpanded');
-const dialogPromptContent = document.getElementById('dialogPromptContent');
-const dialogUcContent = document.getElementById('dialogUcContent');
-const deleteImageBaseBtn = document.getElementById('deleteImageBaseBtn');
-const previewBaseImageBtn = document.getElementById('previewBaseImageBtn');
-const transformationDropdown = document.getElementById('transformationDropdown');
-const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
-const transformationDropdownMenu = document.getElementById('transformationDropdownMenu');
-const manualPreviewDownloadBtn = document.getElementById('manualPreviewDownloadBtn');
-const manualPreviewCopyBtn = document.getElementById('manualPreviewCopyBtn');
-const manualPreviewUpscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
-const manualPreviewVariationBtn = document.getElementById('manualPreviewVariationBtn');
-const manualPreviewSeedBtn = document.getElementById('manualPreviewSeedBtn');
-const manualPreviewDeleteBtn = document.getElementById('manualPreviewDeleteBtn');
-const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
-const manualStrengthValue = document.getElementById('manualStrengthValue');
-const manualStrengthOverlay = manualStrengthValue?.parentElement?.querySelector('.percentage-input-overlay');
-const manualNoiseValue = document.getElementById('manualNoiseValue');
-const manualNoiseOverlay = manualNoiseValue?.parentElement?.querySelector('.percentage-input-overlay');
-const paidRequestToggle = document.getElementById('paidRequestToggle');
-const previewContainer = document.getElementById('manualPreviewContainer');
-const previewStars = document.getElementById('previewStars');
-const previewBackgroundLines = document.getElementById('previewBackgroundLines');
-const previewForegroundLines = document.getElementById('previewForegroundLines');
+
 
 let bypassConfirmation = false;
 let previewRatio = 1;
 // Function to calculate and set previewRatio based on container dimensions
-function calculatePreviewRatio() {
-    const container = document.querySelector('.manual-preview-image-container-inner');
-    if (!container) return 1;
-    
-    const computedStyle = getComputedStyle(container);
-    const width = parseFloat(computedStyle.width);
-    const height = parseFloat(computedStyle.height);
-    
-    if (width > 0 && height > 0) {
-        previewRatio = width / height;
-    }
-    
-    return previewRatio;
-}
 
-// Function to dynamically size manual preview container based on image aspect ratio
-function sizeManualPreviewContainer(imageWidth, imageHeight) {
-    const container = document.querySelector('.manual-preview-image-container-inner');
-    if (!container || !imageWidth || !imageHeight) return;
-    
-    const imageAspectRatio = imageWidth / imageHeight;
-    
-    // Reset container dimensions
-    container.style.width = '';
-    container.style.height = '';
-    
-    // Determine which dimension to constrain based on aspect ratio comparison
-    if (imageAspectRatio > previewRatio) {
-        // Image is wider than container ratio - constrain width
-        container.style.width = imageWidth + 'px';
-        container.style.height = '';
-    } else {
-        // Image is taller than container ratio - constrain height
-        container.style.width = '';
-        container.style.height = imageHeight + 'px';
-    }
-}
-
-// Global button handler registry
-const buttonHandlers = new Map();
-let nextButtonId = 1;
 
 // Global button click handler function
 function handleToastButtonClick(buttonId) {
@@ -217,265 +59,6 @@ const updateBlurredBackground = createAnimationAwareDebounce(async (imageUrl) =>
 // initializeManualPreviewLightbox, handleManualPreviewClick, handleManualPreviewScroll,
 // registerManualPreviewEventListeners, deregisterManualPreviewEventListeners,
 // updateManualPreviewNavigation, resetManualPreview, etc.
-function showManualPreview() {
-    if (window.innerWidth <= 1400) {
-        const previewSection = document.getElementById('manualPanelSection');
-        if (previewSection) {
-            previewSection.classList.add('active');
-        }
-        setTimeout(() => { 
-            manualModal.classList.add('show-preview'); 
-        }, 1);
-    }
-}
-
-function hideManualPreview() {
-    const previewSection = document.getElementById('manualPanelSection');
-    if (previewSection) {
-        previewSection.classList.remove('active');
-    }
-    manualModal.classList.remove('show-preview');
-}
-
-function hideManualPreviewResponsive() {
-    // For responsive behavior, use a delay to match the original timing
-    const previewSection = document.getElementById('manualPanelSection');
-    if (previewSection) {
-        previewSection.classList.remove('active');
-    }
-    setTimeout(() => { 
-        manualModal.classList.remove('show-preview'); 
-    }, 500);
-}
-const manualPresetToggleBtn = document.getElementById('manualPresetToggleBtn');
-const manualPresetToggleText = document.getElementById('manualPresetToggleText');
-const manualPresetToggleIcon = document.getElementById('manualPresetToggleIcon');
-const manualPresetGroup = document.getElementById('manualPresetGroup');
-const manualLoadBtn = document.getElementById('manualLoadBtn');
-const manualSaveBtn = document.getElementById('manualSaveBtn');
-const manualPreviewLoadBtn = document.getElementById('manualPreviewLoadBtn');
-const manualPreviewPinBtn = document.getElementById('manualPreviewPinBtn');
-const manualPreviewScrapBtn = document.getElementById('manualPreviewScrapBtn');
-const datasetDropdown = document.getElementById('datasetDropdown');
-const datasetDropdownBtn = document.getElementById('datasetDropdownBtn');
-const datasetDropdownMenu = document.getElementById('datasetDropdownMenu');
-const datasetSelected = document.getElementById('datasetSelected');
-const datasetIcon = document.getElementById('datasetIcon');
-const subTogglesBtn = document.getElementById('subTogglesBtn');
-const subTogglesDropdown = document.getElementById('subTogglesDropdown');
-const subTogglesDropdownMenu = document.getElementById('subTogglesDropdownMenu');
-let selectedDatasets = [];  
-let datasetBias = {};
-const qualityToggleBtn = document.getElementById('qualityToggleBtn');
-let appendQuality = true;
-const ucPresetsDropdown = document.getElementById('ucPresetsDropdown');
-const ucPresetsDropdownBtn = document.getElementById('ucPresetsDropdownBtn');
-const ucPresetsDropdownMenu = document.getElementById('ucPresetsDropdownMenu');
-let selectedUcPreset = 3; 
-let presetAutocompleteTimeout = null;
-let currentPresetAutocompleteTarget = null;
-let selectedPresetAutocompleteIndex = -1;
-const addCharacterBtn = document.getElementById('addCharacterBtn');
-const characterPromptsContainer = document.getElementById('characterPromptsContainer');
-const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
-const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
-const transformationRow = document.getElementById('transformationRow');
-const manualPreviewOriginalImage = document.getElementById('manualPreviewOriginalImage');
-const sproutSeedBtn = document.getElementById('sproutSeedBtn');
-
-let generationAnimationActive = false;
-let manualBlockContainer = null; // Manual block container for wave animation
-window.currentManualPreviewImage = null;
-window.currentManualPreviewIndex = null;
-
-// BLOCK CONTAINER ANIMATION SYSTEM - Move to blockAnimationManager.js
-// This system handles the wave animation for the manual generation process
-// Includes functions: initializeManualBlockContainer, updateManualBlockGrid,
-// and related block container management and animation logic.
-
-// Initialize manual block container for wave animation
-function initializeManualBlockContainer() {
-    if (manualBlockContainer) return; // Already initialized
-    
-    const container = document.getElementById('manualBlockContainer');
-    if (!container) {
-        console.warn('Manual block container not found');
-        return;
-    }
-    
-    try {
-        // Get current image dimensions from preview image if available
-        let width, height;
-        
-        const manualPreviewImage = document.getElementById('manualPreviewImage');
-        if (manualPreviewImage && !manualPreviewImage.classList.contains('hidden') && manualPreviewImage.src && manualPreviewImage.src !== '') {
-            // Use computed style of the preview image to get actual displayed dimensions
-            const computedStyle = getComputedStyle(manualPreviewImage);
-            width = parseInt(computedStyle.width.replace('px', '')) || 0;
-            height = parseInt(computedStyle.height.replace('px', '')) || 0;
-        }
-        
-        // Fall back to resolution preset if no preview image
-        if (!width || !height) {
-            if (manualSelectedResolution && manualSelectedResolution !== 'custom') {
-                // Use the selected resolution preset
-                const dimensions = getDimensionsFromResolution(manualSelectedResolution);
-                if (dimensions) {
-                    width = dimensions.width;
-                    height = dimensions.height;
-                }
-            }
-        }
-        
-        // Final fallback to manual input values
-        if (!width || !height) {
-            width = parseInt(manualWidth.value) || 1024;
-            height = parseInt(manualHeight.value) || 1024;
-        }
-        
-        // Calculate optimal grid dimensions to get closest to 400 blocks without going over
-        const aspectRatio = height / width;
-        let initialRow, initialCol;
-        
-        // Target: 400 blocks (30x30)
-        const targetBlocks = 400;
-        
-        if (Math.abs(aspectRatio - 1) < 0.1) {
-            // Square: calculate dimensions to get closest to 400 blocks
-            const dimension = Math.floor(Math.sqrt(targetBlocks));
-            initialRow = dimension;
-            initialCol = dimension;
-        } else if (aspectRatio > 1) {
-            // Landscape: width > height
-            // Calculate optimal dimensions maintaining aspect ratio
-            const maxCol = Math.floor(Math.sqrt(targetBlocks / aspectRatio));
-            const maxRow = Math.floor(maxCol * aspectRatio);
-            
-            // Ensure we don't go over target blocks
-            if (maxRow * maxCol > targetBlocks) {
-                initialRow = Math.floor(Math.sqrt(targetBlocks * aspectRatio));
-                initialCol = Math.floor(targetBlocks / initialRow);
-            } else {
-                initialRow = maxRow;
-                initialCol = maxCol;
-            }
-        } else {
-            // Portrait: height > width
-            // Calculate optimal dimensions maintaining aspect ratio
-            const maxRow = Math.floor(Math.sqrt(targetBlocks * aspectRatio));
-            const maxCol = Math.floor(maxRow / aspectRatio);
-            
-            // Ensure we don't go over target blocks
-            if (maxRow * maxCol > targetBlocks) {
-                initialCol = Math.floor(Math.sqrt(targetBlocks / aspectRatio));
-                initialRow = Math.floor(targetBlocks / initialCol);
-            } else {
-                initialRow = maxRow;
-                initialCol = maxCol;
-            }
-        }
-        
-        // Ensure minimum dimensions
-        initialRow = Math.max(initialRow, 5);
-        initialCol = Math.max(initialCol, 5);
-        
-        manualBlockContainer = new BlockContainer('#manualBlockContainer', {
-            row: initialRow,
-            col: initialCol,
-            opacityRange: [0.05, 0.3],
-            waveDelay: 30
-        });
-        
-        // Initialize the container
-        manualBlockContainer.init('ready');
-    } catch (error) {
-        console.error('Failed to initialize manual block container:', error);
-    }
-}
-
-// Update manual block grid when starting generation
-function updateManualBlockGrid() {
-    if (!manualBlockContainer) return;
-    
-    try {
-        // Get current image dimensions from preview image if available
-        let width, height;
-        
-        const manualPreviewImage = document.getElementById('manualPreviewImage');
-        if (manualPreviewImage && !manualPreviewImage.classList.contains('hidden') && manualPreviewImage.src && manualPreviewImage.src !== '') {
-            // Use computed style of the preview image to get actual displayed dimensions
-            const computedStyle = getComputedStyle(manualPreviewImage);
-            width = parseInt(computedStyle.width.replace('px', '')) || 0;
-            height = parseInt(computedStyle.height.replace('px', '')) || 0;
-        }
-        
-        // Fall back to resolution preset if no preview image
-        if (!width || !height) {
-            if (manualSelectedResolution && manualSelectedResolution !== 'custom') {
-                // Use the selected resolution preset
-                const dimensions = getDimensionsFromResolution(manualSelectedResolution);
-                if (dimensions) {
-                    width = dimensions.width;
-                    height = dimensions.height;
-                }
-            }
-        }
-        
-        // Final fallback to manual input values
-        if (!width || !height) {
-            width = parseInt(manualWidth.value) || 1024;
-            height = parseInt(manualHeight.value) || 1024;
-        }
-        
-        // Update the block grid dimensions based on the resolution
-        manualBlockContainer.updateGridDimensions(width, height);
-    } catch (error) {
-        console.error('Failed to update manual block grid:', error);
-    }
-}
-
-// EVENT LISTENERS MANAGEMENT SYSTEM - Move to eventListenersManager.js
-// This system handles setting up and managing all event listeners throughout the application
-// Includes functions: setupEventListeners, registerManualPreviewEventListeners,
-// deregisterManualPreviewEventListeners, and various event handler functions.
-// NOTE: This is the MAIN event system that coordinates ALL other systems' event listeners.
-
-// Event listener management for manual preview
-let manualPreviewEventListenersRegistered = false;
-
-function registerManualPreviewEventListeners() {
-    if (manualPreviewEventListenersRegistered) return;
-    
-    const imageContainer = document.querySelector('.manual-preview-image-container');
-    const image = document.getElementById('manualPreviewImage');
-
-    if (!imageContainer || !image) return;
-
-    // Remove zoom and pan functionality - replace with lightbox functionality
-    
-    // Click to open lightbox
-    image.addEventListener('click', handleManualPreviewClick);
-    
-    // Scroll up to open lightbox
-    image.addEventListener('wheel', handleManualPreviewScroll, { passive: false });
-    
-    manualPreviewEventListenersRegistered = true;
-}
-
-function deregisterManualPreviewEventListeners() {
-    if (!manualPreviewEventListenersRegistered) return;
-    
-    const imageContainer = document.querySelector('.manual-preview-image-container');
-    const image = imageContainer.querySelector('.manual-preview-image-container-inner');
-
-    if (!imageContainer || !image) return;
-
-    // Remove all event listeners
-    image.removeEventListener('click', handleManualPreviewClick);
-    image.removeEventListener('wheel', handleManualPreviewScroll);
-    
-    manualPreviewEventListenersRegistered = false;
-}
 
 // Simple button state tracking
 let isGenerating = false;
@@ -484,23 +67,6 @@ let isQueueProcessing = false;
 
 // Error Sub-Header Functions
 let errorSubHeaderTimeout = null;
-
-// Add event listener for sproutSeedBtn to toggle seed value filling
-let lastLoadedSeed = null;
-
-// Add event listener for varietyBtn to toggle a global flag for variety and toggle the active class
-let varietyEnabled = false;
-
-// GLASS TOAST NOTIFICATION SYSTEM - Move to toastManager.js or integrate with existing toasts.js
-// This system handles all toast notifications throughout the application
-// Includes functions: showGlassToast, updateGlassToast, removeGlassToast, getToastIcon,
-// createToastContainer, updateGlassToastProgress, generateButtonsHtml, updateGlassToastButtons,
-// updateGlassToastComplete, handleToastButtonClick, inspectButtonHandlers, etc.
-// Note: Check if these functions already exist in toasts.js before moving
-
-// Glass Toast Notification System
-let toastCounter = 0;
-const activeToasts = new Map();
 
 // CHARACTER PROMPTS SYSTEM - Move to characterPromptManager.js
 // This system handles character prompt creation, editing, positioning, and management
@@ -511,19 +77,12 @@ const activeToasts = new Map();
 // updateCharacterPromptPreview, etc.
 
 // Character Prompts Functions
-let characterPromptCounter = 0;
-let currentPositionCharacterId = null;
-let selectedPositionCell = null;
-let lastPromptState = null;
-let savedRandomPromptState = null;
 
 let pinModalPromise = null;
 
 let resizeTimeout = null;
 
 // Global variables
-let forcePaidRequest = false;
-let wasInSearchMode = false; // Track if user was in search mode before opening manual modal
 
 // Helper function to check if we're currently in search mode
 function isInSearchMode() {
@@ -591,278 +150,6 @@ async function loadPresetIntoForm(presetName) {
         console.error('Load preset error:', error);
         showError(`Failed to load preset "${presetName}": ${error.message}`);
     }
-}
-
-async function renderCustomPresetDropdown(selectedVal) {
-    if (!customPresetDropdownMenu) return;
-    customPresetDropdownMenu.innerHTML = '';
-
-    // Use global presets loaded from /options
-    if (Array.isArray(window.optionsData.presets) && window.optionsData.presets.length > 0) {
-        for (const preset of window.optionsData.presets) {
-            try {
-                // Skip invalid presets
-                if (!preset || !preset.name) {
-                    console.warn('Skipping invalid preset:', preset);
-                    continue;
-                }
-                
-                const option = document.createElement('div');
-                option.className = 'custom-dropdown-option' + (selectedVal === `preset:${preset.name}` ? ' selected' : '');
-                option.tabIndex = 0;
-                option.dataset.value = `preset:${preset.name}`;
-                option.dataset.type = 'preset';
-                
-                // Create compact preset option with same icons as createPresetItem
-                const presetName = document.createElement('div');
-                presetName.className = 'preset-name';
-                presetName.textContent = preset.name;
-                
-                const presetIcons = document.createElement('div');
-                presetIcons.className = 'preset-icons';
-                
-                // Paid requests
-                if (preset.allow_paid === true) {
-                    const icon = document.createElement('i');
-                    icon.className = 'nai-anla';
-                    icon.title = 'Paid Requests Enabled';
-                    presetIcons.appendChild(icon);
-                }
-                
-                // Character prompts
-                if (preset.character_prompts) {
-                    const icon = document.createElement('i');
-                    icon.className = 'fas fa-users';
-                    icon.title = `${preset.character_prompts} Character Prompt${preset.character_prompts > 1 ? 's' : ''}`;
-                    presetIcons.appendChild(icon);
-                    
-                    // Uses Character Coordinates
-                    if (preset.use_coords) {
-                        const icon = document.createElement('i');
-                        icon.className = 'fas fa-location-crosshairs';
-                        icon.title = 'Using Character Coordinates';
-                        presetIcons.appendChild(icon);
-                    }
-                }
-                
-                // Upscale
-                if (preset.upscale === true) {
-                    const icon = document.createElement('i');
-                    icon.className = 'fas fa-high-definition';
-                    icon.title = 'Upscale enabled';
-                    presetIcons.appendChild(icon);
-                }
-                
-                // Image to image
-                if (preset.image || preset.image_source) {
-                    const icon = document.createElement('i');
-                    icon.className = 'fas fa-image';
-                    icon.title = 'Image to Image';
-                    presetIcons.appendChild(icon);
-
-                    // Image Bias
-                    if (preset.image_bias) {
-                        const icon = document.createElement('i');
-                        icon.className = 'fas fa-crop';
-                        icon.title = 'Image Bias';
-                        presetIcons.appendChild(icon);
-                    }
-                }
-                
-                
-                // Inpaint
-                if ((preset.image || preset.image_source) && preset.mask_compressed) {
-                    const icon = document.createElement('i');
-                    icon.className = 'nai-inpaint';
-                    icon.title = 'Selective Masking (Inpaint)';
-                    presetIcons.appendChild(icon);
-                } else 
-                // Vibe transfer
-                if (preset.vibe_transfer) {
-                    const icon = document.createElement('i');
-                    icon.className = 'nai-vibe-transfer';
-                    icon.title = `${preset.vibe_transfer} Vibe Transfer${preset.vibe_transfer > 1 ? 's' : ''}`;
-                    presetIcons.appendChild(icon);
-                }
-                
-                // Variety
-                if (preset.variety === true) {
-                    const icon = document.createElement('i');
-                    icon.className = 'fas fa-sparkle';
-                    icon.title = 'Variety+ Enabled';
-                    presetIcons.appendChild(icon);
-                }
-
-                // Dataset info (priority: furry > backgrounds > anime)
-                const datasetIcon = document.createElement('i');
-                if (preset.dataset_config && preset.dataset_config.include && Array.isArray(preset.dataset_config.include) && preset.dataset_config.include.length > 0) {
-                    
-                    if (preset.dataset_config.include.includes('furry')) {
-                        datasetIcon.className = 'nai-paw';
-                    } else if (preset.dataset_config.include.includes('backgrounds')) {
-                        datasetIcon.className = 'fas fa-tree';
-                    } else {
-                        datasetIcon.className = 'nai-sakura';
-                    }
-                } else {
-                    datasetIcon.className = 'nai-sakura';
-                }
-                datasetIcon.title = 'Dataset enabled';
-                presetIcons.appendChild(datasetIcon);
-                
-                // Quality preset info
-                if (preset.append_quality === true) {
-                    const icon = document.createElement('i');
-                    icon.className = 'fas fa-crown';
-                    icon.title = 'Quality Preset Enabled';
-                    presetIcons.appendChild(icon);
-                }
-                
-                // UC boxes
-                const boxes = document.createElement('div');
-                boxes.className = 'uc-boxes';
-                if (preset.append_uc !== undefined && preset.append_uc !== null) {
-                    boxes.dataset.ucLevel = preset.append_uc.toString();
-                } else {
-                    boxes.dataset.ucLevel = '0';
-                }
-                for (let i = 1; i <= 3; i++) {
-                    const box = document.createElement('div');
-                    box.className = 'uc-box';
-                    box.dataset.level = i.toString();
-                    boxes.appendChild(box);
-                }
-                presetIcons.appendChild(boxes);
-                
-                // Create two-row layout
-                const presetContent = document.createElement('div');
-                presetContent.className = 'preset-option-content-two-rows';
-                
-                // First row: name only
-                const firstRow = document.createElement('div');
-                firstRow.className = 'preset-option-row-1';
-                firstRow.appendChild(presetName);
-                
-                // Second row: model/resolution on left, icons on right
-                const secondRow = document.createElement('div');
-                secondRow.className = 'preset-option-row-2';
-                
-                // Left side: model and resolution info
-                const leftSide = document.createElement('div');
-                leftSide.className = 'preset-option-left';
-                
-                // Model info
-                const modelSpan = document.createElement('span');
-                let group = null;
-                for (const g of modelGroups) {
-                    const found = g.options.find(o => o.value === preset.model.toLowerCase());
-                    if (found) {
-                    group = g.group;
-                    break;
-                    }
-                }
-                const groupObj = modelGroups.find(g => g.group === group);
-                const optObj = groupObj ? groupObj.options.find(o => o.value === preset.model.toLowerCase()) : null;
-                if (optObj) {
-                    if (optObj.badge_full) {
-                        modelSpan.innerHTML = [
-                            `<span>${optObj.display}</span>`,
-                            `<span>${optObj.badge_full}</span>`,
-                        ].filter(Boolean).join(' ');
-                    } else if (optObj.badge) {
-                        modelSpan.innerHTML = [
-                            `<span>${optObj.display}</span>`,
-                            `<span>${optObj.badge}</span>`,
-                        ].filter(Boolean).join(' ');
-                    } else {
-                        modelSpan.textContent = preset.model || 'V4.5?';
-                    }
-                    modelSpan.className = `preset-model ${optObj.badge_class}`;
-                } else {
-                    modelSpan.textContent = preset.model || 'V4.5?';
-                    modelSpan.className = 'preset-model';
-                }
-                leftSide.appendChild(modelSpan);
-                
-                // Resolution info
-                const resSpan = document.createElement('span');
-                resSpan.className = 'preset-resolution';
-    
-                // Get proper resolution display name and check if it's large/wallpaper
-                let resolutionDisplay = (preset.resolution.toLowerCase() || 'normal_portrait?').split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1));
-                
-                if (resolutionDisplay[0] !== 'Normal') {
-                    const resolutionText = document.createElement('span');
-                    const resolutionTextInner = document.createElement('span');
-                    if (resolutionDisplay[0] === 'Large' || resolutionDisplay[0] === 'Wallpaper') {
-                        const dollarIcon = document.createElement('i');
-                        dollarIcon.className = 'fas fa-dollar-sign';
-                        dollarIcon.style.fontSize = '0.8em';
-                        resolutionText.appendChild(dollarIcon);
-                    }
-                    resolutionTextInner.textContent = resolutionDisplay[0];
-                    resolutionText.appendChild(resolutionTextInner);
-                    resSpan.appendChild(resolutionText);
-                    const resolutionText2 = document.createElement('span');
-                    resolutionText2.textContent = resolutionDisplay[1];
-                    resSpan.appendChild(resolutionText2);
-                } else {
-                    resSpan.textContent = resolutionDisplay[1];
-                }
-                
-                leftSide.appendChild(resSpan);
-                
-                secondRow.appendChild(leftSide);
-                secondRow.appendChild(presetIcons);
-                
-                presetContent.appendChild(firstRow);
-                presetContent.appendChild(secondRow);
-                
-                option.appendChild(presetContent);
-                
-                option.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    selectCustomPreset(`preset:${preset.name}`);
-                    closeCustomPresetDropdown();
-                });
-                option.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        selectCustomPreset(`preset:${preset.name}`);
-                        closeCustomPresetDropdown();
-                    }
-                });
-                customPresetDropdownMenu.appendChild(option);
-            } catch (error) {
-                console.error('Error processing preset:', preset?.name || 'unknown', error);
-                continue;
-            }
-        }
-    }
-}
-
-function selectCustomPreset(value) {
-    selectedPreset = value;
-
-    // Update button display
-    if (value.startsWith('preset:')) {
-        const presetName = value.replace('preset:', '');
-        customPresetSelected.innerHTML = `<i class="fa-light fa-wand-magic-sparkles"></i> ${presetName}`;
-        clearPresetBtn.classList.remove('hidden');
-    } else {
-        customPresetSelected.innerHTML = '<i class="fa-light fa-book-spells"></i> Spellbook';
-        clearPresetBtn.classList.add('hidden');
-    }
-
-    // Sync with hidden select for compatibility
-    presetSelect.value = value;
-
-    // Trigger any listeners (e.g., updateGenerateButton)
-    if (typeof updateGenerateButton === 'function') updateGenerateButton();
-}
-
-function closeCustomPresetDropdown() {
-    if (customPresetDropdownMenu && customPresetDropdownBtn) closeDropdown(customPresetDropdownMenu, customPresetDropdownBtn);
 }
 
 // Function to generate image from a preset
@@ -1001,87 +288,6 @@ async function deletePreset(presetName) {
     }
 }
 
-function generateResolutionOptions() {
-    // Populate resolutions using global RESOLUTIONS array
-    manualResolution.innerHTML = '<option value="">Unchanged</option>';
-    RESOLUTIONS.forEach(resolution => {
-        const manualOption = document.createElement('option');
-        manualOption.value = resolution.value;
-        manualOption.textContent = resolution.display;
-        manualResolution.appendChild(manualOption);
-    });
-}
-
-function renderManualResolutionDropdown(selectedVal) {
-    renderGroupedDropdown(
-        manualResolutionDropdownMenu,
-        RESOLUTION_GROUPS,
-        selectManualResolution,
-        () => closeDropdown(manualResolutionDropdownMenu, manualResolutionDropdownBtn),
-        selectedVal,
-        (opt, group) => `<span>${opt.name}${opt.dims ? ' <span style="opacity:0.7;font-size:0.95em;">(' + opt.dims + ')</span>' : ''}</span>`,
-        { preventFocusTransfer: true }
-    );
-}
-
-async function selectManualResolution(value, group, skipPostProcess = false) {
-    manualSelectedResolution = value.toLowerCase();
-    
-    if (!group) {
-        for (const g of RESOLUTION_GROUPS) {
-            const found = g.options.find(o => o.value === value.toLowerCase());
-            if (found) {
-                group = g.group;
-                break;
-            }
-        }
-    }
-
-    if (value === 'custom') {
-        manualResolutionDropdown.classList.add('hidden');
-        manualCustomResolution.classList.remove('hidden');
-        manualCustomResolutionBtn.setAttribute('data-state', 'on');
-        manualResolutionGroup.classList.add('expanded');
-        // Set default values if empty
-        if (!manualWidth.value) manualWidth.value = '1024';
-        if (!manualHeight.value) manualHeight.value = '1024';
-        // Sanitize the default values
-        sanitizeCustomDimensions();
-    } else {
-        manualResolutionDropdown.classList.remove('hidden');
-        manualCustomResolution.classList.add('hidden');
-        manualCustomResolutionBtn.setAttribute('data-state', 'off');
-        manualResolutionGroup.classList.remove('expanded');
-    }
-
-    // Update button display
-    const groupObj = RESOLUTION_GROUPS.find(g => g.group === group);
-    const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
-    if (optObj) {
-        manualResolutionSelected.innerHTML = `${optObj.name}${groupObj.badge ? '<span class="custom-dropdown-badge' + (groupObj.free ? ' free-badge' : '') + '">' + groupObj.badge + '</span>' : ''}`;
-    } else {
-        manualResolutionSelected.textContent = 'Select resolution...';
-    }
-    // Sync with hidden input for compatibility
-    if (manualResolutionHidden) manualResolutionHidden.value = value.toLowerCase();
-
-    if (!skipPostProcess) {
-        updateGenerateButton();
-        updateManualPriceDisplay();
-        
-        // --- ADDED: Refresh preview image if in bias mode ---
-        if (window.uploadedImageData && window.uploadedImageData.image_source && window.uploadedImageData.isBiasMode && manualModal && !manualModal.classList.contains('hidden')) {
-            // Reset bias to center (2) when resolution changes
-            if (imageBiasHidden != null)
-                imageBiasHidden.value = '2';
-            window.uploadedImageData.bias = 2;
-
-            await cropImageToResolution();
-            await refreshImageBiasState();
-        }
-    }
-}
-
 // Convert preset format to metadata format for compatibility
 function convertPresetToMetadataFormat(presetData) {
     // Create a copy to avoid modifying the original
@@ -1113,598 +319,6 @@ function convertPresetToMetadataFormat(presetData) {
     }
     
     return metadata;
-}
-
-// Replace the three function definitions with the new combined function
-async function loadIntoManualForm(source, image = null) {
-    
-    try {
-        let data = {};
-        let type = 'metadata';
-        let name = '';
-
-        // Save the current preset name before clearing the form
-        const currentPresetName = manualPresetName ? manualPresetName.value.trim() : '';
-
-        // Save source and image to initialEdit for preview functionality
-        window.initialEdit = {
-            source: source,
-            image: image
-        };
-
-        // Clear form first for all cases
-        clearManualForm();
-
-        if (typeof source === 'string') {
-            const [presetType, presetName] = source.split(':');
-            if (!presetType || !presetName) {
-                throw new Error('Invalid preset value format');
-            }
-            name = presetName;
-
-            if (presetType === 'preset') {
-                type = 'preset';
-                
-                // Use WebSocket for preset loading
-                if (!window.wsClient || !window.wsClient.isConnected()) {
-                    throw new Error('WebSocket not connected');
-                }
-                
-                const response = await window.wsClient.loadPreset(presetName);
-                
-                // Extract preset data from WebSocket response
-                // The WebSocket client returns the data directly, not wrapped in a data property
-                if (response) {
-                    data = response;
-                    data = convertPresetToMetadataFormat(data);
-                } else {
-                    console.error('❌ Invalid response structure:', response);
-                    throw new Error(`Invalid preset response format. Response: ${JSON.stringify(response)}`);
-                }
-            } else {
-                throw new Error('Invalid type');
-            }
-
-            // Preprocess sampler and noiseScheduler
-            if (data.sampler && data.sampler !== undefined) {
-                const samplerObj = getSamplerMeta(data.sampler);
-                data.sampler = samplerObj ? samplerObj.meta : 'k_euler_ancestral';
-            }
-            if ((data.noiseScheduler && data.noiseScheduler !== undefined) || (data.noise_schedule && data.noise_schedule !== undefined)) {
-                const noiseObj = getNoiseMeta(data.noiseScheduler || data.noise_schedule);
-                data.noiseScheduler = noiseObj ? noiseObj.meta : 'karras';
-            }
-
-        } else if (typeof source === 'object' && source !== null) {
-            type = 'metadata';
-            data = source;
-
-            // Handle resolution
-            data.resolution = (data.resolution || 'normal_portrait').toLowerCase();
-            if (!data.resolution.match(/^(small_|normal_|large_|wallpaper_)/) && data.width && data.height) {
-                data.resolution = 'custom';
-                if (manualWidth) manualWidth.value = data.width;
-                if (manualHeight) manualHeight.value = data.height;
-                sanitizeCustomDimensions();
-            }
-
-            // Handle sampler and noise
-            if (data.sampler && data.sampler !== undefined) {
-                const samplerObj = getSamplerMeta(data.sampler);
-                data.sampler = samplerObj ? samplerObj.meta : 'k_euler_ancestral';
-            }
-
-            if (data.noise_schedule && data.noise_schedule !== undefined) {
-                const noiseObj = getNoiseMeta(data.noise_schedule);
-                data.noiseScheduler = noiseObj ? noiseObj.meta : 'karras';
-            }
-
-            name = data.preset_name;
-        } else {
-            throw new Error('Invalid source');
-        }
-
-        // Common form population
-        if (manualPrompt) {
-            manualPrompt.value = data.prompt || '';
-        }
-        if (manualUc) {
-            manualUc.value = data.uc || '';
-            autoResizeTextarea(manualUc);
-            updateEmphasisHighlighting(manualUc);
-        }
-        selectManualModel(data.model || 'v4_5', '');
-
-        // Handle resolution loading with proper custom dimension support
-        let resolutionToSet = 'normal_portrait'; // Default fallback
-        let resolutionGroup = undefined;
-
-        // Always try to detect resolution from dimensions if we have them
-        if (data.width && data.height) {
-            // Try to find a matching resolution preset based on width/height
-            const matchingResolution = RESOLUTIONS.find(r => r.width === data.width && r.height === data.height);
-            if (matchingResolution) {
-                resolutionToSet = matchingResolution.value;
-                // Find the group for this resolution
-                for (const group of RESOLUTION_GROUPS) {
-                    if (group.options.find(opt => opt.value === resolutionToSet)) {
-                        resolutionGroup = group.group;
-                        break;
-                    }
-                }
-            } else {
-                // No exact match found, try to match by aspect ratio to normal_ presets
-                const aspectRatio = data.width / data.height;
-                
-                // Find the closest normal_ preset by aspect ratio
-                const normalPresets = RESOLUTIONS.filter(r => r.value.startsWith('normal_'));
-                let bestMatch = null;
-                let bestRatioDiff = Infinity;
-                
-                normalPresets.forEach(preset => {
-                    const presetRatio = preset.width / preset.height;
-                    const ratioDiff = Math.abs(aspectRatio - presetRatio);
-                    if (ratioDiff < bestRatioDiff) {
-                        bestRatioDiff = ratioDiff;
-                        bestMatch = preset;
-                    }
-                });
-                
-                if (bestMatch && bestRatioDiff < 0.1) { // Allow 10% tolerance for aspect ratio
-                    resolutionToSet = bestMatch.value;
-                    // Find the group for this resolution
-                    for (const group of RESOLUTION_GROUPS) {
-                        if (group.options.find(opt => opt.value === resolutionToSet)) {
-                            resolutionGroup = group.group;
-                            break;
-                        }
-                    }
-                } else {
-                    // No aspect ratio match found, use custom
-                    resolutionToSet = 'custom';
-                    resolutionGroup = 'Custom';
-                    // Set custom dimensions before calling selectManualResolution
-                    if (manualWidth) manualWidth.value = data.width;
-                    if (manualHeight) manualHeight.value = data.height;
-                }
-            }
-        } else if (data.resolution) {
-            // Fall back to existing resolution field if no dimensions
-            resolutionToSet = data.resolution.toLowerCase();
-        }
-        selectManualResolution(resolutionToSet, resolutionGroup);
-
-        // Handle custom dimensions after resolution is set
-        if (data.width && data.height && resolutionToSet === 'custom') {
-            if (customWidth && customHeight) {
-                customWidth.value = data.width;
-                customHeight.value = data.height;
-            }
-            // Sanitize dimensions after setting
-            sanitizeCustomDimensions();
-        }
-        if (manualSteps) manualSteps.value = data.steps || 25;
-        if (manualGuidance) {
-            // Handle both preset (guidance) and metadata (scale) formats
-            const guidanceValue = data.guidance ?? data.scale ?? 5.0;
-            manualGuidance.value = guidanceValue !== undefined ? Number(guidanceValue).toFixed(1) : '';
-        }
-        if (manualRescale) {
-            // Handle both preset (rescale) and metadata (cfg_rescale) formats
-            const rescaleValue = data.rescale ?? data.cfg_rescale ?? 0.0;
-            manualRescale.value = rescaleValue !== undefined ? Number(rescaleValue).toFixed(2) : '';
-        }
-        
-        // Update percentage overlays after setting rescale value
-        updatePercentageOverlays();
-        if (manualSeed) manualSeed.value = ''; // Do not autofill for metadata, undefined for others
-        if (data.seed) {
-            // Handle both preset (seed) and metadata (layer2_seed) formats
-            window.lastGeneratedSeed = data.seed;
-            manualPreviewSeedNumber.textContent = parseInt(window.lastGeneratedSeed);
-            sproutSeedBtn.classList.add('available');
-            updateSproutSeedButtonFromPreviewSeed();
-        }
-        // Ensure sampler and noiseScheduler have valid values before calling select functions
-        const samplerValue = (data.sampler && data.sampler !== undefined && data.sampler !== null) ? data.sampler : 'k_euler_ancestral';
-        const noiseValue = (data.noiseScheduler && data.noiseScheduler !== undefined && data.noiseScheduler !== null) ? data.noiseScheduler : 'karras';
-        
-        selectManualSampler(samplerValue);
-        selectManualNoiseScheduler(noiseValue);
-        if (document.getElementById('varietyBtn')) {
-            const varietyBtn = document.getElementById('varietyBtn');
-            // Handle both preset (variety) and metadata (skip_cfg_above_sigma) formats
-            const varietyEnabled = data.variety !== null && data.variety !== undefined ? data.variety : 
-                                 (data.skip_cfg_above_sigma !== null && data.skip_cfg_above_sigma !== undefined);
-            varietyBtn.setAttribute('data-state', varietyEnabled ? 'on' : 'off');
-        }
-
-        // Handle upscale
-        const upscaleState = data.upscale ? 'on' : 'off';
-        if (manualUpscale) manualUpscale.setAttribute('data-state', upscaleState);
-
-        // Handle character prompts and auto position
-        const autoPositionBtn = document.getElementById('autoPositionBtn');
-        if (data.allCharacterPrompts && Array.isArray(data.allCharacterPrompts)) {
-            // Handle new allCharacterPrompts format
-            loadCharacterPrompts(data.allCharacterPrompts, data.use_coords);
-            autoPositionBtn.setAttribute('data-state', data.use_coords ? 'off' : 'on');
-        } else if (data.characterPrompts && Array.isArray(data.characterPrompts)) {
-            loadCharacterPrompts(data.characterPrompts, data.use_coords);
-            autoPositionBtn.setAttribute('data-state', data.use_coords ? 'off' : 'on');
-        } else {
-            clearCharacterPrompts();
-        }
-
-
-        // Load new parameters from metadata if available
-        if (data.dataset_config && data.dataset_config.include) {
-            selectedDatasets = [...data.dataset_config.include];
-
-            // Load bias values
-            if (data.dataset_config.bias) {
-                Object.keys(data.dataset_config.bias).forEach(dataset => {
-                    if (datasetBias[dataset] !== undefined) {
-                        datasetBias[dataset] = data.dataset_config.bias[dataset];
-                    }
-                });
-            }
-
-            // Load dataset settings
-            if (data.dataset_config.settings) {
-                Object.keys(data.dataset_config.settings).forEach(dataset => {
-                    const datasetSettings = data.dataset_config.settings[dataset];
-                    Object.keys(datasetSettings).forEach(settingId => {
-                        const setting = datasetSettings[settingId];
-                        if (setting.enabled !== undefined) {
-                            // Store setting state for UI updates
-                            if (!window.datasetSettings) window.datasetSettings = {};
-                            if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
-                            window.datasetSettings[dataset][settingId] = {
-                                enabled: setting.enabled,
-                                bias: setting.bias || 1.0,
-                                value: setting.value
-                            };
-                        }
-                    });
-                });
-            }
-        } else {
-            selectedDatasets = []; // Default
-            // Reset bias values to defaults for all datasets from config
-            datasetBias = {};
-            if (window.optionsData?.datasets) {
-                window.optionsData.datasets.forEach(dataset => {
-                    datasetBias[dataset.value] = 1.0;
-                });
-            }
-        }
-        updateDatasetDisplay();
-        renderDatasetDropdown();
-        updateSubTogglesButtonState();
-
-        if (data.append_quality !== undefined) {
-            appendQuality = data.append_quality;
-            if (qualityToggleBtn) {
-                qualityToggleBtn.setAttribute('data-state', appendQuality ? 'on' : 'off');
-            }
-        } else {
-            appendQuality = true;
-            if (qualityToggleBtn) {
-                qualityToggleBtn.setAttribute('data-state', 'on');
-            }
-        }
-
-        if (data.append_uc !== undefined) {
-            selectedUcPreset = data.append_uc;
-        } else {
-            selectedUcPreset = 3;
-        }
-        selectUcPreset(selectedUcPreset);
-        renderUcPresetsDropdown();
-
-        // Note: Character prompts are already handled in the first section above
-        // This redundant section has been removed to prevent overwriting loaded character prompts
-
-        // Handle new parameters
-        // Handle allow_paid setting
-        if (data.allow_paid !== undefined) {
-            // This would need a UI element to display/set allow_paid
-            // For now, we'll just store it in a global variable
-            window.currentAllowPaid = data.allow_paid;
-        }
-
-        // Handle vibe transfer data from forge data (disabled when inpainting is enabled)
-        if (data.vibe_transfer && Array.isArray(data.vibe_transfer) && data.vibe_transfer.length > 0) {
-            // Check if inpainting is enabled (mask is present)
-            if (data.mask_compressed || data.mask) {
-                console.warn(`⚠️ Skipping vibe transfers due to inpainting mask presence`);
-                // Clear vibe references if inpainting is enabled
-                if (vibeReferencesContainer) {
-                    vibeReferencesContainer.innerHTML = '';
-                }
-                if (transformationRow) {
-                    transformationRow.classList.remove('display-vibe');
-                }
-                if (vibeNormalizeToggle) {
-                    vibeNormalizeToggle.classList.add('hidden');
-                }
-                // Update transformation dropdown button active state
-                updateTransformationDropdownForVibes();
-            } else {
-                // Clear existing vibe references
-                if (vibeReferencesContainer) {
-                    vibeReferencesContainer.innerHTML = '';
-                }
-                if (transformationRow) {
-                    transformationRow.classList.add('display-vibe');
-                }
-
-                // Add each vibe transfer back to the container
-                for (const vibeTransfer of data.vibe_transfer) {
-                    await addVibeReferenceToContainer(vibeTransfer.id, vibeTransfer.ie, vibeTransfer.strength);
-                }
-                
-                if (vibeNormalizeToggle) {
-                    vibeNormalizeToggle.classList.remove('hidden');
-                }
-                
-                // Update transformation dropdown button active state
-                updateTransformationDropdownForVibes();
-            }
-        } else {
-            // Clear vibe references if no data
-            if (vibeReferencesContainer) {
-                vibeReferencesContainer.innerHTML = '';
-            }
-            if (transformationRow) {
-                transformationRow.classList.remove('display-vibe');
-            }
-            if (vibeNormalizeToggle) {
-                vibeNormalizeToggle.classList.add('hidden');
-            }
-            // Update transformation dropdown button active state
-            updateTransformationDropdownForVibes();
-        }
-
-        // Handle vibe normalize setting
-        if (data.normalize_vibes !== undefined) {
-            if (vibeNormalizeToggle) {
-                vibeNormalizeToggle.setAttribute('data-state', data.normalize_vibes ? 'on' : 'off');
-            }
-        } else {
-            // Default to on if not specified
-            if (vibeNormalizeToggle) {
-                vibeNormalizeToggle.setAttribute('data-state', 'on');
-            }
-        }
-
-        // Handle image source data
-        const hasBaseImage = data.image_source && !data.isVariationEdit;
-
-        if (hasBaseImage) {
-            const [imageType, identifier] = data.image_source.split(':', 2);
-            let previewUrl = '';
-
-            window.uploadedImageData = {
-                image_source: data.image_source,
-                width: 0, // Will be updated when image loads
-                height: 0,
-                bias: typeof data.image_bias === 'number' ? data.image_bias : 2,
-                image_bias: typeof data.image_bias === 'object' ? data.image_bias : undefined,
-                isBiasMode: true,
-                isClientSide: false
-            };
-            if (typeof data.image_bias === 'object') {
-                imageBiasAdjustmentData.currentBias = data.image_bias;
-            }
-            if (imageType === 'cache') {
-                previewUrl = `/cache/preview/${identifier}.webp`;
-            } else if (imageType === 'file') {
-                previewUrl = `/images/${identifier}`;
-            }
-            if (previewUrl) {
-                await new Promise((resolve, reject) => {
-                    const tempImg = new Image();
-                    tempImg.onload = () => {
-                        window.uploadedImageData.width = tempImg.width;
-                        window.uploadedImageData.height = tempImg.height;
-                        resolve();
-                    };
-                    tempImg.onerror = () => {
-                        reject(new Error(`Failed to load preview image from: ${previewUrl}`));
-                    };
-                    tempImg.src = previewUrl;
-                })
-                
-                // Update image bias orientation after setting image dimensions
-                updateImageBiasOrientation();
-                
-                if (variationImage) {
-                    // Set the preview image source
-                    variationImage.src = previewUrl;
-                    variationImage.classList.remove('hidden');
-                }
-                // Show transformation section content
-                if (transformationRow) {
-                    transformationRow.classList.add('display-image');
-                }
-                document.getElementById('manualImg2ImgGroup').classList.remove('hidden');
-            }
-            // Ensure preview is updated with bias/crop
-            try {
-                await cropImageToResolution();
-            } catch (error) {
-                console.warn('Failed to crop image to resolution:', error);
-                // Continue without cropping - the image will still be displayed
-            }
-            try {
-                await refreshImageBiasState();
-            } catch (error) {
-                console.warn('Failed to refresh image bias state:', error);
-                // Continue without bias state update
-            }
-
-            if (data.mask_compressed !== undefined && data.mask_compressed !== null) {
-                // Store the compressed mask data for later use
-                window.currentMaskCompressed = data.mask_compressed;
-
-                // Process compressed mask to display resolution
-                const targetWidth = data.width || 1024;
-                const targetHeight = data.height || 1024;
-
-                try {
-                    window.currentMaskData = await processCompressedMask(data.mask_compressed, targetWidth, targetHeight);
-                    updateInpaintButtonState();
-                } catch (error) {
-                    console.error('❌ Failed to process compressed mask for regular image:', error);
-                    // Fallback to regular mask if available
-                    if (data.mask !== undefined && data.mask !== null) {
-                        window.currentMaskData = "data:image/png;base64," + data.mask;
-                    }
-                }
-            } else if (data.mask !== undefined && data.mask !== null) {
-                window.currentMaskData = "data:image/png;base64," + data.mask;
-                try {
-                    const compressedMask = await convertStandardMaskToCompressed(data.mask, data.width || 1024, data.height || 1024);
-                    if (compressedMask) {
-                        window.currentMaskCompressed = compressedMask;
-                    }
-                } catch (error) {
-                    console.warn('⚠️ Failed to auto-convert standard mask to compressed:', error);
-                }
-            }
-
-            if(data.image_bias !== undefined && data.image_bias !== null) {
-                // Handle both legacy (number) and dynamic (object) bias
-                if (typeof data.image_bias === 'object') {
-                    await renderImageBiasDropdown('custom');
-                } else {
-                    await renderImageBiasDropdown(data.image_bias.toString());
-                }
-            } else {
-                await renderImageBiasDropdown();
-            }
-
-            if (manualStrengthValue && data.strength !== undefined && data.strength !== null) {
-                manualStrengthValue.value = data.strength;
-                window.strengthValueLoaded = true;
-            }
-            if (manualNoiseValue && data.noise !== undefined && data.noise !== null) {
-                manualNoiseValue.value = data.noise;
-            }
-            
-            updateInpaintButtonState();
-            // Update percentage overlays after setting values
-            updatePercentageOverlays();
-
-        } else {
-            // No image source - clear any existing image data
-            if (window.currentEditMetadata) {
-                delete window.currentEditMetadata.sourceFilename;
-                delete window.currentEditMetadata.isVariationEdit;
-            }
-            if (variationImage) {
-                variationImage.src = '';
-            }
-
-            // Hide transformation section content
-            if (transformationRow) {
-                transformationRow.classList.remove('display-image');
-            }
-            document.getElementById('manualImg2ImgGroup').classList.add('hidden');
-        }
-        
-        // Handle variation editing - show image preview without triggering img2img mode
-        if (data.isVariationEdit && data.image_source && image) {
-            const [imageType, identifier] = data.image_source.split(':', 2);
-            let previewUrl = '';
-            
-            if (imageType === 'file') {
-                previewUrl = `/images/${identifier}`;
-            } else if (imageType === 'cache') {
-                previewUrl = `/cache/preview/${identifier}.webp`;
-            }
-            
-            if (previewUrl && variationImage) {
-                // Show the image preview for reference
-                variationImage.src = previewUrl;
-                variationImage.classList.remove('hidden');
-                
-                // Show transformation section content
-                if (transformationRow) {
-                    transformationRow.classList.add('display-image');
-                }
-            }
-        }
-        updateUploadDeleteButtonVisibility();
-
-        // Type-specific handling
-        if (name) {
-            manualPresetName.value = name;
-        }
-
-        if (type === 'preset') {
-            // Preset-specific
-            const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
-            if (presetNameGroup) {
-                presetNameGroup.classList.remove('hidden');
-                manualPresetName.disabled = false;
-                manualPresetName.style.opacity = '1';
-            }
-            const saveButton = document.getElementById('manualSaveBtn');
-            if (saveButton) saveButton.classList.remove('hidden');
-        } else if (type === 'metadata') {
-            manualStrengthValue.value = (data.strength !== undefined && data.strength !== null) ? data.strength : 0.8;
-            manualNoiseValue.value = (data.noise !== undefined && data.noise !== null) ? data.noise : 0.1;
-            if (manualUpscale) manualUpscale.checked = false;
-            
-            // Update percentage overlays after setting values
-            updatePercentageOverlays();
-            // Load image into preview panel when loading from metadata
-            if (image) {
-                // Check if this is a temp file (from blueprint upload)
-                if (image.isTempFile) {                    
-                    // For temp files, we need to handle them differently
-                    if (image.tempFilename) {
-                        // URL upload - use the temp file path
-                        const previewUrl = `/temp/${image.tempFilename}`;
-                        await loadTempImagePreview(previewUrl, image);
-                    } else if (image.file) {
-                        // File upload - create object URL
-                        const previewUrl = URL.createObjectURL(image.file);
-                        await loadTempImagePreview(previewUrl, image);
-                    }
-                } else {
-                    // Regular saved image - use existing logic
-                    let imageToShow = image.filename;
-                    if (image.upscaled) {
-                        imageToShow = image.upscaled;
-                    } else if (image.original) {
-                        imageToShow = image.original;
-                    }
-                    if (imageToShow) {
-                        updateManualPreviewDirectly(image, image.metadata);
-                    }
-                }
-            }
-        }
-
-        updateManualPriceDisplay(true);
-        updatePresetLoadSaveState();
-        updateManualPresetToggleBtn();
-
-        // Restore the preset name that was entered by the user
-        if (manualPresetName && currentPresetName) {
-            manualPresetName.value = currentPresetName;
-        }
-        
-        // Update prompt status icons after loading form data
-        updatePromptStatusIcons();
-    } catch (error) {
-        console.error('Error loading into form:', error);
-        showError('Failed to load data');
-    }
 }
 
 // Function to load temp image preview (from blueprint uploads)
@@ -1785,43 +399,6 @@ async function loadTempImagePreview(previewUrl, imageData) {
     }
 }
 
-async function updateCustomResolutionValue() {
-    if (manualSelectedResolution === 'custom' && manualWidth && manualHeight) {
-        const rawW = manualWidth.value;
-        const rawH = manualHeight.value;
-
-        // Only update if both inputs have values
-        if (rawW && rawH) {
-            // Get step value from the manual steps input
-            const step = parseInt(manualSteps.value) || 1;
-
-            const result = correctDimensions(rawW, rawH, {
-                step: step
-            });
-
-            // Store sanitized custom dimensions in the hidden field as a special format
-            manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
-
-            // --- ADDED: Refresh preview image if in bias mode ---
-            if (window.uploadedImageData && window.uploadedImageData.isBiasMode) {
-                // Reset bias to center (2) when resolution changes
-                const resetBias = 2;
-                if (imageBiasHidden != null) {
-                    imageBiasHidden.value = resetBias.toString();
-                }
-                window.uploadedImageData.bias = resetBias;
-
-                // Re-crop and update preview with reset bias
-                await cropImageToResolution();
-
-                // Re-render the dropdown options to reflect new resolution and reset bias
-                await renderImageBiasDropdown(resetBias.toString());
-            }
-            updateImageBiasOrientation();
-        }
-    }
-}
-
 function isValidPresetName(name) {
     if (!name) return false;
     return window.optionsData.presets && window.optionsData.presets.filter(e => e.name === name).length > 0;
@@ -1851,244 +428,6 @@ function updateManualPresetToggleBtn() {
     }
 }
 
-function processResolutionValue(resolutionValue) {
-    // Check if this is a custom resolution
-    if (resolutionValue && resolutionValue.startsWith('custom_')) {
-        const dimensions = resolutionValue.replace('custom_', '');
-        const [width, height] = dimensions.split('x').map(Number);
-        return { width, height, isCustom: true };
-    }
-    return { resolution: resolutionValue, isCustom: false };
-}
-
-function sanitizeCustomDimensions() {
-  if (manualSelectedResolution === 'custom' && manualWidth && manualHeight) {
-    const rawW = manualWidth.value;
-    const rawH = manualHeight.value;
-
-    // Only sanitize if both inputs have values
-    if (rawW && rawH) {
-      // Get step value from the manual steps input
-      //const step = parseInt(manualSteps.value) || 1;
-
-      const result = correctDimensions(rawW, rawH, {
-        //step: step
-      });
-
-      // Update the input values with sanitized values
-      manualWidth.value = result.width;
-      manualHeight.value = result.height;
-
-      // Show feedback if a dimension was adjusted
-      if (result.changed) {
-        let message = '';
-
-        if (result.reason === 'max_area') {
-          message = `${result.changed.toLocaleUpperCase()} was reduced to ${result.changed === 'width' ? result.width : result.height} (Maximum Area Limit)`;
-        } else if (result.reason === 'min_limit') {
-          message = `${result.changed.toLocaleUpperCase()} was increased to ${result.changed === 'width' ? result.width : result.height} (Minimum Value)`;
-        } else if (result.reason === 'max_limit') {
-          message = `${result.changed.toLocaleUpperCase()} was reduced to ${result.changed === 'width' ? result.width : result.height} (Maximum Value)`;
-        } else if (result.reason === 'step_snap') {
-          message = `${result.changed.toLocaleUpperCase()} was snapped to ${result.changed === 'width' ? result.width : result.height} (Step Clamp)`;
-        } else if (result.reason === 'clamped_and_snapped') {
-          message = `${result.changed.toLocaleUpperCase()} was clamped to ${result.changed === 'width' ? result.width : result.height} (Limits and Step Clamp)`;
-        } else {
-          message = `${result.changed.toLocaleUpperCase()} was clamped to ${result.changed === 'width' ? result.width : result.height}`;
-        }
-        showGlassToast('warning', null, message);
-      }
-
-      // Update the hidden resolution value
-      updateCustomResolutionValue();
-      
-      // Use debounced cropping for custom dimension changes to prevent excessive CPU usage
-      if (typeof debouncedCropImageToResolution === 'function') {
-        debouncedCropImageToResolution();
-      }
-    }
-  }
-}
-
-function renderSimpleDropdown(menu, items, value_key, display_key, selectHandler, closeHandler, selectedVal, options = {}) {
-    const preventFocusTransfer = options.preventFocusTransfer || false;
-    let lastActiveElement = null;
-    
-    menu.innerHTML = '';
-    items.forEach(item => {
-        const option = document.createElement('div');
-        const value = item[value_key];
-        const display = item[display_key];
-        option.className = 'custom-dropdown-option' + (selectedVal === value ? ' selected' : '');
-        option.tabIndex = 0;
-        option.dataset.value = value;
-        option.innerHTML = `<span>${display}</span>`;
-        const action = () => {
-            // Store the currently active element before selecting
-            if (preventFocusTransfer) {
-                lastActiveElement = document.activeElement;
-            }
-            
-            selectHandler(value);
-            closeHandler();
-            
-            // Restore focus to the last active element if we prevented focus transfer
-            if (preventFocusTransfer && lastActiveElement) {
-                setTimeout(() => {
-                    lastActiveElement.focus();
-                }, 10);
-            }
-        };
-        option.addEventListener('click', (e) => {
-            e.preventDefault();
-            action();
-        });
-        option.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                action();
-            }
-        });
-        menu.appendChild(option);
-    });
-}
-
-function generateSamplerOptions() {
-    // Populate sampler dropdown with display names, value=meta name
-    manualSampler.innerHTML = '<option value="">Default</option>';
-    SAMPLER_MAP.forEach(s => {
-        const option = document.createElement('option');
-        option.value = s.meta;
-        option.textContent = s.display;
-        manualSampler.appendChild(option);
-    });
-}
-
-function renderManualSamplerDropdown(selectedVal) {
-  renderSimpleDropdown(manualSamplerDropdownMenu, SAMPLER_MAP, 'meta', 'display', selectManualSampler, closeManualSamplerDropdown, selectedVal, { preventFocusTransfer: true });
-}
-
-function selectManualSampler(value) {
-  manualSelectedSampler = value;
-  const s = SAMPLER_MAP.find(s => s.meta.toLowerCase() === value.toLowerCase());
-  if (s) {
-    manualSamplerSelected.innerHTML = [
-        `<span class="custom-dropdown-text small-viewport">${s.display_short || s.display}</span>`,
-        `<span class="custom-dropdown-text full-viewport">${s.display_short_full || s.display}</span>`,
-        s.badge ? `<span class="custom-dropdown-badge small-viewport ${s.badge_class}">${s.badge}</span>` : '',
-        s.full_badge ? `<span class="custom-dropdown-badge full-viewport ${s.badge_class}">${s.full_badge}</span>` : ''
-    ].filter(Boolean).join(' ');
-  } else {
-    manualSamplerSelected.innerHTML = 'Select sampler...';
-  }
-  if (manualSamplerHidden) manualSamplerHidden.value = value;
-
-  // Auto-set noise scheduler based on sampler selection
-  if (value === 'k_dpmpp_2m') {
-    selectManualNoiseScheduler('exponential');
-  } else {
-    selectManualNoiseScheduler('karras');
-  }
-
-  if (typeof updateGenerateButton === 'function') updateGenerateButton();
-}
-
-function closeManualSamplerDropdown() {
-    closeDropdown(manualSamplerDropdownMenu, manualSamplerDropdownBtn);
-}
-function generateNoiseSchedulerOptions() {
-    // Populate noise scheduler dropdown with display names, value=meta name
-    manualNoiseScheduler.innerHTML = '<option value="">Default</option>';
-    NOISE_MAP.forEach(n => {
-        const option = document.createElement('option');
-        option.value = n.meta;
-        option.textContent = n.display;
-        manualNoiseScheduler.appendChild(option);
-    });
-}
-
-function renderManualNoiseSchedulerDropdown(selectedVal) {
-  renderSimpleDropdown(manualNoiseSchedulerDropdownMenu, NOISE_MAP, 'meta', 'display', selectManualNoiseScheduler, closeManualNoiseSchedulerDropdown, selectedVal, { preventFocusTransfer: true });
-}
-
-function selectManualNoiseScheduler(value) {
-  manualSelectedNoiseScheduler = value;
-  const n = NOISE_MAP.find(n => n.meta.toLowerCase() === value.toLowerCase());
-  if (n) {
-    manualNoiseSchedulerSelected.textContent = n.display;
-  } else {
-    manualNoiseSchedulerSelected.textContent = 'Select noise scheduler...';
-  }
-  if (manualNoiseSchedulerHidden) manualNoiseSchedulerHidden.value = value;
-  if (typeof updateGenerateButton === 'function') updateGenerateButton();
-  // Update price display
-  updateManualPriceDisplay();
-}
-
-function closeManualNoiseSchedulerDropdown() {
-    closeDropdown(manualNoiseSchedulerDropdownMenu, manualNoiseSchedulerDropdownBtn);
-}
-function generateModelOptions() {
-    manualModel.innerHTML = '<option value="">Select model...</option>';
-    Object.keys(window.optionsData?.models || {}).forEach(model => {
-        const option = document.createElement('option');
-        option.value = model.toLowerCase(); // Use lowercase to match config
-        option.textContent = window.optionsData?.models[model]; // Use pretty display name
-        manualModel.appendChild(option);
-    });   
-}
-
-function renderManualModelDropdown(selectedVal) {
-    renderGroupedDropdown(manualModelDropdownMenu, modelGroups, selectManualModel, closeManualModelDropdown, selectedVal, (opt, group) => `<span>${opt.name}</span>`, { preventFocusTransfer: true });
-}
-
-function selectManualModel(value, group, preventPropagation = false) {
-  manualSelectedModel = value;
-  window.manualSelectedModel = value;
-
-  // If group is not provided, find it automatically
-  if (!group) {
-    for (const g of modelGroups) {
-      const found = g.options.find(o => o.value === value.toLowerCase());
-      if (found) {
-        group = g.group;
-        break;
-      }
-    }
-  }
-
-  // Update button display
-  const groupObj = modelGroups.find(g => g.group === group);
-  const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
-  if (optObj) {
-    manualModelSelected.innerHTML = [
-        `<span class="custom-dropdown-text small-viewport">${optObj.display}</span>`,
-        `<span class="custom-dropdown-text full-viewport">${optObj.display_full}</span>`,
-        optObj.badge ? `<span class="custom-dropdown-badge small-viewport ${optObj.badge_class}">${optObj.badge}</span>` : '',
-        optObj.badge_full ? `<span class="custom-dropdown-badge full-viewport ${optObj.badge_class}">${optObj.badge_full}</span>` : ''
-    ].filter(Boolean).join(' ');
-  } else {
-    manualModelSelected.textContent = 'Select model...';
-  }
-
-  // Sync with hidden input for compatibility
-  if (manualModelHidden) manualModelHidden.value = value.toLowerCase();
-
-  if (preventPropagation) return;
-  // Update UI visibility based on model selection
-  updateV3ModelVisibility();
-
-  // Trigger any listeners (e.g., updateGenerateButton or manual form update)
-  if (typeof updateGenerateButton === 'function') updateGenerateButton();
-  updateManualPriceDisplay();
-  
-  // Refresh reference browser for model changes
-  refreshReferenceBrowserForModelChange();
-}
-
-function closeManualModelDropdown() {
-    closeDropdown(manualModelDropdownMenu, manualModelDropdownBtn);
-}
 // TRANSFORMATION SYSTEM - Move to transformationManager.js
 // This system handles image transformations (reroll, variation, browse, upload)
 // Includes functions: renderTransformationDropdown, selectTransformation, handleTransformationTypeChange,
@@ -2096,225 +435,9 @@ function closeManualModelDropdown() {
 // updateTransformationDropdownState, etc.
 
 // Transformation Dropdown Functions
-function renderTransformationDropdown(selectedVal) {
-    const hasValidImage = window.currentEditImage && window.currentEditMetadata;
-    const hasBaseImage = hasValidImage && (
-        window.currentEditMetadata.original_filename ||
-        (window.currentEditImage.filename || window.currentEditImage.original)
-    );
-
-    // Check if this is an img2img (has base image)
-    const isImg2Img = hasValidImage && window.currentEditMetadata.base_image === true;
-
-    // Show reroll button only if there's a base image available (for img2img)
-    const shouldShowReroll = hasValidImage && isImg2Img;
-
-    // Get all option elements
-    const rerollOption = transformationDropdownMenu.querySelector('[data-value="reroll"]');
-    const variationOption = transformationDropdownMenu.querySelector('[data-value="variation"]');
-    const browseOption = transformationDropdownMenu.querySelector('[data-value="browse"]');
-    const uploadOption = transformationDropdownMenu.querySelector('[data-value="upload"]');
-
-    // Show/hide options based on availability
-    if (rerollOption) {
-        rerollOption.classList.toggle('hidden', !shouldShowReroll);
-        rerollOption.classList.toggle('selected', selectedVal === 'reroll');
-    }
-
-    if (variationOption) {
-        variationOption.classList.toggle('hidden', !hasBaseImage);
-        variationOption.classList.toggle('selected', selectedVal === 'variation');
-    }
-
-    if (browseOption) {
-        browseOption.classList.toggle('selected', selectedVal === 'browse');
-    }
-
-    if (uploadOption) {
-        uploadOption.classList.toggle('selected', selectedVal === 'upload');
-    }
-}
-function selectTransformation(value) {
-    // Handle specific actions
-    switch(value) {
-        case 'browse':
-            showCacheBrowser();
-            break;
-        case 'upload':
-            // Determine upload type based on current state
-            const hasValidImage = window.currentEditImage && window.currentEditMetadata;
-            const hasBaseImage = hasValidImage && (
-                window.currentEditMetadata.original_filename ||
-                (window.currentEditImage.filename || window.currentEditImage.original)
-            );
-            
-            if (window.showUnifiedUploadModal) {
-                // Set the appropriate mode before opening the modal
-                if (hasBaseImage) {
-                    // If there's already a base image, upload as vibe reference
-                    window.unifiedUploadCurrentMode = 'vibe';
-                } else {
-                    // If no base image, upload as base image
-                    window.unifiedUploadCurrentMode = 'reference';
-                }
-                window.showUnifiedUploadModal();
-            } else {
-                showError('Upload modal not available');
-            }
-            // Close the transformation dropdown
-            closeTransformationDropdown();
-            break;
-        case 'reroll':
-        case 'variation':
-            // Update button display for immediate actions
-            const options = {
-                'reroll': undefined,
-                'variation': undefined
-            };
-            const displayText = options[value] || 'Reference';
-            updateTransformationDropdownState(value, displayText);
-
-            // Handle reroll/variation logic
-            handleTransformationTypeChange(value);
-            break;
-    }
-}
-
-async function handleTransformationTypeChange(requestType) {
-    const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
-    const saveButton = document.getElementById('manualSaveBtn');
-
-    // Clear existing data
-    window.uploadedImageData = null;
-    if (variationImage) {
-        variationImage.src = '';
-    }
-    hideImageBiasDropdown();
-
-    // Set new state
-    window.currentRequestType = requestType;
-
-    const metadata = window.currentEditMetadata;
-    const image = window.currentEditImage;
-    if (!metadata || !image) return;
-
-    let source, previewUrl, bias = 2;
-    let customBias = undefined;
-    if (requestType === 'reroll') {
-        if (!metadata.image_source) return; // Should not happen if button hidden
-        source = metadata.image_source;
-        bias = typeof metadata.image_bias === 'number' ? metadata.image_bias : 2;
-        customBias = typeof metadata.image_bias === 'object' ? metadata.image_bias : undefined;
-        const [type, id] = source.split(':');
-        previewUrl = type === 'file' ? `/images/${id}` : `/cache/preview/${id}.webp`;
-    } else {
-        const filename = image.filename || image.original;
-        if (!filename) return;
-        source = `file:${filename}`;
-        previewUrl = `/images/${filename}`;
-    }
-
-    window.uploadedImageData = {
-        image_source: source,
-        width: 0, // Will be updated when image loads
-        height: 0,
-        bias: bias,
-        image_bias: customBias,
-        isBiasMode: true,
-        isClientSide: false
-    };
-
-    // Load actual image dimensions
-    await new Promise((resolve) => {
-        const tempImg = new Image();
-        tempImg.onload = () => {
-            window.uploadedImageData.width = tempImg.width;
-            window.uploadedImageData.height = tempImg.height;
-            resolve();
-        };
-        tempImg.onerror = () => {
-            console.warn('Failed to load image dimensions, using defaults');
-            window.uploadedImageData.width = 512;
-            window.uploadedImageData.height = 512;
-            resolve();
-        };
-        tempImg.src = previewUrl;
-    });
-
-    // Show transformation section content
-    if (transformationRow) {
-        transformationRow.classList.add('display-image');
-    }
-    document.getElementById('manualImg2ImgGroup').classList.remove('hidden');
-
-    // Update image bias orientation after setting image dimensions
-    updateImageBiasOrientation();
-    
-    // Only crop if the image dimensions don't match the target resolution
-    if (typeof cropImageToResolution === 'function') {
-        cropImageToResolution();
-    }
-    
-    updateInpaintButtonState();
-
-    // Show bias dropdown
-    renderImageBiasDropdown(bias.toString());
-
-    // Hide preset name and save for variation
-    if (presetNameGroup) presetNameGroup.classList.add('hidden');
-    if (saveButton) saveButton.classList.add('hidden');
-
-    updateUploadDeleteButtonVisibility();
-}
-
-function openTransformationDropdown() {
-    openDropdown(transformationDropdownMenu, transformationDropdownBtn);
-}
-
-function closeTransformationDropdown() {
-    closeDropdown(transformationDropdownMenu, transformationDropdownBtn);
-}
-
-// Function to set up event listeners for transformation dropdown options
-function setupTransformationDropdownListeners() {
-    const options = transformationDropdownMenu.querySelectorAll('.custom-dropdown-option');
-
-    options.forEach(option => {
-        option.tabIndex = 0;
-
-        option.addEventListener('click', (e) => {
-            e.preventDefault();
-            const value = option.dataset.value;
-            selectTransformation(value);
-            closeTransformationDropdown();
-        });
-
-        option.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                const value = option.dataset.value;
-                selectTransformation(value);
-                closeTransformationDropdown();
-            }
-        });
-    });
-}
 
 // Function to update transformation dropdown state and text
-function updateTransformationDropdownState(type, text) {
-    const transformationType = document.getElementById('transformationType');
 
-    if (transformationType) transformationType.value = type || '';
-
-    // Update toggle button state
-    if (transformationDropdownBtn) {
-        if (type) {
-            transformationDropdownBtn.setAttribute('data-state', 'on');
-        } else {
-            transformationDropdownBtn.setAttribute('data-state', 'off');
-        }
-    }
-}
 // Move image to scraps
 async function moveToScraps(image) {
     try {
@@ -2694,19 +817,60 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
                 throw new Error('WebSocket connection not in stable state');
             }
             
-            // Create a timeout promise for the request
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Request timeout')), 1500); // 2.5 second timeout
+            // Add server readiness check before making the request
+            if (!window.wsClient || !window.wsClient.isConnected()) {
+                throw new Error('WebSocket not connected - server not ready');
+            }
+
+            // Quick server health check - fail fast if server appears unresponsive
+            let pingRequestId = null;
+            const pingPromise = window.wsClient.pingWithAuth().catch(error => {
+                // If ping fails, store the request ID for cleanup if race times out
+                if (error.requestId) {
+                    pingRequestId = error.requestId;
+                }
+                throw error;
             });
-            
-            // Race between the actual request and timeout
-            const options = await Promise.race([
-                window.wsClient.getAppOptions(),
-                timeoutPromise
-            ]);
+
+            await Promise.race([
+                pingPromise,
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Server health check timeout')), 2000)
+                )
+            ]).catch((error) => {
+                // Clean up any lingering ping request
+                let cleanedUp = false;
+                if (pingRequestId && window.wsClient.pendingRequests?.has(pingRequestId)) {
+                    window.wsClient.pendingRequests.delete(pingRequestId);
+                    window.wsClient.decrementPendingRequests();
+                    console.log(`🧹 Cleaned up timed out ping request: ${pingRequestId}`);
+                    cleanedUp = true;
+                }
+
+                // Backup: Clear any other pending ping requests
+                if (!cleanedUp) {
+                    const clearedCount = window.wsClient.clearPendingRequestsByType('ping');
+                    if (clearedCount > 0) {
+                        console.log(`🧹 Backup cleanup cleared ${clearedCount} ping requests`);
+                    }
+                }
+
+                throw new Error('Server not responding to health check - failing fast');
+            });
+
+            // If health check passes, proceed with get_app_options
+            const options = await window.wsClient.getAppOptions();
             
             if (!options || !options.ok) {
-                throw new Error("Failed to load application configuration: " + (options?.error || 'Unknown error'));
+                const errorMsg = options?.error || 'Unknown error';
+                console.error('❌ Application configuration load failed:', {
+                    ok: options?.ok,
+                    error: errorMsg,
+                    hasUser: !!options?.user,
+                    hasBalance: !!options?.balance,
+                    connectionState: window.wsClient?.getConnectionState()
+                });
+                throw new Error("Failed to load application configuration: " + errorMsg);
             }
             
             window.optionsData = options;
@@ -2745,17 +909,11 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
             
         } catch (error) {
             lastError = error;
-            console.error(`❌ Failed to load app options (attempt ${attempt}/${maxRetries}):`, error);
-            
-            // Show user-friendly error message
-            if (attempt === 1) {
-                showGlassToast('warning', 'Loading Application Data', 'Attempting to load application configuration...', false, 3000, '<i class="fas fa-sync"></i>');
+            if (attempt >= maxRetries) {
+                showGlassToast('error', 'Critical Error', 'Failed to load application data. Please refresh the page or contact support.', false, 0, '<i class="fas fa-exclamation-triangle"></i>');
             }
-            
+            console.error(`❌ Failed to load app options (attempt ${attempt}/${maxRetries}):`, error);
             if (attempt < maxRetries) {
-                // Show retry notification
-                showGlassToast('info', 'Retrying...', `Attempt ${attempt + 1} of ${maxRetries}`, false, 2000, '<i class="fas fa-redo"></i>');
-                
                 // Wait before retry
                 await new Promise(resolve => setTimeout(resolve, retryDelay));
                 
@@ -2808,480 +966,6 @@ async function handleWorkspaceDataFromOptions(workspaceInfo) {
     }
 }
 
-// Dataset Dropdown Functions
-function renderDatasetDropdown() {
-    datasetDropdownMenu.innerHTML = '';
-    
-    const datasets = window.optionsData?.datasets || [
-        { value: 'anime', display: 'Anime', sub_toggles: [] },
-        { value: 'furry', display: 'Furry', sub_toggles: [] },
-        { value: 'backgrounds', display: 'Backgrounds', sub_toggles: [] }
-    ];
-
-    datasets.forEach(dataset => {
-        const option = document.createElement('div');
-        option.className = 'custom-dropdown-option dataset-dropdown-option';
-        option.dataset.value = dataset.value;
-
-        const isSelected = selectedDatasets.includes(dataset.value);
-        if (isSelected) {
-            option.classList.add('selected');
-        }
-
-        const biasValue = datasetBias[dataset.value] || 1.0;
-        const biasDisplay = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
-
-        option.innerHTML = `
-            <div class="dataset-option-content">
-                <div class="dataset-option-left">
-                    <span class="dataset-name">${dataset.display}</span>
-                    ${isSelected ? '<i class="fas fa-check dataset-check-icon"></i>' : ''}
-                </div>
-                <div class="dataset-option-right">
-                    ${isSelected ? `
-                        <div class="dataset-bias-controls">
-                            <button type="button" class="dataset-bias-decrease" title="Decrease bias" data-dataset="${dataset.value}">
-                                <i class="fas fa-minus"></i>
-                            </button>
-                            <span class="dataset-bias-value" data-dataset="${dataset.value}">${biasDisplay}</span>
-                            <button type="button" class="dataset-bias-increase" title="Increase bias" data-dataset="${dataset.value}">
-                                <i class="fas fa-plus"></i>
-                            </button>
-                        </div>
-                    ` : ''}
-                </div>
-            </div>
-        `;
-
-        // Add click handler for the main option (toggle selection)
-        const optionLeft = option.querySelector('.dataset-option-left');
-        optionLeft.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleDataset(dataset.value);
-        });
-
-        // Add click handlers for bias controls (only if dataset is selected)
-        if (isSelected) {
-            const decreaseBtn = option.querySelector('.dataset-bias-decrease');
-            const increaseBtn = option.querySelector('.dataset-bias-increase');
-            const biasValueSpan = option.querySelector('.dataset-bias-value');
-
-            decreaseBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                adjustDatasetBias(dataset.value, -0.1);
-            });
-
-            increaseBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                adjustDatasetBias(dataset.value, 0.1);
-            });
-
-            // Add wheel event for bias value span
-            biasValueSpan.addEventListener('wheel', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const delta = e.deltaY > 0 ? -0.1 : 0.1;
-                adjustDatasetBias(dataset.value, delta);
-                
-                // Add visual feedback
-                biasValueSpan.classList.add('scrolling');
-                setTimeout(() => {
-                    biasValueSpan.classList.remove('scrolling');
-                }, 200);
-            });
-
-            // Add click event for bias value span to make it more interactive
-            biasValueSpan.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                // Optional: could add a visual feedback here
-            });
-        }
-
-        datasetDropdownMenu.appendChild(option);
-    });
-}
-
-function toggleDataset(value) {
-    const index = selectedDatasets.indexOf(value);
-    if (index > -1) {
-        selectedDatasets.splice(index, 1);
-    } else {
-        selectedDatasets.push(value);
-    }
-
-    // Update display
-    updateDatasetDisplay();
-    renderDatasetDropdown();
-    updateSubTogglesButtonState();
-    
-    // Update prompt status icons to reflect dataset changes
-    updatePromptStatusIcons();
-}
-
-function updateDatasetDisplay() {
-    if (selectedDatasets.length > 1) {
-        datasetSelected.classList.remove('hidden');
-        datasetSelected.textContent = `${selectedDatasets.length}`;
-    } else {
-        datasetSelected.classList.add('hidden');
-        datasetSelected.textContent = '0';
-    }
-
-    if (datasetIcon) {
-        // Priority: furry > backgrounds > anime (default)
-        let iconClass = 'nai-sakura'; // default (anime)
-        if (selectedDatasets.includes('furry')) {
-            iconClass = 'nai-paw';
-        } else if (selectedDatasets.includes('backgrounds')) {
-            iconClass = 'fas fa-tree';
-        } else {
-            iconClass = 'nai-sakura';
-        }
-        datasetIcon.className = iconClass;
-    }
-
-    // Update toggle state - on when more than just anime is selected
-    // off when none or only anime is selected
-    const datasetBtn = document.getElementById('datasetDropdownBtn');
-    if (datasetBtn) {
-        datasetBtn.setAttribute('data-state', selectedDatasets.length > 0 ? 'on' : 'off');
-    }
-    
-    // Update bias value displays in the dropdown if it's open
-    selectedDatasets.forEach(dataset => {
-        const biasValueSpan = document.querySelector(`.dataset-bias-value[data-dataset="${dataset}"]`);
-        if (biasValueSpan) {
-            const biasValue = datasetBias[dataset] || 1.0;
-            const displayValue = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
-            biasValueSpan.textContent = displayValue;
-        }
-    });
-    
-    updatePromptStatusIcons();
-}
-
-function openDatasetDropdown() {
-    openDropdown(datasetDropdownMenu, datasetDropdownBtn);
-}
-
-function closeDatasetDropdown() {
-    closeDropdown(datasetDropdownMenu, datasetDropdownBtn);
-}
-
-// Function to adjust dataset bias from dropdown controls
-function adjustDatasetBias(dataset, delta) {
-    const currentValue = datasetBias[dataset] || 1.0;
-    const newValue = Math.max(-3, Math.min(5, currentValue + delta));
-    datasetBias[dataset] = Math.round(newValue * 10) / 10; // Round to 1 decimal place
-    
-    // Update the bias value display in the dropdown
-    const biasValueSpan = document.querySelector(`.dataset-bias-value[data-dataset="${dataset}"]`);
-    if (biasValueSpan) {
-        const displayValue = datasetBias[dataset] !== 1.0 ? datasetBias[dataset].toFixed(1) : '1.0';
-        biasValueSpan.textContent = displayValue;
-    }
-    
-    // Update dataset display to ensure dropdown stays in sync
-    updateDatasetDisplay();
-}
-
-// Sub Toggles Functions
-function renderSubTogglesDropdown() {
-    subTogglesDropdownMenu.innerHTML = '';
-    
-    const datasets = window.optionsData?.datasets || [];
-    
-    const selectedDatasetsWithToggles = datasets.filter(dataset => 
-        selectedDatasets.includes(dataset.value) && dataset.sub_toggles && dataset.sub_toggles.length > 0
-    );
-
-    if (selectedDatasetsWithToggles.length === 0) {
-        return;
-    }
-
-    selectedDatasetsWithToggles.forEach(dataset => {
-        const datasetGroup = document.createElement('div');
-        datasetGroup.className = 'sub-toggle-dataset-group';
-
-        const datasetHeader = document.createElement('div');
-        datasetHeader.className = 'sub-toggle-dataset-header';
-        datasetHeader.textContent = dataset.display;
-        datasetGroup.appendChild(datasetHeader);
-
-        dataset.sub_toggles.forEach(subToggle => {
-            const toggleOption = document.createElement('div');
-            toggleOption.className = 'custom-dropdown-option dataset-dropdown-option';
-            toggleOption.dataset.dataset = dataset.value;
-            toggleOption.dataset.toggle = subToggle.id;
-
-            // Check if this toggle is enabled
-            const isEnabled = window.datasetSettings && 
-                            window.datasetSettings[dataset.value] && 
-                            window.datasetSettings[dataset.value][subToggle.id] ?
-                            window.datasetSettings[dataset.value][subToggle.id].enabled :
-                            (subToggle.default_enabled || false);
-
-            if (isEnabled) {
-                toggleOption.classList.add('selected');
-            }
-
-            const biasValue = (window.datasetSettings && 
-                             window.datasetSettings[dataset.value] && 
-                             window.datasetSettings[dataset.value][subToggle.id]) ?
-                             window.datasetSettings[dataset.value][subToggle.id].bias : 
-                             (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
-
-            const biasDisplay = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
-
-            toggleOption.innerHTML = `
-                <div class="dataset-option-content">
-                    <div class="dataset-option-left">
-                        <span class="dataset-name">${subToggle.name}</span>
-                        ${isEnabled ? '<i class="fas fa-check dataset-check-icon"></i>' : ''}
-                    </div>
-                    <div class="dataset-option-right">
-                        ${isEnabled ? `
-                            <div class="dataset-bias-controls">
-                                <button type="button" class="dataset-bias-decrease" title="Decrease bias" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">
-                                    <i class="fas fa-minus"></i>
-                                </button>
-                                <span class="dataset-bias-value" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">${biasDisplay}</span>
-                                <button type="button" class="dataset-bias-increase" title="Increase bias" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">
-                                    <i class="fas fa-plus"></i>
-                                </button>
-                            </div>
-                        ` : ''}
-                    </div>
-                </div>
-            `;
-
-            // Add click handler for the main option (toggle selection)
-            const optionLeft = toggleOption.querySelector('.dataset-option-left');
-            optionLeft.addEventListener('click', (e) => {
-                    e.preventDefault();
-                e.stopPropagation();
-                toggleSubToggle(dataset.value, subToggle.id);
-            });
-
-            // Add click handlers for bias controls (only if toggle is enabled)
-            if (isEnabled) {
-                const decreaseBtn = toggleOption.querySelector('.dataset-bias-decrease');
-                const increaseBtn = toggleOption.querySelector('.dataset-bias-increase');
-                const biasValueSpan = toggleOption.querySelector('.dataset-bias-value');
-
-                decreaseBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    adjustSubToggleBias(dataset.value, subToggle.id, -0.1);
-                });
-
-                increaseBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    adjustSubToggleBias(dataset.value, subToggle.id, 0.1);
-                });
-
-                // Add wheel event for bias value span
-                biasValueSpan.addEventListener('wheel', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-                    adjustSubToggleBias(dataset.value, subToggle.id, delta);
-                    
-                    // Add visual feedback
-                    biasValueSpan.classList.add('scrolling');
-                    setTimeout(() => {
-                        biasValueSpan.classList.remove('scrolling');
-                    }, 200);
-                });
-            }
-
-            datasetGroup.appendChild(toggleOption);
-        });
-
-        subTogglesDropdownMenu.appendChild(datasetGroup);
-    });
-}
-
-function toggleSubToggle(dataset, subToggleId) {
-    // Initialize window.datasetSettings if needed
-                    if (!window.datasetSettings) window.datasetSettings = {};
-                    if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
-    
-    const subToggle = window.optionsData?.datasets?.find(d => d.value === dataset)?.sub_toggles?.find(t => t.id === subToggleId);
-    if (!subToggle) return;
-
-    // If the setting doesn't exist, create it with the opposite of default_enabled
-    // This ensures the first click toggles from the default state to the opposite
-    if (!window.datasetSettings[dataset][subToggleId]) {
-        const newEnabledState = !(subToggle.default_enabled || false);
-        window.datasetSettings[dataset][subToggleId] = {
-            enabled: newEnabledState,
-            bias: subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0,
-                            value: subToggle.value
-                        };
-    } else {
-        // If it exists, just toggle the current state
-        const currentState = window.datasetSettings[dataset][subToggleId].enabled;
-        window.datasetSettings[dataset][subToggleId].enabled = !currentState;
-    }
-
-    renderSubTogglesDropdown();
-    updateSubTogglesButtonState();
-}
-
-function adjustSubToggleBias(dataset, subToggleId, delta) {
-                    if (!window.datasetSettings) window.datasetSettings = {};
-                    if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
-    if (!window.datasetSettings[dataset][subToggleId]) {
-        const subToggle = window.optionsData?.datasets?.find(d => d.value === dataset)?.sub_toggles?.find(t => t.id === subToggleId);
-        if (!subToggle) return;
-        
-        window.datasetSettings[dataset][subToggleId] = {
-            enabled: true, // If user is adjusting bias, they want it enabled
-            bias: subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0,
-                            value: subToggle.value
-                        };
-                    }
-
-    const currentBias = window.datasetSettings[dataset][subToggleId].bias;
-    const newBias = Math.max(-3, Math.min(5, currentBias + delta));
-    window.datasetSettings[dataset][subToggleId].bias = newBias;
-
-    renderSubTogglesDropdown();
-    updateSubTogglesButtonState();
-}
-
-function updateSubTogglesButtonState() {
-    if (!subTogglesBtn) return;
-
-    const datasets = window.optionsData?.datasets || [];
-    
-    const hasSubToggles = datasets.some(dataset => 
-        selectedDatasets.includes(dataset.value) && 
-        dataset.sub_toggles && 
-        dataset.sub_toggles.length > 0
-    );
-
-    const hasEnabledToggles = datasets.some(dataset => 
-        selectedDatasets.includes(dataset.value) && 
-        dataset.sub_toggles && 
-        dataset.sub_toggles.some(subToggle => 
-            window.datasetSettings && 
-            window.datasetSettings[dataset.value] && 
-            window.datasetSettings[dataset.value][subToggle.id] &&
-            window.datasetSettings[dataset.value][subToggle.id].enabled
-        )
-    );
-
-    // Check if any enabled sub toggles have extreme bias values (over 1.5 or under 1.0)
-    const hasExtremeBias = datasets.some(dataset => 
-        selectedDatasets.includes(dataset.value) && 
-        dataset.sub_toggles && 
-        dataset.sub_toggles.some(subToggle => {
-            if (!window.datasetSettings || 
-                !window.datasetSettings[dataset.value] || 
-                !window.datasetSettings[dataset.value][subToggle.id] ||
-                !window.datasetSettings[dataset.value][subToggle.id].enabled) {
-                return false;
-            }
-            
-            const bias = window.datasetSettings[dataset.value][subToggle.id].bias;
-            return bias > 1.5 || bias < 1.0;
-        })
-    );
-
-    // Set button state based on conditions
-    let buttonState = 'off';
-    if (hasEnabledToggles) {
-        buttonState = hasExtremeBias ? 'onhigh' : 'on';
-    }
-
-    subTogglesBtn.setAttribute('data-state', buttonState);
-    subTogglesDropdown.classList.toggle('hidden', !hasSubToggles);
-    
-    // If the button is now visible, render the dropdown content
-    if (hasSubToggles && !subTogglesBtn.classList.contains('hidden')) {
-        renderSubTogglesDropdown();
-    }
-}
-
-function openSubTogglesDropdown() {
-    openDropdown(subTogglesDropdownMenu, subTogglesBtn);
-}
-
-function closeSubTogglesDropdown() {
-    closeDropdown(subTogglesDropdownMenu, subTogglesBtn);
-}
-
-// Quality Toggle Functions
-function toggleQuality() {
-    const currentState = qualityToggleBtn.getAttribute('data-state');
-    const newState = currentState === 'on' ? 'off' : 'on';
-
-    qualityToggleBtn.setAttribute('data-state', newState);
-    appendQuality = newState === 'on';
-    updatePromptStatusIcons();
-}
-
-// UC Presets Dropdown Functions
-function renderUcPresetsDropdown() {
-    ucPresetsDropdownMenu.innerHTML = '';
-    [
-        { value: 0, display: 'None' },
-        { value: 1, display: 'Human Focus' },
-        { value: 2, display: 'Light' },
-        { value: 3, display: 'Heavy' }
-    ].forEach(preset => {
-        const option = document.createElement('div');
-        option.className = 'custom-dropdown-option';
-        option.dataset.value = preset.value;
-
-        if (preset.value === selectedUcPreset) {
-            option.classList.add('selected');
-        }
-
-        option.innerHTML = `<span>${preset.display}</span>`;
-
-        option.addEventListener('click', (e) => {
-            e.preventDefault();
-            selectUcPreset(preset.value);
-            closeUcPresetsDropdown();
-        });
-
-        ucPresetsDropdownMenu.appendChild(option);
-    });
-}
-
-function selectUcPreset(value) {
-    selectedUcPreset = value;
-
-    // Update UC boxes visual state
-    const ucBoxes = document.querySelector('#manualModal .uc-boxes');
-    if (ucBoxes) {
-        ucBoxes.setAttribute('data-uc-level', value.toString());
-    }
-
-    // Update toggle state - on when UC preset > 0
-    const ucPresetsBtn = document.querySelector('#manualModal #ucPresetsDropdownBtn');
-    if (ucPresetsBtn) { 
-        ucPresetsBtn.setAttribute('data-state', value > 0 ? 'on' : 'off');
-    }
-    updatePromptStatusIcons();
-}
-
-function openUcPresetsDropdown() {
-    openDropdown(ucPresetsDropdownMenu, ucPresetsDropdownBtn);
-}
-
-function closeUcPresetsDropdown() {
-    closeDropdown(ucPresetsDropdownMenu, ucPresetsDropdownBtn);
-}
-
 let focusCoverEnabled = true;
 // Setup event listeners
 // MANUAL MODAL MANAGEMENT SYSTEM EVENT LISTENERS - Move to manualModalManager.js
@@ -3307,7 +991,7 @@ function setupEventListeners() {
     });
     manualPreviewCloseBtn.addEventListener('click', (e) => {
         e.preventDefault();
-
+        
         if (window.innerWidth > 1400) {
             hideManualModal(e, false);
         } else {
@@ -3579,7 +1263,7 @@ function setupEventListeners() {
         e.preventDefault();
         clearSeed();
     });
-
+    
     editSeedBtn.addEventListener('click', (e) => {
         e.preventDefault();
         setSeedInputGroupState(true);
@@ -3786,7 +1470,7 @@ function setupEventListeners() {
     
     // UI SCROLL MANAGEMENT SYSTEM - Title bar visibility and star field generation
     window.addEventListener('scroll', handleScroll, { passive: true });
-
+    
     // UI SCROLL MANAGEMENT SYSTEM - Initialize title bar state
     const initialScrollTop = window.pageYOffset || document.documentElement.scrollTop;
     updateTitleBarVisibility(initialScrollTop);
@@ -3821,12 +1505,12 @@ function setupEventListeners() {
             // Small delay to prevent flickering during quick focus changes
             focusTimeout = setTimeout(showFocusOverlay, 100);
         });
-
+        
         window.addEventListener('focus', () => {
             clearTimeout(focusTimeout);
             hideFocusOverlay();
         });
-
+        
         // FOCUS OVERLAY SYSTEM - Document visibility change (tab switching)
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
@@ -3835,15 +1519,15 @@ function setupEventListeners() {
                 hideFocusOverlay();
             }
         });
-
+        
         // FOCUS OVERLAY SYSTEM - Click and keyboard events to return focus
         focusOverlay.addEventListener('click', () => {
             window.focus();
             hideFocusOverlay();
         });
-
+        
         document.addEventListener('keydown', (e) => {
-            if (focusOverlay.classList.contains('active') &&
+            if (focusOverlay.classList.contains('active') && 
                 (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape')) {
                 window.focus();
                 hideFocusOverlay();
@@ -3965,7 +1649,7 @@ function setupEventListeners() {
             closeSubMenu();
         });
     }
-
+    
     if (imageUploadInput) {
         imageUploadInput.addEventListener('change', handleImageUpload);
     }
@@ -4023,6 +1707,42 @@ function setupEventListeners() {
         });
     }
 
+    if (previewCharacterReferenceImageBtn) {
+        previewCharacterReferenceImageBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Get the base image source
+            const directorReferenceImage = document.getElementById('directorReferenceImage');
+            if (directorReferenceImage && directorReferenceImage.src && directorReferenceImage.src !== '') {
+                showLightbox({ url: directorReferenceImage.src });
+            } else {
+                showGlassToast('error', 'Preview Failed', 'No character reference image available');
+            }
+        });
+    }
+
+    // DIRECTOR REFERENCE MANAGEMENT SYSTEM - Director reference events
+    if (addDirectorReferenceBtn) {
+        addDirectorReferenceBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            showCacheBrowser();
+        });
+    }
+
+    if (clearDirectorReferenceBtn) {
+        clearDirectorReferenceBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            clearDirectorReference();
+        });
+    }
+
+    if (directorReferenceStyleBtn) {
+        directorReferenceStyleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleDirectorReferenceStyle();
+        });
+    }
+
+
     // CACHE BROWSER SYSTEM - Close cache browser events
     const closeCacheBrowserBtn = document.getElementById('closeCacheBrowserBtn');
     const closeCacheBrowserContainerBtn = document.getElementById('closeCacheBrowserContainerBtn');
@@ -4049,18 +1769,18 @@ function setupEventListeners() {
             const targetTab = this.getAttribute('data-tab');
             const toggleGroup = this.closest('.gallery-toggle-group');
             const tabTitle = this.getAttribute('data-title');
-
+            
             // Update the data-active attribute
             toggleGroup.setAttribute('data-active', targetTab);
-
+            
             // Remove active class from all buttons
             toggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
-
+            
             // Add active class to clicked button
             this.classList.add('active');
-
+            
             switchCacheBrowserTab(targetTab, tabTitle);
         });
     });
@@ -4424,18 +2144,6 @@ function setupEventListeners() {
             }
         });
     }
-
-    // Mobile sort order toggle button
-    const mobileSortOrderToggleBtn = document.getElementById('mobileSortOrderToggleBtn');
-    if (mobileSortOrderToggleBtn) {
-        mobileSortOrderToggleBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            if (window.toggleGallerySortOrder) {
-                window.toggleGallerySortOrder();
-            }
-        });
-    }
-
     // Gallery toggle group
     galleryToggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -4883,6 +2591,72 @@ function syncCharacterPromptTabsShowBoth() {
     });
 }
 
+function syncCharacterPromptTabsShowBoth() {
+    const characterItems = document.querySelectorAll('.character-prompt-item');
+    
+    characterItems.forEach(characterItem => {
+        const characterTabButtons = characterItem.querySelectorAll('.gallery-toggle-btn');
+        const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
+        const toggleGroup = characterItem.querySelector('.gallery-toggle-group');
+        const characterPromptTabs = characterItem.querySelector('.character-prompt-tabs');
+        const characterId = characterItem.id;
+
+        // Show both character tab buttons and panes
+        characterTabButtons.forEach(btn => btn.classList.add('active'));
+        characterTabPanes.forEach(pane => pane.classList.add('active'));
+        
+        // Add show-both class to character-prompt-tabs for visual separation
+        if (characterPromptTabs) {
+            characterPromptTabs.classList.add('show-both');
+        }
+        
+        // Update the data-active attribute for the character's slider (keep current state)
+        if (toggleGroup) {
+            const currentActive = toggleGroup.getAttribute('data-active') || 'prompt';
+            toggleGroup.setAttribute('data-active', currentActive);
+        }
+
+        // Update emphasis highlighting for both prompt and UC textareas
+        const promptTextarea = characterItem.querySelector(`#${characterId}_prompt`);
+        const ucTextarea = characterItem.querySelector(`#${characterId}_uc`);
+        
+        if (promptTextarea) {
+            updateEmphasisHighlighting(promptTextarea);
+        }
+        if (ucTextarea) {
+            updateEmphasisHighlighting(ucTextarea);
+        }
+    });
+}
+
+function toggleManualShowBoth() {
+    const showBothBtn = document.getElementById('showBothBtn');
+    const promptTabs = document.querySelector('#manualModal .prompt-tabs');
+    
+    const isShowingBoth = promptTabs.classList.contains('show-both');
+
+    if (isShowingBoth) {
+        // Return to single tab mode
+        promptTabs.classList.remove('show-both');
+        showBothBtn.dataset.state = 'off';
+        showBothBtn.classList.remove('active');
+
+        // Set Base Prompt as default when returning from show both mode
+        syncCharacterPromptTabs('prompt');
+    } else {
+        // Show both panes
+        promptTabs.classList.add('show-both');
+        showBothBtn.dataset.state = 'on';
+        showBothBtn.classList.add('active');
+
+        // Sync character prompts to show both tabs
+        syncCharacterPromptTabsShowBoth();
+    }
+    
+    // Update prompt status icons after toggling show both
+    updatePromptStatusIcons();
+}
+
 function toggleSubMenu() {
     const menu = document.querySelectorAll('.sub-menu-toggle');
     if (menu) {
@@ -4963,78 +2737,6 @@ function closeSearchContainer() {
             window.fileSearch.clearSearch(true, true);
         }
     }
-}
-
-// Make functions globally accessible
-window.toggleSearchContainer = toggleSearchContainer;
-window.closeSearchContainer = closeSearchContainer;
-
-// Show both panes functionality for manual generation model
-function toggleManualShowBoth() {
-    const showBothBtn = document.getElementById('showBothBtn');
-    const promptTabs = document.querySelector('#manualModal .prompt-tabs');
-    
-    const isShowingBoth = promptTabs.classList.contains('show-both');
-
-    if (isShowingBoth) {
-        // Return to single tab mode
-        promptTabs.classList.remove('show-both');
-        showBothBtn.dataset.state = 'off';
-        showBothBtn.classList.remove('active');
-
-        // Set Base Prompt as default when returning from show both mode
-        syncCharacterPromptTabs('prompt');
-    } else {
-        // Show both panes
-        promptTabs.classList.add('show-both');
-        showBothBtn.dataset.state = 'on';
-        showBothBtn.classList.add('active');
-
-        // Sync character prompts to show both tabs
-        syncCharacterPromptTabsShowBoth();
-    }
-    
-    // Update prompt status icons after toggling show both
-    updatePromptStatusIcons();
-}
-
-// New function to sync character prompts to show both tabs
-function syncCharacterPromptTabsShowBoth() {
-    const characterItems = document.querySelectorAll('.character-prompt-item');
-    
-    characterItems.forEach(characterItem => {
-        const characterTabButtons = characterItem.querySelectorAll('.gallery-toggle-btn');
-        const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
-        const toggleGroup = characterItem.querySelector('.gallery-toggle-group');
-        const characterPromptTabs = characterItem.querySelector('.character-prompt-tabs');
-        const characterId = characterItem.id;
-
-        // Show both character tab buttons and panes
-        characterTabButtons.forEach(btn => btn.classList.add('active'));
-        characterTabPanes.forEach(pane => pane.classList.add('active'));
-        
-        // Add show-both class to character-prompt-tabs for visual separation
-        if (characterPromptTabs) {
-            characterPromptTabs.classList.add('show-both');
-        }
-        
-        // Update the data-active attribute for the character's slider (keep current state)
-        if (toggleGroup) {
-            const currentActive = toggleGroup.getAttribute('data-active') || 'prompt';
-            toggleGroup.setAttribute('data-active', currentActive);
-        }
-
-        // Update emphasis highlighting for both prompt and UC textareas
-        const promptTextarea = characterItem.querySelector(`#${characterId}_prompt`);
-        const ucTextarea = characterItem.querySelector(`#${characterId}_uc`);
-        
-        if (promptTextarea) {
-            updateEmphasisHighlighting(promptTextarea);
-        }
-        if (ucTextarea) {
-            updateEmphasisHighlighting(ucTextarea);
-        }
-    });
 }
 
 // Update balance display
@@ -5150,7 +2852,7 @@ async function rerollImage(image, event = null) {
         if (filenameForMetadata.includes('large_') || filenameForMetadata.includes('wallpaper_')) {
             isLargeOrWallpaper = true;
         }
-
+        
         // If upscaled and user hasn't already allowed paid requests, show confirmation
         if (isUpscaled && !forcePaidRequest) {
             const cost = 7; // Upscaling cost (same as upscaleImage function)
@@ -5611,730 +3313,22 @@ async function handleLogout() {
         // Already redirected on 401
     }
 }
-// Show manual modal
-async function showManualModal(presetName = null) {
-    // Disable on mobile displays
-    if (window.innerWidth <= 577) {
-        return false;
-    }
-    
-    // Track if we were in search mode before opening modal
-    wasInSearchMode = isInSearchMode();
-    
-    // Always return to gallery mode when opening manual modal
-    if (wasInSearchMode) {
-        closeSearchContainer();
-    }
-    
-    // Prevent body scrolling when modal is open
-    if (!document.body.classList.contains('editor-open')) {
-        document.body.classList.add('editor-open');
-    }
-    
-    // Stop any existing preview animation when opening modal
-    if (generationAnimationActive) {
-        stopPreviewAnimation();
-    }
-    
-    // Show loading overlay for manual modal opening
-    const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
-    if (manualLoadingOverlay) {
-        const loadingText = manualLoadingOverlay.querySelector('p');
-        if (loadingText) {
-            loadingText.textContent = 'Opening manual generation...';
-        }
-        manualLoadingOverlay.classList.remove('hidden');
-        manualLoadingOverlay.classList.remove('return');
-    }
 
-    // Close editor if open
-    manualLoadingOverlay.classList.remove('hidden');
-    manualLoadingOverlay.classList.add('return');
-    manualPreviewOriginalImage.classList.add('hidden');
-    openModal(manualModal);
-    manualPrompt.focus();
-    
-    // Calculate previewRatio after modal is opened and visible
-    setTimeout(() => {
-        calculatePreviewRatio();
-    }, 100);
-
-    // Check if a preset is selected for editing
-    const selectedValue = presetSelect.value;
-    if (presetName) {
-        // Load preset for editing
-        await loadIntoManualForm('preset:' + presetName);
-    } else if (selectedValue) {
-        // Load preset for editing
-        await loadIntoManualForm(selectedValue);
-    } else {
-        // Clear form for new generation
-        clearManualForm();
-    }
-
-    // Auto-resize textareas after modal is shown
-    autoResizeTextareasAfterModalShow();
-    
-    // Update prompt status icons
-    updatePromptStatusIcons();
-
-    // Update load button state
-    updatePresetLoadSaveState();
-    updateManualPresetToggleBtn();
-
-    // Update button state
-    updateManualGenerateBtnState();
-
-    // Calculate initial price display
-    updateManualPriceDisplay();
-
-    // Check if "show both" mode is active and hide tab buttons container if needed
-    const promptTabs = document.querySelector('#manualModal .prompt-tabs');
-    const showBothBtn = document.getElementById('showBothBtn');
-    const tabButtonsContainer = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-group');
-
-    if (promptTabs && promptTabs.classList.contains('show-both') && showBothBtn && showBothBtn.classList.contains('active')) {
-        // "Show both" mode is active, hide the tab buttons container
-        if (tabButtonsContainer) {
-            tabButtonsContainer.classList.add('hidden');
-        }
-    }
-    
-    // Hide loading overlay after modal is fully loaded
-    if (manualLoadingOverlay) {
-        manualLoadingOverlay.classList.add('return');
-        setTimeout(() => {
-            manualLoadingOverlay.classList.add('hidden');
-        }, 300); // Match the transition duration
-    }
-    
-    // Save current gallery position
-    const firstNonPlaceholder = document.querySelector('.gallery-item:not(.gallery-placeholder)');
-    if (firstNonPlaceholder) {
-        savedGalleryPosition = parseInt(firstNonPlaceholder.dataset.index);
-    } else {
-        // If no real items found, save position 0
-        savedGalleryPosition = 0;
-    }
-    
-    // Clear gallery after 5 seconds
-    galleryClearTimeout = setTimeout(() => {
-        if (!manualModal.classList.contains('hidden')) {
-            clearGallery();
-        }
-    }, 5000);
-}
-
-// Hide manual modal
-function hideManualModal(e, preventModalReset = false) {
-    if (!preventModalReset) {
-        // Handle loading overlay when modal is closed
-        const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
-        if (manualLoadingOverlay && !manualLoadingOverlay.classList.contains('hidden')) {
-            // If manual loading overlay is visible, switch to regular loading overlay
-            const loadingMessage = manualLoadingOverlay.querySelector('p')?.textContent || 'Generating your image...';
-            manualLoadingOverlay.classList.add('hidden', 'return');
-            showManualLoading(true, loadingMessage);
-        }
-
-        // Stop preview animation if it's running when modal is closed
-        if (generationAnimationActive) {
-            stopPreviewAnimation();
-        }
-
-        if (previewSection) {
-            previewSection.classList.remove('active', 'show');
-            hideManualPreview();
-        }
-
-        closeModal(manualModal);
-        if (document.body.classList.contains('editor-open')) {
-            document.body.classList.remove('editor-open');
-        }
-        clearManualForm();
-
-        // Reset manual preview
-        resetManualPreview();
-        
-        // Deregister manual preview event listeners when modal is closed
-        deregisterManualPreviewEventListeners();
-
-        // Hide request type toggle row
-        const requestTypeRow = document.getElementById('requestTypeRow');
-        if (requestTypeRow) {
-            requestTypeRow.classList.add('hidden');
-        }
-
-        directorInstance.hideDirector();
-
-        // Clear edit context
-        window.currentEditMetadata = null;
-        window.currentEditImage = null;
-        window.currentRequestType = null;
-        window.initialEdit = null;
-        window.lastGeneration = null;
-        // Director new session functionality is always available
-
-        // Reset random prompt state
-        savedRandomPromptState = null;
-        lastPromptState = null;
-        
-        // Reset background update state
-        backgroundUpdateState.isAnimating = false;
-        backgroundUpdateState.pendingRequest = null;
-        backgroundUpdateState.lastRequest = null;
-        backgroundUpdateState.animationPromise = null;
-
-        // Reset random prompt buttons and icons
-        const toggleBtn = document.getElementById('randomPromptToggleBtn');
-        const refreshBtn = document.getElementById('randomPromptRefreshBtn');
-        const transferBtn = document.getElementById('randomPromptTransferBtn');
-        const nsfwBtn = document.getElementById('randomPromptNsfwBtn');
-        const divider = document.getElementById('randomPromptDivider');
-
-        if (toggleBtn) {
-            toggleBtn.dataset.state = 'off';
-            toggleBtn.classList.remove('active');
-        }
-        if (refreshBtn) {
-            refreshBtn.classList.add('hidden');
-        }
-        if (transferBtn) {
-            transferBtn.classList.add('hidden');
-        }
-        if (nsfwBtn) {
-            nsfwBtn.dataset.state = 'off';
-            nsfwBtn.classList.remove('active');
-            nsfwBtn.classList.add('hidden');
-        }
-        if (divider) {
-            divider.classList.add('hidden');
-        }
-        // Hide keyboard shortcuts overlay
-        hideShortcutsOverlay();
-        
-        // Update button state
-        updateManualGenerateBtnState();
-    }
-    
-    // Always clear gallery clear timeout and restore gallery when modal is closed
-    // regardless of whether preventModalReset is true or not
-    clearTimeout(galleryClearTimeout);
-
-    // Return to search mode if we were in it before opening the modal
-    if (wasInSearchMode) {
-        // Reopen search container and restore search results
-        const searchContainer = document.querySelector('#main-menu-bar .file-search-container');
-        if (searchContainer) {
-            searchContainer.classList.remove('closed');
-            const clearSearchBtn = document.getElementById('clearSearchBtn');
-            if (clearSearchBtn) {
-                clearSearchBtn.classList.remove('hidden');
-            }
-            const searchToggleBtn = document.getElementById('searchToggleBtn');
-            if (searchToggleBtn) {
-                searchToggleBtn.classList.add('active');
-            }
-            const mainMenuContents = document.querySelector('#main-menu-bar .main-menu-contents');
-            if (mainMenuContents) {
-                mainMenuContents.classList.add('hidden');
-            }
-            
-            // Restore search results if fileSearch instance exists
-            if (window.fileSearch && window.fileSearch.currentQuery) {
-                // Trigger search to restore results
-                window.fileSearch.performSearch(window.fileSearch.currentQuery);
-            }
-        }
-        wasInSearchMode = false; // Reset the flag
-        savedGalleryPosition = null;
-    } else if (savedGalleryPosition !== null) {
-        loadGalleryFromIndex(savedGalleryPosition);
-        savedGalleryPosition = null;
-    } else {
-        loadGalleryFromIndex(0);
-    }
-}
-
-// Clear gallery when manual modal is open
-function clearGallery() {
-    if (gallery) {
-        gallery.innerHTML = '';
-    }
-}
-
-// Load gallery from specific index and scroll to it
-async function loadGalleryFromIndex(index) {
-    try {
-        
-        // Load gallery data if needed
-        if (allImages.length === 0) {
-            await loadGallery();
-        }
-        
-        // Reset infinite scroll state but set custom start position
-        window.scrollTo({ top: 0, behavior: 'instant' });
-        
-        // Set the display range to include our target index
-        const itemHeight = 256;
-        const itemsPerCol = Math.floor(window.innerHeight / itemHeight);
-        const buffer = Math.ceil(itemsPerCol * 0.15);
-        // Get gallery columns from gallery element or fallback to 5
-        const cols = window.realGalleryColumns || parseInt(gallery?.style?.gridTemplateColumns?.match(/repeat\((\d+),/)?.[1]) || 5;
-        const itemsPerPage = (itemsPerCol + buffer) * cols;
-        
-        // Calculate which "page" our target index is on
-        const pageNumber = Math.floor(index / itemsPerPage);
-        const startIndex = pageNumber * itemsPerPage;
-        
-        // Set the infinite scroll state to display the correct range
-        displayedStartIndex = startIndex;
-        displayedEndIndex = Math.min(startIndex + itemsPerPage, allImages.length);
-        
-        // Update scroll state variables
-        isLoadingMore = false;
-        hasMoreImages = displayedEndIndex < allImages.length;
-        hasMoreImagesBefore = displayedStartIndex > 0;
-                
-        // Display gallery with the calculated range
-        displayGalleryFromStartIndex(displayedStartIndex);
-        
-        // Wait for DOM to update, then find and scroll to target
-        setTimeout(() => {
-            const targetItem = document.querySelector(`[data-index="${index}"]`);
-            if (targetItem) {
-                // Scroll to the item with offset to avoid triggering upper placeholders
-                const itemRect = targetItem.getBoundingClientRect();
-                const scrollTop = window.pageYOffset + itemRect.top - 100; // 100px offset from top
-                window.scrollTo({ top: scrollTop, behavior: 'instant' });
-            } else {
-                // Calculate approximate scroll position based on index
-                const approximateScrollTop = (index / cols) * itemHeight;
-                window.scrollTo({ top: approximateScrollTop - 100, behavior: 'instant' });
-            }
-        }, 200); // Give DOM time to render
-        
-    } catch (error) {
-        console.error('❌ Error restoring gallery from index:', error);
-        // Fallback to normal gallery display
-        try {
-            resetInfiniteScroll();
-            displayCurrentPageOptimized();
-        } catch (fallbackError) {
-            console.error('❌ Fallback gallery display also failed:', fallbackError);
-        }
-    }
-}
-// Auto-resize textareas after modal is shown
-function autoResizeTextareasAfterModalShow() {
-    // Auto-resize main prompt and UC textareas
-    if (manualPrompt) {
-        autoResizeTextarea(manualPrompt);
-    }
-    if (manualUc) {
-        autoResizeTextarea(manualUc);
-    }
-
-    // Auto-resize character prompt textareas
-    const characterPromptItems = document.querySelectorAll('.character-prompt-item');
-    characterPromptItems.forEach(item => {
-        const characterId = item.id;
-        const promptField = document.getElementById(`${characterId}_prompt`);
-        const ucField = document.getElementById(`${characterId}_uc`);
-
-        if (promptField) {
-            autoResizeTextarea(promptField);
-        }
-        if (ucField) {
-            autoResizeTextarea(ucField);
-        }
-    });
-}
 
 // Clear manual form
-function clearManualForm() {
-    // Clean up any existing blob URLs
-    cleanupBlobUrls();
 
-    manualForm.reset();
-
-    // Reset custom dropdowns to defaults
-    selectManualModel('v4_5', '', true);
-    selectManualResolution('normal_square', 'Normal');
-    selectManualSampler('k_euler_ancestral');
-    selectManualNoiseScheduler('karras');
-
-    // Reset custom resolution fields
-    if (manualWidth) manualWidth.value = '';
-    if (manualHeight) manualHeight.value = '';
-    // Ensure manualResolutionHidden is set correctly after selectManualResolution
-    if (manualResolutionHidden) manualResolutionHidden.value = 'normal_square';
-
-    // Reset upscale toggle
-    manualUpscale.setAttribute('data-state', 'off');
-
-    // Reset paid request toggle
-    forcePaidRequest = false;
-    if (paidRequestToggle) {
-        paidRequestToggle.setAttribute('data-state', 'off');
-    }
-
-    // Reset new parameters
-    selectedDatasets = []; // Default to anime enabled
-    datasetBias = {};
-    if (window.optionsData?.datasets) {
-        window.optionsData.datasets.forEach(dataset => {
-            datasetBias[dataset.value] = 1.0;
-        });
-    }
-    updateDatasetDisplay();
-    renderDatasetDropdown();
-
-    appendQuality = true;
-    if (qualityToggleBtn) {
-        qualityToggleBtn.setAttribute('data-state', 'on');
-    }
-
-    autoPositionBtn.setAttribute('data-state', 'on');
-
-    selectedUcPreset = 3; // Default to "Heavy"
-    selectUcPreset(3);
-    renderUcPresetsDropdown();
-    
-    // Update prompt status icons after clearing form
-    updatePromptStatusIcons();
-
-    // Clear generating state
-    isGenerating = false;
-    updateManualGenerateBtnState();
-
-    // Reset preset name field
-    manualPresetName.disabled = false;
-    manualPresetName.style.opacity = '1';
-
-    variationImage.src = '';
-
-    // Reset transformation section states
-    if (transformationRow) {
-        transformationRow.classList.remove('display-image');
-    }
-
-    document.getElementById('manualImg2ImgGroup').classList.add('hidden');
-
-    const transformationDropdown = document.getElementById('transformationDropdown');
-    if (transformationDropdown) {
-        transformationDropdown.classList.remove('disabled');
-    }
-
-
-    if (vibeReferencesContainer) {
-        vibeReferencesContainer.classList.add('hidden');
-        vibeReferencesContainer.innerHTML = '';
-    }
-    if (transformationRow) {
-        transformationRow.classList.remove('display-vibe');
-    }
-    if (vibeNormalizeToggle) {
-        vibeNormalizeToggle.classList.add('hidden');
-    }
-    // Update transformation dropdown button active state
-    updateTransformationDropdownForVibes();
-
-    // Clear variation context
-    if (window.currentEditMetadata) {
-        delete window.currentEditMetadata.sourceFilename;
-        delete window.currentEditMetadata.isVariationEdit;
-    }
-
-    // Restore UI elements
-    const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
-    const saveButton = document.getElementById('manualSaveBtn');
-
-    if (presetNameGroup) {
-        presetNameGroup.classList.remove('hidden');
-    }
-    if (saveButton) {
-        saveButton.classList.remove('hidden');
-    }
-
-    // Clear character prompts
-    clearCharacterPrompts();
-
-    // Reset sprout seed button state
-    if (sproutSeedBtn) {
-        sproutSeedBtn.setAttribute('data-state', 'on');
-        manualSeed.disabled = false;
-    }
-
-    // Reset inpaint button state and clear mask
-    resetInpaint();
-    window.strengthValueLoaded = false;
-    window.uploadedImageData = null;
-    // Clear any stored previous bias
-    if (window.uploadedImageData) {
-        delete window.uploadedImageData.previousBias;
-    }
-    imageBiasAdjustmentData = {
-        originalImage: null,
-        targetDimensions: null,
-        currentBias: { x: 0, y: 0, scale: 1.0, rotate: 0 },
-        isDragging: false,
-        dragStart: { x: 0, y: 0 },
-        originalTransform: { x: 0, y: 0 },
-        previewMode: 'css' // Default to CSS view
-    };
-    window.lastGeneratedSeed = null;
-    sproutSeedBtn.classList.remove('available');
-    manualPreviewSeedNumber.textContent = '---'
-    updateSproutSeedButtonFromPreviewSeed();
-
-    updateAutoPositionToggle();
-
-    // Hide image bias dropdown
-    hideImageBiasDropdown();
-
-    if (clearSeedBtn) clearSeedBtn.classList.toggle('hidden', !manualSeed?.value);
-
-    // Reset transformation dropdown state
-    updateTransformationDropdownState();
-
-    updateUploadDeleteButtonVisibility();
-
-    // Hide autocomplete overlays
-    hideCharacterAutocomplete();
-    hidePresetAutocomplete();
-
-    updatePresetLoadSaveState();
-}
 
 // Handle manual generation
 // Utility: Collect common form values
-function collectManualFormValues() {
-    // Ensure manualResolutionHidden has a value
-    if (manualResolutionHidden && !manualResolutionHidden.value) {
-        manualResolutionHidden.value = 'normal_square';
-    }
 
-    let values = {
-        model: manualModel.value,
-        prompt: manualPrompt.value.trim() + '',
-        uc: manualUc.value.trim() + '',
-        seed: manualSeed.value.trim(),
-        sampler: manualSampler.value,
-        noiseScheduler: manualNoiseScheduler.value,
-        steps: parseInt(manualSteps.value) || 25,
-        guidance: parseFloat(manualGuidance.value) || 5.0,
-        rescale: parseFloat(manualRescale.value) || 0.0,
-        upscale: manualUpscale.getAttribute('data-state') === 'on',
-        presetName: manualPresetName.value ? manualPresetName.value.trim() : "",
-        autoPositionBtn: document.getElementById('autoPositionBtn'),
-        container: characterPromptsContainer,
-        characterItems: characterPromptsContainer ? characterPromptsContainer.querySelectorAll('.character-prompt-item') : [],
-        characterPrompts: getCharacterPrompts()
-    };
-
-    // Process resolution value to determine if it's custom or predefined
-    const resolutionData = processResolutionValue(manualResolution.value);
-    values.resolutionValue = manualResolution.value;
-    // Add width and height for custom resolutions
-    if (resolutionData.isCustom) {
-        values.width = resolutionData.width;
-        values.height = resolutionData.height;
-    }
-
-    // Handle image bias - support both legacy and dynamic bias
-    const imageBiasHidden = document.getElementById('imageBias');
-    if (window.uploadedImageData && window.uploadedImageData.image_bias) {
-        values.image_bias = window.uploadedImageData.image_bias;
-    } else if (imageBiasHidden && imageBiasHidden.value) {
-
-        values.image_bias = parseInt(imageBiasHidden.value);
-    }
-
-    // Add new parameters
-    values.dataset_config = {
-        include: selectedDatasets,
-        bias: {},
-        settings: {}
-    };
-
-    // Add dataset settings from window.datasetSettings if available
-    if (window.datasetSettings) {
-        values.dataset_config.settings = window.datasetSettings;
-    }
-
-    // Add bias values for datasets with bias > 1.0
-    selectedDatasets.forEach(dataset => {
-        if (datasetBias[dataset] > 1.0) {
-            values.dataset_config.bias[dataset] = datasetBias[dataset];
-        }
-    });
-    values.append_quality = appendQuality;
-    values.append_uc = selectedUcPreset;
-
-    // Collect vibe transfer data
-    values.vibe_transfer = collectVibeTransferData();
-    values.normalize_vibes = vibeNormalizeToggle.getAttribute('data-state') === 'on';
-
-    values.upscale = manualUpscale.getAttribute('data-state') === 'on' ? 2 : undefined;
-
-    return values;
-}
 
 // Utility: Collect vibe transfer data from the container
-function collectVibeTransferData() {
-    if (!vibeReferencesContainer) return [];
 
-    const vibeTransferItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item');
-    const vibeTransfers = [];
-
-    vibeTransferItems.forEach(item => {
-        const vibeId = item.getAttribute('data-vibe-id');
-        const ieDropdownBtn = item.querySelector('.custom-dropdown-btn');
-        const ratioInput = item.querySelector('input.vibe-reference-ratio-input');
-        const disabledVibe = item.querySelector('.vibe-reference-controls .indicator[data-state="off"]');
-        // Skip disabled vibe references
-        if (disabledVibe) {
-            return;
-        }
-
-        if (vibeId && ieDropdownBtn && ratioInput) {
-            const selectedIe = ieDropdownBtn.dataset.selectedIe;
-            const strength = parseFloat(ratioInput.value) || 0.7;
-
-            if (selectedIe) {
-                vibeTransfers.push({
-                    id: vibeId,
-                    ie: selectedIe,
-                    strength: strength
-                });
-            }
-        }
-    });
-    
-    return vibeTransfers;
-}
 
 // Utility: Add shared fields to request body
-function addSharedFieldsToRequestBody(requestBody, values) {
-    if (values.uc) requestBody.uc = values.uc;
-    if (values.seed) requestBody.seed = parseInt(values.seed);
 
-    if (values.sampler) {
-        const samplerObj = getSamplerMeta(values.sampler);
-        requestBody.sampler = samplerObj ? samplerObj.request : values.sampler;
-    }
-    if (values.noiseScheduler) {
-        const noiseObj = getNoiseMeta(values.noiseScheduler);
-        requestBody.noiseScheduler = noiseObj ? noiseObj.request : values.noiseScheduler;
-    }
-
-    if (values.upscale) requestBody.upscale = true;
-    if (typeof varietyEnabled !== "undefined" && varietyEnabled) {
-        requestBody.variety = true;
-    }
-    // Character prompts
-    if (values.characterPrompts && values.characterPrompts.length > 0) {
-        requestBody.allCharacterPrompts = values.characterPrompts;
-        requestBody.use_coords = false;
-        if (values.autoPositionBtn && values.autoPositionBtn.getAttribute('data-state') !== 'on') {
-            if (Array.from(values.characterItems).some(item => item.dataset.positionX && item.dataset.positionY)) {
-                requestBody.use_coords = true;
-            }
-        }
-    }
-
-    // Add new parameters
-    if (values.dataset_config) {
-        requestBody.dataset_config = values.dataset_config;
-    }
-    if (values.append_quality !== undefined) {
-        requestBody.append_quality = values.append_quality;
-    }
-    if (values.append_uc !== undefined) {
-        requestBody.append_uc = values.append_uc;
-    }
-
-    // Add vibe transfer data
-    if (values.vibe_transfer && values.vibe_transfer.length > 0) {
-        requestBody.vibe_transfer = values.vibe_transfer;
-        requestBody.normalize_vibes = values.normalize_vibes;
-    }
-}
 
 // Utility: Show image and confetti, refresh gallery, etc.
-async function handleImageResult(blob, successMsg, clearContextFn, seed = null, response = null) {
-    // Store the seed for manual preview
-    const priceList = document.getElementById('manualPriceList');
-    const cost = parseInt(priceList.textContent);
-    
-    if (seed !== null) {
-        window.lastGeneratedSeed = seed;
-        sproutSeedBtn.classList.add('available');
-        manualPreviewSeedNumber.textContent = parseInt(seed);
-        updateSproutSeedButtonFromPreviewSeed();
-    }
-
-    if (response && response.headers) {
-        // Extract seed from response header if available
-        const headerSeed = response.headers.get('X-Seed');
-        if (headerSeed) {
-            window.lastGeneratedSeed = parseInt(headerSeed);
-            sproutSeedBtn.classList.add('available');
-            manualPreviewSeedNumber.textContent = parseInt(headerSeed);
-            updateSproutSeedButtonFromPreviewSeed();
-        }
-        // Fetch metadata for the generated image if we have a filename
-        const filename = response.headers.get('X-Generated-Filename');
-        if (filename) {
-            try {
-                const metadata = await getImageMetadata(filename);
-                window.lastGeneration = metadata;
-                window.lastGeneration.filename = filename;
-                manualPreviewOriginalImage.classList.remove('hidden');
-                // Director new session functionality is always available
-            } catch (error) {
-                console.warn('Failed to fetch metadata for generated image:', error);
-            }
-        }
-    }
-
-    const imageUrl = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = async function() {
-        createConfetti();
-        await loadGallery(true);
-
-        if (!manualModal.classList.contains('hidden')) {
-            // Update manual modal preview instead of opening lightbox
-            // Don't clear context when modal is open in wide viewport mode
-
-            document.querySelectorAll('.manual-preview-image-container, #manualPanelSection').forEach(element => {
-                element.classList.remove('swapped');
-            });
-
-            // Only update allImages array, don't update gallery display
-            await updateManualPreview(0, response);
-        } else {
-            // Clear context only when modal is not open or not in wide viewport mode
-            if (typeof clearContextFn === "function") clearContextFn();
-            // Normal behavior - open lightbox
-            setTimeout(async () => {
-                if (allImages.length > 0) {
-                    const newImage = allImages[0];
-                    const imageToShow = {
-                        filename: newImage.upscaled || newImage.original,
-                        base: newImage.base,
-                        upscaled: newImage.upscaled
-                    };
-                    
-                    showLightbox(imageToShow);
-                }
-            }, 1000);
-        }
-    };
-    img.src = imageUrl;
-}
 
 
 // Utility functions for background update management
@@ -7303,176 +4297,6 @@ async function restoreOriginalImage() {
     }
 }
 
-async function handleManualGeneration(e) {
-    e.preventDefault();
-
-    // Set generating state
-    isGenerating = true;
-    updateManualGenerateBtnState();
-
-    const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
-    const values = collectManualFormValues();
-
-    // Helper: Validate required fields
-    function validateFields(requiredFields, msg) {
-        for (const field of requiredFields) {
-            if (field === 'resolutionValue') {
-                // Special handling for resolution: check for either resolutionValue or custom dimensions
-                if (!values[field] && (!values.width || !values.height)) {
-                    showError(msg);
-                    return false;
-                }
-            } else if (!values[field]) {
-                showError(msg);
-                return false;
-            }
-        }
-        return true;
-    }
-
-    // Validate required fields for both paths
-    if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) {
-        isGenerating = false;
-        updateManualGenerateBtnState();
-        return;
-    }
-
-    // Prepare base requestBody (shared between both paths)
-    const requestBody = {
-        prompt: values.prompt,
-        steps: values.steps,
-        guidance: values.guidance,
-        rescale: values.rescale,
-        allow_paid: forcePaidRequest,
-        workspace: activeWorkspace
-    };
-
-    // Process resolution to determine if it's custom or predefined
-    const resolutionData = processResolutionValue(values.resolutionValue);
-    if (resolutionData.isCustom) {
-        requestBody.width = resolutionData.width;
-        requestBody.height = resolutionData.height;
-    } else {
-        requestBody.resolution = resolutionData.resolution;
-    }
-
-    // Add img2img specific parameters if applicable
-    if (isImg2Img) {
-        requestBody.strength = parseFloat(manualStrengthValue.value) || 0.8;
-        requestBody.noise = parseFloat(manualNoiseValue.value) || 0.1;
-
-        // Handle uploaded image data
-        if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
-            requestBody.image = window.uploadedImageData.image_source;
-        } else if (window.currentEditMetadata && window.currentEditMetadata.sourceFilename) {
-            requestBody.image = `file:${window.currentEditMetadata.sourceFilename}`;
-        }
-        requestBody.image_bias = window.uploadedImageData.image_bias || window.uploadedImageData.bias;
-
-        if (!requestBody.image) {
-            showError('No source image found for variation');
-            return;
-        }
-
-        // Add mask data if it exists
-        if (window.currentMaskCompressed) {
-            requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
-        } else if (window.currentMaskData) {
-            // Add compressed mask for server processing
-            const compressedMask = saveMaskCompressed();
-            if (compressedMask) {
-                requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
-            }
-        }
-    }
-
-    // Add shared fields and preset name
-    addSharedFieldsToRequestBody(requestBody, values);
-    if (values.presetName) requestBody.preset = values.presetName;
-
-    // Check if this requires paid credits and user hasn't already allowed paid
-    const cost = calculateCreditCost(requestBody);
-    if (cost > 0 && !forcePaidRequest) {
-        const confirmed = await showCreditCostDialog(cost, e);
-        
-        if (!confirmed) {
-            isGenerating = false;
-            updateManualGenerateBtnState();
-            return;
-        }
-        
-        // Set allow_paid to true for this request only (don't change UI)
-        requestBody.allow_paid = true;
-        forcePaidRequest = true;
-        paidRequestToggle.setAttribute('data-state', 'on');
-    }
-
-    // Show loading and hide modal
-    hideManualModal(undefined, true);
-    showManualLoading(true, 'Generating Image...');
-    
-    // Show the manual preview when generation starts
-    if (typeof showManualPreview === 'function') {
-        showManualPreview();
-    }
-
-
-    const generationParams = {
-        model: values.model.toLowerCase(),
-        ...requestBody
-    };
-
-    try {
-        // Use WebSocket for image generation
-        if (!window.wsClient || !window.wsClient.isConnected()) {
-            throw new Error('WebSocket not connected');
-        }
-        
-        const result = await window.wsClient.generateImage(generationParams);
-        
-        if (result) {
-            const { image, filename, seed } = result;
-            
-            // Convert base64 to blob
-            const byteCharacters = atob(image);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: 'image/png' });
-
-            if (filename) {
-                const metadata = await getImageMetadata(filename);
-                window.lastGeneration = metadata;
-                window.lastGeneration.filename = filename;
-                // Director new session functionality is always available
-            }
-            
-            // Extract seed if available
-            if (seed) {
-                window.lastGeneratedSeed = parseInt(seed);
-                sproutSeedBtn.classList.add('available');
-            }
-
-            // Use the universal handleImageResult function
-            await handleImageResult(blob, 'Image generated successfully!', undefined, seed || values.seed);
-        } else {
-            throw new Error('Invalid response from WebSocket');
-        }
-            
-    } catch (error) {
-        hideManualModal(undefined, true);
-        console.error(`Image generation error:`, error);
-        showError(`Image generation failed. Please try again.`);
-    } finally {
-        stopPreviewAnimation();
-        showManualLoading(false);
-        isGenerating = false;
-        updateManualGenerateBtnState();
-    }
-}
-
 // Save manual preset using WebSocket
 async function saveManualPreset(presetName, config) {
     try {
@@ -8215,119 +5039,6 @@ async function deleteManualPreviewImage() {
     loadGallery(true);
 }
 
-// Create confetti effect
-function createConfetti() {
-    // Multi-colored confetti palette with vibrant colors
-    const colors = [
-        '#ff4500', '#ff6347', '#ff8c00', '#ffa500', '#ff6b35', '#ff7f50', // Orange/Red variants
-        '#ff1493', '#ff69b4', '#ffb6c1', '#ffc0cb', '#db7093', '#c71585', // Pink variants
-        '#00ff00', '#32cd32', '#90ee90', '#98fb98', '#00fa9a', '#00ff7f', // Green variants
-        '#4169e1', '#1e90ff', '#00bfff', '#87ceeb', '#87cefa', '#b0e0e6', // Blue variants
-        '#9370db', '#8a2be2', '#9932cc', '#ba55d3', '#da70d6', '#ee82ee', // Purple variants
-        '#ffff00', '#ffd700', '#ffeb3b', '#f0e68c', '#bdb76b', '#f4a460', // Yellow/Gold variants
-        '#ff4500', '#ff6347', '#ff8c00', '#ffa500', '#ff6b35', '#ff7f50'  // Additional orange/red
-    ];
-    const shapes = ['rect', 'circle', 'triangle'];
-
-    // Increase the number of confetti pieces for more intensity
-    const totalPieces = 175; // Added 25 more pieces
-
-    for (let i = 0; i < totalPieces; i++) {
-        setTimeout(() => {
-            const confetti = document.createElement('div');
-            confetti.className = 'confetti';
-
-            // Random position across the entire screen width
-            confetti.style.left = Math.random() * 100 + 'vw';
-
-            // Random color from expanded palette
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            confetti.style.backgroundColor = color;
-
-            // Random size between 4px and 12px
-            const size = Math.random() * 8 + 4;
-            confetti.style.width = size + 'px';
-            confetti.style.height = size + 'px';
-
-            // Random shape
-            const shape = shapes[Math.floor(Math.random() * shapes.length)];
-            if (shape === 'circle') {
-                confetti.style.borderRadius = '50%';
-            } else if (shape === 'triangle') {
-                confetti.style.width = '0';
-                confetti.style.height = '0';
-                confetti.style.backgroundColor = 'transparent';
-                confetti.style.borderLeft = (size/2) + 'px solid transparent';
-                confetti.style.borderRight = (size/2) + 'px solid transparent';
-                confetti.style.borderBottom = size + 'px solid ' + color;
-            }
-
-            // Random rotation
-            confetti.style.transform = `rotate(${Math.random() * 360}deg)`;
-
-            // Slower animation duration and longer delay for more screen time
-            const duration = 4.5 + Math.random() * 3; // 4.5 to 7.5 seconds (slower)
-            const delay = Math.random() * 1.5; // 0 to 1.5 seconds delay (longer)
-            confetti.style.animationDuration = duration + 's';
-            confetti.style.animationDelay = delay + 's';
-
-            // Add some confetti with different starting positions for more spread
-            if (i % 3 === 0) {
-                confetti.style.left = (Math.random() * 20 - 10) + 'vw'; // Start from left edge
-            } else if (i % 3 === 1) {
-                confetti.style.left = (80 + Math.random() * 20) + 'vw'; // Start from right edge
-            }
-
-            confettiContainer.appendChild(confetti);
-
-            // Remove confetti after animation
-            setTimeout(() => {
-                if (confetti.parentNode) {
-                    confetti.parentNode.removeChild(confetti);
-                }
-            }, (duration + delay) * 1000 + 1000); // Extra 1 second buffer
-        }, i * 25); // Slightly increased delay between pieces for better distribution
-    }
-}
-
-// Show manual modal loading overlay
-function showManualLoading(show, message = 'Generating Image...') {
-    if (!manualModal.classList.contains('hidden') && show && isPreviewAnimationAvailable()) {
-        // Start preview animation for image generation
-        startPreviewAnimation();
-        return;
-    } else if (show && isPreviewAnimationAvailable()) {
-        // Stop preview animation when generation completes
-        stopPreviewAnimation();
-        return;
-    }
-
-    // FALLBACK: If animation system fails, use manual loading overlay for critical operations
-    if (!manualModal.classList.contains('hidden') && !isPreviewAnimationAvailable()) {
-        console.warn('Animation system not available, using manual loading overlay');
-        if (manualLoadingOverlay) {
-            manualLoadingOverlay.classList.remove('hidden');
-            manualLoadingOverlay.classList.remove('return');
-            const loadingText = manualLoadingOverlay.querySelector('p');
-            if (loadingText) {
-                loadingText.textContent = message;
-            }
-        }
-    }
-}
-
-// Show manual preview navigation loading overlay
-function showManualPreviewNavigationLoading(show) {
-    const navigationLoadingOverlay = document.getElementById('manualPreviewNavigationLoading');
-    
-    if (navigationLoadingOverlay) {
-        if (show) {
-            navigationLoadingOverlay.classList.remove('hidden');
-        } else {
-            navigationLoadingOverlay.classList.add('hidden');
-        }
-    }
-}
 
 // Show error message (simple glass toast)
 function showError(message) {
@@ -8856,436 +5567,6 @@ async function handleClipboardPaste(event) {
             break;
         }
     }
-}
-
-function showGlassToast(type, title, message, showProgress = false, timeout = 5000, customIcon = null, buttons = null) {
-    const toastId = `toast-${++toastCounter}`;
-    const toastContainer = document.getElementById('toastContainer') || createToastContainer();
-
-    const toast = document.createElement('div');
-    const isSimple = !title || !message;
-    toast.className = `glass-toast glass-toast-${type} ${showProgress ? 'upload-progress' : ''} ${isSimple ? 'simple' : ''}`;
-    toast.id = toastId;
-
-    // Use custom icon if provided, otherwise use default icon
-    const icon = customIcon || getToastIcon(type, showProgress);
-
-    // Generate buttons HTML if provided
-    const buttonsElement = buttons ? generateButtonsHtml(buttons, toastId) : null;
-
-    // If only message is provided (no title), create a simple one-line toast
-    if (title && message) {
-        // Full toast with title and message
-        const closeBtn = showProgress ? '' : '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
-
-        toast.innerHTML = `
-            <div class="toast-icon">${icon}</div>
-            <div class="toast-content">
-                <div class="toast-title">${title}</div>
-                <div class="toast-message">${message}</div>
-                ${showProgress ? '<div class="toast-progress"><div class="toast-progress-bar"></div></div>' : ''}
-            </div>
-            ${closeBtn}
-        `;
-        
-        // Add buttons as DOM elements to preserve event handlers
-        if (buttonsElement) {
-            const content = toast.querySelector('.toast-content');
-            if (content) {
-                content.appendChild(buttonsElement);
-            }
-        }
-    } else {
-        // Simple one-line toast (message only) - now with icon
-        const messageText = title || message;
-        const closeBtn = showProgress ? '' : '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
-
-        toast.innerHTML = `
-            <div class="toast-icon">${icon}</div>
-            <div class="toast-content">
-                <div class="toast-message">${messageText}</div>
-                ${showProgress ? '<div class="toast-progress"><div class="toast-progress-bar"></div></div>' : ''}
-            </div>
-            ${closeBtn}
-        `;
-        
-        // Add buttons as DOM elements to preserve event handlers
-        if (buttonsElement) {
-            const content = toast.querySelector('.toast-content');
-            if (content) {
-                content.appendChild(buttonsElement);
-            }
-        }
-    }
-
-    toastContainer.prepend(toast);
-
-    // Trigger animation
-    setTimeout(() => {
-        toast.classList.add('show');
-    }, 10);
-
-    // Auto-remove after timeout (unless it's a progress toast or timeout is false) 
-    if (timeout !== false && !showProgress) {
-        setTimeout(() => {
-            removeGlassToast(toastId);
-        }, timeout);
-    }
-
-    activeToasts.set(toastId, { type, title, message, showProgress, customIcon, buttons });
-    return toastId;
-}
-
-function updateGlassToast(toastId, type, title, message, customIcon = null) {
-    const toast = document.getElementById(toastId);
-    if (!toast) return;
-
-    const icon = customIcon || getToastIcon(type);
-    const isSimple = !title || !message;
-    const messageText = title || message;
-
-    // Preserve existing classes and only update necessary ones
-    const existingClasses = toast.className.split(' ').filter(cls => 
-        cls !== 'glass-toast' && 
-        !cls.startsWith('glass-toast-') && 
-        cls !== 'simple' && 
-        cls !== 'upload-progress'
-    );
-    
-    // Build new class list
-    const newClasses = ['glass-toast', `glass-toast-${type}`];
-    if (isSimple) newClasses.push('simple');
-    if (existingClasses.includes('upload-progress')) newClasses.push('upload-progress');
-    if (existingClasses.includes('show')) newClasses.push('show');
-    
-    toast.className = newClasses.join(' ');
-    
-    // Update icon
-    const iconElement = toast.querySelector('.toast-icon');
-    if (iconElement) {
-        iconElement.innerHTML = icon;
-    }
-
-    if (isSimple) {
-        // Simple toast - only update message
-        const messageElement = toast.querySelector('.toast-message');
-        if (messageElement) {
-            messageElement.textContent = messageText;
-        }
-    } else {
-        // Full toast - update both title and message
-        const titleElement = toast.querySelector('.toast-title');
-        const messageElement = toast.querySelector('.toast-message');
-        
-        if (titleElement) {
-            titleElement.textContent = title;
-        }
-        if (messageElement) {
-            messageElement.textContent = message;
-        }
-    }
-
-    // Update stored data
-    const stored = activeToasts.get(toastId);
-    if (stored) {
-        stored.type = type;
-        stored.title = title;
-        stored.message = message;
-        stored.customIcon = customIcon;
-        activeToasts.set(toastId, stored);
-    }
-
-}
-
-function removeGlassToast(toastId) {
-    const toast = document.getElementById(toastId);
-    if (!toast) return;
-
-    // Clean up button handlers for this toast
-    for (const [buttonId, handler] of buttonHandlers.entries()) {
-        if (handler.toastId === toastId) {
-            buttonHandlers.delete(buttonId);
-        }
-    }
-
-    toast.classList.add('removing');
-    activeToasts.delete(toastId);
-
-    setTimeout(() => {
-        if (toast.parentNode) {
-            toast.parentNode.removeChild(toast);
-        }
-    }, 300);
-}
-
-function getToastIcon(type, showProgress) {
-    if (showProgress && type === 'info') {
-        return '<i class="fas fa-spin fa-spinner-third"></i>';
-    }
-    switch (type) {
-        case 'success': return '<i class="fas fa-check-circle"></i>';
-        case 'error': return '<i class="fas fa-times-circle"></i>';
-        case 'warning': return '<i class="fas fa-exclamation-triangle"></i>';
-        case 'info': return '<i class="fas fa-info-circle"></i>';
-        default: return '<i class="fas fa-sparkles"></i>';
-    }
-}
-
-function createToastContainer() {
-    const container = document.createElement('div');
-    container.id = 'toastContainer';
-    container.className = 'toast-container';
-    document.body.appendChild(container);
-    return container;
-}
-
-function updateGlassToastProgress(toastId, progress) {
-    const toast = document.getElementById(toastId);
-    if (!toast) return;
-
-    const progressBar = toast.querySelector('.toast-progress-bar');
-    if (progressBar) {
-        progressBar.style.width = `${Math.min(progress, 100)}%`;
-    }
-}
-
-function generateButtonsHtml(buttons, toastId) {
-    if (!buttons || !Array.isArray(buttons)) return '';
-    
-    const buttonsContainer = document.createElement('div');
-    buttonsContainer.className = 'toast-buttons';
-    
-    buttons.forEach((button, index) => {
-        const btn = document.createElement('button');
-        btn.className = `toast-button btn-${button.type || 'secondary'}`;
-        btn.textContent = button.text;
-        btn.type = 'button'; // Prevent form submission
-        
-        if (button.onClick) {
-            // Generate unique button ID
-            const buttonId = nextButtonId++;
-            
-            // Store the button handler
-            buttonHandlers.set(buttonId, {
-                onClick: button.onClick,
-                toastId: toastId,
-                closeOnClick: button.closeOnClick
-            });
-            
-            // Set onclick attribute to call global handler
-            btn.setAttribute('onclick', `handleToastButtonClick(${buttonId})`);
-            
-            // Add data attributes for debugging
-            btn.setAttribute('data-button-id', buttonId);
-            btn.setAttribute('data-button-index', index);
-            btn.setAttribute('data-toast-id', toastId);
-        }
-        
-        buttonsContainer.appendChild(btn);
-    });
-    
-    return buttonsContainer;
-}
-
-function updateGlassToastButtons(toastId, buttons) {
-    const toast = document.getElementById(toastId);
-    if (!toast) return;
-
-    // Remove existing buttons
-    const existingButtons = toast.querySelector('.toast-buttons');
-    if (existingButtons) {
-        existingButtons.remove();
-    }
-
-    // Add new buttons
-    if (buttons && Array.isArray(buttons)) {
-        const buttonsElement = generateButtonsHtml(buttons, toastId);
-        const content = toast.querySelector('.toast-content');
-        if (content && buttonsElement) {
-            content.appendChild(buttonsElement);
-        }
-    }
-
-    // Update stored data
-    const stored = activeToasts.get(toastId);
-    if (stored) {
-        stored.buttons = buttons;
-        activeToasts.set(toastId, stored);
-    }
-}
-
-// Comprehensive toast update function that handles all aspects
-function updateGlassToastComplete(toastId, options = {}) {
-    const toast = document.getElementById(toastId);
-    if (!toast) return;
-
-    const {
-        type,
-        title,
-        message,
-        customIcon,
-        buttons,
-        showProgress = null,
-        timeout = null
-    } = options;
-
-    // Update basic content if provided
-    if (type || title || message || customIcon) {
-        updateGlassToast(toastId, type, title, message, customIcon);
-    }
-
-    // Update buttons if provided
-    if (buttons !== undefined) {
-        updateGlassToastButtons(toastId, buttons);
-    }
-
-    // Update progress state if provided
-    if (showProgress !== null) {
-        const progressElement = toast.querySelector('.toast-progress');
-        if (showProgress && !progressElement) {
-            // Add progress bar
-            const content = toast.querySelector('.toast-content');
-            if (content) {
-                content.insertAdjacentHTML('beforeend', '<div class="toast-progress"><div class="toast-progress-bar"></div></div>');
-            }
-            toast.classList.add('upload-progress');
-        } else if (!showProgress && progressElement) {
-            // Remove progress bar
-            progressElement.remove();
-            toast.classList.remove('upload-progress');
-            
-            // When removing progress, add close button and set default timeout
-            const existingCloseBtn = toast.querySelector('.toast-close');
-            if (!existingCloseBtn) {
-                const closeBtn = '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
-                toast.insertAdjacentHTML('beforeend', closeBtn);
-            }
-            
-            // Set default timeout for completed progress toasts
-            const stored = activeToasts.get(toastId);
-            if (stored) {
-                if (stored.timeoutId) {
-                    clearTimeout(stored.timeoutId);
-                }
-                stored.timeoutId = setTimeout(() => {
-                    removeGlassToast(toastId);
-                }, 5000); // 5 second default timeout
-                activeToasts.set(toastId, stored);
-            }
-        }
-    }
-
-    // Update timeout if provided
-    if (timeout !== null) {
-        const stored = activeToasts.get(toastId);
-        if (stored) {
-            stored.timeout = timeout;
-            activeToasts.set(toastId, stored);
-            
-            // Clear existing timeout and set new one
-            if (stored.timeoutId) {
-                clearTimeout(stored.timeoutId);
-            }
-            
-            if (timeout !== false) {
-                stored.timeoutId = setTimeout(() => {
-                    removeGlassToast(toastId);
-                }, timeout);
-                activeToasts.set(toastId, stored);
-            }
-        }
-    }
-
-    // Ensure toast is visible
-    if (!toast.classList.contains('show')) {
-        toast.classList.add('show');
-    }
-}
-
-// Test functions for toast system
-let testProgressIntervals = new Map();
-let vibeEncodingProgressIntervals = new Map();
-
-function completeTestProgress(toastId) {
-    const interval = testProgressIntervals.get(toastId);
-    if (interval) {
-        clearInterval(interval);
-        testProgressIntervals.delete(toastId);
-    }
-    
-    // Complete the progress to 100%
-    updateGlassToastProgress(toastId, 100);
-    
-    // Update the toast to show completion using the unified function
-    updateGlassToastComplete(toastId, {
-        type: 'success',
-        title: 'Test Complete',
-        message: 'Progress completed!',
-        customIcon: '<i class="nai-check"></i>',
-        showProgress: false
-    });
-}
-
-function completeAllTestProgress() {
-    testProgressIntervals.forEach((interval, toastId) => {
-        completeTestProgress(toastId);
-    });
-}
-
-// Vibe encoding progress functions
-function startVibeEncodingProgress(toastId) {
-    let progress = 0;
-    const interval = setInterval(() => {
-        progress += 5; // Add 5% every 500ms
-        updateGlassToastProgress(toastId, progress);
-        
-        if (progress >= 100) {
-            clearInterval(interval);
-            vibeEncodingProgressIntervals.delete(toastId);
-        }
-    }, 250); // Every 500ms
-    
-    vibeEncodingProgressIntervals.set(toastId, interval);
-    return interval;
-}
-
-function completeVibeEncodingProgress(toastId, successMessage = 'Vibe encoding completed!') {
-    const interval = vibeEncodingProgressIntervals.get(toastId);
-    if (interval) {
-        clearInterval(interval);
-        vibeEncodingProgressIntervals.delete(toastId);
-    }
-    
-    // Set progress to 100%
-    updateGlassToastProgress(toastId, 100);
-    
-    // Update the toast to show completion
-    setTimeout(() => {
-        updateGlassToastComplete(toastId, {
-            type: 'success',
-            title: 'Vibe Created',
-            message: successMessage,
-            customIcon: '<i class="nai-check"></i>',
-            showProgress: false
-        });
-    }, 200); // Small delay to show 100% completion
-}
-
-function failVibeEncodingProgress(toastId, errorMessage = 'Vibe encoding failed') {
-    const interval = vibeEncodingProgressIntervals.get(toastId);
-    if (interval) {
-        clearInterval(interval);
-        vibeEncodingProgressIntervals.delete(toastId);
-    }
-    
-    // Update the toast to show error
-        updateGlassToastComplete(toastId, {
-        type: 'error',
-        title: 'Encoding Failed',
-        message: errorMessage,
-        customIcon: '<i class="nai-cross"></i>',
-        showProgress: false
-    });
 }
 
 let showSubscriptionExpirationToast = false;
@@ -10445,15 +6726,18 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
             characterItem.classList.add('character-prompt-disabled');
         }
 
-        // Determine position button text
+        // Determine position button text and visibility
         let positionBtnText = '<i class="fas fa-crosshairs"></i>';
-        if (character.center && useCoords) {
-            // Find the cell label for the stored position
+        let positionBtnHidden = true; // Default to hidden
+        
+        if (character.center && character.center.x !== null && character.center.y !== null && useCoords) {
+            // Character has valid coordinates and auto mode is disabled
             const x = character.center.x;
             const y = character.center.y;
             const cellLabel = getCellLabelFromCoords(x, y);
             if (cellLabel) {
                 positionBtnText = `<i class="fas fa-crosshairs"></i> ${cellLabel}`;
+                positionBtnHidden = false; // Show the button when we have valid coordinates
             }
         }
 
@@ -10483,7 +6767,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                         <button type="button" class="btn-secondary move-down-btn" onclick="moveCharacterPrompt('${characterId}', 'down')" style="display: inline-flex;">
                             <i class="nai-directional-arrow-down"></i>
                         </button>
-                        <button type="button" class="btn-secondary position-btn hidden" onclick="showPositionDialog('${characterId}')">
+                        <button type="button" class="btn-secondary position-btn${positionBtnHidden ? ' hidden' : ''}" onclick="showPositionDialog('${characterId}')">
                             ${positionBtnText}
                         </button>
                         <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${characterId}')">
@@ -10721,7 +7005,6 @@ function getCellLabelFromCoords(x, y) {
 // calculatePriceUnified, calculateCreditCost, updateBalanceDisplay, etc.
 
 // Timeout for debouncing price display updates
-let manualPriceDisplayTimeout = null;
 
 
 // Character Prompt Collapse/Expand Functions
@@ -11321,207 +7604,6 @@ function disableReadOnlyFeatures() {
     console.log('🔒 Read-only mode: Destructive features disabled');
 }
 
-function startPreviewAnimation() {
-    if (generationAnimationActive) return;
-    
-    // Safety check: ensure all required elements exist
-    if (!previewContainer || !previewStars || !previewBackgroundLines || !previewForegroundLines) {
-        console.warn('Preview animation elements not found, falling back to manual loading overlay');
-        return;
-    }
-    
-    try {
-        generationAnimationActive = true;
-        const toggleBtn = document.getElementById('previewAnimationToggle');
-        if (toggleBtn) {
-            toggleBtn.innerHTML = '<i class="fas fa-stop"></i>';
-            toggleBtn.title = 'Stop Preview Animation';
-        }
-        
-        if (manualPreviewImage && !manualPreviewImage.classList.contains('hidden')) {
-            // Initialize manual block container if not already done
-            if (!manualBlockContainer) {
-                initializeManualBlockContainer();
-            }
-            
-            // Start wave animation in manual block container
-            if (manualBlockContainer) {
-                try {
-                    manualBlockContainer.ensureWaveReady();
-                    manualBlockContainer.createOpacityWave('rand');
-                } catch (error) {
-                    console.warn('Failed to start manual block container wave:', error);
-                }
-            }
-        }
-        
-        previewStars.classList.remove('hidden');
-        previewBackgroundLines.classList.remove('hidden');
-        previewForegroundLines.classList.remove('hidden');
-        
-        // Add active class for CSS animations
-        previewContainer.classList.add('preview-animation-active');
-        
-        // Fade in stars (0.25s)
-        setTimeout(() => {
-            if (previewStars) {
-                previewStars.style.opacity = '1';
-            }
-        }, 10);
-        
-        // Start lines rising
-        const lines = document.querySelectorAll('.preview-line');
-        lines.forEach((line, index) => {
-            line.style.animationPlayState = 'running';
-            line.style.transition = 'opacity 0.3s ease-out, visibility 0.3s ease-out';
-            line.style.opacity = '1';
-            line.style.visibility = 'visible';
-        });
-        
-        // Debug: ensure background lines are visible
-    } catch (error) {
-        console.error('Error starting preview animation:', error);
-        generationAnimationActive = false;
-        // Fall back to manual loading overlay if animation fails
-        if (manualLoadingOverlay) {
-            manualLoadingOverlay.classList.remove('hidden');
-            manualLoadingOverlay.classList.remove('return');
-        }
-    }
-}
-
-async function stopPreviewAnimation() {
-    if (!generationAnimationActive) return;
-    
-    // Safety check: ensure all required elements exist
-    if (!previewContainer || !previewStars || !previewBackgroundLines || !previewForegroundLines) {
-        console.warn('Preview animation elements not found during stop');
-        generationAnimationActive = false;
-        return;
-    }
-    
-    try {
-        generationAnimationActive = false;
-        const toggleBtn = document.getElementById('previewAnimationToggle');
-        if (toggleBtn) {
-            toggleBtn.innerHTML = '<i class="fas fa-magic"></i>';
-            toggleBtn.title = 'Toggle Preview Animation';
-        }
-        
-        // Add fade out class to pause animations
-        previewContainer.classList.add('preview-fade-out');
-        
-        // Fade out the entire line containers
-        previewBackgroundLines.classList.add('fadeOut');
-        previewForegroundLines.classList.add('fadeOut');
-        
-        // Fade out stars after lines start fading (1.5s)
-        setTimeout(() => {
-            if (previewStars) {
-                previewStars.style.opacity = '0';
-            }
-        }, 1500);
-        
-        // Hide everything after fade out completes (2.5s total)
-        setTimeout(() => {
-            if (previewContainer) {
-                previewContainer.classList.remove('preview-animation-active', 'preview-fade-out');
-            }
-            if (previewStars) {
-                previewStars.classList.add('hidden');
-            }
-            if (previewBackgroundLines) {
-                previewBackgroundLines.classList.add('hidden');
-                previewBackgroundLines.classList.remove('fadeOut');
-            }
-            if (previewForegroundLines) {
-                previewForegroundLines.classList.add('hidden');
-                previewForegroundLines.classList.remove('fadeOut');
-            }
-            
-            // Reset line states
-            const lines = document.querySelectorAll('.preview-line');
-            lines.forEach(line => {
-                line.style.opacity = '1';
-                line.style.visibility = 'visible';
-            });
-        }, 2500);
-        
-        if (manualBlockContainer) {
-            try {
-                await manualBlockContainer.returnToNormalOpacity(true);
-                // Add 1.5 second delay before unloading the block container
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                // Unload the container to free up resources
-                await manualBlockContainer.unload();
-                manualBlockContainer = null;
-            } catch (error) {
-                console.warn('Failed to stop manual block container wave:', error);
-            }
-        }
-    } catch (error) {
-        console.error('Error stopping preview animation:', error);
-        // Force reset animation state
-        forceStopPreviewAnimation().catch(err => {
-            console.error('Error in force stop preview animation:', err);
-        });
-    }
-}
-
-// Check if preview animation system is available
-function isPreviewAnimationAvailable() {
-    return !!(previewContainer && previewStars && previewBackgroundLines && previewForegroundLines);
-}
-
-// Force stop preview animation (utility function for emergency stops)
-async function forceStopPreviewAnimation() {
-    if (generationAnimationActive) {
-        generationAnimationActive = false;
-    }
-    
-    // Reset button state
-    const toggleBtn = document.getElementById('previewAnimationToggle');
-    if (toggleBtn) {
-        toggleBtn.innerHTML = '<i class="fas fa-magic"></i>';
-        toggleBtn.title = 'Toggle Preview Animation';
-    }
-    
-    // Force reset all animation states
-    if (previewContainer) {
-        previewContainer.classList.remove('preview-animation-active', 'preview-fade-out');
-    }
-    if (previewStars) {
-        previewStars.classList.add('hidden');
-        previewStars.style.opacity = '0';
-    }
-    if (previewBackgroundLines) {
-        previewBackgroundLines.classList.add('hidden');
-        previewBackgroundLines.classList.remove('fadeOut');
-    }
-    if (previewForegroundLines) {
-        previewForegroundLines.classList.add('hidden');
-        previewForegroundLines.classList.remove('fadeOut');
-    }
-    
-    // Reset line states
-    const lines = document.querySelectorAll('.preview-line');
-    lines.forEach(line => {
-        line.style.opacity = '1';
-        line.style.visibility = 'visible';
-        line.style.animationPlayState = 'paused';
-    });
-    
-    // Force unload manual block container with 1.5 second delay
-    if (manualBlockContainer) {
-        try {
-            manualBlockContainer.unload();
-            manualBlockContainer = null;
-        } catch (error) {
-            console.warn('Failed to unload manual block container:', error);
-        }
-    }
-}
-
 async function clearAllCachesAndReload() {
     try {
         // Clear all caches
@@ -11604,31 +7686,31 @@ function setupMainMenuContextMenus() {
     const contextMenuConfig = {
             sections: [
                 {
-                    type: 'list',
-                    items: [
+                    type: 'icons',
+                    icons: [
                         {
                             icon: 'fa-light fa-chevron-double-up',
                             text: 'Jump to Top',
                             action: 'jump-to-top'
                         },
                         {
-                            content: (target) => {
+                            icon: (target) => {
                                 const sortBtn = document.getElementById('sortOrderToggleBtn');
                                 const isDesc = sortBtn && sortBtn.dataset.state === 'desc';
-                                const iconClass = isDesc ? 'fa-light fa-sort-amount-down' : 'fa-light fa-sort-amount-up';
-                                const stateText = isDesc ? 'Newest' : 'Oldest';
-                                return `
-                                    <div style="display: flex; align-items: center; gap: 8px; flex: 1;">
-                                        <i class="${iconClass}"></i>
-                                        <div style="display: flex; flex-direction: row; justify-content: space-between; align-items: center; flex: 1;">
-                                            <span class="context-menu-item-text">Sort</span>
-                                            <span class="context-menu-item-state">${stateText}</span>
-                                        </div>
-                                    </div>
-                                `;
+                                return isDesc ? 'fa-light fa-sort-amount-down' : 'fa-light fa-sort-amount-up';
+                            },
+                            tooltip: (target) => {
+                                const sortBtn = document.getElementById('sortOrderToggleBtn');
+                                const isDesc = sortBtn && sortBtn.dataset.state === 'desc';
+                                return isDesc ? 'Sort: Newest First (Click to change)' : 'Sort: Oldest First (Click to change)';
                             },
                             action: 'invert-sort'
-                        },
+                        }
+                    ]
+                },
+                {
+                    type: 'list',
+                    items: [
                         {
                             content: (target) => {
                                 // Get current workspace from workspaces object using activeWorkspace variable
@@ -11646,7 +7728,7 @@ function setupMainMenuContextMenus() {
                                 
                                 return `
                                     <div class="workspace-option-content" style="display: flex; align-items: center; gap: 8px;">
-                                        <div class="workspace-color-indicator" style="background-color: ${workspaceColor};"></div>
+                                        <i class="fa-solid fa-folder" style="color: ${workspaceColor};"></i>
                                         <span class="context-menu-item-text">${workspaceName}</span>
                                     </div>
                                 `;
@@ -11694,7 +7776,8 @@ function setupMainMenuContextMenus() {
                         {
                             icon: 'fa-light fa-ban',
                             text: 'Blocked Clients',
-                            action: 'ip-manager'
+                            action: 'ip-manager',
+                            desktopOnly: true,
                         }
                     ]
                 },
@@ -11706,7 +7789,7 @@ function setupMainMenuContextMenus() {
                                 <i class="nai-anla"></i>
                                 <div class="price-list-container">
                                     <div class="price-list-fixed">
-                                        <span class="price-list-label">Fixed</span> 
+                                        <span class="price-list-label">Exp</span> 
                                         <span id="contextAnlasBalanceFixed" class="price-list balanceFixed">-</span>
                                     </div>
                                     <i class="fas fa-circle" style="font-size: 0.35rem; padding-top: 0.15rem;"></i>
@@ -11892,7 +7975,8 @@ function setupMainMenuContextMenus() {
                             action: 'toggle-privacy-mode',
                             loadfn: (icon, target) => {
                                 icon.dataState = focusCoverEnabled ? 'on' : 'off';
-                            }
+                            },
+                            desktopOnly: true,
                         },
                         {
                             icon: 'fa-light fa-sync',
@@ -12021,14 +8105,14 @@ function setupMainMenuContextMenus() {
                     // Don't pass event for context menu - it will center the dialog
                 );
                 if (confirmed) {
-                    bypassConfirmationDialog = true;
+                    bypassConfirmation = true;
                     handleLogout();
                 }
                 break;
         }
     });
-}
 
+}
 // Register main app initialization steps with WebSocket client
 if (window.wsClient) {
     wsClient.on('disconnected', (event) => {
@@ -12524,10 +8608,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-
 });
-
-/* // Development Mode Toggle Functions (always available)
 window.enableDevMode = function() {
     localStorage.setItem('staticforge_dev_mode', 'true');
     console.log('🔧 Development mode enabled. Please refresh the page.');
@@ -12564,22 +8645,7 @@ window.setAsMasterWindow = function() {
 };
 
 // Function to update transformation dropdown button active state based on vibe presence
-function updateTransformationDropdownForVibes() {
-    const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
-    if (!transformationDropdownBtn) return;
 
-    const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
-    if (!vibeReferencesContainer) return;
-
-    const vibeItems = vibeReferencesContainer.querySelectorAll('.vibe-reference-item');
-
-    // Add active class if there are vibes present, remove it if there are none
-    if (vibeItems.length > 0) {
-        transformationDropdownBtn.classList.add('active');
-    } else {
-        transformationDropdownBtn.classList.remove('active');
-    }
-}
 
 window.clearMasterWindow = function() {
     if (window.masterWindowClient) {
@@ -12633,6 +8699,3 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, 1000);
 });
-
-// showManualModal is now handled internally by the Director class
- */

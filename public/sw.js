@@ -33,53 +33,172 @@ function addCacheBustingHeaders(response) {
 let currentRollingKey = null;
 let keyExpiresAt = 0;
 let keyFetchPromise = null;
+let lastRateLimitTime = 0;
+let rateLimitRetryCount = 0;
+const MAX_RATE_LIMIT_RETRIES = 5;
+const RATE_LIMIT_BACKOFF_BASE = 2000; // 2 seconds base backoff
+const KEY_REFRESH_BUFFER = 240000; // Refresh 4 minutes before expiry (server rotates every 5 minutes)
+const RATE_LIMIT_RESET_TIME = 300000; // Reset rate limit counters after 5 minutes of no errors
 
-// Fetch current rolling key from server
+// Reset rate limit tracking after successful fetches
+function resetRateLimitTracking() {
+  rateLimitRetryCount = 0;
+  lastRateLimitTime = 0;
+}
+
+// Periodic cleanup to prevent permanent backoff state
+function cleanupRateLimitTracking() {
+  const now = Date.now();
+  if (lastRateLimitTime > 0 && now - lastRateLimitTime > RATE_LIMIT_RESET_TIME) {
+    console.log('🔑 Service Worker: Resetting rate limit tracking after timeout');
+    resetRateLimitTracking();
+  }
+}
+
+// Fetch current rolling key from server with exponential backoff
 async function fetchRollingKey() {
+  // Periodic cleanup to prevent permanent backoff state
+  cleanupRateLimitTracking();
+
   if (keyFetchPromise) {
     return keyFetchPromise;
   }
 
+  const now = Date.now();
+  const timeUntilExpiry = keyExpiresAt - now;
+  const shouldRefresh = !currentRollingKey || now >= keyExpiresAt - KEY_REFRESH_BUFFER;
+
   // Check if we have a valid cached key
-  if (currentRollingKey && Date.now() < keyExpiresAt - 30000) { // Refresh 30 seconds before expiry
+  if (currentRollingKey && now < keyExpiresAt - KEY_REFRESH_BUFFER) {
     return currentRollingKey;
   }
 
-  keyFetchPromise = fetch('/sw.js', {
-    method: 'OPTIONS',
-    cache: 'no-store',
-    headers: {
-      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-      'Pragma': 'no-cache',
-      'X-Requested-With': 'ServiceWorker'
-    }
-  })
-  .then(response => {
-    if (!response.ok) {
-      throw new Error(`Failed to fetch rolling key: ${response.status}`);
-    }
-    return response.json();
-  })
-  .then(data => {
-    currentRollingKey = data.key;
-    keyExpiresAt = data.expiresAt;
-    console.log('🔑 Service Worker: Rolling key updated, expires at:', new Date(keyExpiresAt));
-    return currentRollingKey;
-  })
-  .catch(error => {
-    console.error('🔑 Service Worker: Failed to fetch rolling key:', error);
-    // Return cached key if available, even if expired
+  // Check if we're in rate limit backoff period
+  const backoffTime = RATE_LIMIT_BACKOFF_BASE * Math.pow(2, rateLimitRetryCount);
+  if (lastRateLimitTime > 0 && now - lastRateLimitTime < backoffTime) {
+    console.log(`🔑 Service Worker: In rate limit backoff period, using cached key (${Math.ceil((backoffTime - (now - lastRateLimitTime)) / 1000)}s remaining)`);
     if (currentRollingKey) {
-      console.warn('🔑 Service Worker: Using expired cached key as fallback');
       return currentRollingKey;
     }
-    throw error;
-  })
-  .finally(() => {
-    keyFetchPromise = null;
-  });
+  }
 
-  return keyFetchPromise;
+  keyFetchPromise = (async () => {
+    try {
+      const response = await fetch('/sw.js', {
+        method: 'OPTIONS',
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'X-Requested-With': 'ServiceWorker'
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          // Rate limit hit - implement exponential backoff
+          lastRateLimitTime = Date.now();
+          rateLimitRetryCount = Math.min(rateLimitRetryCount + 1, MAX_RATE_LIMIT_RETRIES);
+
+          console.warn(`🔑 Service Worker: Rate limit hit (${rateLimitRetryCount}/${MAX_RATE_LIMIT_RETRIES}), backing off for ${Math.ceil(backoffTime / 1000)}s, time until expiry: ${Math.ceil(timeUntilExpiry / 1000)}s`);
+
+          // Return cached key if available
+          if (currentRollingKey) {
+            console.warn('🔑 Service Worker: Using cached key during rate limit backoff');
+            return currentRollingKey;
+          }
+
+          throw new Error(`Rate limit exceeded, retry in ${Math.ceil(backoffTime / 1000)}s`);
+
+        } else if (response.status === 500) {
+          // Server error - don't retry immediately, use cached key if available
+          console.error('🔑 Service Worker: Server error (500) when fetching rolling key');
+
+          if (currentRollingKey) {
+            console.warn('🔑 Service Worker: Using cached key due to server error');
+            return currentRollingKey;
+          }
+
+          throw new Error('Server error while fetching rolling key');
+
+        } else if (response.status === 503) {
+          // Service unavailable - similar to server error
+          console.error('🔑 Service Worker: Service unavailable (503) when fetching rolling key');
+
+          if (currentRollingKey) {
+            console.warn('🔑 Service Worker: Using cached key due to service unavailability');
+            return currentRollingKey;
+          }
+
+          throw new Error('Service unavailable while fetching rolling key');
+
+        } else if (response.status >= 400 && response.status < 500) {
+          // Client errors (4xx) - likely configuration or permission issues
+          console.error(`🔑 Service Worker: Client error (${response.status}) when fetching rolling key`);
+
+          if (currentRollingKey) {
+            console.warn('🔑 Service Worker: Using cached key due to client error');
+            return currentRollingKey;
+          }
+
+          throw new Error(`Client error (${response.status}) while fetching rolling key`);
+
+        } else {
+          // Other errors (5xx, network issues, etc.)
+          console.error(`🔑 Service Worker: Unexpected error (${response.status}) when fetching rolling key`);
+
+          if (currentRollingKey) {
+            console.warn('🔑 Service Worker: Using cached key due to unexpected error');
+            return currentRollingKey;
+          }
+
+          throw new Error(`Failed to fetch rolling key: ${response.status}`);
+        }
+      }
+
+      const data = await response.json();
+      currentRollingKey = data.key;
+      keyExpiresAt = data.expiresAt;
+
+      // Reset rate limit tracking on successful fetch
+      resetRateLimitTracking();
+      return currentRollingKey;
+
+    } catch (error) {
+      // Handle network errors (fetch failures)
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        console.error('🔑 Service Worker: Network error when fetching rolling key:', error);
+
+        // For network errors, increment retry count but with shorter backoff
+        rateLimitRetryCount = Math.min(rateLimitRetryCount + 1, MAX_RATE_LIMIT_RETRIES);
+        lastRateLimitTime = Date.now();
+
+        if (currentRollingKey) {
+          console.warn('🔑 Service Worker: Using cached key due to network error');
+          return currentRollingKey;
+        }
+
+        throw new Error('Network error while fetching rolling key');
+      }
+
+      console.error('🔑 Service Worker: Failed to fetch rolling key:', error);
+
+      // Return cached key if available, even if expired
+      if (currentRollingKey) {
+        console.warn('🔑 Service Worker: Using expired cached key as fallback');
+        return currentRollingKey;
+      }
+
+      throw error;
+    }
+  })();
+
+  try {
+    const result = await keyFetchPromise;
+    return result;
+  } finally {
+    keyFetchPromise = null;
+  }
 }
 
 // Helper function to create service worker identification headers with rolling key
@@ -92,7 +211,12 @@ async function createServiceWorkerHeaders() {
       'X-Requested-With': 'ServiceWorker'
     };
   } catch (error) {
-    console.error('🔑 Service Worker: Failed to get rolling key:', error);
+    console.error('🔑 Service Worker: Failed to get rolling key for headers:', error);
+    // Return empty headers if we can't get a key
+    return {
+      'X-Service-Worker-Version': '2.0',
+      'X-Requested-With': 'ServiceWorker'
+    };
   }
 }
 

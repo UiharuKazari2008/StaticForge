@@ -35,7 +35,6 @@ function initializeDatabase() {
         // Create tables if they don't exist
         createTables();
         
-        console.log('✅ SQLite metadata database initialized');
         return true;
     } catch (error) {
         console.error('❌ Error initializing SQLite database:', error.message);
@@ -250,31 +249,19 @@ async function getImageMetadata(filename, imagesDir) {
             metadata: pngMetadata || {}
         };
         
-        // Insert or update in database
-        if (existing) {
-            const updateStmt = db.prepare(`
-                UPDATE images 
-                SET md5 = ?, width = ?, height = ?, parent = ?, upscaled = ?, 
-                    size = ?, mtime = ?, metadata = ?, updated_at = (strftime('%s', 'now'))
-                WHERE filename = ?
-            `);
-            updateStmt.run(
-                md5, imageMetadata.width, imageMetadata.height, 
-                relationships.parent, relationships.isUpscaled ? 1 : 0,
-                stats.size, stats.mtime.valueOf(), 
-                JSON.stringify(pngMetadata || {}), filename
-            );
-        } else {
-            const insertStmt = db.prepare(`
-                INSERT INTO images (filename, md5, width, height, parent, upscaled, size, mtime, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
-            insertStmt.run(
-                filename, md5, imageMetadata.width, imageMetadata.height,
-                relationships.parent, relationships.isUpscaled ? 1 : 0,
-                stats.size, stats.mtime.valueOf(), JSON.stringify(pngMetadata || {})
-            );
-        }
+        // Insert or update in database using INSERT OR REPLACE to handle race conditions
+        const upsertStmt = db.prepare(`
+            INSERT OR REPLACE INTO images (filename, md5, width, height, parent, upscaled, size, mtime, metadata, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 
+                COALESCE((SELECT created_at FROM images WHERE filename = ?), strftime('%s', 'now')),
+                strftime('%s', 'now'))
+        `);
+        upsertStmt.run(
+            filename, md5, imageMetadata.width, imageMetadata.height,
+            relationships.parent, relationships.isUpscaled ? 1 : 0,
+            stats.size, stats.mtime.valueOf(), JSON.stringify(pngMetadata || {}),
+            filename // For the COALESCE subquery
+        );
         
         return metadata;
     } catch (error) {

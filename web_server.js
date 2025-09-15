@@ -68,8 +68,8 @@ const rollingKeys = {
   rotationInterval: 5 * 60 * 1000, // 5 minutes
   keyLength: 32,
   validationAttempts: new Map(), // Track validation attempts per IP
-  maxAttempts: 10, // Max validation attempts per IP per minute
-  attemptWindow: 60 * 1000 // 1 minute window
+  maxAttempts: 30, // Max validation attempts per IP per 2 minutes (more liberal)
+  attemptWindow: 2 * 60 * 1000 // 2 minute window (increased from 1 minute)
 };
 
 // Generate a new rolling key with enhanced security
@@ -724,10 +724,7 @@ async function initializeAccountData(force = false) {
 
             lastAccountDataCheck = Date.now();
             
-            if (accountBalance.totalCredits !== 0) {
-                console.log('✅ Account data loaded successfully');
-                console.log(`💰 Balance: ${accountBalance.totalCredits} credits (${accountBalance.fixedTrainingStepsLeft} fixed, ${accountBalance.purchasedTrainingSteps} paid)`);
-            } else {
+            if (!accountBalance.totalCredits) {
                 console.error('❌ Failed to load account data');
             }
         }
@@ -740,16 +737,12 @@ async function initializeAccountData(force = false) {
 async function initializeCacheData(force = false) {
     try {
         const now = Date.now();
-        if (now - lastCacheCheck >= CACHE_REFRESH_INTERVAL || force) {
-            console.log('🔄 Initializing cache data...');
-            
+        if (now - lastCacheCheck >= CACHE_REFRESH_INTERVAL || force) {            
             const publicDir = path.join(__dirname, 'public');
             const cacheData = await generateCacheData(publicDir);
             
             globalCacheData = cacheData;
             lastCacheCheck = Date.now();
-            
-            console.log(`✅ Cache data generated: ${cacheData.length} assets`);
         }
     } catch (error) {
         console.error('❌ Error initializing cache data:', error.message);
@@ -1021,7 +1014,6 @@ if (SQLiteStore) {
             table: 'sessions',
             concurrentDB: true
         });
-        console.log(`✅ Using SQLite session store at ${sessionsDir}/sessions.sqlite`);
     } catch (err) {
         console.error('❌ Failed to initialize SQLite session store, falling back to MemoryStore:', err.message);
         sessionStore = new session.MemoryStore();
@@ -1284,8 +1276,6 @@ async function generateCombinedSpriteSheet(images, outputPath, width, height) {
         if (composites.length === 0) {
             throw new Error('No images could be processed for sprite sheet');
         }
-        
-        console.log(`✅ Processed ${processedCount}/${images.length} images for combined sprite sheet`);
         
         // Composite all images onto the sprite sheet
         await spriteCanvas
@@ -1705,17 +1695,22 @@ app.options('/', (req, res) => {
 app.options('/sw.js', (req, res) => {
     try {
         const ip = getRealIP(req);
+        const userAgent = req.headers['user-agent'] || 'unknown';
+
+        console.log(`🔑 Rolling key request from ${ip} (${userAgent.substring(0, 50)}...)`);
 
         // Rate limit key requests to prevent abuse
         const rateLimit = checkRateLimit(ip);
         if (!rateLimit.allowed) {
-            console.warn(`🚫 Rate limit exceeded for key request from IP ${ip}`);
+            console.warn(`🚫 Rate limit exceeded for key request from IP ${ip} (attempts: ${rollingKeys.validationAttempts.get(ip)?.count || 0}/${rollingKeys.maxAttempts})`);
             return res.status(429).json({
                 error: 'Too many requests',
                 code: 'RATE_LIMIT_EXCEEDED',
                 retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
             });
         }
+
+        console.log(`✅ Key request allowed for ${ip} (attempts: ${rollingKeys.validationAttempts.get(ip)?.count || 0}/${rollingKeys.maxAttempts})`);
 
         const key = getCurrentRollingKey();
         const expiresAt = rollingKeys.lastRotation + rollingKeys.rotationInterval;
@@ -1910,8 +1905,6 @@ app.get('/admin/reload-cache', authMiddleware, async (req, res) => {
                 success: false, error: 'Admin access required to reload cache data' 
             });
         }
-
-        console.log('🔄 Admin requested cache data reload...');
         
         // Force reload of cache data
         await initializeCacheData(true);
@@ -1922,8 +1915,6 @@ app.get('/admin/reload-cache', authMiddleware, async (req, res) => {
         
         // Update global cache data
         globalCacheData = updatedCacheData;
-        
-        console.log(`✅ Cache data reloaded successfully: ${updatedCacheData.length} assets`);
         
         res.json({
             success: true,
@@ -2067,8 +2058,6 @@ app.post('/admin/restart-server', authMiddleware, async (req, res) => {
                 success: false, error: 'Admin access required to restart server' 
             });
         }
-
-        console.log('🔄 Admin requested server restart...');
         
         // Send response immediately before restarting
         res.json({
@@ -2085,8 +2074,6 @@ app.post('/admin/restart-server', authMiddleware, async (req, res) => {
             exec('timeout 5 pm2 restart 12', (error, stdout, stderr) => {
                 if (error) {
                     console.error('❌ Error restarting server:', error);
-                } else {
-                    console.log('✅ Server restart command executed:', stdout);
                 }
             });
         }, 100);
@@ -2131,8 +2118,6 @@ app.get('/preset/:uuid', authMiddleware, queueMiddleware, async (req, res) => {
         if (!p) {
             return res.status(404).json({ success: false, error: 'Preset not found' });
         }
-        
-        console.log('🔍 Building options for preset:', p);
         const opts = await buildOptions(p, null, req.query);
         // Use target_workspace from preset if no workspace specified (for REST API calls)
         const workspaceId = req?.query?.workspace || p?.target_workspace || 'default';
@@ -2185,8 +2170,6 @@ app.post('/reroll/:filename', authMiddleware, queueMiddleware, async (req, res) 
 
         const filename = req.params.filename;
         const workspace = req.query.workspace || req.body.workspace || 'default';
-        
-        console.log(`🎲 Processing reroll request for filename: ${filename} in workspace: ${workspace}`);
         
         // Get image metadata
         const metadata = await getImageMetadata(filename, imagesDir);
@@ -2248,7 +2231,6 @@ app.post('/reroll/:filename', authMiddleware, queueMiddleware, async (req, res) 
 
 // Initialize cache at startup
 async function initializeCache() {
-    console.log('🔄 Syncing previews...');
     await syncPreviews();
 
     // Initialize account data
@@ -2258,11 +2240,9 @@ async function initializeCache() {
     await initializeCacheData(true);
     
     // Initialize chat database
-    console.log('🔄 Initializing chat database...');
     initializeChatDatabase();
     
     // Initialize Director database
-    console.log('🔄 Initializing Director database...');
     initializeDirectorDatabase();
     
     // Set up periodic refreshes
@@ -2950,9 +2930,6 @@ async function handleSendCommand(data) {
 
     server.listen(config.port, () => {
         console.log(`🚀 Server running on port ${config.port}`);
-        console.log(`📊 Performance monitoring: GET /admin/performance`);
-        console.log(`🔒 Gzip compression enabled`);
-        console.log(`🛡️ Security headers enabled`);
     });
 })();
 

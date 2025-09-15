@@ -30,7 +30,6 @@ function initializeChatDatabase() {
         // Create tables if they don't exist
         createChatTables();
         
-        console.log('✅ SQLite chat database initialized');
         return true;
     } catch (error) {
         console.error('❌ Error initializing SQLite chat database:', error.message);
