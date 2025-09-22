@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
+const { createDatabaseCheckpointManager } = require('./databaseCheckpoint');
 
 // Database file path
 const dbPath = path.join(__dirname, '..', '.cache', 'chat.db');
@@ -12,6 +13,9 @@ if (!fs.existsSync(cacheDir)) {
 }
 
 let db = null;
+
+// Initialize checkpoint manager for chat database
+const chatCheckpointManager = createDatabaseCheckpointManager(dbPath, 5);
 
 /**
  * Initialize the SQLite database for chat system
@@ -531,6 +535,70 @@ function getChatDatabaseStats() {
     }
 }
 
+// Checkpoint management functions for chat database
+function getChatCheckpointInfo() {
+    return chatCheckpointManager.getCheckpointInfo();
+}
+
+function createChatCheckpoint() {
+    try {
+        return chatCheckpointManager.createCheckpointWithBackup();
+    } catch (error) {
+        console.error('❌ Error creating chat checkpoint:', error);
+        throw error;
+    }
+}
+
+function restoreChatFromCheckpoint(checkpointFilename) {
+    try {
+        const success = chatCheckpointManager.restoreFromCheckpoint(checkpointFilename);
+        if (success) {
+            // Reinitialize database connection after restore
+            closeChatDatabase();
+            initializeChatDatabase();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('❌ Error restoring chat from checkpoint:', error);
+        throw error;
+    }
+}
+
+function restoreChatFromLatestCheckpoint() {
+    try {
+        const success = chatCheckpointManager.restoreFromLatestCheckpoint();
+        if (success) {
+            // Reinitialize database connection after restore
+            closeChatDatabase();
+            initializeChatDatabase();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('❌ Error restoring chat from latest checkpoint:', error);
+        throw error;
+    }
+}
+
+function clearChatCheckpoints() {
+    try {
+        return chatCheckpointManager.clearAllCheckpoints();
+    } catch (error) {
+        console.error('❌ Error clearing chat checkpoints:', error);
+        throw error;
+    }
+}
+
+function verifyChatDatabaseIntegrity() {
+    try {
+        return chatCheckpointManager.verifyDatabaseIntegrity();
+    } catch (error) {
+        console.error('❌ Error verifying chat database integrity:', error);
+        return false;
+    }
+}
+
 // Initialize database on module load
 let dbInitialized = false;
 try {
@@ -574,5 +642,13 @@ module.exports = {
     getConversationData,
     updateConversationData,
     cleanupExpiredMessages,
-    getChatDatabaseStats
+    getChatDatabaseStats,
+    
+    // Checkpoint management
+    getChatCheckpointInfo,
+    createChatCheckpoint,
+    restoreChatFromCheckpoint,
+    restoreChatFromLatestCheckpoint,
+    clearChatCheckpoints,
+    verifyChatDatabaseIntegrity
 };

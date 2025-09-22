@@ -1294,6 +1294,7 @@ function validatePresetWithTimeout() {
     clearTimeout(presetValidationTimeout);
     presetValidationTimeout = setTimeout(() => {
         updatePresetLoadSaveState();
+        updateManualPresetToggleBtn();
     }, 300); // 300ms delay
 }
 

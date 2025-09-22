@@ -46,7 +46,7 @@ const editSeedBtn = document.getElementById('editSeedBtn');
 const focusOverlay = document.getElementById('focus-overlay');
 const searchToggleBtn = document.getElementById('searchToggleBtn');
 const metadataDialog = document.getElementById('metadataDialog');
-const closeMetadataDialog = document.getElementById('closeMetadataDialog');
+const closeMetadataDialog = document.getElementById('closeMetadataDialogBtn');
 const dialogPromptBtn = document.getElementById('dialogPromptBtn');
 const dialogUcBtn = document.getElementById('dialogUcBtn');
 const dialogPromptExpanded = document.getElementById('dialogPromptExpanded');
@@ -59,9 +59,7 @@ const manualPreviewDownloadBtn = document.getElementById('manualPreviewDownloadB
 const manualPreviewCopyBtn = document.getElementById('manualPreviewCopyBtn');
 const manualPreviewUpscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
 const manualPreviewVariationBtn = document.getElementById('manualPreviewVariationBtn');
-const manualPreviewSeedBtn = document.getElementById('manualPreviewSeedBtn');
 const manualPreviewDeleteBtn = document.getElementById('manualPreviewDeleteBtn');
-const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
 const manualStrengthValue = document.getElementById('manualStrengthValue');
 const manualNoiseValue = document.getElementById('manualNoiseValue');
 const paidRequestToggle = document.getElementById('paidRequestToggle');
@@ -778,6 +776,12 @@ function clearManualForm() {
         delete window.currentEditMetadata.isVariationEdit;
     }
 
+    const directorBtn = document.getElementById('directorBtn');
+    if (directorBtn) {
+        delete directorBtn.dataset.directorSessionId;
+        delete directorBtn.dataset.directorMessageId;
+    }
+
     // Restore UI elements
     const presetNameGroup = document.querySelector('.form-group:has(#manualPresetName)');
     const saveButton = document.getElementById('manualSaveBtn');
@@ -818,7 +822,6 @@ function clearManualForm() {
     };
     window.lastGeneratedSeed = null;
     sproutSeedBtn.classList.remove('available');
-    manualPreviewSeedNumber.textContent = '---'
     updateSproutSeedButtonFromPreviewSeed();
 
     updateAutoPositionToggle();
@@ -1258,7 +1261,6 @@ function hideManualModal(e, preventModalReset = false) {
 }
 
 async function loadIntoManualForm(source, image = null) {
-    
     try {
         let data = {};
         let type = 'metadata';
@@ -1436,22 +1438,21 @@ async function loadIntoManualForm(source, image = null) {
             manualRescale.value = rescaleValue !== undefined ? Number(rescaleValue).toFixed(2) : '';
         }
         
-        // Update percentage overlays after setting rescale value
-        updatePercentageOverlays();
         if (manualSeed) manualSeed.value = ''; // Do not autofill for metadata, undefined for others
         if (data.seed) {
             // Handle both preset (seed) and metadata (layer2_seed) formats
             window.lastGeneratedSeed = data.seed;
-            manualPreviewSeedNumber.textContent = parseInt(window.lastGeneratedSeed);
             sproutSeedBtn.classList.add('available');
             updateSproutSeedButtonFromPreviewSeed();
         }
+
         // Ensure sampler and noiseScheduler have valid values before calling select functions
         const samplerValue = (data.sampler && data.sampler !== undefined && data.sampler !== null) ? data.sampler : 'k_euler_ancestral';
         const noiseValue = (data.noiseScheduler && data.noiseScheduler !== undefined && data.noiseScheduler !== null) ? data.noiseScheduler : 'karras';
         
         selectManualSampler(samplerValue);
         selectManualNoiseScheduler(noiseValue);
+
         if (document.getElementById('varietyBtn')) {
             const varietyBtn = document.getElementById('varietyBtn');
             // Handle both preset (variety) and metadata (skip_cfg_above_sigma) formats
@@ -1495,8 +1496,21 @@ async function loadIntoManualForm(source, image = null) {
         } else {
             clearCharacterPrompts();
         }
+
         updateAutoPositionToggle(); 
 
+        // Load director session and message IDs from metadata if available
+        if (data.director_session_id || data.director_message_id) {
+            const directorBtn = document.getElementById('directorBtn');
+            if (directorBtn) {
+                if (data.director_session_id) {
+                    directorBtn.dataset.directorSessionId = data.director_session_id;
+                }
+                if (data.director_message_id) {
+                    directorBtn.dataset.directorMessageId = data.director_message_id;
+                }
+            }
+        }
 
         // Load new parameters from metadata if available
         if (data.dataset_config && data.dataset_config.include) {
@@ -1540,6 +1554,7 @@ async function loadIntoManualForm(source, image = null) {
                 });
             }
         }
+
         updateDatasetDisplay();
         renderDatasetDropdown();
         updateSubTogglesButtonState();
@@ -1561,6 +1576,7 @@ async function loadIntoManualForm(source, image = null) {
         } else {
             selectedUcPreset = 3;
         }
+
         selectUcPreset(selectedUcPreset);
         renderUcPresetsDropdown();
 
@@ -1803,12 +1819,9 @@ async function loadIntoManualForm(source, image = null) {
                 }
             }
         }
-        updateUploadDeleteButtonVisibility();
 
         // Type-specific handling
-        if (name) {
-            manualPresetName.value = name;
-        }
+        if (name) { manualPresetName.value = name; }
 
         if (type === 'preset') {
             // Preset-specific
@@ -1855,15 +1868,8 @@ async function loadIntoManualForm(source, image = null) {
                 }
             }
         }
-
-        updateManualPriceDisplay(true);
-        updatePresetLoadSaveState();
-        updateManualPresetToggleBtn();
-
         // Restore the preset name that was entered by the user
-        if (manualPresetName && currentPresetName) {
-            manualPresetName.value = currentPresetName;
-        }
+        if (manualPresetName && currentPresetName) { manualPresetName.value = currentPresetName; }
 
         // Handle director reference data from metadata
         if (data.chara_reference_source) {
@@ -1909,7 +1915,11 @@ async function loadIntoManualForm(source, image = null) {
             clearDirectorReference();
         }
         
-        // Update prompt status icons after loading form data
+        updatePercentageOverlays();
+        updateUploadDeleteButtonVisibility();
+        updateManualPriceDisplay(true);
+        updatePresetLoadSaveState();
+        updateManualPresetToggleBtn();
         updatePromptStatusIcons();
     } catch (error) {
         console.error('Error loading into form:', error);
@@ -2069,6 +2079,15 @@ async function handleManualGeneration(e) {
         ...requestBody
     };
 
+    // Add director session and message IDs from director button dataset
+    const directorBtn = document.getElementById('directorBtn');
+    if (directorBtn && directorBtn.dataset.directorSessionId) {
+        generationParams.director_session_id = directorBtn.dataset.directorSessionId;
+    }
+    if (directorBtn && directorBtn.dataset.directorMessageId) {
+        generationParams.director_message_id = directorBtn.dataset.directorMessageId;
+    }
+    
     try {
         // Use WebSocket for image generation
         if (!window.wsClient || !window.wsClient.isConnected()) {
@@ -2132,7 +2151,6 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
     if (seed !== null) {
         window.lastGeneratedSeed = seed;
         sproutSeedBtn.classList.add('available');
-        manualPreviewSeedNumber.textContent = parseInt(seed);
         updateSproutSeedButtonFromPreviewSeed();
     }
 
@@ -2142,7 +2160,6 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
         if (headerSeed) {
             window.lastGeneratedSeed = parseInt(headerSeed);
             sproutSeedBtn.classList.add('available');
-            manualPreviewSeedNumber.textContent = parseInt(headerSeed);
             updateSproutSeedButtonFromPreviewSeed();
         }
         // Fetch metadata for the generated image if we have a filename

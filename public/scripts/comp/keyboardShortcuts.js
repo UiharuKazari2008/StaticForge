@@ -22,7 +22,7 @@ function createShortcutsOverlay() {
             <div class="shortcuts-grid">
                 <div class="shortcut-item">
                     <span class="shortcut-key">F1</span>
-                    <span class="shortcut-desc"><span>Prompts</span><i class="nai-penwriting"></i></span>
+                    <span class="shortcut-desc"><span>Prompts</span><i class="fas fa-compass-drafting"></i></span>
                 </div>
                 <div class="shortcut-item">
                     <span class="shortcut-key">F2</span>

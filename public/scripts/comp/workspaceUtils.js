@@ -560,7 +560,7 @@ async function moveCacheToDefaultWorkspace(cacheImage) {
             throw new Error('Failed to move cache file');
         }
 
-        showGlassToast('success', null, 'Reference moved to default workspace', false, 5000, '<i class="fas fa-folder"></i>');
+        showGlassToast('success', null, 'Reference moved to default workspace', false, 5000, '<i class="fas fa-planet-ringed"></i>');
         await loadCacheImages();
         displayCacheImagesContainer();
     } catch (error) {
@@ -592,11 +592,6 @@ function showCacheMoveToWorkspaceModal(cacheImage) {
         document.body.appendChild(modal);
 
         // Close modal handlers
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                closeModal(modal);
-            }
-        });
 
         document.getElementById('closeCacheMoveToWorkspaceBtn').addEventListener('click', () => {
             closeModal(modal);
@@ -644,7 +639,7 @@ async function moveCacheToWorkspace(cacheImage, workspaceId) {
         }
 
         const workspace = workspaces[workspaceId];
-        showGlassToast('success', null, `Reference file moved to ${workspace ? workspace.name : 'workspace'}`, false, 5000, '<i class="fas fa-folder-open"></i>');
+        showGlassToast('success', null, `Reference file moved to ${workspace ? workspace.name : 'workspace'}`, false, 5000, '<i class="fas fa-planet-ringed"></i>');
         await loadCacheImages();
         displayCacheImagesContainer();
     } catch (error) {
@@ -814,7 +809,7 @@ async function updateAutomaticBackground() {
         }
         
         // Get the blur preview image - encode the preview name to handle spaces and special characters
-        const blurPreviewUrl = `/previews/${encodeURIComponent(firstImage.preview.replace('.jpg', '_blur.jpg'))}`;
+        const blurPreviewUrl = `/previews/${encodeURIComponent(firstImage.preview.replace('.webp', '@blur.webp'))}`;
         
         if (lastBackgroundUrl && lastBackgroundUrl === blurPreviewUrl) return;
         // Preload the image to ensure smooth transition
@@ -919,12 +914,12 @@ async function ensureInitialBackgroundImage() {
                 return;
             }
             // Use the retry image
-            const blurPreviewUrl = `/previews/${encodeURIComponent(retryImage.preview.replace('.jpg', '_blur.jpg'))}`;
+            const blurPreviewUrl = `/previews/${encodeURIComponent(retryImage.preview.replace('.webp', '@blur.webp'))}`;
             await setBackgroundImage(blurPreviewUrl);
             setDefaultBackgroundForWorkspace(blurPreviewUrl);
         } else {
             // Get the blur preview image
-            const blurPreviewUrl = `/previews/${encodeURIComponent(firstImage.preview.replace('.jpg', '_blur.jpg'))}`;
+            const blurPreviewUrl = `/previews/${encodeURIComponent(firstImage.preview.replace('.webp', '@blur.webp'))}`;
             await setBackgroundImage(blurPreviewUrl);
             setDefaultBackgroundForWorkspace(blurPreviewUrl);
         }            
@@ -1158,22 +1153,23 @@ function adjustColorForTheme(baseColor, statusType) {
 }
 
 async function createWorkspace(name) {
+    let result;
     try {
         // Use WebSocket API if available, otherwise fall back to HTTP
         if (window.wsClient && window.wsClient.isConnected()) {
-            const result = await window.wsClient.createWorkspace(name);
-            
+            result = await window.wsClient.createWorkspace(name);
+
             // Use the response data to update local state instead of reloading everything
             if (result && result.workspace) {
                 // Add the new workspace to local state
                 workspaces[result.workspace.id] = result.workspace;
-                
+
                 // Only regenerate styles if this affects the current theme
                 if (result.workspace.id === activeWorkspace) {
                     generateAllWorkspaceStyles();
                     switchWorkspaceTheme(activeWorkspace);
                 }
-                
+
                 // Update UI components that need the new workspace
                 renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
@@ -1184,9 +1180,11 @@ async function createWorkspace(name) {
         }
 
         showGlassToast('success', null, `Workspace "${name}" created!`);
+        return result; // Return the WebSocket response
     } catch (error) {
         console.error('Error creating workspace:', error);
         showError('Failed to create workspace: ' + error.message);
+        throw error;
     }
 }
 
@@ -1580,7 +1578,6 @@ function hideWorkspaceManagementModal() {
 
 function showAddWorkspaceModal() {
     currentWorkspaceOperation = { type: 'add' };
-    document.getElementById('workspaceEditTitle').textContent = 'Add Workspace';
     document.getElementById('workspaceNameInput').classList.remove('hidden');
     document.getElementById('workspaceColorInput').classList.remove('hidden');
     document.getElementById('workspaceBackgroundColorInput').classList.remove('hidden');
@@ -1593,9 +1590,6 @@ function showAddWorkspaceModal() {
 
 async function editWorkspaceSettings(id) {
     currentWorkspaceOperation = { type: 'settings', id };
-    document.getElementById('workspaceEditTitle').textContent = 'Workspace Settings';
-
-    // Show all form elements
     document.getElementById('workspaceNameInput').classList.remove('hidden');
     document.getElementById('workspaceColorInput').classList.remove('hidden');
     document.getElementById('workspaceBackgroundColorInput').classList.remove('hidden');
@@ -1771,10 +1765,9 @@ function initializeWorkspaceSystem() {
                     return;
                 }
                 // Create workspace then push all settings at once
-                await createWorkspace(name);
-                const newWorkspace = Object.values(workspaces).find(w => w.name === name);
-                if (newWorkspace) {
-                    await window.wsClient.updateWorkspaceSettings(newWorkspace.id, {
+                const createResponse = await createWorkspace(name);
+                if (createResponse && createResponse.success && createResponse.id) {
+                    await window.wsClient.updateWorkspaceSettings(createResponse.id, {
                         name,
                         color,
                         backgroundColor: backgroundColor || null,
@@ -1782,6 +1775,8 @@ function initializeWorkspaceSystem() {
                         textareaFont
                     });
                     await loadWorkspaces();
+                } else {
+                    showError('Failed to create workspace. Please try again.');
                 }
             } else if (currentWorkspaceOperation.type === 'rename') {
                 const name = document.getElementById('workspaceNameInput').value.trim();
@@ -1820,7 +1815,6 @@ function initializeWorkspaceSystem() {
         }
 
         hideWorkspaceEditModal();
-        hideWorkspaceManagementModal();
     });
 
     // Dump workspace
@@ -1837,7 +1831,6 @@ function initializeWorkspaceSystem() {
         }
 
         hideWorkspaceDumpModal();
-        hideWorkspaceManagementModal();
     });
     
     // Generate all workspace styles and set initial theme
@@ -2087,6 +2080,15 @@ function initializeWebSocketWorkspaceEvents() {
                 break;
                 
             case 'reordered':
+                // Update local workspace sort order based on the new workspaceIds
+                if (data.workspaceIds && Array.isArray(data.workspaceIds)) {
+                    data.workspaceIds.forEach((workspaceId, index) => {
+                        if (workspaces[workspaceId]) {
+                            workspaces[workspaceId].sort = index;
+                        }
+                    });
+                }
+
                 // Remove loading state from all workspace items
                 const workspaceManageList = document.getElementById('workspaceManageList');
                 if (workspaceManageList) {
@@ -2100,12 +2102,11 @@ function initializeWebSocketWorkspaceEvents() {
                         }
                     });
                 }
-                
-                // For reordering, we don't need to reload all workspaces
-                // Just update the UI components that show the new order
+
+                // Update UI components that show the new order
                 renderWorkspaceDropdown();
                 updateActiveWorkspaceDisplay();
-                
+
                 // If workspace management modal is open, refresh it
                 const workspaceManageModalAfterReorder = document.getElementById('workspaceManageModal');
                 if (workspaceManageModalAfterReorder && !workspaceManageModalAfterReorder.classList.contains('hidden')) {

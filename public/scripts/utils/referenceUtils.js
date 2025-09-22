@@ -28,7 +28,7 @@ function showCommentDialog(comment, title) {
             <div class="modal-header">
                 <h3><i class="fas fa-comment"></i> ${title}</h3>
                 <button class="btn-secondary btn-small" onclick="this.closest('.comment-dialog').remove()">
-                    <i class="nai-cross"></i>
+                    <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
             <div class="modal-body">
@@ -63,7 +63,7 @@ function showVibesCommentsDialog(vibes) {
             <div class="modal-header">
                 <h3><i class="fas fa-comments"></i> Vibe Comments</h3>
                 <button class="btn-secondary btn-small" onclick="this.closest('.comment-dialog').remove()">
-                    <i class="nai-cross"></i>
+                    <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
             <div class="modal-body">

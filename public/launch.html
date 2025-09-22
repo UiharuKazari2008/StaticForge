@@ -425,6 +425,76 @@
             }
         }
         
+        async function checkServerReadiness() {
+            try {
+                const response = await fetch('/status', {
+                    method: 'OPTIONS',
+                    cache: 'no-cache'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    return {
+                        isReady: data.isReady,
+                        stage: data.stage,
+                        stageMessage: data.stageMessage,
+                        uptime: data.uptime
+                    };
+                } else {
+                    return null;
+                }
+            } catch (error) {
+                return null;
+            }
+        }
+        
+        let serverReadinessInterval = null;
+        let serverReadinessAttempts = 0;
+        const maxReadinessAttempts = 20; // 20 attempts = 10 minutes (30s * 20)
+        
+        async function pollServerReadiness() {
+            const readiness = await checkServerReadiness();
+            
+            if (readiness === null) {
+                // Server not responding at all
+                serverReadinessAttempts++;
+                if (serverReadinessAttempts >= maxReadinessAttempts) {
+                    clearInterval(serverReadinessInterval);
+                    showError('Server is not responding after 10 minutes', true);
+                    return;
+                }
+                showError(`Server not responding (attempt ${serverReadinessAttempts}/${maxReadinessAttempts})`, true);
+                return;
+            }
+            
+            if (readiness.isReady) {
+                // Server is ready, proceed with normal validation
+                clearInterval(serverReadinessInterval);
+                showError('Server is ready, validating...');
+                setTimeout(performValidation, 1000);
+                return;
+            }
+            
+            // Server is initializing, show current stage
+            const uptimeSeconds = Math.floor(readiness.uptime / 1000);
+            showError(`${readiness.stageMessage} (${uptimeSeconds}s)`, true);
+        }
+        
+        function startServerReadinessPolling() {
+            if (serverReadinessInterval) {
+                clearInterval(serverReadinessInterval);
+            }
+            
+            serverReadinessAttempts = 0;
+            showError('Checking server status...');
+            
+            // Start polling every 30 seconds
+            serverReadinessInterval = setInterval(pollServerReadiness, 30000);
+            
+            // Also check immediately
+            pollServerReadiness();
+        }
+        
         async function checkSessionValidity() {
             try {
                 const response = await fetch('/app', {
@@ -436,7 +506,7 @@
                     const data = await response.json();
                     
                     // Check version compatibility
-                    const clientVersion = '1.0.0'; // Current client version
+                    const clientVersion = '1.0.1'; // Current client version
                     if (data.serverVersion && data.serverVersion !== clientVersion) {
                         // Version mismatch - show warning
                         showVersionWarning({
@@ -498,14 +568,30 @@
                 return;
             }
             
-            // Step 2: Check server accessibility
+            // Step 2: Check server readiness first
+            const readiness = await checkServerReadiness();
+            if (readiness === null) {
+                // Server not responding, start polling
+                validationInProgress = false;
+                startServerReadinessPolling();
+                return;
+            }
+            
+            if (!readiness.isReady) {
+                // Server is initializing, start polling
+                validationInProgress = false;
+                startServerReadinessPolling();
+                return;
+            }
+            
+            // Step 3: Check server accessibility (server is ready)
             if (!await checkServerAccessibility()) {
                 showError('Unable to connect to server', true); // Show rescue button
                 validationInProgress = false;
                 return;
             }
             
-            // Step 3: Check session validity and version compatibility
+            // Step 4: Check session validity and version compatibility
             const sessionResult = await checkSessionValidity();
             if (sessionResult === null) {
                 // Version mismatch - warning already shown

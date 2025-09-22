@@ -320,6 +320,8 @@ function extractNovelAIMetadata(filePath) {
                     'chara_reference_source',
                     'chara_reference_with_style',
                     'chara_reference_image',
+                    'director_session_id',
+                    'director_message_id',
                     'software',
                     'history'
                 ];
@@ -478,10 +480,8 @@ async function extractRelevantFields(meta, filename) {
         
     }
     
-    // Use saved input values if available, otherwise use extracted values
     const resultPrompt = forgeData.input_prompt !== undefined ? forgeData.input_prompt : meta.prompt;
-    const resultUc = forgeData.input_prompt !== undefined ? forgeData.input_uc : meta.uc;
-
+    const resultUc = forgeData.input_prompt !== undefined ? (forgeData?.input_uc || '') : meta.uc;
     const result = {
         prompt: resultPrompt,
         uc: resultUc,
@@ -502,7 +502,6 @@ async function extractRelevantFields(meta, filename) {
         image_bias: forgeData.image_bias,
         preset_name: forgeData.preset_name,
         use_coords: hasCharacterPrompts ? (
-            // Check if any character has valid coordinates
             characterPrompts.some(char => 
                 char.center && 
                 char.center.x !== null && 
@@ -551,7 +550,6 @@ async function extractRelevantFields(meta, filename) {
     
     // Add resolution if it matches, otherwise add height and width
     if (resolution) {
-        // Convert to uppercase to match the frontend expectations
         result.resolution = resolution.toUpperCase();
     } else {
         result.height = meta.height;
@@ -602,7 +600,7 @@ async function extractRelevantFields(meta, filename) {
             const modelKey = model.toLowerCase();
             const ucPresets = currentPromptConfig.uc_presets[modelKey];
             if (ucPresets && Array.isArray(ucPresets)) {
-                for (let i = 0; i < ucPresets.length; i++) {
+                for (let i = ucPresets.length - 1; i >= 0; i--) {
                     const ucValue = ucPresets[i];
                     if (result.uc.startsWith(ucValue)) {
                         // Check if it's at the start with ", " separator
@@ -641,6 +639,14 @@ async function extractRelevantFields(meta, filename) {
     if (forgeData.chara_reference_source) {
         result.chara_reference_source = forgeData.chara_reference_source;
         result.chara_reference_with_style = forgeData.chara_reference_with_style || false;
+    }
+
+    // Add director session and message IDs
+    if (forgeData.director_session_id) {
+        result.director_session_id = forgeData.director_session_id;
+    }
+    if (forgeData.director_message_id) {
+        result.director_message_id = forgeData.director_message_id;
     }
 
     return result;
@@ -715,7 +721,9 @@ function getBaseName(filename) {
         .replace(/_upscaled(?=\.)/, '')  // Remove _upscaled suffix
         .replace(/_pipeline(?=\.)/, '')  // Remove _pipeline suffix
         .replace(/_pipeline_upscaled(?=\.)/, '')  // Remove _pipeline_upscaled suffix
-        .replace(/_blur(?=\.)/, '')  // Remove _blur suffix
+        .replace(/@blur(?=\.)/, '')  // Remove @blur suffix
+        .replace(/@lq(?=\.)/, '')  // Remove @lq suffix
+        .replace(/@2x(?=\.)/, '')  // Remove @2x suffix
         .replace(/\.(png|jpg|jpeg)$/i, '');  // Remove file extension
 }
 

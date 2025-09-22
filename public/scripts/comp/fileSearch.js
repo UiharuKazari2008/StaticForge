@@ -474,7 +474,9 @@ class FileSearch {
             .replace(/_upscaled(?=\.)/, '')  // Remove _upscaled suffix
             .replace(/_pipeline(?=\.)/, '')  // Remove _pipeline suffix
             .replace(/_pipeline_upscaled(?=\.)/, '')  // Remove _pipeline_upscaled suffix
-            .replace(/_blur(?=\.)/, '')  // Remove _blur suffix
+            .replace(/@blur(?=\.)/, '')  // Remove @blur suffix
+            .replace(/@lq(?=\.)/, '')  // Remove @lq suffix
+            .replace(/@2x(?=\.)/, '')  // Remove @2x suffix
             .replace(/\.(png|jpg|jpeg)$/i, '');  // Remove file extension
     }
 
@@ -663,7 +665,7 @@ class FileSearch {
                 <div class="preview-images-grid">
                     ${previewImages.map(fileInfo => `
                         <div class="preview-image-item" data-filename="${fileInfo.filename}" title="${fileInfo.sourceTag}">
-                            <img src="/previews/${encodeURIComponent(this.getBaseName(fileInfo.filename))}.jpg" 
+                            <img src="/previews/${encodeURIComponent(this.getBaseName(fileInfo.filename))}.webp" 
                                  alt="${fileInfo.filename}" 
                                  loading="lazy"
                                  onerror="this.classList.add('hidden'); this.nextElementSibling.classList.remove('hidden');">

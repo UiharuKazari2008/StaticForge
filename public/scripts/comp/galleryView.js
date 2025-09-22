@@ -902,7 +902,7 @@ function createGalleryItem(image, index) {
                             action: 'reroll'
                         },
                         {
-                            icon: 'mdi mdi-1-25 mdi-text-box-edit-outline',
+                            icon: 'fas fa-compass-drafting',
                             text: 'Creator',
                             action: 'modify'
                         },

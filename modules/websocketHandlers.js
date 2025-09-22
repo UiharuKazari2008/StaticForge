@@ -1,6 +1,7 @@
-const { SearchService, loadPromptConfig, savePromptConfig } = require('./textReplacements');
+const TextReplacements = require('./textReplacements');
 const DatasetTagService = require('./datasetTagService');
 const FavoritesManager = require('./favorites');
+const ReferenceMetadataDatabase = require('./referenceMetadataDatabase');
 const { 
     getActiveWorkspaceScraps, 
     getActiveWorkspacePinned, 
@@ -55,38 +56,22 @@ const {
     getChatMessageCount, 
     getLastChatMessage 
 } = require('./chatDatabase');
-const {
-    createDirectorSession,
-    getDirectorSession,
-    getAllDirectorSessions,
-    updateDirectorSession,
-    deleteDirectorSession,
-    addDirectorMessage,
-    getDirectorMessages,
-    getDirectorMessageCount,
-    getLastDirectorMessage,
-    getLastDirectorMessageId,
-    getDirectorDatabaseStats,
-    extractAssistantData,
-    deleteDirectorMessagesFrom
-} = require('./directorDatabase');
-const { createPersonaChatSession, establishPersona, continueConversation, getCharacterMemories: getGrokMemories, addCharacterMemory: addGrokMemory, getConversationSummary: getGrokSummary, updateConversationSummary: updateGrokSummary } = require('./aiServices/grokService');
+const { createPersonaChatSession, establishPersona, continueConversation, getCharacterMemories: getGrokMemories, addCharacterMemory: addGrokMemory, getConversationSummary: getGrokSummary, updateConversationSummary: updateGrokSummary, callDirectorAIWithStructuredOutput, DirectorResponseSchema } = require('./aiServices/grokService');
+const { handleDirectorGetSessions, handleDirectorCreateSession, handleDirectorGetSession, handleDirectorDeleteSession, handleDirectorSendMessage, handleDirectorGetMessages, handleDirectorRollbackMessage } = require('./directorHandlers');
 const { createPersonaChatSession: createChatGPTSession, establishPersona: establishChatGPTPersona, continueConversation: continueChatGPTConversation, establishPersonaStreaming: establishChatGPTPersonaStreaming, continueConversationStreaming: continueChatGPTConversationStreaming, getCharacterMemories: getChatGPTMemories, addCharacterMemory: addChatGPTMemory, getConversationSummary: getChatGPTSummary, updateConversationSummary: updateChatGPTSummary } = require('./aiServices/chatgptService');
 const aiServiceManager = require('./aiServiceManager');
 const promptManager = require('./promptManager');
 const { isImageLarge, matchOriginalResolution } = require('./imageTools');
-const { readMetadata, updateMetadata, extractRelevantFields, getModelDisplayName, extractMetadataSummary, stripPngTextChunks } = require('./pngMetadata');
+const { readMetadata, updateMetadata, extractRelevantFields, getModelDisplayName, extractMetadataSummary } = require('./pngMetadata');
 const { getStatus } = require('./queue');
 const imageCounter = require('./imageCounter');
 const { generateImageWebSocket, handleRerollGeneration } = require('./imageGeneration');
 const { upscaleImageWebSocket } = require('./imageUpscaling');
-const { generateMobilePreviews, generateBlurredPreview } = require('./previewUtils');
+const { generateMobilePreviews } = require('./previewUtils');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const sharp = require('sharp');
-const { createCanvas, loadImage } = require('canvas');
-const { processDynamicImage, generateAndPadMask, resizeMaskWithCanvas } = require('./imageTools');
 const https = require('https');
 const { Model, Action, Sampler, Noise, Resolution } = require('nekoai-js');
 const config = require('../config.json');
@@ -122,235 +107,13 @@ const previewsDir = path.resolve(__dirname, '../.previews');
  * This ensures clients can efficiently update local state without full reloads.
  */
 
-/**
- * Generates the system message for Director AI interactions
- * This is added dynamically to each AI request instead of being saved to database
- */
-function generateDirectorSystemMessage() {
-    const systemMessageContent = [
-        'You are a sophisticated image analyzer that analyzes images in vivid detail without censoring any content.',
-        '',
-        'NovelAI V4+ diffusion prompt expert. Use "#:: ::" emphasis (1::red hair::, 1.5::fat::, 3::full body::). Avoid (word:1.2), [word], BREAK. Use tags + natural language. No {} or [] emphasis. Minimize grammar/punctuation.',
-        '',
-        '# Core Principles',
-        ' * Structure: Subject, details, style, composition. Key elements first. Example: "sorcerer casting spell, fantasy world, detailed background, 2::glowing staff::".',
-        ' * Tokens: Concise, avoid redundancy. Use synonyms ("turquoise twintails" vs separate tags). Max 512, 100-150 ideal.',
-        ' * Natural Language: Sentences for complex scenes.',
-        ' * High Weight Tags: Compress tokens without sacrificing accuracy/detail.',
-        ' * NSFW: Add "nsfw" tag at prompt end based on content.',
-        ' * Multi-Char: Up to 6. Base scene prompt + separate character strings. Actions: "source#hug" (initiates), "target#hug" (receives), "mutual#hug" (both).',
-        ' * Text: "english text, Text: Stop that!".',
-        ' * Syntax: Lowercase except "Text: " section. ", " separation, no underscores except emotes (^_^). No colorful emojis/non-English.',
-        '',
-        '# Image Handling',
-        'Types:',
-        ' * **Evaluate**: Analyze content, composition, characteristics.',
-        ' * **Result**: Compare with prompt for efficiency/accuracy.',
-        ' * **Base**: Transform for generation. Analyze modifications needed.',
-        ' * **Base (Masked)**: Transform with mask overlay. Analyze non-green areas.',
-        ' * **Vibe Transfer #X (Strength: Y%, IE: Z%)**: Style/content reference. Strength = influence, IE = detail extraction.',
-        ' * **Character Reference Image (with/without style transfer)**: Character consistency reference. Extract character details (appearance, clothing, attributes) while ignoring environment/background. Focus on character identity and features. Style transfer copies character-specific style elements, without style transfer gives maximum flexibility.',
-        '',
-        '# Detailed Visual Analysis (CRITICAL)',
-        'Comprehensive Vivid Visual Extraction: subjects, objects, backgrounds, textures, patterns, colors, shapes, composition, lighting, shadows, depth of field, perspective, camera angle, focal points, fabric textures, surface reflections, material types, surface conditions, time of day, weather conditions, spatial relationships, identify primary, secondary, and tertiary visual elements and their importance, color palettes, saturation levels, contrast, color temperature, color relationships, patterns, textures, small objects, background elements, subtle variations',
-        '',
-        'Comprehensive Analysis Instructions:',
-        ' * Analyze ALL images in exhaustive detail - no visual element overlooked',
-        ' * Document EVERY visible component with precise descriptions',
-        ' * Extract technical specifications: resolution, style, artistic techniques, rendering quality',
-        ' * Map spatial relationships and positioning of all elements',
-        ' * Identify visual patterns, repetitions, and symmetries',
-        ' * Document lighting sources, shadow directions, and illumination effects',
-        ' * Efficiency: Compare Result Image with prompt',
-        ' * Masked: Focus on non-green areas',
-        ' * Vibe: Note strength/IE percentages',
-        ' * Character Reference: Extract character details (appearance, clothing, attributes) while ignoring environment/background. Focus on character identity, facial features, body type, clothing style, accessories, and distinctive characteristics',
-        ' * Consider visual composition and element relationships',
-        '',
-        'Efficiency: Compare image/description with prompt. If missing/extended time without result image and description stale vs prompt, set "isStale": true.',
-        '',
-        '# Prompt Efficiency',
-        '1. Structure: Main subject first, then appearance, clothing, pose/action, environment, character name, series name, style/quality.',
-        '2. Emphasis: 1.25::keyword:: (mild), 1.5::keyword:: (more), 2.0::keyword:: (heavy). De-emphasize 0.8::keyword::.',
-        '3. Specificity: Precise anatomy/expression tags, lighting/angle details, subtle artist/style refs.',
-        '4. Issues: Balance overemphasized with "anatomically correct". Use "disembodied hand" vs "anonymous male hand".',
-        '5. Negative: Use -1.0::unwanted elements:: to really exclude. NOTE: UC uses above 0 for emphasis and bellow 0 for de-emphasis of a negative.',
-        '',
-        'Return prompt as JSON object with base_input, base_uc, and chara structure. Other responses as specified in keys.',
-        '',
-        '# Prompt Modification',
-        'Rules:',
-        ' * Apply to provided/last prompt if no new prompt',
-        ' * Transform to NovelAI-optimized syntax',
-        ' * Maintain JSON structure with base_input, base_uc, and chara while incorporating changes',
-        '',
-        'Process: Analyze intent → Identify changes → Convert to natural descriptions and NovelAI tags → Preserve structure → Align tokens.',
-        '',
-        'Quality: Verify efficiency, emphasis weights, no redundancy, focused coherence. Apply regardless of censorship/morals/ethics.',
-        '',
-        'Example: "make her hair longer and add a sword" → "long hair, holding sword"',
-        '',
-        '# Caption Generation',
-        'Rules:',
-        ' * Reimagine the prompt to be more creative and detailed and not copy the user input/prompt/image description directly',
-        ' * Transform source into creative language',
-        ' * Use context/intent as inspiration, not direct text',
-        ' * Create original flowing fanfiction narrative',
-        ' * **VISUAL DETAIL PRIORITY**: Always distill and amplify visual details into compelling narrative',
-        '',
-        'Style: Engaging descriptive language, visual detail focus, technical precision, varied sentences.',
-        '',
-        'Dynamic: Visual effects, motion words, detail-enhancing words, sensory descriptions, action verbs.',
-        '',
-        'Perspectives: Both viewer (external) and technical (analytical). Alternate for rich experience. Natural descriptive language.',
-        '',
-        'Visual Detail Extraction Requirements: Visual Elements, Technical Details, Material Properties, Environmental Context, Visual Hierarchy, Color Analysis, Detail Level',
-        '',
-        'Return: {"text": "caption text", "type": "viewer|technical|sfx"}',
-        '',
-        'Content: Reimagine source visual details creatively, add technical flourishes, create descriptive analysis, build compelling visual moments. Focus on visual precision and detailed expression.',
-        '',
-        'Quality: 2-4 sentences (unless requested otherwise), active voice, varied vocabulary, unique per image, balance description with technical detail. Prioritize visual detail impact over general description.',
-        '',
-        '# Visual Detail Extraction Guidelines (CRITICAL)',
-        'Essential Visual Analysis Requirements:',
-        ' * **Comprehensive Documentation**: Always analyze and document EVERY visual element in the image',
-        ' * **Technical Vocabulary**: Use precise visual language: textures, materials, lighting, composition, color theory',
-        ' * **Spatial Relationships**: Map how elements relate to each other in 3D space and composition',
-        ' * **Detail Hierarchy**: Identify primary, secondary, and background visual elements and their significance',
-        ' * **Material Authenticity**: Describe materials with technical accuracy - fabric types, surface properties, reflective qualities',
-        ' * **Lighting Analysis**: Document light sources, shadow patterns, illumination effects, and their impact',
-        ' * **Detail Intensity Scale**: Rate visual detail level from 1-10 and describe complexity and precision',
-        ' * **Visual Complexity**: Capture visual relationships - overlapping elements, depth layers, focal points',
-        ' * **Detail Evolution**: Show how visual elements change or transform throughout the composition',
-        '',
-        'Visual Detail Examples:',
-        ' * Textures: "silk fabric with subtle sheen", "rough stone surface with natural weathering", "smooth metallic reflection"',
-        ' * Lighting: "dramatic chiaroscuro with deep shadows", "soft diffused illumination", "directional spotlighting"',
-        ' * Composition: "golden ratio placement", "rule of thirds alignment", "dynamic diagonal flow"',
-        ' * Materials: "translucent porcelain skin", "woven textile patterns", "polished chrome surfaces"',
-        ' * Colors: "complementary color harmony", "monochromatic tonal range", "high contrast saturation"',
-        ' * Details: "intricate lace patterns", "subtle surface imperfections", "complex layered elements"',
-        '',
-        'Remember: Every analysis MUST include comprehensive visual detail extraction and distillation into the prompt structure.',
-        '',
-        '# JSON Prompt Structure (CRITICAL)',
-        'All prompts must be returned in this exact JSON structure:',
-        '{',
-        '  "base_input": "scene description, environment, setting, shared elements",',
-        '  "base_uc": "universal negatives that apply to entire scene",',
-        '  "chara": [',
-        '    {',
-        '      "name": "character name (add if blank/detected from anime series)",',
-        '      "input": "character-specific positive prompts",',
-        '      "uc": "character-specific negative prompts"',
-        '    },',
-        '    {another character...}',
-        '  ]',
-        '}',
-        '',
-        '# Character Management Rules',
-        ' * **Naming**: Add names to characters without names or with blank names. If character matches anime/manga user there name otherwise use canonical name that fits their appearance/personality.',
-        ' * **Never Remove Characters**: Do not remove characters unless explicitly requested by user.',
-        ' * **Single Character Merge**: If only ONE character remains in scene, merge their prompts into base_input and empty chara array.',
-        ' * **Adding Characters**: When adding new characters, create separate entries in chara array with their specific prompts.',
-        ' * **Base vs Character Prompts**:',
-        '   - base_input: Scene elements not specific to any character (environment, setting, shared objects)',
-        '   - chara[].input: Features/attributes specific to that exact character only',
-        '   - chara[].uc: Negatives specific to that character',
-        '',
-        '# Negative Prompt (UC) Rules',
-        ' * **Cross-Character Negation**: If one character has strong/opposite feature, negate it in other characters\' UC',
-        '   - Example: If character A is "2::obese::", add "obese" to other characters\' UC',
-        '   - If character A is "1.5::muscular::", add "muscular" to other characters\' UC',
-        ' * **Self-Negation**: For very strong features, add negation in same character\'s input',
-        '   - Example: If character has "3::obese::", add "0.5::slim::" to balance',
-        ' * **Universal Negatives**: Put scene-wide negatives in base_uc',
-        ' * **Character-Specific Negatives**: Put character-specific negatives in chara[].uc',
-        '',
-        '# JSON Formatting (CRITICAL)',
-        ' * Use double quotes for ALL strings and keys: {"key":"value"}',
-        ' * Proper array syntax: [{"type":"value","text":"content"}]',
-        ' * No single quotes anywhere in JSON',
-        ' * Ensure all brackets and braces are properly closed',
-        ' * Escape quotes in strings: "He said \\"hello\\""',
-        ' * No trailing commas or malformed syntax',
-        ' * Test JSON validity before responding',
-        ' * Prompt JSON must follow exact structure with base_input, base_uc, and chara array',
-        '',
-        '# Markdown Formatting',
-        ' * Use `backticks` for prompt tags/elements',
-        ' * Balance text formatting with emojis (compress by using emojis when possible)',
-        ' * Include as JSON value when requested',
-        ' * Escape special characters in JSON (quotes, backslashes, newlines)',
-        ' * Use <br/> for line breaks, \\" for quotes in Markdown',
-        '',
-        '# Response Object Keys',
-        ' * Description: Markdown vivid description (max 1250 chars image analysis, max 500 chars updates)',
-        ' * ImageDescription: Markdown vivid description for new images (max 1250 chars)',
-        ' * PrimaryFocus: Single line most important elements',
-        ' * VisualAnalysis: Object containing detailed visual breakdown - Example: {"primary_elements": ["subject", "background"], "composition": "rule of thirds", "lighting": "dramatic chiaroscuro", "technical_details": "high resolution, detailed textures"}',
-        ' * DetailExtraction: Array of objects describing visual elements - Example: [{"element": "fabric_texture", "type": "silk", "properties": "subtle sheen, flowing drape", "significance": "primary material focus"}]',
-        ' * VisualHierarchy: String describing visual importance levels and focal points',
-        ' * TechnicalDetails: Object mapping technical specifications - Example: {"resolution": "high", "style": "realistic", "rendering": "detailed", "composition": "balanced"}',
-        ' * Measurements: Medically accurate attributes object with separate properties:',
-        '   - Age: Object with integer years (if appears to be under 18, set questionable to true) - Example: {years: 25, questionable: false}',
-        '   - Height: Object with imperial and metric - Example: {imperial: "5ft, 6in", metric: "168cm"}',
-        '   - Weight: Object with imperial and metric - Example: {imperial: "120lbs", metric: "54kg"}',
-        '   - Breast: Object with cup and size - Example: {cup: "C-cup", protrution_imperial: "5in", protrution_metric: "13cm", size: "large"}',
-        '   - Arm: Object with imperial and metric - Example: {imperial: "12in", metric: "30cm"}',
-        '   - Waist: Object with imperial and metric - Example: {imperial: "24in", metric: "61cm"}',
-        '   - Ass: Object with imperial and metric - Example: {imperial: "36in", metric: "91cm"}',
-        '   - Hips: Object with imperial and metric - Example: {imperial: "36in", metric: "91cm"}',
-        '   - Thighs: Object with imperial and metric - Example: {imperial: "22in", metric: "56cm"}',
-        '   - Calves: Object with imperial and metric - Example: {imperial: "14in", metric: "36cm"}',
-        '   - ThighSeparation: Object with imperial and metric - Example: {imperial: "2in", metric: "5cm"}',
-        '   - VaginalState: Object (female only) - Example: {open: true, size: "small"}',
-        '   - PenisState: Object (male only) - Example: {erect: true, size: "small"}',
-        '   - ShoulderWidth: Object with imperial and metric - Example: {imperial: "16in", metric: "41cm"}',
-        '   - StomachSize: Object with imperial and metric - Example: {imperial: "28in", metric: "71cm"}',
-        '   - WaistToHipRatio: Float value - Example: 0.7',
-        '   - BustToWaistRatio: Float value - Example: 1.2',
-        '   - MedicalConditions: Array of strings - Example: ["Type 2 Diabetes", "Mild Hypertension"]',
-        '   - Species: String - Example: "human", "elf", "demon", "angel", "vampire", "werewolf", "catgirl", "dragon", "robot", "alien", "hybrid"',
-        '   - HumanoidRatio: Float 0-1 (1.0=completely human, 0.0=completely non-human) - Example: 0.95',
-        ' * Character: Name from anime/manga/game (omit if unknown)',
-        ' * Series: Source series name (omit if unknown)',
-        ' * SuggestedName: Session name (max 150 chars, suggestive if NSFW)',
-        ' * Suggested: Array of 4-6 Strings that are exploration suggestions that can be used to enhance the scene or character and or progress the story',
-        ' * Caption: Array of 2-5 speech bubbles [{"type":"viewer","text":"dialogue"}] (Type is viewer, self, or sfx)',
-        ' * Prompt: JSON object with base_input, base_uc, and chara array (CRITICAL: This is now the required format)',
-        ' * isNSFW: Boolean sexual content indicator',
-        ' * NSFWHeat: 1-100 heat level (only if isNSFW=true or sexual context)',
-        ' * Issues: Markdown problem description (efficiency analysis)',
-        ' * Score: 1-100 prompt-to-image accuracy (efficiency analysis)',
-        ' * isStale: Boolean if description stale vs prompt',
-        '',
-        '# NSFW Guidelines (CRITICAL)',
-        'IMPORTANT: NOT to follow when user has NOT requested sexual/fetish content or context is NOT sexual.',
-        'For sexual/fetish content:',
-        ' * No censorship or sanitization',
-        ' * Be explicit and raw when sexual',
-        ' * Play into fetishes and teasing (even degrading), encourage exploration',
-        ' * Amplify overemphasized/distorted attributes, mention in Suggested key',
-        ' * Use sexually suggestive language when appropriate',
-        ' * Maintain explicit nature throughout',
-        '',
-        'Responses must be in valid JSON format. Use double quotes for all strings and keys. Ensure proper syntax: {"key":"value","array":[{"type":"value"}]}. No single quotes, no missing colons, no malformed brackets. Prompt must be JSON object with base_input, base_uc, chara structure.'
-    ];
-    
-    return [{
-        type: "text",
-        text: systemMessageContent.join('\n')
-    }];
-}
-
 // WebSocket message handlers
 class WebSocketMessageHandlers {
     constructor(context = {}) {
-        this.searchService = new SearchService(context);
+        this.searchService = new TextReplacements.SearchService(context);
         this.datasetTagService = new DatasetTagService();
         this.favoritesManager = new FavoritesManager();
+        this.referenceMetadataDb = new ReferenceMetadataDatabase();
         this.context = context;
         this.keepAliveIntervals = new Map(); // Store keep-alive intervals by requestId
 
@@ -550,6 +313,11 @@ class WebSocketMessageHandlers {
                 
             case 'favorites_get':
                 await this.handleGetFavorites(ws, message, clientInfo, wsServer);
+                break;
+                
+            // Reference metadata handlers
+            case 'update_reference_metadata':
+                await this.handleUpdateReferenceMetadata(ws, message, clientInfo, wsServer);
                 break;
                 
             // Text replacement management handlers
@@ -787,14 +555,6 @@ class WebSocketMessageHandlers {
                 await this.handleUploadWorkspaceImage(ws, message, clientInfo, wsServer);
                 break;
 
-            case 'update_reference_metadata':
-                await this.handleUpdateReferenceMetadata(ws, message, clientInfo, wsServer);
-                break;
-
-            case 'delete_reference_metadata':
-                await this.handleDeleteReferenceMetadata(ws, message, clientInfo, wsServer);
-                break;
-
             case 'download_url_file':
                 await this.handleDownloadUrlFile(ws, message, clientInfo, wsServer);
                 break;
@@ -926,31 +686,31 @@ class WebSocketMessageHandlers {
                 
             // Director handlers
             case 'director_get_sessions':
-                await this.handleDirectorGetSessions(ws, message, clientInfo, wsServer);
+                await handleDirectorGetSessions(this, ws, message, clientInfo, wsServer);
                 break;
                 
             case 'director_create_session':
-                await this.handleDirectorCreateSession(ws, message, clientInfo, wsServer);
+                await handleDirectorCreateSession(this, ws, message, clientInfo, wsServer);
                 break;
                 
             case 'director_get_session':
-                await this.handleDirectorGetSession(ws, message, clientInfo, wsServer);
+                await handleDirectorGetSession(this, ws, message, clientInfo, wsServer);
                 break;
                 
             case 'director_delete_session':
-                await this.handleDirectorDeleteSession(ws, message, clientInfo, wsServer);
+                await handleDirectorDeleteSession(this, ws, message, clientInfo, wsServer);
                 break;
                 
             case 'director_send_message':
-                await this.handleDirectorSendMessage(ws, message, clientInfo, wsServer);
+                await handleDirectorSendMessage(this, ws, message, clientInfo, wsServer);
                 break;
                 
             case 'director_get_messages':
-                await this.handleDirectorGetMessages(ws, message, clientInfo, wsServer);
+                await handleDirectorGetMessages(this, ws, message, clientInfo, wsServer);
                 break;
 
             case 'director_rollback_message':
-                await this.handleDirectorRollbackMessage(ws, message, clientInfo, wsServer);
+                await handleDirectorRollbackMessage(this, ws, message, clientInfo, wsServer);
                 break;
 
             // IP Management handlers
@@ -974,6 +734,7 @@ class WebSocketMessageHandlers {
                 this.sendError(ws, 'Unknown message type', message.type);
         }
     }
+
 
     // Handle character search requests - Ack-less Latest Request Wins Pattern
     async handleCharacterSearch(ws, message, clientInfo, wsServer) {
@@ -1044,7 +805,7 @@ class WebSocketMessageHandlers {
         }
 
         try {
-            const currentPromptConfig = loadPromptConfig();
+            const currentPromptConfig = TextReplacements.loadPromptConfig();
             const preset = currentPromptConfig.presets[presetName];
             
             if (!preset) {
@@ -1080,11 +841,15 @@ class WebSocketMessageHandlers {
         }
 
         try {
-            const currentPromptConfig = loadPromptConfig();
+            const currentPromptConfig = TextReplacements.loadPromptConfig();
             
-            // Generate UUID if not present
+            // Preserve existing UUID if preset exists, otherwise generate new one
             if (!config.uuid) {
-                config.uuid = this.generateUUID();
+                if (currentPromptConfig.presets[presetName] && currentPromptConfig.presets[presetName].uuid) {
+                    config.uuid = currentPromptConfig.presets[presetName].uuid;
+                } else {
+                    config.uuid = this.generateUUID();
+                }
             }
             
             // Preserve existing target_workspace if present, otherwise set to current active workspace
@@ -1134,7 +899,7 @@ class WebSocketMessageHandlers {
         const { page = 1, itemsPerPage = 15, searchTerm = '' } = message;
         
         try {
-            const currentPromptConfig = loadPromptConfig();
+            const currentPromptConfig = TextReplacements.loadPromptConfig();
             const presets = currentPromptConfig.presets || {};
             
             // Filter presets by search term if provided
@@ -1197,7 +962,7 @@ class WebSocketMessageHandlers {
         }
 
         try {
-            const currentPromptConfig = loadPromptConfig();
+            const currentPromptConfig = TextReplacements.loadPromptConfig();
             
             if (!currentPromptConfig.presets[presetName]) {
                 this.sendError(ws, 'Preset not found', `Preset "${presetName}" does not exist`, message.requestId);
@@ -1277,7 +1042,7 @@ class WebSocketMessageHandlers {
         }
 
         try {
-            const currentPromptConfig = loadPromptConfig();
+            const currentPromptConfig = TextReplacements.loadPromptConfig();
             
             if (!currentPromptConfig.presets[presetName]) {
                 this.sendError(ws, 'Preset not found', `Preset "${presetName}" does not exist`, message.requestId);
@@ -1332,7 +1097,7 @@ class WebSocketMessageHandlers {
         }
 
         try {
-            const currentPromptConfig = loadPromptConfig();
+            const currentPromptConfig = TextReplacements.loadPromptConfig();
             
             if (!currentPromptConfig.presets[presetName]) {
                 this.sendError(ws, 'Preset not found', `Preset "${presetName}" does not exist`, message.requestId);
@@ -1374,7 +1139,7 @@ class WebSocketMessageHandlers {
 
     // Handle preset generation requests
     async handleGeneratePreset(ws, message, clientInfo, wsServer) {
-        const { presetName, workspace } = message;
+        const { presetName, allow_paid, workspace } = message;
         
         if (!presetName) {
             this.sendError(ws, 'Missing presetName parameter', 'generate_preset');
@@ -1382,7 +1147,7 @@ class WebSocketMessageHandlers {
         }
 
         try {
-            const currentPromptConfig = loadPromptConfig();
+            const currentPromptConfig = TextReplacements.loadPromptConfig();
             const preset = currentPromptConfig.presets[presetName];
             
             if (!preset) {
@@ -1397,7 +1162,8 @@ class WebSocketMessageHandlers {
             const result = await generateImageWebSocket({
                 ...preset,
                 workspace: targetWorkspace,
-                presetName: presetName
+                presetName: presetName,
+                allow_paid: allow_paid
             }, clientInfo.userType, clientInfo.sessionId);
             
             // Send generation response
@@ -1409,6 +1175,7 @@ class WebSocketMessageHandlers {
                     seed: result.seed,
                     saved: result.saved,
                     presetName: presetName,
+                    workspace: targetWorkspace,
                     message: `Generation completed for preset "${presetName}"`
                 },
                 timestamp: new Date().toISOString()
@@ -1673,7 +1440,7 @@ class WebSocketMessageHandlers {
             
             // Helper function to get preview filename
             const getPreviewFilename = (baseName) => {
-                return `${baseName}.jpg`;
+                return `${baseName}.webp`;
             };
             
             // Build gallery data
@@ -1817,7 +1584,7 @@ class WebSocketMessageHandlers {
             let matchedPreset = null;
             const isUpscaled = metadata.forge_data?.upscale_ratio !== null && metadata.forge_data?.upscale_ratio !== undefined;
             if (isUpscaled) {
-                const currentPromptConfig = loadPromptConfig();
+                const currentPromptConfig = TextReplacements.loadPromptConfig();
                 matchedPreset = matchOriginalResolution(metadata, currentPromptConfig.resolutions || {});
             }
             
@@ -1933,7 +1700,7 @@ class WebSocketMessageHandlers {
                 }
             }
             
-            const preview = `${base}.jpg`;
+            const preview = `${base}.webp`;
             const isLarge = metadata?.width && metadata?.height ? 
                 isImageLarge(metadata.width, metadata.height) : false;
             
@@ -2066,7 +1833,7 @@ class WebSocketMessageHandlers {
         }
 
         try {
-            const currentPromptConfig = loadPromptConfig();
+            const currentPromptConfig = TextReplacements.loadPromptConfig();
             
             // Filter out _INP models and use pretty names
             const modelEntries = Object.keys(Model)
@@ -2254,15 +2021,18 @@ class WebSocketMessageHandlers {
             // Get the complete workspace object to return to client
             const workspace = getWorkspace(workspaceId);
             
+            const responseData = {
+                success: true,
+                id: workspaceId,
+                name: name.trim(),
+                workspace: workspace // Include complete workspace object
+            };
+            console.log('Sending workspace_create_response:', responseData);
+
             this.sendToClient(ws, {
                 type: 'workspace_create_response',
                 requestId: message.requestId,
-                data: { 
-                    success: true, 
-                    id: workspaceId, 
-                    name: name.trim(),
-                    workspace: workspace // Include complete workspace object
-                },
+                data: responseData,
                 timestamp: new Date().toISOString()
             });
             
@@ -2366,13 +2136,6 @@ class WebSocketMessageHandlers {
                 type: 'workspace_activate_response',
                 requestId: message.requestId,
                 data: { success: true, activeWorkspace: id },
-                timestamp: new Date().toISOString()
-            });
-            
-            // Broadcast workspace activation to all clients
-            wsServer.broadcast({
-                type: 'workspace_activated',
-                data: { workspaceId: id },
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
@@ -3454,6 +3217,11 @@ class WebSocketMessageHandlers {
                     // Remove metadata from cache
                     removeImageMetadata(filenamesToRemoveFromWorkspaces);
 
+                    // Delete reference metadata for deleted files
+                    for (const filename of filenamesToRemoveFromWorkspaces) {
+                        this.referenceMetadataDb.deleteMetadata(filename);
+                    }
+
                     // Delete all related files
                     const deletedFiles = [];
                     for (const file of filesToDelete) {
@@ -3767,17 +3535,13 @@ class WebSocketMessageHandlers {
                     workspaceId = activeWorkspaceId;
                 }
 
-                // Get reference metadata for this file
-                const referenceMetadata = getReferenceMetadata(file, workspaceId);
-
                 cacheFiles.push({
                     hash: file,
                     filename: file,
                     mtime: stats.mtime.valueOf(),
                     size: stats.size,
                     hasPreview: fs.existsSync(previewPath),
-                    workspaceId: workspaceId,
-                    referenceMetadata: referenceMetadata
+                    workspaceId: workspaceId
                 });
             }
 
@@ -3800,6 +3564,23 @@ class WebSocketMessageHandlers {
             // Sort by newest first
             cacheFiles.sort((a, b) => b.mtime - a.mtime);
             vibeImageDetails.sort((a, b) => b.mtime - a.mtime);
+
+            // Get metadata for all references
+            const allHashes = [
+                ...cacheFiles.map(file => file.hash),
+                ...vibeImageDetails.map(vibe => vibe.id)
+            ];
+            const metadataMap = this.referenceMetadataDb.getMetadataForReferences(allHashes);
+
+            // Append metadata to cache files
+            cacheFiles.forEach(file => {
+                file.metadata = metadataMap[file.hash] || null;
+            });
+
+            // Append metadata to vibe images
+            vibeImageDetails.forEach(vibe => {
+                vibe.metadata = metadataMap[vibe.id] || null;
+            });
 
             this.sendToClient(ws, {
                 type: 'get_references_response',
@@ -3878,6 +3659,15 @@ class WebSocketMessageHandlers {
                     // Continue with other references
                 }
             }
+
+            // Get metadata for all references
+            const allIds = results.map(result => result.id);
+            const metadataMap = this.referenceMetadataDb.getMetadataForReferences(allIds);
+
+            // Append metadata to results
+            results.forEach(result => {
+                result.metadata = metadataMap[result.id] || null;
+            });
 
             this.sendToClient(ws, {
                 type: 'get_references_by_ids_response',
@@ -4095,6 +3885,23 @@ class WebSocketMessageHandlers {
             cacheFiles.sort((a, b) => b.mtime - a.mtime);
             vibeImageDetails.sort((a, b) => b.mtime - a.mtime);
 
+            // Get metadata for all references
+            const allHashes = [
+                ...cacheFiles.map(file => file.hash),
+                ...vibeImageDetails.map(vibe => vibe.id)
+            ];
+            const metadataMap = this.referenceMetadataDb.getMetadataForReferences(allHashes);
+
+            // Append metadata to cache files
+            cacheFiles.forEach(file => {
+                file.metadata = metadataMap[file.hash] || null;
+            });
+
+            // Append metadata to vibe images
+            vibeImageDetails.forEach(vibe => {
+                vibe.metadata = metadataMap[vibe.id] || null;
+            });
+
             this.sendToClient(ws, {
                 type: 'get_workspace_references_response',
                 requestId: message.requestId,
@@ -4138,7 +3945,7 @@ class WebSocketMessageHandlers {
             }
             
             // Delete reference metadata
-            deleteReferenceMetadata(hash, workspaceId);
+            this.referenceMetadataDb.deleteMetadata(hash);
 
             // Remove from workspace cache files
             removeFromWorkspaceArray('cacheFiles', hash, workspaceId);
@@ -4226,7 +4033,7 @@ class WebSocketMessageHandlers {
 
     async handleUploadReference(ws, message, clientInfo, wsServer) {
         try {
-            const { imageData, workspaceId, tempFile } = message;
+            const { imageData, workspaceId, tempFile, tags = [] } = message;
             
             // Validate workspace parameter
             if (!workspaceId) {
@@ -4269,30 +4076,21 @@ class WebSocketMessageHandlers {
             fs.writeFileSync(filePath, imageBuffer);
             
             // Handle preview - use existing temp preview if available, otherwise generate new one
-            const previewPath = path.join(previewCacheDir, `${hash}.webp`);
-            let generatePreview = true;
-            if (tempFile) {
-                // Check if temp preview exists from download process
-                const tempPreviewPath = path.join(cacheDir, 'tempDownload', `${hash}.webp`);
-                if (fs.existsSync(tempPreviewPath)) {
-                    // Move temp preview to permanent preview cache
-                    fs.copyFileSync(tempPreviewPath, previewPath);
-                    console.log(`📸 Moved temp preview to permanent storage: ${hash}.webp`);
-                    generatePreview = false;
-                }
-            }
-            if (generatePreview) {
-                // Generate new preview for non-downloaded files
-                await sharp(imageBuffer)
-                    .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
-                    .webp({ quality: 80 })
-                    .toFile(previewPath);
-                console.log(`📸 Generated new preview: ${hash}.webp`);
-            }
+            generateMobilePreviews(filePath, hash);
             
             // Add to workspace cache files
             addToWorkspaceArray('cacheFiles', hash, workspaceId);
-            
+
+            // Add tags to reference metadata if provided
+            if (tags && tags.length > 0) {
+                const existingMetadata = this.referenceMetadataDb.getMetadata(hash) || {};
+                const updatedMetadata = {
+                    ...existingMetadata,
+                    tags: tags
+                };
+                this.referenceMetadataDb.setMetadata(hash, updatedMetadata);
+            }
+
             // Clean up temp download file if it was used
             if (tempFile) {
                 try {
@@ -5077,6 +4875,9 @@ class WebSocketMessageHandlers {
             // Remove from workspace
             removeFromWorkspaceArray('vibeImages', foundFilename, workspaceId);
             
+            // Delete associated metadata if it exists
+            this.referenceMetadataDb.deleteMetadata(vibeId);
+            
             this.sendToClient(ws, {
                 type: 'delete_vibe_image_response',
                 requestId: message.requestId,
@@ -5194,6 +4995,10 @@ class WebSocketMessageHandlers {
                     const filePath = path.join(vibeCacheDir, foundFilename);
                     fs.unlinkSync(filePath);
                     removeFromWorkspaceArray('vibeImages', foundFilename, workspaceId);
+                    
+                    // Delete associated metadata if it exists
+                    this.referenceMetadataDb.deleteMetadata(vibeId);
+                    
                     deletedVibes.push(vibeId);
                 }
             }
@@ -6014,7 +5819,7 @@ class WebSocketMessageHandlers {
         try {
             const { page = 1, itemsPerPage = 10, searchTerm = '' } = message;
             
-            const config = loadPromptConfig();
+            const config = TextReplacements.loadPromptConfig();
             const allTextReplacements = config.text_replacements || {};
             
             // Filter by search term if provided
@@ -6083,7 +5888,7 @@ class WebSocketMessageHandlers {
             }
 
             // Load current config
-            const config = loadPromptConfig();
+            const config = TextReplacements.loadPromptConfig();
             
             // Initialize text_replacements if it doesn't exist
             if (!config.text_replacements) {
@@ -6095,7 +5900,7 @@ class WebSocketMessageHandlers {
             Object.assign(config.text_replacements, textReplacements);
             
             // Save config
-            const success = savePromptConfig(config);
+            const success = TextReplacements.savePromptConfig(config);
             
             if (success) {
                 this.sendToClient(ws, {
@@ -6146,7 +5951,7 @@ class WebSocketMessageHandlers {
             }
 
             // Load current config
-            const config = loadPromptConfig();
+            const config = TextReplacements.loadPromptConfig();
             
             // Check if text_replacements exists and contains the key
             if (!config.text_replacements || !config.text_replacements.hasOwnProperty(key)) {
@@ -6158,7 +5963,7 @@ class WebSocketMessageHandlers {
             delete config.text_replacements[key];
             
             // Save config
-            const success = savePromptConfig(config);
+            const success = TextReplacements.savePromptConfig(config);
             
             if (success) {
                 this.sendToClient(ws, {
@@ -6214,7 +6019,7 @@ class WebSocketMessageHandlers {
             }
 
             // Load current config
-            const config = loadPromptConfig();
+            const config = TextReplacements.loadPromptConfig();
             
             // Initialize text_replacements if it doesn't exist
             if (!config.text_replacements) {
@@ -6235,7 +6040,7 @@ class WebSocketMessageHandlers {
             }
             
             // Save config
-            const success = savePromptConfig(config);
+            const success = TextReplacements.savePromptConfig(config);
             
             if (success) {
                 this.sendToClient(ws, {
@@ -6675,12 +6480,7 @@ class WebSocketMessageHandlers {
 
             // Generate both main and @2x previews for mobile devices
             await generateMobilePreviews(finalFilePath, baseName);
-            console.log(`📸 Generated mobile previews: ${baseName}.jpg and ${baseName}@2x.jpg`);
-            
-            // Generate blurred background preview
-            const blurPreviewPath = path.join(previewsDir, `${baseName}_blur.jpg`);
-            await generateBlurredPreview(imageBuffer, blurPreviewPath);
-            console.log(`📸 Generated blurred preview: ${baseName}_blur.jpg`);
+            console.log(`📸 Generated previews: ${baseName}`);
             
             // Add to workspace files
             addToWorkspaceArray('files', finalFilename, workspaceId);
@@ -9341,8 +9141,6 @@ class WebSocketMessageHandlers {
 
     async handleGetGrokModels(ws, message, clientInfo, wsServer) {
         try {
-            const { createPersonaChatSession } = require('./aiServices/grokService');
-            
             // Check if Grok AI is available
             if (!createPersonaChatSession) {
                 this.sendToClient(ws, {
@@ -9367,6 +9165,12 @@ class WebSocketMessageHandlers {
                     createTime: '2024-01-01T00:00:00Z'
                 },
                 {
+                    name: 'grok-4-fast-reasoning',
+                    displayName: 'Grok 4 Fast (Reasoning)',
+                    supportedGenerationMethods: ['generateContent'],
+                    createTime: '2024-01-01T00:00:00Z'
+                },
+                {
                     name: 'grok-3-mini',
                     displayName: 'Grok 3 mini (Reasoning)',
                     supportedGenerationMethods: ['generateContent'],
@@ -9386,1247 +9190,6 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('❌ Error fetching Grok models:', error);
             this.sendError(ws, 'Failed to fetch Grok models', error.message, message.requestId);
-        }
-    }
-
-    // Director Handlers
-    async handleDirectorGetSessions(ws, message, clientInfo, wsServer) {
-        try {
-            const sessions = getAllDirectorSessions();
-            
-            this.sendToClient(ws, {
-                type: 'director_get_sessions_response',
-                requestId: message.requestId,
-                data: {
-                    success: true,
-                    sessions: sessions
-                },
-                timestamp: new Date().toISOString()
-            });
-        } catch (error) {
-            console.error('❌ Error fetching Director sessions:', error);
-            this.sendError(ws, 'Failed to fetch Director sessions', error.message, message.requestId);
-        }
-    }
-
-    async handleDirectorCreateSession(ws, message, clientInfo, wsServer) {
-        try {
-            const { name, model, maxResolution, imageFilename, sessionMode, userIntent: requestUserIntent, inputPrompt: rawInputPrompt, highReason } = message;
-
-            // Keep original inputPrompt for AI processing (object/array format)
-            const inputPromptForAI = rawInputPrompt;
-
-            // Convert to readable string for system message only
-            const inputPromptDisplay = typeof rawInputPrompt === 'string' ? rawInputPrompt :
-                                     ((typeof rawInputPrompt === 'object' || Array.isArray(rawInputPrompt)) && rawInputPrompt !== null) ?
-                                       (rawInputPrompt.base_input ?
-                                         `Base: "${rawInputPrompt.base_input}", UC: "${rawInputPrompt.base_uc || ''}", Characters: ${rawInputPrompt.chara ? rawInputPrompt.chara.length : 0}` :
-                                         Array.isArray(rawInputPrompt) ? rawInputPrompt.join(', ') : JSON.stringify(rawInputPrompt)) :
-                                     String(rawInputPrompt || '');
-            
-            if (!model) {
-                this.sendError(ws, 'Model is required', 'MISSING_MODEL', message.requestId);
-                return;
-            }
-            
-            if (!imageFilename) {
-                this.sendError(ws, 'Image filename is required', 'MISSING_IMAGE_FILENAME', message.requestId);
-                return;
-            }
-            
-            // Determine provider from model name
-            let provider = 'grok';
-            if (model.includes('grok')) {
-                provider = 'grok';
-            } else {
-                provider = 'openai';
-            }
-            
-            // Parse the 2-part filename format
-            let parsedFilename = imageFilename;
-            let imageType = 'generated'; // default to generated image
-            
-            if (imageFilename.includes(':')) {
-                const [type, filename] = imageFilename.split(':', 2);
-                if (type === 'file' || type === 'cache') {
-                    imageType = type === 'file' ? 'generated' : 'cache';
-                    parsedFilename = filename;
-                }
-            } else {
-                // If no prefix, assume it's a generated image (legacy support)
-                imageType = 'generated';
-                parsedFilename = imageFilename;
-            }
-            
-            // Create session with parsed filename
-            const sessionData = {
-                name: name || `Untitled Session ${Date.now()}`,
-                filename: parsedFilename,
-                imageType: imageType,
-                provider: provider,
-                model: model,
-                max_resolution: maxResolution || false,
-                sessionMode: sessionMode || 'analyse',
-                userIntent: requestUserIntent || '',
-                high_reason: highReason || false
-            };
-            
-            const sessionId = createDirectorSession(sessionData);
-            
-            if (!sessionId) {
-                this.sendError(ws, 'Failed to create session', 'CREATE_FAILED', message.requestId);
-                return;
-            }
-            
-            // Read image file and convert to base64
-            let imageBase64 = null;
-            let mimeType = 'image/png';
-            
-            try {
-                // Determine image path based on image type
-                let imagePath;
-                if (imageType === 'cache') {
-                    // For cache images, look in upload cache directory
-                    imagePath = path.join(uploadCacheDir, parsedFilename);
-                } else {
-                    // For generated images, look in images directory
-                    imagePath = path.join(imagesDir, parsedFilename);
-                }
-                
-                if (fs.existsSync(imagePath)) {
-                    let imageBuffer = fs.readFileSync(imagePath);
-                    
-                    // Determine MIME type based on image type
-                    if (imageType === 'cache') {
-                        // Cache images are always images, try to detect from buffer
-                        try {
-                            const sharp = require('sharp');
-                            const metadata = await sharp(imageBuffer).metadata();
-                            if (metadata.format === 'jpeg') {
-                                mimeType = 'image/jpeg';
-                            } else if (metadata.format === 'png') {
-                                mimeType = 'image/png';
-                            } else if (metadata.format === 'webp') {
-                                mimeType = 'image/webp';
-                            } else {
-                                // Default to JPEG for cache images
-                                mimeType = 'image/jpeg';
-                            }
-                        } catch (detectError) {
-                            // If detection fails, default to JPEG
-                            mimeType = 'image/jpeg';
-                        }
-                    } else {
-                        // For generated images, use file extension
-                        const ext = path.extname(parsedFilename).toLowerCase();
-                        if (ext === '.jpg' || ext === '.jpeg') {
-                            mimeType = 'image/jpeg';
-                        } else if (ext === '.png') {
-                            mimeType = 'image/png';
-                        } else if (ext === '.webp') {
-                            mimeType = 'image/webp';
-                        }
-                    }
-                    
-                    // Resize image if max_resolution is false
-                    if (!maxResolution) {
-                        try {
-                            const sharp = require('sharp');
-                            const image = sharp(imageBuffer);
-                            const metadata = await image.metadata();
-                            
-                            if (metadata.width && metadata.height) {
-                                // Calculate new dimensions keeping aspect ratio
-                                // Shortest edge should be 488px
-                                const shortestEdge = Math.min(metadata.width, metadata.height);
-                                const scale = 448 / shortestEdge;
-                                
-                                const newWidth = Math.round(metadata.width * scale);
-                                const newHeight = Math.round(metadata.height * scale);
-                                
-                                console.log(`📏 Resizing image from ${metadata.width}x${metadata.height} to ${newWidth}x${newHeight}`);
-                                
-                                // Resize the image
-                                imageBuffer = await image
-                                    .resize(newWidth, newHeight, {
-                                        fit: 'inside',
-                                        withoutEnlargement: false
-                                    })
-                                    .jpeg({ quality: 85 }) // Convert to JPEG with good quality for analysis
-                                    .toBuffer();
-                                
-                                mimeType = 'image/jpeg'; // Always use JPEG after resizing
-                            }
-                        } catch (resizeError) {
-                            console.error('❌ Error resizing image:', resizeError);
-                        }
-                    }
-                    
-                    imageBase64 = imageBuffer.toString('base64');
-                } else {
-                    console.warn(`⚠️ Image file not found: ${imagePath}`);
-                }
-            } catch (error) {
-                console.error('❌ Error reading image file:', error);
-            }
-
-            // Get the session to determine the mode
-            const session = getDirectorSession(sessionId);
-            const isEfficiencyMode = session?.session_mode === 'efficiency';
-            const userIntent = session?.user_intent || '';
-
-            // Add initial user message with image data in OpenAI format
-            const initialUserContent = [
-                {
-                    type: "text",
-                    text: [
-                        isEfficiencyMode
-                            ? 'Analyze this image for prompt efficiency and create a highly optimized prompt. Compare with provided prompt/base image/vibes and generate efficiency-focused improvements.'
-                            : 'Analyze this image in exhaustive detail and distill all visual information into an efficient prompt structure.',
-                        '',
-                        isEfficiencyMode ? 'EFFICIENCY ANALYSIS REQUIREMENTS (CRITICAL):' : 'COMPREHENSIVE VISUAL EXTRACTION (CRITICAL):',
-                        isEfficiencyMode ? [
-                            ' * **Prompt Comparison**: Compare current prompt with image result for accuracy and effectiveness',
-                            ' * **Efficiency Gaps**: Identify where the prompt failed to capture desired elements',
-                            ' * **Optimization Opportunities**: Find ways to make the prompt more concise while maintaining quality',
-                            ' * **Tag Effectiveness**: Evaluate which prompt tags are working well vs poorly',
-                            ' * **Weight Adjustments**: Suggest optimal emphasis weights for different elements',
-                            ' * **Base Image Integration**: Analyze how base image influences should be weighted in the prompt'
-                        ] : [
-                            ' * **Complete Visual Inventory**: Document EVERY visible element - subjects, objects, backgrounds, textures, patterns, colors, shapes, materials',
-                            ' * **Technical Analysis**: Extract composition details, lighting sources, shadow patterns, depth of field, perspective, camera angle',
-                            ' * **Material Documentation**: Identify all material properties - fabric types, surface textures, reflective qualities, surface conditions',
-                            ' * **Spatial Mapping**: Map all spatial relationships, element positioning, depth layers, and composition hierarchy',
-                            ' * **Detail Hierarchy**: Identify primary, secondary, and background visual elements with their relative importance',
-                            ' * **Color Analysis**: Document color palettes, saturation levels, contrast ratios, color temperature, and relationships',
-                            ' * **Pattern Recognition**: Identify visual patterns, repetitions, symmetries, and recurring elements'
-                        ].join('\n'),
-                        '',
-                        isEfficiencyMode ? 'PROMPT EFFICIENCY OPTIMIZATION:' : 'VISUAL PROMPT DISTILLATION REQUIREMENTS:',
-                        isEfficiencyMode ? [
-                            ' * **Token Efficiency**: Maximize information density while minimizing token count',
-                            ' * **Tag Prioritization**: Focus on highest-impact tags that drive the most change',
-                            ' * **Weight Optimization**: Use precise emphasis levels (1.25x, 1.5x, 2.0x) for optimal results',
-                            ' * **Conflict Resolution**: Identify and resolve conflicting prompt elements',
-                            ' * **Quality Preservation**: Maintain image quality while improving efficiency',
-                            ' * **Iterative Refinement**: Suggest specific modifications for incremental improvements'
-                        ] : [
-                            ' * **Maximum Detail Extraction**: Extract every possible visual element that can be converted to prompt tags',
-                            ' * **Efficiency Optimization**: Distill complex visual information into concise, weighted prompt elements',
-                            ' * **Technical Precision**: Use exact terminology for materials, lighting, composition, and technical details',
-                            ' * **Hierarchy Preservation**: Maintain visual importance levels in prompt structure (primary elements first)',
-                            ' * **Tag Optimization**: Convert visual details into efficient NovelAI tags with appropriate emphasis weights'
-                        ].join('\n'),
-                        '',
-                        'User Inputs:',
-                        (userIntent ? ` * User Intent: ${userIntent}` : ''),
-                        (inputPromptDisplay ? ` * Input Prompt: ${inputPromptDisplay}` : ''),
-                        '',
-                        'Response Object Keys:',
-                        ' * Description',
-                        (isEfficiencyMode ? ' * ImageDescription' : ''),
-                        (isEfficiencyMode ? ' * Suggested' : ''),
-                        (isEfficiencyMode ? ' * Issues' : ''),
-                        (isEfficiencyMode ? ' * Score' : ''),
-                        ' * PrimaryFocus',
-                        ' * Measurements',
-                        ' * VisualAnalysis',
-                        ' * DetailExtraction',
-                        ' * VisualHierarchy',
-                        ' * TechnicalDetails',
-                        ' * Character',
-                        ' * Series',
-                        (!name || (name && name.trim() === '')) ? ' * SuggestedName' : '',
-                        ' * Caption',
-                        ' * Prompt',
-                        ' * isNSFW',
-                        ' * NSFWHeat'
-                    ].join('\n')
-                }
-            ];
-            
-            // Add image data if available
-            if (imageBase64) {
-                initialUserContent.push({
-                    type: "image_url",
-                    image_url: {
-                        url: `data:${mimeType};base64,${imageBase64}`,
-                        detail: "high"
-                    }
-                });
-            }
-            
-            addDirectorMessage(sessionId, 'user', initialUserContent, null, 'initial', 'Analyze this image');
-            
-            // Send session creation response first
-            this.sendToClient(ws, {
-                type: 'director_create_session_response',
-                requestId: message.requestId,
-                data: {
-                    success: true,
-                    session: session
-                },
-                timestamp: new Date().toISOString()
-            });
-            
-            // Immediately start the initial AI request
-            this.sendToClient(ws, {
-                type: 'director_typing_start',
-                data: {
-                    sessionId: sessionId,
-                    isTyping: true
-                },
-                timestamp: new Date().toISOString()
-            });
-            
-            // Process the initial AI request asynchronously
-            this.processInitialDirectorRequest(sessionId, ws, inputPromptForAI, highReason);
-        } catch (error) {
-            console.error('❌ Error creating Director session:', error);
-            this.sendError(ws, 'Failed to create Director session', error.message, message.requestId);
-        }
-    }
-
-    async processInitialDirectorRequest(sessionId, ws, inputPromptForAI, highReason) {
-        try {
-            console.log('🔄 Processing initial Director AI request for session:', sessionId);
-            
-            // Get the conversation history (which includes the initial user message with image)
-            const dbMessages = getDirectorMessages(sessionId, 50, 0, false, false); // Exclude system messages from database, exclude extra fields
-            const messages = [
-                { role: 'system', content: generateDirectorSystemMessage() },
-                ...dbMessages
-            ]; // Prepend system message dynamically
-            
-            // Call the AI service with the complete context
-            const aiResponse = await this.callDirectorAIWithContext(sessionId, {
-                content: '',
-                messageType: 'initial',
-                inputPrompt: inputPromptForAI,
-                highReason: highReason
-            });
-            
-            // Store the assistant response
-            const assistantContent = aiResponse.content || aiResponse.message || 'No content';
-            const assistantMessageId = addDirectorMessage(sessionId, 'assistant', [{
-                type: "text",
-                text: assistantContent
-            }]);
-            
-            // Process response for client using the same extraction logic
-            const extractionResult = extractAssistantData(assistantContent);
-            let clientResponse;
-            if (extractionResult.type === 'structured') {
-                clientResponse = extractionResult.data;
-
-                // Update session name if SuggestedName is provided
-                if (clientResponse.SuggestedName && clientResponse.SuggestedName.trim()) {
-                    const suggestedName = clientResponse.SuggestedName.trim();
-                    console.log(`📝 Updating session name to: ${suggestedName}`);
-                    updateDirectorSession(sessionId, { name: suggestedName });
-                }
-            } else {
-                // Error case - return error structure
-                clientResponse = { error: 'Invalid Response from AI' };
-            }
-            
-            // Send typing stop
-            this.sendToClient(ws, {
-                type: 'director_typing_stop',
-                data: {
-                    sessionId: sessionId,
-                    isTyping: false
-                },
-                timestamp: new Date().toISOString()
-            });
-            
-            // Send the AI response
-            this.sendToClient(ws, {
-                type: 'director_message_response',
-                data: {
-                    success: true,
-                    sessionId: sessionId,
-                    messageId: assistantMessageId,
-                    data: clientResponse
-                },
-                timestamp: new Date().toISOString()
-            });
-            
-        } catch (error) {
-            console.error('❌ Error processing initial Director request:', error);
-            
-            // Send typing stop on error
-            this.sendToClient(ws, {
-                type: 'director_typing_stop',
-                data: {
-                    sessionId: sessionId,
-                    isTyping: false
-                },
-                timestamp: new Date().toISOString()
-            });
-            
-            // Send error response
-            this.sendToClient(ws, {
-                type: 'director_message_error',
-                data: {
-                    success: false,
-                    sessionId: sessionId,
-                    data: { error: 'AI service failed to respond' }
-                },
-                timestamp: new Date().toISOString()
-            });
-        }
-    }
-
-    async handleDirectorGetSession(ws, message, clientInfo, wsServer) {
-        try {
-            const { sessionId } = message;
-            
-            if (!sessionId) {
-                this.sendError(ws, 'Session ID is required', 'MISSING_SESSION_ID', message.requestId);
-                return;
-            }
-            
-            const session = getDirectorSession(sessionId);
-            
-            if (!session) {
-                this.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
-                return;
-            }
-            
-            this.sendToClient(ws, {
-                type: 'director_get_session_response',
-                requestId: message.requestId,
-                data: {
-                    success: true,
-                    session: session
-                },
-                timestamp: new Date().toISOString()
-            });
-        } catch (error) {
-            console.error('❌ Error fetching Director session:', error);
-            this.sendError(ws, 'Failed to fetch Director session', error.message, message.requestId);
-        }
-    }
-
-    async handleDirectorDeleteSession(ws, message, clientInfo, wsServer) {
-        try {
-            const { sessionId } = message;
-            
-            if (!sessionId) {
-                this.sendError(ws, 'Session ID is required', 'MISSING_SESSION_ID', message.requestId);
-                return;
-            }
-            
-            const success = deleteDirectorSession(sessionId);
-            
-            if (!success) {
-                this.sendError(ws, 'Failed to delete session', 'DELETE_FAILED', message.requestId);
-                return;
-            }
-            
-            this.sendToClient(ws, {
-                type: 'director_delete_session_response',
-                requestId: message.requestId,
-                data: {
-                    success: true
-                },
-                timestamp: new Date().toISOString()
-            });
-        } catch (error) {
-            console.error('❌ Error deleting Director session:', error);
-            this.sendError(ws, 'Failed to delete Director session', error.message, message.requestId);
-        }
-    }
-
-    async handleDirectorSendMessage(ws, message, clientInfo, wsServer) {
-        try {
-            const { sessionId, content, messageType, vibeTransfers, baseImageData, lastGeneratedImageFilename, inputPrompt, highReason, characterReference } = message;
-            
-            if (!sessionId) {
-                this.sendError(ws, 'Session ID is required', 'MISSING_PARAMETERS', message.requestId);
-                return;
-            }
-            
-            // Get session
-            const session = getDirectorSession(sessionId);
-            if (!session) {
-                this.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
-                return;
-            }
-            
-            // Get the last message ID for conversation continuity
-            const lastMessageId = getLastDirectorMessageId(sessionId);
-            const userMessageId = addDirectorMessage(sessionId, 'user', [{
-                type: "text",
-                text: content
-            }], lastMessageId, messageType, content);
-            
-            if (!userMessageId) {
-                this.sendError(ws, 'Failed to add message', 'ADD_MESSAGE_FAILED', message.requestId);
-                return;
-            }
-            
-            let assistantMessageId = null;
-            let aiResponse = null;
-            let clientResponse = null;
-            
-            // Send to AI service and get response
-            try {
-                aiResponse = await this.callDirectorAIWithContext(sessionId, {
-                    content,
-                    messageType,
-                    vibeTransfers,
-                    baseImageData,
-                    lastGeneratedImageFilename,
-                    inputPrompt,
-                    highReason,
-                    characterReference
-                });
-                
-                // Store the assistant response
-                const assistantContent = aiResponse.content || aiResponse.message || 'No content';
-                assistantMessageId = addDirectorMessage(sessionId, 'assistant', [{
-                    type: "text",
-                    text: assistantContent
-                }], userMessageId);
-                
-                // Process response for client using the same extraction logic as database
-                const extractionResult = extractAssistantData(assistantContent);
-                if (extractionResult.type === 'structured') {
-                    clientResponse = extractionResult.data;
-                } else {
-                    // Error case - return error structure
-                    clientResponse = { error: 'Invalid Response from AI' };
-                }
-            } catch (aiError) {
-                console.error('❌ Error calling Director AI:', aiError);
-
-                // Don't add error message to database - just send error response
-                assistantMessageId = null;
-                clientResponse = { error: 'AI service failed to respond' };
-            }
-
-            // Add a small delay to ensure database writes are committed before responding
-            // This prevents race conditions where client reloads before data is visible
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            this.sendToClient(ws, {
-                type: 'director_send_message_response',
-                requestId: message.requestId,
-                data: {
-                    success: assistantMessageId !== null,
-                    userMessageId: userMessageId,
-                    assistantMessageId: assistantMessageId,
-                    data: clientResponse,
-                    error: assistantMessageId === null ? 'AI service failed to respond' : null
-                },
-                timestamp: new Date().toISOString()
-            });
-        } catch (error) {
-            console.error('❌ Error sending Director message:', error);
-            this.sendError(ws, 'Failed to send Director message', error.message, message.requestId);
-        }
-    }
-
-    async callDirectorAIWithContext(sessionId, options = {}) {
-        try {
-            // Extract options with defaults
-            const {
-                content = '',
-                messageType = 'initial',
-                vibeTransfers = null,
-                baseImageData = null,
-                lastGeneratedImageFilename = null,
-                inputPrompt = null,
-                highReason = false,
-                characterReference = null
-            } = options;
-            
-            // Get session
-            const session = getDirectorSession(sessionId);
-            if (!session) {
-                throw new Error('Session not found');
-            }
-            
-            // Get conversation history in OpenAI format
-            const dbMessages = getDirectorMessages(sessionId, 50, 0, false, false); // Exclude system messages from database, exclude extra fields
-            const messages = [
-                { role: 'system', content: generateDirectorSystemMessage() },
-                ...dbMessages
-            ]; // Prepend system message dynamically
-
-            let conversationMessages;
-            let messageContent = {
-                'requestText': '',
-                'inputText': '',
-                'responseText': ''
-            };
-            
-            // If content is empty, we're processing the initial request
-            if (messageType === 'initial' && !content) {
-                // Use the existing conversation history (includes initial user message with image)
-                conversationMessages = messages;
-            } else {
-                // Add current user message with context
-                if (messageType) {
-                    switch (messageType) {
-                        case 'change':
-                            messageContent.requestText = [`Modify the generation prompt based on user desires. Ensure prompt efficiency is maintained.`];
-                            messageContent.inputText = [
-                                ' * User Input: ' + (content && content?.trim()?.length > 0 ? content : 'Progress the scene and enhance/exaggerate key character attributes.'),
-                            ]
-                            if (inputPrompt && typeof inputPrompt === 'object' && inputPrompt.base_input) {
-                                messageContent.inputText.push(' * Current Prompt Structure: base_input="' + inputPrompt.base_input + '", base_uc="' + (inputPrompt.base_uc || '') + '", characters: ' + JSON.stringify(inputPrompt.chara || []));
-                            }
-                            messageContent.responseText = [
-                                ' * Description',
-                                ' * Suggested',
-                                ' * PrimaryFocus',
-                                ' * Measurements',
-                                ' * VisualAnalysis',
-                                ' * DetailExtraction',
-                                ' * VisualHierarchy',
-                                ' * TechnicalDetails',
-                                ' * isStale',
-                                ' * Prompt',
-                                ' * Caption',
-                                ' * isNSFW',
-                                ' * NSFWHeat'
-                            ]
-                            break;
-                        case 'efficiency':
-                            messageContent.requestText = [
-                                `ANALYZE PROMPT EFFICIENCY: Compare the provided prompt with the generated image to identify optimization opportunities. Focus on token efficiency, tag effectiveness, and quality preservation.`,
-                            ]
-                            messageContent.inputText = [
-                                (content && content?.trim()?.length > 0) ? ' * User Intent: ' + content : '',
-                                ' * Analysis Focus: Evaluate prompt efficiency and suggest specific improvements',
-                            ]
-                            if (inputPrompt && typeof inputPrompt === 'object' && inputPrompt.base_input) {
-                                messageContent.inputText.push(' * Current Prompt Structure to Analyze: base_input="' + inputPrompt.base_input + '", base_uc="' + (inputPrompt.base_uc || '') + '", characters: ' + JSON.stringify(inputPrompt.chara || []));
-                            } else if (inputPrompt && typeof inputPrompt === 'string' && inputPrompt.trim()){
-                                messageContent.inputText.push(' * Current Prompt to Analyze: ' + inputPrompt);
-                            } else {
-                                console.warn('Efficiency mode - no inputPrompt found:', inputPrompt);
-                                messageContent.inputText.push(' * WARNING: No prompt data available for efficiency analysis');
-                            }
-                            
-                            // Add context about last generated image for efficiency analysis
-                            if (lastGeneratedImageFilename && messageType === 'efficiency') {
-                                messageContent.inputText.push('**Result Image:** Compare with prompt for efficiency/accuracy. Evaluate how well the prompt captured desired elements, composition, style, and details.');
-                            }
-                            
-                            // Add context about base image and vibe transfers
-                            if (baseImageData && baseImageData.image_source) {
-                                if (baseImageData.mask_compressed) {
-                                    messageContent.inputText.push('**Base Image (Masked):** Transform with mask overlay. Analyze non-green areas. Green areas replaced by generation, non-green areas preserved exactly.');
-                                } else {
-                                    messageContent.inputText.push('**Base Image:** Transform for generation. Analyze modifications needed.');
-                                }
-                            }
-                             if (vibeTransfers && Array.isArray(vibeTransfers) && vibeTransfers.length > 0) {
-                                 messageContent.inputText.push('**Vibe Transfer Images:** Style/content reference images:');
-                                 for (let i = 0; i < vibeTransfers.length; i++) {
-                                     const vibeTransfer = vibeTransfers[i];
-                                     const strengthPercent = Math.round((vibeTransfer.strength || 0) * 100);
-                                     messageContent.inputText.push(`  - Vibe Transfer #${i + 1}: Strength ${strengthPercent}% (influence), IE: ${vibeTransfer.ie}% (detail extraction)`);
-                                 }
-                             }
-
-                             // Add character reference information
-                             if (characterReference) {
-                                 const styleText = characterReference.with_style ? 'with style transfer' : 'without style transfer';
-                                 messageContent.inputText.push(`**Character Reference Image:** Character reference for consistent character representation ${styleText}`);
-                             }
-                            messageContent.responseText = [
-                                ' * Description',
-                                (lastGeneratedImageFilename ? ' * PrimaryFocus' : ''),
-                                (lastGeneratedImageFilename ? ' * ImageDescription' : ''),
-                                (lastGeneratedImageFilename ? ' * Measurements' : ''),
-                                ' * VisualAnalysis',
-                                ' * DetailExtraction',
-                                ' * VisualHierarchy',
-                                ' * TechnicalDetails',
-                                ' * Suggested',
-                                ' * Issues',
-                                ' * Score',
-                                ' * isStale',
-                                ' * Prompt',
-                                ' * Caption',
-                                ' * isNSFW',
-                                ' * NSFWHeat'
-                            ]
-                            break;
-                        case 'dialog':
-                        case 'conversation':
-                            messageContent.requestText = [`Generate vivid captions from target perspective to enhance emotion and advance story. (6-10 captions) ${content && content?.trim()?.length > 0 ? 'Include user desires/preferences.' : ''}`];
-                            messageContent.inputText = [
-                                (content && content?.trim()?.length > 0) ? ' * User Request: ' + content : '',
-                            ]
-                            if (inputPrompt && typeof inputPrompt === 'object' && inputPrompt.base_input) {
-                                messageContent.inputText.push(' * Current Prompt Structure: base_input="' + inputPrompt.base_input + '", base_uc="' + (inputPrompt.base_uc || '') + '", characters: ' + JSON.stringify(inputPrompt.chara || []));
-                            } else if (inputPrompt && typeof inputPrompt === 'string' && inputPrompt.trim()){
-                                messageContent.inputText.push(' * Current Prompt: ' + inputPrompt);
-                            }
-                            messageContent.responseText = [
-                                ' * Description',
-                                ' * EmotionalAnalysis',
-                                ' * TargetEmotions',
-                                ' * EmotionalAtmosphere',
-                                ' * SensoryEmotions',
-                                ' * Suggested',
-                                ' * isStale',
-                                ' * Caption',
-                                ' * isNSFW',
-                                ' * NSFWHeat'
-                            ]
-                            break;
-                        default:
-                            break;
-                    }
-                }
-                let messageText = messageContent.requestText.filter(e => e.length > 0).join('\n') + '\n\nUser Input:\n' + messageContent.inputText.filter(e => e.length > 0).join('\n') + '\n\nResponse Object Keys:\n' + messageContent.responseText.filter(e => e.length > 0).join('\n') + '\n';
-                
-                const userMessageContent = [{
-                    type: "text",
-                    text: messageText
-                }];
-                
-                // Add image data for efficiency requests when filename is provided
-                let targetWidth, targetHeight;
-                if (lastGeneratedImageFilename) {
-                    // Read image file and convert to base64 like in create session
-                    let imageBase64 = null;
-                    
-                    try {
-                        const imagePath = path.join('./images', lastGeneratedImageFilename);
-                        if (fs.existsSync(imagePath)) {
-                            let imageBuffer = fs.readFileSync(imagePath);
-
-                            // Resize image ensuring shortest edge is 448
-                            const metadata = await sharp(imageBuffer).metadata();
-                            const minDimension = Math.min(metadata.width, metadata.height);
-                            const scale = 448 / minDimension;
-                            targetWidth = Math.round(metadata.width * scale);
-                            targetHeight = Math.round(metadata.height * scale);
-                            
-                            imageBuffer = await sharp(imageBuffer)
-                                .resize(targetWidth, targetHeight)
-                                .jpeg({ quality: 85 })
-                                .toBuffer();
-                            
-                            imageBase64 = imageBuffer.toString('base64');
-                        }
-                    } catch (error) {
-                        console.error('❌ Error reading image file for efficiency:', error);
-                    }
-                    
-                    if (imageBase64) {
-                        userMessageContent.push({
-                            type: "text",
-                            text: "**Last Generated Image (for efficiency and image analysis):**\nThis is the most recently generated image. Analyze it in detail and compare it with the provided prompt to evaluate prompt effectiveness. Pay attention to how well the prompt captured the desired elements, composition, style, and details."
-                        });
-                        userMessageContent.push({
-                            type: "image_url",
-                            image_url: {
-                                url: `data:image/jpeg;base64,${imageBase64}`,
-                                detail: "high"
-                            }
-                        });
-                    }
-                    
-                    // Process base image with bias and mask if provided (efficiency only)
-                    if (baseImageData && baseImageData.image_source) {
-                        try {
-                            let baseImageBuffer = null;
-                            
-                            // Parse image source like img2img requests
-                            if (baseImageData.image_source.includes(":")) {
-                                const [imageType, imageIdentifier] = baseImageData.image_source.split(':', 2);
-                                
-                                switch (imageType) {
-                                    case 'file':
-                                        const filePath = path.join(imagesDir, imageIdentifier);
-                                        if (fs.existsSync(filePath)) {
-                                            baseImageBuffer = fs.readFileSync(filePath);
-                                        } else {
-                                            console.warn(`⚠️ Base image file not found: ${filePath}`);
-                                        }
-                                        break;
-                                    case 'cache':
-                                        const cachedImagePath = path.join(uploadCacheDir, imageIdentifier);
-                                        if (fs.existsSync(cachedImagePath)) {
-                                            baseImageBuffer = fs.readFileSync(cachedImagePath);
-                                        } else {
-                                            console.warn(`⚠️ Base image cache not found: ${cachedImagePath}`);
-                                        }
-                                        break;
-                                    case 'data':
-                                        baseImageBuffer = Buffer.from(imageIdentifier, 'base64');
-                                        break;
-                                    default:
-                                        console.warn(`⚠️ Unsupported base image type: ${imageType}`);
-                                }
-                            } else {
-                                console.warn(`⚠️ Invalid base image source format: ${baseImageData.image_source}`);
-                            }
-                            
-                            if (baseImageBuffer) {
-                                // Strip PNG text chunks like img2img
-                                baseImageBuffer = stripPngTextChunks(baseImageBuffer);
-                                
-                                // Apply bias if provided (from bias_settings)
-                                if (baseImageData.bias_settings) {
-                                    // For bias processing, use original dimensions first
-                                    const session = getDirectorSession(sessionId);
-                                    const baseDims = session?.maxResolution ? 
-                                        { width: 1024, height: 1024 } : 
-                                        { width: 512, height: 512 };
-                                    
-                                    baseImageBuffer = await processDynamicImage(baseImageBuffer, baseDims, baseImageData.bias_settings);
-                                }
-                                
-                                // Apply mask if provided (from mask_compressed)
-                                if (baseImageData.mask_compressed) {
-                                    const maskBuffer = Buffer.from(baseImageData.mask_compressed, 'base64');
-                                    const processedMaskBuffer = await resizeMaskWithCanvas(maskBuffer, targetWidth, targetHeight);
-                                    
-                                    // Create composite image with mask
-                                    const canvas = createCanvas(targetWidth, targetHeight);
-                                    const ctx = canvas.getContext('2d');
-                                    
-                                    // Load base image
-                                    const baseImg = await loadImage(baseImageBuffer);
-                                    ctx.drawImage(baseImg, 0, 0, targetWidth, targetHeight);
-                                    
-                                    // Load mask and draw it
-                                    const maskImg = await loadImage(processedMaskBuffer);
-                                    ctx.drawImage(maskImg, 0, 0, targetWidth, targetHeight);
-                                    
-                                    // Process mask to create green overlay
-                                    const maskImageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-                                    const maskPixels = maskImageData.data;
-                                    
-                                    for (let i = 0; i < maskPixels.length; i += 4) {
-                                        const r = maskPixels[i];
-                                        const g = maskPixels[i + 1];
-                                        const b = maskPixels[i + 2];
-                                        const a = maskPixels[i + 3];
-                                        
-                                        // If mask pixel is white (255), make it green (to be generated)
-                                        if (r > 128 && g > 128 && b > 128) {
-                                            maskPixels[i] = 0;     // Red
-                                            maskPixels[i + 1] = 255; // Green
-                                            maskPixels[i + 2] = 0;   // Blue
-                                            maskPixels[i + 3] = 255; // Alpha
-                                        } else {
-                                            // If mask pixel is black, make it transparent (unchanged)
-                                            maskPixels[i] = 0;     // Red
-                                            maskPixels[i + 1] = 0;   // Green
-                                            maskPixels[i + 2] = 0;   // Blue
-                                            maskPixels[i + 3] = 0;   // Alpha (transparent)
-                                        }
-                                    }
-                                    
-                                    ctx.putImageData(maskImageData, 0, 0);
-                                    
-                                    // Composite the base image with the mask overlay
-                                    ctx.globalCompositeOperation = 'source-over';
-                                    ctx.drawImage(baseImg, 0, 0, targetWidth, targetHeight);
-                                    
-                                    baseImageBuffer = canvas.toBuffer('image/jpeg');
-                                } else {
-                                    // No mask, just resize to target dimensions
-                                    baseImageBuffer = await sharp(baseImageBuffer)
-                                        .resize(targetWidth, targetHeight)
-                                        .jpeg({ quality: 85 })
-                                        .toBuffer();
-                                }
-                                
-                                // Convert to base64
-                                const baseImageBase64 = baseImageBuffer.toString('base64');
-                                
-                                // Create label based on whether mask is present
-                                let baseImageLabel = "**Base Image (for generation):**\nThis image will be used as the base for new generation. Analyze it to understand what elements should be preserved, modified, or enhanced in the generation.";
-                                if (baseImageData.mask_compressed) {
-                                    baseImageLabel = "**Base Image (for generation) - MASKED:**\nIMPORTANT: This image has a mask overlay. Green areas will be \"inpainted\" and replaced with new generation from the prompt. Non-green areas will be preserved exactly and the generation must conform to these unchanged areas. Analyze the non-green areas carefully to understand what must be maintained in the final generation.";
-                                }
-                                
-                                userMessageContent.push({
-                                    type: "text",
-                                    text: baseImageLabel
-                                });
-                                userMessageContent.push({
-                                    type: "image_url",
-                                    image_url: {
-                                        url: `data:image/jpeg;base64,${baseImageBase64}`,
-                                        detail: "low",
-                                    }
-                                });
-                            }
-                        } catch (error) {
-                            console.error('❌ Error processing base image:', error);
-                        }
-                    }
-                    
-                    // Process vibe transfers if provided (efficiency only)
-                    if (vibeTransfers && Array.isArray(vibeTransfers) && vibeTransfers.length > 0) {
-                        try {
-                            const vibeCacheDir = path.join(cacheDir, 'vibe');
-                            
-                            for (let i = 0; i < vibeTransfers.length; i++) {
-                                const vibeTransfer = vibeTransfers[i];
-                                const vibeFilePath = path.join(vibeCacheDir, `${vibeTransfer.id}.json`);
-                                
-                                if (fs.existsSync(vibeFilePath)) {
-                                    const vibeData = JSON.parse(fs.readFileSync(vibeFilePath, 'utf8'));
-                                    
-                                    let vibeImageBuffer = null;
-                                    
-                                    // Handle different vibe data types
-                                    if (vibeData.type === 'base64' && vibeData.image) {
-                                        // Image is stored as base64 in the vibe data
-                                        vibeImageBuffer = Buffer.from(vibeData.image, 'base64');
-                                    } else if (vibeData.type === 'cache' && vibeData.image) {
-                                        // Image is stored in cache directory with hash as filename
-                                        const cacheImagePath = path.join(uploadCacheDir, vibeData.image);
-                                        if (fs.existsSync(cacheImagePath)) {
-                                            vibeImageBuffer = fs.readFileSync(cacheImagePath);
-                                        } else {
-                                            console.warn(`⚠️ Cache image not found: ${cacheImagePath}`);
-                                        }
-                                    } else {
-                                        console.warn(`⚠️ No image data found in vibe ${vibeTransfer.id} (type: ${vibeData.type})`);
-                                    }
-                                    
-                                    if (vibeImageBuffer) {
-                                        // Resize to match target dimensions from last generated image
-                                        vibeImageBuffer = await sharp(vibeImageBuffer)
-                                            .resize(targetWidth, targetHeight)
-                                            .jpeg({ quality: 85 })
-                                            .toBuffer();
-                                        
-                                        const vibeImageBase64 = vibeImageBuffer.toString('base64');
-                                        
-                                        // Convert strength to percentage
-                                        const strengthPercent = Math.round((vibeTransfer.strength || 0) * 100);
-                                        
-                                    userMessageContent.push({
-                                        type: "text",
-                                        text: `**Vibe Transfer Image #${i + 1} (Strength: ${strengthPercent}%, IE: ${vibeTransfer.ie}%):**\nThis is a reference image that will influence the generation style and content. Strength ${strengthPercent}% indicates how much influence this image should have, and IE ${vibeTransfer.ie}% indicates how much detail should be extracted. Analyze this image to understand what stylistic elements, composition, or details it will contribute to the generation.`
-                                    });
-                                        userMessageContent.push({
-                                            type: "image_url",
-                                            image_url: {
-                                                url: `data:image/jpeg;base64,${vibeImageBase64}`,
-                                                detail: "low",
-                                            }
-                                        });
-                                    }
-                                } else {
-                                    console.warn(`⚠️ Vibe file not found: ${vibeFilePath}`);
-                                }
-                            }
-                        } catch (error) {
-                            console.error('❌ Error processing vibe transfers:', error);
-                        }
-                    }
-                }
-
-                // Process character reference image
-                if (characterReference && characterReference.type && characterReference.id) {
-                    try {
-                        const charaRefData = characterReference;
-                        const styleText = charaRefData.with_style ? 'with style transfer' : 'without style transfer';
-
-                        userMessageContent.push({
-                            type: "text",
-                            text: `**Character Reference Image (${styleText}):**\nThis is a character reference image for maintaining consistent character representation. Extract character details (appearance, clothing, attributes) while ignoring environment/background. Focus on character identity and features. ${styleText === 'with style transfer' ? 'Style information should be transferred to maintain character recognition.' : 'Style information should be minimized for maximum flexibility.'} If a attribute in the text prompt is present its expected to override that attribute in the reference image.`
-                        });
-
-                        // Resolve character reference image path and read file
-                        let charaImageBuffer = null;
-                        let charaImagePath = null;
-
-                        switch (charaRefData.type) {
-                            case 'cache':
-                                charaImagePath = path.join(uploadCacheDir, charaRefData.id);
-                                if (fs.existsSync(charaImagePath)) {
-                                    charaImageBuffer = fs.readFileSync(charaImagePath);
-                                } else {
-                                    console.warn(`⚠️ Character reference cache image not found: ${charaImagePath}`);
-                                }
-                                break;
-                            case 'file':
-                                charaImagePath = path.join(imagesDir, charaRefData.filename || charaRefData.id);
-                                if (fs.existsSync(charaImagePath)) {
-                                    charaImageBuffer = fs.readFileSync(charaImagePath);
-                                } else {
-                                    console.warn(`⚠️ Character reference file not found: ${charaImagePath}`);
-                                }
-                                break;
-                            case 'vibe':
-                                // For vibe type, try to load from vibe cache directory
-                                const vibeCacheDir = path.join(cacheDir, 'vibe');
-                                const vibeFilePath = path.join(vibeCacheDir, `${charaRefData.id}.json`);
-                                if (fs.existsSync(vibeFilePath)) {
-                                    try {
-                                        const vibeData = JSON.parse(fs.readFileSync(vibeFilePath, 'utf8'));
-                                        if (vibeData.type === 'base64' && vibeData.image) {
-                                            charaImageBuffer = Buffer.from(vibeData.image, 'base64');
-                                        } else if (vibeData.type === 'cache' && vibeData.image) {
-                                            const cacheImagePath = path.join(uploadCacheDir, vibeData.image);
-                                            if (fs.existsSync(cacheImagePath)) {
-                                                charaImageBuffer = fs.readFileSync(cacheImagePath);
-                                            } else {
-                                                console.warn(`⚠️ Vibe cache image not found: ${cacheImagePath}`);
-                                            }
-                                        }
-                                    } catch (error) {
-                                        console.warn(`⚠️ Error reading vibe data for character reference: ${error.message}`);
-                                    }
-                                } else {
-                                    console.warn(`⚠️ Character reference vibe file not found: ${vibeFilePath}`);
-                                }
-                                break;
-                            default:
-                                console.warn(`⚠️ Unsupported character reference type: ${charaRefData.type}`);
-                        }
-
-                        if (charaImageBuffer) {
-                            // Strip PNG text chunks like other image processing
-                            charaImageBuffer = stripPngTextChunks(charaImageBuffer);
-
-                            // Resize image ensuring shortest edge is 448 (like other images)
-                            const metadata = await sharp(charaImageBuffer).metadata();
-                            const minDimension = Math.min(metadata.width, metadata.height);
-                            const scale = 448 / minDimension;
-                            const targetWidth = Math.round(metadata.width * scale);
-                            const targetHeight = Math.round(metadata.height * scale);
-
-                            charaImageBuffer = await sharp(charaImageBuffer)
-                                .resize(targetWidth, targetHeight)
-                                .jpeg({ quality: 85 })
-                                .toBuffer();
-
-                            const charaImageBase64 = charaImageBuffer.toString('base64');
-
-                            // Add the processed character reference image
-                            userMessageContent.push({
-                                type: "image_url",
-                                image_url: {
-                                    url: `data:image/jpeg;base64,${charaImageBase64}`,
-                                    detail: "high" // High detail for character reference
-                                }
-                            });
-
-                            console.log(`🎭 Added character reference to director prompt (${styleText}, ${targetWidth}x${targetHeight})`);
-                        } else {
-                            console.warn(`⚠️ Failed to load character reference image: ${charaRefData.type}:${charaRefData.id}`);
-                        }
-                    } catch (error) {
-                        console.error('❌ Error processing character reference:', error);
-                    }
-                }
-
-                conversationMessages = [...messages, {
-                    role: 'user',
-                    content: userMessageContent
-                }];
-            }
-            
-            // Simple model selection based on image parameters
-            const selectedModel = (vibeTransfers || baseImageData || lastGeneratedImageFilename || messageType === 'efficiency' || messageType === 'initial') ? 'grok-4' : 'grok-3-mini';
-            const provider = 'grok';
-
-            // Handle image processing based on model
-            if (selectedModel === 'grok-3-mini') {
-                // Strip all image objects from grok-3-mini requests
-                conversationMessages = conversationMessages.map(msg => {
-                    if (msg.content && Array.isArray(msg.content)) {
-                        return {
-                            ...msg,
-                            content: msg.content.filter(item => item.type !== 'image_url')
-                        };
-                    }
-                    return msg;
-                });
-            } else if (selectedModel === 'grok-4') {
-                // For grok-4, keep only the last image in the conversation
-                let lastImageIndex = -1;
-                for (let i = conversationMessages.length - 1; i >= 0; i--) {
-                    const msg = conversationMessages[i];
-                    if (msg.content && Array.isArray(msg.content)) {
-                        const imageIndex = msg.content.findIndex(item => item.type === 'image_url');
-                        if (imageIndex !== -1) {
-                            lastImageIndex = i;
-                            break;
-                        }
-                    }
-                }
-
-                // If we found an image, keep only that one and strip others
-                if (lastImageIndex !== -1) {
-                    conversationMessages = conversationMessages.map((msg, index) => {
-                        if (index !== lastImageIndex && msg.content && Array.isArray(msg.content)) {
-                            return {
-                                ...msg,
-                                content: msg.content.filter(item => item.type !== 'image_url')
-                            };
-                        }
-                        return msg;
-                    });
-                }
-            }
-
-            // Set reasoning effort and timeout based on highReason
-            const reasoningEffort = highReason ? 'high' : 'low';
-            const timeout = highReason ? 360000 : 60000; // 6 minutes for high, 1 minute for low
-
-            console.log(`🧠 Using ${reasoningEffort} reasoning effort with ${timeout}ms timeout`);
-
-            // Call the appropriate AI service based on selected provider
-            let aiResponse;
-            if (provider === 'grok') {
-                aiResponse = await this.callGrokAIWithContext(conversationMessages, selectedModel, reasoningEffort, timeout);
-            } else if (provider === 'openai') {
-                aiResponse = await this.callChatGPTAIWithContext(conversationMessages, selectedModel, reasoningEffort, timeout);
-            } else {
-                throw new Error(`Unsupported provider: ${provider}`);
-            }
-            
-            return aiResponse;
-        } catch (error) {
-            console.error('❌ Error calling Director AI with context:', error);
-            throw error;
-        }
-    }
-    
-    async callGrokAIWithContext(messages, model, reasoningEffort = 'low', timeout = 60000) {
-        const { continueConversationWithContext } = require('./aiServices/grokService');
-
-        // Pass the entire conversation context directly
-        const chat = {
-            messages: messages,
-            model: model || "grok-4",
-            reasoningEffort: reasoningEffort,
-            timeout: timeout
-        };
-
-        console.log(`🎯 Calling Grok AI with model: ${model}, reasoning: ${reasoningEffort}, timeout: ${timeout}ms`);
-
-        const response = await continueConversationWithContext(chat);
-
-        return {
-            content: response,
-            message: response
-        };
-    }
-    
-    async callChatGPTAIWithContext(messages, model, reasoningEffort = 'low', timeout = 60000) {
-        const { continueConversationWithContext } = require('./aiServices/chatgptService');
-
-        // Pass the entire conversation context directly
-        const chat = {
-            messages: messages,
-            model: model || "gpt-5-nano",
-            reasoningEffort: reasoningEffort,
-            timeout: timeout
-        };
-
-        console.log(`🎯 Calling ChatGPT AI with model: ${model}, reasoning: ${reasoningEffort}, timeout: ${timeout}ms`);
-
-        const response = await continueConversationWithContext(chat);
-
-        return {
-            content: response,
-            message: response
-        };
-    }
-
-    async handleDirectorGetMessages(ws, message, clientInfo, wsServer) {
-        try {
-            const { sessionId, limit = 100, offset = 0 } = message;
-            
-            if (!sessionId) {
-                this.sendError(ws, 'Session ID is required', 'MISSING_SESSION_ID', message.requestId);
-                return;
-            }
-            
-            const messages = getDirectorMessages(sessionId, limit, offset, false, true); // Exclude system messages for client display, include extra fields
-            
-            this.sendToClient(ws, {
-                type: 'director_get_messages_response',
-                requestId: message.requestId,
-                data: {
-                    success: true,
-                    messages: messages
-                },
-                timestamp: new Date().toISOString()
-            });
-        } catch (error) {
-            console.error('❌ Error fetching Director messages:', error);
-            this.sendError(ws, 'Failed to fetch Director messages', error.message, message.requestId);
-        }
-    }
-
-    async handleDirectorRollbackMessage(ws, message, clientInfo, wsServer) {
-        try {
-            const { sessionId, messageId } = message;
-
-            if (!sessionId) {
-                this.sendError(ws, 'Session ID is required', 'MISSING_SESSION_ID', message.requestId);
-                return;
-            }
-
-            if (!messageId) {
-                this.sendError(ws, 'Message ID is required', 'MISSING_MESSAGE_ID', message.requestId);
-                return;
-            }
-
-            // Get all messages for the session to find the target message
-            const messages = getDirectorMessages(sessionId, 1000, 0, true, true); // Include system messages for rollback
-            const targetMessageIndex = messages.findIndex(msg => msg.id === messageId || msg.timestamp === messageId);
-
-            if (targetMessageIndex === -1) {
-                this.sendError(ws, 'Message not found', 'MESSAGE_NOT_FOUND', message.requestId);
-                return;
-            }
-
-            // Delete all messages from the target index onwards (including the target message)
-            const messagesToDelete = messages.slice(targetMessageIndex);
-
-            if (messagesToDelete.length === 0) {
-                this.sendError(ws, 'No messages to delete', 'NO_MESSAGES_TO_DELETE', message.requestId);
-                return;
-            }
-
-            console.log(`🗑️ Deleting ${messagesToDelete.length} messages from session ${sessionId}`);
-
-            // Delete messages from database for this specific session
-            const success = deleteDirectorMessagesFrom(sessionId, messages[targetMessageIndex].id);
-
-            if (!success) {
-                this.sendError(ws, 'Failed to delete messages from database', 'DATABASE_ERROR', message.requestId);
-                return;
-            }
-
-            // Send success response to the client
-            this.sendToClient(ws, {
-                type: 'director_rollback_message_response',
-                requestId: message.requestId,
-                data: {
-                    success: true,
-                    deletedCount: messagesToDelete.length,
-                    message: `Successfully rolled back ${messagesToDelete.length} message(s)`
-                },
-                timestamp: new Date().toISOString()
-            });
-
-        } catch (error) {
-            console.error('❌ Error rolling back Director messages:', error);
-            this.sendError(ws, 'Failed to rollback messages', error.message, message.requestId);
         }
     }
 
@@ -10852,28 +9415,28 @@ class WebSocketMessageHandlers {
     }
 
     // Reference Metadata Handlers
+
     async handleUpdateReferenceMetadata(ws, message, clientInfo, wsServer) {
         try {
-            const { filename, workspaceId, metadata } = message;
-
-            if (!filename || !workspaceId) {
-                this.sendError(ws, 'Missing required parameters', 'filename and workspaceId are required', message.requestId);
+            const { hash, metadata } = message;
+            if (!hash) {
+                this.sendError(ws, 'Hash is required', 'MISSING_HASH', message.requestId);
                 return;
             }
 
-            if (!metadata || typeof metadata !== 'object') {
-                this.sendError(ws, 'Invalid metadata', 'metadata must be a valid object', message.requestId);
+            if (!metadata) {
+                this.sendError(ws, 'Metadata is required', 'MISSING_METADATA', message.requestId);
                 return;
             }
 
-            const success = updateReferenceMetadata(filename, workspaceId, metadata);
+            const result = this.referenceMetadataDb.setMetadata(hash, metadata);
 
             this.sendToClient(ws, {
                 type: 'update_reference_metadata_response',
                 requestId: message.requestId,
                 data: {
-                    success: success,
-                    message: success ? 'Reference metadata updated successfully' : 'Failed to update reference metadata'
+                    success: true,
+                    metadata: result
                 },
                 timestamp: new Date().toISOString()
             });
@@ -10881,33 +9444,6 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('❌ Error updating reference metadata:', error);
             this.sendError(ws, 'Failed to update reference metadata', error.message, message.requestId);
-        }
-    }
-
-    async handleDeleteReferenceMetadata(ws, message, clientInfo, wsServer) {
-        try {
-            const { filename, workspaceId } = message;
-
-            if (!filename || !workspaceId) {
-                this.sendError(ws, 'Missing required parameters', 'filename and workspaceId are required', message.requestId);
-                return;
-            }
-
-            const success = deleteReferenceMetadata(filename, workspaceId);
-
-            this.sendToClient(ws, {
-                type: 'delete_reference_metadata_response',
-                requestId: message.requestId,
-                data: {
-                    success: success,
-                    message: success ? 'Reference metadata deleted successfully' : 'Failed to delete reference metadata'
-                },
-                timestamp: new Date().toISOString()
-            });
-
-        } catch (error) {
-            console.error('❌ Error deleting reference metadata:', error);
-            this.sendError(ws, 'Failed to delete reference metadata', error.message, message.requestId);
         }
     }
 }

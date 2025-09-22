@@ -2,6 +2,61 @@
 let lightbox = null;
 let currentImageIndex = 0;
 
+// Helper function to get image data that works with both normal gallery and search results
+function getImageFromLightboxIndex(imageIndex) {
+    // When search results are displayed, we need to use the original image array
+    // because allImages contains filtered results, but imageIndex refers to original position
+    if (window.filteredImageIndices && window.originalAllImages && window.originalAllImages.length > 0) {
+        // We're in a search/filtered state, use original array
+        return window.originalAllImages[imageIndex] || null;
+    } else {
+        // Normal gallery state, use current allImages array
+        return allImages[imageIndex] || null;
+    }
+}
+
+// Helper function to get the full image array for lightbox data source
+function getLightboxDataSource() {
+    // When search results are displayed, we need to use the original image array
+    // because allImages contains filtered results
+    const sourceImages = (window.filteredImageIndices && window.originalAllImages && window.originalAllImages.length > 0)
+        ? window.originalAllImages
+        : allImages;
+
+    return sourceImages.map(img => {
+        let filenameToShow = img.original;
+        if (img.upscaled) {
+            filenameToShow = img.upscaled;
+        }
+
+        // Get metadata for this image to get dimensions
+        let width = 1024; // Default fallback
+        let height = 1024; // Default fallback
+
+        // Try to get dimensions from the image object if available
+        if (img.metadata && img.metadata.width && img.metadata.height) {
+            width = img.metadata.width;
+            height = img.metadata.height;
+        } else if (img.width && img.height) {
+            width = img.width;
+            height = img.height;
+        }
+
+        return {
+            src: `/images/${filenameToShow}`,
+            width: width,
+            height: height,
+            data: {
+                filename: filenameToShow,
+                base: img.base,
+                upscaled: img.upscaled,
+                original: img.original,
+                metadata: img.metadata
+            }
+        };
+    });
+}
+
 // Initialize PhotoSwipe lightbox
 async function initializePhotoSwipe() {
     try {
@@ -26,7 +81,7 @@ async function initializePhotoSwipe() {
             escKey: true,
             arrowKeys: true,
             returnFocus: true,
-            initalZoomLevel: 'fit',
+            initialZoomLevel: 'fit',
             secondaryZoomLevel: 1,
             maxZoomLevel: 4,
             imageClickAction: 'zoom',
@@ -43,7 +98,55 @@ async function initializePhotoSwipe() {
             fullscreenTitle: 'Toggle fullscreen',
             shareTitle: 'Share',
             toggleThumbnailsTitle: 'Toggle thumbnails',
-            downloadTitle: 'Download'
+            downloadTitle: 'Download',
+        });
+
+        // Add thumbEl filter for zoom animation from thumbnails
+        lightbox.addFilter('thumbEl', (thumbEl, data, index) => {
+            if (!manualModal.classList.contains('hidden')) {
+                const manualPreviewImg = document.getElementById('manualPreviewImage');
+                if (manualPreviewImg && !manualPreviewImg.classList.contains('hidden')) {
+                    console.log('manualPreviewImage found:', manualPreviewImg);
+                    return manualPreviewImg;
+                }
+            }
+            const targetItem = document.querySelector(`[data-file-index="${index}"]`);
+            if (targetItem) {
+                const img = targetItem.querySelector('img.gallery-item-zoom-origin');
+                if (img) {
+                    return img;
+                }
+                else {
+                    const img = targetItem.querySelector('img');
+                    if (img) {
+                        return img;
+                    }
+                }
+            }
+            return thumbEl;
+        });
+
+        // Add placeholderSrc filter for placeholder images
+        lightbox.addFilter('placeholderSrc', (placeholderSrc, slide) => {
+            if (!manualModal.classList.contains('hidden')) {
+                const manualPreviewImg = document.getElementById('manualPreviewImage');
+                if (manualPreviewImg && !manualPreviewImg.classList.contains('hidden')) {
+                    return manualPreviewImg.src;
+                }
+            }
+            const targetItem = document.querySelector(`[data-file-index="${slide.index}"]`);
+            if (targetItem) {
+                const img = targetItem.querySelector('img.gallery-item-zoom-origin');
+                if (img) {
+                    return img.src;
+                } else {
+                    const img = targetItem.querySelector('img');
+                    if (img) {
+                        return img.src;
+                    }
+                }
+            }
+            return placeholderSrc;
         });
 
         // Function to update button visibility based on current slide
@@ -81,7 +184,7 @@ async function initializePhotoSwipe() {
                     const buttons = [
                         {
                             className: 'download-button',
-                            icon: '<i class="fas fa-download"></i>',
+                            icon: '<i class="fa-light fa-download"></i>',
                             label: 'Download image',
                             onClick: () => {
                                 const currentItem = pswp.currSlide;
@@ -92,7 +195,7 @@ async function initializePhotoSwipe() {
                         },
                         {
                             className: 'copy-button',
-                            icon: '<i class="fas fa-clipboard"></i>',
+                            icon: '<i class="fa-light fa-clipboard"></i>',
                             label: 'Copy to clipboard',
                             onClick: async () => {
                                 const currentItem = pswp.currSlide;
@@ -133,12 +236,12 @@ async function initializePhotoSwipe() {
                                         
                                         // Show success notification with size
                                         if (window.showGlassToast) {
-                                            window.showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
+                                            window.showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fa-regular fa-clipboard-check"></i>');
                                         }
                                     } catch (error) {
                                         console.error('Failed to copy image to clipboard:', error);
                                         if (window.showGlassToast) {
-                                            window.showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fas fa-clipboard"></i>');
+                                            window.showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
                                         }
                                     }
                                 }
@@ -146,7 +249,7 @@ async function initializePhotoSwipe() {
                         },
                         {
                             className: 'pin-button',
-                            icon: '<i class="fa-regular fa-star"></i>',
+                            icon: '<i class="fa-light fa-star"></i>',
                             label: 'Pin image',
                             onClick: () => {
                                 const currentItem = pswp.currSlide;
@@ -158,7 +261,7 @@ async function initializePhotoSwipe() {
                         {
                             className: 'reroll-button',
                             icon: '<i class="nai-dice"></i>',
-                            label: 'Reroll image',
+                            label: 'Recast Spell',
                             onClick: (e) => {
                                 const currentItem = pswp.currSlide;
                                 if (currentItem && currentItem.data?.data) {
@@ -168,7 +271,7 @@ async function initializePhotoSwipe() {
                         },
                         {
                             className: 'reroll-edit-button',
-                            icon: '<i class="mdi mdi-1-25 mdi-text-box-edit-outline"></i>',
+                            icon: '<i class="fa-light fa-compass-drafting"></i>',
                             label: 'Reroll with edit',
                             onClick: (e) => {
                                 const currentItem = pswp.currSlide;
@@ -177,7 +280,7 @@ async function initializePhotoSwipe() {
                                 }
                             }
                         },
-                        {
+                        /* {
                             className: 'upscale-button',
                             icon: '<i class="nai-upscale"></i>',
                             label: 'Upscale image',
@@ -187,10 +290,10 @@ async function initializePhotoSwipe() {
                                     upscaleImage(currentItem.data?.data);
                                 }
                             }
-                        },
+                        }, */
                         {
                             className: 'scrap-button',
-                            icon: '<i class="mdi mdi-1-5 mdi-archive"></i>',
+                            icon: '<i class="fa-light fa-bin-recycle"></i>',
                             label: 'Move to scraps',
                             onClick: () => {
                                 const currentItem = pswp.currSlide;
@@ -205,15 +308,15 @@ async function initializePhotoSwipe() {
                         },
                         {
                             className: 'delete-button',
-                            icon: '<i class="nai-trash"></i>',
-                            label: 'Delete image',
+                            icon: '<i class="fa-light fa-fire"></i>',
+                            label: 'Destroy image',
                             onClick: () => {
                                 const currentItem = pswp.currSlide;
                                 if (currentItem && currentItem.data?.data) {
                                     deleteImage(currentItem.data?.data);
                                 }
                             }
-                        },
+                        }/* ,
                         {
                             className: 'metadata-button',
                             icon: '<i class="fas fa-info-circle"></i>',
@@ -224,7 +327,7 @@ async function initializePhotoSwipe() {
                                     showMetadataDialog();
                                 }
                             }
-                        }
+                        } */
                     ];
 
                     // Add all buttons to the bottom bar
@@ -279,7 +382,7 @@ async function openStandalonePhotoSwipe(dataSource) {
             escKey: true,
             arrowKeys: false, // No arrow keys for single images
             returnFocus: true,
-            initalZoomLevel: 'fit',
+            initialZoomLevel: 'fit',
             secondaryZoomLevel: 1,
             maxZoomLevel: 4,
             imageClickAction: 'zoom',
@@ -317,11 +420,15 @@ async function showLightbox(input) {
     if (typeof input === 'number') {
         // Direct index provided
         imageIndex = input;
-        if (imageIndex < 0 || imageIndex >= allImages.length) {
+        const sourceImages = (window.filteredImageIndices && window.originalAllImages && window.originalAllImages.length > 0)
+            ? window.originalAllImages
+            : allImages;
+
+        if (imageIndex < 0 || imageIndex >= sourceImages.length) {
             console.error('Image index out of range:', imageIndex);
             return;
         }
-        targetImage = allImages[imageIndex];
+        targetImage = getImageFromLightboxIndex(imageIndex);
     } else if (typeof input === 'object' && input !== null) {
         // Object with filename, url, or element provided
         if (input.filename) {
@@ -406,8 +513,12 @@ async function showLightbox(input) {
             const fileIndex = input.element.getAttribute('data-file-index');
             if (fileIndex !== null) {
                 imageIndex = parseInt(fileIndex, 10);
-                if (imageIndex >= 0 && imageIndex < allImages.length) {
-                    targetImage = allImages[imageIndex];
+                const sourceImages = (window.filteredImageIndices && window.originalAllImages && window.originalAllImages.length > 0)
+                    ? window.originalAllImages
+                    : allImages;
+
+                if (imageIndex >= 0 && imageIndex < sourceImages.length) {
+                    targetImage = getImageFromLightboxIndex(imageIndex);
                 } else {
                     imageIndex = -1;
                 }
@@ -438,48 +549,17 @@ async function showLightbox(input) {
         }
 
         if (imageIndex === -1) {
-            console.error('Image not found in allImages array');
+            console.error('Image not found in image array');
             return;
         }
-        targetImage = allImages[imageIndex];
+        targetImage = getImageFromLightboxIndex(imageIndex);
     } else {
         console.error('Invalid input to showLightbox:', input);
         return;
     }
 
     // Prepare data source for PhotoSwipe with proper dimensions from metadata
-    const dataSource = allImages.map(img => {
-        let filenameToShow = img.original;
-        if (img.upscaled) {
-            filenameToShow = img.upscaled;
-        }
-
-        // Get metadata for this image to get dimensions
-        let width = 1024; // Default fallback
-        let height = 1024; // Default fallback
-        
-        // Try to get dimensions from the image object if available
-        if (img.metadata && img.metadata.width && img.metadata.height) {
-            width = img.metadata.width;
-            height = img.metadata.height;
-        } else if (img.width && img.height) {
-            width = img.width;
-            height = img.height;
-        }
-
-        return {
-            src: `/images/${filenameToShow}`,
-            width: width,
-            height: height,
-            data: {
-                filename: filenameToShow,
-                base: img.base,
-                upscaled: img.upscaled,
-                original: img.original,
-                metadata: img.metadata
-            }
-        };
-    });
+    const dataSource = getLightboxDataSource();
 
     // Update PhotoSwipe data source
     lightbox.loadAndOpen(imageIndex, dataSource);

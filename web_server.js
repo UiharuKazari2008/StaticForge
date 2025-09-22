@@ -29,7 +29,8 @@ const { addReceiptMetadata, addUnattributedReceipt, broadcastReceiptNotification
 const { initializeChatDatabase } = require('./modules/chatDatabase');
 const { initializeDirectorDatabase } = require('./modules/directorDatabase');
 const imageCounter = require('./modules/imageCounter');
-const { generateBlurredPreview, generateMobilePreviews } = require('./modules/previewUtils');
+const { generateMobilePreviews } = require('./modules/previewUtils');
+const ParallelPreviewGenerator = require('./modules/parallelPreviewGenerator');
 const { setContext: setImageGenContext, handleGeneration, buildOptions, handleRerollGeneration } = require('./modules/imageGeneration');
 const { setContext: setUpscaleContext } = require('./modules/imageUpscaling');
 const UnixSocketCommunication = require('./modules/unixSocketCommunication');
@@ -40,6 +41,50 @@ const client = new NovelAI({
     timeout: 100000,
     verbose: !!config.debugNovelAI
  });
+
+// Server readiness tracking
+const serverReadiness = {
+    isReady: false,
+    stage: 'initializing',
+    stages: {
+        'initializing': 'Server starting up...',
+        'syncing_previews': 'Syncing previews...',
+        'account_init': 'Loading account data...',
+        'database_init': 'Setting up databases...',
+        'websocket_init': 'Starting WebSocket server...',
+        'ready': 'Server ready'
+    },
+    startTime: Date.now(),
+    lastUpdate: Date.now()
+};
+
+// Update server readiness stage
+function updateServerStage(stage, isReady = false) {
+    serverReadiness.stage = stage;
+    serverReadiness.isReady = isReady;
+    serverReadiness.lastUpdate = Date.now();
+    console.log(`📊 Server stage: ${serverReadiness.stages[stage]}`);
+}
+
+// Server readiness middleware - blocks access to endpoints when server is not ready
+function serverReadinessMiddleware(req, res, next) {
+    // Block all other endpoints if server is not ready
+    if (!serverReadiness.isReady) {
+        const uptime = Date.now() - serverReadiness.startTime;
+        const stageMessage = serverReadiness.stages[serverReadiness.stage] || 'Unknown stage';
+        
+        return res.status(503).json({
+            success: false,
+            error: 'Server is initializing',
+            stage: serverReadiness.stage,
+            stageMessage: stageMessage,
+            uptime: uptime,
+            retryAfter: 30 // Suggest retry after 30 seconds
+        });
+    }
+    
+    next();
+}
 
 
 // Account data management
@@ -182,20 +227,11 @@ function getCurrentRollingKey() {
 
 // Validate a rolling key with comprehensive security checks
 function validateRollingKey(key, ip = 'unknown') {
-  // Check rate limiting first
-  const rateLimit = checkRateLimit(ip);
-  if (!rateLimit.allowed) {
-    logSecurityEvent('RATE_LIMIT_EXCEEDED', ip, {
-      event: 'rolling_key_validation',
-      attemptsRemaining: rollingKeys.maxAttempts - (rollingKeys.validationAttempts.get(ip)?.count || 0),
-      resetTime: rateLimit.resetTime
-    });
-    return false;
-  }
-
-  // Validate and sanitize input
+  // Validate and sanitize input first
   const validation = validateAndSanitizeKey(key);
   if (!validation.valid) {
+    // Only increment rate limit counter for invalid attempts
+    checkRateLimit(ip);
     logSecurityEvent('INVALID_KEY_FORMAT', ip, {
       event: 'rolling_key_validation',
       keyLength: key ? key.length : 0,
@@ -220,6 +256,17 @@ function validateRollingKey(key, ip = 'unknown') {
       keyAge: Date.now() - rollingKeys.lastRotation
     });
     return true;
+  }
+
+  // Only increment rate limit counter for invalid key attempts
+  const rateLimit = checkRateLimit(ip);
+  if (!rateLimit.allowed) {
+    logSecurityEvent('RATE_LIMIT_EXCEEDED', ip, {
+      event: 'rolling_key_validation',
+      attemptsRemaining: rollingKeys.maxAttempts - (rollingKeys.validationAttempts.get(ip)?.count || 0),
+      resetTime: rateLimit.resetTime
+    });
+    return false;
   }
 
   logSecurityEvent('INVALID_KEY_REJECTED', ip, {
@@ -565,8 +612,7 @@ function isProtectedResource(url) {
     // Protect image resources
     if (url.startsWith('/images/') ||
         url.startsWith('/previews/') ||
-        url.startsWith('/cache/') ||
-        url.startsWith('/.previews/')) {
+        url.startsWith('/cache/')) {
         return true;
     }
 
@@ -585,7 +631,6 @@ function securityMiddleware(req, res, next) {
     const url = req.path;
     const userAgent = req.headers['user-agent'] || 'unknown';
 
-    // Check if this is a legitimate service worker request using rolling key
     const rollingKey = req.headers['x-sw-key'];
     const isServiceWorkerRequest = rollingKey && validateRollingKey(rollingKey);
 
@@ -605,7 +650,6 @@ function securityMiddleware(req, res, next) {
 
     // Allow service worker key endpoint to bypass scraping detection
     if (url === '/sw.js' && req.method === 'OPTIONS') {
-        console.log(`🔑 Service Worker key request from ${ip} - allowing`);
         return next();
     }
 
@@ -929,6 +973,12 @@ const limiter = rateLimit({
             return true;
         }
         
+        // Skip rate limiting for service worker requests with valid rolling key
+        const rollingKey = req.headers['x-sw-key'];
+        if (rollingKey && validateRollingKey(rollingKey, getRealIP(req))) {
+            return true;
+        }
+        
         // Skip rate limiting for OPTIONS requests to specific routes only
         if (req.method === 'OPTIONS') {
             const allowedPaths = ['/', '/app'];
@@ -1066,8 +1116,8 @@ initializeWorkspaces();
 // Generate login page sprite sheet (single sheet with normal + blurred images)
 async function generateLoginSpriteSheet() {
     try {
-        const spritePath = path.join(previewsDir, 'login_image.jpg');
-        const metadataPath = path.join(previewsDir, 'login_sprite_metadata.json');
+        const spritePath = path.join(cacheDir, 'login_array.jpg');
+        const metadataPath = path.join(cacheDir, 'login_sprite_metadata.json');
         
         // Check if sprite sheet exists and is less than 1 hour old
         if (fs.existsSync(spritePath)) {
@@ -1280,7 +1330,11 @@ async function generateCombinedSpriteSheet(images, outputPath, width, height) {
         // Composite all images onto the sprite sheet
         await spriteCanvas
             .composite(composites)
-            .jpeg({ quality: 40 })
+            .jpeg({ 
+                quality: 85,
+                progressive: true,
+                mozjpeg: true
+            })
             .toFile(outputPath);
             
         console.log(`💾 Saved combined sprite sheet to ${outputPath}`);
@@ -1293,9 +1347,14 @@ async function generateCombinedSpriteSheet(images, outputPath, width, height) {
 
 // On startup: generate missing previews and clean up orphans
 async function syncPreviews() {
+    console.log('🔄 Starting preview synchronization...');
+    
     const files = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
-    const previews = fs.readdirSync(previewsDir).filter(f => f.endsWith('.jpg'));
+    const previews = fs.readdirSync(previewsDir).filter(f => f.endsWith('.webp'));
     const baseMap = {};
+    
+    console.log(`📊 Found ${files.length} images and ${previews.length} existing previews`);
+    
     // Pair originals and upscales
     for (const file of files) {
         const base = getBaseName(file);
@@ -1303,40 +1362,102 @@ async function syncPreviews() {
         if (file.includes('_upscaled')) baseMap[base].upscaled = file;
         else baseMap[base].original = file;
     }
-    // Generate missing previews
+    
+    // Count how many previews need to be generated
+    let missingPreviews = 0;
+    const previewTypes = ['.webp', '@2x.webp', '@lq.webp', '@blur.webp'];
+    
     for (const base in baseMap) {
-        const previewFile = `${base}.jpg`
         const imgFile = baseMap[base].original || baseMap[base].upscaled;
-        const previewPath = path.join(previewsDir, previewFile);
-        const retinaPreviewPath = path.join(previewsDir, `${base}@2x.jpg`);
-        const blurPreviewFile = `${base}_blur.jpg`;
-        const blurPreviewPath = path.join(previewsDir, blurPreviewFile);
         if (imgFile) {
-            const imgPath = path.join(imagesDir, imgFile);
-            if (!fs.existsSync(previewPath) || !fs.existsSync(retinaPreviewPath)) {
-                // Generate both main and @2x previews for mobile devices
-                await generateMobilePreviews(imgPath, base);
-            }
-            if (!fs.existsSync(blurPreviewPath)) {
-                await generateBlurredPreview(imgPath, blurPreviewPath);
+            for (const type of previewTypes) {
+                const previewPath = path.join(previewsDir, `${base}${type}`);
+                if (!fs.existsSync(previewPath)) {
+                    missingPreviews++;
+                    break; // Only count once per base image
+                }
             }
         }
     }
-    // Remove orphan previews (both regular, @2x, and blur)
+    
+    if (missingPreviews > 0) {
+        console.log(`📸 Generating ${missingPreviews} missing preview sets using parallel processing...`);
+        
+        // Prepare images that need preview generation
+        const imagesToProcess = [];
+        for (const base in baseMap) {
+            const imgFile = baseMap[base].original || baseMap[base].upscaled;
+            if (imgFile) {
+                const imgPath = path.join(imagesDir, imgFile);
+                let needsGeneration = false;
+                
+                // Check if any preview type is missing
+                for (const type of previewTypes) {
+                    const previewPath = path.join(previewsDir, `${base}${type}`);
+                    if (!fs.existsSync(previewPath)) {
+                        needsGeneration = true;
+                        break;
+                    }
+                }
+                
+                if (needsGeneration) {
+                    imagesToProcess.push({
+                        imagePath: imgPath,
+                        basename: base,
+                        imageFile: imgFile
+                    });
+                }
+            }
+        }
+        
+        // Use parallel preview generator
+        const generator = new ParallelPreviewGenerator({
+            batchSize: Math.min(require('os').cpus().length, 6), // Max 6 workers
+            skipExisting: false,
+            forceRegenerate: false,
+            onProgress: (processed, total, progress) => {
+                console.log(`📸 Progress: ${processed}/${total} (${progress}%)`);
+            },
+            onComplete: (results) => {
+                console.log(`✅ Preview generation complete: ${results.processed} preview sets generated`);
+                if (results.errors > 0) {
+                    console.log(`⚠️  ${results.errors} images failed to process`);
+                }
+            },
+            onError: (basename, error) => {
+                console.error(`❌ Failed to generate previews for ${basename}:`, error);
+            }
+        });
+        
+        // Generate previews for the images that need them
+        await generator.generatePreviewsForImages(
+            imagesToProcess.map(item => item.imageFile),
+            imagesDir,
+            previewsDir
+        );
+    } else {
+        console.log('✅ All previews are up to date');
+    }
+    
+    // Remove orphan previews
+    let orphanCount = 0;
     for (const preview of previews) {
-        // Handle regular previews (.jpg), @2x previews (@2x.jpg), and blur previews (_blur.jpg)
+        // Handle regular previews (.webp), @2x previews (@2x.webp), and blur previews (@blur.webp), and low quality previews (@lq.webp)
         let base;
-        if (preview.endsWith('_blur.jpg')) {
-            // For blur previews, extract the base name by removing '_blur.jpg'
-            base = preview.replace(/_blur\.jpg$/, '');
-        } else if (preview.endsWith('@2x.jpg')) {
-            // For @2x previews, extract the base name by removing '@2x.jpg'
-            base = preview.replace(/@2x\.jpg$/, '');
-        } else if (preview.endsWith('.jpg')) {
-            // For regular previews, extract the base name by removing '.jpg'
-            base = preview.replace(/\.jpg$/, '');
+        if (preview.endsWith('@lq.webp')) {
+            // For low quality previews, extract the base name by removing '@lq.webp'
+            base = preview.replace(/@lq\.webp$/, '');
+        } else if (preview.endsWith('@blur.webp')) {
+            // For blurred previews, extract the base name by removing '@blur.webp'
+            base = preview.replace(/@blur\.webp$/, '');
+        } else if (preview.endsWith('@2x.webp')) {
+            // For retina previews, extract the base name by removing '@2x.webp'
+            base = preview.replace(/@2x\.webp$/, '');
+        } else if (preview.endsWith('.webp')) {
+            // For regular previews, extract the base name by removing '.webp'
+            base = preview.replace(/\.webp$/, '');
         } else {
-            // Skip non-jpg files
+            // Skip non-webp files
             continue;
         }
         
@@ -1344,9 +1465,18 @@ async function syncPreviews() {
         if (!baseMap[base]) {
             const previewPath = path.join(previewsDir, preview);
             fs.unlinkSync(previewPath);
+            orphanCount++;
             console.log(`🧹 Removed orphan preview: ${preview}`);
         }
     }
+    
+    if (orphanCount > 0) {
+        console.log(`🧹 Cleanup complete: ${orphanCount} orphan previews removed`);
+    } else {
+        console.log('🧹 No orphan previews found');
+    }
+    
+    console.log('✅ Preview synchronization complete');
 }
 
 async function getBalance() {
@@ -1508,10 +1638,24 @@ async function getUserData() {
     }
 }
 
-app.use('/cache', (req, res, next) => {
-    res.setHeader('Cache-Control', 'public, max-age=259200');
-    next();
-}, express.static(cacheDir));
+app.get('/internal/*', (req, res) => {
+    try {
+        res.setHeader('Cache-Control', 'blocked, no-cache, no-store, must-revalidate, private, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Content-Type', 'application/json');
+        res.json({
+            success: true,
+            message: 'File is missing from client cache',
+            path: req.path,
+            timestamp: Date.now()
+        });
+        
+    } catch (error) {
+        console.error('❌ Error handling internal URL:', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
 app.use('/temp', express.static(path.join(cacheDir, 'tempDownload'), {
     maxAge: '10s', // Cache static assets for 10 seconds
     etag: true, // Enable ETags for cache validation
@@ -1522,8 +1666,8 @@ app.use('/temp', express.static(path.join(cacheDir, 'tempDownload'), {
         res.setHeader('Expires', '0');
     }
 }));
-app.use('/previews/:preview', (req, res) => {
-    const previewFile = req.params.preview;
+app.use('/previews/:preview', authMiddleware, (req, res) => {
+    const previewFile = decodeURIComponent(req.params.preview);
     const previewPath = path.join(previewsDir, previewFile);
     if (!fs.existsSync(previewPath)) {
         return res.status(404).json({ success: false, error: 'Preview not found' });
@@ -1531,32 +1675,10 @@ app.use('/previews/:preview', (req, res) => {
     res.setHeader('Cache-Control', 'private, max-age=259200');
     res.sendFile(previewFile, { root: previewsDir });
 });
-app.use('/images/:filename', authMiddleware, (req, res) => {
-    const filename = req.params.filename;
-    const filePath = path.join(imagesDir, filename);
-    
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ success: false, error: 'Image not found' });
-    }
-    
-    // Set appropriate headers
-    const ext = path.extname(filename).toLowerCase();
-    res.setHeader('Content-Type', (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' : 'image/png');
-    res.setHeader('Cache-Control', 'private, max-age=259200');
-    res.setHeader('Last-Modified', new Date(fs.statSync(filePath).mtime).toUTCString());
-    res.setHeader('ETag', `"${fs.statSync(filePath).mtime.getTime()}"`);
-    res.setHeader('Expires', '0');
-    
-    // Handle download request
-    if (req.query.download === 'true') {
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    }
-    
-    // Send the file
-    res.sendFile(filePath);
-});
-
+app.use('/cache', authMiddleware, (req, res, next) => {
+    res.setHeader('Cache-Control', 'public, max-age=259200');
+    next();
+}, express.static(cacheDir));
 // Logger // NOTE: Everything above this is not logged!
 app.use((req, res, next) => {
     const skippedPaths = [
@@ -1637,13 +1759,98 @@ app.use((req, res, next) => {
     
     next();
 });
-
-// Public routes (no authentication required)
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+app.use('/images/:filename', authMiddleware, (req, res) => {
+    const filename = req.params.filename;
+    const filePath = path.join(imagesDir, filename);
+    
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ success: false, error: 'Image not found' });
+    }
+    
+    // Set appropriate headers
+    const ext = path.extname(filename).toLowerCase();
+    res.setHeader('Content-Type', (ext === '.jpg' || ext === '.jpeg') ? 'image/jpeg' : 'image/png');
+    res.setHeader('Cache-Control', 'private, max-age=259200');
+    res.setHeader('Last-Modified', new Date(fs.statSync(filePath).mtime).toUTCString());
+    res.setHeader('ETag', `"${fs.statSync(filePath).mtime.getTime()}"`);
+    res.setHeader('Expires', '0');
+    
+    // Handle download request
+    if (req.query.download === 'true') {
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    }
+    
+    // Send the file
+    res.sendFile(filePath);
+});
+// Slim PNG route - strips PNG metadata/blueprint data
+app.use('/image/slim/:filename', authMiddleware, async (req, res) => {
+    const filename = req.params.filename;
+    const filePath = path.join(imagesDir, filename);
+    
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ success: false, error: 'Image not found' });
+    }
+    
+    try {
+        // Process image to strip metadata and convert to clean PNG
+        const processedImage = await sharp(filePath)
+            .png({ 
+                compressionLevel: 9,
+                adaptiveFiltering: true,
+                force: true // Force PNG output even if input is JPEG
+            })
+            .toBuffer();
+        
+        // Set headers for PNG download
+        const baseName = path.parse(filename).name;
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Content-Disposition', `attachment; filename="${baseName}_slim.png"`);
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        
+        res.send(processedImage);
+    } catch (error) {
+        console.error('Error processing slim image:', error);
+        res.status(500).json({ success: false, error: 'Failed to process image' });
+    }
+});
+// Optimized JPG route - converts to optimized JPEG
+app.use('/image/opti/:filename', authMiddleware, async (req, res) => {
+    const filename = req.params.filename;
+    const filePath = path.join(imagesDir, filename);
+    
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ success: false, error: 'Image not found' });
+    }
+    
+    try {
+        // Process image to optimized JPEG
+        const processedImage = await sharp(filePath)
+            .jpeg({ 
+                quality: 85,
+                progressive: true,
+                mozjpeg: true,
+                optimizeScans: true,
+                force: true // Force JPEG output
+            })
+            .toBuffer();
+        
+        // Set headers for JPEG download
+        const baseName = path.parse(filename).name;
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Content-Disposition', `attachment; filename="${baseName}_optimized.jpg"`);
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        
+        res.send(processedImage);
+    } catch (error) {
+        console.error('Error processing optimized image:', error);
+        res.status(500).json({ success: false, error: 'Failed to process image' });
+    }
 });
 
-// Cache manifest endpoint for service worker
 app.options('/', (req, res) => {
     try {
         // Route-based HTML entries
@@ -1690,77 +1897,28 @@ app.options('/', (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
-
-// Service Worker Rolling Key Endpoint (bypasses security checks)
-app.options('/sw.js', (req, res) => {
-    try {
-        const ip = getRealIP(req);
-        const userAgent = req.headers['user-agent'] || 'unknown';
-
-        console.log(`🔑 Rolling key request from ${ip} (${userAgent.substring(0, 50)}...)`);
-
-        // Rate limit key requests to prevent abuse
-        const rateLimit = checkRateLimit(ip);
-        if (!rateLimit.allowed) {
-            console.warn(`🚫 Rate limit exceeded for key request from IP ${ip} (attempts: ${rollingKeys.validationAttempts.get(ip)?.count || 0}/${rollingKeys.maxAttempts})`);
-            return res.status(429).json({
-                error: 'Too many requests',
-                code: 'RATE_LIMIT_EXCEEDED',
-                retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
-            });
-        }
-
-        console.log(`✅ Key request allowed for ${ip} (attempts: ${rollingKeys.validationAttempts.get(ip)?.count || 0}/${rollingKeys.maxAttempts})`);
-
-        const key = getCurrentRollingKey();
-        const expiresAt = rollingKeys.lastRotation + rollingKeys.rotationInterval;
-
-        // Enhanced security headers
-        res.set({
-            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'X-Key-Expires': expiresAt.toString(),
-            'X-Key-Rotation-Interval': rollingKeys.rotationInterval.toString(),
-            'X-Content-Type-Options': 'nosniff',
-            'X-Frame-Options': 'DENY',
-            'X-XSS-Protection': '1; mode=block',
-            'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-            'Content-Security-Policy': "default-src 'none'",
-            'Access-Control-Allow-Origin': req.headers.origin || '*',
-            'Access-Control-Allow-Methods': 'OPTIONS',
-            'Access-Control-Allow-Headers': 'X-Requested-With,Cache-Control,Pragma',
-            'Access-Control-Max-Age': '86400' // 24 hours
-        });
-
-        // Validate key before sending
-        if (!key || key.length !== rollingKeys.keyLength * 2) {
-            console.error('❌ Invalid key generated for response');
-            return res.status(500).json({ error: 'Internal server error' });
-        }
-
-        const responseData = {
-            key: key,
-            expiresAt: expiresAt,
-            rotationInterval: rollingKeys.rotationInterval,
-            serverTime: Date.now()
-        };
-
-        console.log(`🔑 Served rolling key to IP ${ip}, expires at ${new Date(expiresAt)}`);
-
-        res.json(responseData);
-
-    } catch (error) {
-        console.error('❌ Error serving rolling key:', error);
-        res.status(500).json({
-            error: 'Internal server error',
-            code: 'INTERNAL_ERROR'
-        });
-    }
+// Server status endpoint - available even when server is not fully ready
+app.options('/status', (req, res) => {
+    const uptime = Date.now() - serverReadiness.startTime;
+    const stageMessage = serverReadiness.stages[serverReadiness.stage] || 'Unknown stage';
+    
+    res.json({
+        isReady: serverReadiness.isReady,
+        stage: serverReadiness.stage,
+        stageMessage: stageMessage,
+        uptime: uptime,
+        lastUpdate: serverReadiness.lastUpdate,
+        timestamp: Date.now()
+    });
 });
 
-// Unified message endpoint
-app.post('/', express.json(), (req, res) => {
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+app.get('/.login.jpg', (req, res) => {
+    res.sendFile(path.join(cacheDir, 'login_array.jpg'));
+});
+app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
     const { action, data } = req.body;
     
     if (!action) { return res.status(400).json({ error: 'Action is required' }); }
@@ -1868,19 +2026,74 @@ app.post('/', express.json(), (req, res) => {
             res.status(400).json({ success: false, error: 'Invalid action' });
     }
 });
+app.options('/sw.js', (req, res) => {
+    try {
+        const ip = getRealIP(req);
+        const userAgent = req.headers['user-agent'] || 'unknown';
 
-// Launch route (PWA entry point)
-app.get('/launch', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'launch.html'));
+        // Rate limit key requests to prevent abuse
+        const rateLimit = checkRateLimit(ip);
+        if (!rateLimit.allowed) {
+            console.warn(`🚫 Rate limit exceeded for key request from IP ${ip} (attempts: ${rollingKeys.validationAttempts.get(ip)?.count || 0}/${rollingKeys.maxAttempts})`);
+            return res.status(429).json({
+                error: 'Too many requests',
+                code: 'RATE_LIMIT_EXCEEDED',
+                retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
+            });
+        }
+
+        console.log(`✅ Key request allowed for ${ip} (attempts: ${rollingKeys.validationAttempts.get(ip)?.count || 0}/${rollingKeys.maxAttempts})`);
+
+        const key = getCurrentRollingKey();
+        const expiresAt = rollingKeys.lastRotation + rollingKeys.rotationInterval;
+
+        // Enhanced security headers
+        res.set({
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'X-Key-Expires': expiresAt.toString(),
+            'X-Key-Rotation-Interval': rollingKeys.rotationInterval.toString(),
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY',
+            'X-XSS-Protection': '1; mode=block',
+            'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+            'Content-Security-Policy': "default-src 'none'",
+            'Access-Control-Allow-Origin': req.headers.origin || '*',
+            'Access-Control-Allow-Methods': 'OPTIONS',
+            'Access-Control-Allow-Headers': 'X-Requested-With,Cache-Control,Pragma',
+            'Access-Control-Max-Age': '86400' // 24 hours
+        });
+
+        // Validate key before sending
+        if (!key || key.length !== rollingKeys.keyLength * 2) {
+            console.error('❌ Invalid key generated for response');
+            return res.status(500).json({ error: 'Internal server error' });
+        }
+
+        const responseData = {
+            key: key,
+            expiresAt: expiresAt,
+            rotationInterval: rollingKeys.rotationInterval,
+            serverTime: Date.now()
+        };
+
+        console.log(`🔑 Served rolling key to IP ${ip}, expires at ${new Date(expiresAt)}`);
+
+        res.json(responseData);
+
+    } catch (error) {
+        console.error('❌ Error serving rolling key:', error);
+        res.status(500).json({
+            error: 'Internal server error',
+            code: 'INTERNAL_ERROR'
+        });
+    }
 });
 
-// App route (requires authentication)
-app.get('/app', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'app.html'));
-});
 
 app.options('/app', authMiddleware, (req, res) => {
-    const serverVersion = '1.0.0'; // Update this when making breaking changes
+    const serverVersion = '1.0.1'; // Update this when making breaking changes
     const message = 'A new version is available. Some features may not work correctly.';
     let response = { 
         success: true, 
@@ -1895,8 +2108,14 @@ app.options('/app', authMiddleware, (req, res) => {
     }
     res.json(response);
 });
+app.get('/app', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'app.html'));
+});
+app.get('/launch', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'launch.html'));
+});
 
-// Reload cache data endpoint (for development/deployment)
+/*// Reload cache data endpoint (for development/deployment)
 app.get('/admin/reload-cache', authMiddleware, async (req, res) => {
     try {
         // Check if user is admin (not readonly)
@@ -2003,7 +2222,7 @@ app.get('/admin/security-status', authMiddleware, (req, res) => {
 });
 
 // Unblock IP endpoint
-app.post('/admin/unblock-ip', authMiddleware, (req, res) => {
+app.post('/admin/unblock-ip', serverReadinessMiddleware, authMiddleware, (req, res) => {
     try {
         // Check if user is admin (not readonly)
         if (req.session.userType !== 'admin') {
@@ -2050,7 +2269,7 @@ app.post('/admin/unblock-ip', authMiddleware, (req, res) => {
 });
 
 // Restart server endpoint (for development/deployment)
-app.post('/admin/restart-server', authMiddleware, async (req, res) => {
+app.post('/admin/restart-server', serverReadinessMiddleware, authMiddleware, async (req, res) => {
     try {
         // Check if user is admin (not readonly)
         if (req.session.userType !== 'admin') {
@@ -2084,40 +2303,358 @@ app.post('/admin/restart-server', authMiddleware, async (req, res) => {
     }
 });
 
-// Internal URL handler for service worker cached data
-app.get('/internal/*', (req, res) => {
+// Checkpoint Management API Endpoints
+const { 
+    getWorkspaceCheckpointInfo,
+    restoreWorkspaceFromCheckpoint,
+    restoreWorkspaceFromLatestCheckpoint,
+    clearWorkspaceCheckpoints
+} = require('./modules/workspace');
+
+const { 
+    getPromptConfigCheckpointInfo,
+    restorePromptConfigFromCheckpoint,
+    restorePromptConfigFromLatestCheckpoint,
+    clearPromptConfigCheckpoints
+} = require('./modules/textReplacements');
+
+const { 
+    getMetadataCheckpointInfo,
+    createMetadataCheckpoint,
+    restoreMetadataFromCheckpoint,
+    restoreMetadataFromLatestCheckpoint,
+    clearMetadataCheckpoints,
+    verifyMetadataDatabaseIntegrity
+} = require('./modules/metadataDatabase');
+
+const { 
+    getChatCheckpointInfo,
+    createChatCheckpoint,
+    restoreChatFromCheckpoint,
+    restoreChatFromLatestCheckpoint,
+    clearChatCheckpoints,
+    verifyChatDatabaseIntegrity
+} = require('./modules/chatDatabase');
+
+// Get checkpoint status for all systems
+app.get('/admin/checkpoint-status', authMiddleware, (req, res) => {
     try {
-        res.setHeader('Cache-Control', 'blocked, no-cache, no-store, must-revalidate, private, max-age=0');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-        res.setHeader('Content-Type', 'application/json');
+        // Check if user is admin (not readonly)
+        if (req.session.userType !== 'admin') {
+            return res.status(403).json({ 
+                success: false, error: 'Admin access required to view checkpoint status' 
+            });
+        }
+
+        const status = {
+            workspaces: getWorkspaceCheckpointInfo(),
+            promptConfig: getPromptConfigCheckpointInfo(),
+            metadata: getMetadataCheckpointInfo(),
+            chat: getChatCheckpointInfo(),
+            timestamp: Date.now()
+        };
+
         res.json({
             success: true,
-            message: 'File is missing from client cache',
-            path: req.path,
-            timestamp: Date.now()
+            status: status
         });
-        
     } catch (error) {
-        console.error('❌ Error handling internal URL:', error);
-        res.status(500).json({ success: false, error: 'Internal server error' });
+        console.error('❌ Error getting checkpoint status:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to get checkpoint status',
+            details: error.message 
+        });
     }
 });
 
-app.get('/preset/:uuid', authMiddleware, queueMiddleware, async (req, res) => {
+// Create checkpoint for specific system
+app.post('/admin/create-checkpoint', serverReadinessMiddleware, authMiddleware, (req, res) => {
+    try {
+        // Check if user is admin (not readonly)
+        if (req.session.userType !== 'admin') {
+            return res.status(403).json({ 
+                success: false, error: 'Admin access required to create checkpoints' 
+            });
+        }
+
+        const { system } = req.body;
+        if (!system) {
+            return res.status(400).json({ 
+                success: false, error: 'System type is required' 
+            });
+        }
+
+        let success = false;
+        let message = '';
+
+        switch (system) {
+            case 'metadata':
+                success = createMetadataCheckpoint();
+                message = success ? 'Metadata checkpoint created successfully' : 'Failed to create metadata checkpoint';
+                break;
+            case 'chat':
+                success = createChatCheckpoint();
+                message = success ? 'Chat checkpoint created successfully' : 'Failed to create chat checkpoint';
+                break;
+            default:
+                return res.status(400).json({ 
+                    success: false, error: 'Invalid system type. Supported: metadata, chat' 
+                });
+        }
+
+        res.json({
+            success: success,
+            message: message,
+            timestamp: Date.now()
+        });
+    } catch (error) {
+        console.error('❌ Error creating checkpoint:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to create checkpoint',
+            details: error.message 
+        });
+    }
+});
+
+// Restore from specific checkpoint
+app.post('/admin/restore-checkpoint', serverReadinessMiddleware, authMiddleware, (req, res) => {
+    try {
+        // Check if user is admin (not readonly)
+        if (req.session.userType !== 'admin') {
+            return res.status(403).json({ 
+                success: false, error: 'Admin access required to restore checkpoints' 
+            });
+        }
+
+        const { system, checkpointFilename } = req.body;
+        if (!system || !checkpointFilename) {
+            return res.status(400).json({ 
+                success: false, error: 'System type and checkpoint filename are required' 
+            });
+        }
+
+        let success = false;
+        let message = '';
+
+        switch (system) {
+            case 'workspaces':
+                success = restoreWorkspaceFromCheckpoint(checkpointFilename);
+                message = success ? 'Workspaces restored successfully' : 'Failed to restore workspaces';
+                break;
+            case 'promptConfig':
+                success = restorePromptConfigFromCheckpoint(checkpointFilename);
+                message = success ? 'Prompt config restored successfully' : 'Failed to restore prompt config';
+                break;
+            case 'metadata':
+                success = restoreMetadataFromCheckpoint(checkpointFilename);
+                message = success ? 'Metadata database restored successfully' : 'Failed to restore metadata database';
+                break;
+            case 'chat':
+                success = restoreChatFromCheckpoint(checkpointFilename);
+                message = success ? 'Chat database restored successfully' : 'Failed to restore chat database';
+                break;
+            default:
+                return res.status(400).json({ 
+                    success: false, error: 'Invalid system type. Supported: workspaces, promptConfig, metadata, chat' 
+                });
+        }
+
+        res.json({
+            success: success,
+            message: message,
+            timestamp: Date.now()
+        });
+    } catch (error) {
+        console.error('❌ Error restoring checkpoint:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to restore checkpoint',
+            details: error.message 
+        });
+    }
+});
+
+// Restore from latest checkpoint
+app.post('/admin/restore-latest-checkpoint', serverReadinessMiddleware, authMiddleware, (req, res) => {
+    try {
+        // Check if user is admin (not readonly)
+        if (req.session.userType !== 'admin') {
+            return res.status(403).json({ 
+                success: false, error: 'Admin access required to restore latest checkpoints' 
+            });
+        }
+
+        const { system } = req.body;
+        if (!system) {
+            return res.status(400).json({ 
+                success: false, error: 'System type is required' 
+            });
+        }
+
+        let success = false;
+        let message = '';
+
+        switch (system) {
+            case 'workspaces':
+                success = restoreWorkspaceFromLatestCheckpoint();
+                message = success ? 'Workspaces restored from latest checkpoint' : 'Failed to restore workspaces from latest checkpoint';
+                break;
+            case 'promptConfig':
+                success = restorePromptConfigFromLatestCheckpoint();
+                message = success ? 'Prompt config restored from latest checkpoint' : 'Failed to restore prompt config from latest checkpoint';
+                break;
+            case 'metadata':
+                success = restoreMetadataFromLatestCheckpoint();
+                message = success ? 'Metadata database restored from latest checkpoint' : 'Failed to restore metadata database from latest checkpoint';
+                break;
+            case 'chat':
+                success = restoreChatFromLatestCheckpoint();
+                message = success ? 'Chat database restored from latest checkpoint' : 'Failed to restore chat database from latest checkpoint';
+                break;
+            default:
+                return res.status(400).json({ 
+                    success: false, error: 'Invalid system type. Supported: workspaces, promptConfig, metadata, chat' 
+                });
+        }
+
+        res.json({
+            success: success,
+            message: message,
+            timestamp: Date.now()
+        });
+    } catch (error) {
+        console.error('❌ Error restoring latest checkpoint:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to restore latest checkpoint',
+            details: error.message 
+        });
+    }
+});
+
+// Clear checkpoints for specific system
+app.post('/admin/clear-checkpoints', serverReadinessMiddleware, authMiddleware, (req, res) => {
+    try {
+        // Check if user is admin (not readonly)
+        if (req.session.userType !== 'admin') {
+            return res.status(403).json({ 
+                success: false, error: 'Admin access required to clear checkpoints' 
+            });
+        }
+
+        const { system } = req.body;
+        if (!system) {
+            return res.status(400).json({ 
+                success: false, error: 'System type is required' 
+            });
+        }
+
+        let success = false;
+        let message = '';
+
+        switch (system) {
+            case 'workspaces':
+                success = clearWorkspaceCheckpoints();
+                message = success ? 'Workspace checkpoints cleared successfully' : 'Failed to clear workspace checkpoints';
+                break;
+            case 'promptConfig':
+                success = clearPromptConfigCheckpoints();
+                message = success ? 'Prompt config checkpoints cleared successfully' : 'Failed to clear prompt config checkpoints';
+                break;
+            case 'metadata':
+                success = clearMetadataCheckpoints();
+                message = success ? 'Metadata checkpoints cleared successfully' : 'Failed to clear metadata checkpoints';
+                break;
+            case 'chat':
+                success = clearChatCheckpoints();
+                message = success ? 'Chat checkpoints cleared successfully' : 'Failed to clear chat checkpoints';
+                break;
+            default:
+                return res.status(400).json({ 
+                    success: false, error: 'Invalid system type. Supported: workspaces, promptConfig, metadata, chat' 
+                });
+        }
+
+        res.json({
+            success: success,
+            message: message,
+            timestamp: Date.now()
+        });
+    } catch (error) {
+        console.error('❌ Error clearing checkpoints:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to clear checkpoints',
+            details: error.message 
+        });
+    }
+});
+
+// Verify database integrity
+app.get('/admin/verify-database-integrity', authMiddleware, (req, res) => {
+    try {
+        // Check if user is admin (not readonly)
+        if (req.session.userType !== 'admin') {
+            return res.status(403).json({ 
+                success: false, error: 'Admin access required to verify database integrity' 
+            });
+        }
+
+        const { system } = req.query;
+        if (!system) {
+            return res.status(400).json({ 
+                success: false, error: 'System type is required' 
+            });
+        }
+
+        let integrity = false;
+        let message = '';
+
+        switch (system) {
+            case 'metadata':
+                integrity = verifyMetadataDatabaseIntegrity();
+                message = integrity ? 'Metadata database integrity verified' : 'Metadata database integrity check failed';
+                break;
+            case 'chat':
+                integrity = verifyChatDatabaseIntegrity();
+                message = integrity ? 'Chat database integrity verified' : 'Chat database integrity check failed';
+                break;
+            default:
+                return res.status(400).json({ 
+                    success: false, error: 'Invalid system type. Supported: metadata, chat' 
+                });
+        }
+
+        res.json({
+            success: integrity,
+            message: message,
+            timestamp: Date.now()
+        });
+    } catch (error) {
+        console.error('❌ Error verifying database integrity:', error);
+        res.status(500).json({ 
+            success: false,
+            error: 'Failed to verify database integrity',
+            details: error.message 
+        });
+    }
+});*/
+
+app.get('/preset/:uuid', serverReadinessMiddleware, queueMiddleware, async (req, res) => {
     try {
         res.setHeader('Cache-Control', 'realtime, no-cache, no-store, must-revalidate, private, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
-        if (req.userType !== 'admin') {
-            return res.status(403).json({ success: false, error: 'Non-Administrator Login: This operation is not allowed for non-administrator users' });
-        }
+        
         const currentPromptConfig = loadPromptConfig();
         // Find preset by UUID instead of name
-        const p = Object.entries(currentPromptConfig.presets).find(([key, preset]) => preset.uuid === req.params.uuid).map(p => ({...p[1], name: p[0]}));
-        if (!p) {
+        const foundPreset = Object.entries(currentPromptConfig.presets).find(([key, preset]) => preset.uuid === req.params.uuid);
+        if (!foundPreset) {
             return res.status(404).json({ success: false, error: 'Preset not found' });
         }
+        const p = {...foundPreset[1], name: foundPreset[0]};
         const opts = await buildOptions(p, null, req.query);
         // Use target_workspace from preset if no workspace specified (for REST API calls)
         const workspaceId = req?.query?.workspace || p?.target_workspace || 'default';
@@ -2156,9 +2693,7 @@ app.get('/preset/:uuid', authMiddleware, queueMiddleware, async (req, res) => {
         res.status(500).json({ success: false, error: e.message });
     }
 });
-
-// Image reroll endpoint
-app.post('/reroll/:filename', authMiddleware, queueMiddleware, async (req, res) => {
+app.get('/reroll/:filename', serverReadinessMiddleware, authMiddleware, queueMiddleware, async (req, res) => {
     try {
         res.setHeader('Cache-Control', 'realtime, no-cache, no-store, must-revalidate, private, max-age=0');
         res.setHeader('Pragma', 'no-cache');
@@ -2229,31 +2764,8 @@ app.post('/reroll/:filename', authMiddleware, queueMiddleware, async (req, res) 
     }
 });
 
-// Initialize cache at startup
-async function initializeCache() {
-    await syncPreviews();
-
-    // Initialize account data
-    await initializeAccountData();
-    
-    // Initialize cache data
-    await initializeCacheData(true);
-    
-    // Initialize chat database
-    initializeChatDatabase();
-    
-    // Initialize Director database
-    initializeDirectorDatabase();
-    
-    // Set up periodic refreshes
-    setInterval(() => initializeAccountData(), ACCOUNT_DATA_REFRESH_INTERVAL); // Check every 4 hours
-    setInterval(() => refreshBalance(), BALANCE_REFRESH_INTERVAL); // Check every 15 minutes
-    setInterval(() => initializeCacheData(), CACHE_REFRESH_INTERVAL); // Check every 5 minutes
-    setInterval(() => cleanupSecurityData(), SECURITY_CONFIG.CLEANUP_INTERVAL_MS); // Cleanup every hour
-}
-
 // Test bias adjustment endpoint
-app.post('/test-bias-adjustment', async (req, res) => {
+app.post('/test-bias-adjustment', serverReadinessMiddleware, async (req, res) => {
     try {
         const { image_source, target_width, target_height, bias } = req.body;
         
@@ -2296,6 +2808,33 @@ app.post('/test-bias-adjustment', async (req, res) => {
     }
 });
 
+// Initialize cache at startup
+async function initializeCache() {
+    updateServerStage('syncing_previews');
+    await syncPreviews();
+
+    updateServerStage('account_init');
+    // Initialize account data
+    await initializeAccountData();
+    
+    updateServerStage('cache_init');
+    // Initialize cache data
+    await initializeCacheData(true);
+    
+    updateServerStage('database_init');
+    // Initialize chat database
+    initializeChatDatabase();
+    
+    // Initialize Director database
+    initializeDirectorDatabase();
+    
+    // Set up periodic refreshes
+    setInterval(() => initializeAccountData(), ACCOUNT_DATA_REFRESH_INTERVAL); // Check every 4 hours
+    setInterval(() => refreshBalance(), BALANCE_REFRESH_INTERVAL); // Check every 15 minutes
+    setInterval(() => initializeCacheData(), CACHE_REFRESH_INTERVAL); // Check every 5 minutes
+    setInterval(() => cleanupSecurityData(), SECURITY_CONFIG.CLEANUP_INTERVAL_MS); // Cleanup every hour
+}
+
 // Cache save scheduling function
 function scheduleCacheSave() {
     if (tagSuggestionsCache.isDirty) {
@@ -2316,12 +2855,6 @@ const wsMessageHandlers = new WebSocketMessageHandlers({
     reloadCacheData: () => initializeCacheData(true)
 });
 
-// Development Bridge Server - will be initialized in the startup function
-let devBridgeServer = null;
-
-// Unix Socket Communication - will be initialized in the startup function
-let unixSocketCommunication = null;
-
 // Set context with all required functions
 setImageGenContext({
     client,
@@ -2340,8 +2873,6 @@ setUpscaleContext({
 
 // Export global cache data for websocket handlers
 module.exports.globalCacheData = globalCacheData;
-
-// Export security maps for websocket handlers
 global.blockedIPs = blockedIPs;
 global.suspiciousIPs = suspiciousIPs;
 global.invalidURLAttempts = invalidURLAttempts;
@@ -2372,6 +2903,13 @@ function clearTempDownloads() {
         console.warn('⚠️ Failed to clear temp downloads:', error.message);
     }
 }
+
+/*
+// Development Bridge Server - will be initialized in the startup function
+let devBridgeServer = null;
+
+// Unix Socket Communication - will be initialized in the startup function
+let unixSocketCommunication = null;
 
 // Development Bridge API endpoints
 if (config.enable_dev) {
@@ -2837,11 +3375,20 @@ async function handleSendCommand(data) {
         clientId: targetClientId,
         timestamp: Date.now()
     };
-}
+}*/
 
-// Start server
+// Start server with early readiness tracking
 (async () => {
-    console.log('🚀 Initializing cache... (Server unavailable until cache is initialized)');
+    // Start server early to accept connections and provide status updates
+    updateServerStage('initializing');
+    
+    server.listen(config.port, () => {
+        console.log(`🚀 Server listening on port ${config.port} (initializing...)`);
+    });
+    
+    // Initialize cache
+    updateServerStage('cache_init');
+    console.log('🚀 Initializing cache... (Server available for status checks)');
     await initializeCache();
     
     // Clear temp downloads on startup
@@ -2856,34 +3403,8 @@ async function handleSendCommand(data) {
         console.log('⚠️ Server will continue without sprite sheet, it will be generated on first login access');
     }
     
-    // Initialize Development Bridge Server FIRST (before main WebSocket server)
-    if (config.enable_dev) {
-        const DevBridgeServer = require('./modules/devBridge');
-        devBridgeServer = new DevBridgeServer(config);
-        console.log('🔧 Development Bridge enabled');
-        
-                    // Initialize Unix Socket Communication
-            unixSocketCommunication = new UnixSocketCommunication({
-                socketPath: config.unixSocketPath
-            });
-            
-            // Setup Unix socket message handlers
-            unixSocketCommunication.on('message', async (message, socket) => {
-                try {
-                    await handleUnixSocketMessage(message, socket);
-                } catch (error) {
-                    console.error('❌ Error handling Unix socket message:', error);
-                    // Send error response back to client
-                    unixSocketCommunication.sendResponseToClient(socket, message.id, null, error.message, false);
-                }
-            });
-            
-            // Start Unix socket server
-            await unixSocketCommunication.startServer();
-            console.log('🔗 Unix Socket Communication enabled');
-    }
-
-    // Initialize WebSocket server with session store and message handler
+    // Initialize WebSocket server
+    updateServerStage('websocket_init');
     const wsServer = new WebSocketServer(server, sessionStore, async (ws, message, clientInfo, wsServer) => {
         await wsMessageHandlers.handleMessage(ws, message, clientInfo, wsServer);
     });
@@ -2928,9 +3449,9 @@ async function handleSendCommand(data) {
         });
     });
 
-    server.listen(config.port, () => {
-        console.log(`🚀 Server running on port ${config.port}`);
-    });
+    // Server is now fully ready
+    updateServerStage('ready', true);
+    console.log(`✅ Server fully ready on port ${config.port}`);
 })();
 
 // Graceful shutdown handling

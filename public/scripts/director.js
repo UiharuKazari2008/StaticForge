@@ -1,3 +1,9 @@
+// Global dryrun variable - set to true in console to enable dryrun mode
+// Usage: window.directorDryrun = true;
+// This will make all director requests use dryrun mode, saving request data to dryrun_output.json
+// and returning mock responses without making actual API calls
+window.directorDryrun = false;
+
 // Director Class - Encapsulates all director functionality
 class Director {
     constructor() {
@@ -6,6 +12,10 @@ class Director {
         this.currentSession = null;
         this.currentView = 'newSession';
         this.autoGenerateEnabled = false;
+        this.messageFilter = 'all'; // 'all', 'messages', 'quotes'
+
+        // Live search configuration
+        this.enableLiveSearch = true; // Enable live search for character/series identification
 
         // Performance optimization: Cache DOM elements
         this._domCache = {};
@@ -19,10 +29,13 @@ class Director {
         this._renderSessionsTimeout = null;
         this._renderMessagesTimeout = null;
 
+        // localStorage keys
+        this.LAST_SESSION_KEY = 'staticforge_director_last_session';
+
         // Director actions
         this.directorActions = [
-            { value: 'change', name: 'Change', icon: 'fas fa-edit', placeholder: 'Modify aspects of the prompt' },
-            { value: 'efficiency', name: 'Efficiency', icon: 'fas fa-chart-line', placeholder: 'Analyze and fix the prompt for efficiency (add original intent)' },
+            { value: 'change', name: 'Edit', icon: 'fas fa-edit', placeholder: 'Modify aspects of the prompt' },
+            { value: 'efficiency', name: 'Analyse', icon: 'fas fa-chart-line', placeholder: 'Analyse the prompt for effectiveness' },
             { value: 'dialog', name: 'Dialog', icon: 'fas fa-comments', placeholder: 'Listen in to the image (enter desires)' },
            /*  { value: 'conversation', name: 'Conversation', icon: 'fas fa-comment-dots', placeholder: 'Start a conversation with the character' }, */
         ];
@@ -44,17 +57,19 @@ class Director {
 
             // New session elements
             directorMenuBtn: 'directorMenuBtn',
-            directorMenuBtnChat: 'directorMenuBtnChat',
             directorCloseOverlayBtn: 'directorCloseOverlayBtn',
             directorModeSliderContainer: 'directorModeSliderContainer',
             directorUserIntent: 'directorUserIntent',
+            directorImageSelectBtn: 'directorImageSelectBtn',
+            directorImageRemoveBtn: 'directorImageRemoveBtn',
+            directorImageFileInput: 'directorImageFileInput',
             directorMaxResolutionBtn: 'directorMaxResolutionBtn',
             directorCreateSessionBtn: 'directorCreateSessionBtn',
             directorNewSessionMessages: 'directorNewSessionMessages',
 
             // Chat elements
             directorSessionTitle: 'directorSessionTitle',
-            directorDeleteSessionBtn: 'directorDeleteSessionBtn',
+            directorMessageFilterGroup: 'directorMessageFilterGroup',
             directorAutoGenerateBtn: 'directorAutoGenerateBtn',
             directorChatMessages: 'directorChatMessages',
             directorActionsDropdown: 'directorActionsDropdown',
@@ -70,6 +85,14 @@ class Director {
             directorSessionPreview: 'directorSessionPreview',
             directorSessionPreviewExpanded: 'directorSessionPreviewExpanded',
             directorSessionPreviewLarge: 'directorSessionPreviewLarge',
+
+            // Common header elements
+            directorCommonHeader: 'directorCommonHeader',
+            directorHeaderTitle: 'directorHeaderTitle',
+            directorHeaderTitleSessions: 'directorHeaderTitleSessions',
+            directorSessionPreviewContainer: 'directorSessionPreviewContainer',
+            directorSessionOverlayActions: 'directorSessionOverlayActions',
+            directorHeaderActions: 'directorHeaderActions',
 
         };
 
@@ -93,6 +116,7 @@ class Director {
     async init() {
         this.setupDirectorDropdowns();
         this.setupDirectorEventListeners();
+        this.setupDirectorContextMenus();
 
         // Set initial action state
         this.selectDirectorAction('change');
@@ -179,6 +203,148 @@ class Director {
         return this.directorActions.find(a => a.name === selectedText)?.value || 'change';
     }
     
+    // Setup context menus
+    setupDirectorContextMenus() {
+        // Create context menu configuration for director sessions
+        const directorSessionContextConfig = {
+            sections: [
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            text: 'Delete Session',
+                            icon: 'fas fa-trash-alt',
+                            action: 'director-delete-session',
+                            className: 'danger'
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Store context menu configuration for later use
+        this.directorSessionContextConfig = directorSessionContextConfig;
+
+        // Set up action handlers
+        this.setupDirectorContextMenuHandlers();
+    }
+
+    // Setup context menu action handlers
+    setupDirectorContextMenuHandlers() {
+        document.addEventListener('contextMenuAction', (event) => {
+            const { action, target } = event.detail;
+            
+            // Find the session item that was right-clicked
+            const sessionItem = target.closest('.director-session-item');
+            if (!sessionItem) {
+                return;
+            }
+
+            const sessionId = sessionItem.dataset.sessionId;
+            let session = this.directorSessions.find(s => s.id === sessionId);
+            if (!session) {
+                // Try converting sessionId to number
+                const numericSessionId = parseInt(sessionId);
+                session = this.directorSessions.find(s => s.id === numericSessionId);
+            }
+            
+            if (!session) {
+                return;
+            }
+
+            switch (action) {
+                case 'director-delete-session':
+                    this.deleteSessionFromContextMenu(session);
+                    break;
+            }
+        });
+    }
+
+    // Delete session (context menu version)
+    async deleteSessionFromContextMenu(session) {
+        if (typeof window.showConfirmationDialog !== 'function') {
+            return;
+        }
+
+        try {
+            const result = await window.showConfirmationDialog(
+                `Are you sure you want to delete the session "${session.name}"?`,
+                [
+                    { text: 'Delete', value: true, className: 'btn-primary', icon: 'fas fa-trash' },
+                    { text: 'Cancel', value: false, className: 'btn-secondary' }
+                ]
+            );
+            const isCurrentSession = this.currentSession && this.currentSession.id === session.id;
+
+            if (result) {
+                if (isCurrentSession) {
+                    this.showNewSession();
+                }
+
+                // Send WebSocket request to delete session
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    window.wsClient.send({
+                        type: 'director_delete_session',
+                        requestId: Date.now().toString(),
+                        sessionId: session.id
+                    });
+                }
+            }
+        } catch (error) {
+            return;
+        }
+    }
+
+    // Set message filter
+    setMessageFilter(filter) {
+        this.messageFilter = filter;
+        
+        // Update the filter group data attribute
+        if (this.directorMessageFilterGroup) {
+            this.directorMessageFilterGroup.dataset.filter = filter;
+        }
+        
+        // Update active button
+        const buttons = this.directorMessageFilterGroup?.querySelectorAll('.gallery-toggle-btn');
+        if (buttons) {
+            buttons.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.filter === filter);
+            });
+        }
+        
+        // Apply filter to current messages
+        this.applyMessageFilter();
+    }
+
+    // Apply message filter to current messages
+    applyMessageFilter() {
+        if (!this.directorChatMessages) return;
+        const messages = this.directorChatMessages.querySelectorAll('.director-message, .director-message-captions');
+        
+        messages.forEach(message => {
+            let shouldShow = true;
+            
+            switch (this.messageFilter) {
+                case 'messages':
+                    shouldShow = message.classList.contains('director-message');
+                    break;
+                case 'quotes':
+                    shouldShow = message.classList.contains('director-message-captions') || message.classList.contains('user');
+                    break;
+                case 'all':
+                default:
+                    shouldShow = true;
+                    break;
+            }
+            
+            if (shouldShow) {
+                message.classList.remove('hidden');
+            } else {
+                message.classList.add('hidden');
+            }
+        });
+    }
+
     // Setup event listeners
     setupDirectorEventListeners() {
         // Director toggle button
@@ -189,10 +355,7 @@ class Director {
 
         // Menu buttons
         if (this.directorMenuBtn) {
-        this.directorMenuBtn.addEventListener('click', () => this.toggleSessionOverlay());
-        }
-        if (this.directorMenuBtnChat) {
-            this.directorMenuBtnChat.addEventListener('click', () => this.toggleSessionOverlay());
+            this.directorMenuBtn.addEventListener('click', () => this.toggleSessionOverlay());
         }
 
         // Close overlay button
@@ -215,9 +378,6 @@ class Director {
 
 
         // Chat buttons
-        if (this.directorDeleteSessionBtn) {
-        this.directorDeleteSessionBtn.addEventListener('click', () => this.deleteSession());
-        }
         if (this.directorSendBtn) {
             this.directorSendBtn.addEventListener('click', () => this.sendMessage());
         }
@@ -250,6 +410,16 @@ class Director {
                 this.updateIndicator(this.directorHighThinkingToggleBtn, !isActive);
             });
         }
+
+        // Message filter toggle
+        if (this.directorMessageFilterGroup) {
+            this.directorMessageFilterGroup.addEventListener('click', (e) => {
+                const button = e.target.closest('.gallery-toggle-btn');
+                if (button) {
+                    this.setMessageFilter(button.dataset.filter);
+                }
+            });
+        }
         }
 
         // Auto-expand textarea
@@ -260,6 +430,25 @@ class Director {
         if (this.directorUserIntent) {
             this.directorUserIntent.addEventListener('input', () => this.autoExpandTextarea());
             this.directorUserIntent.addEventListener('focus', () => this.autoExpandTextarea());
+        }
+
+        // Image selection functionality
+        if (this.directorImageSelectBtn) {
+            this.directorImageSelectBtn.addEventListener('click', () => {
+                this.directorImageFileInput.click();
+            });
+        }
+
+        if (this.directorImageRemoveBtn) {
+            this.directorImageRemoveBtn.addEventListener('click', () => {
+                this.removeSelectedImage();
+            });
+        }
+
+        if (this.directorImageFileInput) {
+            this.directorImageFileInput.addEventListener('change', (e) => {
+                this.handleImageSelection(e);
+            });
         }
 
         // Attach mode selection event listeners
@@ -274,6 +463,9 @@ class Director {
 
         if (!modeSliderContainer) return;
 
+        // Update button disabled states based on image selection
+        this.updateModeButtonStates();
+
         // Update data attribute
         modeSliderContainer.setAttribute('data-active', mode);
 
@@ -286,6 +478,9 @@ class Director {
                 button.classList.remove('active');
             }
         });
+
+        // Show/hide image selection button based on mode
+        this.updateImageSelectionVisibility(mode);
 
         // Re-render welcome message with updated mode content
         this.renderWelcomeMessage();
@@ -307,6 +502,145 @@ class Director {
         textarea.style.height = Math.min(Math.max(scrollHeight, minHeight), maxHeight) + 'px';
     }
 
+    // Update image selection button visibility based on mode
+    updateImageSelectionVisibility(mode) {
+        if (this.directorImageSelectBtn) {
+            if (mode === 'analyse') {
+                this.directorImageSelectBtn.classList.remove('hidden');
+            } else {
+                this.directorImageSelectBtn.classList.add('hidden');
+            }
+        }
+        
+        // Only hide remove button if no image is selected
+        if (this.directorImageRemoveBtn && !this.selectedImageData) {
+            this.directorImageRemoveBtn.classList.add('hidden');
+        }
+    }
+
+    // Update mode button disabled states based on image selection
+    updateModeButtonStates() {
+        const modeSliderContainer = this.directorModeSliderContainer ||
+                                   document.getElementById('directorModeSliderContainer');
+        
+        if (!modeSliderContainer) return;
+
+        const buttons = modeSliderContainer.querySelectorAll('.mode-slider-btn');
+        buttons.forEach(button => {
+            const mode = button.getAttribute('data-mode');
+            
+            if (this.selectedImageData) {
+                // When image is selected, disable all buttons except Analyse
+                if (mode === 'analyse') {
+                    button.disabled = false;
+                } else {
+                    button.disabled = true;
+                }
+            } else {
+                // When no image is selected, enable all buttons
+                button.disabled = false;
+            }
+        });
+    }
+
+    // Handle image selection for Create mode
+    async handleImageSelection(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            showGlassToast('error', null, 'Please select a valid image file.');
+            return;
+        }
+
+        // Validate file size (max 10MB)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+            showGlassToast('error', null, 'Image file is too large. Maximum size is 10MB.');
+            return;
+        }
+
+        try {
+            // Show loading state
+            showGlassToast('info', null, 'Processing image...');
+
+            // Convert to base64
+            const base64 = await this.fileToBase64(file);
+            
+            // Store the selected image data
+            this.selectedImageData = {
+                file: file,
+                base64: base64,
+                filename: file.name,
+                mimeType: file.type
+            };
+
+            // Update button to show image is selected using indicator system
+            if (this.directorImageSelectBtn) {
+                this.updateIndicator(this.directorImageSelectBtn, true);
+                this.directorImageSelectBtn.title = `Selected: ${file.name}`;
+            }
+
+            // Show remove button
+            if (this.directorImageRemoveBtn) {
+                this.directorImageRemoveBtn.classList.remove('hidden');
+                this.directorImageRemoveBtn.title = `Remove: ${file.name}`;
+            }
+
+            // Automatically switch to Analyse mode when image is selected
+            this.setActiveMode('analyse');
+
+            showGlassToast('success', null, `Image "${file.name}" selected. Switched to Analyse mode.`);
+
+        } catch (error) {
+            console.error('Error processing image:', error);
+            showGlassToast('error', null, 'Failed to process image. Please try again.');
+        }
+    }
+
+    // Convert file to base64
+    fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => {
+                // Remove the data URL prefix to get just the base64 data
+                const base64 = reader.result.split(',')[1];
+                resolve(base64);
+            };
+            reader.onerror = error => reject(error);
+        });
+    }
+
+    // Remove selected image
+    removeSelectedImage() {
+        // Clear selected image data
+        this.selectedImageData = null;
+
+        // Reset image selection button indicator
+        if (this.directorImageSelectBtn) {
+            this.updateIndicator(this.directorImageSelectBtn, false);
+            this.directorImageSelectBtn.title = '';
+        }
+
+        // Hide remove button
+        if (this.directorImageRemoveBtn) {
+            this.directorImageRemoveBtn.classList.add('hidden');
+            this.directorImageRemoveBtn.title = '';
+        }
+
+        // Clear file input
+        if (this.directorImageFileInput) {
+            this.directorImageFileInput.value = '';
+        }
+
+        // Update mode button states to re-enable all buttons
+        this.updateModeButtonStates();
+
+        showGlassToast('info', null, 'Image removed. You can now switch to other modes.');
+    }
+
     // View management
     toggleDirector() {
         const isVisible = !this.directorContainer.classList.contains('hidden');
@@ -319,16 +653,111 @@ class Director {
 
     async showDirector() {
         if (this.directorContainer) {
+            // First remove hidden class to make element visible
             this.directorContainer.classList.remove('hidden');
+            this.directorContainer.classList.remove('director-closed');
+
+            // Show common header
+            if (this.directorCommonHeader) {
+                this.directorCommonHeader.classList.remove('hidden');
+            }
+
+            // Show auto generate button when director is open
+            if (this.directorAutoGenerateBtn) {
+                this.directorAutoGenerateBtn.classList.remove('hidden');
+            }
+
+            // Small delay to allow browser to process display change
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            // Then add open class to start animation
+            this.directorContainer.classList.add('director-open');
         }
         this.updateIndicator(this.directorBtn, true);
+
+        // Check for director session ID in button dataset first
+        const directorBtn = document.getElementById('directorBtn');
+        if (directorBtn && directorBtn.dataset.directorSessionId) {
+            const directorSessionId = directorBtn.dataset.directorSessionId;
+            
+            // Try to find the session in current sessions list first
+            let targetSession = this.directorSessions.find(session => session.id === directorSessionId);
+            
+            if (targetSession) {
+                await this.showSessionChat(targetSession);
+                return;
+            } else {
+                // Session not in current list, try to load it from server
+                try {
+                    // Send WebSocket request to get the director session
+                    if (window.wsClient && window.wsClient.isConnected()) {
+                        const requestId = Date.now().toString();
+                        window.wsClient.send({
+                            type: 'director_get_session',
+                            requestId: requestId,
+                            sessionId: directorSessionId
+                        });
+
+                        // Set up a one-time listener for the response
+                        const handleResponse = (responseData) => {
+                            if (responseData.data && responseData.data.success) {
+                                const session = responseData.data.session;
+                                // Show the director interface with the session
+                                this.showSessionChat(session);
+                            } else {
+                                // Fallback to new session
+                                this.showNewSession();
+                            }
+                            // Remove the listener after handling the response
+                            window.wsClient.off('director_get_session_response', handleResponse);
+                        };
+
+                        // Listen for the response
+                        window.wsClient.on('director_get_session_response', handleResponse);
+                        return;
+                    }
+                } catch (error) {
+                    console.error('❌ Error loading director session from server:', error);
+                }
+            }
+        }
+
+        // Try to load the last opened session, fallback to new session
+        const lastSessionId = localStorage.getItem(this.LAST_SESSION_KEY);
+        if (lastSessionId) {
+            const lastSession = this.directorSessions.find(session => session.id === lastSessionId);
+            if (lastSession) {
+                await this.showSessionChat(lastSession);
+                return;
+            }
+        }
+
+        // Fallback to new session if no valid last session found
         await this.showNewSession();
     }
 
     hideDirector() {
         if (this.directorContainer) {
-            this.directorContainer.classList.add('hidden');
+            // Start the closing animation
+            this.directorContainer.classList.remove('director-open');
+            this.directorContainer.classList.add('director-closed');
+
+            // Add hidden class after animation completes
+            setTimeout(() => {
+                this.directorContainer.classList.add('hidden');
+            }, 400); // Match the CSS transition duration
         }
+        
+        // Hide common header
+        if (this.directorCommonHeader) {
+            this.directorCommonHeader.classList.add('hidden');
+        }
+
+        // Hide auto generate button when director is closed
+        if (this.directorAutoGenerateBtn) {
+            this.directorAutoGenerateBtn.classList.add('hidden');
+        }
+        
         this.updateIndicator(this.directorBtn, false);
     }
     
@@ -349,7 +778,10 @@ class Director {
         if (this.directorNewSession) {
             this.directorNewSession.classList.remove('hidden');
         }
+        this.updateHeaderForView('newSession');
         this.updateIndicator(this.directorMaxResolutionBtn, false);
+        this.updateIndicator(this.directorAddBaseImageToggleBtn, true);
+        this.updateIndicator(this.directorHighThinkingToggleBtn, true);
         this.renderWelcomeMessage();
         this.initializeScrollbars();
     }
@@ -358,13 +790,25 @@ class Director {
         this.currentView = 'sessionChat';
         this.currentSession = session;
         window.currentSession = session; // Keep global reference for compatibility
+
+        // Store the last opened session in localStorage
+        if (session && session.id) {
+            localStorage.setItem(this.LAST_SESSION_KEY, session.id);
+        }
+
         this.hideAllViews();
         this.closeSessionOverlay(); // Close overlay when switching views
         if (this.directorSessionChat) {
             this.directorSessionChat.classList.remove('hidden');
         }
+        this.updateHeaderForView('sessionChat');
         if (this.directorSessionTitle) {
-            this.directorSessionTitle.textContent = session.name;
+            const titleText = this.directorSessionTitle.querySelector('.director-title-text');
+            if (titleText) {
+                titleText.textContent = session.name;
+            } else {
+                this.directorSessionTitle.textContent = session.name;
+            }
         }
 
         // Set the preview images
@@ -410,6 +854,8 @@ class Director {
         if (!this.directorSessionList) return;
 
         this.directorSessionList.classList.add('hidden');
+        // Restore header for current view
+        this.updateHeaderForView(this.currentView);
         // Remove click-outside listener
         this.removeClickOutsideListener();
     }
@@ -421,7 +867,7 @@ class Director {
             // Check if click is outside the overlay
             if (this.directorSessionList && !this.directorSessionList.contains(event.target)) {
                 // Check if click is not on a menu button that opens the overlay
-                const menuButtons = [this.directorMenuBtn, this.directorMenuBtnChat].filter(btn => btn);
+                const menuButtons = [this.directorMenuBtn].filter(btn => btn);
                 const clickedOnMenuButton = menuButtons.some(btn => btn.contains(event.target));
 
                 if (!clickedOnMenuButton) {
@@ -450,6 +896,34 @@ class Director {
         if (this.directorSessionChat) {
             this.directorSessionChat.classList.add('hidden');
         }
+    }
+
+    // Toggle header elements based on current view
+    updateHeaderForView(view) {
+        if (!this.directorCommonHeader) return;
+
+        // For sessionList view, hide the common header since it has its own header
+        if (view === 'sessionList') {
+            this.directorCommonHeader.classList.add('hidden');
+            return;
+        }
+
+        // Show common header for other views
+        this.directorCommonHeader.classList.remove('hidden');
+
+        // Get all header elements with data-view attributes
+        const headerElements = this.directorCommonHeader.querySelectorAll('[data-view]');
+        
+        // Hide all elements first
+        headerElements.forEach(element => {
+            element.classList.add('hidden');
+        });
+
+        // Show elements for the current view
+        const viewElements = this.directorCommonHeader.querySelectorAll(`[data-view="${view}"]`);
+        viewElements.forEach(element => {
+            element.classList.remove('hidden');
+        });
     }
 
     renderWelcomeMessage() {
@@ -481,6 +955,16 @@ class Director {
                     'Specify the mood or style changes you want to achieve',
                     'I\'ll identify gaps, optimize weights, and enhance prompt effectiveness'
                 ]
+            },
+            create: {
+                title: 'Welcome to Image Director!',
+                description: 'I\'ll help you create a creative prompt from your text input.',
+                tips: [
+                    'Just enter your ideas or concepts in text form',
+                    'I\'ll expand and enhance your input with creative details',
+                    'I\'ll fill in missing information to create a complete prompt',
+                    'I\'ll generate an optimized prompt ready for image generation'
+                ]
             }
         };
 
@@ -502,6 +986,9 @@ class Director {
                         <!-- Mode Selection inside welcome message -->
                         <div class="director-welcome-mode-selection">
                             <div class="mode-slider-container" id="directorModeSliderContainer" data-active="${currentMode}">
+                                <button type="button" class="mode-slider-btn ${currentMode === 'create' ? 'active' : ''}" data-mode="create">
+                                    <i class="fas fa-pen-alt"></i> Create
+                                </button>
                                 <button type="button" class="mode-slider-btn ${currentMode === 'analyse' ? 'active' : ''}" data-mode="analyse">
                                     <i class="fas fa-search"></i> Analyse
                                 </button>
@@ -549,6 +1036,10 @@ class Director {
                 }
             });
         }
+
+        // Update image selection visibility and button states based on current mode
+        this.updateImageSelectionVisibility(currentMode);
+        this.updateModeButtonStates();
 
         // Re-attach mode selection event listeners after rendering
         this.attachModeSelectionListeners();
@@ -691,6 +1182,11 @@ class Director {
             </div>
         `;
 
+        // Attach context menu to this session item
+        if (window.contextMenu && this.directorSessionContextConfig) {
+            window.contextMenu.attachToElement(item, this.directorSessionContextConfig);
+        }
+
         // Store event listener for batch attachment
         eventListeners.push({
             element: item,
@@ -807,15 +1303,10 @@ class Director {
     }
     
     async createSession() {
-        const model = 'grok-4';
         const maxResolution = this.directorMaxResolutionBtn.getAttribute('data-state') === 'on';
-        const highThinking = this.directorHighThinkingToggleBtn.getAttribute('data-state') === 'on';
-        const highReason = maxResolution || highThinking;
         const modeSliderContainer = this.directorModeSliderContainer ||
                                    document.getElementById('directorModeSliderContainer');
         const sessionMode = modeSliderContainer?.getAttribute('data-active') || 'analyse';
-        const description = this.directorUserIntent ? this.directorUserIntent.value.trim() : '';
-        const prompts = this.getInputPrompt();
         let imageFilename = null;
 
         if (window.currentManualPreviewImage) {
@@ -824,55 +1315,71 @@ class Director {
                            window.currentManualPreviewImage.upscaled;
         }
 
-        if (!imageFilename) {
+        // Check if we have an image for session creation
+        if (!imageFilename && !this.selectedImageData && sessionMode !== 'create') {
             showGlassToast('error', null, 'No image available for session creation');
             return;
         }
 
         // Send WebSocket request to create session
         if (window.wsClient && window.wsClient.isConnected()) {
-            window.wsClient.send({
+            const message = {
                 type: 'director_create_session',
                 requestId: Date.now().toString(),
-                model: model,
-                maxResolution: maxResolution,
+                model: (sessionMode !== 'create' && maxResolution) ?'grok-4' : 'grok-4-fast-reasoning',
+                highReason: maxResolution,
+                maxResolution: (sessionMode === 'create') ? false : maxResolution,
                 sessionMode: sessionMode,
-                description: description,
-                inputPrompt: prompts,
-                highReason: highReason,
-                imageFilename // Get actual filename
-            });
-        } else {
-            console.warn('WebSocket not connected, using mock data');
-            // For now, create a mock session
-            const newSession = {
-                id: Date.now().toString(),
-                name: `Session ${this.directorSessions.length + 1}`,
-                model: model,
-                maxResolution: maxResolution,
-                previewImage: imageFilename,
-                createdAt: new Date().toISOString(),
-                messages: []
+                description: this.directorUserIntent ? this.directorUserIntent.value.trim() : '',
+                inputPrompt: (sessionMode === 'create' || this.selectedImageData) ? false : this.getInputPrompt(),
+                imageFilename: (sessionMode === 'create' || this.selectedImageData) ? false : imageFilename, // Get actual filename
+                vibeTransfers: (sessionMode === 'create' || this.selectedImageData) ? false : this.getVibeTransfers(),
+                baseImageData: (sessionMode === 'create' || this.selectedImageData) ? false : this.getBaseImageData(),
+                characterReference: (sessionMode === 'create' || this.selectedImageData) ? false : this.getCharacterReferenceData(),
+                dryrun: window.directorDryrun
             };
 
-            this.directorSessions = this.directorSessions || [];
-            window.directorSessions = this.directorSessions;
-            this.directorSessions.push(newSession);
-            this.renderDirectorSessions();
-            this.showSessionChat(newSession);
-        }
+            // Add selected image data for Analyse mode
+            if (sessionMode === 'analyse' && this.selectedImageData) {
+                message.selectedImageData = this.selectedImageData;
+            }
 
+            window.wsClient.send(message);
+        }
         // Reset input after successful session creation
         if (this.directorUserIntent) {
             this.directorUserIntent.value = '';
             this.autoExpandTextarea(); // Reset to minimum height
         }
+
+        // Reset selected image data
+        if (this.selectedImageData) {
+            this.removeSelectedImage();
+        }
     }
     
     async deleteSession() {
-        if (!this.currentSession) return;
-        
-        if (confirm('Are you sure you want to delete this session?')) {
+        if (!this.currentSession) return;        
+        // Check if showConfirmationDialog is available
+        if (typeof window.showConfirmationDialog !== 'function') {
+            return;
+        }
+
+        const result = await window.showConfirmationDialog(
+            `Are you sure you want to delete the session "${this.currentSession.name}"?`,
+            [
+                { text: 'Delete', value: true, className: 'btn-primary', icon: 'fas fa-trash' },
+                { text: 'Cancel', value: false, className: 'btn-secondary' }
+            ]
+        );
+
+        if (result) {
+            // Clear localStorage if this is the stored last session
+            const lastSessionId = localStorage.getItem(this.LAST_SESSION_KEY);
+            if (lastSessionId === this.currentSession.id) {
+                localStorage.removeItem(this.LAST_SESSION_KEY);
+            }
+
             // Send WebSocket request to delete session
             if (window.wsClient && window.wsClient.isConnected()) {
                 window.wsClient.send({
@@ -950,6 +1457,9 @@ class Director {
 
         // Batch add all messages at once
         this.directorChatMessages.appendChild(fragment);
+        
+        // Apply current message filter
+        this.applyMessageFilter();
 
         // Scroll to bottom
         this.scrollToBottom();
@@ -1066,27 +1576,22 @@ class Director {
                 }
 
                 // Add PrimaryFocus as subtitle if available
-                if (structuredData.PrimaryFocus) {
-                    content += `<div class="director-message-primary-focus">${this.processMarkdown(structuredData.PrimaryFocus)}</div>`;
-                }
-
-                // Add Issues as subtitle if available
-                if (structuredData.Issues) {
-                    content += `<div class="director-message-issues">${this.processMarkdown(structuredData.Issues)}</div>`;
+                if (structuredData.Description) {
+                    content += `<div class="director-message-primary-focus">${this.processMarkdown(structuredData.Description)}</div>`;
                 }
 
                 // Add expandable sections for different content types
                 let hasExpandableContent = false;
 
                 // Add Description as expandable if available
-                if (structuredData.Description) {
+                if (structuredData.PrimaryFocus) {
                     content += `
                         <div class="director-message-expandable">
-                            <button type="button" class="director-expand-button" onclick="window.directorInstance.toggleExpandable(this)">
+                            <button type="button" class="director-expand-button" onclick="window.directorInstance.toggleExpandable(this, 'description')">
                                 <i class="fas fa-chevron-down"></i> Show Description
                             </button>
                             <div class="director-expandable-content hidden">
-                                <div class="director-message-content">${this.processMarkdown(structuredData.Description)}</div>
+                                <div class="director-message-primary-focus">${this.processMarkdown(structuredData.PrimaryFocus)}</div>
                             </div>
                         </div>
                     `;
@@ -1097,7 +1602,7 @@ class Director {
                 if (structuredData.ImageDescription) {
                     content += `
                         <div class="director-message-expandable">
-                            <button type="button" class="director-expand-button" onclick="window.directorInstance.toggleExpandable(this)">
+                            <button type="button" class="director-expand-button" onclick="window.directorInstance.toggleExpandable(this, 'imageDescription')">
                                 <i class="fas fa-chevron-down"></i> Show Image Description
                             </button>
                             <div class="director-expandable-content hidden">
@@ -1108,11 +1613,26 @@ class Director {
                     hasExpandableContent = true;
                 }
 
+                // Add Issues as expandable if available
+                if (structuredData.Issues) {
+                    content += `
+                        <div class="director-message-expandable">
+                            <button type="button" class="director-expand-button" onclick="window.directorInstance.toggleExpandable(this, 'issues')">
+                                <i class="fas fa-exclamation-triangle"></i> Show Issues
+                            </button>
+                            <div class="director-expandable-content hidden">
+                                <div class="director-message-issues">${this.processMarkdown(structuredData.Issues)}</div>
+                            </div>
+                        </div>
+                    `;
+                    hasExpandableContent = true;
+                }
+
                 // Add Suggestions as expandable if available
                 if (structuredData.Suggested && Array.isArray(structuredData.Suggested) && structuredData.Suggested.length > 0) {
                     content += `
                         <div class="director-message-expandable">
-                            <button type="button" class="director-expand-button" onclick="window.directorInstance.toggleExpandable(this, true)">
+                            <button type="button" class="director-expand-button" onclick="window.directorInstance.toggleExpandable(this, 'suggestions')">
                                 <i class="fas fa-lightbulb"></i> Show Suggestions
                             </button>
                             <div class="director-expandable-content hidden">
@@ -1223,7 +1743,12 @@ class Director {
             // Check both preprocessed parsed fields and on-the-fly parsed fields
             let hasMeasurements = false;
             if (message.data && message.data.Measurements) {
-                hasMeasurements = true;
+                // Handle both old single object format and new array format
+                if (Array.isArray(message.data.Measurements)) {
+                    hasMeasurements = message.data.Measurements.length > 0;
+                } else {
+                    hasMeasurements = true;
+                }
             }
             
             // Create action buttons and indicators
@@ -1294,7 +1819,8 @@ class Director {
 
         const action = this.getSelectedDirectorAction();
         const includeBaseImage = this.directorAddBaseImageToggleBtn.getAttribute('data-state') === 'on';
-        const highThinking = this.directorHighThinkingToggleBtn.getAttribute('data-state') === 'on';
+        const fastResponse = this.directorHighThinkingToggleBtn.getAttribute('data-state') === 'on';
+        const highThinking = !fastResponse; // When fast response is OFF, use grok-4 (highReason = true)
 
         // Add user message
         const userMessage = {
@@ -1339,7 +1865,7 @@ class Director {
 
         // Send WebSocket request
         if (window.wsClient && window.wsClient.isConnected()) {
-            window.wsClient.send({
+            const message = {
                 type: 'director_send_message',
                 requestId: Date.now().toString(),
                 sessionId: this.currentSession.id,
@@ -1350,8 +1876,12 @@ class Director {
                 lastGeneratedImageFilename: lastGeneratedImageFilename,
                 inputPrompt: prompts,
                 highReason: highThinking,
-                characterReference: includeBaseImage ? this.getCharacterReferenceData() : null
-            });
+                characterReference: includeBaseImage ? this.getCharacterReferenceData() : null,
+                dryrun: window.directorDryrun,
+                enableLiveSearch: this.enableLiveSearch
+            };
+
+            window.wsClient.send(message);
         }
     }
 
@@ -1370,17 +1900,23 @@ class Director {
         };
     }
 
-    showTypingIndicator() {
+    showTypingIndicator(content = null) {
         const typingDiv = document.createElement('div');
         typingDiv.className = 'director-typing-indicator';
+        // Show only the last 200 characters of the content
+        const displayContent = content && content.length > 200 ? content.slice(-200) : content;
         typingDiv.innerHTML = `
             <div class="director-typing-dots">
                 <div class="director-typing-dot"></div>
                 <div class="director-typing-dot"></div>
                 <div class="director-typing-dot"></div>
             </div>
+            <div class="director-streaming-content">
+                ${displayContent ? `<div class="director-streaming-text">${this.formatStreamingContent(displayContent)}</div>` : ''}
+            </div>
         `;
         this.directorChatMessages.appendChild(typingDiv);
+        this.scrollToBottom();
     }
     
     hideTypingIndicator() {
@@ -1388,6 +1924,45 @@ class Director {
         if (typingIndicator) {
             typingIndicator.remove();
         }
+    }
+
+    updateTypingIndicator(content) {
+        const typingIndicator = this.directorChatMessages.querySelector('.director-typing-indicator');
+        if (typingIndicator) {
+            const contentDiv = typingIndicator.querySelector('.director-streaming-content');
+            if (contentDiv) {
+                const textDiv = contentDiv.querySelector('.director-streaming-text');
+                // Show only the last 200 characters of the content
+                const displayContent = content.length > 200 ? content.slice(-200) : content;
+                if (textDiv) {
+                    textDiv.textContent = this.formatStreamingContent(displayContent);
+                } else {
+                    // Create text div if it doesn't exist
+                    const textDiv = document.createElement('div');
+                    textDiv.className = 'director-streaming-text';
+                    textDiv.textContent = this.formatStreamingContent(displayContent);
+                    contentDiv.appendChild(textDiv);
+                }
+            }
+        } else {
+            // If typing indicator doesn't exist, create it with content
+            this.showTypingIndicator(content);
+        }
+    }
+
+    formatStreamingContent(content) {
+        // Clean up the streaming content for display
+        let formatted = content
+            .replace(/\n/g, ' ') // Replace newlines with spaces
+            .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+            .trim();
+
+        // Limit length to prevent overflow
+        if (formatted.length > 200) {
+            formatted = formatted.substring(0, 200) + '...';
+        }
+
+        return formatted;
     }
     
     addMessageToChat(data, role) {
@@ -1459,13 +2034,21 @@ class Director {
             return;
         }
 
-        // All conditions met - auto-apply the prompt
-        console.log('🔧 Auto-applying prompt from received message');
-        this.applyPromptFromMessage(prompt);
+        this.applyPromptFromMessage(prompt, message.id);
     }
 
     // Apply prompt from message data
-    applyPromptFromMessage(prompt) {
+    applyPromptFromMessage(prompt, messageId = null) {
+        // Store director session and message IDs for tracking on director button
+        if (this.currentSession && messageId) {
+            // Store the IDs as dataset values on the director button
+            const directorBtn = document.getElementById('directorBtn');
+            if (directorBtn) {
+                directorBtn.dataset.directorSessionId = this.currentSession.id;
+                directorBtn.dataset.directorMessageId = messageId;
+            }
+        }
+
         // Handle different prompt formats (same logic as applyPrompt method)
 
         // Handle new JSON format with base_input, base_uc, and chara
@@ -1495,6 +2078,20 @@ class Director {
                     autoResizeTextarea(manualUc);
                 }
 
+                // Apply quality preset setting
+                if (prompt.apply_quality_preset !== undefined) {
+                    appendQuality = prompt.apply_quality_preset;
+                    const qualityToggleBtn = document.getElementById('qualityToggleBtn');
+                    if (qualityToggleBtn) {
+                        qualityToggleBtn.setAttribute('data-state', appendQuality ? 'on' : 'off');
+                    }
+                }
+
+                // Apply UC preset setting
+                if (prompt.apply_uc_preset !== undefined) {
+                    selectUcPreset(prompt.apply_uc_preset);
+                }
+
                 // Smart character management - update existing, remove unused, add new
                 if (prompt.chara && Array.isArray(prompt.chara)) {
                     const characterItems = document.querySelectorAll('.character-prompt-item');
@@ -1503,7 +2100,6 @@ class Director {
                     // Remove characters beyond the new count
                     if (characterItems.length > newCharacterCount) {
                         for (let i = characterItems.length - 1; i >= newCharacterCount; i--) {
-                            console.log(`🗑️ Removing character at index ${i} (beyond new count)`);
                             characterItems[i].remove();
                         }
                     }
@@ -1612,10 +2208,8 @@ class Director {
             // Update existing character at the specified index
             targetCharacterItem = characterItems[characterIndex];
             targetCharacterId = targetCharacterItem.id;
-            console.log(`🔄 Updating character at index ${characterIndex}: ${characterData.name || 'Unnamed'}`);
         } else {
             // Index is beyond existing items, create new character
-            console.log(`➕ Creating new character at index ${characterIndex}: ${characterData.name || 'Unnamed'}`);
             addCharacterPrompt();
 
             // Get the newly created character prompt element
@@ -1630,9 +2224,13 @@ class Director {
                 const nameInput = targetCharacterItem.querySelector('.character-name-input');
                 if (nameInput) {
                     nameInput.value = characterData.name;
-                    // Trigger the name change event
                     nameInput.dispatchEvent(new Event('input', { bubbles: true }));
                 }
+                const placeholderElement = targetCharacterItem.querySelector('.character-name-input-placeholder');
+                if (placeholderElement) {
+                    placeholderElement.textContent = characterData.name;
+                }
+                targetCharacterItem.dataset.charaName = characterData.name;
             }
 
             // Update character prompt if provided
@@ -1776,24 +2374,28 @@ class Director {
             }
         });
 
-        // If no characters but we have base content, return the new structure
+        // Return raw prompts with compilation flags for server-side processing
         return {
             base_input: baseInput,
             base_uc: baseUc,
-            chara: chara
+            chara: chara,
+            // Include compilation flags so server knows to compile using buildOptions logic
+            append_quality: appendQuality || false,
+            append_uc: selectedUcPreset || 0,
+            model: window.manualSelectedModel || 'v4_5'
         };
     }
     
     getSessionPreviewImage(session) {
         // Generate preview image path based on image type
         if (session.filename) {
-            if (session.image_type === 'cache') {
+            if (session.image_type === 'cache' || session.image_type === 'sessions') {
                 // For cache images, use cache preview
                 return `/cache/preview/${session.filename}.webp`;
             } else {
                 // For generated images, use previews directory
                 const baseName = session.filename.split('.').slice(0, -1).join('.');
-                return `/previews/${baseName}.jpg`;
+                return `/previews/${baseName}.webp`;
             }
         }
         return '/static_images/background.jpg';
@@ -1892,25 +2494,18 @@ class Director {
                 // Reload all sessions from server to ensure session list is fully up-to-date
                 await window.directorInstance.loadDirectorSessions();
 
-                await window.directorInstance.showSessionChat(newSession);
+                await window.directorInstance.loadSessionMessages(newSession);
             }
         });
 
         // Handle Director send message response
         window.wsClient.on('director_send_message_response', (data) => {
-            console.log('📨 Director send message response received:', data);
-
-            // Hide typing indicator
             if (window.directorInstance) {
                 window.directorInstance.hideTypingIndicator();
             }
 
-            // Reload session messages to ensure we have the latest data from the server
-            // This ensures any server-side processing or updates are reflected in the UI
             if (window.directorInstance && window.currentSession) {
                 setTimeout(() => {window.directorInstance.loadSessionMessages(window.currentSession.id);}, 100);
-            } else {
-                console.warn('❌ Cannot reload session messages - missing directorInstance or currentSession');
             }
         });
         
@@ -1930,7 +2525,6 @@ class Director {
         window.wsClient.on('director_delete_session_response', async (data) => {
             if (data.data && data.data.success) {
                 if (window.directorInstance) {
-                    // Reload all sessions from server to ensure accurate list
                     await window.directorInstance.loadDirectorSessions();
                     window.directorInstance.showSessionList();
                 }
@@ -1951,6 +2545,15 @@ class Director {
             if (data.data && data.data.sessionId === window.currentSession?.id) {
                 if (window.directorInstance) {
                     window.directorInstance.hideTypingIndicator();
+                }
+            }
+        });
+
+        // Handle Director streaming updates
+        window.wsClient.on('director_streaming_update', (data) => {
+            if (data.data && data.data.sessionId === window.currentSession?.id) {
+                if (window.directorInstance) {
+                    window.directorInstance.updateTypingIndicator(data.data.fullContent);
                 }
             }
         });
@@ -1979,7 +2582,12 @@ class Director {
                     
                     // Update the session title in the UI
                     if (window.directorInstance && window.directorInstance.directorSessionTitle) {
-                        window.directorInstance.directorSessionTitle.textContent = suggestedName;
+                        const titleText = window.directorInstance.directorSessionTitle.querySelector('.director-title-text');
+                        if (titleText) {
+                            titleText.textContent = suggestedName;
+                        } else {
+                            window.directorInstance.directorSessionTitle.textContent = suggestedName;
+                        }
                     }
                     
                     // Re-render the sessions list to show updated name
@@ -2014,10 +2622,8 @@ class Director {
         // Handle Director rollback message response
         window.wsClient.on('director_rollback_message_response', (data) => {
             if (data.data && data.data.success) {
-                console.log('✅ Director rollback successful:', data.data);
                 showGlassToast('success', null, data.data.message || 'Messages rolled back successfully');
-
-                // Reload messages to reflect the changes
+                
                 if (window.directorInstance && window.currentSession) {
                     window.directorInstance.loadSessionMessages(window.currentSession.id);
                     // Ensure scroll to bottom after rollback
@@ -2029,9 +2635,6 @@ class Director {
         // Handle Director messages updated (for rollback notifications)
         window.wsClient.on('director_messages_updated', (data) => {
             if (data.data && data.data.sessionId === window.currentSession?.id) {
-                console.log('📨 Director messages updated:', data.data);
-
-                // Reload messages if this is a rollback action
                 if (data.data.action === 'rollback' && window.directorInstance && window.currentSession) {
                     window.directorInstance.loadSessionMessages(window.currentSession.id);
                     // Ensure scroll to bottom after rollback
@@ -2070,16 +2673,134 @@ class Director {
         if (message.data && message.data.Measurements) {
             measurements = message.data.Measurements;
         }
-        
-        if (!measurements) {
+
+        if (!measurements || (Array.isArray(measurements) && measurements.length === 0)) {
             console.warn('No measurements found for message:', message.id);
             return;
         }
+
         const measurementsContent = document.getElementById('measurementsContent');
-        
+
         // Clear previous content
         measurementsContent.innerHTML = '';
-        
+
+        // Handle array of character measurements
+        let characterMeasurements = measurements;
+        let allMeasurements = measurements;
+        let selectedCharacterIndex = 0;
+
+        if (Array.isArray(measurements)) {
+            // Create tabs for multiple characters
+            this.createCharacterTabs(measurements, message.data);
+            characterMeasurements = measurements[0];
+            selectedCharacterIndex = 0;
+            console.log(`📏 Showing measurements for character 0 of ${measurements.length} total characters`);
+        } else {
+            // Single character - hide tabs
+            const tabsContainer = document.getElementById('measurementsTabs');
+            if (tabsContainer) {
+                tabsContainer.classList.add('hidden');
+            }
+        }
+
+        // Check if we should use advanced handling (EmotionState present)
+        const useAdvancedHandling = characterMeasurements.EmotionState !== undefined;
+
+        if (useAdvancedHandling) {
+            // Use new advanced handling with sections
+            this.renderAdvancedMeasurements(characterMeasurements, message.data, measurementsContent, selectedCharacterIndex, allMeasurements);
+        } else {
+            // Use old handling for backwards compatibility
+            this.renderLegacyMeasurements(characterMeasurements, measurementsContent);
+        }
+
+        // Show modal
+        const measurementsModal = document.getElementById('measurementsModal');
+        measurementsModal.classList.remove('hidden');
+    }
+
+    // Create character tabs for multiple character measurements
+    createCharacterTabs(measurementsArray, fullData) {
+        const tabsContainer = document.getElementById('measurementsTabs');
+        if (!tabsContainer) return;
+
+        // Clear existing tabs
+        tabsContainer.innerHTML = '';
+
+        // Show tabs if we have multiple characters
+        if (measurementsArray.length > 1) {
+            tabsContainer.classList.remove('hidden');
+
+            measurementsArray.forEach((characterMeasurements, index) => {
+                const tab = document.createElement('div');
+                tab.className = 'measurements-tab';
+                tab.dataset.characterIndex = index;
+
+                // Try to get character name from full data or measurements
+                let characterLabel = `Character ${index + 1}`;
+
+                // Check if full data has Character field (could be array or string)
+                if (fullData && fullData.Character) {
+                    if (Array.isArray(fullData.Character)) {
+                        characterLabel = fullData.Character[index] || characterLabel;
+                    } else if (index === 0) {
+                        characterLabel = fullData.Character;
+                    }
+                }
+
+                // Fallback: try to extract from character name if it contains series info
+                if (characterLabel === `Character ${index + 1}` && characterMeasurements.Character) {
+                    characterLabel = characterMeasurements.Character.split(' (')[0]; // Remove series info
+                }
+
+                tab.textContent = characterLabel;
+                tab.addEventListener('click', () => this.switchToCharacter(index, measurementsArray, fullData));
+
+                // Set first tab as active
+                if (index === 0) {
+                    tab.classList.add('active');
+                }
+
+                tabsContainer.appendChild(tab);
+            });
+        } else {
+            tabsContainer.classList.add('hidden');
+        }
+    }
+
+    // Switch to display measurements for a specific character
+    switchToCharacter(characterIndex, measurementsArray, fullData) {
+        // Update active tab
+        const tabs = document.querySelectorAll('.measurements-tab');
+        tabs.forEach((tab, index) => {
+            if (index === characterIndex) {
+                tab.classList.add('active');
+            } else {
+                tab.classList.remove('active');
+            }
+        });
+
+        // Get the measurements for the selected character
+        const characterMeasurements = measurementsArray[characterIndex];
+        const measurementsContent = document.getElementById('measurementsContent');
+
+        // Clear previous content
+        measurementsContent.innerHTML = '';
+
+        // Check if we should use advanced handling
+        const useAdvancedHandling = characterMeasurements.EmotionState !== undefined;
+
+        if (useAdvancedHandling) {
+            // Re-render measurements for the selected character
+            this.renderAdvancedMeasurements(characterMeasurements, fullData, measurementsContent, characterIndex, measurementsArray);
+        } else {
+            // Use old handling for backwards compatibility
+            this.renderLegacyMeasurements(characterMeasurements, measurementsContent);
+        }
+    }
+
+    // Legacy measurements rendering for backwards compatibility
+    renderLegacyMeasurements(measurements, container) {
         // Create measurements grid
         const measurementsGrid = document.createElement('div');
         measurementsGrid.className = 'measurements-grid';
@@ -2156,11 +2877,2536 @@ class Director {
             measurementsGrid.appendChild(measurementItem);
         });
         
-        measurementsContent.appendChild(measurementsGrid);
+        container.appendChild(measurementsGrid);
+    }
+
+    // Advanced measurements rendering with sections and scale badges
+    renderAdvancedMeasurements(measurements, fullData, container, characterIndex = 0, allMeasurements = null) {
+        // Define measurement sections/groups
+        const sections = {
+            'Patient Information': {
+                items: ['Character', 'Age', 'Height', 'Weight', 'Species', 'HumanoidRatio'],
+                renderFunction: (data) => this.renderBasicMeasurementsSection(data)
+            },
+            'Mental State': {
+                items: ['EmotionState'],
+                renderFunction: (data) => this.renderMentalStateSection(data)
+            },
+            'Emotions': {
+                items: ['EmotionState'],
+                renderFunction: (data) => this.renderEmotionsSection(data)
+            },
+            'Physical State': {
+                items: ['Posture'],
+                renderFunction: (data) => this.renderPhysicalStateSection(data)
+            },
+            'Clothing': {
+                items: ['Clothing'],
+                renderFunction: (data) => this.renderClothingSection(data)
+            },
+            'Breasts': {
+                items: ['Breast'],
+                renderFunction: (data) => this.renderBreastsSection(data)
+            },
+            'Arms': {
+                items: ['Arm'],
+                renderFunction: (data) => this.renderArmsSection(data)
+            },
+            'Torso': {
+                items: ['Torso'],
+                renderFunction: (data) => this.renderTorsoSection(data)
+            },
+            'Head': {
+                items: ['Head'],
+                renderFunction: (data) => this.renderHeadSection(data)
+            },
+            'Hips': {
+                items: ['Hips'],
+                renderFunction: (data) => this.renderHipsSection(data)
+            },
+            'Legs': {
+                items: ['Legs'],
+                renderFunction: (data) => this.renderLegsSection(data)
+            },
+            'Stomach': {
+                items: ['Weight'], // Stomach data is nested in Weight
+                renderFunction: (data) => this.renderStomachSection(data)
+            },
+            'Reproductive System': {
+                items: ['ReproductiveSystem'],
+                renderFunction: (data) => this.renderReproductiveSystemSection(data)
+            },
+            'Pregnancy': {
+                items: ['ReproductiveSystem'], // Pregnancy data is nested in ReproductiveSystem
+                renderFunction: (data) => this.renderPregnancySection(data)
+            },
+            'Medical Conditions': {
+                items: ['MedicalConditions'],
+                renderFunction: (data) => this.renderMedicalConditionsSection(data)
+            },
+            'Progression': {
+                items: ['Progression'],
+                renderFunction: (data) => this.renderProgressionSection(data)
+            }
+        };
+
+        // Render each section
+        Object.entries(sections).forEach(([sectionName, sectionConfig]) => {
+            const sectionData = {};
+            sectionConfig.items.forEach(item => {
+                // Special handling for Character field which is at the top level
+                if (item === 'Character') {
+                    if (fullData && fullData[item]) {
+                        sectionData[item] = fullData[item];
+                    }
+                } else if (measurements[item]) {
+                    sectionData[item] = measurements[item];
+                }
+            });
+
+            // Only render section if it has data
+            if (Object.keys(sectionData).length > 0) {
+                const sectionElement = sectionConfig.renderFunction(sectionData);
+                if (sectionElement) {
+                    container.appendChild(sectionElement);
+                }
+            }
+        });
+    }
+
+    // Helper function to create scale badge with background color/opacity
+    createScaleBadge(scale, label = 'Scale') {
+        if (scale === undefined || scale === null) return '';
+
+        // Scale ranges from 0 to some max (typically 1.0 for "largest realistic")
+        // Convert to opacity: higher scale = more opaque/red
+        const opacity = Math.min(scale, 1.0);
+        const backgroundColor = `rgba(220, 53, 69, ${opacity * 0.6})`; // Red with opacity based on scale
+
+        return `<span class="measurement-scale-badge" style="background-color: ${backgroundColor};" title="${label}: ${scale.toFixed(2)}">${scale.toFixed(2)}</span>`;
+    }
+
+    // Helper function to format measurement values with unit conversion
+    formatMeasurementValue(value, unit, scale = null, label = '') {
+        // Handle undefined/null values
+        if (value === undefined || value === null || isNaN(value)) {
+            return 'N/A';
+        }
+
+        let imperialValue = '';
+        let metricValue = '';
+
+        if (unit === 'cm') {
+            metricValue = `${value.toFixed(1)} cm`;
+            // Convert cm to feet and inches
+            const totalInches = value / 2.54;
+            const feet = Math.floor(totalInches / 12);
+            const inches = Math.round(totalInches % 12);
+            imperialValue = `${feet}'${inches}"`;
+        } else if (unit === 'kg') {
+            metricValue = `${value.toFixed(1)} kg`;
+            // Convert kg to lbs
+            const lbs = value * 2.20462;
+            imperialValue = `${lbs.toFixed(1)} lbs`;
+        } else {
+            return `${value} ${unit}`;
+        }
+
+        const scaleBadge = scale !== null ? this.createScaleBadge(scale, label) : '';
+
+        return `<span class="measurement-value-toggle" data-unit="imperial" data-imperial="${imperialValue}" data-metric="${metricValue}">${imperialValue}</span>${scaleBadge}`;
+    }
+
+    // Individual section renderers
+    renderEmotionsSection(data) {
+        if (!data.EmotionState || !data.EmotionState.emotions || data.EmotionState.emotions.length === 0) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-smile"></i> Emotions</h3>';
+
+        const emotions = data.EmotionState.emotions;
+        const intensities = data.EmotionState.emotion_scale || [];
+
+        emotions.forEach((emotion, index) => {
+            const intensity = intensities[index] || 0;
+            const intensityPercent = (intensity / 10) * 100;
+
+            const emotionItem = document.createElement('div');
+            emotionItem.className = 'measurement-emotion-item';
+            emotionItem.innerHTML = `
+                <div class="emotion-label">${emotion}</div>
+                <div class="emotion-bar-container">
+                    <div class="emotion-bar" style="width: ${intensityPercent}%"></div>
+                </div>
+                <div class="emotion-value">${intensity}/10</div>
+            `;
+            section.appendChild(emotionItem);
+        });
+
+        return section;
+    }
+
+    renderMentalStateSection(data) {
+        if (!data.EmotionState) return null;
+
+        const sanity = data.EmotionState.sanity_level;
+        const willpower = data.EmotionState.willpower_level;
+        const pain = data.EmotionState.pain_level;
+        const libido = data.EmotionState.libido_level;
+        const arousalFactors = data.EmotionState.arousal_factors;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-brain"></i> Mental State</h3>';
+
+        // Mental state items with small inline gauges
+        if (sanity !== undefined) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">
+                        <i class="fas fa-brain"></i> Sanity Level
+                    </div>
+                    <div class="measurement-value">
+                        ${sanity.toFixed(1)}/10 ${this.createSmallGauge(sanity, 10, 'gauge-success')}
+                    </div>
+                </div>
+            `;
+        }
+
+        if (willpower !== undefined) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">
+                        <i class="fas fa-fist-raised"></i> Willpower Level
+                    </div>
+                    <div class="measurement-value">
+                        ${willpower.toFixed(1)}/10 ${this.createSmallGauge(willpower, 10, 'gauge-primary')}
+                    </div>
+                </div>
+            `;
+        }
+
+        if (pain !== undefined) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">
+                        <i class="fas fa-exclamation-triangle"></i> Pain Level
+                    </div>
+                    <div class="measurement-value">
+                        ${pain.toFixed(1)}/10 ${this.createSmallGauge(pain, 10, 'gauge-danger')}
+                    </div>
+                </div>
+            `;
+        }
+
+        if (libido !== undefined) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">
+                        <i class="fas fa-heart"></i> Libido Level
+                    </div>
+                    <div class="measurement-value">
+                        ${libido.toFixed(1)}/10 ${this.createSmallGauge(libido, 10, 'gauge-warning')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Arousal factors
+        if (arousalFactors && arousalFactors.length > 0) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">
+                        <i class="fas fa-fire"></i> Arousal Factors
+                    </div>
+                    <div class="measurement-value">
+                        ${arousalFactors.join(', ')}
+                    </div>
+                </div>
+            `;
+        }
+
+        return section;
+    }
+
+    renderBasicMeasurementsSection(data) {
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-user"></i> Patient Information</h3>';
+
+        let hasContent = false;
+
+        // Character Name
+        if (data.Character) {
+            section.innerHTML += `
+                <div class="measurement-character-name">${data.Character}</div>
+            `;
+            hasContent = true;
+        }
+
+        // Age
+        if (data.Age) {
+            const ageYears = data.Age.years;
+            const ageQuestionable = data.Age.questionable;
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">Age</div>
+                    <div class="measurement-value">${ageYears} years${ageQuestionable ? ' (estimated)' : ''}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Species
+        if (data.Species) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">Species</div>
+                    <div class="measurement-value">${data.Species}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Humanoid Ratio
+        if (data.HumanoidRatio !== undefined) {
+            const humanoidPercent = (data.HumanoidRatio * 100).toFixed(1);
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">Humanoid Ratio</div>
+                    <div class="measurement-value">${humanoidPercent}% ${this.createSmallGauge(data.HumanoidRatio * 10, 10, 'gauge-info')}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Height
+        if (data.Height) {
+            const heightCm = data.Height.cm;
+            const heightScale = data.Height.scale;
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">Height</div>
+                    <div class="measurement-value">${this.formatMeasurementValue(heightCm, 'cm', heightScale, 'Height Scale')}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Body Weight
+        if (data.Weight && data.Weight.body_kg !== undefined) {
+            const bodyKg = data.Weight.body_kg;
+            const bodyScale = data.Weight.body_scale;
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">Weight</div>
+                    <div class="measurement-value">${this.formatMeasurementValue(bodyKg, 'kg', bodyScale, 'Body Scale')}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderPhysicalStateSection(data) {
+        let section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-running"></i> Physical State</h3>';
+
+        let hasContent = false;
+
+        // Posture
+        if (data.Posture) {
+            const posture = data.Posture;
+            
+            // Posture description
+            if (posture.description) {
+                section.innerHTML += `
+                    <div class="measurement-description-row">
+                        <div class="measurement-description-label">Posture</div>
+                        <div class="measurement-description-text">${posture.description}</div>
+                    </div>
+                `;
+                hasContent = true;
+            }
+            
+            // Posture measurements in column layout
+            const postureContainer = document.createElement('div');
+            postureContainer.className = 'measurement-column-container';
+
+            const postureHeader = document.createElement('div');
+            postureHeader.className = 'measurement-group-header';
+            postureHeader.innerHTML = '<i class="fas fa-user"></i> Posture Details';
+            postureContainer.appendChild(postureHeader);
+
+            const postureRow = document.createElement('div');
+            postureRow.className = 'measurement-column-row';
+
+            const postureColumns = document.createElement('div');
+            postureColumns.className = 'measurement-column-items';
+
+            // Spine Curvature Column
+            if (posture.spine_curvature_degrees !== undefined && posture.spine_curvature_degrees !== null) {
+                const spineColumn = document.createElement('div');
+                spineColumn.className = 'measurement-column-item';
+                spineColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-arrow-up" title="Spine Curvature"></i>
+                        <span>Spine Curvature</span>
+                    </div>
+                    <div class="measurement-column-value">${posture.spine_curvature_degrees.toFixed(1)}°</div>
+                `;
+                postureColumns.appendChild(spineColumn);
+            }
+            
+            // Balance Level Column
+            if (posture.balance_level !== undefined && posture.balance_level !== null) {
+                const balanceColumn = document.createElement('div');
+                balanceColumn.className = 'measurement-column-item';
+                balanceColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-balance-scale" title="Balance Level"></i>
+                        <span>Balance Level</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${posture.balance_level.toFixed(1)}/10 ${this.createSmallGauge(posture.balance_level, 10, 'gauge-info')}
+                    </div>
+                `;
+                postureColumns.appendChild(balanceColumn);
+            }
+
+            if (postureColumns.children.length > 0) {
+                postureRow.appendChild(postureColumns);
+                postureContainer.appendChild(postureRow);
+                section.appendChild(postureContainer);
+                hasContent = true;
+            }
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderClothingSection(data) {
+        if (!data.Clothing) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-tshirt"></i> Clothing</h3>';
+
+        let hasContent = false;
+        const clothing = data.Clothing;
         
-        // Show modal
-        const measurementsModal = document.getElementById('measurementsModal');
-        measurementsModal.classList.remove('hidden');
+        // Clothing state description
+        if (clothing.state) {
+            section.innerHTML += `
+                <div class="measurement-description-row">
+                    <div class="measurement-description-label">Clothing State</div>
+                    <div class="measurement-description-text">${clothing.state}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+        
+        // Clothing details in column layout
+        const clothingContainer = document.createElement('div');
+        clothingContainer.className = 'measurement-column-container';
+
+        const clothingHeader = document.createElement('div');
+        clothingHeader.className = 'measurement-group-header';
+        clothingHeader.innerHTML = '<i class="fas fa-tshirt"></i> Clothing Details';
+        clothingContainer.appendChild(clothingHeader);
+
+        const clothingRow = document.createElement('div');
+        clothingRow.className = 'measurement-column-row';
+
+        const clothingColumns = document.createElement('div');
+        clothingColumns.className = 'measurement-column-items';
+
+        // Coverage Level Column
+        if (clothing.coverage_level !== undefined && clothing.coverage_level !== null) {
+            const coveragePercent = (clothing.coverage_level * 100).toFixed(1);
+            const coverageColumn = document.createElement('div');
+            coverageColumn.className = 'measurement-column-item';
+            coverageColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-percentage" title="Coverage Level"></i>
+                    <span>Coverage Level</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${coveragePercent}% ${this.createSmallGauge(clothing.coverage_level * 10, 10, 'gauge-secondary')}
+                </div>
+            `;
+            clothingColumns.appendChild(coverageColumn);
+        }
+        
+        // Items Column
+        if (clothing.items && clothing.items.length > 0) {
+            const itemsColumn = document.createElement('div');
+            itemsColumn.className = 'measurement-column-item';
+            itemsColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-list" title="Clothing Items"></i>
+                    <span>Items</span>
+                </div>
+                <div class="measurement-column-value">${clothing.items.join(', ')}</div>
+            `;
+            clothingColumns.appendChild(itemsColumn);
+        }
+
+        if (clothingColumns.children.length > 0) {
+            clothingRow.appendChild(clothingColumns);
+            clothingContainer.appendChild(clothingRow);
+            section.appendChild(clothingContainer);
+            hasContent = true;
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderBreastsSection(data) {
+        if (!data.Breast || data.Breast === null) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-female"></i> Breasts</h3>';
+
+        let hasContent = false;
+        const breast = data.Breast;
+
+        // Breast description (full width row)
+        if (breast.description) {
+            section.innerHTML += `
+                <div class="measurement-description-row">
+                    <div class="measurement-description-label">Breast Description</div>
+                    <div class="measurement-description-text">${breast.description}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Breast measurements (column layout)
+        const breastContainer = document.createElement('div');
+        breastContainer.className = 'measurement-column-container';
+
+        // Add header for breast group
+        const breastHeader = document.createElement('div');
+        breastHeader.className = 'measurement-group-header';
+        breastHeader.innerHTML = '<i class="fas fa-female"></i> Breasts';
+        breastContainer.appendChild(breastHeader);
+
+        // Create breast row with column layout
+        const breastRow = document.createElement('div');
+        breastRow.className = 'measurement-column-row';
+
+        const breastColumns = document.createElement('div');
+        breastColumns.className = 'measurement-column-items';
+
+        // Cup Size Column
+        if (breast.cup_size) {
+            const cupColumn = document.createElement('div');
+            cupColumn.className = 'measurement-column-item';
+            cupColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-tag" title="Cup Size"></i>
+                    <span>Cup Size</span>
+                </div>
+                <div class="measurement-column-value">${breast.cup_size}</div>
+            `;
+            breastColumns.appendChild(cupColumn);
+        }
+
+        // Protrusion Column
+        if (breast.protrusion_cm !== undefined && breast.protrusion_cm !== null) {
+            const protrusionColumn = document.createElement('div');
+            protrusionColumn.className = 'measurement-column-item';
+            protrusionColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-arrow-up-to-arc" title="Protrusion"></i>
+                    <span>Protrusion</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(breast.protrusion_cm, 'cm')}
+                    ${breast.scale !== undefined && breast.scale !== null ? this.createScaleBadge(breast.scale, 'Breast Scale') : ''}
+                </div>
+            `;
+            breastColumns.appendChild(protrusionColumn);
+        }
+
+        if (breastColumns.children.length > 0) {
+            breastRow.appendChild(breastColumns);
+            breastContainer.appendChild(breastRow);
+            section.appendChild(breastContainer);
+            hasContent = true;
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderArmsSection(data) {
+        if (!data.Arm) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-hand-paper"></i> Arms</h3>';
+
+        let hasContent = false;
+        const arm = data.Arm;
+
+        // Arm measurements (column layout)
+        const armContainer = document.createElement('div');
+        armContainer.className = 'measurement-column-container';
+
+        // Add header for arm group
+        const armHeader = document.createElement('div');
+        armHeader.className = 'measurement-group-header';
+        armHeader.innerHTML = '<i class="fas fa-hand-paper"></i> Arms';
+        armContainer.appendChild(armHeader);
+
+        const armRow = document.createElement('div');
+        armRow.className = 'measurement-column-row';
+
+        const armColumns = document.createElement('div');
+        armColumns.className = 'measurement-column-items';
+
+        // Circumference Column
+        if (arm.circumference_cm !== undefined && arm.circumference_cm !== null) {
+            const circColumn = document.createElement('div');
+            circColumn.className = 'measurement-column-item';
+            circColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fa-regular fa-circle" title="Circumference"></i>
+                    <span>Arm</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(arm.circumference_cm, 'cm')}
+                    ${arm.scale !== undefined && arm.scale !== null ? this.createScaleBadge(arm.scale, 'Arm Scale') : ''}
+                </div>
+            `;
+            armColumns.appendChild(circColumn);
+        }
+
+        // Length Column
+        if (arm.length_cm !== undefined && arm.length_cm !== null) {
+            const lengthColumn = document.createElement('div');
+            lengthColumn.className = 'measurement-column-item';
+            lengthColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-ruler-vertical" title="Length"></i>
+                    <span>Length</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(arm.length_cm, 'cm')}
+                </div>
+            `;
+            armColumns.appendChild(lengthColumn);
+        }
+
+        // Shoulder Width Column
+        if (arm.shoulder_width_cm !== undefined && arm.shoulder_width_cm !== null) {
+            const shoulderColumn = document.createElement('div');
+            shoulderColumn.className = 'measurement-column-item';
+            shoulderColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-ruler-horizontal" title="Shoulder Width"></i>
+                    <span>Shoulders</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(arm.shoulder_width_cm, 'cm')}
+                </div>
+            `;
+            armColumns.appendChild(shoulderColumn);
+        }
+
+        if (armColumns.children.length > 0) {
+            armRow.appendChild(armColumns);
+            armContainer.appendChild(armRow);
+            section.appendChild(armContainer);
+            hasContent = true;
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderTorsoSection(data) {
+        if (!data.Torso) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-ribbon"></i> Torso</h3>';
+
+        let hasContent = false;
+        const torso = data.Torso;
+
+        const torsoContainer = document.createElement('div');
+        torsoContainer.className = 'measurement-column-container';
+
+        const torsoHeader = document.createElement('div');
+        torsoHeader.className = 'measurement-group-header';
+        torsoHeader.innerHTML = '<i class="fas fa-ribbon"></i> Torso';
+        torsoContainer.appendChild(torsoHeader);
+
+        const torsoRow = document.createElement('div');
+        torsoRow.className = 'measurement-column-row';
+
+        const torsoColumns = document.createElement('div');
+        torsoColumns.className = 'measurement-column-items';
+
+        // Length Column
+        if (torso.length_cm !== undefined && torso.length_cm !== null) {
+            const lengthColumn = document.createElement('div');
+            lengthColumn.className = 'measurement-column-item';
+            lengthColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-ruler-vertical" title="Length"></i>
+                    <span>Length</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(torso.length_cm, 'cm')}
+                </div>
+            `;
+            torsoColumns.appendChild(lengthColumn);
+        }
+
+        // Width Column
+        if (torso.width_cm !== undefined && torso.width_cm !== null) {
+            const widthColumn = document.createElement('div');
+            widthColumn.className = 'measurement-column-item';
+            widthColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-ruler-horizontal" title="Width"></i>
+                    <span>Width</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(torso.width_cm, 'cm')}
+                </div>
+            `;
+            torsoColumns.appendChild(widthColumn);
+        }
+
+        // Depth Column
+        if (torso.depth_cm !== undefined && torso.depth_cm !== null) {
+            const depthColumn = document.createElement('div');
+            depthColumn.className = 'measurement-column-item';
+            depthColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-arrows-alt" title="Depth"></i>
+                    <span>Depth</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(torso.depth_cm, 'cm')}
+                    ${torso.scale !== undefined && torso.scale !== null ? this.createScaleBadge(torso.scale, 'Torso Scale') : ''}
+                </div>
+            `;
+            torsoColumns.appendChild(depthColumn);
+        }
+
+        if (torsoColumns.children.length > 0) {
+            torsoRow.appendChild(torsoColumns);
+            torsoContainer.appendChild(torsoRow);
+            section.appendChild(torsoContainer);
+            hasContent = true;
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderHeadSection(data) {
+        if (!data.Head) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-head-side-brain"></i> Head</h3>';
+
+        let hasContent = false;
+        const head = data.Head;
+
+        const headContainer = document.createElement('div');
+        headContainer.className = 'measurement-column-container';
+
+        const headHeader = document.createElement('div');
+        headHeader.className = 'measurement-group-header';
+        headHeader.innerHTML = '<i class="fas fa-head-side-brain"></i> Head';
+        headContainer.appendChild(headHeader);
+
+        const headRow = document.createElement('div');
+        headRow.className = 'measurement-column-row';
+
+        const headColumns = document.createElement('div');
+        headColumns.className = 'measurement-column-items';
+
+        // Ear Type Column
+        if (head.ear_type) {
+            const earTypeColumn = document.createElement('div');
+            earTypeColumn.className = 'measurement-column-item';
+            earTypeColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-ear-listen" title="Ear Type"></i>
+                    <span>Ear Type</span>
+                </div>
+                <div class="measurement-column-value">${head.ear_type}</div>
+            `;
+            headColumns.appendChild(earTypeColumn);
+        }
+
+        // Hair Color Column
+        if (head.hair_color) {
+            const hairColorColumn = document.createElement('div');
+            hairColorColumn.className = 'measurement-column-item';
+            hairColorColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-palette" title="Hair Color"></i>
+                    <span>Hair Color</span>
+                </div>
+                <div class="measurement-column-value">${head.hair_color}</div>
+            `;
+            headColumns.appendChild(hairColorColumn);
+        }
+
+        // Eye Color Column
+        if (head.eye_color) {
+            const eyeColorColumn = document.createElement('div');
+            eyeColorColumn.className = 'measurement-column-item';
+            eyeColorColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-eye" title="Eye Color"></i>
+                    <span>Eye Color</span>
+                </div>
+                <div class="measurement-column-value">${head.eye_color}</div>
+            `;
+            headColumns.appendChild(eyeColorColumn);
+        }
+
+        // Face Shape Column
+        if (head.face_shape) {
+            const faceShapeColumn = document.createElement('div');
+            faceShapeColumn.className = 'measurement-column-item';
+            faceShapeColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-user-circle" title="Face Shape"></i>
+                    <span>Face Shape</span>
+                </div>
+                <div class="measurement-column-value">${head.face_shape}</div>
+            `;
+            headColumns.appendChild(faceShapeColumn);
+        }
+
+        // Hair Length Column
+        if (head.hair_length_cm !== undefined && head.hair_length_cm !== null) {
+            const hairLengthColumn = document.createElement('div');
+            hairLengthColumn.className = 'measurement-column-item';
+            hairLengthColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-ruler-vertical" title="Hair Length"></i>
+                    <span>Hair Length</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(head.hair_length_cm, 'cm')}
+                </div>
+            `;
+            headColumns.appendChild(hairLengthColumn);
+        }
+
+        // Ear Length Column
+        if (head.ear_length_cm !== undefined && head.ear_length_cm !== null) {
+            const earLengthColumn = document.createElement('div');
+            earLengthColumn.className = 'measurement-column-item';
+            earLengthColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-ruler-vertical" title="Ear Length"></i>
+                    <span>Ear Length</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(head.ear_length_cm, 'cm')}
+                </div>
+            `;
+            headColumns.appendChild(earLengthColumn);
+        }
+
+        // Neck Length Column
+        if (head.neck_length_cm !== undefined && head.neck_length_cm !== null) {
+            const neckLengthColumn = document.createElement('div');
+            neckLengthColumn.className = 'measurement-column-item';
+            neckLengthColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-ruler-vertical" title="Neck Length"></i>
+                    <span>Neck Length</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(head.neck_length_cm, 'cm')}
+                </div>
+            `;
+            headColumns.appendChild(neckLengthColumn);
+        }
+
+        if (headColumns.children.length > 0) {
+            headRow.appendChild(headColumns);
+            headContainer.appendChild(headRow);
+            section.appendChild(headContainer);
+            hasContent = true;
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderHeightSection(data) {
+        if (!data.Height) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title">Height</h3>';
+
+        const heightCm = data.Height.cm;
+        const heightScale = data.Height.scale;
+
+        section.innerHTML += `
+            <div class="measurement-item">
+                <div class="measurement-label">Height</div>
+                <div class="measurement-value">${this.formatMeasurementValue(heightCm, 'cm', heightScale, 'Height Scale')}</div>
+            </div>
+        `;
+
+        return section;
+    }
+
+    renderBodyWeightSection(data) {
+        if (!data.Weight) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title">Body Weight</h3>';
+
+        const weight = data.Weight;
+        let hasContent = false;
+
+        // Body weight
+        if (weight.body_kg !== undefined) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">Body Weight</div>
+                    <div class="measurement-value">${this.formatMeasurementValue(weight.body_kg, 'kg', weight.body_scale, 'Body Scale')}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Body description
+        if (weight.body_description) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">Body Description</div>
+                    <div class="measurement-value">${weight.body_description}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderStomachSection(data) {
+        if (!data.Weight) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-utensils"></i> Stomach</h3>';
+
+        const weight = data.Weight;
+        let hasContent = false;
+
+        // Stomach weight
+        if (weight.stomach_kg !== undefined) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">Stomach Weight</div>
+                    <div class="measurement-value">${this.formatMeasurementValue(weight.stomach_kg, 'kg', weight.stomach_scale, 'Stomach Scale')}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Stomach fullness
+        if (weight.stomach_fullness_level !== undefined) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">Stomach Fullness</div>
+                    <div class="measurement-value">${(weight.stomach_fullness_level * 100).toFixed(0)}%</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Stomach contents
+        if (weight.stomach_contents) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">Stomach Contents</div>
+                    <div class="measurement-value">${weight.stomach_contents}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderBreastSection(data) {
+        // Handle nullable Breast field
+        if (!data.Breast || data.Breast === null) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-female"></i> Breast</h3>';
+
+        const cupSize = data.Breast.cup_size;
+        const protrusion = data.Breast.protrusion_cm;
+        const scale = data.Breast.scale;
+        const description = data.Breast.description;
+
+        let hasContent = false;
+
+        // Only show cup size if it exists
+        if (cupSize !== undefined && cupSize !== null) {
+        section.innerHTML += `
+            <div class="measurement-item">
+                    <div class="measurement-label">Breast Size</div>
+                    <div class="measurement-value">${cupSize}</div>
+            </div>
+            `;
+            hasContent = true;
+        }
+
+        // Only show protrusion if it exists
+        if (protrusion !== undefined && protrusion !== null) {
+            section.innerHTML += `
+            <div class="measurement-item">
+                <div class="measurement-label">Protrusion</div>
+                <div class="measurement-value">${this.formatMeasurementValue(protrusion, 'cm', scale, 'Breast Scale')}</div>
+            </div>
+            `;
+            hasContent = true;
+        }
+
+        // Show description if it exists
+        if (description) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                <div class="measurement-label">Description</div>
+                <div class="measurement-value">${description}</div>
+                </div>
+        `;
+            hasContent = true;
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderArmsSection(data) {
+        if (!data.Arm) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-hand-paper"></i> Arms</h3>';
+
+        const arm = data.Arm;
+
+        // Create compact measurement row
+        const measurementRow = document.createElement('div');
+        measurementRow.className = 'measurement-compact-row';
+
+        // Arm circumference
+        if (arm.circumference_cm !== undefined) {
+            const item = document.createElement('div');
+            item.className = 'measurement-compact-item';
+            item.innerHTML = `
+                <i class="fas fa-circle" title="Arm"></i>
+                <span class="measurement-compact-value">${this.formatMeasurementValue(arm.circumference_cm, 'cm')}</span>
+                ${arm.scale !== undefined ? this.createScaleBadge(arm.scale, 'Arm Scale') : ''}
+            `;
+            measurementRow.appendChild(item);
+        }
+
+        // Arm length
+        if (arm.length_cm !== undefined) {
+            const item = document.createElement('div');
+            item.className = 'measurement-compact-item';
+            item.innerHTML = `
+                <i class="fas fa-ruler-vertical" title="Length"></i>
+                <span class="measurement-compact-value">${this.formatMeasurementValue(arm.length_cm, 'cm')}</span>
+            `;
+            measurementRow.appendChild(item);
+        }
+
+        // Shoulder width
+        if (arm.shoulder_width_cm !== undefined) {
+            const item = document.createElement('div');
+            item.className = 'measurement-compact-item';
+            item.innerHTML = `
+                <i class="fas fa-ruler-horizontal" title="Shoulders"></i>
+                <span class="measurement-compact-value">${this.formatMeasurementValue(arm.shoulder_width_cm, 'cm')}</span>
+            `;
+            measurementRow.appendChild(item);
+        }
+
+        if (measurementRow.children.length > 0) {
+            section.appendChild(measurementRow);
+            return section;
+        }
+
+        return null;
+    }
+
+    renderIndividualHipsSection(data) {
+        if (!data.Hips) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-bone"></i> Hips</h3>';
+
+        const hips = data.Hips;
+
+        // Create compact measurement row
+        const measurementRow = document.createElement('div');
+        measurementRow.className = 'measurement-compact-row';
+
+        // Hips measurements
+        if (hips.hips_circumference_cm !== undefined) {
+            const item = document.createElement('div');
+            item.className = 'measurement-compact-item';
+            item.innerHTML = `
+                <i class="fas fa-circle" title="Circumference"></i>
+                <span class="measurement-compact-value">${this.formatMeasurementValue(hips.hips_circumference_cm, 'cm')}</span>
+                ${hips.hips_scale !== undefined ? this.createScaleBadge(hips.hips_scale, 'Hips Scale') : ''}
+            `;
+            measurementRow.appendChild(item);
+        }
+
+        if (hips.hips_width_cm !== undefined) {
+            const item = document.createElement('div');
+            item.className = 'measurement-compact-item';
+            item.innerHTML = `
+                <i class="fas fa-ruler-horizontal" title="Width"></i>
+                <span class="measurement-compact-value">${this.formatMeasurementValue(hips.hips_width_cm, 'cm')}</span>
+            `;
+            measurementRow.appendChild(item);
+        }
+
+        if (hips.hips_depth_cm !== undefined) {
+            const item = document.createElement('div');
+            item.className = 'measurement-compact-item';
+            item.innerHTML = `
+                <i class="fas fa-arrow-up-to-line" title="Depth"></i>
+                <span class="measurement-compact-value">${this.formatMeasurementValue(hips.hips_depth_cm, 'cm')}</span>
+            `;
+            measurementRow.appendChild(item);
+        }
+
+        // Waist measurements
+        if (hips.waist_circumference_cm !== undefined) {
+            const item = document.createElement('div');
+            item.className = 'measurement-compact-item';
+            item.innerHTML = `
+                <i class="fas fa-circle" title="Waist"></i>
+                <span class="measurement-compact-value">${this.formatMeasurementValue(hips.waist_circumference_cm, 'cm')}</span>
+                ${hips.waist_scale !== undefined ? this.createScaleBadge(hips.waist_scale, 'Waist Scale') : ''}
+            `;
+            measurementRow.appendChild(item);
+        }
+
+        // Ass measurements
+        if (hips.ass_circumference_cm !== undefined) {
+            const item = document.createElement('div');
+            item.className = 'measurement-compact-item';
+            item.innerHTML = `
+                <i class="fas fa-circle" title="Ass"></i>
+                <span class="measurement-compact-value">${this.formatMeasurementValue(hips.ass_circumference_cm, 'cm')}</span>
+                ${hips.ass_scale !== undefined ? this.createScaleBadge(hips.ass_scale, 'Ass Scale') : ''}
+            `;
+            measurementRow.appendChild(item);
+        }
+
+        // Ratios
+        if (hips.chest_to_waist_ratio !== undefined || hips.waist_to_hip_ratio !== undefined) {
+            const ratioItem = document.createElement('div');
+            ratioItem.className = 'measurement-ratio-item';
+            let ratioText = '';
+            if (hips.chest_to_waist_ratio !== undefined) {
+                ratioText += `C/W: ${hips.chest_to_waist_ratio.toFixed(2)}`;
+            }
+            if (hips.waist_to_hip_ratio !== undefined) {
+                if (ratioText) ratioText += ' | ';
+                ratioText += `W/H: ${hips.waist_to_hip_ratio.toFixed(2)}`;
+            }
+            ratioItem.innerHTML = `<i class="fas fa-balance-scale" title="Ratios"></i> <span>${ratioText}</span>`;
+            measurementRow.appendChild(ratioItem);
+        }
+
+        if (measurementRow.children.length > 0) {
+            section.appendChild(measurementRow);
+            return section;
+        }
+
+        return null;
+    }
+
+    renderIndividualLegsSection(data) {
+        if (!data.Legs) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-running"></i> Legs</h3>';
+
+        const legs = data.Legs;
+
+        // Create compact measurement row
+        const measurementRow = document.createElement('div');
+        measurementRow.className = 'measurement-compact-row';
+
+        // Leg measurements
+        if (legs.leg_length_cm !== undefined) {
+            const item = document.createElement('div');
+            item.className = 'measurement-compact-item';
+            item.innerHTML = `
+                <i class="fas fa-ruler-vertical" title="Length"></i>
+                <span class="measurement-compact-value">${this.formatMeasurementValue(legs.leg_length_cm, 'cm')}</span>
+            `;
+            measurementRow.appendChild(item);
+        }
+
+        // Thigh measurements
+        if (legs.thigh_circumference_cm !== undefined) {
+            const item = document.createElement('div');
+            item.className = 'measurement-compact-item';
+            item.innerHTML = `
+                <i class="fas fa-circle" title="Thigh"></i>
+                <span class="measurement-compact-value">${this.formatMeasurementValue(legs.thigh_circumference_cm, 'cm')}</span>
+                ${legs.thigh_scale !== undefined ? this.createScaleBadge(legs.thigh_scale, 'Thigh Scale') : ''}
+            `;
+            measurementRow.appendChild(item);
+        }
+
+        // Calf measurements
+        if (legs.calf_circumference_cm !== undefined) {
+            const item = document.createElement('div');
+            item.className = 'measurement-compact-item';
+            item.innerHTML = `
+                <i class="fas fa-circle" title="Calf"></i>
+                <span class="measurement-compact-value">${this.formatMeasurementValue(legs.calf_circumference_cm, 'cm')}</span>
+                ${legs.calf_scale !== undefined ? this.createScaleBadge(legs.calf_scale, 'Calf Scale') : ''}
+            `;
+            measurementRow.appendChild(item);
+        }
+
+
+        if (measurementRow.children.length > 0) {
+            section.appendChild(measurementRow);
+            return section;
+        }
+
+        return null;
+    }
+
+    renderUpperBodySection(data) {
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-skeleton-ribs"></i> Upper Body</h3>';
+
+        let hasContent = false;
+
+        // Arm data
+        if (data.Arm) {
+            const arm = data.Arm;
+
+            // Arm measurements (column layout)
+            const armContainer = document.createElement('div');
+            armContainer.className = 'measurement-column-container';
+
+            // Add header for arm group
+            const armHeader = document.createElement('div');
+            armHeader.className = 'measurement-group-header';
+            armHeader.innerHTML = '<i class="fas fa-hand-paper"></i> Arms';
+            armContainer.appendChild(armHeader);
+
+            const armRow = document.createElement('div');
+            armRow.className = 'measurement-column-row';
+
+            const armColumns = document.createElement('div');
+            armColumns.className = 'measurement-column-items';
+
+            // Circumference Column
+            if (arm.circumference_cm !== undefined && arm.circumference_cm !== null) {
+                const circColumn = document.createElement('div');
+                circColumn.className = 'measurement-column-item';
+                circColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fa-regular fa-circle" title="Circumference"></i>
+                        <span>Arm</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(arm.circumference_cm, 'cm')}
+                        ${arm.scale !== undefined && arm.scale !== null ? this.createScaleBadge(arm.scale, 'Arm Scale') : ''}
+                    </div>
+                `;
+                armColumns.appendChild(circColumn);
+            }
+
+            // Length Column
+            if (arm.length_cm !== undefined && arm.length_cm !== null) {
+                const lengthColumn = document.createElement('div');
+                lengthColumn.className = 'measurement-column-item';
+                lengthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-ruler-vertical" title="Length"></i>
+                        <span>Length</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(arm.length_cm, 'cm')}
+                    </div>
+                `;
+                armColumns.appendChild(lengthColumn);
+            }
+
+            // Shoulder Width Column
+            if (arm.shoulder_width_cm !== undefined && arm.shoulder_width_cm !== null) {
+                const shoulderColumn = document.createElement('div');
+                shoulderColumn.className = 'measurement-column-item';
+                shoulderColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-ruler-horizontal" title="Shoulder Width"></i>
+                        <span>Shoulders</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(arm.shoulder_width_cm, 'cm')}
+                    </div>
+                `;
+                armColumns.appendChild(shoulderColumn);
+            }
+
+            if (armColumns.children.length > 0) {
+                armRow.appendChild(armColumns);
+                armContainer.appendChild(armRow);
+                section.appendChild(armContainer);
+                hasContent = true;
+            }
+        }
+
+        // Torso data
+        if (data.Torso) {
+            const torso = data.Torso;
+
+            const torsoContainer = document.createElement('div');
+            torsoContainer.className = 'measurement-column-container';
+
+            const torsoHeader = document.createElement('div');
+            torsoHeader.className = 'measurement-group-header';
+            torsoHeader.innerHTML = '<i class="fas fa-ribbon"></i> Torso';
+            torsoContainer.appendChild(torsoHeader);
+
+            const torsoRow = document.createElement('div');
+            torsoRow.className = 'measurement-column-row';
+
+            const torsoColumns = document.createElement('div');
+            torsoColumns.className = 'measurement-column-items';
+
+            // Length Column
+            if (torso.length_cm !== undefined && torso.length_cm !== null) {
+                const lengthColumn = document.createElement('div');
+                lengthColumn.className = 'measurement-column-item';
+                lengthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-ruler-vertical" title="Length"></i>
+                        <span>Length</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(torso.length_cm, 'cm')}
+                    </div>
+                `;
+                torsoColumns.appendChild(lengthColumn);
+            }
+
+            // Width Column
+            if (torso.width_cm !== undefined && torso.width_cm !== null) {
+                const widthColumn = document.createElement('div');
+                widthColumn.className = 'measurement-column-item';
+                widthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-ruler-horizontal" title="Width"></i>
+                        <span>Width</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(torso.width_cm, 'cm')}
+                    </div>
+                `;
+                torsoColumns.appendChild(widthColumn);
+            }
+
+            // Depth Column
+            if (torso.depth_cm !== undefined && torso.depth_cm !== null) {
+                const depthColumn = document.createElement('div');
+                depthColumn.className = 'measurement-column-item';
+                depthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-arrows-alt" title="Depth"></i>
+                        <span>Depth</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(torso.depth_cm, 'cm')}
+                        ${torso.scale !== undefined && torso.scale !== null ? this.createScaleBadge(torso.scale, 'Torso Scale') : ''}
+                    </div>
+                `;
+                torsoColumns.appendChild(depthColumn);
+            }
+
+            if (torsoColumns.children.length > 0) {
+                torsoRow.appendChild(torsoColumns);
+                torsoContainer.appendChild(torsoRow);
+                section.appendChild(torsoContainer);
+                hasContent = true;
+            }
+        }
+
+        // Head data
+        if (data.Head) {
+            const head = data.Head;
+
+            const headContainer = document.createElement('div');
+            headContainer.className = 'measurement-column-container';
+
+            const headHeader = document.createElement('div');
+            headHeader.className = 'measurement-group-header';
+            headHeader.innerHTML = '<i class="fas fa-head-side-brain"></i> Head';
+            headContainer.appendChild(headHeader);
+
+            const headRow = document.createElement('div');
+            headRow.className = 'measurement-column-row';
+
+            const headColumns = document.createElement('div');
+            headColumns.className = 'measurement-column-items';
+
+            // Ear Type Column
+            if (head.ear_type) {
+                const earTypeColumn = document.createElement('div');
+                earTypeColumn.className = 'measurement-column-item';
+                earTypeColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-ear-listen" title="Ear Type"></i>
+                        <span>Ear Type</span>
+                    </div>
+                    <div class="measurement-column-value">${head.ear_type}</div>
+                `;
+                headColumns.appendChild(earTypeColumn);
+            }
+
+            // Hair Color Column
+            if (head.hair_color) {
+                const hairColorColumn = document.createElement('div');
+                hairColorColumn.className = 'measurement-column-item';
+                hairColorColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-palette" title="Hair Color"></i>
+                        <span>Hair Color</span>
+                    </div>
+                    <div class="measurement-column-value">${head.hair_color}</div>
+                `;
+                headColumns.appendChild(hairColorColumn);
+            }
+
+            // Eye Color Column
+            if (head.eye_color) {
+                const eyeColorColumn = document.createElement('div');
+                eyeColorColumn.className = 'measurement-column-item';
+                eyeColorColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-eye" title="Eye Color"></i>
+                        <span>Eye Color</span>
+                    </div>
+                    <div class="measurement-column-value">${head.eye_color}</div>
+                `;
+                headColumns.appendChild(eyeColorColumn);
+            }
+
+            // Face Shape Column
+            if (head.face_shape) {
+                const faceShapeColumn = document.createElement('div');
+                faceShapeColumn.className = 'measurement-column-item';
+                faceShapeColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-user-circle" title="Face Shape"></i>
+                        <span>Face Shape</span>
+                    </div>
+                    <div class="measurement-column-value">${head.face_shape}</div>
+                `;
+                headColumns.appendChild(faceShapeColumn);
+            }
+
+            // Hair Length Column
+            if (head.hair_length_cm !== undefined) {
+                const hairLengthColumn = document.createElement('div');
+                hairLengthColumn.className = 'measurement-column-item';
+                hairLengthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-ruler-vertical" title="Hair Length"></i>
+                        <span>Hair Length</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(head.hair_length_cm, 'cm')}
+                    </div>
+                `;
+                headColumns.appendChild(hairLengthColumn);
+            }
+
+            // Ear Length Column
+            if (head.ear_length_cm !== undefined) {
+                const earLengthColumn = document.createElement('div');
+                earLengthColumn.className = 'measurement-column-item';
+                earLengthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-ruler-vertical" title="Ear Length"></i>
+                        <span>Ear Length</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(head.ear_length_cm, 'cm')}
+                    </div>
+                `;
+                headColumns.appendChild(earLengthColumn);
+            }
+
+            // Neck Length Column
+            if (head.neck_length_cm !== undefined) {
+                const neckLengthColumn = document.createElement('div');
+                neckLengthColumn.className = 'measurement-column-item';
+                neckLengthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-ruler-vertical" title="Neck Length"></i>
+                        <span>Neck Length</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(head.neck_length_cm, 'cm')}
+                    </div>
+                `;
+                headColumns.appendChild(neckLengthColumn);
+            }
+
+            if (headColumns.children.length > 0) {
+                headRow.appendChild(headColumns);
+                headContainer.appendChild(headRow);
+                section.appendChild(headContainer);
+                hasContent = true;
+            }
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderHipsSection(data) {
+        if (!data.Hips) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-bone"></i> Hips</h3>';
+
+        let hasContent = false;
+
+        // Individual body part measurements
+        if (data.Hips) {
+            const hips = data.Hips;
+
+            // Hips measurements - column layout
+            const hipsContainer = document.createElement('div');
+            hipsContainer.className = 'measurement-column-container';
+
+            // Add header for hips group
+            const hipsHeader = document.createElement('div');
+            hipsHeader.className = 'measurement-group-header';
+            hipsHeader.innerHTML = '<i class="fas fa-bone" title="Hips"></i> Hips';
+            hipsContainer.appendChild(hipsHeader);
+
+                const hipsRow = document.createElement('div');
+            hipsRow.className = 'measurement-column-row';
+
+            const hipsColumns = document.createElement('div');
+            hipsColumns.className = 'measurement-column-items';
+
+            // Circumference Column
+            if (hips.hips_circumference_cm !== undefined && hips.hips_circumference_cm !== null) {
+                const circColumn = document.createElement('div');
+                circColumn.className = 'measurement-column-item';
+                circColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fa-regular fa-circle" title="Circumference"></i>
+                        <span>Hips</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(hips.hips_circumference_cm, 'cm')}
+                        ${hips.hips_scale !== undefined && hips.hips_scale !== null ? this.createScaleBadge(hips.hips_scale, 'Hips Scale') : ''}
+                    </div>
+                `;
+                hipsColumns.appendChild(circColumn);
+            }
+
+            // Width Column
+            if (hips.hips_width_cm !== undefined && hips.hips_width_cm !== null) {
+                const widthColumn = document.createElement('div');
+                widthColumn.className = 'measurement-column-item';
+                widthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-ruler-horizontal" title="Width"></i>
+                        <span>Width</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(hips.hips_width_cm, 'cm')}
+                    </div>
+                `;
+                hipsColumns.appendChild(widthColumn);
+            }
+
+            // Depth Column
+            if (hips.hips_depth_cm !== undefined && hips.hips_depth_cm !== null) {
+                const depthColumn = document.createElement('div');
+                depthColumn.className = 'measurement-column-item';
+                depthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-arrow-up-to-line" title="Depth"></i>
+                        <span>Depth</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(hips.hips_depth_cm, 'cm')}
+                    </div>
+                `;
+                hipsColumns.appendChild(depthColumn);
+            }
+
+            if (hipsColumns.children.length > 0) {
+                hipsRow.appendChild(hipsColumns);
+                hipsContainer.appendChild(hipsRow);
+                section.appendChild(hipsContainer);
+                hasContent = true;
+            }
+
+            // Waist measurements - column layout
+            const waistContainer = document.createElement('div');
+            waistContainer.className = 'measurement-column-container';
+
+            // Add header for waist group
+            const waistHeader = document.createElement('div');
+            waistHeader.className = 'measurement-group-header';
+            waistHeader.innerHTML = '<i class="fas fa-circle" title="Waist"></i> Waist';
+            waistContainer.appendChild(waistHeader);
+
+                const waistRow = document.createElement('div');
+            waistRow.className = 'measurement-column-row';
+
+            const waistColumns = document.createElement('div');
+            waistColumns.className = 'measurement-column-items';
+
+            // Circumference Column
+            if (hips.waist_circumference_cm !== undefined && hips.waist_circumference_cm !== null) {
+                const circColumn = document.createElement('div');
+                circColumn.className = 'measurement-column-item';
+                circColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fa-regular fa-circle" title="Circumference"></i>
+                        <span>Size</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(hips.waist_circumference_cm, 'cm')}
+                        ${hips.waist_scale !== undefined && hips.waist_scale !== null ? this.createScaleBadge(hips.waist_scale, 'Waist Scale') : ''}
+                    </div>
+                `;
+                waistColumns.appendChild(circColumn);
+            }
+
+            // Width Column
+            if (hips.waist_width_cm !== undefined && hips.waist_width_cm !== null) {
+                const widthColumn = document.createElement('div');
+                widthColumn.className = 'measurement-column-item';
+                widthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-ruler-horizontal" title="Width"></i>
+                        <span>Width</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(hips.waist_width_cm, 'cm')}
+                    </div>
+                `;
+                waistColumns.appendChild(widthColumn);
+            }
+
+            // Depth Column
+            if (hips.waist_depth_cm !== undefined && hips.waist_depth_cm !== null) {
+                const depthColumn = document.createElement('div');
+                depthColumn.className = 'measurement-column-item';
+                depthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-arrow-up-to-line" title="Depth"></i>
+                        <span>Depth</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(hips.waist_depth_cm, 'cm')}
+                    </div>
+                `;
+                waistColumns.appendChild(depthColumn);
+            }
+
+            if (waistColumns.children.length > 0) {
+                waistRow.appendChild(waistColumns);
+                waistContainer.appendChild(waistRow);
+                section.appendChild(waistContainer);
+                hasContent = true;
+            }
+
+            // Ass measurements - column layout
+            const assContainer = document.createElement('div');
+            assContainer.className = 'measurement-column-container';
+
+            // Add header for ass group
+            const assHeader = document.createElement('div');
+            assHeader.className = 'measurement-group-header';
+            assHeader.innerHTML = '<i class="fas fa-circle" title="Ass"></i> Ass';
+            assContainer.appendChild(assHeader);
+
+                const assRow = document.createElement('div');
+            assRow.className = 'measurement-column-row';
+
+            const assColumns = document.createElement('div');
+            assColumns.className = 'measurement-column-items';
+
+            // Circumference Column
+            if (hips.ass_circumference_cm !== undefined && hips.ass_circumference_cm !== null) {
+                const circColumn = document.createElement('div');
+                circColumn.className = 'measurement-column-item';
+                circColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fa-regular fa-circle" title="Circumference"></i>
+                        <span>Size</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(hips.ass_circumference_cm, 'cm')}
+                        ${hips.ass_scale !== undefined && hips.ass_scale !== null ? this.createScaleBadge(hips.ass_scale, 'Ass Scale') : ''}
+                    </div>
+                `;
+                assColumns.appendChild(circColumn);
+            }
+
+            // Width Column
+            if (hips.ass_width_cm !== undefined && hips.ass_width_cm !== null) {
+                const widthColumn = document.createElement('div');
+                widthColumn.className = 'measurement-column-item';
+                widthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-ruler-horizontal" title="Width"></i>
+                        <span>Width</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(hips.ass_width_cm, 'cm')}
+                    </div>
+                `;
+                assColumns.appendChild(widthColumn);
+            }
+
+            // Depth Column
+            if (hips.ass_depth_cm !== undefined && hips.ass_depth_cm !== null) {
+                const depthColumn = document.createElement('div');
+                depthColumn.className = 'measurement-column-item';
+                depthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-arrow-up-to-line" title="Depth"></i>
+                        <span>Depth</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(hips.ass_depth_cm, 'cm')}
+                    </div>
+                `;
+                assColumns.appendChild(depthColumn);
+            }
+
+            if (assColumns.children.length > 0) {
+                assRow.appendChild(assColumns);
+                assContainer.appendChild(assRow);
+                section.appendChild(assContainer);
+                hasContent = true;
+            }
+
+            // Ratios row
+            if ((hips.chest_to_waist_ratio !== undefined && hips.chest_to_waist_ratio !== null) || 
+                (hips.waist_to_hip_ratio !== undefined && hips.waist_to_hip_ratio !== null)) {
+                const ratioRow = document.createElement('div');
+                ratioRow.className = 'measurement-compact-row';
+                ratioRow.innerHTML = '<div class="measurement-row-header">Ratios</div>';
+
+                const ratioItems = document.createElement('div');
+                ratioItems.className = 'measurement-row-items';
+
+                let ratioText = '';
+                if (hips.chest_to_waist_ratio !== undefined && hips.chest_to_waist_ratio !== null) {
+                    ratioText += `C/W: ${hips.chest_to_waist_ratio.toFixed(2)}`;
+                }
+                if (hips.waist_to_hip_ratio !== undefined && hips.waist_to_hip_ratio !== null) {
+                    if (ratioText) ratioText += ' | ';
+                    ratioText += `W/H: ${hips.waist_to_hip_ratio.toFixed(2)}`;
+                }
+
+                const ratioItem = document.createElement('div');
+                ratioItem.className = 'measurement-compact-item';
+                ratioItem.innerHTML = `
+                    <i class="fas fa-balance-scale" title="Body Ratios"></i>
+                    <span class="measurement-compact-value">${ratioText}</span>
+                `;
+                ratioItems.appendChild(ratioItem);
+
+                ratioRow.appendChild(ratioItems);
+                section.appendChild(ratioRow);
+                hasContent = true;
+            }
+        }
+
+        // Legs data
+        if (data.Legs) {
+            const legs = data.Legs;
+
+            // Combined Leg measurements - single row with all measurements
+            const legContainer = document.createElement('div');
+            legContainer.className = 'measurement-column-container';
+
+            // Add header for legs group
+            const legHeader = document.createElement('div');
+            legHeader.className = 'measurement-group-header';
+            legHeader.innerHTML = '<i class="fas fa-running"></i> Legs';
+            legContainer.appendChild(legHeader);
+
+                const legRow = document.createElement('div');
+            legRow.className = 'measurement-column-row';
+
+            const legColumns = document.createElement('div');
+            legColumns.className = 'measurement-column-items';
+
+            // Leg Length Column
+            if (legs.leg_length_cm !== undefined) {
+                const lengthColumn = document.createElement('div');
+                lengthColumn.className = 'measurement-column-item';
+                lengthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                    <i class="fas fa-ruler-vertical" title="Length"></i>
+                        <span>Length</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(legs.leg_length_cm, 'cm')}
+                    </div>
+                `;
+                legColumns.appendChild(lengthColumn);
+            }
+
+            // Thigh Circumference Column
+            if (legs.thigh_circumference_cm !== undefined) {
+                const thighCircColumn = document.createElement('div');
+                thighCircColumn.className = 'measurement-column-item';
+                thighCircColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fa-regular fa-circle" title="Thigh Circumference"></i>
+                        <span>Thigh</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(legs.thigh_circumference_cm, 'cm')}
+                        ${legs.thigh_scale !== undefined ? this.createScaleBadge(legs.thigh_scale, 'Thigh Scale') : ''}
+                    </div>
+                `;
+                legColumns.appendChild(thighCircColumn);
+            }
+
+            // Calf Circumference Column
+            if (legs.calf_circumference_cm !== undefined) {
+                const calfCircColumn = document.createElement('div');
+                calfCircColumn.className = 'measurement-column-item';
+                calfCircColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fa-regular fa-circle" title="Calf Circumference"></i>
+                        <span>Calf</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(legs.calf_circumference_cm, 'cm')}
+                        ${legs.calf_scale !== undefined ? this.createScaleBadge(legs.calf_scale, 'Calf Scale') : ''}
+                    </div>
+                `;
+                legColumns.appendChild(calfCircColumn);
+            }
+
+            // Thigh Separation Column
+            if (legs.thigh_separation_cm !== undefined) {
+                const sepColumn = document.createElement('div');
+                sepColumn.className = 'measurement-column-item';
+                sepColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-ruler-horizontal" title="Separation"></i>
+                        <span>Separation</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(legs.thigh_separation_cm, 'cm')}
+                    </div>
+                `;
+                legColumns.appendChild(sepColumn);
+            }
+
+            if (legColumns.children.length > 0) {
+                legRow.appendChild(legColumns);
+                legContainer.appendChild(legRow);
+                section.appendChild(legContainer);
+                hasContent = true;
+            }
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderLegsSection(data) {
+        if (!data.Legs) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-running"></i> Legs</h3>';
+
+        let hasContent = false;
+        const legs = data.Legs;
+
+        // Leg measurements - column layout
+        const legContainer = document.createElement('div');
+        legContainer.className = 'measurement-column-container';
+
+        // Add header for leg group
+        const legHeader = document.createElement('div');
+        legHeader.className = 'measurement-group-header';
+        legHeader.innerHTML = '<i class="fas fa-running" title="Legs"></i> Legs';
+        legContainer.appendChild(legHeader);
+
+        const legRow = document.createElement('div');
+        legRow.className = 'measurement-column-row';
+
+        const legColumns = document.createElement('div');
+        legColumns.className = 'measurement-column-items';
+
+        // Leg Length Column
+        if (legs.leg_length_cm !== undefined && legs.leg_length_cm !== null) {
+            const lengthColumn = document.createElement('div');
+            lengthColumn.className = 'measurement-column-item';
+            lengthColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-ruler-vertical" title="Leg Length"></i>
+                    <span>Length</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(legs.leg_length_cm, 'cm')}
+                    ${legs.leg_scale !== undefined && legs.leg_scale !== null ? this.createScaleBadge(legs.leg_scale, 'Leg Scale') : ''}
+                </div>
+            `;
+            legColumns.appendChild(lengthColumn);
+        }
+
+        // Thigh Circumference Column
+        if (legs.thigh_circumference_cm !== undefined && legs.thigh_circumference_cm !== null) {
+            const thighColumn = document.createElement('div');
+            thighColumn.className = 'measurement-column-item';
+            thighColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fa-regular fa-circle" title="Thigh Circumference"></i>
+                    <span>Thigh</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(legs.thigh_circumference_cm, 'cm')}
+                    ${legs.thigh_scale !== undefined && legs.thigh_scale !== null ? this.createScaleBadge(legs.thigh_scale, 'Thigh Scale') : ''}
+                </div>
+            `;
+            legColumns.appendChild(thighColumn);
+        }
+
+        // Thigh Separation Column
+        if (legs.thigh_separation_cm !== undefined && legs.thigh_separation_cm !== null) {
+            const separationColumn = document.createElement('div');
+            separationColumn.className = 'measurement-column-item';
+            separationColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-arrows-alt-h" title="Thigh Separation"></i>
+                    <span>Separation</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(legs.thigh_separation_cm, 'cm')}
+                </div>
+            `;
+            legColumns.appendChild(separationColumn);
+        }
+
+        // Calf Circumference Column
+        if (legs.calf_circumference_cm !== undefined && legs.calf_circumference_cm !== null) {
+            const calfColumn = document.createElement('div');
+            calfColumn.className = 'measurement-column-item';
+            calfColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fa-regular fa-circle" title="Calf Circumference"></i>
+                    <span>Calf</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${this.formatMeasurementValue(legs.calf_circumference_cm, 'cm')}
+                    ${legs.calf_scale !== undefined && legs.calf_scale !== null ? this.createScaleBadge(legs.calf_scale, 'Calf Scale') : ''}
+                </div>
+            `;
+            legColumns.appendChild(calfColumn);
+        }
+
+        if (legColumns.children.length > 0) {
+            legRow.appendChild(legColumns);
+            legContainer.appendChild(legRow);
+            section.appendChild(legContainer);
+            hasContent = true;
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderPregnancySection(data) {
+        if (!data.ReproductiveSystem || !data.ReproductiveSystem.reproductive_state) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section pregnancy-section';
+        section.innerHTML = '<h3 class="measurement-section-title pregnancy-title"><i class="fas fa-baby-carriage"></i> Pregnancy</h3>';
+
+        const repro = data.ReproductiveSystem;
+        const state = repro.reproductive_state;
+        let hasContent = false;
+
+        // Check if this is a pregnancy-related state
+        const pregnancyStates = [
+            'early_trimester_pregnancy',
+            'active_pregnancy',
+            'final_trimester_pregnancy',
+            'impending_labor',
+            'active_labor',
+            'active_birthing',
+            'blocked_birthing',
+            'postpartum',
+            'unbirthing',
+            'vore_pregnancy'
+        ];
+
+        const isPregnancyState = pregnancyStates.includes(state.state) ||
+                                state.pregnancy_count > 0 ||
+                                state.pregnancy_scale > 0;
+
+        if (!isPregnancyState) return null;
+
+        // Reproductive state description
+        if (state.description) {
+            section.innerHTML += `
+                <div class="measurement-description-row">
+                    <div class="measurement-description-label">Reproductive State</div>
+                    <div class="measurement-description-text">${state.description}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Pregnancy details in column layout
+        const pregnancyContainer = document.createElement('div');
+        pregnancyContainer.className = 'measurement-column-container';
+
+        // Add header for pregnancy details
+        const pregnancyHeader = document.createElement('div');
+        pregnancyHeader.className = 'measurement-group-header';
+        pregnancyHeader.innerHTML = '<i class="fas fa-info-circle"></i> Pregnancy Details';
+        pregnancyContainer.appendChild(pregnancyHeader);
+
+        const pregnancyRow = document.createElement('div');
+        pregnancyRow.className = 'measurement-column-row';
+
+        const pregnancyColumns = document.createElement('div');
+        pregnancyColumns.className = 'measurement-column-items';
+
+        // Pregnancy State Column
+        const stateDescriptions = {
+            'early_trimester_pregnancy': 'Early Pregnancy',
+            'active_pregnancy': 'Active Pregnancy',
+            'final_trimester_pregnancy': 'Final Trimester',
+            'impending_labor': 'Impending Labor',
+            'active_labor': 'Active Labor',
+            'active_birthing': 'Active Birthing',
+            'blocked_birthing': 'Blocked Birthing',
+            'postpartum': 'Postpartum',
+            'unbirthing': 'Unbirthing',
+            'vore_pregnancy': 'Vore Pregnancy'
+        };
+
+        if (state.state && pregnancyStates.includes(state.state)) {
+            const stateColumn = document.createElement('div');
+            stateColumn.className = 'measurement-column-item';
+            stateColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-heartbeat" title="Pregnancy State"></i>
+                    <span>State</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${stateDescriptions[state.state] || state.state}
+                </div>
+            `;
+            pregnancyColumns.appendChild(stateColumn);
+        }
+
+        // Baby Count Column (with womb scale)
+        if (state.pregnancy_count !== undefined && state.pregnancy_count !== null) {
+            const countColumn = document.createElement('div');
+            countColumn.className = 'measurement-column-item';
+            const wombScaleHtml = state.pregnancy_scale !== undefined && state.pregnancy_scale !== null
+                ? ` <span class="measurement-scale-badge" style="background-color: rgba(220, 53, 69, ${Math.min(state.pregnancy_scale, 1.0) * 0.6});" title="Womb Scale: ${state.pregnancy_scale.toFixed(2)}">${state.pregnancy_scale.toFixed(2)}</span>`
+                : '';
+            countColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-baby" title="Baby Count"></i>
+                    <span>Babies</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${state.pregnancy_count}${wombScaleHtml}
+                </div>
+            `;
+            pregnancyColumns.appendChild(countColumn);
+        }
+
+        // Pregnancy Scale is now shown next to baby count (above)
+
+        // Trimester Column
+        if (state.pregnancy_trimester !== undefined && state.pregnancy_trimester !== null) {
+            const trimesterColumn = document.createElement('div');
+            trimesterColumn.className = 'measurement-column-item';
+            trimesterColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-calendar-alt" title="Trimester"></i>
+                    <span>Trimester</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${state.pregnancy_trimester}${state.pregnancy_trimester === 1 ? 'st' : state.pregnancy_trimester === 2 ? 'nd' : state.pregnancy_trimester === 3 ? 'rd' : 'th'}
+                </div>
+            `;
+            pregnancyColumns.appendChild(trimesterColumn);
+        }
+
+        // Weeks Column
+        if (state.pregnancy_weeks !== undefined && state.pregnancy_weeks !== null) {
+            const weeksColumn = document.createElement('div');
+            weeksColumn.className = 'measurement-column-item';
+            weeksColumn.innerHTML = `
+                <div class="measurement-column-label">
+                    <i class="fas fa-clock" title="Weeks"></i>
+                    <span>Weeks</span>
+                </div>
+                <div class="measurement-column-value">
+                    ${state.pregnancy_weeks}
+                </div>
+            `;
+            pregnancyColumns.appendChild(weeksColumn);
+        }
+
+        if (pregnancyColumns.children.length > 0) {
+            pregnancyRow.appendChild(pregnancyColumns);
+            pregnancyContainer.appendChild(pregnancyRow);
+            section.appendChild(pregnancyContainer);
+                hasContent = true;
+            }
+
+        // Baby details as badges
+        if (state.pregnancy_names && state.pregnancy_names.length > 0) {
+            const babyContainer = document.createElement('div');
+            babyContainer.className = 'measurement-description-row';
+
+            const babyLabel = document.createElement('div');
+            babyLabel.className = 'measurement-description-label';
+            babyLabel.textContent = 'Baby Names';
+            babyContainer.appendChild(babyLabel);
+
+            const babyBadges = document.createElement('div');
+            babyBadges.className = 'baby-badges-container';
+
+            state.pregnancy_names.forEach((name, index) => {
+                const gender = state.pregnancy_genders && state.pregnancy_genders[index] ? state.pregnancy_genders[index] : 'other';
+
+                let genderIcon = 'fas fa-genderless';
+                let badgeClass = 'baby-badge-neutral';
+
+                if (gender === 'female') {
+                    genderIcon = 'fas fa-venus';
+                    badgeClass = 'baby-badge-female';
+                } else if (gender === 'male') {
+                    genderIcon = 'fas fa-mars';
+                    badgeClass = 'baby-badge-male';
+                }
+
+                const badge = document.createElement('div');
+                badge.className = `baby-badge ${badgeClass}`;
+                badge.innerHTML = `
+                    <i class="${genderIcon}"></i>
+                    <span class="baby-name">${name}</span>
+                `;
+                babyBadges.appendChild(badge);
+            });
+
+            babyContainer.appendChild(babyBadges);
+            section.appendChild(babyContainer);
+            hasContent = true;
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderReproductiveSystemSection(data) {
+        if (!data.ReproductiveSystem) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section reproductive-section';
+        section.innerHTML = '<h3 class="measurement-section-title reproductive-title"><i class="fas fa-venus-mars"></i> Reproductive System</h3>';
+
+        const repro = data.ReproductiveSystem;
+        let hasContent = false;
+
+        // General description (full width row)
+        if (repro.description) {
+            section.innerHTML += `
+                <div class="measurement-description-row">
+                    <div class="measurement-description-label">Description</div>
+                    <div class="measurement-description-text">${repro.description}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Biological sex type
+        if (repro.type) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">Biological Sex</div>
+                    <div class="measurement-value">${repro.type.charAt(0).toUpperCase() + repro.type.slice(1)}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Fetish names
+        if (repro.fetish_names && Array.isArray(repro.fetish_names) && repro.fetish_names.length > 0) {
+            section.innerHTML += `
+                <div class="measurement-description-row">
+                    <div class="measurement-description-label">Fetishes</div>
+                    <div class="measurement-description-text">${repro.fetish_names.join(', ')}</div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Pleasure level with small inline gauge
+        if (repro.pleaseure_level !== undefined && repro.pleaseure_level !== null) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">
+                        <i class="fas fa-heart"></i> Pleasure Level
+                    </div>
+                    <div class="measurement-value">
+                        ${repro.pleaseure_level.toFixed(1)}/10 ${this.createSmallGauge(repro.pleaseure_level, 10, 'gauge-pleasure')}
+                    </div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Male Anatomy - column layout (show if has values)
+        if (repro.penis_length_cm !== undefined || repro.penis_erectness !== undefined || repro.genital_size !== undefined || repro.genital_scale !== undefined) {
+            const maleContainer = document.createElement('div');
+            maleContainer.className = 'measurement-column-container';
+
+            // Add header for male anatomy group
+            const maleHeader = document.createElement('div');
+            maleHeader.className = 'measurement-group-header';
+            maleHeader.innerHTML = '<i class="fas fa-mars"></i> Male Anatomy';
+            maleContainer.appendChild(maleHeader);
+
+            const maleRow = document.createElement('div');
+            maleRow.className = 'measurement-column-row';
+
+            const maleColumns = document.createElement('div');
+            maleColumns.className = 'measurement-column-items';
+
+            // Penis Length Column
+            if (repro.penis_length_cm !== undefined) {
+                const lengthColumn = document.createElement('div');
+                lengthColumn.className = 'measurement-column-item';
+                lengthColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                    <i class="fas fa-ruler-vertical" title="Penis Length"></i>
+                        <span>Length</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${this.formatMeasurementValue(repro.penis_length_cm, 'cm')}
+                    </div>
+                `;
+                maleColumns.appendChild(lengthColumn);
+            }
+
+            // Erection Level Column
+            if (repro.penis_erectness !== undefined && repro.penis_erectness !== null) {
+                const erectionColumn = document.createElement('div');
+                erectionColumn.className = 'measurement-column-item';
+                erectionColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                    <i class="fas fa-thermometer-half" title="Erection Level"></i>
+                        <span>Erection</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${(repro.penis_erectness * 100).toFixed(0)}%
+                    </div>
+                `;
+                maleColumns.appendChild(erectionColumn);
+            }
+
+            // Genital Size Column
+            if (repro.genital_size !== undefined && repro.genital_size !== null) {
+                const sizeColumn = document.createElement('div');
+                sizeColumn.className = 'measurement-column-item';
+                sizeColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-info-circle" title="Genital Size"></i>
+                        <span>Genital Size</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${repro.genital_size}
+                    </div>
+                `;
+                maleColumns.appendChild(sizeColumn);
+            }
+
+            // Genital Scale Column
+            if (repro.genital_scale !== undefined && repro.genital_scale !== null) {
+                const scaleColumn = document.createElement('div');
+                scaleColumn.className = 'measurement-column-item';
+                scaleColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-circle" title="Genital Scale"></i>
+                        <span>Genital Scale</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        <span class="measurement-scale-badge" style="background-color: rgba(220, 53, 69, ${Math.min(repro.genital_scale, 1.0) * 0.6});" title="Genital Scale: ${repro.genital_scale.toFixed(2)}">${repro.genital_scale.toFixed(2)}</span>
+                    </div>
+                `;
+                maleColumns.appendChild(scaleColumn);
+            }
+
+            if (maleColumns.children.length > 0) {
+                maleRow.appendChild(maleColumns);
+                maleContainer.appendChild(maleRow);
+                section.appendChild(maleContainer);
+                hasContent = true;
+            }
+        }
+
+        // Female Anatomy - column layout (show if has values)
+        if (repro.vagina_size || repro.vagina_scale !== undefined || repro.vaginal_openness !== undefined || (repro.genital_size !== undefined && repro.genital_size !== null) || (repro.genital_scale !== undefined && repro.genital_scale !== null)) {
+            const femaleContainer = document.createElement('div');
+            femaleContainer.className = 'measurement-column-container';
+
+            // Add header for female anatomy group
+            const femaleHeader = document.createElement('div');
+            femaleHeader.className = 'measurement-group-header';
+            femaleHeader.innerHTML = '<i class="fas fa-venus"></i> Female Anatomy';
+            femaleContainer.appendChild(femaleHeader);
+
+            const femaleRow = document.createElement('div');
+            femaleRow.className = 'measurement-column-row';
+
+            const femaleColumns = document.createElement('div');
+            femaleColumns.className = 'measurement-column-items';
+
+            // Vagina Size Column
+            if (repro.vagina_size) {
+                const vaginaSizeColumn = document.createElement('div');
+                vaginaSizeColumn.className = 'measurement-column-item';
+                vaginaSizeColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                    <i class="fas fa-info-circle" title="Vagina Size"></i>
+                        <span>Vagina Size</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${repro.vagina_size}
+                    </div>
+                `;
+                femaleColumns.appendChild(vaginaSizeColumn);
+            }
+
+            // Vagina Scale Column
+            if (repro.vagina_scale !== undefined && repro.vagina_scale !== null) {
+                const vaginaScaleColumn = document.createElement('div');
+                vaginaScaleColumn.className = 'measurement-column-item';
+                vaginaScaleColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                    <i class="fas fa-circle" title="Vagina Scale"></i>
+                        <span>Vagina Scale</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        <span class="measurement-scale-badge" style="background-color: rgba(220, 53, 69, ${Math.min(repro.vagina_scale, 1.0) * 0.6});" title="Vagina Scale: ${repro.vagina_scale.toFixed(2)}">${repro.vagina_scale.toFixed(2)}</span>
+                    </div>
+                `;
+                femaleColumns.appendChild(vaginaScaleColumn);
+            }
+
+            // Vaginal Openness Column
+            if (repro.vaginal_openness !== undefined && repro.vaginal_openness !== null) {
+                const opennessColumn = document.createElement('div');
+                opennessColumn.className = 'measurement-column-item';
+                opennessColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                    <i class="fas fa-expand-arrows-alt" title="Vaginal Openness"></i>
+                        <span>Vaginal Openness</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${(repro.vaginal_openness * 100).toFixed(0)}%
+                    </div>
+                `;
+                femaleColumns.appendChild(opennessColumn);
+            }
+
+            // Genital Size Column
+            if (repro.genital_size !== undefined && repro.genital_size !== null) {
+                const genitalSizeColumn = document.createElement('div');
+                genitalSizeColumn.className = 'measurement-column-item';
+                genitalSizeColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-info-circle" title="Genital Size"></i>
+                        <span>Genital Size</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        ${repro.genital_size}
+                    </div>
+                `;
+                femaleColumns.appendChild(genitalSizeColumn);
+            }
+
+            // Genital Scale Column
+            if (repro.genital_scale !== undefined && repro.genital_scale !== null) {
+                const genitalScaleColumn = document.createElement('div');
+                genitalScaleColumn.className = 'measurement-column-item';
+                genitalScaleColumn.innerHTML = `
+                    <div class="measurement-column-label">
+                        <i class="fas fa-circle" title="Genital Scale"></i>
+                        <span>Genital Scale</span>
+                    </div>
+                    <div class="measurement-column-value">
+                        <span class="measurement-scale-badge" style="background-color: rgba(220, 53, 69, ${Math.min(repro.genital_scale, 1.0) * 0.6});" title="Genital Scale: ${repro.genital_scale.toFixed(2)}">${repro.genital_scale.toFixed(2)}</span>
+                    </div>
+                `;
+                femaleColumns.appendChild(genitalScaleColumn);
+            }
+
+            if (femaleColumns.children.length > 0) {
+                femaleRow.appendChild(femaleColumns);
+                femaleContainer.appendChild(femaleRow);
+                section.appendChild(femaleContainer);
+                hasContent = true;
+            }
+        }
+
+        // Reproductive State (non-pregnancy states only)
+        if (repro.reproductive_state) {
+            const state = repro.reproductive_state;
+            const stateDescriptions = {
+                'inactive': 'Inactive',
+                'masturbating': 'Masturbating',
+                'active_sexual_intercourse': 'Active Sexual Intercourse',
+                'fertilized': 'Fertilized'
+            };
+
+            // Only show non-pregnancy states here
+            if (state.state && stateDescriptions[state.state]) {
+                section.innerHTML += `
+                    <div class="measurement-item">
+                        <div class="measurement-label">Reproductive State</div>
+                        <div class="measurement-value">${stateDescriptions[state.state] || state.state}</div>
+                    </div>
+                `;
+                hasContent = true;
+            }
+        }
+
+        return hasContent ? section : null;
+    }
+
+    renderMedicalConditionsSection(data) {
+        if (!data.MedicalConditions || data.MedicalConditions.length === 0) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-stethoscope"></i> Medical Conditions</h3>';
+
+        let hasContent = false;
+
+        data.MedicalConditions.forEach((condition, index) => {
+            const conditionItem = document.createElement('div');
+            conditionItem.className = 'measurement-item medical-condition-item';
+            
+            const severityGauge = this.createSmallGauge(condition.severity, 10, 'gauge-danger');
+            
+            conditionItem.innerHTML = `
+                <div class="measurement-label">
+                    <i class="fas fa-exclamation-triangle"></i> ${condition.name}
+                </div>
+                <div class="measurement-value">
+                    ${condition.severity.toFixed(1)}/10 ${severityGauge}
+                </div>
+                <div class="measurement-description">
+                    ${condition.description}
+                </div>
+            `;
+            
+            section.appendChild(conditionItem);
+            hasContent = true;
+        });
+
+        return hasContent ? section : null;
+    }
+
+    renderProgressionSection(data) {
+        if (!data.Progression) return null;
+
+        const section = document.createElement('div');
+        section.className = 'measurement-section';
+        section.innerHTML = '<h3 class="measurement-section-title"><i class="fas fa-chart-line"></i> Progression</h3>';
+
+        let hasContent = false;
+
+        // Changes from previous
+        if (data.Progression.changes_from_previous && data.Progression.changes_from_previous.length > 0) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">
+                        <i class="fas fa-history"></i> Changes from Previous
+                    </div>
+                    <div class="measurement-value">
+                        <ul class="progression-list">
+                            ${data.Progression.changes_from_previous.map(change => `<li>${change}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        // Progression indicators
+        if (data.Progression.progression_indicators && data.Progression.progression_indicators.length > 0) {
+            section.innerHTML += `
+                <div class="measurement-item">
+                    <div class="measurement-label">
+                        <i class="fas fa-trending-up"></i> Progression Indicators
+                    </div>
+                    <div class="measurement-value">
+                        <ul class="progression-list">
+                            ${data.Progression.progression_indicators.map(indicator => `<li>${indicator}</li>`).join('')}
+                        </ul>
+                    </div>
+                </div>
+            `;
+            hasContent = true;
+        }
+
+        return hasContent ? section : null;
     }
     
     hideMeasurements() {
@@ -2183,11 +5429,44 @@ class Director {
                     this.hideMeasurements();
                 }
             });
+
+            // Add unit toggle functionality
+            measurementsModal.addEventListener('click', (e) => {
+                if (e.target.classList.contains('measurement-value-toggle')) {
+                    this.toggleMeasurementUnit(e.target);
+                }
+            });
+        }
+    }
+
+    // Create a small inline bar gauge for 0-10 values
+    createSmallGauge(value, maxValue = 10, colorClass = 'gauge-primary') {
+        const percentage = Math.min((value / maxValue) * 100, 100);
+
+        return `
+            <div class="small-gauge ${colorClass}" title="${value.toFixed(1)}/${maxValue}">
+                <div class="small-gauge-bar" style="width: ${percentage}%"></div>
+            </div>
+        `;
+    }
+
+    // Toggle between imperial and metric units for measurement values
+    toggleMeasurementUnit(element) {
+        const currentUnit = element.dataset.unit;
+        const imperialValue = element.dataset.imperial;
+        const metricValue = element.dataset.metric;
+
+        if (currentUnit === 'imperial') {
+            element.textContent = metricValue;
+            element.dataset.unit = 'metric';
+        } else {
+            element.textContent = imperialValue;
+            element.dataset.unit = 'imperial';
         }
     }
                 
     // Toggle expandable content function
-    toggleExpandable(buttonElement, isSuggestions = false) {
+    toggleExpandable(buttonElement, type = 'description') {
         // Find the expandable content within the same parent container
         const parent = buttonElement.parentElement;
         const content = parent.querySelector('.director-expandable-content');
@@ -2197,19 +5476,43 @@ class Director {
             return;
         }
         
+        // Define button content for different types
+        const buttonConfigs = {
+            'description': {
+                show: '<i class="fas fa-chevron-down"></i> Show Description',
+                hide: '<i class="fas fa-chevron-up"></i> Hide Description',
+                icon: 'chevron-down'
+            },
+            'imageDescription': {
+                show: '<i class="fas fa-chevron-down"></i> Show Image Description',
+                hide: '<i class="fas fa-chevron-up"></i> Hide Image Description',
+                icon: 'chevron-down'
+            },
+            'issues': {
+                show: '<i class="fas fa-exclamation-triangle"></i> Show Issues',
+                hide: '<i class="fas fa-exclamation-triangle"></i> Hide Issues',
+                icon: 'exclamation-triangle'
+            },
+            'suggestions': {
+                show: '<i class="fas fa-lightbulb"></i> Show Suggestions',
+                hide: '<i class="fas fa-lightbulb"></i> Hide Suggestions',
+                icon: 'lightbulb'
+            }
+        };
+        
+        const config = buttonConfigs[type] || buttonConfigs['description'];
+        
         if (content.classList.contains('hidden')) {
             content.classList.remove('hidden');
-            buttonElement.innerHTML = (isSuggestions ? '<i class="fas fa-chevron-up"></i> Hide Suggestions' : '<i class="fas fa-chevron-up"></i> Hide Description');
+            buttonElement.innerHTML = config.hide;
         } else {
             content.classList.add('hidden');
-            buttonElement.innerHTML = (isSuggestions ? '<i class="fas fa-lightbulb"></i> Show Suggestions' : '<i class="fas fa-chevron-down"></i> Show Description');
+            buttonElement.innerHTML = config.show;
         }
     }
     
     // Copy prompt function
     applyPrompt(buttonElement) {
-        console.log('🔧 applyPrompt called with button element:', buttonElement);
-        
         // Find the message element by traversing up the DOM
         const messageElement = buttonElement.closest('.director-message');
         if (!messageElement) {
@@ -2272,6 +5575,20 @@ class Director {
                     stopEmphasisHighlighting();
                 }
 
+                // Apply quality preset setting
+                if (prompt.apply_quality_preset !== undefined) {
+                    appendQuality = prompt.apply_quality_preset;
+                    const qualityToggleBtn = document.getElementById('qualityToggleBtn');
+                    if (qualityToggleBtn) {
+                        qualityToggleBtn.setAttribute('data-state', appendQuality ? 'on' : 'off');
+                    }
+                }
+
+                // Apply UC preset setting
+                if (prompt.apply_uc_preset !== undefined) {
+                    selectUcPreset(prompt.apply_uc_preset);
+                }
+
                 // Smart character management - update existing, remove unused, add new
                 if (prompt.chara && Array.isArray(prompt.chara)) {
                     const characterItems = document.querySelectorAll('.character-prompt-item');
@@ -2280,7 +5597,6 @@ class Director {
                     // Remove characters beyond the new count
                     if (characterItems.length > newCharacterCount) {
                         for (let i = characterItems.length - 1; i >= newCharacterCount; i--) {
-                            console.log(`🗑️ Removing character at index ${i} (beyond new count)`);
                             characterItems[i].remove();
                         }
                     }
@@ -2298,9 +5614,16 @@ class Director {
                     });
                 }
 
+                if (this.currentSession && message.id) {
+                    const directorBtn = document.getElementById('directorBtn');
+                    if (directorBtn) {
+                        directorBtn.dataset.directorSessionId = this.currentSession.id;
+                        directorBtn.dataset.directorMessageId = message.id;
+                    }
+                }
+
                 const characterCount = prompt.chara ? prompt.chara.length : 0;
-                showGlassToast('success', null, `Prompt${characterCount > 0 ? ` and ${characterCount} character(s)` : ''} Updated`);
-                console.log('✅ JSON prompt applied successfully');
+                showGlassToast('success', null, `Prompt${characterCount > 0 ? ` and ${characterCount} character(s)` : ''} Updated`);                
                 return;
             }
         }
@@ -2326,7 +5649,6 @@ class Director {
                 });
 
                 showGlassToast('success', null, 'Prompt Updated');
-                console.log('✅ Base prompt applied successfully');
             } else if (prompt.length > 1) {
                 // Multiple prompts: first is base, rest are character prompts
                 const manualPrompt = document.getElementById('manualPrompt');
@@ -2371,6 +5693,7 @@ class Director {
 
             showGlassToast('success', null, 'Prompt Updated');
         }
+        
         // Only auto-run if auto-generate is enabled
         if (this.autoGenerateEnabled) {
             setTimeout(() => {
@@ -2384,8 +5707,6 @@ class Director {
         
     // Use suggestion function
     useSuggestion(suggestionText) {
-        console.log('💡 Using suggestion:', suggestionText);
-        
         // Get the chat input and send button
         const directorChatInput = this.directorChatInput;
         const directorSendBtn = this.directorSendBtn;
@@ -2433,8 +5754,6 @@ class Director {
         
         // Show a toast notification
         showGlassToast('info', null, 'Suggestion added to input. Click send to apply.');
-        
-        console.log('✅ Suggestion added to input:', messageText);
     }
 
     // Initialize custom scrollbars for director content

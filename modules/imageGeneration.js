@@ -18,7 +18,7 @@ const {
     processDynamicImage, 
     resizeMaskWithCanvas
 } = require('./imageTools');
-const { generatePreview, generateBlurredPreview, generateMobilePreviews } = require('./previewUtils');
+const { generateMobilePreviews } = require('./previewUtils');
 const imageCounter = require('./imageCounter');
 const { upscaleImageCore } = require('./imageUpscaling');
 
@@ -591,8 +591,14 @@ const buildOptions = async (body, preset = null, queryParams = {}) => {
         baseOptions.resPreset = "NORMAL_SQUARE";
     }
 
-    // Handle character reference data
-    if (body.chara_reference_source) {
+    if (body.director_session_id !== undefined) {
+        baseOptions.director_session_id = body.director_session_id;
+    }
+    if (body.director_message_id !== undefined) {
+        baseOptions.director_message_id = body.director_message_id;
+    }
+
+    if (body.chara_reference_source !== undefined) {
         try {
             // Convert character reference to base64 PNG image (following chunk pattern)
             const charaReferenceBase64 = await convertCharacterReferenceToBase64(body.chara_reference_source);
@@ -924,6 +930,9 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     delete apiOpts.normalize_vibes;
     delete apiOpts.chara_reference_source;
     delete apiOpts.chara_reference_with_style;
+    delete apiOpts.director_session_id;
+    delete apiOpts.director_message_id;
+    delete apiOpts.history;
 
     // Process character prompts: only enabled characters go to API, all characters go to forge_data
     if (opts.allCharacterPrompts && Array.isArray(opts.allCharacterPrompts)) {
@@ -1091,6 +1100,12 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             forgeData.chara_reference_source = opts.chara_reference_source;
             forgeData.chara_reference_with_style = opts.chara_reference_with_style !== undefined ? opts.chara_reference_with_style : false;
         }
+        if (opts.director_session_id !== undefined) {
+            forgeData.director_session_id = opts.director_session_id;
+        }
+        if (opts.director_message_id !== undefined) {
+            forgeData.director_message_id = opts.director_message_id;
+        }
         
         // Update buffer with forge metadata
         buffer = updateMetadata(buffer, forgeData);
@@ -1117,18 +1132,10 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             
             // Generate preview
             const baseName = getBaseName(name);
-            const previewFile = `${baseName}.jpg`;
-            const blurPreviewFile = `${baseName}_blur.jpg`;
-            const previewPath = path.join(previewsDir, previewFile);
-            const blurPreviewPath = path.join(previewsDir, blurPreviewFile);
             
             // Generate both main and @2x previews for mobile devices
             await generateMobilePreviews(path.join(imagesDir, name), baseName);
-            console.log(`📸 Generated mobile previews: ${previewFile} and ${baseName}@2x.jpg`);
-            
-            // Generate blurred background preview
-            await generateBlurredPreview(path.join(imagesDir, name), blurPreviewPath);
-            console.log(`📸 Generated blurred preview: ${blurPreviewFile}`);
+            console.log(`📸 Generated previews for ${baseName}`);
         }
         
         if (opts.upscale !== undefined && opts.upscale === true) {
@@ -1192,12 +1199,10 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             
             // Generate preview
             const baseName = getBaseName(name);
-            const previewFile = `${baseName}.jpg`;
-            const previewPath = path.join(previewsDir, previewFile);
             
             // Generate both main and @2x previews for mobile devices
             await generateMobilePreviews(path.join(imagesDir, name), baseName);
-            console.log(`📸 Generated mobile previews: ${previewFile} and ${baseName}@2x.jpg`);
+            console.log(`📸 Generated previews for ${baseName}`);
         }
         
         // Return result with appropriate seed information
@@ -1284,7 +1289,7 @@ async function generateImageWebSocket(body, userType, sessionId) {
         const mockReq = { session: { id: sessionId } };
         
         // Call handleGeneration directly and return the result
-        const result = await handleGeneration(opts, true, body?.presetName, body?.workspace, mockReq);
+        const result = await handleGeneration(opts, true, body?.preset || body?.presetName, body?.workspace, mockReq);
         
         return result;
     } catch(e) {

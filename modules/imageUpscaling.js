@@ -11,7 +11,7 @@ const {
 const { 
     getImageDimensions
 } = require('./imageTools');
-const { generatePreview, generateBlurredPreview, generateMobilePreviews } = require('./previewUtils');
+const { generateMobilePreviews } = require('./previewUtils');
 
 // Context object for dependency injection
 let context = {};
@@ -162,19 +162,13 @@ async function upscaleImage(filename, workspaceId, req, res) {
         
         // Generate preview for the base image (if not exists)
         const baseName = getBaseName(filename);
-        const previewFile = `${baseName}.jpg`
+        const previewFile = `${baseName}.webp`
         const previewPath = path.join(previewsDir, previewFile);
-        const blurPreviewFile = `${baseName}_blur.jpg`;
-        const blurPreviewPath = path.join(previewsDir, blurPreviewFile);
         
         if (!fs.existsSync(previewPath)) {
             // Generate both main and @2x previews for mobile devices
             await generateMobilePreviews(upscaledPath, baseName);
-            console.log(`📸 Generated mobile previews: ${previewFile} and ${baseName}@2x.jpg`);
-        }
-        if (!fs.existsSync(blurPreviewPath)) {
-            await generateBlurredPreview(upscaledPath, blurPreviewPath);
-            console.log(`📸 Generated blurred preview: ${blurPreviewFile}`);
+            console.log(`📸 Generated mobile previews for ${baseName}`);
         }
         
         // Return the upscaled image
@@ -230,19 +224,13 @@ async function upscaleImageWebSocket(filename, workspaceId, userType, sessionId)
         
         // Generate preview for the base image (if not exists)
         const baseName = getBaseName(filename);
-        const previewFile = `${baseName}.jpg`
+        const previewFile = `${baseName}.webp`
         const previewPath = path.join(previewsDir, previewFile);
-        const blurPreviewFile = `${baseName}_blur.jpg`;
-        const blurPreviewPath = path.join(previewsDir, blurPreviewFile);
         
         if (!fs.existsSync(previewPath)) {
             // Generate both main and @2x previews for mobile devices
             await generateMobilePreviews(upscaledPath, baseName);
-            console.log(`📸 Generated mobile previews: ${previewFile} and ${baseName}@2x.jpg`);
-        }
-        if (!fs.existsSync(blurPreviewPath)) {
-            await generateBlurredPreview(upscaledPath, blurPreviewPath);
-            console.log(`📸 Generated blurred preview: ${blurPreviewFile}`);
+            console.log(`📸 Generated previews for ${baseName}`);
         }
         
         // Return the result object instead of sending HTTP response

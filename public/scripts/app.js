@@ -7,12 +7,12 @@
 // This system handles preset loading, saving, validation, and management
 // Includes functions: loadPresetIntoForm, updatePresetLoadSaveState, validatePresetWithTimeout,
 // isValidPresetName, updateManualPresetToggleBtn, processResolutionValue, sanitizeCustomDimensions,
-// renderCustomPresetDropdown, selectCustomPreset, closeCustomPresetDropdown
+// Preset dropdown functionality moved to spellbook modal
 // Note: Some preset functions may already exist in presetManager.js - check for duplicates
 
 const presetAutocompleteOverlay = document.getElementById('presetAutocompleteOverlay');
 const presetAutocompleteList = document.querySelector('.preset-autocomplete-list');
-
+const loadSeedBtn = document.getElementById('loadSeedBtn');
 
 let bypassConfirmation = false;
 let previewRatio = 1;
@@ -232,7 +232,6 @@ async function generateFromPreset(presetName) {
 async function handlePresetUpdate(data) {
     await loadOptions();
     
-    await renderCustomPresetDropdown(selectedPreset);
     
     // Show notification
     if (data.message) {
@@ -382,12 +381,6 @@ async function loadTempImagePreview(previewUrl, imageData) {
             // Remove any existing zoom state
             imageContainer.classList.remove('zoomed');
         }
-
-        // Update the preview seed display if available
-        const previewSeedBtn = document.getElementById('manualPreviewSeedBtn');
-        if (previewSeedBtn) {
-            previewSeedBtn.classList.remove('hidden');
-        }
         
         // Initialize lightbox functionality for the temp image preview
         setTimeout(() => {
@@ -407,25 +400,25 @@ function isValidPresetName(name) {
 function updateManualPresetToggleBtn() {
     const presetName = manualPresetName.value.trim();
     const valid = isValidPresetName(presetName);
-    if (presetName === "") {
-        // Hide everything, show only the toggle button as toggle-btn
-        manualPresetGroup.classList.add('hidden');
-        manualPresetToggleBtn.classList.remove('hidden');
-        manualPresetToggleBtn.classList.add('toggle-btn');
-        manualPresetToggleBtn.classList.remove('hover-show');
-        manualPresetToggleText.classList.add('hidden');
-        manualPresetToggleBtn.setAttribute('data-state', 'off');
-        if (manualPresetToggleIcon) manualPresetToggleIcon.classList.remove('hidden');
-    } else {
-        // Hide the group, show the toggle button with value
-        manualPresetGroup.classList.add('hidden');
-        manualPresetToggleBtn.classList.remove('hidden');
-        manualPresetToggleBtn.classList.remove('toggle-btn');
-        manualPresetToggleBtn.classList.add('hover-show');
-        manualPresetToggleText.textContent = presetName;
-        manualPresetToggleText.classList.remove('hidden');
-        if (manualPresetToggleIcon) manualPresetToggleIcon.classList.add('hidden');
+
+    // Determine state based on priority: on/invalid > open > off
+    let state = 'off'; // default
+
+    if (presetName !== "") {
+        if (valid) {
+            state = 'on'; // valid preset name
+        } else {
+            state = 'invalid'; // preset name exists but not valid (needs saving)
+        }
     }
+
+    // If not on/invalid, check if group is open (lower priority)
+    if (state === 'off' && !manualPresetGroup.classList.contains('hidden')) {
+        state = 'open';
+    }
+
+    // Update button state
+    manualPresetToggleBtn.setAttribute('data-state', state);
 }
 
 // TRANSFORMATION SYSTEM - Move to transformationManager.js
@@ -461,7 +454,7 @@ async function moveToScraps(image) {
                 return;
         }
 
-        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-trash-alt"></i>');
+        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-fire"></i>');
 
         // If currently viewing scraps, reload them
         switchGalleryView(currentGalleryView, true);
@@ -507,7 +500,7 @@ async function moveImageToScrapsDirect(filename, event = null) {
             return;
         }
 
-        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-trash-alt"></i>');
+        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-fire"></i>');
 
         // If currently viewing scraps, reload them
         switchGalleryView(currentGalleryView, true);
@@ -603,7 +596,7 @@ async function removeFromScraps(image) {
         
         await window.wsClient.removeScrap(activeWorkspace, filename);
 
-        showGlassToast('success', null, 'Image removed from scraps', false, 3000, '<i class="mdi mdi-1-5 mdi-archive-arrow-up"></i>');
+        showGlassToast('success', null, 'Image removed from scraps', false, 3000, '<i class="fas fa-undo"></i>');
 
         // If currently viewing scraps, reload them
         switchGalleryView(currentGalleryView, true);
@@ -1002,15 +995,15 @@ function setupEventListeners() {
     // PRESET MANAGEMENT SYSTEM - Preset name input and button events
     manualPresetName.addEventListener('input', () => {
         validatePresetWithTimeout();
-        manualPresetToggleText.textContent = manualPresetName.value.trim();
+        //manualPresetToggleText.textContent = manualPresetName.value.trim();
     });
     manualPresetName.addEventListener('keyup', () => {
         validatePresetWithTimeout();
-        manualPresetToggleText.textContent = manualPresetName.value.trim();
+        //manualPresetToggleText.textContent = manualPresetName.value.trim();
     });
     manualPresetName.addEventListener('change', () => {
         validatePresetWithTimeout();
-        manualPresetToggleText.textContent = manualPresetName.value.trim();
+        //manualPresetToggleText.textContent = manualPresetName.value.trim();
     });
 
     // PRESET MANAGEMENT SYSTEM - Load, delete, and save button events
@@ -1085,12 +1078,12 @@ function setupEventListeners() {
                 
                 // Show success notification with size
                 if (window.showGlassToast) {
-                    window.showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fas fa-clipboard-check"></i>');
+                    window.showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fa-regular fa-clipboard-check"></i>');
                 }
             } catch (error) {
                 console.error('Failed to copy image to clipboard:', error);
                 if (window.showGlassToast) {
-                    window.showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fas fa-clipboard"></i>');
+                    window.showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
                 }
             }
         }
@@ -1190,26 +1183,6 @@ function setupEventListeners() {
         }
     });
 
-    manualPreviewSeedBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (window.lastGeneratedSeed) {
-            manualSeed.value = window.lastGeneratedSeed; 
-            setSeedInputGroupState(true);
-            
-            // Check if sprout seed button is active and update it
-            if (sproutSeedBtn && sproutSeedBtn.getAttribute('data-state') === 'off') {
-                window.lastLoadedSeed = window.lastGeneratedSeed;
-                manualSeed.value = window.lastLoadedSeed;
-            }
-            
-            if (window.innerWidth <= 1400 && manualModal.classList.contains('show-preview')) {
-                hideManualPreviewResponsive();
-            }
-        } else {
-            showGlassToast('error', null, 'No seed available', false, 5000, '<i class="fas fa-seedling"></i>');
-        }
-    });
-
     manualPreviewDeleteBtn.addEventListener('click', (e) => {
         e.preventDefault();
         deleteManualPreviewImage();
@@ -1252,6 +1225,7 @@ function setupEventListeners() {
 
     manualSeed.addEventListener('change', (e) => {
         clearSeedBtn?.classList.toggle('hidden', !e.target.value);
+        updateSproutSeedButtonFromPreviewSeed();
     });
 
     manualSeed.addEventListener('blur', (e) => {
@@ -1631,12 +1605,6 @@ function setupEventListeners() {
 
 
     // GENERATION CONTROLS SYSTEM - Preset selection and generate button events
-    presetSelect.addEventListener('change', updateGenerateButton);
-    // Mirror desktop generate button click to compact one
-    generatePresetBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        generateImage(e);
-    });
 
     // UPLOAD SYSTEM - Upload button and input events
     const uploadBtn = document.getElementById('uploadBtn');
@@ -1645,7 +1613,7 @@ function setupEventListeners() {
     if (uploadBtn) {
         uploadBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            showUnifiedUploadModal();
+            unifiedUploadModalManager.show();
             closeSubMenu();
         });
     }
@@ -2039,46 +2007,16 @@ function setupEventListeners() {
             hideManualPreviewResponsive();
         }
     });
-    // Update the click event for manualPresetToggleBtn to toggle the group and button state
+    // Preset toggle button click handler to show/hide preset group
     manualPresetToggleBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        const presetName = manualPresetName.value.trim();
-        const valid = isValidPresetName(presetName);
-        if (presetName === "" && !valid) {
-            // Only toggle group visibility and button state if name is empty
-            if (manualPresetGroup.classList.contains('hidden')) {
-                manualPresetGroup.classList.remove('hidden');
-                manualPresetToggleBtn.classList.add('toggle-btn');
-                manualPresetToggleBtn.classList.remove('hover-show');
-                manualPresetToggleBtn.setAttribute('data-state', 'on');
-                manualPresetToggleIcon.classList.remove('hidden');
-                manualPresetToggleText.classList.add('hidden');
-            } else {
-                manualPresetGroup.classList.add('hidden');
-                manualPresetToggleBtn.classList.add('toggle-btn');
-                manualPresetToggleBtn.classList.remove('hover-show');
-                manualPresetToggleBtn.setAttribute('data-state', 'off');
-                manualPresetToggleIcon.classList.remove('hidden');
-                manualPresetToggleText.classList.add('hidden');
-                manualPresetToggleText.textContent = presetName;
-            }
+        if (manualPresetGroup.classList.contains('hidden')) {
+            manualPresetGroup.classList.remove('hidden');
         } else {
-            if (manualPresetGroup.classList.contains('hidden')) {
-                manualPresetGroup.classList.remove('hidden');
-                manualPresetToggleBtn.classList.add('toggle-btn');
-                manualPresetToggleBtn.classList.remove('hover-show');
-                manualPresetToggleIcon.classList.remove('hidden');
-                manualPresetToggleText.classList.add('hidden');
-            } else {
-                manualPresetGroup.classList.add('hidden');
-                manualPresetToggleBtn.classList.remove('toggle-btn');
-                manualPresetToggleBtn.classList.add('hover-show');
-                manualPresetToggleIcon.classList.add('hidden');
-                manualPresetToggleText.classList.remove('hidden');
-                manualPresetToggleText.textContent = presetName;
-            }
+            manualPresetGroup.classList.add('hidden');
         }
-        // If there is a valid preset name, do nothing (button is not a toggle)
+        // Update the button state after toggling
+        updateManualPresetToggleBtn();
     });
 
     // GALLERY COLUMN CONTROLS SYSTEM - Move to galleryColumnManager.js
@@ -2198,15 +2136,10 @@ function setupEventListeners() {
     });
 
 
-    if (clearPresetBtn) {
-        clearPresetBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            selectCustomPreset('', 1);
-        });
-    }
 
     // Set up preset generation handlers
     sproutSeedBtn.addEventListener('click', toggleSproutSeed);
+    loadSeedBtn.addEventListener('click', loadSeedFromPreview);
     updateSproutSeedButton();
 
     const varietyBtn = document.getElementById('varietyBtn');
@@ -2245,8 +2178,6 @@ function setupEventListeners() {
 
     setupDropdown(ucPresetsDropdown, ucPresetsDropdownBtn, ucPresetsDropdownMenu, renderUcPresetsDropdown, () => selectedUcPreset, { preventFocusTransfer: true });
 
-    setupDropdown(customPresetDropdown, customPresetDropdownBtn, customPresetDropdownMenu, (sel) => renderCustomPresetDropdown(sel), () => selectedPreset, { preventFocusTransfer: true });
-    
     updatePresetLoadSaveState();
 
     setupTransformationDropdownListeners();
@@ -2929,9 +2860,7 @@ async function rerollImage(image, event = null) {
                     if (result.seed) {
                         window.lastGeneratedSeed = parseInt(result.seed);
                         const sproutSeedBtn = document.getElementById('sproutSeedBtn');
-                        const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
                         if (sproutSeedBtn) sproutSeedBtn.classList.add('available');
-                        if (manualPreviewSeedNumber) manualPreviewSeedNumber.textContent = parseInt(result.seed);
                         if (typeof updateSproutSeedButtonFromPreviewSeed === 'function') {
                             updateSproutSeedButtonFromPreviewSeed();
                         }
@@ -3056,15 +2985,6 @@ async function rerollImageWithEdit(image) {
         // Store metadata and image
         window.currentEditMetadata = metadata;
         window.currentEditImage = image;
-
-        // For gallery editing, we want to edit the prompt/parameters, not use the image as a source
-        // Set isVariationEdit to true to indicate this is a variation edit, not img2img
-        metadata.isVariationEdit = true;
-        
-        // Set image_source for preview purposes, but this won't trigger img2img mode due to isVariationEdit flag
-        if (!metadata.image_source && image.filename) {
-            metadata.image_source = `file:${image.filename}`;
-        }
 
         await loadIntoManualForm(metadata, image);
 
@@ -3398,7 +3318,7 @@ async function updateManualPreviewBlurredBackground(imageUrl) {
             .replace(/_upscaled$/, '');
         
         // Get the blurred preview URL - encode the baseName to handle spaces and special characters
-        const blurPreviewUrl = `/previews/${encodeURIComponent(baseName)}_blur.jpg`;
+        const blurPreviewUrl = `/previews/${encodeURIComponent(baseName)}@blur.webp`;
         
         // Check if the blurred preview exists
         try {
@@ -3496,7 +3416,6 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
-    const seedBtn = document.getElementById('manualPreviewSeedBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
     
 
@@ -3702,14 +3621,13 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             scrapBtn.classList.remove('hidden');
             // Update scrap button based on current view
             if (currentGalleryView === 'scraps') {
-                scrapBtn.innerHTML = '<i class="mdi mdi-1-5 mdi-archive-arrow-up"></i>';
+                scrapBtn.innerHTML = '<i class="fas fa-undo"></i>';
                 scrapBtn.title = 'Remove from scraps';
             } else {
-                scrapBtn.innerHTML = '<i class="mdi mdi-1-25 mdi-archive"></i>';
+                scrapBtn.innerHTML = '<i class="fas fa-bin-recycle"></i>';
                 scrapBtn.title = 'Move to scraps';
             }
         }
-        if (seedBtn) seedBtn.classList.remove('hidden');
         if (deleteBtn) deleteBtn.classList.remove('hidden');
 
         // Initialize lightbox functionality
@@ -3719,12 +3637,10 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
 
         // Update seed display
         if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata && window.currentManualPreviewImage.metadata.seed !== undefined) {
-            manualPreviewSeedNumber.textContent = window.currentManualPreviewImage.metadata.seed;
             window.lastGeneratedSeed = window.currentManualPreviewImage.metadata.seed;
             sproutSeedBtn.classList.add('available');
             updateSproutSeedButtonFromPreviewSeed();
         } else {
-            manualPreviewSeedNumber.textContent = '---';
             window.lastGeneratedSeed = null;
             sproutSeedBtn.classList.remove('available');
             updateSproutSeedButtonFromPreviewSeed();
@@ -3754,7 +3670,6 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
-    const seedBtn = document.getElementById('manualPreviewSeedBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
 
     if (previewImage && previewPlaceholder) {
@@ -3861,14 +3776,13 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             scrapBtn.classList.remove('hidden');
             // Update scrap button based on current view
             if (currentGalleryView === 'scraps') {
-                scrapBtn.innerHTML = '<i class="mdi mdi-1-5 mdi-archive-arrow-up"></i>';
+                scrapBtn.innerHTML = '<i class="fas fa-undo"></i>';
                 scrapBtn.title = 'Remove from scraps';
             } else {
-                scrapBtn.innerHTML = '<i class="mdi mdi-1-25 mdi-archive"></i>';
+                scrapBtn.innerHTML = '<i class="fas fa-bin-recycle"></i>';
                 scrapBtn.title = 'Move to scraps';
             }
         }
-        if (seedBtn) seedBtn.classList.remove('hidden');
         if (deleteBtn) deleteBtn.classList.remove('hidden');
 
         // Initialize lightbox functionality
@@ -3878,12 +3792,10 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
 
         // Update seed display
         if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata && window.currentManualPreviewImage.metadata.seed !== undefined) {
-            manualPreviewSeedNumber.textContent = window.currentManualPreviewImage.metadata.seed;
             window.lastGeneratedSeed = window.currentManualPreviewImage.metadata.seed;
             sproutSeedBtn.classList.add('available');
             updateSproutSeedButtonFromPreviewSeed();
         } else {
-            manualPreviewSeedNumber.textContent = '---';
             window.lastGeneratedSeed = null;
             sproutSeedBtn.classList.remove('available');
             updateSproutSeedButtonFromPreviewSeed();
@@ -3899,7 +3811,6 @@ function swapManualPreviewImages() {
     const previewImage = document.getElementById('manualPreviewImage');
     const originalImage = document.getElementById('manualPreviewOriginalImage');
     const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
-    const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
     
     if (!previewImage || !originalImage || !imageContainers || !window.lastGeneration || !window.initialEdit) return;
     
@@ -3909,7 +3820,6 @@ function swapManualPreviewImages() {
         if (window.lastGeneration && window.lastGeneration.filename) {
             const generatedImageUrl = `/images/${window.lastGeneration.filename}`;
             previewImage.src = generatedImageUrl;
-            manualPreviewSeedNumber.textContent = window.lastGeneration.seed;
             updateSproutSeedButtonFromPreviewSeed();
             
             // Update blurred background
@@ -3941,7 +3851,6 @@ function swapManualPreviewImages() {
         if (window.initialEdit && window.initialEdit.image) {
             const originalImageUrl = `/images/${window.initialEdit.image.upscaled || window.initialEdit.image.original}`;
             previewImage.src = originalImageUrl;
-            manualPreviewSeedNumber.textContent = window.initialEdit.source.seed;
             updateSproutSeedButtonFromPreviewSeed();
             
             // Update blurred background
@@ -3981,7 +3890,6 @@ function resetManualPreview() {
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
-    const seedBtn = document.getElementById('manualPreviewSeedBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
 
     if (previewImage && previewPlaceholder) {
@@ -4014,14 +3922,12 @@ function resetManualPreview() {
         if (manualPreviewPinBtn) manualPreviewPinBtn.classList.add('hidden');
         const scrapBtn = document.getElementById('manualPreviewScrapBtn');
         if (scrapBtn) scrapBtn.classList.add('hidden');
-        if (seedBtn) seedBtn.classList.add('hidden');
         if (deleteBtn) deleteBtn.classList.add('hidden');
         hideManualPreview();
 
         // Clear stored seed and current image
         window.lastGeneratedSeed = null;
         window.lastGeneration = null;
-        manualPreviewSeedNumber.textContent = '---';
         sproutSeedBtn.classList.remove('available');
         updateSproutSeedButtonFromPreviewSeed();
         window.currentManualPreviewImage = null;
@@ -4247,18 +4153,14 @@ async function restoreOriginalImage() {
             updateBlurredBackground(imageUrl);
             
             // Update the seed display to show the original image's seed
-            const manualPreviewSeedNumber = document.getElementById('manualPreviewSeedNumber');
-            if (manualPreviewSeedNumber) {
-                manualPreviewSeedNumber.textContent = window.navigationOriginalImage.seed || '---';
-                if (window.navigationOriginalImage.seed) {
-                    window.lastGeneratedSeed = window.navigationOriginalImage.seed;
-                    sproutSeedBtn.classList.add('available');
-                } else {
-                    window.lastGeneratedSeed = null;
-                    sproutSeedBtn.classList.remove('available');
-                }
-                updateSproutSeedButtonFromPreviewSeed();
+            if (window.navigationOriginalImage.seed) {
+                window.lastGeneratedSeed = window.navigationOriginalImage.seed;
+                sproutSeedBtn.classList.add('available');
+            } else {
+                window.lastGeneratedSeed = null;
+                sproutSeedBtn.classList.remove('available');
             }
+            updateSproutSeedButtonFromPreviewSeed();
 
             if (window.navigationOriginalImage.image.filename) {
                 const metadata = await getImageMetadata(window.navigationOriginalImage.image.filename);
@@ -4318,8 +4220,6 @@ async function saveManualPreset(presetName, config) {
 
         // Refresh the preset list
         await loadOptions();
-
-        updateGenerateButton();
     } catch (error) {
         console.error('Error saving preset:', error);
         showError('Failed to save preset: ' + error.message);
@@ -4581,20 +4481,6 @@ function updatePresetAutocompleteSelection() {
 }
 
 // Update generate button state
-function updateGenerateButton() {
-    const selectedValue = presetSelect.value;
-
-    if (!selectedValue) {
-        generatePresetBtn.disabled = true;
-        return;
-    }
-
-    if (selectedValue.startsWith('preset:')) {
-        generatePresetBtn.disabled = false;
-    } else {
-        generatePresetBtn.disabled = true;
-    }   
-}
 
 // IMAGE GENERATION SYSTEM - Move to imageGenerationManager.js
 // This system handles image generation, result processing, and related operations
@@ -4900,6 +4786,54 @@ function downloadImage(image) {
         link.download = filename;
         link.click();
     }
+}
+
+// Download image as slim PNG (without blueprint data)
+function downloadImageSlim(image) {
+    let filename;
+
+    // Handle different image object structures
+    if (image.upscaled || image.original) {
+        // For gallery images - prefer highest quality version
+        if (image.upscaled) {
+            filename = image.upscaled;
+        } else {
+            filename = image.original;
+        }
+    } else {
+        // Fallback - assume it's a filename string
+        filename = image;
+    }
+
+    // Use the slim endpoint
+    const link = document.createElement('a');
+    link.href = `/image/slim/${filename}`;
+    link.download = filename;
+    link.click();
+}
+
+// Download image as optimized JPG
+function downloadImageOptimized(image) {
+    let filename;
+
+    // Handle different image object structures
+    if (image.upscaled || image.original) {
+        // For gallery images - prefer highest quality version
+        if (image.upscaled) {
+            filename = image.upscaled;
+        } else {
+            filename = image.original;
+        }
+    } else {
+        // Fallback - assume it's a filename string
+        filename = image;
+    }
+
+    // Use the optimized endpoint
+    const link = document.createElement('a');
+    link.href = `/image/opti/${filename}`;
+    link.download = filename;
+    link.click();
 }
 
 // Delete image
@@ -5448,42 +5382,74 @@ function updateSproutSeedButton() {
 
 function updateSproutSeedButtonFromPreviewSeed() {
     if (sproutSeedBtn) {
-        const seedValue = manualPreviewSeedNumber.textContent;
-        if (seedValue && seedValue !== '---') {
+        const seedValue = window.lastGeneratedSeed;
+        if (seedValue !== null && seedValue !== undefined) {
             // Enable the sprout seed button and show it
             sproutSeedBtn.classList.remove('hidden');
             // Set the lastLoadedSeed so the button can function
-            window.lastLoadedSeed = parseInt(seedValue);
-            
-            // Update placeholder to show the seed value
+            window.lastLoadedSeed = seedValue;
+
             if (manualSeed) {
-                manualSeed.placeholder = seedValue || 'Randomize';
+                manualSeed.placeholder = seedValue.toString() || 'Randomize';
             }
-            
+
             // Check if the button is currently in 'on' state
             const currentState = sproutSeedBtn.getAttribute('data-state');
             if (currentState === 'off') {
-                // If button is active, update the seed input value
-                if (manualSeed) {
-                    manualSeed.value = window.lastLoadedSeed;
+                // If randomize seed is off, check if current input value matches preview seed
+                const currentInputValue = manualSeed ? parseInt(manualSeed.value) || '' : '';
+
+                if (currentInputValue !== seedValue) {
+                    loadSeedBtn.classList.remove('hidden');
+                } else {
+                    loadSeedBtn.classList.add('hidden');
                 }
+                // Don't auto-update the input field when there's a mismatch
             } else {
-                // Reset button state to off initially
+                // Reset button state to off initially and hide load seed button
                 sproutSeedBtn.setAttribute('data-state', 'on');
+                loadSeedBtn.classList.add('hidden');
             }
         } else {
-            // Hide the button when no seed is available
+            // Hide the buttons when no seed is available
             sproutSeedBtn.classList.add('hidden');
             sproutSeedBtn.setAttribute('data-state', 'on');
+            loadSeedBtn.classList.add('hidden');
             // Clear the lastLoadedSeed
             window.lastLoadedSeed = null;
-            
+
             // Update placeholder to show "Random"
             if (manualSeed) {
                 manualSeed.placeholder = 'Randomize';
             }
         }
     }
+}
+
+function loadSeedFromPreview() {
+    if (!loadSeedBtn || !window.lastGeneratedSeed) return;
+
+    // Load the seed from the preview into the manual seed input
+    if (manualSeed) {
+        manualSeed.value = window.lastGeneratedSeed.toString();
+        manualSeed.disabled = false; // Keep the field enabled for editing
+    }
+
+    // Hide the load seed button since the seed has been loaded
+    loadSeedBtn.classList.add('hidden');
+
+    // Show the clear seed button since there's now a value
+    if (clearSeedBtn && manualSeed && manualSeed.value) {
+        clearSeedBtn.classList.remove('hidden');
+    }
+
+    // Set the sprout seed button to "off" state (locked) since we loaded a specific seed
+    if (sproutSeedBtn) {
+        sproutSeedBtn.setAttribute('data-state', 'off');
+    }
+
+    // Update the sprout seed button to reflect the new state
+    updateSproutSeedButtonFromPreviewSeed();
 }
 
 function toggleSproutSeed() {
@@ -6292,7 +6258,7 @@ function addCharacterPrompt() {
                             <i class="fas fa-crosshairs"></i>
                         </button>
                         <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${characterId}')">
-                            <i class="nai-trash"></i>
+                            <i class="fas fa-trash-alt"></i>
                         </button>
                         <button type="button" class="btn-secondary indicator" id="${characterId}_enabled" data-state="on" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
                             <i class="fas fa-power-off"></i>
@@ -6771,7 +6737,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                             ${positionBtnText}
                         </button>
                         <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${characterId}')">
-                            <i class="nai-trash"></i>
+                            <i class="fas fa-trash-alt"></i>
                         </button>
                         <button type="button" class="btn-secondary indicator" id="${characterId}_enabled" data-state="${character.enabled ? 'on' : 'off'}" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
                             <i class="fas fa-power-off"></i>
@@ -7543,9 +7509,9 @@ async function handleBulkMoveToScraps(event = null) {
                 toastMessage += ` (${failed} failed)`;
             }
             
-            showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-trash-alt"></i>');
+            showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-fire"></i>');
         } else {
-            showGlassToast('success', null, `Successfully moved ${validFilenames.length} image(s) to scraps`, false, 5000, '<i class="fas fa-trash-alt"></i>');
+            showGlassToast('success', null, `Successfully moved ${validFilenames.length} image(s) to scraps`, false, 5000, '<i class="fas fa-fire"></i>');
         }
     } catch (error) {
         console.error('Bulk move to scraps error:', error);
@@ -7705,7 +7671,22 @@ function setupMainMenuContextMenus() {
                                 return isDesc ? 'Sort: Newest First (Click to change)' : 'Sort: Oldest First (Click to change)';
                             },
                             action: 'invert-sort'
-                        }
+                        },
+                        {
+                            icon: 'nai-import',
+                            tooltip: 'Import New Reference',
+                            action: 'upload'
+                        },
+                        {
+                            icon: 'fa-light fa-book-spells',
+                            tooltip: 'Cast Spell',
+                            action: 'cast-spell'
+                        },
+                        {
+                            icon: 'fa-light fa-compass-drafting',
+                            tooltip: 'Editor',
+                            action: 'creator-model'
+                        },
                     ]
                 },
                 {
@@ -7728,7 +7709,7 @@ function setupMainMenuContextMenus() {
                                 
                                 return `
                                     <div class="workspace-option-content" style="display: flex; align-items: center; gap: 8px;">
-                                        <i class="fa-solid fa-folder" style="color: ${workspaceColor};"></i>
+                                        <i class="fa-regular fa-planet-ringed" style="color: ${workspaceColor};"></i>
                                         <span class="context-menu-item-text">${workspaceName}</span>
                                     </div>
                                 `;
@@ -7741,16 +7722,11 @@ function setupMainMenuContextMenus() {
                 },
                 {
                     type: 'list',
-                    title: 'Management',
                     items: [
+                        
                         {
-                            icon: 'nai-import',
-                            text: 'Import',
-                            action: 'upload'
-                        },
-                        {
-                            icon: 'fa-light fa-shelves',
-                            text: 'Workspaces',
+                            icon: 'fa-light fa-solar-system',
+                            text: 'Planets',
                             action: 'workspace-manage'
                         },
                         {
@@ -7772,13 +7748,13 @@ function setupMainMenuContextMenus() {
                             icon: 'fa-light fa-messages',
                             text: 'Chat Persona',
                             action: 'chat-manager'
-                        }, */
+                        },
                         {
                             icon: 'fa-light fa-ban',
                             text: 'Blocked Clients',
                             action: 'ip-manager',
                             desktopOnly: true,
-                        }
+                        } */
                     ]
                 },
                 {
@@ -7789,12 +7765,12 @@ function setupMainMenuContextMenus() {
                                 <i class="nai-anla"></i>
                                 <div class="price-list-container">
                                     <div class="price-list-fixed">
-                                        <span class="price-list-label">Exp</span> 
+                                        <span class="price-list-label hidden">Fixed</span> 
                                         <span id="contextAnlasBalanceFixed" class="price-list balanceFixed">-</span>
                                     </div>
                                     <i class="fas fa-circle" style="font-size: 0.35rem; padding-top: 0.15rem;"></i>
                                     <div class="price-list-paid">
-                                        <span class="price-list-label">Paid</span>
+                                        <span class="price-list-label hidden">Paid</span>
                                         <span id="contextAnlasBalancePaid" class="price-list balancePaid">-</span>
                                     </div>
                                 </div>
@@ -8027,6 +8003,16 @@ function setupMainMenuContextMenus() {
                 showPresetManager();
                 break;
                 
+            case 'cast-spell':
+                // Open spellbook modal directly
+                window.spellbookModalManager.openModal();
+                break;
+                
+            case 'creator-model':
+                // Open creator model modal directly
+                showManualModal();
+                break;
+                
             case 'cache-manager':
                 // Open cache manager modal directly
                 showCacheManagerModal();
@@ -8049,7 +8035,7 @@ function setupMainMenuContextMenus() {
                 
             case 'upload':
                 // Open upload modal directly
-                showUnifiedUploadModal();
+                unifiedUploadModalManager.show();
                 closeSubMenu();
                 break;
                 
@@ -8323,6 +8309,52 @@ if (window.wsClient) {
         document.dispatchEvent(responseEvent);
     });
     
+    // Server readiness polling system for when server restarts
+    let serverReadinessInterval = null;
+    let lastServerReadinessCheck = 0;
+    
+    async function checkServerReadiness() {
+        try {
+            const response = await fetch('/status', {
+                method: 'OPTIONS',
+                cache: 'no-cache'
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                lastServerReadinessCheck = Date.now();
+                
+                if (!data.isReady) {
+                    // Server is initializing, show status
+                    console.log(`📊 Server status: ${data.stageMessage}`);
+                    
+                    // Show banner notification if WebSocket is disconnected
+                    if (window.wsClient && !window.wsClient.isConnected()) {
+                        window.wsClient.bannerManager.showWebSocketTicker(
+                            'warning',
+                            `Server Booting: ${data.stageMessage}`,
+                            'fa-spinner fa-spin',
+                            false // Don't auto-hide
+                        );
+                    }
+                } else {
+                    // Server is ready, hide any readiness notifications
+                    if (window.wsClient && window.wsClient.bannerManager) {
+                        window.wsClient.bannerManager.hideWebSocketTicker();
+                    }
+                }
+                
+                return data;
+            }
+        } catch (error) {
+            console.warn('⚠️ Server readiness check failed:', error.message);
+        }
+        return null;
+    }
+    
+    // Removed continuous polling - /status is now only called during connection process
+    // Status checks are handled by websocket.js pingHost() during connection
+    
     // Priority 5: Initialize main app components
     window.wsClient.registerInitStep(1, 'Loading Application Data', async () => {
         try {
@@ -8375,7 +8407,6 @@ if (window.wsClient) {
         renderManualResolutionDropdown(manualSelectedResolution);
         renderManualNoiseSchedulerDropdown(manualSelectedNoiseScheduler);
         renderManualModelDropdown(manualSelectedModel);
-        await renderCustomPresetDropdown('');
         renderDatasetDropdown();
 
         selectManualSampler('k_euler_ancestral');
@@ -8403,8 +8434,6 @@ if (window.wsClient) {
 
     // Priority 7: Load gallery and finalize UI
     window.wsClient.registerInitStep(100, 'Finalizing', async () => {
-        updateGenerateButton();
-
         // Initialize background gradient
         await setupEventListeners();
 

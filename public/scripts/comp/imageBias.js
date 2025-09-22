@@ -595,7 +595,7 @@ async function showImageBiasAdjustmentModal() {
             
             // Register event listeners when modal is shown
             registerImageBiasEventListeners();
-        }, 100);
+        }, 1000);
     };
     originalImage.src = imageDataUrl;
 }
@@ -1598,41 +1598,8 @@ function setupImageBiasAdjustmentListeners() {
         }
     });
 
-    // Close modal when clicking outside
-    const modal = document.getElementById('imageBiasAdjustmentModal');
-    if (modal) {
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                hideImageBiasAdjustmentModal();
-            }
-        });
-    }
 
-    // Close base image change alert modal when clicking outside
-    const baseImageChangeModal = document.getElementById('baseImageChangeAlertModal');
-    if (baseImageChangeModal) {
-        baseImageChangeModal.addEventListener('click', (e) => {
-            if (e.target === baseImageChangeModal) {
-                hideBaseImageChangeAlertModal();
-                // Clear any pending changes
-                window.pendingImageUpload = null;
-                window.pendingCacheImageSelection = null;
-            }
-        });
-    }
 
-    // Close image bias mask alert modal when clicking outside
-    const imageBiasMaskModal = document.getElementById('imageBiasMaskAlertModal');
-    if (imageBiasMaskModal) {
-        imageBiasMaskModal.addEventListener('click', (e) => {
-            if (e.target === imageBiasMaskModal) {
-                hideImageBiasMaskAlertModal();
-                // Clear any pending changes
-                window.pendingImageBiasChange = null;
-                window.pendingBiasAdjustment = null;
-            }
-        });
-    }
 
     // Confirmation dialog controls
     const closeConfirmBtn = document.getElementById('closeBiasConfirmBtn');

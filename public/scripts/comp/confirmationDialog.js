@@ -65,7 +65,20 @@ function showConfirmationDialog(message, options = [], event = null) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = `btn ${option.className || 'btn-secondary'}`;
-            button.textContent = option.text;
+
+            // Clear any existing content
+            button.innerHTML = '';
+
+            // Add icon if provided
+            if (option.icon) {
+                const iconElement = document.createElement('i');
+                iconElement.className = option.icon;
+                button.appendChild(iconElement);
+                button.appendChild(document.createTextNode(' ')); // Add space between icon and text
+            }
+
+            // Add text content
+            button.appendChild(document.createTextNode(option.text));
             button.id = `confirmationBtn${index}`;
             
             button.addEventListener('click', (e) => {
@@ -135,58 +148,68 @@ function positionConfirmationDialog(event) {
 
     if (shouldCenter) {
         // Center on screen for mobile or when no event
-        left = (window.innerWidth - dialogWidth) / 2;
-        top = (window.innerHeight - dialogHeight) / 2;
+        // Use CSS centering for mobile - remove manual positioning
+        confirmationDialog.style.left = '';
+        confirmationDialog.style.top = '';
+        confirmationDialog.style.transform = '';
+        return;
     } else {
         // Calculate position to center on cursor/button
         left = x - dialogWidth / 2;
         top = y - dialogHeight / 2;
-    }
 
-    // Ensure dialog never goes outside viewport bounds
+    // Get safe area inset values
+    const trueInsetTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--true-inset-top')) || 0;
+    const safeAreaLeft = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-left')) || 0;
+    const safeAreaRight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-right')) || 0;
+    const safeAreaBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-bottom')) || 0;
+
+    // Ensure dialog never goes outside viewport bounds, accounting for safe areas
     const margin = 20;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth - safeAreaLeft - safeAreaRight;
+    const viewportHeight = window.innerHeight - trueInsetTop - safeAreaBottom;
 
     // Check horizontal bounds with proper validation
-    if (left < margin) {
-        left = margin;
-    } else if (left + dialogWidth > viewportWidth - margin) {
-        left = viewportWidth - dialogWidth - margin;
+    if (left < margin + safeAreaLeft) {
+        left = margin + safeAreaLeft;
+    } else if (left + dialogWidth > viewportWidth - margin - safeAreaRight) {
+        left = viewportWidth - dialogWidth - margin - safeAreaRight;
     }
 
     // Ensure left position is never negative or exceeds viewport
-    if (left < 0) {
-        left = margin;
+    if (left < safeAreaLeft) {
+        left = margin + safeAreaLeft;
     }
-    if (left + dialogWidth > viewportWidth) {
-        left = viewportWidth - dialogWidth - margin;
-        if (left < 0) left = margin; // Fallback if dialog is too wide
+    if (left + dialogWidth > window.innerWidth - safeAreaRight) {
+        left = window.innerWidth - dialogWidth - margin - safeAreaRight;
+        if (left < safeAreaLeft) left = margin + safeAreaLeft; // Fallback if dialog is too wide
     }
 
     // Check vertical bounds with proper validation
-    if (top < margin) {
-        top = margin;
-    } else if (top + dialogHeight > viewportHeight - margin) {
-        top = viewportHeight - dialogHeight - margin;
+    if (top < margin + trueInsetTop) {
+        top = margin + trueInsetTop;
+    } else if (top + dialogHeight > viewportHeight - margin - safeAreaBottom) {
+        top = viewportHeight - dialogHeight - margin - safeAreaBottom;
     }
 
     // Ensure top position is never negative or exceeds viewport
-    if (top < 0) {
-        top = margin;
+    if (top < trueInsetTop) {
+        top = margin + trueInsetTop;
     }
-    if (top + dialogHeight > viewportHeight) {
-        top = viewportHeight - dialogHeight - margin;
-        if (top < 0) top = margin; // Fallback if dialog is too tall
+    if (top + dialogHeight > window.innerHeight - safeAreaBottom) {
+        top = window.innerHeight - dialogHeight - margin - safeAreaBottom;
+        if (top < trueInsetTop) top = margin + trueInsetTop; // Fallback if dialog is too tall
     }
 
     // Final validation - ensure dialog stays within viewport
-    left = Math.max(margin, Math.min(left, viewportWidth - dialogWidth - margin));
-    top = Math.max(margin, Math.min(top, viewportHeight - dialogHeight - margin));
+    left = Math.max(margin + safeAreaLeft, Math.min(left, window.innerWidth - dialogWidth - margin - safeAreaRight));
+    top = Math.max(margin + trueInsetTop, Math.min(top, window.innerHeight - dialogHeight - margin - safeAreaBottom));
 
-    // Apply position
+    // Apply position - override CSS centering for desktop positioning
     confirmationDialog.style.left = `${left}px`;
     confirmationDialog.style.top = `${top}px`;
+    confirmationDialog.style.transform = 'translateZ(0) scale(1)';
+    }
 }
 
 // Hide confirmation dialog

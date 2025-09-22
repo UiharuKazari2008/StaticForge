@@ -21,7 +21,6 @@ const manualPresetName = document.getElementById('manualPresetName');
 const manualPresetDeleteBtn = document.getElementById('manualDeleteBtn');
 const manualLoadBtn = document.getElementById('manualLoadBtn');
 const manualSaveBtn = document.getElementById('manualSaveBtn');
-const clearPresetBtn = document.getElementById('clearPresetBtn');
 const manualPresetToggleBtn = document.getElementById('manualPresetToggleBtn');
 const manualPresetToggleText = document.getElementById('manualPresetToggleText');
 const manualPresetToggleIcon = document.getElementById('manualPresetToggleIcon');

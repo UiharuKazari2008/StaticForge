@@ -5,6 +5,15 @@
 
 let presetData = {};
 let originalPresetData = {};
+let presetPaginationInfo = {
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    itemsPerPage: 15,
+    hasNextPage: false,
+    hasPrevPage: false
+};
+let presetSearchTerm = '';
 
 // Get queue status using event system
 function getQueueStatus() {
@@ -44,16 +53,16 @@ function initializePresetManager() {
     // Event listeners
     closePresetManagerBtn.addEventListener('click', hidePresetManager);
     presetSearch.addEventListener('input', debounce(async () => {
-        currentPage = 1; // Reset to first page when searching
-        currentSearchTerm = presetSearch.value;
+        presetPaginationInfo.currentPage = 1; // Reset to first page when searching
+        presetSearchTerm = presetSearch.value;
         await loadPresets();
     }, 300));
     
 
     if (presetPrevBtn) {
         presetPrevBtn.addEventListener('click', async () => {
-            if (currentPage > 1) {
-                currentPage--;
+            if (presetPaginationInfo.currentPage > 1) {
+                presetPaginationInfo.currentPage--;
                 await loadPresets();
             }
         });
@@ -61,9 +70,9 @@ function initializePresetManager() {
 
     if (presetNextBtn) {
         presetNextBtn.addEventListener('click', async () => {
-            const totalPages = paginationInfo.totalPages || 1;
-            if (currentPage < totalPages) {
-                currentPage++;
+            const totalPages = presetPaginationInfo.totalPages || 1;
+            if (presetPaginationInfo.currentPage < totalPages) {
+                presetPaginationInfo.currentPage++;
                 await loadPresets();
             }
         });
@@ -75,13 +84,13 @@ function initializePresetManager() {
         // Add keyboard navigation for pagination
         modal.addEventListener('keydown', async (e) => {
             if (e.target.closest('.preset-manager-content')) {
-                if (e.key === 'PageDown' && currentPage < (paginationInfo.totalPages || 1)) {
+                if (e.key === 'PageDown' && presetPaginationInfo.currentPage < (presetPaginationInfo.totalPages || 1)) {
                     e.preventDefault();
-                    currentPage++;
+                    presetPaginationInfo.currentPage++;
                     await loadPresets();
-                } else if (e.key === 'PageUp' && currentPage > 1) {
+                } else if (e.key === 'PageUp' && presetPaginationInfo.currentPage > 1) {
                     e.preventDefault();
-                    currentPage--;
+                    presetPaginationInfo.currentPage--;
                     await loadPresets();
                 }
             }
@@ -141,9 +150,10 @@ function hidePresetManager() {
     if (modal) {
         closeModal(modal);
     }
-    
+
     // Reset to first page and clear search
-    currentPage = 1;
+    presetPaginationInfo.currentPage = 1;
+    presetSearchTerm = '';
     const searchInput = document.getElementById('presetSearch');
     if (searchInput) {
         searchInput.value = '';
@@ -155,25 +165,24 @@ async function loadPresets() {
     try {
         if (wsClient && wsClient.isConnected()) {
             // Request presets via WebSocket with pagination and search parameters
-            const result = await wsClient.getPresets(currentPage, itemsPerPage, currentSearchTerm);
-            
+            const result = await wsClient.getPresets(presetPaginationInfo.currentPage, presetPaginationInfo.itemsPerPage, presetSearchTerm, presetSearchTerm);
+
             if (result && result.presets) {
                 presetData = { ...result.presets };
                 originalPresetData = JSON.parse(JSON.stringify(result.presets));
-                
+
                 // Update pagination info
                 if (result.pagination) {
-                    paginationInfo = { ...result.pagination };
-                    currentPage = paginationInfo.currentPage;
+                    presetPaginationInfo = { ...result.pagination };
                 }
-                
+
                 // Update search state
-                currentSearchTerm = result.searchTerm || '';
-                
+                presetSearchTerm = result.searchTerm || '';
+
                 // Update search input if it exists
                 const searchInput = document.getElementById('presetSearch');
-                if (searchInput && searchInput.value !== currentSearchTerm) {
-                    searchInput.value = currentSearchTerm;
+                if (searchInput && searchInput.value !== presetSearchTerm) {
+                    searchInput.value = presetSearchTerm;
                 }
                 
                 // Render the updated list
@@ -181,11 +190,11 @@ async function loadPresets() {
             } else {
                 presetData = {};
                 originalPresetData = {};
-                paginationInfo = {
+                presetPaginationInfo = {
                     currentPage: 1,
                     totalPages: 1,
                     totalItems: 0,
-                    itemsPerPage,
+                    itemsPerPage: 15,
                     hasNextPage: false,
                     hasPrevPage: false
                 };
@@ -200,21 +209,21 @@ async function loadPresets() {
 }
 
 // Update pagination controls
-function updatePaginationControls() {
+function updatePresetPaginationControls() {
     const pageInfo = document.getElementById('presetPageInfo');
     const prevBtn = document.getElementById('presetPrevBtn');
     const nextBtn = document.getElementById('presetNextBtn');
-    
+
     if (pageInfo) {
-        pageInfo.textContent = `Page ${paginationInfo.currentPage} of ${paginationInfo.totalPages} (${paginationInfo.totalItems} items)`;
+        pageInfo.textContent = `Page ${presetPaginationInfo.currentPage} of ${presetPaginationInfo.totalPages} (${presetPaginationInfo.totalItems} items)`;
     }
-    
+
     if (prevBtn) {
-        prevBtn.disabled = currentPage <= 1;
+        prevBtn.disabled = presetPaginationInfo.currentPage <= 1;
     }
-    
+
     if (nextBtn) {
-        nextBtn.disabled = currentPage >= paginationInfo.totalPages;
+        nextBtn.disabled = presetPaginationInfo.currentPage >= presetPaginationInfo.totalPages;
     }
 }
 
@@ -222,13 +231,13 @@ function updatePaginationControls() {
 async function renderPresetList() {
     const listContainer = document.getElementById('presetList');
     if (!listContainer) return;
-    
+
     listContainer.innerHTML = '';
-    
+
     const pageKeys = Object.keys(presetData);
-    
+
     if (pageKeys.length === 0) {
-        if (paginationInfo.totalItems === 0) {
+        if (presetPaginationInfo.totalItems === 0) {
             listContainer.innerHTML = `
                 <div class="text-replacement-empty">
                     <p><i class="fas fa-search"></i> No presets found</p>
@@ -241,23 +250,38 @@ async function renderPresetList() {
                 </div>
             `;
         }
-        updatePaginationControls();
+        updatePresetPaginationControls();
         return;
     }
-    
+
     // Use Promise.all to handle async createPresetItem calls
     const itemPromises = pageKeys.map(async (key) => {
         const preset = presetData[key];
         return await createPresetItem(key, preset);
     });
-    
+
     const itemElements = await Promise.all(itemPromises);
     itemElements.forEach(itemElement => {
         listContainer.appendChild(itemElement);
     });
-    
+
     // Update pagination controls
-    updatePaginationControls();
+    updatePresetPaginationControls();
+
+    // Scroll to top of the list container when new page is loaded
+    scrollPresetListToTop();
+}
+
+// Scroll preset list to top
+function scrollPresetListToTop() {
+    const modal = document.getElementById('presetManagerModal');
+    if (modal) {
+        // Scroll the list container to top
+        const listContainer = modal.querySelector('.text-replacement-list-container .text-replacement-list');
+        if (listContainer) {
+            listContainer.scrollTop = 0;
+        }
+    }
 }
 
 // Create a preset item element
@@ -334,7 +358,7 @@ async function createPresetItem(key, preset) {
     actionsDiv.appendChild(makeBtn({
         className: 'btn-small btn-secondary edit-btn manual-modal-btn',
         title: 'Edit Preset',
-        iconClass: 'nai-penwriting',
+        iconClass: 'fas fa-compass-drafting',
         onClick: (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -364,18 +388,6 @@ async function createPresetItem(key, preset) {
             e.preventDefault();
             e.stopPropagation();
             copyPresetUuid(key);
-        }
-    }));
-
-    // Regenerate UUID
-    actionsDiv.appendChild(makeBtn({
-        className: 'btn-small btn-danger regenerate-btn',
-        title: 'Regenerate UUID',
-        iconClass: 'fas fa-sync',
-        onClick: (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            regeneratePresetUuid(key);
         }
     }));
 
@@ -582,17 +594,29 @@ async function createPresetItem(key, preset) {
             iconsDiv.appendChild(icon);
         }
     }
+
+    // Character reference
+    if (preset.chara_reference_source) {
+        const icon = document.createElement('i');
+        icon.className = 'nai-image-tool-line-art';
+        icon.title = `Character Reference`;
+        iconsDiv.appendChild(icon);
+    } else
+    // Inpaint
     if ((preset.image || preset.image_source) && preset.mask_compressed) {
         const icon = document.createElement('i');
         icon.className = 'nai-inpaint';
         icon.title = 'Selective Masking (Inpaint)';
         iconsDiv.appendChild(icon);
-    } else if (preset.vibe_transfer) {
+    } else 
+    // Vibe transfer
+    if (preset.vibe_transfer) {
         const icon = document.createElement('i');
         icon.className = 'nai-vibe-transfer';
         icon.title = `${preset.vibe_transfer.length} Vibe Transfer${preset.vibe_transfer.length > 1 ? 's' : ''}`;
         iconsDiv.appendChild(icon);
     } else 
+    // Variety
     if (preset.variety) {
         const icon = document.createElement('i');
         icon.className = 'fas fa-sparkle';
@@ -642,9 +666,13 @@ async function createPresetItem(key, preset) {
     const box3 = document.createElement('div');
     box3.className = 'uc-box';
     box3.dataset.level = '3';
+    const box4 = document.createElement('div');
+    box4.className = 'uc-box';
+    box4.dataset.level = '4';
     boxes.appendChild(box1);
     boxes.appendChild(box2);
     boxes.appendChild(box3);
+    boxes.appendChild(box4);
     iconsDiv.appendChild(boxes);
 
     iconsRow.appendChild(iconsDiv);
@@ -680,13 +708,17 @@ async function editPreset(presetName) {
 async function loadPresetIntoUpdateModal(presetName) {
     const preset = presetData[presetName];
     if (!preset) return;
-    
+
     // Store the preset name being edited
     editingPresetName = presetName;
-    
+
     // Set form values
     const nameInput = document.getElementById('updatePresetNameInput');
     if (nameInput) nameInput.value = preset.name || presetName;
+
+    // Set UUID field
+    const uuidInput = document.getElementById('updatePresetUuidInput');
+    if (uuidInput) uuidInput.value = preset.uuid || 'No UUID';
     
     // Set workspace dropdown - resolve ID to name with color indicator
     const workspaceId = preset.target_workspace || 'default';
@@ -784,12 +816,6 @@ function initializeUpdatePresetModal() {
     const saveBtn = document.getElementById('updatePresetSaveBtn');
     
     if (modal) {
-        // Close on outside click
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                hideUpdatePresetModal();
-            }
-        });
         
         // Close on escape key
         modal.addEventListener('keydown', (e) => {
@@ -816,6 +842,22 @@ function initializeUpdatePresetModal() {
     
     // Initialize toggle buttons
     initializeUpdatePresetToggleButtons();
+
+    // Initialize copy UUID button
+    const copyUuidBtn = document.getElementById('updatePresetCopyUuidBtn');
+    if (copyUuidBtn) {
+        copyUuidBtn.addEventListener('click', async () => {
+            await handleCopyPresetUuidFromModal();
+        });
+    }
+
+    // Initialize regenerate UUID button
+    const regenerateUuidBtn = document.getElementById('updatePresetRegenerateUuidBtn');
+    if (regenerateUuidBtn) {
+        regenerateUuidBtn.addEventListener('click', async () => {
+            await handleRegeneratePresetUuidFromModal();
+        });
+    }
 }
 
 // Initialize update preset dropdowns
@@ -889,7 +931,6 @@ function renderUpdatePresetResolutionDropdown(selectedValue) {
     
     // Use the same grouped dropdown design as manual resolution dropdown
     if (typeof RESOLUTION_GROUPS !== 'undefined' && Array.isArray(RESOLUTION_GROUPS)) {
-        console.log('🔧 Adding grouped resolution options:', RESOLUTION_GROUPS);
         renderGroupedDropdown(
             resolutionMenu,
             RESOLUTION_GROUPS,
@@ -934,6 +975,64 @@ function hideUpdatePresetModal() {
     
     // Clear editing state
     editingPresetName = null;
+}
+
+// Handle copy UUID URL from modal
+async function handleCopyPresetUuidFromModal() {
+    if (!editingPresetName) {
+        showGlassToast('error', null, 'No preset selected', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    try {
+        const preset = presetData[editingPresetName];
+        if (!preset || !preset.uuid) {
+            showGlassToast('error', null, 'Preset UUID not found', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+        const presetURL = location.origin + '/preset/' + preset.uuid + '?download=true';
+        await navigator.clipboard.writeText(presetURL);
+        showGlassToast('success', null, 'Preset Generation URL copied to clipboard', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
+    } catch (error) {
+        console.error('Error copying UUID from modal:', error);
+        showGlassToast('error', null, 'Failed to copy URL', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+}
+
+// Handle regenerate UUID from modal
+async function handleRegeneratePresetUuidFromModal() {
+    if (!editingPresetName) {
+        showGlassToast('error', null, 'No preset selected for UUID regeneration', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    try {
+        // Call server to regenerate UUID directly (without confirmation dialog since user is already in modal)
+        const result = await wsClient.regeneratePresetUuid(editingPresetName);
+
+        if (result && result.success) {
+            showGlassToast('success', null, `UUID regenerated for preset "${editingPresetName}"`, false, 5000, '<i class="fas fa-sync"></i>');
+
+            // Update local data with new UUID from server
+            if (result.uuid) {
+                if (presetData[editingPresetName]) {
+                    presetData[editingPresetName].uuid = result.uuid;
+                }
+                if (originalPresetData[editingPresetName]) {
+                    originalPresetData[editingPresetName].uuid = result.uuid;
+                }
+
+                // Update the UUID field with the new UUID
+                const uuidInput = document.getElementById('updatePresetUuidInput');
+                if (uuidInput) uuidInput.value = result.uuid;
+            }
+        } else {
+            throw new Error(result?.message || 'Failed to regenerate UUID');
+        }
+    } catch (error) {
+        console.error('Error regenerating UUID from modal:', error);
+        showGlassToast('error', null, 'Error regenerating UUID: ' + error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+    }
 }
 
 // Handle update preset submit
@@ -1109,7 +1208,7 @@ async function copyPresetUuid(presetName) {
         }
         const presetURL = location.origin + '/preset/' + preset.uuid + '?download=true';
         await navigator.clipboard.writeText(presetURL);
-        showGlassToast('success', null, 'Preset Generation URL copied to clipboard', false, 3000, '<i class="fas fa-clipboard"></i>');
+        showGlassToast('success', null, 'Preset Generation URL copied to clipboard', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
     } catch (error) {
         console.error('Error copying UUID:', error);
         showGlassToast('error', null, 'Failed to copy URL', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
@@ -1166,7 +1265,7 @@ async function regeneratePresetUuid(presetName) {
 }
 
 // Utility functions
-function escapeHtml(text) {
+function escapePresetHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
@@ -1220,19 +1319,19 @@ async function handleGetPresetsResponse(data) {
         
         // Update pagination info
         if (data.pagination) {
-            paginationInfo = { ...data.pagination };
-            currentPage = paginationInfo.currentPage;
+            presetPaginationInfo = { ...data.pagination };
+            currentPage = presetPaginationInfo.currentPage;
         }
-        
+
         // Update search state
         if (data.searchTerm !== undefined) {
-            currentSearchTerm = data.searchTerm;
+            presetSearchTerm = data.searchTerm;
         }
-        
+
         // Update search input if it exists
         const searchInput = document.getElementById('presetSearch');
-        if (searchInput && searchInput.value !== currentSearchTerm) {
-            searchInput.value = currentSearchTerm;
+        if (searchInput && searchInput.value !== presetSearchTerm) {
+            searchInput.value = presetSearchTerm;
         }
         
         // Render the updated list

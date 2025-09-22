@@ -41,10 +41,10 @@ function getPreviewUrl(basePreviewPath, options = {}) {
                            (isHighDPIDevice() && (isMobileDevice() || forceMobile));
     
     if (shouldUseRetina) {
-        return `${baseName}@2x.jpg`;
+        return `${baseName}@2x.webp`;
     }
     
-    return `${baseName}.jpg`;
+    return `${baseName}.webp`;
 }
 
 // Get preview URL for gallery images
@@ -53,6 +53,17 @@ function getGalleryPreviewUrl(imagePreview) {
     
     // For gallery images, always use @2x on mobile/high-DPI devices
     return getPreviewUrl(imagePreview, { forceMobile: true });
+}
+
+// Get low-quality preview URL for PhotoSwipe placeholders (128px max, correct aspect ratio)
+function getLowQualityPreviewUrl(imagePreview) {
+    if (!imagePreview) return '';
+    
+    // Remove file extension to get base name
+    const baseName = imagePreview.replace(/\.(jpg|jpeg|png|webp)$/i, '');
+    
+    // Return low-quality version with @lq suffix (now WebP)
+    return `${baseName}@lq.webp`;
 }
 
 // Get preview URL for cache images
@@ -72,12 +83,3 @@ window.deviceUtils = {
     getGalleryPreviewUrl,
     getCachePreviewUrl
 };
-
-// Log device information for debugging
-console.log('📱 Device Info:', {
-    isMobile: isMobileDevice(),
-    pixelRatio: getDevicePixelRatio(),
-    isHighDPI: isHighDPIDevice(),
-    screenWidth: window.innerWidth,
-    userAgent: navigator.userAgent
-});

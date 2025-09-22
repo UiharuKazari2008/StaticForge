@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const SpellChecker = require('./spellChecker');
 const FurryTagSearch = require('./furryTagSearch');
 const AnimeTagSearch = require('./animeTagSearch');
+const { createJSONCheckpointManager } = require('./jsonCheckpoint');
 
 // Generate UUID for presets
 function generateUUID() {
@@ -28,6 +29,10 @@ try {
 // Dynamic prompt config loading
 let promptConfig = null;
 let promptConfigLastModified = 0;
+
+// Initialize checkpoint manager for prompt config
+const PROMPT_CONFIG_PATH = './prompt.config.json';
+const promptConfigCheckpointManager = createJSONCheckpointManager(PROMPT_CONFIG_PATH, 4);
 
 function loadPromptConfig() {
     const promptConfigPath = './prompt.config.json';
@@ -76,15 +81,15 @@ function loadPromptConfig() {
 }
 
 function savePromptConfig(config) {
-    const promptConfigPath = './prompt.config.json';
-    
     try {
-        const configData = JSON.stringify(config, null, 2);
-        fs.writeFileSync(promptConfigPath, configData, 'utf8');
+        promptConfigCheckpointManager.saveWithCheckpoint(config, {
+            createCheckpoint: true,
+            validateData: true
+        });
         
         // Update our cached config and timestamp
         promptConfig = config;
-        const stats = fs.statSync(promptConfigPath);
+        const stats = fs.statSync(PROMPT_CONFIG_PATH);
         promptConfigLastModified = stats.mtime.getTime();
         
         return true;
@@ -1692,6 +1697,79 @@ class SearchService {
             return null;
         }
     }
+
+    async verifyTagWeight(tag, model) {
+        // First try local search
+        let localResults = [];
+        localResults.push(...(this.furryTagSearch.searchTags(tag, 1)));
+        localResults.push(...(this.animeTagSearch.searchTags(tag, 1)));
+
+        if (localResults.length > 0 && localResults[0].n_count > 1000) { // Arbitrary threshold for 'high weight'
+            return { isHighWeight: true, count: localResults[0].n_count, source: 'local' };
+        }
+
+        // If local not sufficient, use web search
+        const webResults = await this.webSearch(`danbooru tag "${tag}" popularity or count`);
+        // Parse web results to estimate weight
+        // Placeholder parsing
+        const estimatedCount = 500; // Implement actual parsing
+        return { isHighWeight: estimatedCount > 1000, count: estimatedCount, source: 'web' };
+    }
+
+    async webSearch(query) {
+        // Implement MCP Exa search here
+        // Assuming access to mcp_Exa_Search_web_search_exa
+        // For code, use fetch or OpenAI SDK if needed
+        return []; // Placeholder
+    }
+}
+
+// Checkpoint management functions for prompt config
+function getPromptConfigCheckpointInfo() {
+    return promptConfigCheckpointManager.getCheckpointInfo();
+}
+
+function restorePromptConfigFromCheckpoint(checkpointFilename) {
+    try {
+        const success = promptConfigCheckpointManager.restoreFromCheckpoint(checkpointFilename);
+        if (success) {
+            // Reload config from the restored file
+            promptConfig = null;
+            promptConfigLastModified = 0;
+            loadPromptConfig();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('❌ Error restoring prompt config from checkpoint:', error);
+        throw error;
+    }
+}
+
+function restorePromptConfigFromLatestCheckpoint() {
+    try {
+        const success = promptConfigCheckpointManager.restoreFromLatestCheckpoint();
+        if (success) {
+            // Reload config from the restored file
+            promptConfig = null;
+            promptConfigLastModified = 0;
+            loadPromptConfig();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('❌ Error restoring prompt config from latest checkpoint:', error);
+        throw error;
+    }
+}
+
+function clearPromptConfigCheckpoints() {
+    try {
+        return promptConfigCheckpointManager.clearAllCheckpoints();
+    } catch (error) {
+        console.error('❌ Error clearing prompt config checkpoints:', error);
+        throw error;
+    }
 }
 
 module.exports = {
@@ -1701,5 +1779,10 @@ module.exports = {
     applyTextReplacements,
     getUsedReplacements,
     generateUUID,
-    SearchService
+    SearchService,
+    // Checkpoint management
+    getPromptConfigCheckpointInfo,
+    restorePromptConfigFromCheckpoint,
+    restorePromptConfigFromLatestCheckpoint,
+    clearPromptConfigCheckpoints
 }; 

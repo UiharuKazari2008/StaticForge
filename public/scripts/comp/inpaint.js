@@ -499,14 +499,11 @@ function draw(e) {
         // than the e.button from mousemove events
         if (currentMouseButton === 2) { // Left mouse button
             effectiveTool = currentTool === 'brush' ? 'eraser' : 'brush';
-            console.log('Using opposite tool:', effectiveTool);
         } else if (currentMouseButton === 0) { // Right mouse button
             effectiveTool = currentTool;
-            console.log('Using current tool:', effectiveTool);
         } else {
             // Fallback: use current tool if button detection fails
             effectiveTool = currentTool;
-            console.log('Button detection failed, using current tool:', effectiveTool);
         }
         
         // Use green for visual feedback in the editor
@@ -647,14 +644,11 @@ function updateBrushCursor(e) {
         // Use the same improved detection logic
         if (currentMouseButton === 2) { // Left mouse button
             previewTool = currentTool === 'brush' ? 'eraser' : 'brush';
-            console.log('Preview using opposite tool:', previewTool);
         } else if (currentMouseButton === 0) { // Right mouse button
             previewTool = currentTool;
-            console.log('Preview using current tool:', previewTool);
         } else {
             // Fallback: use current tool if button detection fails
             previewTool = currentTool;
-            console.log('Preview button detection failed, using current tool:', previewTool);
         }
         
         // Draw preview using the same logic as drawCircle/drawSquare

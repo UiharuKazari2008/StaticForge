@@ -46,10 +46,6 @@ class IPManagementSystem {
             this.closeIPDetailsModal();
         });
         
-        document.getElementById('closeIPDetailsCancelBtn').addEventListener('click', () => {
-            this.closeIPDetailsModal();
-        });
-        
         document.getElementById('unblockIPBtn').addEventListener('click', () => {
             this.unblockSelectedIP();
         });

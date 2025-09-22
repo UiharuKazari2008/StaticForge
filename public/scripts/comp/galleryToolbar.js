@@ -58,11 +58,11 @@ function updateGalleryToolbarContent(image) {
     let scrapButtonText, scrapButtonIcon, scrapButtonAction;
     if (currentGalleryView === 'scraps') {
         scrapButtonText = 'Remove from scraps';
-        scrapButtonIcon = 'mdi mdi-1-5 mdi-archive-arrow-up';
+        scrapButtonIcon = 'fas fa-undo';
         scrapButtonAction = () => removeFromScraps(image);
     } else {
         scrapButtonText = 'Move to scraps';
-        scrapButtonIcon = 'mdi mdi-1-5 mdi-archive';
+        scrapButtonIcon = 'fas fa-bin-recycle';
         scrapButtonAction = () => moveToScraps(image);
     }
     
@@ -70,7 +70,7 @@ function updateGalleryToolbarContent(image) {
         <div class="gallery-toolbar-content">
             <div class="gallery-toolbar-buttons">
                 <button class="btn-secondary gallery-toolbar-close" title="Close" type="button">
-                    <i class="nai-cross"></i>
+                    <i class="fa-regular fa-xmark-large"></i>
                 </button>
                 <button class="btn-secondary gallery-toolbar-reference" title="Add as Reference" type="button">
                     <i class="fas fa-folder-image"></i>
@@ -84,8 +84,8 @@ function updateGalleryToolbarContent(image) {
                 <button class="btn-secondary gallery-toolbar-scrap" title="${scrapButtonText}" type="button">
                     <i class="${scrapButtonIcon}"></i>
                 </button>
-                <button class="btn-danger gallery-toolbar-delete" title="Delete image" type="button">
-                    <i class="nai-trash"></i>
+                <button class="btn-danger gallery-toolbar-delete" title="Destroy image" type="button">
+                    <i class="fas fa-fire"></i>
                 </button>
             </div>
         </div>
@@ -288,9 +288,15 @@ function showGalleryMoveModal(filename) {
         modal.id = 'galleryMoveModal';
         modal.className = 'modal';
         modal.innerHTML = `
+            <div class="modal-window-controls">
+                <button class="btn-secondary btn-small modal-close" type="button">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
             <div class="modal-content gallery-move-modal-content">
                 <div class="gallery-move-left-panel">
                     <img src="/images/background.jpg" alt="Image to move" class="gallery-move-background-image" id="galleryMoveBackgroundImage">
+                    <h3 id="galleryMoveModalTitle" class="gallery-move-left-header"><i class="mdi mdi-1-5 mdi-folder-move"></i> Move to Workspace</h3>
                     <div class="gallery-move-overlay">
                         <div class="gallery-move-image-info-overlay">
                             <p><strong>Images:</strong> <span id="galleryMoveCount">0</span> selected</p>
@@ -300,10 +306,6 @@ function showGalleryMoveModal(filename) {
                 </div>
                 <div class="gallery-move-right-panel">
                     <div class="modal-header gallery-move-header">
-                        <h3><i class="mdi mdi-1-5 mdi-folder-move"></i> Move to Workspace</h3>
-                        <button class="blur btn-secondary btn-small modal-close" type="button">
-                            <i class="nai-cross"></i>
-                        </button>
                     </div>
                     <div class="gallery-move-content">
                         <div class="gallery-move-instructions">
@@ -347,13 +349,6 @@ function showGalleryMoveModal(filename) {
                 }
             } else {
                 showError('Please select a target workspace');
-            }
-        });
-        
-        // Close modal when clicking outside
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                hideGalleryMoveModal();
             }
         });
     }

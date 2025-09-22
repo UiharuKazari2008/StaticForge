@@ -152,7 +152,7 @@ class BannerManager {
             // Core image operations
             'generate_image': 'Generate Image',
             'upscale_image': 'Upscale Image',
-            'reroll_image': 'Reroll Image',
+            'reroll_image': 'Recast Spell',
 
             // Preset operations
             'search_presets': 'Find Presets',
@@ -314,6 +314,9 @@ class BannerManager {
 // WebSocket Client with Auto-Reconnection and Glass Toast
 class WebSocketClient {
     constructor() {
+        // Client version for compatibility checking
+        this.clientVersion = '1.0.1'; // Update this when making breaking changes to client
+
         this.ws = null;
         this.reconnectAttempts = 0;
         this.maxReconnectAttempts = 5; // Reduced from 10 to 5
@@ -394,7 +397,73 @@ class WebSocketClient {
                 });
 
                 if (response.ok) {
-                    return true;
+                    // Server is responding, now check if it's ready
+                    try {
+                        const statusResponse = await fetch('/status', {
+                            method: 'OPTIONS',
+                            cache: 'no-cache',
+                            signal: AbortSignal.timeout(2000)
+                        });
+                        
+                        if (statusResponse.ok) {
+                            const data = await statusResponse.json();
+
+                            if (data.isReady) {
+                                // Server is ready, now check version compatibility
+                                try {
+                                    const appOptionsResponse = await fetch('/app', {
+                                        method: 'OPTIONS',
+                                        cache: 'no-cache',
+                                        signal: AbortSignal.timeout(2000)
+                                    });
+
+                                    if (appOptionsResponse.ok) {
+                                        const appData = await appOptionsResponse.json();
+
+                                        // Check version compatibility
+                                        if (appData.serverVersion && appData.serverVersion !== this.clientVersion) {
+                                            console.warn(`⚠️ Version mismatch detected! Client: ${this.clientVersion}, Server: ${appData.serverVersion}`);
+
+                                            // Trigger service worker update check
+                                            if (window.serviceWorkerManager) {
+                                                console.log('🔄 Triggering service worker update check due to version mismatch...');
+                                                await window.serviceWorkerManager.checkStaticFileUpdates();
+                                            }
+
+                                            // Show version mismatch warning
+                                            if (typeof showGlassToast === 'function') {
+                                                showGlassToast('warning', 'Version Mismatch',
+                                                    appData.versionMessage || 'A new version is available. Some features may not work correctly.',
+                                                    false, 10000, '<i class="fas fa-exclamation-triangle"></i>');
+                                            }
+
+                                            // Continue connection but warn user
+                                            return true;
+                                        }
+                                    }
+                                } catch (versionError) {
+                                    console.warn('⚠️ Could not check server version:', versionError.message);
+                                    // Continue anyway - don't fail the connection for version check issues
+                                }
+
+                                return true;
+                            } else {
+                                // Server is initializing, show current stage
+                                this.updateLoadingProgress(`${data.stageMessage}...`, 5 + (attempt * 5));
+
+                                if (attempt < maxPingAttempts) {
+                                    // Wait before next attempt
+                                    await new Promise(resolve => setTimeout(resolve, pingInterval));
+                                }
+                            }
+                        } else {
+                            // Status endpoint not available, but server is responding
+                            return true;
+                        }
+                    } catch (statusError) {
+                        // Status endpoint failed, but server is responding to HEAD
+                        return true;
+                    }
                 }
             } catch (error) {
                 console.warn(`⚠️ Ping attempt ${attempt} failed:`, error.message);
@@ -1139,6 +1208,19 @@ class WebSocketClient {
             this.handleAuthError(message);
             return;
         }
+
+        // Handle general error messages
+        if (message.type === 'error') {
+            console.error('❌ WebSocket error:', message.message, message.details);
+            // If this error has a requestId, resolve the pending request with the error
+            if (message.requestId && this.pendingRequests && this.pendingRequests.has(message.requestId)) {
+                const error = new Error(message.message || 'Server error');
+                error.details = message.details;
+                error.requestId = message.requestId;
+                this.resolveRequest(message.requestId, null, error);
+            }
+            return;
+        }
         
         // Handle search responses (ack-less)
         if (message.type.startsWith('search_status_update') || 
@@ -1192,7 +1274,12 @@ class WebSocketClient {
             if (message.type === 'request_gallery_response') {
                 this.handleGalleryResponse(message.data, message.requestId);
             }
-            
+
+            // Special handling for workspace activation responses
+            if (message.type === 'workspace_activate_response') {
+                this.handleWorkspaceActivationResponse(message.data);
+            }
+
             return;
         }
         
@@ -1460,6 +1547,15 @@ class WebSocketClient {
         document.dispatchEvent(event);
     }
 
+    handleWorkspaceActivationResponse(data) {
+        // Handle workspace activation response from server
+        // Dispatch the same event as broadcast activation for consistency
+        const event = new CustomEvent('workspaceActivated', {
+            detail: { workspaceId: data.activeWorkspace }
+        });
+        document.dispatchEvent(event);
+    }
+
     handlePresetUpdate(data) {
         // Dispatch custom event for preset updates
         const event = new CustomEvent('presetUpdated', {
@@ -1645,8 +1741,8 @@ class WebSocketClient {
         return this.sendMessageWithRequestId('delete_preset', this.generateRequestId(), { presetName });
     }
 
-    async generatePreset(presetName, workspace = null) {
-        return this.sendMessageWithRequestId('generate_preset', this.generateRequestId(), { presetName, workspace });
+    async generatePreset(presetName, workspace = null, allowPaid = false) {
+        return this.sendMessageWithRequestId('generate_preset', this.generateRequestId(), { presetName, allow_paid: allowPaid, workspace });
     }
 
     async getPresets(page = 1, itemsPerPage = 15, searchTerm = '') {
@@ -1958,12 +2054,16 @@ class WebSocketClient {
         return this.sendMessage('delete_reference', { hash, workspaceId });
     }
 
-    async uploadReference(imageData, workspaceId, tempFile = null) {
-        return this.sendMessage('upload_reference', { imageData, workspaceId, tempFile });
+    async uploadReference(imageData, workspaceId, tempFile = null, comment = null, filename = null, description = null, tags = []) {
+        return this.sendMessage('upload_reference', { imageData, workspaceId, tempFile, comment, filename, description, tags });
     }
 
     async replaceReference(hash, imageData, workspaceId, tempFile = null, filename = null) {
         return this.sendMessage('replace_reference', { hash, imageData, workspaceId, tempFile, filename });
+    }
+
+    async updateReferenceMetadata(hash, metadata) {
+        return this.sendMessage('update_reference_metadata', { hash, metadata });
     }
 
     async downloadUrlFile(url) {
@@ -1992,14 +2092,6 @@ class WebSocketClient {
 
     async moveReferences(hashes, targetWorkspaceId, sourceWorkspaceId) {
         return this.sendMessage('move_references', { hashes, targetWorkspaceId, sourceWorkspaceId });
-    }
-
-    async updateReferenceMetadata(filename, workspaceId, metadata) {
-        return this.sendMessage('update_reference_metadata', { filename, workspaceId, metadata });
-    }
-
-    async deleteReferenceMetadata(filename, workspaceId) {
-        return this.sendMessage('delete_reference_metadata', { filename, workspaceId });
     }
 
     async getVibeImage(filename) {

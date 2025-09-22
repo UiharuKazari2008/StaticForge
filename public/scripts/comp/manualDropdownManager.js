@@ -28,11 +28,6 @@ const manualHeight = document.getElementById('manualHeight');
 const customWidth = document.getElementById('manualCustomWidth');
 const customHeight = document.getElementById('manualCustomHeight');
 const manualResolutionGroup = document.getElementById('manualResolutionGroup');
-const customPresetDropdown = document.getElementById('customPresetDropdown');
-const customPresetDropdownBtn = document.getElementById('customPresetDropdownBtn');
-const customPresetDropdownMenu = document.getElementById('customPresetDropdownMenu');
-const customPresetSelected = document.getElementById('customPresetSelected');
-const clearPresetBtn = document.getElementById('clearPresetBtn');
 const manualSamplerDropdown = document.getElementById('manualSamplerDropdown');
 const manualSamplerDropdownBtn = document.getElementById('manualSamplerDropdownBtn');
 const manualSamplerDropdownMenu = document.getElementById('manualSamplerDropdownMenu');
@@ -62,11 +57,9 @@ const ucPresetsDropdownMenu = document.getElementById('ucPresetsDropdownMenu');
 const transformationDropdown = document.getElementById('transformationDropdown');
 const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
 const transformationDropdownMenu = document.getElementById('transformationDropdownMenu');
-const generatePresetBtn = document.getElementById('generatePresetBtn');
 const manualPresetName = document.getElementById('manualPresetName');
 const manualPresetDeleteBtn = document.getElementById('manualDeleteBtn');
 const manualPresetToggleBtn = document.getElementById('manualPresetToggleBtn');
-const manualPresetToggleText = document.getElementById('manualPresetToggleText');
 const manualPresetToggleIcon = document.getElementById('manualPresetToggleIcon');
 const manualPresetGroup = document.getElementById('manualPresetGroup');
 
@@ -244,7 +237,6 @@ async function selectManualResolution(value, group, skipPostProcess = false) {
     if (manualResolutionHidden) manualResolutionHidden.value = value.toLowerCase();
 
     if (!skipPostProcess) {
-        updateGenerateButton();
         updateManualPriceDisplay();
         
         // --- ADDED: Refresh preview image if in bias mode ---
@@ -386,7 +378,6 @@ function selectManualSampler(value) {
         selectManualNoiseScheduler('karras');
     }
 
-    if (typeof updateGenerateButton === 'function') updateGenerateButton();
 }
 
 /**
@@ -453,7 +444,6 @@ function selectManualNoiseScheduler(value) {
       manualNoiseSchedulerSelected.textContent = 'Select noise scheduler...';
     }
     if (manualNoiseSchedulerHidden) manualNoiseSchedulerHidden.value = value;
-    if (typeof updateGenerateButton === 'function') updateGenerateButton();
     // Update price display
     updateManualPriceDisplay();
 }
@@ -543,7 +533,6 @@ function selectManualModel(value, group, preventPropagation = false) {
     updateV3ModelVisibility();
 
     // Trigger any listeners (e.g., updateGenerateButton or manual form update)
-    if (typeof updateGenerateButton === 'function') updateGenerateButton();
     updateManualPriceDisplay();
 
     // Refresh reference browser for model changes
@@ -587,7 +576,9 @@ function renderTransformationDropdown(selectedVal) {
     // Get all option elements
     const rerollOption = transformationDropdownMenu.querySelector('[data-value="reroll"]');
     const variationOption = transformationDropdownMenu.querySelector('[data-value="variation"]');
-    const browseOption = transformationDropdownMenu.querySelector('[data-value="browse"]');
+    const baseImageOption = transformationDropdownMenu.querySelector('[data-value="base-image"]');
+    const vibeTransferOption = transformationDropdownMenu.querySelector('[data-value="vibe-transfer"]');
+    const characterOption = transformationDropdownMenu.querySelector('[data-value="character"]');
     const uploadOption = transformationDropdownMenu.querySelector('[data-value="upload"]');
 
     // Show/hide options based on availability
@@ -601,8 +592,16 @@ function renderTransformationDropdown(selectedVal) {
         variationOption.classList.toggle('selected', selectedVal === 'variation');
     }
 
-    if (browseOption) {
-        browseOption.classList.toggle('selected', selectedVal === 'browse');
+    if (baseImageOption) {
+        baseImageOption.classList.toggle('selected', selectedVal === 'base-image');
+    }
+
+    if (vibeTransferOption) {
+        vibeTransferOption.classList.toggle('selected', selectedVal === 'vibe-transfer');
+    }
+
+    if (characterOption) {
+        characterOption.classList.toggle('selected', selectedVal === 'character');
     }
 
     if (uploadOption) {
@@ -623,8 +622,14 @@ function renderTransformationDropdown(selectedVal) {
 function selectTransformation(value) {
     // Handle specific actions
     switch(value) {
-        case 'browse':
-            showCacheBrowser();
+        case 'base-image':
+            openReferenceBrowserWithFilter('image');
+            break;
+        case 'vibe-transfer':
+            openReferenceBrowserWithFilter('vibe');
+            break;
+        case 'character':
+            openReferenceBrowserWithFilter('character');
             break;
         case 'upload':
             // Determine upload type based on current state
@@ -634,19 +639,16 @@ function selectTransformation(value) {
                 (window.currentEditImage.filename || window.currentEditImage.original)
             );
             
-            if (window.showUnifiedUploadModal) {
-                // Set the appropriate mode before opening the modal
-                if (hasBaseImage) {
-                    // If there's already a base image, upload as vibe reference
-                    window.unifiedUploadCurrentMode = 'vibe';
-                } else {
-                    // If no base image, upload as base image
-                    window.unifiedUploadCurrentMode = 'reference';
-                }
-                window.showUnifiedUploadModal();
+            // Set the appropriate mode before opening the modal
+            if (hasBaseImage) {
+                // If there's already a base image, upload as vibe reference
+                window.unifiedUploadCurrentMode = 'vibe';
             } else {
-                showError('Upload modal not available');
+                // If no base image, upload as base image
+                window.unifiedUploadCurrentMode = 'reference';
             }
+            unifiedUploadModalManager.show();
+
             // Close the transformation dropdown
             closeTransformationDropdown();
             break;
@@ -1369,7 +1371,7 @@ function toggleQuality() {
  * @name renderUcPresetsDropdown
  * @description Renders the UC (Undesired Content) presets dropdown menu with available levels
  * @example
- * renderUcPresetsDropdown(); // Shows UC preset options (None, Human Focus, Light, Heavy)
+ * renderUcPresetsDropdown(); // Shows UC preset options (None, Human Focus, Light, Heavy, Curated)
  */
 function renderUcPresetsDropdown() {
     ucPresetsDropdownMenu.innerHTML = '';
@@ -1377,7 +1379,8 @@ function renderUcPresetsDropdown() {
         { value: 0, display: 'None' },
         { value: 1, display: 'Human Focus' },
         { value: 2, display: 'Light' },
-        { value: 3, display: 'Heavy' }
+        { value: 3, display: 'Heavy' },
+        { value: 4, display: 'Curated' }
     ].forEach(preset => {
         const option = document.createElement('div');
         option.className = 'custom-dropdown-option';
@@ -1401,12 +1404,12 @@ function renderUcPresetsDropdown() {
 
 /**
  * Select UC preset - MOVED FROM app.js
- * @param {number} value - UC preset level (0=None, 1=Human Focus, 2=Light, 3=Heavy)
+ * @param {number} value - UC preset level (0=None, 1=Human Focus, 2=Light, 3=Heavy, 4=Curated)
  * @function
  * @name selectUcPreset
  * @description Updates the selected UC preset and updates the UI state and prompt status icons
  * @example
- * selectUcPreset(3); // Selects 'Heavy' UC preset
+ * selectUcPreset(4); // Selects 'Curated' UC preset
  */
 function selectUcPreset(value) {
     selectedUcPreset = value;
@@ -1573,306 +1576,6 @@ async function updateCustomResolutionValue() {
 }
 
 /**
- * Render custom preset dropdown - MOVED FROM app.js
- * @param {string} selectedVal - Currently selected preset value
- * @function
- * @name renderCustomPresetDropdown
- * @description Renders the custom preset dropdown menu with all available presets and their icons
- * @example
- * await renderCustomPresetDropdown('preset:My Preset'); // Shows preset dropdown with 'My Preset' selected
- */
-async function renderCustomPresetDropdown(selectedVal) {
-    if (!customPresetDropdownMenu) return;
-    customPresetDropdownMenu.innerHTML = '';
-
-    // Use global presets loaded from /options
-    if (Array.isArray(window.optionsData.presets) && window.optionsData.presets.length > 0) {
-        for (const preset of window.optionsData.presets) {
-            try {
-                // Skip invalid presets
-                if (!preset || !preset.name) {
-                    console.warn('Skipping invalid preset:', preset);
-                    continue;
-                }
-                
-                const option = document.createElement('div');
-                option.className = 'custom-dropdown-option' + (selectedVal === `preset:${preset.name}` ? ' selected' : '');
-                option.tabIndex = 0;
-                option.dataset.value = `preset:${preset.name}`;
-                option.dataset.type = 'preset';
-                
-                // Create compact preset option with same icons as createPresetItem
-                const presetName = document.createElement('div');
-                presetName.className = 'preset-name';
-                presetName.textContent = preset.name;
-                
-                const presetIcons = document.createElement('div');
-                presetIcons.className = 'preset-icons';
-                
-                // Paid requests
-                if (preset.allow_paid === true) {
-                    const icon = document.createElement('i');
-                    icon.className = 'nai-anla';
-                    icon.title = 'Paid Requests Enabled';
-                    presetIcons.appendChild(icon);
-                }
-                
-                // Character prompts
-                if (preset.character_prompts) {
-                    const icon = document.createElement('i');
-                    icon.className = 'fas fa-users';
-                    icon.title = `${preset.character_prompts} Character Prompt${preset.character_prompts > 1 ? 's' : ''}`;
-                    presetIcons.appendChild(icon);
-                    
-                    // Uses Character Coordinates
-                    if (preset.use_coords) {
-                        const icon = document.createElement('i');
-                        icon.className = 'fas fa-location-crosshairs';
-                        icon.title = 'Using Character Coordinates';
-                        presetIcons.appendChild(icon);
-                    }
-                }
-                
-                // Upscale
-                if (preset.upscale === true) {
-                    const icon = document.createElement('i');
-                    icon.className = 'fas fa-high-definition';
-                    icon.title = 'Upscale enabled';
-                    presetIcons.appendChild(icon);
-                }
-                
-                // Image to image
-                if (preset.image || preset.image_source) {
-                    const icon = document.createElement('i');
-                    icon.className = 'fas fa-image';
-                    icon.title = 'Image to Image';
-                    presetIcons.appendChild(icon);
-
-                    // Image Bias
-                    if (preset.image_bias) {
-                        const icon = document.createElement('i');
-                        icon.className = 'fas fa-crop';
-                        icon.title = 'Image Bias';
-                        presetIcons.appendChild(icon);
-                    }
-                }
-                
-                
-                // Inpaint
-                if ((preset.image || preset.image_source) && preset.mask_compressed) {
-                    const icon = document.createElement('i');
-                    icon.className = 'nai-inpaint';
-                    icon.title = 'Selective Masking (Inpaint)';
-                    presetIcons.appendChild(icon);
-                } else 
-                // Vibe transfer
-                if (preset.vibe_transfer) {
-                    const icon = document.createElement('i');
-                    icon.className = 'nai-vibe-transfer';
-                    icon.title = `${preset.vibe_transfer} Vibe Transfer${preset.vibe_transfer > 1 ? 's' : ''}`;
-                    presetIcons.appendChild(icon);
-                }
-                
-                // Variety
-                if (preset.variety === true) {
-                    const icon = document.createElement('i');
-                    icon.className = 'fas fa-sparkle';
-                    icon.title = 'Variety+ Enabled';
-                    presetIcons.appendChild(icon);
-                }
-
-                // Dataset info (priority: furry > backgrounds > anime)
-                const datasetIcon = document.createElement('i');
-                if (preset.dataset_config && preset.dataset_config.include && Array.isArray(preset.dataset_config.include) && preset.dataset_config.include.length > 0) {
-                    
-                    if (preset.dataset_config.include.includes('furry')) {
-                        datasetIcon.className = 'nai-paw';
-                    } else if (preset.dataset_config.include.includes('backgrounds')) {
-                        datasetIcon.className = 'fas fa-tree';
-                    } else {
-                        datasetIcon.className = 'nai-sakura';
-                    }
-                } else {
-                    datasetIcon.className = 'nai-sakura';
-                }
-                datasetIcon.title = 'Dataset enabled';
-                presetIcons.appendChild(datasetIcon);
-                
-                // Quality preset info
-                if (preset.append_quality === true) {
-                    const icon = document.createElement('i');
-                    icon.className = 'fas fa-crown';
-                    icon.title = 'Quality Preset Enabled';
-                    presetIcons.appendChild(icon);
-                }
-                
-                // UC boxes
-                const boxes = document.createElement('div');
-                boxes.className = 'uc-boxes';
-                if (preset.append_uc !== undefined && preset.append_uc !== null) {
-                    boxes.dataset.ucLevel = preset.append_uc.toString();
-                } else {
-                    boxes.dataset.ucLevel = '0';
-                }
-                for (let i = 1; i <= 3; i++) {
-                    const box = document.createElement('div');
-                    box.className = 'uc-box';
-                    box.dataset.level = i.toString();
-                    boxes.appendChild(box);
-                }
-                presetIcons.appendChild(boxes);
-                
-                // Create two-row layout
-                const presetContent = document.createElement('div');
-                presetContent.className = 'preset-option-content-two-rows';
-                
-                // First row: name only
-                const firstRow = document.createElement('div');
-                firstRow.className = 'preset-option-row-1';
-                firstRow.appendChild(presetName);
-                
-                // Second row: model/resolution on left, icons on right
-                const secondRow = document.createElement('div');
-                secondRow.className = 'preset-option-row-2';
-                
-                // Left side: model and resolution info
-                const leftSide = document.createElement('div');
-                leftSide.className = 'preset-option-left';
-                
-                // Model info
-                const modelSpan = document.createElement('span');
-                let group = null;
-                for (const g of modelGroups) {
-                    const found = g.options.find(o => o.value === preset.model.toLowerCase());
-                    if (found) {
-                    group = g.group;
-                    break;
-                    }
-                }
-                const groupObj = modelGroups.find(g => g.group === group);
-                const optObj = groupObj ? groupObj.options.find(o => o.value === preset.model.toLowerCase()) : null;
-                if (optObj) {
-                    if (optObj.badge_full) {
-                        modelSpan.innerHTML = [
-                            `<span>${optObj.display}</span>`,
-                            `<span>${optObj.badge_full}</span>`,
-                        ].filter(Boolean).join(' ');
-                    } else if (optObj.badge) {
-                        modelSpan.innerHTML = [
-                            `<span>${optObj.display}</span>`,
-                            `<span>${optObj.badge}</span>`,
-                        ].filter(Boolean).join(' ');
-                    } else {
-                        modelSpan.textContent = preset.model || 'V4.5?';
-                    }
-                    modelSpan.className = `preset-model ${optObj.badge_class}`;
-                } else {
-                    modelSpan.textContent = preset.model || 'V4.5?';
-                    modelSpan.className = 'preset-model';
-                }
-                leftSide.appendChild(modelSpan);
-                
-                // Resolution info
-                const resSpan = document.createElement('span');
-                resSpan.className = 'preset-resolution';
-    
-                // Get proper resolution display name and check if it's large/wallpaper
-                let resolutionDisplay = (preset.resolution.toLowerCase() || 'normal_portrait?').split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1));
-                
-                if (resolutionDisplay[0] !== 'Normal') {
-                    const resolutionText = document.createElement('span');
-                    const resolutionTextInner = document.createElement('span');
-                    if (resolutionDisplay[0] === 'Large' || resolutionDisplay[0] === 'Wallpaper') {
-                        const dollarIcon = document.createElement('i');
-                        dollarIcon.className = 'fas fa-dollar-sign';
-                        dollarIcon.style.fontSize = '0.8em';
-                        resolutionText.appendChild(dollarIcon);
-                    }
-                    resolutionTextInner.textContent = resolutionDisplay[0];
-                    resolutionText.appendChild(resolutionTextInner);
-                    resSpan.appendChild(resolutionText);
-                    const resolutionText2 = document.createElement('span');
-                    resolutionText2.textContent = resolutionDisplay[1];
-                    resSpan.appendChild(resolutionText2);
-                } else {
-                    resSpan.textContent = resolutionDisplay[1];
-                }
-                
-                leftSide.appendChild(resSpan);
-                
-                secondRow.appendChild(leftSide);
-                secondRow.appendChild(presetIcons);
-                
-                presetContent.appendChild(firstRow);
-                presetContent.appendChild(secondRow);
-                
-                option.appendChild(presetContent);
-                
-                option.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    selectCustomPreset(`preset:${preset.name}`);
-                    closeCustomPresetDropdown();
-                });
-                option.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        selectCustomPreset(`preset:${preset.name}`);
-                        closeCustomPresetDropdown();
-                    }
-                });
-                customPresetDropdownMenu.appendChild(option);
-            } catch (error) {
-                console.error('Error processing preset:', preset?.name || 'unknown', error);
-                continue;
-            }
-        }
-    }
-}
-
-/**
- * Select custom preset - MOVED FROM app.js
- * @param {string} value - Preset value to select (format: 'preset:Name' or empty)
- * @function
- * @name selectCustomPreset
- * @description Updates the selected custom preset and updates the UI accordingly
- * @example
- * selectCustomPreset('preset:My Preset'); // Selects 'My Preset'
- * selectCustomPreset(''); // Clears preset selection
- */
-function selectCustomPreset(value) {
-    selectedPreset = value;
-
-    // Update button display
-    if (value.startsWith('preset:')) {
-        const presetName = value.replace('preset:', '');
-        customPresetSelected.innerHTML = `<i class="fa-light fa-wand-magic-sparkles"></i> ${presetName}`;
-        clearPresetBtn.classList.remove('hidden');
-    } else {
-        customPresetSelected.innerHTML = '<i class="fa-light fa-book-spells"></i> Spellbook';
-        clearPresetBtn.classList.add('hidden');
-    }
-
-    // Sync with hidden select for compatibility
-    presetSelect.value = value;
-
-    // Trigger any listeners (e.g., updateGenerateButton)
-    if (typeof updateGenerateButton === 'function') updateGenerateButton();
-}
-
-/**
- * Close custom preset dropdown - MOVED FROM app.js
- * @function
- * @name closeCustomPresetDropdown
- * @description Closes the custom preset dropdown menu using the core dropdown system
- * @example
- * closeCustomPresetDropdown(); // Closes the custom preset dropdown menu
- */
-function closeCustomPresetDropdown() {
-    if (customPresetDropdownMenu && customPresetDropdownBtn) closeDropdown(customPresetDropdownMenu, customPresetDropdownBtn);
-}
-
-
-/**
  * Update transformation dropdown for vibes
  * @function
  * @name updateTransformationDropdownForVibes
@@ -1897,6 +1600,33 @@ function updateTransformationDropdownForVibes() {
     }
 }
 
+/**
+ * Open reference browser with specific filter
+ * @param {string} filterMode - Filter mode ('all', 'image', 'vibe', 'character')
+ * @function
+ * @name openReferenceBrowserWithFilter
+ * @description Opens the reference browser with the specified filter mode applied
+ * @example
+ * openReferenceBrowserWithFilter('image'); // Opens browser showing only base images
+ * openReferenceBrowserWithFilter('vibe'); // Opens browser showing only vibe references
+ * openReferenceBrowserWithFilter('character'); // Opens browser showing only character references
+ */
+function openReferenceBrowserWithFilter(filterMode) {
+    // Close the transformation dropdown
+    closeTransformationDropdown();
+
+    // Open the reference browser with the specified filter
+    if (typeof showCacheBrowserWithFilter === 'function') {
+        showCacheBrowserWithFilter(filterMode);
+    } else {
+        console.error('showCacheBrowserWithFilter function not available');
+        // Fallback to regular showCacheBrowser if the filtered version isn't available
+        if (typeof showCacheBrowser === 'function') {
+            showCacheBrowser();
+        }
+    }
+}
+
 function renderManualSamplerDropdown(selectedVal) {
   renderSimpleDropdown(manualSamplerDropdownMenu, SAMPLER_MAP, 'meta', 'display', selectManualSampler, closeManualSamplerDropdown, selectedVal, { preventFocusTransfer: true });
 }
@@ -1918,7 +1648,6 @@ function selectManualNoiseScheduler(value) {
   // Update price display
   updateManualPriceDisplay();
 }
-
 function renderManualModelDropdown(selectedVal) {
     renderGroupedDropdown(manualModelDropdownMenu, modelGroups, selectManualModel, closeManualModelDropdown, selectedVal, (opt, group) => `<span>${opt.name}</span>`, { preventFocusTransfer: true });
 }

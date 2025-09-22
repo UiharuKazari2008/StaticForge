@@ -37,7 +37,7 @@ let lastRateLimitTime = 0;
 let rateLimitRetryCount = 0;
 const MAX_RATE_LIMIT_RETRIES = 5;
 const RATE_LIMIT_BACKOFF_BASE = 2000; // 2 seconds base backoff
-const KEY_REFRESH_BUFFER = 240000; // Refresh 4 minutes before expiry (server rotates every 5 minutes)
+const KEY_REFRESH_BUFFER = 60000; // Refresh 1 minute before expiry (server rotates every 5 minutes)
 const RATE_LIMIT_RESET_TIME = 300000; // Reset rate limit counters after 5 minutes of no errors
 
 // Reset rate limit tracking after successful fetches
@@ -50,7 +50,6 @@ function resetRateLimitTracking() {
 function cleanupRateLimitTracking() {
   const now = Date.now();
   if (lastRateLimitTime > 0 && now - lastRateLimitTime > RATE_LIMIT_RESET_TIME) {
-    console.log('🔑 Service Worker: Resetting rate limit tracking after timeout');
     resetRateLimitTracking();
   }
 }
@@ -66,10 +65,10 @@ async function fetchRollingKey() {
 
   const now = Date.now();
   const timeUntilExpiry = keyExpiresAt - now;
-  const shouldRefresh = !currentRollingKey || now >= keyExpiresAt - KEY_REFRESH_BUFFER;
+  const shouldRefresh = !currentRollingKey || keyExpiresAt === 0 || now >= keyExpiresAt - KEY_REFRESH_BUFFER;
 
   // Check if we have a valid cached key
-  if (currentRollingKey && now < keyExpiresAt - KEY_REFRESH_BUFFER) {
+  if (currentRollingKey && keyExpiresAt > 0 && now < keyExpiresAt - KEY_REFRESH_BUFFER) {
     return currentRollingKey;
   }
 
@@ -100,11 +99,9 @@ async function fetchRollingKey() {
           lastRateLimitTime = Date.now();
           rateLimitRetryCount = Math.min(rateLimitRetryCount + 1, MAX_RATE_LIMIT_RETRIES);
 
-          console.warn(`🔑 Service Worker: Rate limit hit (${rateLimitRetryCount}/${MAX_RATE_LIMIT_RETRIES}), backing off for ${Math.ceil(backoffTime / 1000)}s, time until expiry: ${Math.ceil(timeUntilExpiry / 1000)}s`);
 
           // Return cached key if available
           if (currentRollingKey) {
-            console.warn('🔑 Service Worker: Using cached key during rate limit backoff');
             return currentRollingKey;
           }
 
@@ -115,7 +112,6 @@ async function fetchRollingKey() {
           console.error('🔑 Service Worker: Server error (500) when fetching rolling key');
 
           if (currentRollingKey) {
-            console.warn('🔑 Service Worker: Using cached key due to server error');
             return currentRollingKey;
           }
 
@@ -126,7 +122,6 @@ async function fetchRollingKey() {
           console.error('🔑 Service Worker: Service unavailable (503) when fetching rolling key');
 
           if (currentRollingKey) {
-            console.warn('🔑 Service Worker: Using cached key due to service unavailability');
             return currentRollingKey;
           }
 
@@ -137,7 +132,6 @@ async function fetchRollingKey() {
           console.error(`🔑 Service Worker: Client error (${response.status}) when fetching rolling key`);
 
           if (currentRollingKey) {
-            console.warn('🔑 Service Worker: Using cached key due to client error');
             return currentRollingKey;
           }
 
@@ -148,7 +142,6 @@ async function fetchRollingKey() {
           console.error(`🔑 Service Worker: Unexpected error (${response.status}) when fetching rolling key`);
 
           if (currentRollingKey) {
-            console.warn('🔑 Service Worker: Using cached key due to unexpected error');
             return currentRollingKey;
           }
 
@@ -174,18 +167,14 @@ async function fetchRollingKey() {
         lastRateLimitTime = Date.now();
 
         if (currentRollingKey) {
-          console.warn('🔑 Service Worker: Using cached key due to network error');
           return currentRollingKey;
         }
 
         throw new Error('Network error while fetching rolling key');
       }
 
-      console.error('🔑 Service Worker: Failed to fetch rolling key:', error);
-
       // Return cached key if available, even if expired
       if (currentRollingKey) {
-        console.warn('🔑 Service Worker: Using expired cached key as fallback');
         return currentRollingKey;
       }
 
@@ -204,15 +193,25 @@ async function fetchRollingKey() {
 // Helper function to create service worker identification headers with rolling key
 async function createServiceWorkerHeaders() {
   try {
+    // Check if we have a valid cached key before calling fetchRollingKey
+    const now = Date.now();
+    if (currentRollingKey && keyExpiresAt > 0 && now < keyExpiresAt - KEY_REFRESH_BUFFER) {
+      // Use cached key without calling fetchRollingKey
+      return {
+        'x-sw-key': currentRollingKey,
+        'X-Service-Worker-Version': '2.0', // Updated version for rolling key support
+        'X-Requested-With': 'ServiceWorker'
+      };
+    }
+
+    // Key needs refresh or doesn't exist - call fetchRollingKey
     const rollingKey = await fetchRollingKey();
     return {
-      'X-SW-Key': rollingKey,
+      'x-sw-key': rollingKey,
       'X-Service-Worker-Version': '2.0', // Updated version for rolling key support
       'X-Requested-With': 'ServiceWorker'
     };
   } catch (error) {
-    console.error('🔑 Service Worker: Failed to get rolling key for headers:', error);
-    // Return empty headers if we can't get a key
     return {
       'X-Service-Worker-Version': '2.0',
       'X-Requested-With': 'ServiceWorker'
@@ -269,6 +268,15 @@ const imageStrategy = new strategies.CacheFirst({
       maxAgeSeconds: 7 * 24 * 60 * 60, // 1 week
     }),
   ],
+  // Custom cache key to ensure different image variants are cached separately
+  matchOptions: {
+    ignoreSearch: false, // Include query parameters in cache key
+  },
+  // Custom cache key function to ensure unique keys for different image variants
+  cacheKeyWillBeUsed: async ({ request }) => {
+    // Use the full URL as the cache key to ensure different variants are cached separately
+    return request.url;
+  },
 });
 
 // Internal strategy - only return cached data, never fetch from network
@@ -366,6 +374,43 @@ function createCacheBustingStrategy(strategy) {
   };
 }
 
+// Custom strategy wrapper for images that disables client-side caching but allows service worker caching
+function createImageStrategy(strategy) {
+  return {
+    async handle({ request, event }) {
+      try {
+        const response = await strategy.handle({ request, event });
+        if (response) {
+          // Add cache-busting headers to prevent browser caching
+          const finalResponse = addCacheBustingHeaders(response);
+          
+          // Emit receive event for successful responses
+          notifyClientsOfNetworkActivity('receive', {
+            url: request.url,
+            method: request.method,
+            status: response.status,
+            timestamp: Date.now()
+          });
+          
+          return finalResponse;
+        }
+        return response;
+      } catch (error) {
+        // Emit receive event for failed requests
+        notifyClientsOfNetworkActivity('receive', {
+          url: request.url,
+          method: request.method,
+          status: 0,
+          error: error.message,
+          timestamp: Date.now()
+        });
+        
+        throw error;
+      }
+    }
+  };
+}
+
 // Block all requests for chrome-extension://
 workbox.routing.registerRoute(
   ({ url, request }) => {
@@ -374,7 +419,7 @@ workbox.routing.registerRoute(
   async (event) => {
     const { request, url } = event;
     return new Response('', {
-      status: 403,
+      status: 200,
       headers: {
         'Content-Type': 'text/plain'
       }
@@ -450,13 +495,17 @@ workbox.routing.registerRoute(
           }
         }
       }
-      // Handle previews and cache with dynamic strategy
-      else if (url.pathname.startsWith('/previews/') || url.pathname.startsWith('/cache/')) {
+      // Handle previews with image strategy (different variants need separate caching)
+      else if (url.pathname.startsWith('/previews/')) {
+        response = await createImageStrategy(imageStrategy).handle(event);
+      }
+      // Handle cache with dynamic strategy
+      else if (url.pathname.startsWith('/cache/')) {
         response = await createCacheBustingStrategy(dynamicStrategy).handle(event);
       }
       // Handle images with image strategy
       else if (url.pathname.startsWith('/images/')) {
-        response = await createCacheBustingStrategy(imageStrategy).handle(event);
+        response = await createImageStrategy(imageStrategy).handle(event);
       }
       // Handle all other static files with static strategy
       else {
@@ -1045,8 +1094,6 @@ self.addEventListener('fetch', (event) => {
         return fetch(authenticatedRequest);
 
       } catch (error) {
-        console.error('🔑 Service Worker: Failed to add rolling key to request:', error);
-
         // Emit transmit event for failed authentication
         notifyClientsOfNetworkActivity('transmit', {
           url: request.url,

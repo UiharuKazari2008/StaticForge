@@ -6,6 +6,7 @@ const sharp = require('sharp');
 const { extractNovelAIMetadata, updateMetadata } = require('./pngMetadata');
 const { getGlobalWsServer } = require('./websocket');
 const { isImageLarge } = require('./imageTools');
+const { createDatabaseCheckpointManager } = require('./databaseCheckpoint');
 
 // Database file path
 const dbPath = path.join(__dirname, '..', '.cache', 'metadata.db');
@@ -17,6 +18,9 @@ if (!fs.existsSync(cacheDir)) {
 }
 
 let db = null;
+
+// Initialize checkpoint manager for metadata database
+const metadataCheckpointManager = createDatabaseCheckpointManager(dbPath, 5);
 
 /**
  * Initialize the SQLite database
@@ -704,6 +708,70 @@ function getDatabaseStats() {
     }
 }
 
+// Checkpoint management functions for metadata database
+function getMetadataCheckpointInfo() {
+    return metadataCheckpointManager.getCheckpointInfo();
+}
+
+function createMetadataCheckpoint() {
+    try {
+        return metadataCheckpointManager.createCheckpointWithBackup();
+    } catch (error) {
+        console.error('❌ Error creating metadata checkpoint:', error);
+        throw error;
+    }
+}
+
+function restoreMetadataFromCheckpoint(checkpointFilename) {
+    try {
+        const success = metadataCheckpointManager.restoreFromCheckpoint(checkpointFilename);
+        if (success) {
+            // Reinitialize database connection after restore
+            closeDatabase();
+            initializeDatabase();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('❌ Error restoring metadata from checkpoint:', error);
+        throw error;
+    }
+}
+
+function restoreMetadataFromLatestCheckpoint() {
+    try {
+        const success = metadataCheckpointManager.restoreFromLatestCheckpoint();
+        if (success) {
+            // Reinitialize database connection after restore
+            closeDatabase();
+            initializeDatabase();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('❌ Error restoring metadata from latest checkpoint:', error);
+        throw error;
+    }
+}
+
+function clearMetadataCheckpoints() {
+    try {
+        return metadataCheckpointManager.clearAllCheckpoints();
+    } catch (error) {
+        console.error('❌ Error clearing metadata checkpoints:', error);
+        throw error;
+    }
+}
+
+function verifyMetadataDatabaseIntegrity() {
+    try {
+        return metadataCheckpointManager.verifyDatabaseIntegrity();
+    } catch (error) {
+        console.error('❌ Error verifying metadata database integrity:', error);
+        return false;
+    }
+}
+
 // Initialize database on module load
 let dbInitialized = false;
 try {
@@ -745,5 +813,13 @@ module.exports = {
     broadcastReceiptNotification,
     migrateFromJSON,
     getDatabaseStats,
-    updateFileMetadata
+    updateFileMetadata,
+
+    // Checkpoint management
+    getMetadataCheckpointInfo,
+    createMetadataCheckpoint,
+    restoreMetadataFromCheckpoint,
+    restoreMetadataFromLatestCheckpoint,
+    clearMetadataCheckpoints,
+    verifyMetadataDatabaseIntegrity
 };

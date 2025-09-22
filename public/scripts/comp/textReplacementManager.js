@@ -5,14 +5,12 @@
 
 let textReplacementData = {};
 let originalTextReplacementData = {};
-let currentPage = 1;
-const itemsPerPage = 15;
-let currentSearchTerm = '';
-let paginationInfo = {
+let textReplacementSearchTerm = '';
+let textReplacementPaginationInfo = {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
-    itemsPerPage,
+    itemsPerPage: 10,
     hasNextPage: false,
     hasPrevPage: false
 };
@@ -26,12 +24,6 @@ function initializeCreateTextReplacementModal() {
     const typeSelect = document.getElementById('textReplacementTypeSelect');
 
     if (modal) {
-        // Close on outside click
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                hideCreateTextReplacementModal();
-            }
-        });
 
         // Close on escape key
         modal.addEventListener('keydown', (e) => {
@@ -84,16 +76,16 @@ function initializeTextReplacementManager() {
     
     if (textReplacementSearch) {
         textReplacementSearch.addEventListener('input', debounce(async () => {
-            currentPage = 1; // Reset to first page when searching
-            currentSearchTerm = textReplacementSearch.value;
+            textReplacementPaginationInfo.currentPage = 1; // Reset to first page when searching
+            textReplacementSearchTerm = textReplacementSearch.value;
             await loadTextReplacements();
         }, 300));
     }
 
     if (textReplacementPrevBtn) {
         textReplacementPrevBtn.addEventListener('click', async () => {
-            if (currentPage > 1) {
-                currentPage--;
+            if (textReplacementPaginationInfo.currentPage > 1) {
+                textReplacementPaginationInfo.currentPage--;
                 await loadTextReplacements();
             }
         });
@@ -101,9 +93,9 @@ function initializeTextReplacementManager() {
 
     if (textReplacementNextBtn) {
         textReplacementNextBtn.addEventListener('click', async () => {
-            const totalPages = paginationInfo.totalPages || 1;
-            if (currentPage < totalPages) {
-                currentPage++;
+            const totalPages = textReplacementPaginationInfo.totalPages || 1;
+            if (textReplacementPaginationInfo.currentPage < totalPages) {
+                textReplacementPaginationInfo.currentPage++;
                 await loadTextReplacements();
             }
         });
@@ -112,22 +104,17 @@ function initializeTextReplacementManager() {
     // Close on outside click
     const modal = document.getElementById('textReplacementManagerModal');
     if (modal) {
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                hideTextReplacementManager();
-            }
-        });
 
         // Add keyboard navigation for pagination
         modal.addEventListener('keydown', async (e) => {
             if (e.target.closest('.text-replacement-manager-content')) {
-                if (e.key === 'PageDown' && currentPage < (paginationInfo.totalPages || 1)) {
+                if (e.key === 'PageDown' && textReplacementPaginationInfo.currentPage < (textReplacementPaginationInfo.totalPages || 1)) {
                     e.preventDefault();
-                    currentPage++;
+                    textReplacementPaginationInfo.currentPage++;
                     await loadTextReplacements();
-                } else if (e.key === 'PageUp' && currentPage > 1) {
+                } else if (e.key === 'PageUp' && textReplacementPaginationInfo.currentPage > 1) {
                     e.preventDefault();
-                    currentPage--;
+                    textReplacementPaginationInfo.currentPage--;
                     await loadTextReplacements();
                 }
             }
@@ -160,9 +147,9 @@ function hideTextReplacementManager() {
     if (modal) {
         closeModal(modal);
     }
-    
+
     // Reset to first page and clear search
-    currentPage = 1;
+    textReplacementPaginationInfo.currentPage = 1;
     const searchInput = document.getElementById('textReplacementSearch');
     if (searchInput) {
         searchInput.value = '';
@@ -175,9 +162,9 @@ async function loadTextReplacements() {
         if (window.wsClient && window.wsClient.isConnected()) {
             // Request text replacements via WebSocket with pagination and search parameters
             const result = await window.wsClient.sendMessage('get_text_replacements', {
-                page: currentPage,
-                itemsPerPage,
-                searchTerm: currentSearchTerm
+                page: textReplacementPaginationInfo.currentPage,
+                itemsPerPage: 10,
+                searchTerm: textReplacementSearchTerm
             });
             
             if (result && result.textReplacements) {
@@ -186,19 +173,16 @@ async function loadTextReplacements() {
                 
                 // Update pagination info
                 if (result.pagination) {
-                    paginationInfo = { ...result.pagination };
-                    currentPage = paginationInfo.currentPage;
-                    console.log('Updated pagination info:', paginationInfo);
-                    console.log('Current page set to:', currentPage);
+                    textReplacementPaginationInfo = { ...result.pagination };
                 }
-                
+
                 // Update search state
-                currentSearchTerm = result.searchTerm || '';
-                
+                textReplacementSearchTerm = result.searchTerm || '';
+
                 // Update search input if it exists
                 const searchInput = document.getElementById('textReplacementSearch');
-                if (searchInput && searchInput.value !== currentSearchTerm) {
-                    searchInput.value = currentSearchTerm;
+                if (searchInput && searchInput.value !== textReplacementSearchTerm) {
+                    searchInput.value = textReplacementSearchTerm;
                 }
                 
                 // Render the updated list
@@ -207,10 +191,10 @@ async function loadTextReplacements() {
                 console.warn('No text replacements received from server');
                 textReplacementData = {};
                 originalTextReplacementData = {};
-                paginationInfo = {
+                textReplacementPaginationInfo = {
                     currentPage: 1,
                     totalPages: 1,
-                    itemsPerPage,
+                    itemsPerPage: 10,
                     hasNextPage: false,
                     hasPrevPage: false
                 };
@@ -232,17 +216,17 @@ function updatePaginationControls() {
     const pageInfo = document.getElementById('textReplacementPageInfo');
     const prevBtn = document.getElementById('textReplacementPrevBtn');
     const nextBtn = document.getElementById('textReplacementNextBtn');
-    
+
     if (pageInfo) {
-        pageInfo.textContent = `Page ${paginationInfo.currentPage} of ${paginationInfo.totalPages} (${paginationInfo.totalItems} items)`;
+        pageInfo.textContent = `Page ${textReplacementPaginationInfo.currentPage} of ${textReplacementPaginationInfo.totalPages} (${textReplacementPaginationInfo.totalItems} items)`;
     }
-    
+
     if (prevBtn) {
-        prevBtn.disabled = currentPage <= 1;
+        prevBtn.disabled = textReplacementPaginationInfo.currentPage <= 1;
     }
-    
+
     if (nextBtn) {
-        nextBtn.disabled = currentPage >= paginationInfo.totalPages;
+        nextBtn.disabled = textReplacementPaginationInfo.currentPage >= textReplacementPaginationInfo.totalPages;
     }
 }
 
@@ -250,13 +234,13 @@ function updatePaginationControls() {
 function renderTextReplacementList() {
     const listContainer = document.getElementById('textReplacementList');
     if (!listContainer) return;
-    
+
     listContainer.innerHTML = '';
-    
+
     const pageKeys = Object.keys(textReplacementData);
-    
+
     if (pageKeys.length === 0) {
-        if (paginationInfo.totalItems === 0) {
+        if (textReplacementPaginationInfo.totalItems === 0) {
             listContainer.innerHTML = `
                 <div class="text-replacement-empty">
                     <p><i class="fas fa-search"></i> No text replacements found</p>
@@ -272,19 +256,34 @@ function renderTextReplacementList() {
         updatePaginationControls();
         return;
     }
-    
+
     pageKeys.forEach(key => {
         const value = textReplacementData[key];
         const isArray = Array.isArray(value);
         const isModified = hasChanges(key, value);
         const isNew = !originalTextReplacementData.hasOwnProperty(key);
-        
+
         const itemElement = createTextReplacementItem(key, value, isArray, isModified, isNew);
         listContainer.appendChild(itemElement);
     });
-    
+
     // Update pagination controls
     updatePaginationControls();
+
+    // Scroll to top of the list container when new page is loaded
+    scrollTextReplacementListToTop();
+}
+
+// Scroll text replacement list to top
+function scrollTextReplacementListToTop() {
+    const modal = document.getElementById('textReplacementManagerModal');
+    if (modal) {
+        // Scroll the list container to top
+        const listContainer = modal.querySelector('.text-replacement-list-container .text-replacement-list');
+        if (listContainer) {
+            listContainer.scrollTop = 0;
+        }
+    }
 }
 
 // Create a text replacement item element
@@ -360,8 +359,6 @@ function renderArrayValue(key, value) {
         </div>
     `;
 }
-
-
 
 // Toggle edit mode for a text replacement
 function toggleEditMode(key) {
@@ -606,7 +603,6 @@ function setupTextReplacementToolbar(toolbar, textarea) {
     if (autofillBtn) {
         // Force enable the button if it's disabled
         if (autofillBtn.disabled) {
-            console.log('Forcing button to be enabled...');
             autofillBtn.disabled = false;
             autofillBtn.removeAttribute('disabled');
         }
@@ -637,23 +633,16 @@ function setupTextReplacementToolbar(toolbar, textarea) {
 
 // Handle text replacement toolbar actions
 function handleTextReplacementToolbarAction(action, textarea, toolbar, event) {
-    console.log('Handling toolbar action:', action);
-    
     switch (action) {
         case 'quick-access':
-            console.log('Opening quick access...');
             openTextReplacementQuickAccess(textarea);
             break;
         case 'emphasis':
-            console.log('Opening emphasis mode...');
             openTextReplacementEmphasisMode(textarea, toolbar);
             break;
         case 'autofill':
             // Autofill is handled by the main toolbar system
             // The button click will be handled automatically
-            break;
-        default:
-            console.log('Unknown action:', action);
             break;
     }
 }

@@ -116,7 +116,7 @@ class ContextMenuController {
             e.preventDefault();
             // Hide current menu immediately
             this.hideMenu();
-            // Use a small delay to ensure the overlay is hidden, then trigger the event on the element below
+            // Use a delay to ensure the overlay is hidden, then trigger the event on the element below
             setTimeout(() => {
                 const elementBelow = document.elementFromPoint(e.clientX, e.clientY);
                 if (elementBelow && elementBelow !== this.overlay) {
@@ -131,10 +131,14 @@ class ContextMenuController {
                             button: e.button,
                             buttons: e.buttons
                         });
+
+                        // Mark this as a proxy event from the overlay
+                        newEvent._isProxyEvent = true;
+
                         target.dispatchEvent(newEvent);
                     }
                 }
-            }, 10);
+            }, 50);
         });
         
         this.overlay.addEventListener('touchstart', (e) => {
@@ -151,7 +155,7 @@ class ContextMenuController {
             // Hide current menu immediately
             this.hideMenu();
 
-            // Use a small delay to ensure the overlay is hidden, then trigger the event on the element below
+            // Use a delay to ensure the overlay is hidden, then trigger the event on the element below
             setTimeout(() => {
                 const elementBelow = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY);
                 if (elementBelow && elementBelow !== this.overlay) {
@@ -165,10 +169,14 @@ class ContextMenuController {
                             targetTouches: e.targetTouches,
                             changedTouches: e.changedTouches
                         });
+
+                        // Mark this as a proxy event from the overlay
+                        newEvent._isProxyEvent = true;
+
                         target.dispatchEvent(newEvent);
                     }
                 }
-            }, 10);
+            }, 50);
         }, { passive: false });
         
         // Create the main context menu container
@@ -192,7 +200,7 @@ class ContextMenuController {
             const target = e.target.closest('[data-context-menu]');
             if (target) {
                 e.preventDefault();
-                this.showMenu(e, target);
+                this.showMenu(e, target, false, e._isProxyEvent);
             }
         });
 
@@ -214,7 +222,7 @@ class ContextMenuController {
                 // Set up long-press timer
                 this.touchTimer = setTimeout(() => {
                     if (!this.hasScrolled) {
-                        this.showMenu(e, target, true);
+                        this.showMenu(e, target, true, e._isProxyEvent);
                     }
                 }, this.longPressDelay);
             }
@@ -292,9 +300,10 @@ class ContextMenuController {
         });
     }
 
-    showMenu(event, target, isTouch = false) {
+    showMenu(event, target, isTouch = false, isProxyEvent = false) {
         // Block additional context menu clicks when a menu is already active
-        if (this.isOpen) {
+        // But allow proxy events from the overlay
+        if (this.isOpen && !isProxyEvent) {
             console.log('Context menu already open, blocking additional clicks');
             return;
         }
@@ -320,7 +329,10 @@ class ContextMenuController {
         
         this.isOpen = true;
         this.currentTarget = target;
-        
+
+        // Add context-open class to target element
+        target.classList.add('context-open');
+
         // Show the overlay
         this.overlay.classList.remove('hidden');
         
@@ -694,25 +706,27 @@ class ContextMenuController {
     positionMenu(event, isTouch = false) {
         const menu = this.menu;
         const menuContent = menu.querySelector('.context-menu-content');
-        
-        // Show menu to get dimensions
-        menu.classList.remove('hidden');
-        
+
         // Check if we're on a small mobile screen (480px or less)
         const isSmallMobile = window.innerWidth <= 480;
-        
+
         if (isSmallMobile) {
-            // On small mobile screens, CSS will handle centering
-            // Just ensure the menu is visible
+            // Show menu for small mobile screens
+            menu.classList.remove('hidden');
+            // CSS will handle centering
             menu.style.left = '';
             menu.style.top = '';
+            // Trigger fade animation
+            menu.classList.remove('context-menu-animate');
+            void menu.offsetWidth; // Trigger reflow
+            menu.classList.add('context-menu-animate');
             return;
         }
-        
+
         // Get viewport dimensions
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
-        
+
         // Get click/touch position
         let clickX, clickY;
         if (isTouch) {
@@ -722,40 +736,35 @@ class ContextMenuController {
             clickX = event.clientX;
             clickY = event.clientY;
         }
-        
-        // Force a layout to ensure accurate dimensions
-        menu.style.visibility = 'hidden';
+
+        // Temporarily position menu off-screen to get real dimensions (like submenu)
+        menu.classList.remove('hidden');
         menu.style.position = 'fixed';
-        menu.style.left = '0px';
-        menu.style.top = '0px';
-        
-        // Get accurate menu dimensions
+        menu.style.left = '-9999px';
+        menu.style.top = '-9999px';
+        menu.style.opacity = '0';
+
+        // Force layout calculation to get real dimensions
         const menuRect = menu.getBoundingClientRect();
         const menuWidth = menuRect.width;
-        // Use actual height if available, otherwise assume maximum safe height
         const actualHeight = menuRect.height;
-        const menuHeight = actualHeight > 0 ? actualHeight : 350; // Conservative max height
-        
-        // Restore visibility
-        menu.style.visibility = 'visible';
-        
-        // Calculate positioning
+        const menuHeight = actualHeight > 0 ? actualHeight : 350; // Fallback
+
+        // Calculate positioning with real dimensions
         const positioning = this.calculatePositioning(clickX, clickY, menuWidth, menuHeight, viewportWidth, viewportHeight);
-        
+
         // Apply positioning classes BEFORE animation
         menu.className = menu.className.replace(/position-\w+/g, ''); // Remove existing position classes
         menu.classList.add(`position-${positioning.vertical}`, `position-${positioning.horizontal}`);
-        
-        // Apply CSS positioning
+
+        // Apply final positioning
         menu.style.left = `${positioning.x}px`;
-        if (positioning.vertical === 'down') {
-            menu.style.top = `${positioning.y}px`;
-            menu.style.bottom = '';
-        } else {
-            menu.style.bottom = `${positioning.y}px`;
-            menu.style.top = '';
-        }
-        
+        menu.style.top = `${positioning.y}px`;
+        menu.style.bottom = '';
+
+        // Make menu visible with fade animation
+        menu.style.opacity = '1';
+
         // Trigger animation with correct direction
         menu.classList.remove('context-menu-animate');
         void menu.offsetWidth; // Trigger reflow
@@ -769,10 +778,10 @@ class ContextMenuController {
         // Determine vertical positioning
         let vertical = 'down';
         let y = clickY + 5;
-        
+
         if (spaceBelow < menuHeight + 20) {
             vertical = 'up';
-            y = viewportHeight - clickY + 5;
+            y = clickY - menuHeight - 5;
         }
         
         // Determine horizontal positioning
@@ -785,9 +794,12 @@ class ContextMenuController {
         }
         
         // Ensure menu stays within viewport bounds
-        const originalX = x;
         if (x < 10) x = 10;
         if (x + menuWidth > viewportWidth - 10) x = viewportWidth - menuWidth - 10;
+
+        // Vertical bounds checking
+        if (y < 10) y = 10;
+        if (y + menuHeight > viewportHeight - 10) y = viewportHeight - menuHeight - 10;
         
         return { x, y, vertical, horizontal };
     }
@@ -821,7 +833,12 @@ class ContextMenuController {
 
     hideMenu() {
         if (!this.isOpen) return;
-        
+
+        // Remove context-open class from target element
+        if (this.currentTarget) {
+            this.currentTarget.classList.remove('context-open');
+        }
+
         this.menu.classList.add('hidden');
         this.overlay.classList.add('hidden');
         this.isOpen = false;
@@ -987,83 +1004,94 @@ class ContextMenuController {
             submenu.appendChild(subItemElement);
         });
 
-        // Position submenu based on screen size
+        // Get parent and viewport information
         const parentRect = parentItem.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
         const isMobile = viewportWidth < 768;
 
-        let submenuX, submenuY, submenuDirection;
+        // Temporarily position submenu off-screen to get real dimensions
+        submenu.style.position = 'fixed';
+        submenu.style.left = '-9999px';
+        submenu.style.top = '-9999px';
+        submenu.style.opacity = '0';
 
-        // Get submenu dimensions (assume standard size if not yet rendered)
-        const submenuWidth = 200; // Standard submenu width
-        const submenuHeight = 300; // Conservative height estimate
+        // Add to document body temporarily to get dimensions
+        document.body.appendChild(submenu);
 
-        // Calculate positioning using similar logic to main menu
+        // Force layout calculation to get real dimensions
+        const submenuRect = submenu.getBoundingClientRect();
+        const submenuWidth = submenuRect.width;
+        const submenuHeight = submenuRect.height;
+
+        // Calculate positioning using real dimensions
         const parentCenterX = parentRect.left + (parentRect.width / 2);
         const parentCenterY = parentRect.top + (parentRect.height / 2);
 
-        // For both mobile and desktop: use top/down positioning logic
-        const spaceBelow = viewportHeight - parentCenterY;
-        const spaceAbove = parentCenterY;
+        // Calculate available space correctly
+        const spaceBelow = viewportHeight - parentRect.bottom;
+        const spaceAbove = parentRect.top;
 
-        // Determine vertical positioning
+        // Determine vertical positioning with real dimensions
         let vertical = 'down';
-        if (spaceBelow < submenuHeight + 20 && spaceAbove > spaceBelow) {
+        const minSpaceNeeded = submenuHeight + 20;
+
+        if (spaceBelow < minSpaceNeeded && spaceAbove >= minSpaceNeeded) {
             vertical = 'up';
+        } else if (spaceBelow < minSpaceNeeded && spaceAbove < minSpaceNeeded) {
+            vertical = 'down'; // Prefer below even if cramped
         }
 
-        // Calculate vertical position
+        // Calculate final positions with real dimensions
+        let submenuX, submenuY, submenuDirection;
+
+        // Vertical positioning - align with parent content area
         if (vertical === 'down') {
-            submenuY = parentRect.bottom + 2; // Slight gap below parent
+            // Position below parent, accounting for parent's visual alignment
+            submenuY = parentRect.top + 2;
             submenuDirection = 'below';
         } else {
-            submenuY = parentRect.top - submenuHeight - 2; // Above parent
+            // Position above parent, ensuring proper visual alignment
+            submenuY = parentRect.bottom - submenuHeight;
             submenuDirection = 'above';
         }
 
-        // Ensure submenu doesn't go off screen vertically
-        if (submenuY < 10) {
-            submenuY = 10; // Minimum top margin
-        }
-        if (submenuY + submenuHeight > viewportHeight - 10) {
-            submenuY = viewportHeight - submenuHeight - 10; // Maximum bottom margin
-        }
-
-        // Determine horizontal positioning
+        // Horizontal positioning
         if (isMobile) {
-            // On mobile: center horizontally on parent item
             submenuX = parentCenterX - (submenuWidth / 2);
             submenuDirection += '-mobile';
         } else {
-            // Desktop: position to the right of parent item
-            submenuX = parentRect.right + 2; // Slight gap to the right
+            submenuX = parentRect.right + 2;
             submenuDirection = 'right';
 
             // Check if submenu would go off the right edge
             if (submenuX + submenuWidth > viewportWidth - 10) {
-                submenuX = parentRect.left - submenuWidth - 2; // Position to the left instead
+                submenuX = parentRect.left - submenuWidth - 2;
                 submenuDirection = 'left';
             }
         }
 
-        // Ensure submenu stays within horizontal bounds
+        // Ensure submenu stays within viewport bounds
+        if (submenuY < 10) {
+            submenuY = 10;
+        }
+        if (submenuY + submenuHeight > viewportHeight - 10) {
+            submenuY = viewportHeight - submenuHeight - 10;
+        }
         if (submenuX < 10) {
-            submenuX = 10; // Minimum left margin
+            submenuX = 10;
         }
         if (submenuX + submenuWidth > viewportWidth - 10) {
-            submenuX = viewportWidth - submenuWidth - 10; // Maximum right margin
+            submenuX = viewportWidth - submenuWidth - 10;
         }
 
-        // Add direction class for styling
-        submenu.classList.add(`submenu-${submenuDirection}`);
-
-        submenu.style.position = 'fixed';
+        // Position submenu with correct coordinates and add direction class
         submenu.style.left = `${submenuX}px`;
         submenu.style.top = `${submenuY}px`;
+        submenu.classList.add(`submenu-${submenuDirection}`);
 
-        // Add to document body
-        document.body.appendChild(submenu);
+        // Make submenu visible with fade animation
+        submenu.style.opacity = '1';
         this.currentSubmenu = submenu;
 
         // Add click outside handler for submenu

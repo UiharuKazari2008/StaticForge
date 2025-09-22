@@ -30,16 +30,13 @@
     transition: opacity var(--transition-duration, 0.3s) cubic-bezier(0.4, 0, 0.2, 1);
     will-change: opacity;
     opacity: var(--random-opacity, 0.15);
-    
-    /* Performance optimizations for high block counts */
     contain: layout style paint;
     transform: translateZ(0);
     backface-visibility: hidden;
     perspective: 1000px;
-    
-    /* Hardware acceleration hints */
     transform-style: preserve-3d;
     -webkit-transform-style: preserve-3d;
+    margin: -1px;
 }
 
 /* Wave opacity effect classes */

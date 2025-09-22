@@ -296,7 +296,7 @@ class ChatSystem {
             
             sessionElement.innerHTML = `
                 <div class="chat-session-preview">
-                    <img src="/previews/${encodeURIComponent(session.filename.replace(/\.(jpg|jpeg|png|webp)$/i, ''))}.jpg" alt="Character" class="chat-session-avatar" 
+                    <img src="/previews/${encodeURIComponent(session.filename.replace(/\.(jpg|jpeg|png|webp)$/i, ''))}.webp" alt="Character" class="chat-session-avatar" 
                          onerror="this.src='/static_images/icon-96x96.png'">
                     <div class="chat-session-info">
                         <div class="chat-session-name">${session.chat_name || session.character_name || 'Unnamed Chat'}</div>
@@ -724,7 +724,7 @@ class ChatSystem {
                 
         let avatarSrc = '/static_images/icon-96x96.png';
         if (this.currentFilename) {
-            avatarSrc = `/previews/${encodeURIComponent(this.currentFilename.replace(/\.(jpg|jpeg|png|webp)$/i, ''))}.jpg`;
+            avatarSrc = `/previews/${encodeURIComponent(this.currentFilename.replace(/\.(jpg|jpeg|png|webp)$/i, ''))}.webp`;
         }
         
         if (isReasoning) {
@@ -871,7 +871,7 @@ class ChatSystem {
         
         let avatarSrc = '/static_images/icon-96x96.png';
         if (this.currentFilename) {
-            avatarSrc = `/previews/${encodeURIComponent(this.currentFilename.replace(/\.(jpg|jpeg|png|webp)$/i, ''))}.jpg`;
+            avatarSrc = `/previews/${encodeURIComponent(this.currentFilename.replace(/\.(jpg|jpeg|png|webp)$/i, ''))}.webp`;
         }
         
         typingMessage.innerHTML = `

@@ -1,11 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 const { loadPromptConfig, savePromptConfig } = require('./textReplacements');
+const { createJSONCheckpointManager } = require('./jsonCheckpoint');
 
 class FavoritesManager {
     constructor() {
         this.favoritesFilePath = path.join(__dirname, '..', '.cache', 'favorites.json');
         this.ensureDataDirectory();
+        // Initialize checkpoint manager for favorites
+        this.checkpointManager = createJSONCheckpointManager(this.favoritesFilePath, 4);
     }
 
     ensureDataDirectory() {
@@ -34,7 +37,10 @@ class FavoritesManager {
 
     saveFavorites(favorites) {
         try {
-            fs.writeFileSync(this.favoritesFilePath, JSON.stringify(favorites, null, 2), 'utf8');
+            this.checkpointManager.saveWithCheckpoint(favorites, {
+                createCheckpoint: true,
+                validateData: true
+            });
             return true;
         } catch (error) {
             console.error('Error saving favorites:', error);
@@ -219,6 +225,40 @@ class FavoritesManager {
         }
 
         return favoriteItem;
+    }
+
+    // Checkpoint management methods
+    getCheckpointInfo() {
+        return this.checkpointManager.getCheckpointInfo();
+    }
+
+    restoreFromCheckpoint(checkpointFilename) {
+        try {
+            const success = this.checkpointManager.restoreFromCheckpoint(checkpointFilename);
+            return success;
+        } catch (error) {
+            console.error('Error restoring favorites from checkpoint:', error);
+            throw error;
+        }
+    }
+
+    restoreFromLatestCheckpoint() {
+        try {
+            const success = this.checkpointManager.restoreFromLatestCheckpoint();
+            return success;
+        } catch (error) {
+            console.error('Error restoring favorites from latest checkpoint:', error);
+            throw error;
+        }
+    }
+
+    clearCheckpoints() {
+        try {
+            return this.checkpointManager.clearAllCheckpoints();
+        } catch (error) {
+            console.error('Error clearing favorites checkpoints:', error);
+            throw error;
+        }
     }
 }
 

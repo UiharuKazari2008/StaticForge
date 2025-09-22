@@ -249,16 +249,23 @@ function extractAssistantData(rawContent) {
         if (Array.isArray(parsedContent) && parsedContent.length > 0) {
             const textItem = parsedContent.find(item => item.type === 'text');
             if (textItem && textItem.text) {
-                try {
-                    const extractedData = JSON.parse(textItem.text);
+                if (typeof textItem.text === 'string') {
+                    try {
+                        const extractedData = JSON.parse(textItem.text);
+                        return {
+                            type: 'structured',
+                            data: extractedData
+                        };
+                    } catch (e) {
+                        return {
+                            type: 'error',
+                            data: { error: 'Invalid Response from AI' }
+                        };
+                    }
+                } else {
                     return {
                         type: 'structured',
-                        data: extractedData
-                    };
-                } catch (e) {
-                    return {
-                        type: 'error',
-                        data: { error: 'Invalid Response from AI' }
+                        data: textItem.text
                     };
                 }
             }
@@ -271,13 +278,6 @@ function extractAssistantData(rawContent) {
                 data: parsedContent
             };
         }
-
-        // Fallback for any other format
-        return {
-            type: 'error',
-            data: { error: 'Invalid Response from AI' }
-        };
-
     } catch (e) {
         return {
             type: 'error',

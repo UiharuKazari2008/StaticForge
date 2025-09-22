@@ -439,7 +439,7 @@ body {
 }
 
 .bg-layer, .blur-layer {
-    background-image: url(/previews/login_image.jpg);
+    background-image: url(/.login.jpg);
     background-size: var(--image-sheet, 100% 2000%);
     background-position: var(--bg-x-pos) var(--bg-y-pos);
     background-repeat: no-repeat;

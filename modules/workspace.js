@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { getBaseName } = require('./pngMetadata');
+const { createJSONCheckpointManager } = require('./jsonCheckpoint');
 
 // Workspace configuration
 const WORKSPACE_FILE = path.resolve(__dirname, '../.cache/workspace.json');
@@ -27,6 +28,9 @@ const DEFAULT_WORKSPACE_COLORS = [
 let workspaces = null;
 // Per-session active workspace storage
 let sessionActiveWorkspaces = new Map();
+
+// Initialize checkpoint manager for workspaces
+const workspaceCheckpointManager = createJSONCheckpointManager(WORKSPACE_FILE, 4);
 
 // Generate UUID v4
 function generateUUID() {
@@ -130,20 +134,13 @@ function loadWorkspaces() {
     return workspaces;
 }
 
-// Save workspaces to file
+// Save workspaces to file with checkpointing
 function saveWorkspaces() {
     try {
-        const cacheDir = path.dirname(WORKSPACE_FILE);
-        if (!fs.existsSync(cacheDir)) {
-            fs.mkdirSync(cacheDir, { recursive: true });
-        }
-        
-        const workspaceData = JSON.stringify(workspaces, null, 2);
-        fs.writeFileSync(WORKSPACE_FILE, workspaceData);
-
-        // Verify the file was written correctly
-        const savedData = fs.readFileSync(WORKSPACE_FILE, 'utf8');
-        const parsedData = JSON.parse(savedData);
+        workspaceCheckpointManager.saveWithCheckpoint(workspaces, {
+            createCheckpoint: true,
+            validateData: true
+        });
     } catch (error) {
         console.error('❌ Error saving workspaces:', error);
         throw error;
@@ -345,10 +342,7 @@ function updateWorkspaceSettings(id, settings = {}) {
     const ws = workspaces[id];
     const prev = { ...ws };
 
-    if (typeof settings.name === 'string' && settings.name.trim()) {
-        if (id === 'default') {
-            throw new Error('Cannot rename the default workspace');
-        }
+    if (typeof settings.name === 'string' && settings.name.trim() && id !== 'default') {
         ws.name = settings.name.trim();
     }
     if (typeof settings.color === 'string' && settings.color.trim()) {
@@ -847,7 +841,7 @@ function organizeOrphanedFiles() {
     
     for (const upscaledFile of upscaledFiles) {
         // Get the original file name
-        const originalFile = upscaledFile.replace('_upscaled.png', '.png').replace('_upscaled.jpg', '.jpg').replace('_upscaled.jpeg', '.jpeg');
+        const originalFile = upscaledFile.replace('_upscaled.', '.');
         
         // Find which workspace contains the original file
         let originalWorkspaceId = null;
@@ -1747,6 +1741,51 @@ function reorderWorkspaces(workspaceOrder) {
     }
 }
 
+// Checkpoint management functions
+function getWorkspaceCheckpointInfo() {
+    return workspaceCheckpointManager.getCheckpointInfo();
+}
+
+function restoreWorkspaceFromCheckpoint(checkpointFilename) {
+    try {
+        const success = workspaceCheckpointManager.restoreFromCheckpoint(checkpointFilename);
+        if (success) {
+            // Reload workspaces from the restored file
+            workspaces = null; // Clear cache
+            loadWorkspaces();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('❌ Error restoring workspace from checkpoint:', error);
+        throw error;
+    }
+}
+
+function restoreWorkspaceFromLatestCheckpoint() {
+    try {
+        const success = workspaceCheckpointManager.restoreFromLatestCheckpoint();
+        if (success) {
+            // Reload workspaces from the restored file
+            workspaces = null; // Clear cache
+            loadWorkspaces();
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('❌ Error restoring workspace from latest checkpoint:', error);
+        throw error;
+    }
+}
+
+function clearWorkspaceCheckpoints() {
+    try {
+        return workspaceCheckpointManager.clearAllCheckpoints();
+    } catch (error) {
+        console.error('❌ Error clearing workspace checkpoints:', error);
+        throw error;
+    }
+}
 module.exports = {
     initializeWorkspaces,
     organizeOrphanedFiles,
@@ -1794,5 +1833,11 @@ module.exports = {
     reorderWorkspaces,
     // Session management
     cleanupSessionWorkspace,
-    restoreSessionWorkspace
+    restoreSessionWorkspace,
+    
+    // Checkpoint management
+    getWorkspaceCheckpointInfo,
+    restoreWorkspaceFromCheckpoint,
+    restoreWorkspaceFromLatestCheckpoint,
+    clearWorkspaceCheckpoints
 };
