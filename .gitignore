@@ -9,7 +9,7 @@ node_modules/
 .env.production.local
 config.json
 *config.json
-.cache/
+.cache/*
 logs/
 log.txt
 securePrompts/*
