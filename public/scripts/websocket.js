@@ -9,7 +9,7 @@ class BannerManager {
         // No initialization needed for glass toasts
     }
     
-    showWebSocketToast(status, message, icon, autoHide = false, hideDelay = 3000) {
+    showWebSocketToast(status, message, icon, autoHide = false, hideDelay = WebSocketClient.TIMEOUT_UI_DEFAULT) {
         // If we already have a toast, update it instead of creating a new one
         if (this.websocketToastId && typeof updateGlassToastComplete === 'function') {
             this.updateWebSocketToast(status, message, icon);
@@ -59,7 +59,7 @@ class BannerManager {
     }
     
     // Legacy method names for compatibility
-    showWebSocketBanner(status, message, icon, autoHide = false, hideDelay = 3000) {
+    showWebSocketBanner(status, message, icon, autoHide = false, hideDelay = WebSocketClient.TIMEOUT_UI_DEFAULT) {
         this.showWebSocketToast(status, message, icon, autoHide, hideDelay);
     }
     
@@ -68,7 +68,7 @@ class BannerManager {
     }
 
     // Ticker methods for status display
-    showWebSocketTicker(status, message, iconClass = 'fas fa-info-circle', autoHide = true, hideDelay = 3000) {
+    showWebSocketTicker(status, message, iconClass = 'fas fa-info-circle', autoHide = true, hideDelay = WebSocketClient.TIMEOUT_UI_DEFAULT) {
         const tickers = document.querySelectorAll('.websocket-ticker');
         const tickerIcons = document.querySelectorAll('.websocket-ticker-icon');
         const tickerTexts = document.querySelectorAll('.websocket-ticker-text');
@@ -205,6 +205,7 @@ class BannerManager {
             'workspace_reorder': 'Reorder Workspaces',
             'workspace_bulk_add_scrap': 'Bulk Add Scraps',
             'workspace_bulk_add_pinned': 'Bulk Add Pinned',
+            'get_text_replacement_options': 'Resolve Expander Placeholder',
 
             // Bulk operations
             'delete_images_bulk': 'Delete Images',
@@ -311,34 +312,73 @@ class BannerManager {
     }
 }
 
-// WebSocket Client with Auto-Reconnection and Glass Toast
+/**
+ * WebSocket Client with Auto-Reconnection and Glass Toast notifications
+ *
+ * Features:
+ * - Automatic reconnection with exponential backoff
+ * - Request/response correlation with unique IDs
+ * - Circuit breaker pattern to prevent infinite retries
+ * - Connection health monitoring
+ * - Comprehensive error handling and logging
+ * - Progress tracking for initialization steps
+ */
 class WebSocketClient {
+    // Constants for timeouts, delays, and limits
+    static TIMEOUT_UI_DEFAULT = 3000; // Default UI timeout (3 seconds)
+    static TIMEOUT_PING = 5000; // Ping timeout (5 seconds)
+    static TIMEOUT_CONNECTION_STABILITY = 2000; // Connection stability check timeout
+    static TIMEOUT_HOST_AVAILABILITY = 3000; // Host availability check timeout
+    static TIMEOUT_VERSION_CHECK = 2000; // Version compatibility check timeout
+    static TIMEOUT_GET_APP_OPTIONS = 3000; // Critical app options timeout (3 seconds)
+
+    static DELAY_RECONNECT_INITIAL = 1000; // Initial reconnect delay (1 second)
+    static DELAY_RECONNECT_MAX = 30000; // Maximum reconnect delay (30 seconds)
+    static DELAY_CONNECTION_COOLDOWN = 60000; // Circuit breaker cooldown (1 minute)
+    static DELAY_PING_INTERVAL = 30000; // Ping interval (30 seconds)
+    static DELAY_PING_HOST = 2000; // Host ping interval (2 seconds)
+    static DELAY_HEALTH_MONITORING = 5000; // Health monitoring start delay (5 seconds)
+
+    static ATTEMPTS_MAX_RECONNECT = 5; // Maximum reconnect attempts
+    static ATTEMPTS_MAX_PING = 3; // Maximum ping attempts
+
+    static PROGRESS_INIT_BASE = 25; // Base progress percentage for initialization
+    static PROGRESS_INIT_STEPS = 75; // Progress percentage allocated to init steps
+
+    /**
+     * Creates a new WebSocket client instance
+     *
+     * Initializes all connection management, request tracking, and UI notification systems.
+     * The client will automatically attempt to connect on initialization and handle
+     * reconnections transparently.
+     */
     constructor() {
         // Client version for compatibility checking
         this.clientVersion = '1.0.1'; // Update this when making breaking changes to client
 
         this.ws = null;
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5; // Reduced from 10 to 5
-        this.reconnectDelay = 1000; // Start with 1 second
-        this.maxReconnectDelay = 30000; // Max 30 seconds
+        this.maxReconnectAttempts = WebSocketClient.ATTEMPTS_MAX_RECONNECT;
+        this.reconnectDelay = WebSocketClient.DELAY_RECONNECT_INITIAL;
+        this.maxReconnectDelay = WebSocketClient.DELAY_RECONNECT_MAX;
         this.isConnecting = false;
         this.isManualClose = false;
         this.circuitBreaker = false; // New: circuit breaker to prevent infinite retries
         this.lastConnectionAttempt = 0;
-        this.connectionCooldown = 60000; // 1 minute cooldown after max attempts
+        this.connectionCooldown = WebSocketClient.DELAY_CONNECTION_COOLDOWN;
+        this.connectionLock = false; // Prevent concurrent connection attempts
         this.pingInterval = null;
         this.pingTimeout = null;
         this.healthCheckInterval = null;
         this.progressToastId = null;
+        this.serverNotRespondingToastId = null;
         this.messageHandlers = new Map();
         
-        // Loading overlay properties
-        this.loadingOverlay = null;
         this.initSteps = [];
         this.currentInitStep = 0;
         this.totalInitSteps = 0;
         this.initializationCompleted = false; // Track if initialization has been completed
+        this.initializationLock = false; // Prevent concurrent initialization
         
         // Pending requests tracking
         this.pendingRequestsCount = 0;
@@ -371,6 +411,10 @@ class WebSocketClient {
         this.connect = this.connect.bind(this);
         this.disconnect = this.disconnect.bind(this);
         this.reconnect = this.reconnect.bind(this);
+        this.clearTimeoutSafely = this.clearTimeoutSafely.bind(this);
+        this.logError = this.logError.bind(this);
+        this.logWarning = this.logWarning.bind(this);
+        this.logInfo = this.logInfo.bind(this);
         this.initWebSocketIndicators = this.initWebSocketIndicators.bind(this);
         this.updateWebSocketStatus = this.updateWebSocketStatus.bind(this);
         this.flashWebSocketArrow = this.flashWebSocketArrow.bind(this);
@@ -380,20 +424,74 @@ class WebSocketClient {
         this.init();
     }
 
+    // Helper method to safely clear timeouts
+    clearTimeoutSafely(timeoutId) {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            return null; // Return null to allow assignment
+        }
+        return timeoutId;
+    }
+
+    // Helper method for standardized error logging
+    logError(context, error, additionalData = {}) {
+        const errorInfo = {
+            context,
+            message: error?.message || error,
+            type: error?.constructor?.name || 'UnknownError',
+            timestamp: Date.now(),
+            ...additionalData
+        };
+
+        console.error(`❌ ${context}:`, errorInfo);
+
+        // Return the error info for further processing if needed
+        return errorInfo;
+    }
+
+    // Helper method for standardized warning logging
+    logWarning(context, message, additionalData = {}) {
+        const warningInfo = {
+            context,
+            message,
+            timestamp: Date.now(),
+            ...additionalData
+        };
+
+        console.warn(`⚠️ ${context}:`, warningInfo);
+
+        // Return the warning info for further processing if needed
+        return warningInfo;
+    }
+
+    // Helper method for standardized info logging
+    logInfo(context, message, additionalData = {}) {
+        const infoData = {
+            context,
+            message,
+            timestamp: Date.now(),
+            ...additionalData
+        };
+
+        console.log(`ℹ️ ${context}:`, infoData);
+
+        return infoData;
+    }
+
     // Ping host over HTTP before attempting WebSocket connection
     async pingHost() {
-        const maxPingAttempts = 3; // Reduced from 15 to 3
-        const pingInterval = 2000; // Increased from 1 to 2 seconds
+        const maxPingAttempts = WebSocketClient.ATTEMPTS_MAX_PING;
+        const pingInterval = WebSocketClient.DELAY_PING_HOST;
 
         for (let attempt = 1; attempt <= maxPingAttempts; attempt++) {
             try {
-                this.updateLoadingProgress(`Checking Connection (${attempt}/${maxPingAttempts})...`, 5 + (attempt * 5));
+                this.updateProgressNotification(`Ringing Server... (${attempt}/${maxPingAttempts})`, 5 + (attempt * 5));
 
                 // Try to fetch a simple endpoint to ping the host
                 const response = await fetch('/', {
                     method: 'HEAD',
                     cache: 'no-cache',
-                    signal: AbortSignal.timeout(3000) // Reduced timeout from 5 to 3 seconds
+                    signal: AbortSignal.timeout(WebSocketClient.TIMEOUT_HOST_AVAILABILITY)
                 });
 
                 if (response.ok) {
@@ -402,7 +500,7 @@ class WebSocketClient {
                         const statusResponse = await fetch('/status', {
                             method: 'OPTIONS',
                             cache: 'no-cache',
-                            signal: AbortSignal.timeout(2000)
+                            signal: AbortSignal.timeout(WebSocketClient.TIMEOUT_VERSION_CHECK)
                         });
                         
                         if (statusResponse.ok) {
@@ -414,7 +512,7 @@ class WebSocketClient {
                                     const appOptionsResponse = await fetch('/app', {
                                         method: 'OPTIONS',
                                         cache: 'no-cache',
-                                        signal: AbortSignal.timeout(2000)
+                                        signal: AbortSignal.timeout(WebSocketClient.TIMEOUT_VERSION_CHECK)
                                     });
 
                                     if (appOptionsResponse.ok) {
@@ -427,7 +525,7 @@ class WebSocketClient {
                                             // Trigger service worker update check
                                             if (window.serviceWorkerManager) {
                                                 console.log('🔄 Triggering service worker update check due to version mismatch...');
-                                                await window.serviceWorkerManager.checkStaticFileUpdates();
+                                                await window.serviceWorkerManager.checkStaticFileUpdates(true);
                                             }
 
                                             // Show version mismatch warning
@@ -449,7 +547,7 @@ class WebSocketClient {
                                 return true;
                             } else {
                                 // Server is initializing, show current stage
-                                this.updateLoadingProgress(`${data.stageMessage}...`, 5 + (attempt * 5));
+                                this.updateProgressNotification(`${data.stageMessage}...`, 5 + (attempt * 5));
 
                                 if (attempt < maxPingAttempts) {
                                     // Wait before next attempt
@@ -479,45 +577,50 @@ class WebSocketClient {
         throw new Error(`Server not responding after ${maxPingAttempts} attempts. Server may be down or unreachable.`);
     }
 
-    // Loading overlay methods
-    showLoadingOverlay(message = 'Connecting...', progress = 0) {
-        if (!this.loadingOverlay) {
-            this.createLoadingOverlay();
+    // Progress notification methods
+    showProgressNotification(message = 'Connecting...', progress = 0) {
+        if (!this.progressToastId) {
+            // Create a new progress toast
+            if (typeof showGlassToast === 'function') {
+                this.progressToastId = showGlassToast(
+                    'info',
+                    'Dreamscape',
+                    message,
+                    true, // showProgress
+                    false, // no timeout - keep until manually hidden
+                    '<i class="fa-duotone fa-star-christmas"></i>'
+                );
+            }
         }
         document.body.classList.add('initializing');
-        this.loadingOverlay.classList.remove('hidden');
-        this.updateLoadingProgress(message, progress);
+        this.updateProgressNotification(message, progress);
     }
 
-    hideLoadingOverlay() {
-        if (this.loadingOverlay) {
-            this.loadingOverlay.classList.add('hidden');
+    hideProgressNotification() {
+        if (this.progressToastId && typeof removeGlassToast === 'function') {
+            removeGlassToast(this.progressToastId);
+            this.progressToastId = null;
         }
         document.body.classList.remove('initializing');
     }
 
-    updateLoadingProgress(message, progress) {
-        if (!this.loadingOverlay) return;
-        
-        const messageEl = this.loadingOverlay.querySelector('.loading-message');
-        const progressBar = this.loadingOverlay.querySelector('.loading-progress-bar');
-        
-        if (messageEl) messageEl.textContent = message;
-        if (progressBar) progressBar.style.width = `${progress}%`;
-    }
+    updateProgressNotification(message, progress) {
+        if (!this.progressToastId) return;
 
-    createLoadingOverlay() {
-        this.loadingOverlay = document.createElement('div');
-        this.loadingOverlay.className = 'loading-overlay';
-        this.loadingOverlay.innerHTML = `
-            <div class="loading-content">
-                <div class="loading-message">Connecting...</div>
-                <div class="loading-progress">
-                    <div class="loading-progress-bar"></div>
-                </div>
-            </div>
-        `;
-        document.body.appendChild(this.loadingOverlay);
+        // Update toast message if updateGlassToastComplete is available
+        if (typeof updateGlassToastComplete === 'function') {
+            updateGlassToastComplete(this.progressToastId, {
+                type: 'info',
+                title: 'Dreamscape',
+                message: message,
+                customIcon: '<i class="fa-duotone fa-star-christmas"></i>'
+            });
+        }
+
+        // Update progress bar
+        if (typeof updateGlassToastProgress === 'function') {
+            updateGlassToastProgress(this.progressToastId, progress);
+        }
     }
 
     registerInitStep(priority, message, stepFunction, runOnReconnect = false) {
@@ -557,19 +660,21 @@ class WebSocketClient {
         if (!this.pendingRequests) return 0;
 
         let clearedCount = 0;
+        const requestsToClear = [];
+
+        // First pass: collect requests to clear (avoid mutation during iteration)
         for (const [requestId, request] of this.pendingRequests) {
             if (request.type === requestType) {
-                // Clear timeout if it exists
-                if (request.timeoutId) {
-                    clearTimeout(request.timeoutId);
-                }
-                this.pendingRequests.delete(requestId);
-                clearedCount++;
+                requestsToClear.push({ requestId, request });
             }
         }
 
-        // Update the counter
-        for (let i = 0; i < clearedCount; i++) {
+        // Second pass: clear the collected requests
+        for (const { requestId, request } of requestsToClear) {
+            // Clear timeout safely
+            request.timeoutId = this.clearTimeoutSafely(request.timeoutId);
+            this.pendingRequests.delete(requestId);
+            clearedCount++;
             this.decrementPendingRequests();
         }
 
@@ -634,14 +739,24 @@ class WebSocketClient {
     async executeInitSteps() {
         // Prevent duplicate initialization on reconnection
         if (this.initializationCompleted) {
-            this.hideLoadingOverlay();
+            this.hideProgressNotification();
+            this.initializationLock = false; // Ensure lock is released even for early return
             return;
         }
+
+        // Prevent concurrent initialization
+        if (this.initializationLock) {
+            console.log('🔒 Initialization already in progress, skipping duplicate call');
+            return;
+        }
+
+        this.initializationLock = true;
         
         // Safety check for empty init steps
         if (!this.initSteps || this.initSteps.length === 0) {
             this.initializationCompleted = true;
-            this.hideLoadingOverlay();
+            this.initializationLock = false; // Release initialization lock
+            this.hideProgressNotification();
             return;
         }
         
@@ -651,10 +766,10 @@ class WebSocketClient {
         try {
             for (const step of this.initSteps) {
                 this.currentInitStep++;
-                // Calculate progress: 25% (initial steps) + 75% (registered steps)
-                // Each registered step gets a portion of the remaining 75%
-                const stepProgress = 25 + ((this.currentInitStep / this.totalInitSteps) * 75);
-                this.updateLoadingProgress(step.message, stepProgress);
+                // Calculate progress: base percentage + steps percentage
+                const stepProgress = WebSocketClient.PROGRESS_INIT_BASE +
+                    ((this.currentInitStep / this.totalInitSteps) * WebSocketClient.PROGRESS_INIT_STEPS);
+                this.updateProgressNotification(step.message, stepProgress);
                 
                 // On reconnection, only run steps flagged as runOnReconnect
                 if (this.initializationCompleted && !step.runOnReconnect) {
@@ -670,24 +785,26 @@ class WebSocketClient {
             
             // Mark initialization as completed
             this.initializationCompleted = true;
-            
+            this.initializationLock = false; // Release initialization lock
+
             // Hide overlay after all steps complete
             setTimeout(() => {
-                this.hideLoadingOverlay();
+                this.hideProgressNotification();
             }, 500);
         } catch (error) {
             console.error('❌ Error during initialization:', error);
-            this.updateLoadingProgress('Initialization failed', 100);
+            this.updateProgressNotification('Initialization failed', 100);
+            this.initializationLock = false; // Release initialization lock on error
             setTimeout(() => {
-                this.hideLoadingOverlay();
+                this.hideProgressNotification();
             }, 2000);
         }
     }
 
     // Initialize the websocket client with proper sequence
     async init() {
-        // Show loading overlay immediately
-        this.showLoadingOverlay('Initializing...', 0);
+        // Show progress notification immediately
+        this.showProgressNotification('Initializing...', 0);
         
         // Initialize pending requests spinner
         this.updatePendingRequestsSpinner();
@@ -733,26 +850,50 @@ class WebSocketClient {
         }, 5000); // Start monitoring 5 seconds after initialization
     }
 
+    /**
+     * Establishes a WebSocket connection to the server
+     *
+     * Performs pre-connection health checks, then creates a WebSocket connection
+     * with automatic event handler setup. Uses connection locking to prevent
+     * concurrent connection attempts.
+     *
+     * @returns {Promise<void>} Resolves when connection is established or rejects on failure
+     * @throws {Error} If connection cannot be established after retries
+     */
     async connect() {
+        // Dismiss the server not responding toast when attempting to connect
+        if (this.serverNotRespondingToastId && typeof removeGlassToast === 'function') {
+            removeGlassToast(this.serverNotRespondingToastId);
+            this.serverNotRespondingToastId = null;
+        }
+
+        // Use connection lock to prevent concurrent connection attempts
+        if (this.connectionLock) {
+            console.log('🔒 Connection already in progress, skipping duplicate attempt');
+            return;
+        }
+
         if (this.isConnecting || this.ws?.readyState === WebSocket.OPEN) {
             return;
         }
 
+        this.connectionLock = true;
         this.isConnecting = true;
-        this.updateLoadingProgress('Checking connection...', 0);
-        
+        this.updateProgressNotification('Dialing Server...', 0);
+
         // Show connecting ticker (don't auto-hide until connected)
-            this.bannerManager.showWebSocketTicker('connecting', 'Connecting...', 'fa-signal', false);
-            this.updateWebSocketStatus('connecting');
+        this.bannerManager.showWebSocketTicker('connecting', 'Dialing Server...', 'fa-phone-arrow-up-right', false);
+        this.updateWebSocketStatus('connecting');
 
         try {
             // Step 1: First ping the host over HTTP to ensure it's responsive
             try {
                 await this.pingHost();
-                this.updateLoadingProgress('Initializing components...', 15);
+                this.updateProgressNotification('Initializing components...', 15);
             } catch (pingError) {
                 console.error('❌ Host availability check failed:', pingError.message);
                 this.isConnecting = false;
+                this.connectionLock = false; // Release connection lock on ping failure
 
                 // If we're already in circuit breaker mode, don't retry immediately
                 if (this.circuitBreaker) {
@@ -760,18 +901,44 @@ class WebSocketClient {
                     return;
                 }
 
-                // Show ping failure ticker and trigger reconnection (don't auto-hide until connected)
-                this.bannerManager.showWebSocketTicker('error', 'Server Not Responding', 'fa-exclamation-triangle', false);
+                // Show persistent toast with Connect button instead of just banner ticker
+                this.bannerManager.showWebSocketTicker('error', 'Server Not Responding', 'fa-phone-missed', false);
+                if (typeof showGlassToast === 'function') {
+                    this.serverNotRespondingToastId = showGlassToast(
+                        'error',
+                        'Disconnected',
+                        'Unable to reach the server.',
+                        false, // no progress bar
+                        false, // no auto-hide
+                        '<i class="fas fa-fade fa-phone-missed"></i>',
+                        [
+                            {
+                                text: 'Connect',
+                                onClick: () => {
+                                    // Dismiss the toast and attempt reconnection
+                                    if (this.serverNotRespondingToastId) {
+                                        removeGlassToast(this.serverNotRespondingToastId);
+                                        this.serverNotRespondingToastId = null;
+                                    }
+                                    this.manualReconnect();
+                                }
+                            }
+                        ]
+                    );
+                }
 
-                // Retry connection after a delay
-                setTimeout(() => {
-                    this.reconnect();
-                }, 3000);
+                // Retry connection after a delay (only if toast wasn't shown)
+                if (!this.serverNotRespondingToastId) {
+                    setTimeout(() => {
+                        this.reconnect();
+                    }, 3000);
+                }
+                this.connectionLock = false; // Release lock before returning
                 return;
             }
             
             // Step 3: Now attempt WebSocket connection
-            this.updateLoadingProgress('Connecting to Server...', 25);
+            this.updateProgressNotification('Establishing Session...', 25);
             
             // Determine WebSocket URL
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -781,12 +948,13 @@ class WebSocketClient {
             
             this.ws.onopen = () => {
                 this.isConnecting = false;
+                this.connectionLock = false; // Release connection lock on success
                 this.reconnectAttempts = 0;
                 this.reconnectDelay = 1000;
                 this.circuitBreaker = false; // Reset circuit breaker on successful connection
                 
                 // Show connected ticker and auto-hide after 3 seconds
-                this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-plug', true, 3000);
+                this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-phone', true, 3000);
                 this.updateWebSocketStatus('connected');
 
                 // Restart health monitoring on successful connection
@@ -799,7 +967,7 @@ class WebSocketClient {
                 if (!this.initializationCompleted) {
                     this.executeInitSteps();
                 } else {
-                    this.hideLoadingOverlay();
+                    this.hideProgressNotification();
                     // ON CONNECT CHECK IN WITH SERVICE WORKER TO SEE IF IT HAS UPDATES
                 }
 
@@ -905,6 +1073,7 @@ class WebSocketClient {
             this.ws.onerror = (error) => {
                 console.error('❌ WebSocket error:', error);
                 this.isConnecting = false;
+                this.connectionLock = false; // Release connection lock on error
 
                 // Reset generation button state if generation was interrupted
                 if (typeof updateManualGenerateBtnState === 'function') {
@@ -945,6 +1114,7 @@ class WebSocketClient {
         } catch (error) {
             console.error('❌ Failed to create WebSocket connection:', error);
             this.isConnecting = false;
+            this.connectionLock = false; // Release connection lock on exception
             this.bannerManager.showWebSocketTicker('error', 'Connection Failure', 'fa-times-circle', false);
         }
     }
@@ -955,13 +1125,19 @@ class WebSocketClient {
 
         const connectionError = new Error('Connection lost - request cancelled');
 
-        // Fail all pending requests
-        for (const [requestId, request] of this.pendingRequests) {
+        // Collect all pending requests first to avoid mutation during iteration
+        const pendingRequestsSnapshot = Array.from(this.pendingRequests.entries());
+
+        // Clear the map immediately to prevent new requests during cleanup
+        this.pendingRequests.clear();
+        this.pendingRequestsCount = 0;
+        this.updatePendingRequestsSpinner();
+
+        // Now fail all collected requests
+        for (const [requestId, request] of pendingRequestsSnapshot) {
             try {
-                // Clear timeout if it exists
-                if (request.timeoutId) {
-                    clearTimeout(request.timeoutId);
-                }
+                // Clear timeout safely
+                request.timeoutId = this.clearTimeoutSafely(request.timeoutId);
 
                 // Reject the promise with connection error
                 if (request.reject) {
@@ -973,20 +1149,33 @@ class WebSocketClient {
                 console.error(`❌ Error failing request ${requestId}:`, error);
             }
         }
-
-        // Clear the pending requests map
-        this.pendingRequests.clear();
-        this.pendingRequestsCount = 0;
-        this.updatePendingRequestsSpinner();
     }
 
+    /**
+     * Gracefully disconnects from the WebSocket server
+     *
+     * Closes the WebSocket connection, clears all pending requests,
+     * releases connection locks, and cleans up all timeouts and intervals.
+     * This method is safe to call multiple times.
+     */
     disconnect() {
         this.isManualClose = true;
+        this.connectionLock = false; // Release connection lock
+        this.initializationLock = false; // Release initialization lock
         this.stopPingInterval();
         this.stopHealthMonitoring(); // Stop health monitoring on disconnect
 
         // Clear and fail all pending requests
         this.clearPendingRequests();
+
+        // Clear any completion timer
+        if (this.completionTimer) {
+            clearTimeout(this.completionTimer);
+            this.completionTimer = null;
+        }
+
+        // Clear WebSocket indicator timeouts
+        this.clearWebSocketIndicatorTimeouts();
 
         if (this.ws) {
             this.ws.close(1000, 'Manual disconnect');
@@ -1082,6 +1271,46 @@ class WebSocketClient {
     // Method to reset initialization flag (useful for manual page refresh scenarios)
     resetInitialization() {
         this.initializationCompleted = false;
+        this.initializationLock = false; // Also reset the lock
+    }
+
+    /**
+     * Completely destroys the WebSocket client and releases all resources
+     *
+     * This method should be called when the client is no longer needed,
+     * such as when the page is being unloaded or the client is being replaced.
+     * It ensures all connections, timeouts, intervals, and UI elements are cleaned up.
+     */
+    destroy() {
+        console.log('🗑️ Destroying WebSocket client...');
+
+        // Disconnect and cleanup connection
+        this.disconnect();
+
+        // Clear all timeouts and intervals
+        if (this.tickerHideTimeout) {
+            clearTimeout(this.tickerHideTimeout);
+            this.tickerHideTimeout = null;
+        }
+
+        // Clear all WebSocket indicator timeouts
+        this.clearWebSocketIndicatorTimeouts();
+
+        // Clear progress notification
+        this.hideProgressNotification();
+
+        // Clear any pending initialization
+        this.initializationCompleted = false;
+        this.initializationLock = false;
+        this.initSteps = [];
+
+        // Clear banner manager resources
+        if (this.bannerManager) {
+            this.bannerManager.hideWebSocketToast();
+            this.bannerManager.hideWebSocketTicker();
+        }
+
+        console.log('✅ WebSocket client destroyed');
     }
 
     // Method to check if initialization has been completed
@@ -1263,13 +1492,60 @@ class WebSocketClient {
             this.triggerEvent(message.type, message);
             return;
         }
-        
+
+        // Handle dynamic generation progress updates
+        if (message.type === 'dynamic_generation_progress_update') {
+            this.handleDynamicGenerationProgressUpdate(message);
+            return;
+        }
+
+        // Handle streaming image generation intermediate updates
+        if (message.type === 'image_generation_intermediate') {
+            this.handleStreamingImageUpdate(message);
+            return;
+        }
+
+        // Handle image generation errors
+        if (message.type === 'image_generation_error') {
+            console.error('❌ Image generation error:', message.error);
+            if (message.requestId) {
+                this.resolveRequest(message.requestId, null, new Error(message.error || 'Image generation failed'));
+            }
+            
+            // Reset global generation state when error occurs
+            if (typeof isGenerating !== 'undefined') {
+                isGenerating = false;
+            }
+            
+            // Reset generation button state when error occurs
+            if (typeof updateManualGenerateBtnState === 'function') {
+                updateManualGenerateBtnState();
+            }
+            
+            return;
+        }
+
         // Handle all other response messages that should trigger resolveRequest
         if (message.type.endsWith('_response')) {
             if (message.requestId) {
+                const hasPendingRequest = this.pendingRequests && this.pendingRequests.has(message.requestId);
+                if (!hasPendingRequest) {
+                    this.logWarning('Response for unknown request', `Received response for unknown request ID: ${message.requestId}`, {
+                        messageType: message.type,
+                        hasPendingRequests: !!this.pendingRequests,
+                        pendingRequestsCount: this.pendingRequests?.size || 0
+                    });
+                    // Still attempt to resolve in case of timing issues
+                }
                 this.resolveRequest(message.requestId, message.data, message.error);
+            } else {
+                console.warn(`⚠️ Received response without requestId:`, {
+                    messageType: message.type,
+                    hasData: !!message.data,
+                    hasError: !!message.error
+                });
             }
-            
+
             // Special handling for gallery responses
             if (message.type === 'request_gallery_response') {
                 this.handleGalleryResponse(message.data, message.requestId);
@@ -1453,10 +1729,8 @@ class WebSocketClient {
         if (this.pendingRequests && this.pendingRequests.has(requestId)) {
             const request = this.pendingRequests.get(requestId);
 
-            // Clear existing timeout
-            if (request.timeoutId) {
-                clearTimeout(request.timeoutId);
-            }
+            // Clear existing timeout safely
+            request.timeoutId = this.clearTimeoutSafely(request.timeoutId);
 
             // Set new timeout
             const timeoutId = setTimeout(() => {
@@ -1556,6 +1830,165 @@ class WebSocketClient {
         document.dispatchEvent(event);
     }
 
+    // Handle streaming image generation intermediate updates
+    handleStreamingImageUpdate(message) {
+        const { requestId, data } = message;
+
+        if (!data || !data.image) {
+            console.warn('⚠️ Received streaming update without image data');
+            return;
+        }
+
+        // Add step to the appropriate queue
+        if (!manualModal.classList.contains('hidden')) {
+            this.queueStreamingStep('manual', data);
+        }
+
+        if (window.spellbookModalManager && !window.spellbookModalManager.modal.classList.contains('hidden') && window.spellbookModalManager.isGenerating) {
+            this.queueStreamingStep('spellbook', data);
+        }
+    }
+
+    // Queue a streaming step with 250ms minimum display time
+    queueStreamingStep(modalType, data) {
+        // Initialize queue for this modal type if it doesn't exist
+        if (!this.streamingStepQueues) {
+            this.streamingStepQueues = {};
+        }
+        
+        if (!this.streamingStepQueues[modalType]) {
+            this.streamingStepQueues[modalType] = {
+                queue: [],
+                isProcessing: false,
+                lastDisplayTime: 0
+            };
+        }
+
+        const queueData = this.streamingStepQueues[modalType];
+        
+        // Add step to queue
+        queueData.queue.push(data);
+        
+        // Start processing if not already processing
+        this.processStreamingStepQueue(modalType);
+    }
+
+    // Process the streaming step queue with 250ms minimum display time
+    async processStreamingStepQueue(modalType) {
+        const queueData = this.streamingStepQueues[modalType];
+        
+        if (!queueData || queueData.isProcessing || queueData.queue.length === 0) {
+            return;
+        }
+
+        queueData.isProcessing = true;
+
+        while (queueData.queue.length > 0) {
+            const data = queueData.queue.shift();
+            const now = Date.now();
+            
+            // Calculate time since last step was displayed
+            const timeSinceLastStep = now - queueData.lastDisplayTime;
+            
+            // If not enough time has passed, wait before showing next step
+            if (timeSinceLastStep < 250) {
+                const waitTime = 250 - timeSinceLastStep;
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+            }
+            
+            // Display the step
+            this.displayStreamingStep(modalType, data);
+            queueData.lastDisplayTime = Date.now();
+        }
+
+        queueData.isProcessing = false;
+    }
+
+    // Display a streaming step on the appropriate modal
+    displayStreamingStep(modalType, data) {
+        if (modalType === 'manual') {
+            const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
+            if (manualPreviewImage) {
+                // Convert base64 to data URL
+                const imageDataUrl = `data:image/png;base64,${data.image}`;
+                manualPreviewImage.src = imageDataUrl;
+                manualPreviewImage.classList.remove('hidden');
+                previewPlaceholder.classList.add('hidden');
+
+                // Show that we're in streaming mode
+                manualForm.classList.add('streaming');
+
+                // Show the manual preview section with resolution dimensions
+                if (typeof showManualPreview === 'function') {
+                    showManualPreview(true); // true = set resolution dimensions
+                }
+
+                // Optional: Add a visual indicator that this is an intermediate image
+                manualPreviewImage.title = `Generating... Step ${data.step}`;
+            } else {
+                console.warn('⚠️ manualPreviewImage element not found');
+            }
+        } else if (modalType === 'spellbook') {
+            const spellbookPreviewImage = window.spellbookModalManager.previewImage;
+            if (spellbookPreviewImage) {
+                // Convert base64 to data URL
+                const imageDataUrl = `data:image/png;base64,${data.image}`;
+                spellbookPreviewImage.src = imageDataUrl;
+                spellbookPreviewImage.classList.remove('hidden');
+
+                // Optional: Add a visual indicator that this is an intermediate image
+                spellbookPreviewImage.title = `Generating... Step ${data.step}`;
+            } else {
+                console.warn('⚠️ spellbookPreviewImage element not found');
+            }
+        }
+    }
+
+    // Clear streaming step queues (call when generation completes or is cancelled)
+    clearStreamingStepQueues(modalType = null) {
+        if (!this.streamingStepQueues) return;
+        
+        if (modalType) {
+            // Clear specific modal queue
+            if (this.streamingStepQueues[modalType]) {
+                this.streamingStepQueues[modalType].queue = [];
+            }
+        } else {
+            // Clear all queues
+            Object.keys(this.streamingStepQueues).forEach(key => {
+                this.streamingStepQueues[key].queue = [];
+            });
+        }
+    }
+
+    // Wait for all streaming steps to be displayed
+    async waitForStreamingStepsComplete(modalType) {
+        if (!this.streamingStepQueues || !this.streamingStepQueues[modalType]) {
+            return; // No queue exists, nothing to wait for
+        }
+
+        const queueData = this.streamingStepQueues[modalType];
+        
+        // Wait while there are steps in queue or queue is being processed
+        while (queueData.queue.length > 0 || queueData.isProcessing) {
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+    }
+
+    // Handle dynamic generation progress updates
+    handleDynamicGenerationProgressUpdate(message) {
+        const { phase, data } = message;
+
+        // Import the progress overlay manager functions for both modals
+        if (!window.spellbookModalManager?.modal?.classList?.contains('hidden') && typeof window.updateSpellbookDynamicGenerationProgressOverlay === 'function') {
+            window.updateSpellbookDynamicGenerationProgressOverlay(phase, data);
+        }
+
+        if (!manualModal.classList.contains('hidden') && typeof window.updateDynamicGenerationProgressOverlay === 'function') {
+            window.updateDynamicGenerationProgressOverlay(phase, data);
+        }
+    }
+
     handlePresetUpdate(data) {
         // Dispatch custom event for preset updates
         const event = new CustomEvent('presetUpdated', {
@@ -1596,13 +2029,13 @@ class WebSocketClient {
     }
 
     // Method to request image generation via WebSocket
-    async generateImage(generationParams, requestId = null) {
+    async generateImage(generationParams, requestId = null, enableStreaming = false) {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         try {
-            const result = await this.sendMessage('generate_image', generationParams);
+            const result = await this.sendMessage('generate_image', { ...generationParams, enableStreaming });
             return result;
         } catch (error) {
             console.error('Generate image error:', error);
@@ -1628,9 +2061,9 @@ class WebSocketClient {
     // Method to request gallery data via WebSocket
     async requestGallery(viewType = 'images', includePinnedStatus = true) {
         try {
-            const result = await this.sendWithCallback('request_gallery', { 
-                viewType, 
-                includePinnedStatus 
+            const result = await this.sendMessageWithCallback('request_gallery', {
+                viewType,
+                includePinnedStatus
             }, (response, error) => {
                 if (error) {
                     console.error('Gallery request callback error:', error);
@@ -1656,7 +2089,7 @@ class WebSocketClient {
     // Method to request image metadata via WebSocket
     async requestImageMetadata(filename) {
         try {
-            const result = await this.sendWithCallback('request_image_metadata', { filename }, (response, error) => {
+            const result = await this.sendMessageWithCallback('request_image_metadata', { filename }, (response, error) => {
                 if (error) {
                     console.error('Image metadata request callback error:', error);
                 }
@@ -1671,7 +2104,7 @@ class WebSocketClient {
     // Method to request URL upload metadata via WebSocket
     async requestUrlUploadMetadata(filename) {
         try {
-            const result = await this.sendWithCallback('request_url_upload_metadata', { filename }, (response, error) => {
+            const result = await this.sendMessageWithCallback('request_url_upload_metadata', { filename }, (response, error) => {
                 if (error) {
                     console.error('URL upload metadata request callback error:', error);
                 }
@@ -1686,11 +2119,11 @@ class WebSocketClient {
     // Method to request image by index via WebSocket
     async requestImageByIndex(index, viewType = 'images') {
         try {
-            const result = await this.sendWithCallback('request_image_by_index', { index, viewType }, (response, error) => {
+            const result = await this.sendMessageWithCallback('request_image_by_index', { index, viewType }, (response, error) => {
                 if (error) {
                     console.error('Image by index request callback error:', error);
                 }
-            }, false);
+            });
             return result;
         } catch (error) {
             showGlassToast('error', 'Image by index request error', error.message, false);
@@ -1701,11 +2134,11 @@ class WebSocketClient {
     // Method to find image index by filename via WebSocket
     async findImageIndex(filename, viewType = 'images') {
         try {
-            const result = await this.sendWithCallback('find_image_index', { filename, viewType }, (response, error) => {
+            const result = await this.sendMessageWithCallback('find_image_index', { filename, viewType }, (response, error) => {
                 if (error) {
                     console.error('Find image index callback error:', error);
                 }
-            }, false);
+            });
             return result;
         } catch (error) {
             showGlassToast('error', 'Find image index error', error.message, false);
@@ -1741,8 +2174,8 @@ class WebSocketClient {
         return this.sendMessageWithRequestId('delete_preset', this.generateRequestId(), { presetName });
     }
 
-    async generatePreset(presetName, workspace = null, allowPaid = false) {
-        return this.sendMessageWithRequestId('generate_preset', this.generateRequestId(), { presetName, allow_paid: allowPaid, workspace });
+    async generatePreset(presetName, workspace = null, allowPaid = false, enableStreaming = false) {
+        return this.sendMessageWithRequestId('generate_preset', this.generateRequestId(), { presetName, allow_paid: allowPaid, workspace, enableStreaming });
     }
 
     async getPresets(page = 1, itemsPerPage = 15, searchTerm = '') {
@@ -1755,6 +2188,10 @@ class WebSocketClient {
 
     async regeneratePresetUuid(presetName) {
         return this.sendMessageWithRequestId('regenerate_preset_uuid', this.generateRequestId(), { presetName });
+    }
+
+    async lookupCity(cityName) {
+        return this.sendMessageWithRequestId('lookup_city', this.generateRequestId(), { cityName });
     }
 
     async searchDatasetTags(query, path = []) {
@@ -2167,15 +2604,15 @@ class WebSocketClient {
                 this.send(message);
 
                 // Set timeout for ping requests
-                const timeoutMs = 2000; // 2 seconds for ping requests
+                const timeoutMs = 5000; // 5 seconds for ping requests
                 const timeoutId = setTimeout(() => {
                     if (this.pendingRequests.has(requestId)) {
                         const request = this.pendingRequests.get(requestId);
                         this.pendingRequests.delete(requestId);
                         this.decrementPendingRequests();
 
-                        console.warn(`⚠️ Ping request timeout (ID: ${requestId}) after 2000ms`);
-                        const timeoutError = new Error('Ping request timeout after 2000ms');
+                        console.warn(`⚠️ Ping request timeout (ID: ${requestId}) after 5000ms`);
+                        const timeoutError = new Error('Ping request timeout after 5000ms');
                         timeoutError.code = 'PING_TIMEOUT';
                         timeoutError.requestId = requestId;
                         reject(timeoutError);
@@ -2323,13 +2760,39 @@ class WebSocketClient {
         }
     }
 
-    // Send message with request/response handling
+    /**
+     * Sends a message to the server and waits for a response
+     *
+     * Creates a unique request ID, stores the request in the pending queue,
+     * and returns a Promise that resolves when the server responds with
+     * a matching request ID.
+     *
+     * @param {string} type - The message type/command to send
+     * @param {Object} [data={}] - Additional data to send with the message
+     * @param {boolean} [showBanner=true] - Whether to show UI banner for this request
+     * @returns {Promise<Object>} Response data from the server
+     * @throws {Error} If WebSocket is not connected or request times out
+     */
     sendMessage(type, data = {}, showBanner = true) {
         return new Promise((resolve, reject) => {
             // Enhanced connection validation
             if (!this.isConnectionHealthy()) {
                 const error = new Error('WebSocket connection not healthy');
                 error.code = 'CONNECTION_UNHEALTHY';
+                reject(error);
+                return;
+            }
+
+            // Ensure message listener is properly set up before sending
+            if (!this.ws || typeof this.ws.onmessage !== 'function') {
+                const error = new Error('WebSocket message listener not initialized');
+                error.code = 'LISTENER_NOT_READY';
+                console.error('❌ Attempted to send message before listener was ready:', {
+                    type,
+                    hasWebSocket: !!this.ws,
+                    hasOnMessage: !!(this.ws && typeof this.ws.onmessage === 'function'),
+                    connectionState: this.getConnectionState()
+                });
                 reject(error);
                 return;
             }
@@ -2341,8 +2804,26 @@ class WebSocketClient {
                 ...data
             };
 
+            // Ensure pendingRequests map is properly initialized
+            if (!this.pendingRequests) {
+                this.pendingRequests = new Map();
+                console.log('🔄 Initialized pendingRequests map');
+            }
+
+            // Validate that the map is working properly
+            if (!(this.pendingRequests instanceof Map)) {
+                const error = new Error('pendingRequests is not a valid Map instance');
+                error.code = 'INVALID_PENDING_REQUESTS';
+                console.error('❌ pendingRequests corruption detected:', {
+                    type: typeof this.pendingRequests,
+                    constructor: this.pendingRequests?.constructor?.name,
+                    hasSet: typeof this.pendingRequests?.set === 'function'
+                });
+                reject(error);
+                return;
+            }
+
             // Store pending request with timestamp
-            this.pendingRequests = this.pendingRequests || new Map();
             this.pendingRequests.set(requestId, {
                 resolve,
                 reject,
@@ -2354,54 +2835,59 @@ class WebSocketClient {
             // Increment pending requests count
             this.incrementPendingRequests();
 
+            // Set timeout based on request type BEFORE sending - critical requests should fail fast
+            let timeoutMs = 60000; // Default 60 seconds
+
+            // Critical initialization requests should fail fast if server is not ready
+            if (message.type === 'get_app_options') {
+                timeoutMs = WebSocketClient.TIMEOUT_GET_APP_OPTIONS;
+            }
+
+            const timeoutId = setTimeout(() => {
+                if (this.pendingRequests.has(requestId)) {
+                    const request = this.pendingRequests.get(requestId);
+                    const requestAge = Date.now() - request.timestamp;
+
+                    this.pendingRequests.delete(requestId);
+                    this.decrementPendingRequests();
+
+                    console.warn(`⚠️ Request timeout for ${message.type} (ID: ${requestId}) after ${requestAge}ms`);
+
+                    // Log additional debugging information
+                    console.warn(`🔍 Timeout details:`, {
+                        requestType: message.type,
+                        requestId: requestId,
+                        connectionState: this.getConnectionState(),
+                        pendingRequestsCount: this.pendingRequests.size,
+                        totalPendingRequests: this.pendingRequestsCount,
+                        messageSize: JSON.stringify(message).length,
+                        expectedTimeout: timeoutMs
+                    });
+
+                    const timeoutError = new Error(`Request timeout after ${Math.round(requestAge / 1000)} seconds (${timeoutMs}ms expected)`);
+                    timeoutError.code = 'REQUEST_TIMEOUT';
+                    timeoutError.requestId = requestId;
+                    timeoutError.requestType = message.type;
+                    timeoutError.requestAge = requestAge;
+                    reject(timeoutError);
+                }
+            }, timeoutMs);
+
+            // Store timeout ID for cleanup
+            this.pendingRequests.get(requestId).timeoutId = timeoutId;
+
             try {
-                this.send(message);
-                
+                // Defer sending until next event loop tick to ensure request is fully registered
+                // before any response can possibly arrive
+                setTimeout(() => {
+                    if (this.pendingRequests.has(requestId)) {
+                        this.send(message);
+                    }
+                }, 0);
+
                 if (message.type === 'ping') {
                     return;
                 }
-
-                // Set timeout based on request type - critical requests should fail fast
-                let timeoutMs = 30000; // Default 30 seconds
-
-                // Critical initialization requests should fail fast if server is not ready
-                if (message.type === 'get_app_options') {
-                    timeoutMs = 500; // 5 seconds for critical requests
-                }
-
-                const timeoutId = setTimeout(() => {
-                    if (this.pendingRequests.has(requestId)) {
-                        const request = this.pendingRequests.get(requestId);
-                        const requestAge = Date.now() - request.timestamp;
-
-                        this.pendingRequests.delete(requestId);
-                        this.decrementPendingRequests();
-
-                        console.warn(`⚠️ Request timeout for ${message.type} (ID: ${requestId}) after ${requestAge}ms`);
-
-                        // Log additional debugging information
-                        console.warn(`🔍 Timeout details:`, {
-                            requestType: message.type,
-                            requestId: requestId,
-                            connectionState: this.getConnectionState(),
-                            pendingRequestsCount: this.pendingRequests.size,
-                            totalPendingRequests: this.pendingRequestsCount,
-                            messageSize: JSON.stringify(message).length,
-                            expectedTimeout: timeoutMs
-                        });
-
-                        const timeoutError = new Error(`Request timeout after ${Math.round(requestAge / 1000)} seconds (${timeoutMs}ms expected)`);
-                        timeoutError.code = 'REQUEST_TIMEOUT';
-                        timeoutError.requestId = requestId;
-                        timeoutError.requestType = message.type;
-                        timeoutError.requestAge = requestAge;
-                        reject(timeoutError);
-                    }
-                }, timeoutMs);
-
-                // Store timeout ID for cleanup
-                this.pendingRequests.get(requestId).timeoutId = timeoutId;
-
             } catch (error) {
                 this.pendingRequests.delete(requestId);
                 this.decrementPendingRequests();
@@ -2492,15 +2978,6 @@ class WebSocketClient {
         if (this.requestCallbacks) {
             this.requestCallbacks.delete(requestId);
         }
-    }
-
-    // Convenience method to send a message and set up a callback for the response
-    sendWithCallback(type, data = {}, callback = null) {
-        if (!callback) {
-            return this.sendMessage(type, data);
-        }
-        
-        return this.sendMessageWithCallback(type, data, callback);
     }
 
     // Generate a unique request ID for custom use
@@ -2765,14 +3242,17 @@ class WebSocketClient {
 
     // Resolve pending request
     resolveRequest(requestId, data, error = null) {
-        if (this.pendingRequests && this.pendingRequests.has(requestId)) {
+        if (!this.pendingRequests) {
+            console.warn(`⚠️ resolveRequest called but pendingRequests not initialized for ID: ${requestId}`);
+            return;
+        }
+
+        if (this.pendingRequests.has(requestId)) {
             const request = this.pendingRequests.get(requestId);
             this.pendingRequests.delete(requestId);
 
-            // Clear timeout if it exists
-            if (request.timeoutId) {
-                clearTimeout(request.timeoutId);
-            }
+            // Clear timeout safely
+            request.timeoutId = this.clearTimeoutSafely(request.timeoutId);
 
             // Check if this was the currently displayed request BEFORE decrementing
             const oldestRequestId = this.pendingRequests.size > 0 ?
@@ -2822,6 +3302,14 @@ class WebSocketClient {
             } else {
                 request.resolve(data);
             }
+        } else {
+            console.warn(`⚠️ resolveRequest called for unknown request ID: ${requestId}`, {
+                hasPendingRequests: !!this.pendingRequests,
+                pendingRequestsCount: this.pendingRequests?.size || 0,
+                data: !!data,
+                error: !!error,
+                timestamp: Date.now()
+            });
         }
     }
 

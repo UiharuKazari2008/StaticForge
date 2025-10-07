@@ -344,7 +344,7 @@ function generateButtonsHtml(buttons, toastId) {
             });
 
             // Set onclick attribute to call global handler
-            btn.setAttribute('onclick', `handleToastButtonClick(${buttonId})`);
+            btn.setAttribute('onclick', `handleToastButtonClick('${buttonId}')`);
 
             // Add data attributes for debugging
             btn.setAttribute('data-button-id', buttonId);

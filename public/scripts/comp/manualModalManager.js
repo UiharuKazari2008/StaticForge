@@ -42,7 +42,6 @@ const manualRescale = document.getElementById('manualRescale');
 const manualNoiseScheduler = document.getElementById('manualNoiseScheduler');
 const manualUpscale = document.getElementById('manualUpscale');
 const clearSeedBtn = document.getElementById('clearSeedBtn');
-const editSeedBtn = document.getElementById('editSeedBtn');
 const focusOverlay = document.getElementById('focus-overlay');
 const searchToggleBtn = document.getElementById('searchToggleBtn');
 const metadataDialog = document.getElementById('metadataDialog');
@@ -91,6 +90,14 @@ const manualPresetPlaceholder = document.getElementById('manualPresetPlaceholder
 const manualPresetPlaceholderText = document.getElementById('manualPresetPlaceholderText');
 const loadSeedBtn = document.getElementById('loadSeedBtn');
 const manualPresetManagerBtn = document.getElementById('manualPresetManagerBtn');
+const manualPreviewImage = document.getElementById('manualPreviewImage');
+const manualPreviewImageContainerInner = document.getElementById('manualPreviewImageContainerInner');
+const textReplacementLockBtn = document.getElementById('textReplacementLockBtn');
+const textReplacementLockModal = document.getElementById('textReplacementLockModal');
+const closeTextReplacementLockModalBtn = document.getElementById('closeTextReplacementLockModalBtn');
+const selectAllTextReplacementsBtn = document.getElementById('selectAllTextReplacementsBtn');
+const deselectAllTextReplacementsBtn = document.getElementById('deselectAllTextReplacementsBtn');
+const applyTextReplacementLocksBtn = document.getElementById('applyTextReplacementLocksBtn');
 
 // Dynamic Generation System
 const dynamicGenerationToggleBtn = document.getElementById('dynamicGenerationToggleBtn');
@@ -99,9 +106,7 @@ const todBtn = document.getElementById('todBtn');
 const weatherBtn = document.getElementById('weatherBtn');
 const seasonBtn = document.getElementById('seasonBtn');
 const clothingBtn = document.getElementById('clothingBtn');
-const activityBtn = document.getElementById('activityBtn');
 const actionBtn = document.getElementById('actionBtn');
-const locationBtn = document.getElementById('locationBtn');
 const creativeBtn = document.getElementById('creativeBtn');
 const dynamicGenerationUndoBtn = document.getElementById('dynamicGenerationUndoBtn');
 const dynamicGenerationViewBtn = document.getElementById('dynamicGenerationViewBtn');
@@ -114,6 +119,8 @@ const directorReferenceImage = document.getElementById('directorReferenceImage')
 const addDirectorReferenceBtn = document.getElementById('addDirectorReferenceBtn');
 const clearDirectorReferenceBtn = document.getElementById('clearDirectorReferenceBtn');
 const directorReferenceStyleBtn = document.getElementById('directorReferenceStyleBtn');
+const directorReferenceFidelityInput = document.getElementById('directorReferenceFidelityInput');
+const directorReferenceFidelityOverlay = directorReferenceFidelityInput?.parentElement?.querySelector('.percentage-input-overlay');
 let directorReferenceData = null; // Store the current director reference data
 
 // ============================================================================
@@ -141,13 +148,13 @@ let forcePaidRequest = false;
 // MANUAL MODAL MANAGEMENT FUNCTIONS (MOVED FROM app.js)
 // ============================================================================
 
-function showManualPreview() {
-    if (window.innerWidth <= 1400) {
+function showManualPreview(setResolutionDimensions = false) {
+    if (window.innerWidth <= 1300) {
         const previewSection = document.getElementById('manualPanelSection');
         if (previewSection) {
             previewSection.classList.add('active');
         }
-        manualModal.classList.add('show-preview'); 
+        manualModal.classList.add('show-preview');
     }
 }
 
@@ -169,7 +176,7 @@ function hideManualPreviewResponsive() {
 }
 
 function calculatePreviewRatio() {
-    const container = document.querySelector('.manual-preview-image-container-inner');
+    const container = document.querySelector('.manual-preview-image-container');
     if (!container) return 1;
     
     const computedStyle = getComputedStyle(container);
@@ -183,25 +190,36 @@ function calculatePreviewRatio() {
     return previewRatio;
 }
 
+
+let manualPreviewSize = { height: 0, width: 0 };
+
 function sizeManualPreviewContainer(imageWidth, imageHeight) {
     const container = document.querySelector('.manual-preview-image-container-inner');
-    if (!container || !imageWidth || !imageHeight) return;
+    if (!container) return;
+
+    if (!imageWidth || !imageHeight) {
+        if (manualPreviewSize.width === 0 && manualPreviewSize.height === 0)
+            return;
+
+        imageWidth = manualPreviewSize.width;
+        imageHeight = manualPreviewSize.height;
+    } else {
+        manualPreviewSize.width = imageWidth;
+        manualPreviewSize.height = imageHeight;
+    }
     
     const imageAspectRatio = imageWidth / imageHeight;
     
-    // Reset container dimensions
-    container.style.width = '';
-    container.style.height = '';
+    // Reset orientation classes
+    container.classList.remove('tall', 'wide');
     
-    // Determine which dimension to constrain based on aspect ratio comparison
-    if (imageAspectRatio > previewRatio) {
-        // Image is wider than container ratio - constrain width
-        container.style.width = imageWidth + 'px';
-        container.style.height = '';
+    // Add orientation classes based on image aspect ratio compared to outer container
+    if (imageAspectRatio > calculatePreviewRatio()) {
+        // Image is wider than container ratio
+        container.classList.add('wide');
     } else {
-        // Image is taller than container ratio - constrain height
-        container.style.width = '';
-        container.style.height = imageHeight + 'px';
+        // Image is taller than container ratio
+        container.classList.add('tall');
     }
 }
 
@@ -327,7 +345,6 @@ function initializeManualBlockContainer() {
         // Get current image dimensions from preview image if available
         let width, height;
         
-        const manualPreviewImage = document.getElementById('manualPreviewImage');
         if (manualPreviewImage && !manualPreviewImage.classList.contains('hidden') && manualPreviewImage.src && manualPreviewImage.src !== '') {
             // Use computed style of the preview image to get actual displayed dimensions
             const computedStyle = getComputedStyle(manualPreviewImage);
@@ -421,7 +438,6 @@ function updateManualBlockGrid() {
         // Get current image dimensions from preview image if available
         let width, height;
         
-        const manualPreviewImage = document.getElementById('manualPreviewImage');
         if (manualPreviewImage && !manualPreviewImage.classList.contains('hidden') && manualPreviewImage.src && manualPreviewImage.src !== '') {
             // Use computed style of the preview image to get actual displayed dimensions
             const computedStyle = getComputedStyle(manualPreviewImage);
@@ -465,13 +481,16 @@ function startPreviewAnimation() {
     
     try {
         generationAnimationActive = true;
+
+        manualForm.classList.add('generating');
+
         const toggleBtn = document.getElementById('previewAnimationToggle');
         if (toggleBtn) {
             toggleBtn.innerHTML = '<i class="fas fa-stop"></i>';
             toggleBtn.title = 'Stop Preview Animation';
         }
         
-        if (manualPreviewImage && !manualPreviewImage.classList.contains('hidden')) {
+        /* if (manualPreviewImage && !manualPreviewImage.classList.contains('hidden')) {
             // Initialize manual block container if not already done
             if (!manualBlockContainer) {
                 initializeManualBlockContainer();
@@ -486,7 +505,7 @@ function startPreviewAnimation() {
                     console.warn('Failed to start manual block container wave:', error);
                 }
             }
-        }
+        } */
         
         previewStars.classList.remove('hidden');
         previewBackgroundLines.classList.remove('hidden');
@@ -511,6 +530,7 @@ function startPreviewAnimation() {
             line.style.visibility = 'visible';
         });
         
+        hideDynamicGenerationProgressOverlay();
         // Debug: ensure background lines are visible
     } catch (error) {
         console.error('Error starting preview animation:', error);
@@ -524,7 +544,11 @@ function startPreviewAnimation() {
 }
 
 async function stopPreviewAnimation() {
+    hideDynamicGenerationProgressOverlay();
+
     if (!generationAnimationActive) return;
+    
+    manualForm.classList.remove('generating');
     
     // Safety check: ensure all required elements exist
     if (!previewContainer || !previewStars || !previewBackgroundLines || !previewForegroundLines) {
@@ -580,7 +604,7 @@ async function stopPreviewAnimation() {
             });
         }, 2500);
         
-        if (manualBlockContainer) {
+        /* if (manualBlockContainer) {
             try {
                 await manualBlockContainer.returnToNormalOpacity(true);
                 // Add 1.5 second delay before unloading the block container
@@ -591,7 +615,7 @@ async function stopPreviewAnimation() {
             } catch (error) {
                 console.warn('Failed to stop manual block container wave:', error);
             }
-        }
+        } */
     } catch (error) {
         console.error('Error stopping preview animation:', error);
         // Force reset animation state
@@ -611,6 +635,8 @@ async function forceStopPreviewAnimation() {
     if (generationAnimationActive) {
         generationAnimationActive = false;
     }
+
+    manualForm.classList.remove('generating');
     
     // Reset button state
     const toggleBtn = document.getElementById('previewAnimationToggle');
@@ -645,14 +671,14 @@ async function forceStopPreviewAnimation() {
     });
     
     // Force unload manual block container with 1.5 second delay
-    if (manualBlockContainer) {
+    /* if (manualBlockContainer) {
         try {
             manualBlockContainer.unload();
             manualBlockContainer = null;
         } catch (error) {
             console.warn('Failed to unload manual block container:', error);
         }
-    }
+    } */
 }
 
 // Show manual modal loading overlay
@@ -661,22 +687,39 @@ function showManualLoading(show, message = 'Generating Image...') {
         // Start preview animation for image generation
         startPreviewAnimation();
         return;
-    } else if (show && isPreviewAnimationAvailable()) {
-        // Stop preview animation when generation completes
-        stopPreviewAnimation();
+    } else if (!show && isPreviewAnimationAvailable()) {
+        // Stop preview animation when generation completes (show=false), but not during streaming
+        if (!manualForm || !manualForm.classList.contains('streaming')) {
+            stopPreviewAnimation();
+        }
         return;
     }
 
     // FALLBACK: If animation system fails, use manual loading overlay for critical operations
-    if (!manualModal.classList.contains('hidden') && !isPreviewAnimationAvailable()) {
-        console.warn('Animation system not available, using manual loading overlay');
-        if (manualLoadingOverlay) {
-            manualLoadingOverlay.classList.remove('hidden');
-            manualLoadingOverlay.classList.remove('return');
-            const loadingText = manualLoadingOverlay.querySelector('p');
-            if (loadingText) {
-                loadingText.textContent = message;
+    if (!manualModal.classList.contains('hidden') && !isPreviewAnimationAvailable()) {    // Block animation disabled - always use manual loading overlay
+        if (show) {
+            // Show manual loading overlay for image generation
+            console.warn('Animation system not available, using manual loading overlay');
+            if (manualLoadingOverlay) {
+                manualLoadingOverlay.classList.remove('hidden');
+                manualLoadingOverlay.classList.remove('return');
+                const loadingText = manualLoadingOverlay.querySelector('p');
+                if (loadingText) {
+                    loadingText.textContent = message;
+                }
             }
+            return;
+        } else {
+            // Hide manual loading overlay when generation completes
+            if (manualLoadingOverlay) {
+                manualLoadingOverlay.classList.add('return');
+                setTimeout(() => {
+                    if (manualLoadingOverlay) {
+                        manualLoadingOverlay.classList.add('hidden');
+                    }
+                }, 300);
+            }
+            return;
         }
     }
 }
@@ -733,10 +776,7 @@ function clearManualForm() {
         { btn: weatherBtn, defaultState: 'off' },
         { btn: seasonBtn, defaultState: 'off' },
         { btn: clothingBtn, defaultState: 'off' },
-        { btn: activityBtn, defaultState: 'off' },
         { btn: actionBtn, defaultState: 'off' },
-        { btn: locationBtn, defaultState: 'off' },
-        { btn: optimizeBtn, defaultState: 'off' },
         { btn: dynamicGenerationLockedBtn, defaultState: 'off' },
         { btn: creativeBtn, defaultState: 'off' }
     ];
@@ -746,8 +786,20 @@ function clearManualForm() {
             btn.setAttribute('data-state', defaultState);
             btn.classList.toggle('active', defaultState === 'on');
             btn.removeAttribute('data-override'); // Clear any overrides
+
+            // Clear weather location data for weather button
+            if (btn === weatherBtn) {
+                btn.removeAttribute('data-location');
+                delete btn.dataset.locationDisplay;
+            }
+
+            // Update TOD button icon when reset
+            if (btn.id === 'todBtn') {
+                updateTodButtonIcon();
+            }
         }
     });
+    dynamicGenerationLockedBtn?.classList.add('hidden');
 
     // Clear dynamic generation data
     if (window.dynamicGenerationData) {
@@ -762,6 +814,13 @@ function clearManualForm() {
             datasetBias[dataset.value] = 1.0;
         });
     }
+
+    // Reset NSFW settings to defaults
+    selectedNsfwValue = 0; // Default to Neutral
+    nsfwBias = 1.0; // Default bias
+
+    // Update NSFW button display
+    updateNsfwButtonDisplay();
     updateDatasetDisplay();
     renderDatasetDropdown();
 
@@ -786,6 +845,14 @@ function clearManualForm() {
     // Reset preset name field
     manualPresetName.disabled = false;
     manualPresetName.style.opacity = '1';
+
+    // Reset text replacement locks
+    window.lockedTextReplacements = [];
+    if (window.lastGenerationTextReplacements) {
+        delete window.lastGenerationTextReplacements;
+    }
+    updateMainLockButtonState();
+    updateDynamicGenerationToggleBtn();
 
     variationImage.src = '';
 
@@ -847,6 +914,7 @@ function clearManualForm() {
         sproutSeedBtn.setAttribute('data-state', 'on');
         manualSeed.disabled = false;
     }
+    varietyBtn.setAttribute('data-state', 'off');
 
     // Reset inpaint button state and clear mask
     resetInpaint();
@@ -866,15 +934,16 @@ function clearManualForm() {
         previewMode: 'css' // Default to CSS view
     };
     window.lastGeneratedSeed = null;
-    sproutSeedBtn.classList.remove('available');
+    window.lastLoadedSeed = null;
     updateSproutSeedButtonFromPreviewSeed();
 
     updateAutoPositionToggle();
+    updatePercentageOverlays();
 
     // Hide image bias dropdown
     hideImageBiasDropdown();
 
-    if (clearSeedBtn) clearSeedBtn.classList.toggle('hidden', !manualSeed?.value);
+    if (clearSeedBtn) clearSeedBtn.classList.add('hidden');
 
     // Reset transformation dropdown state
     updateTransformationDropdownState();
@@ -885,8 +954,13 @@ function clearManualForm() {
     hideCharacterAutocomplete();
     hidePresetAutocomplete();
 
+
+    manualModal.classList.remove('min-controls');
+    manualControlsToggle.querySelector('i').classList.remove('fa-down-to-dotted-line');
+    manualControlsToggle.querySelector('i').classList.add('fa-square-sliders');
+
     // Reset dynamic generation buttons and clear stored data
-    const dynamicGenerationButtons = ['todBtn', 'weatherBtn', 'seasonBtn', 'activityBtn', 'actionBtn', 'locationBtn', 'optimizeBtn', 'creativeBtn'];
+    const dynamicGenerationButtons = ['todBtn', 'weatherBtn', 'seasonBtn', 'actionBtn', 'creativeBtn'];
     dynamicGenerationButtons.forEach(btnId => {
         const btn = document.getElementById(btnId);
         if (btn) {
@@ -965,6 +1039,12 @@ function collectManualFormValues() {
             values.dataset_config.bias[dataset] = datasetBias[dataset];
         }
     });
+
+    // Add NSFW settings
+    values.dataset_config.nsfw = selectedNsfwValue;
+    if (nsfwBias !== 1.0) {
+        values.dataset_config.nsfw_bias = nsfwBias;
+    }
     values.append_quality = appendQuality;
     values.append_uc = selectedUcPreset;
 
@@ -1068,9 +1148,6 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     const weatherBtn = document.getElementById('weatherBtn');
     const seasonBtn = document.getElementById('seasonBtn');
     const creativeBtn = document.getElementById('creativeBtn');
-    const activityBtn = document.getElementById('activityBtn');
-    const locationBtn = document.getElementById('locationBtn');
-    const optimizeBtn = document.getElementById('optimizeBtn');
 
     // Collect current button states
     const dynamicData = {
@@ -1079,16 +1156,18 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         weather: collectDynamicButtonState(weatherBtn),
         season: collectDynamicButtonState(seasonBtn),
         clothing: clothingBtn?.dataset.state === 'on',
-        activity: collectDynamicButtonState(activityBtn),
         action: collectDynamicButtonState(actionBtn),
-        location: collectDynamicButtonState(locationBtn),
-        optimize: optimizeBtn?.dataset.state === 'on',
         creative: creativeBtn?.dataset.state === 'on'
     };
+
+    // Add weather location data if available
+    if (weatherBtn && weatherBtn.getAttribute('data-location')) {
+        dynamicData.location = weatherBtn.getAttribute('data-location');
+    }
     // Always include dynamic_generation if any button has been configured (even if turned off)
     // This ensures the server receives the seasonal parameter even when set to false
     const hasAnyConfiguration = Object.values(dynamicData).some(value =>
-        value !== undefined && value !== null && value !== ''
+        value !== undefined && value !== false && value !== null && value !== ''
     );
 
     if (hasAnyConfiguration) {
@@ -1116,56 +1195,148 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         if (directorRefData.with_style) {
             requestBody.chara_reference_with_style = true;
         }
+        if (directorRefData.fidelity) {
+            requestBody.chara_reference_fidelity = directorRefData.fidelity;
+        }
+    }
+
+    // Add text replacement locks
+    if (window.lockedTextReplacements && Array.isArray(window.lockedTextReplacements)) {
+        requestBody.text_replacements_seed = window.lockedTextReplacements;
     }
 }
 
-// Get OpenWeatherMap icon URL
-function getWeatherIcon(iconCode) {
-    if (!iconCode) return '';
+// Get current weather units preference from localStorage
+function getUseMetricPreference() {
+    return localStorage.getItem('weather_units_metric') !== 'false'; // Default to true if not set
+}
 
-    // OpenWeatherMap icon URL format: https://openweathermap.org/img/wn/{icon}@2x.png
-    return `https://openweathermap.org/img/wn/${iconCode}@2x.png`;
+// Convert temperature based on preference
+function formatTemperature(celsius) {
+    if (celsius === null || celsius === undefined) {
+        return { number: '--', unit: '°C' };
+    }
+
+    const useMetric = getUseMetricPreference();
+    if (useMetric) {
+        return { number: Math.round(celsius).toString(), unit: '°C' };
+    } else {
+        const fahrenheit = Math.round((celsius * 9/5) + 32);
+        return { number: fahrenheit.toString(), unit: '°F' };
+    }
+}
+
+// Get weather icon using Weather Icons theme
+function getWeatherIcon(condition) {
+    if (!condition) return '<i class="wi wi-day-sunny"></i>';
+
+    const iconMap = {
+        'clear sky': '<i class="wi wi-day-sunny"></i>',
+        'mainly clear': '<i class="wi wi-day-sunny-overcast"></i>',
+        'partly cloudy': '<i class="wi wi-day-cloudy"></i>',
+        'overcast': '<i class="wi wi-cloudy"></i>',
+        'fog': '<i class="wi wi-fog"></i>',
+        'depositing rime fog': '<i class="wi wi-fog"></i>',
+        'light drizzle': '<i class="wi wi-day-showers"></i>',
+        'moderate drizzle': '<i class="wi wi-day-showers"></i>',
+        'dense drizzle': '<i class="wi wi-day-showers"></i>',
+        'light freezing drizzle': '<i class="wi wi-day-snow"></i>',
+        'dense freezing drizzle': '<i class="wi wi-day-snow"></i>',
+        'slight rain': '<i class="wi wi-day-rain"></i>',
+        'moderate rain': '<i class="wi wi-day-rain"></i>',
+        'heavy rain': '<i class="wi wi-day-rain"></i>',
+        'light freezing rain': '<i class="wi wi-day-snow"></i>',
+        'heavy freezing rain': '<i class="wi wi-day-snow"></i>',
+        'slight snow fall': '<i class="wi wi-day-snow"></i>',
+        'moderate snow fall': '<i class="wi wi-snow"></i>',
+        'heavy snow fall': '<i class="wi wi-snow"></i>',
+        'snow grains': '<i class="wi wi-snow"></i>',
+        'slight rain showers': '<i class="wi wi-day-showers"></i>',
+        'moderate rain showers': '<i class="wi wi-day-rain"></i>',
+        'violent rain showers': '<i class="wi wi-day-storm-showers"></i>',
+        'slight snow showers': '<i class="wi wi-day-snow"></i>',
+        'heavy snow showers': '<i class="wi wi-snow"></i>',
+        'thunderstorm': '<i class="wi wi-day-thunderstorm"></i>',
+        'thunderstorm with slight hail': '<i class="wi wi-day-thunderstorm"></i>',
+        'thunderstorm with heavy hail': '<i class="wi wi-day-thunderstorm"></i>'
+    };
+    return iconMap[condition] || '<i class="wi wi-day-sunny"></i>';
 }
 
 // Update dynamic generation overlay in manual preview
-function updateDynamicGenerationOverlay() {
+function updateDynamicGenerationOverlay(context) {
     const overlay = document.getElementById('dynamicGenerationOverlay');
     const overlayBody = document.getElementById('dynamicGenerationOverlayBody');
 
     if (!overlay || !overlayBody) return;
 
-    // Check if we have compiled prompt context
-    const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
-    const context = compiledPrompt?.context;
-
     if (context) {
         const weather = context.weather || {};
         const time = context.time || {};
+        const location = context.location || {};
 
         // Format actual time
         const timeString = (time.hour !== undefined && time.minute !== undefined)
             ? `${time.hour.toString().padStart(2, '0')}:${time.minute.toString().padStart(2, '0')}`
             : 'Unknown';
 
-        // Get weather icon URL
-        const weatherIconUrl = getWeatherIcon(weather.icon);
+        // Get weather icon HTML
+        const weatherIconHtml = getWeatherIcon(weather.condition);
 
-        overlayBody.innerHTML = `
-            <div class="context-item">
-                ${weatherIconUrl ? `<img class="weather-icon" src="${weatherIconUrl}" alt="Weather" />` : '<span class="context-icon">🌤️</span>'}
-                <span class="context-label">${weather.condition || 'Unknown'}</span>
-            </div>
-            <div class="context-item">
-                <span class="context-icon">🌡️</span>
-                <span class="context-value">${weather.temperature ? weather.temperature + '°C' : 'Unknown'}</span>
-            </div>
-            <div class="context-item">
-                <span class="context-icon">🕐</span>
-                <span class="context-value">${timeString}</span>
-            </div>
-            ${weather.humidity ? `<div class="context-item"><span class="context-icon">💧</span><span class="context-value">${weather.humidity}%</span></div>` : ''}
-            ${weather.windSpeed ? `<div class="context-item"><span class="context-icon">💨</span><span class="context-value">${weather.windSpeed} m/s</span></div>` : ''}
-        `;
+        // Update time display
+        const timeDisplay = document.getElementById('overlayTimeDisplay');
+        if (timeDisplay) {
+            timeDisplay.textContent = timeString;
+        }
+
+        // Update weather condition
+        const weatherCondition = document.getElementById('overlayWeatherCondition');
+        if (weatherCondition) {
+            const conditionText = weather.condition || 'Unknown';
+            weatherCondition.textContent = conditionText;
+        }
+
+
+        // Update weather condition
+        const weatherLocation = document.getElementById('overlayWeatherLocation');
+        if (weatherLocation) {
+            let conditionText = null;
+            // Add city and country if available
+            if (location.city && location.country) {
+                conditionText = `${location.city}, ${location.country}`;
+            } else if (location.city) {
+                conditionText = location.city;
+            } else if (location.country) {
+                conditionText = location.country;
+            }
+            if (conditionText) {
+                weatherLocation.classList.remove('hidden');
+                weatherLocation.textContent = conditionText;
+            } else {
+                weatherLocation.classList.add('hidden');
+            }
+        }
+
+        // Update weather feels like temperature
+        const weatherFeelsLike = document.getElementById('overlayWeatherFeelsLike');
+        if (weatherFeelsLike) {
+            const tempValue = weather.feelsLike || weather.temperature;
+            const tempData = formatTemperature(tempValue);
+            const tempNumber = weatherFeelsLike.querySelector('.temp-number');
+            const tempUnit = weatherFeelsLike.querySelector('.temp-unit');
+            if (tempNumber) tempNumber.textContent = tempData.number;
+            if (tempUnit) tempUnit.textContent = tempData.unit;
+        }
+
+        // Update weather icon
+        const weatherIconContainer = document.getElementById('overlayWeatherIcon');
+        if (weatherIconContainer) {
+            if (weather.condition) {
+                weatherIconContainer.innerHTML = weatherIconHtml;
+            } else {
+                weatherIconContainer.innerHTML = '<span class="weather-fallback-icon">🌤️</span>';
+            }
+        }
 
         overlay.classList.remove('hidden');
     } else {
@@ -1175,11 +1346,7 @@ function updateDynamicGenerationOverlay() {
 
 // Show manual modal
 async function showManualModal(presetName = null) {
-    // Disable on mobile displays
-    if (window.innerWidth <= 577) {
-        return false;
-    }
-    
+
     // Track if we were in search mode before opening modal
     wasInSearchMode = isInSearchMode();
     
@@ -1233,6 +1400,9 @@ async function showManualModal(presetName = null) {
         // Clear form for new generation
         clearManualForm();
     }
+
+    // Update text replacement lock button state after loading preset or clearing form
+    updateMainLockButtonState();
 
     // Auto-resize textareas after modal is shown
     autoResizeTextareasAfterModalShow();
@@ -1309,7 +1479,10 @@ function hideManualModal(e, preventModalReset = false) {
             hideManualPreview();
         }
 
-        closeModal(manualModal);
+        // Don't close the modal if preventModalReset is true (for generation)
+        if (!preventModalReset) {
+            closeModal(manualModal);
+        }
         if (document.body.classList.contains('editor-open')) {
             document.body.classList.remove('editor-open');
         }
@@ -1351,7 +1524,6 @@ function hideManualModal(e, preventModalReset = false) {
         const toggleBtn = document.getElementById('randomPromptToggleBtn');
         const refreshBtn = document.getElementById('randomPromptRefreshBtn');
         const transferBtn = document.getElementById('randomPromptTransferBtn');
-        const nsfwBtn = document.getElementById('randomPromptNsfwBtn');
         const divider = document.getElementById('randomPromptDivider');
 
         if (toggleBtn) {
@@ -1363,11 +1535,6 @@ function hideManualModal(e, preventModalReset = false) {
         }
         if (transferBtn) {
             transferBtn.classList.add('hidden');
-        }
-        if (nsfwBtn) {
-            nsfwBtn.dataset.state = 'off';
-            nsfwBtn.classList.remove('active');
-            nsfwBtn.classList.add('hidden');
         }
         if (divider) {
             divider.classList.add('hidden');
@@ -1704,6 +1871,17 @@ async function loadIntoManualForm(source, image = null) {
                     });
                 });
             }
+
+            // Load NSFW settings
+            if (data.dataset_config.nsfw !== undefined) {
+                selectedNsfwValue = data.dataset_config.nsfw;
+            }
+            if (data.dataset_config.nsfw_bias !== undefined) {
+                nsfwBias = data.dataset_config.nsfw_bias;
+            }
+
+            // Update NSFW button display after loading
+            updateNsfwButtonDisplay();
         } else {
             selectedDatasets = []; // Default
             // Reset bias values to defaults for all datasets from config
@@ -1750,6 +1928,22 @@ async function loadIntoManualForm(source, image = null) {
             // For now, we'll just store it in a global variable
             window.currentAllowPaid = data.allow_paid;
         }
+
+        // Handle text replacement locks
+        if (data.text_replacements_seed && Array.isArray(data.text_replacements_seed)) {
+            // Loading from metadata - use the stored replacements
+            const replacementsWithLockStatus = data.text_replacements_seed.map(replacement => ({
+                ...replacement,
+                locked: (replacement.locked === true && replacement.can_lock === true)
+            }));
+
+            window.lastGenerationTextReplacements = replacementsWithLockStatus;
+            window.lockedTextReplacements = replacementsWithLockStatus.filter(r => r.locked === true);
+        } else {
+            window.lockedTextReplacements = [];
+            window.lastGenerationTextReplacements = [];
+        }
+        updateMainLockButtonState();
 
         // Handle vibe transfer data from forge data (disabled when inpainting is enabled)
         if (data.vibe_transfer && Array.isArray(data.vibe_transfer) && data.vibe_transfer.length > 0) {
@@ -2070,6 +2264,10 @@ async function loadIntoManualForm(source, image = null) {
                 if (referenceData) {
                     setDirectorReference(referenceData);
                     directorReferenceStyleBtn.setAttribute('data-state', (data.chara_reference_with_style) ? 'on' : 'off');
+                    if (directorReferenceFidelityInput && data.chara_reference_fidelity !== undefined) {
+                        directorReferenceFidelityInput.value = data.chara_reference_fidelity;
+                        updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0);
+                    }
                 } else {
                     clearDirectorReference();
                 }
@@ -2100,10 +2298,7 @@ async function loadIntoManualForm(source, image = null) {
                 weather: 'weatherBtn',
                 season: 'seasonBtn',
                 clothing: 'clothingBtn',
-                activity: 'activityBtn',
                 action: 'actionBtn',
-                location: 'locationBtn',
-                optimize: 'optimizeBtn',
                 locked: 'dynamicGenerationLockedBtn',
                 creative: 'creativeBtn'
             };
@@ -2115,20 +2310,28 @@ async function loadIntoManualForm(source, image = null) {
                     btn.setAttribute('data-state', state);
                     btn.classList.toggle('active', state === 'on');
                     // Set override if there's an override value
-                    if (typeof window.dynamicGenerationData[key] === 'number') {
+                    if (typeof window.dynamicGenerationData[key] === 'number' || typeof window.dynamicGenerationData[key] === 'string') {
                         btn.setAttribute('data-override', window.dynamicGenerationData[key]);
                     } else {
                         btn.removeAttribute('data-override');
                     }
+
+                    // Update TOD button icon when loaded
+                    if (btnId === 'todBtn') {
+                        updateTodButtonIcon();
+                    }
                 }
             });
-            
-            updateDynamicGenerationToggleBtn();
-            dynamicGenerationGroup.classList.remove('hidden');
-        } else {
-            dynamicGenerationGroup.classList.add('hidden');
+
+            // Restore weather location data if available
+            if (window.dynamicGenerationData.location && weatherBtn) {
+                weatherBtn.setAttribute('data-location', window.dynamicGenerationData.location);
+            }
         }
         
+        dynamicGenerationGroup.classList.add('hidden');
+
+        updateDynamicGenerationToggleBtn();        
         updatePercentageOverlays();
         updateUploadDeleteButtonVisibility();
         updateManualPriceDisplay(true);
@@ -2287,11 +2490,18 @@ async function handleManualGeneration(e) {
         showManualPreview();
     }
 
+    // Add "generating" class when generation starts
+    manualForm.classList.add('generating');
 
     const generationParams = {
         model: values.model.toLowerCase(),
         ...requestBody
     };
+
+    // Add locked text replacements if any are set
+    if (window.lockedTextReplacements && Array.isArray(window.lockedTextReplacements) && window.lockedTextReplacements.length > 0) {
+        generationParams.text_replacements_seed = window.lockedTextReplacements;
+    }
 
     // Add director session and message IDs from director button dataset
     const directorBtn = document.getElementById('directorBtn');
@@ -2307,15 +2517,28 @@ async function handleManualGeneration(e) {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
-        const result = await window.wsClient.generateImage(generationParams);
-        
+
+        // Note: Dynamic generation progress overlay will be shown when server sends first progress update
+
+        const result = await window.wsClient.generateImage(generationParams, null, true); // Enable streaming
+
+        // Show completion phase if dynamic generation overlay is active
+        if (window.dynamicGenerationData && typeof updateDynamicGenerationProgressOverlay === 'function') {
+            updateDynamicGenerationProgressOverlay('completion');
+        }
+
         if (result) {
-            const { image, filename, seed, compiled_prompt } = result;
+            const { image, filename, seed, compiled_prompt, text_replacements_seed } = result;
+
+            // Store text replacement seeds for the lock modal
+            if (text_replacements_seed && Array.isArray(text_replacements_seed)) {
+                window.lastGenerationTextReplacements = text_replacements_seed;
+                // Update the main lock button state
+                updateMainLockButtonState();
+            }
 
             // Store compiled prompt if it was included in the response
             if (compiled_prompt && window.dynamicGenerationData) {
-                console.log('📝 Received compiled prompt from image generation');
                 window.dynamicGenerationData.compiled_prompt = compiled_prompt;
 
                 // Update lock button attributes
@@ -2333,14 +2556,23 @@ async function handleManualGeneration(e) {
                 delete window.dynamicGenerationRequestData;
             }
 
-            // Convert base64 to blob
-            const byteCharacters = atob(image);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            // For streaming, the image was already displayed via intermediate updates
+            // We just need to handle the final metadata
+            let blob;
+            if (image) {
+                // Fallback: if image data is included in final response, use it
+                const byteCharacters = atob(image);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                blob = new Blob([byteArray], { type: 'image/png' });
+            } else {
+                // For streaming, create a placeholder blob or fetch the actual image
+                // Since streaming already updated the preview, we can skip blob creation
+                console.log('🎬 Streaming completed, using displayed image');
             }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: 'image/png' });
 
             if (filename) {
                 const metadata = await getImageMetadata(filename);
@@ -2348,15 +2580,33 @@ async function handleManualGeneration(e) {
                 window.lastGeneration.filename = filename;
                 // Director new session functionality is always available
             }
-            
+
             // Extract seed if available
             if (seed) {
                 window.lastGeneratedSeed = parseInt(seed);
                 sproutSeedBtn.classList.add('available');
             }
 
-            // Use the universal handleImageResult function
-            await handleImageResult(blob, 'Image generated successfully!', undefined, seed || values.seed);
+            // Wait for all queued streaming steps to be displayed before finalizing
+            if (window.wsClient && window.wsClient.waitForStreamingStepsComplete) {
+                console.log('⏳ Waiting for streaming steps to complete...');
+                await window.wsClient.waitForStreamingStepsComplete('manual');
+                console.log('✅ All streaming steps displayed');
+            }
+
+            // Remove streaming class before setting final image
+            manualForm.classList.remove('streaming');
+
+            // Use the universal handleImageResult function if we have a blob
+            if (blob) {
+                await handleImageResult(blob, 'Image generated successfully!', undefined, seed || values.seed);
+            } else {
+                // For streaming, just show success without processing blob again
+                console.log('✅ Streaming image generation completed');
+            }
+            
+            // Now stop the animation AFTER the image is displayed
+            stopPreviewAnimation();
         } else {
             throw new Error('Invalid response from WebSocket');
         }
@@ -2365,8 +2615,13 @@ async function handleManualGeneration(e) {
         hideManualModal(undefined, true);
         console.error(`Image generation error:`, error);
         showError(`Image generation failed. Please try again.`);
-    } finally {
         stopPreviewAnimation();
+    } finally {
+        // Animation cleanup is handled in the success path after image display
+        // Just clean up classes and state
+        if (manualForm) {
+            manualForm.classList.remove('generating', 'streaming');
+        }
         showManualLoading(false);
         isGenerating = false;
         updateManualGenerateBtnState();
@@ -2458,9 +2713,15 @@ function setDirectorReference(referenceData) {
         directorReferenceImage.src = referenceData.url;
     }
 
-    // Reset style toggle to off for new reference
+    // Reset style toggle to on for new reference
     if (directorReferenceStyleBtn) {
         directorReferenceStyleBtn.setAttribute('data-state', 'on');
+    }
+
+    // Reset fidelity to default for new reference
+    if (directorReferenceFidelityInput) {
+        directorReferenceFidelityInput.value = '1.0';
+        updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0);
     }
 
     // Show the director reference section and update display classes
@@ -2488,9 +2749,15 @@ function clearDirectorReference() {
         directorReferenceImage.src = '';
     }
 
-    // Reset style toggle to off
+    // Reset style toggle to on
     if (directorReferenceStyleBtn) {
         directorReferenceStyleBtn.setAttribute('data-state', 'on');
+    }
+
+    // Reset fidelity to default
+    if (directorReferenceFidelityInput) {
+        directorReferenceFidelityInput.value = '1.0';
+        updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0);
     }
 
     // Hide the director reference section and update display classes
@@ -2544,13 +2811,274 @@ function getDirectorReferenceForForgeData() {
     if (!directorReferenceData) return null;
 
     const styleEnabled = directorReferenceStyleBtn.getAttribute('data-state') === 'on';
+    const fidelityLevel = parseFloat(directorReferenceFidelityInput.value) || 0.5;
 
     return {
         type: directorReferenceData.type,
         id: directorReferenceData.id,
-        with_style: styleEnabled
+        with_style: styleEnabled,
+        fidelity: fidelityLevel
     };
 }
+
+// Track if overlay is in completion/hide phase
+let progressOverlayCompleting = false;
+
+// Reset progress overlay for new dynamic generation session
+function resetProgressOverlay() {
+    // Reset state flags
+    progressOverlayCompleting = false;
+
+    // Ensure overlay is visible for new session
+    const overlay = document.getElementById('dynamicGenerationProgressOverlay');
+    if (overlay) {
+        overlay.classList.remove('hidden');
+    }
+
+    // Clear reasoning area and show waiting dots
+    const reasoningElement = document.getElementById('progressReasoning');
+    if (reasoningElement) {
+        reasoningElement.innerHTML = `
+            <div class="progress-reasoning-waiting" id="progressReasoningWaiting">
+                <div class="reasoning-dots">
+                    <div class="reasoning-dot"></div>
+                    <div class="reasoning-dot"></div>
+                    <div class="reasoning-dot"></div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Reset status text
+    const statusElement = document.getElementById('progressStatusText');
+    if (statusElement) {
+        statusElement.textContent = 'Processing...';
+    }
+
+    // Clear all context elements
+    const elementsToClear = [
+        'progressTime', 'progressDate', 'progressSeason', 'progressHoliday'
+    ];
+
+    elementsToClear.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = '--';
+        }
+    });
+
+    // Reset weather elements
+    const weatherCondition = document.getElementById('progressWeatherCondition');
+    const weatherFeelsLike = document.getElementById('progressWeatherFeelsLike');
+    const weatherIcon = document.getElementById('progressWeatherIcon');
+
+    if (weatherCondition) weatherCondition.textContent = 'Unknown';
+    if (weatherFeelsLike) {
+        const tempNumber = weatherFeelsLike.querySelector('.temp-number');
+        const tempUnit = weatherFeelsLike.querySelector('.temp-unit');
+        if (tempNumber) tempNumber.textContent = '--';
+        if (tempUnit) tempUnit.textContent = '°C';
+    }
+    if (weatherIcon) {
+        weatherIcon.innerHTML = '<span class="weather-fallback-icon">🌤️</span>';
+    }
+}
+
+// Update dynamic generation progress overlay
+function updateDynamicGenerationProgressOverlay(phase, data) {
+    const overlay = document.getElementById('dynamicGenerationProgressOverlay');
+    if (!overlay) return;
+
+    // Don't show overlay if it's already completing/hiding (except for context which starts new session)
+    if (progressOverlayCompleting && phase !== 'error' && phase !== 'context') {
+        // Still update content for completion/error phases
+        if (phase === 'completion') {
+            updateProgressStatus('Starting Generation...');
+        }
+        return;
+    }
+
+    // Update content based on phase
+    switch (phase) {
+        case 'context':
+            updateProgressContext(data); // This handles the reset and shows overlay
+            overlay.classList.remove('hidden'); // Ensure overlay is visible for new session
+            return; // Skip the general show logic since we handled it here
+            break;
+        case 'thinking':
+            updateProgressStatus('Getting Ready...');
+            break;
+        case 'streaming':
+            updateProgressStatus('Reading Response...');
+            addProgressReasoning(data?.reason);
+            break;
+        case 'completion':
+            updateProgressStatus('Starting Generation...');
+            progressOverlayCompleting = true; // Prevent further shows
+            // Show completion for 2 seconds then hide
+            setTimeout(() => {
+                if (typeof hideDynamicGenerationProgressOverlay === 'function') {
+                    hideDynamicGenerationProgressOverlay();
+                }
+            }, 2000);
+            break;
+        case 'error':
+            updateProgressStatus('Error: ' + (data?.error || 'Dynamic generation failed'));
+            progressOverlayCompleting = true; // Prevent further shows
+            // Hide overlay after showing error for 3 seconds
+            setTimeout(() => {
+                if (typeof hideDynamicGenerationProgressOverlay === 'function') {
+                    hideDynamicGenerationProgressOverlay();
+                }
+            }, 3000);
+            break;
+    }
+
+    // Show the overlay
+    overlay.classList.remove('hidden');
+}
+
+// Update progress context (time, date, season, holiday, weather)
+function updateProgressContext(data) {
+    if (!data) return;
+
+    // Complete reset for new dynamic generation session
+    resetProgressOverlay();
+
+    // Update time
+    const timeElement = document.getElementById('progressTime');
+    if (timeElement && data.time) {
+        const time = new Date(`2000-01-01T${data.time}`);
+        timeElement.textContent = time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+
+    // Update date
+    const dateElement = document.getElementById('progressDate');
+    if (dateElement && data.date) {
+        let formattedDate;
+        if (typeof data.date === 'object' && data.date.year !== undefined) {
+            // Date sent as components - reconstruct properly to avoid timezone issues
+            const date = new Date(data.date.year, data.date.month, data.date.day);
+            formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        } else {
+            // Fallback for string format
+            const date = new Date(data.date);
+            formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+        dateElement.textContent = formattedDate;
+    }
+
+    // Update season
+    const seasonElement = document.getElementById('progressSeason');
+    if (seasonElement && data.season) {
+        seasonElement.textContent = data.season;
+    }
+
+    // Update holiday (only show if present)
+    const holidayElement = document.getElementById('progressHoliday');
+    if (holidayElement) {
+        if (data.holiday) {
+            holidayElement.textContent = data.holiday;
+            holidayElement.style.display = 'inline';
+        } else {
+            holidayElement.style.display = 'none';
+        }
+    }
+
+    // Update weather using existing overlay weather functions
+    if (data.weather) {
+        // Update weather condition
+        const weatherCondition = document.getElementById('progressWeatherCondition');
+        if (weatherCondition) {
+            const conditionText = data.weather.condition || 'Unknown';
+            weatherCondition.textContent = conditionText;
+        }
+        // Update weather condition
+        const weatherLocation = document.getElementById('progressWeatherLocation');
+        if (weatherLocation) {
+            let conditionText = null;
+            // Add city and country if available
+            if (data.location && data.location.city && data.location.country) {
+                conditionText = `${data.location.city}, ${data.location.country}`;
+            } else if (data.location && data.location.city) {
+                conditionText = data.location.city;
+            } else if (data.location && data.location.country) {
+                conditionText = data.location.country;
+            }
+            if (conditionText) {
+                weatherLocation.classList.remove('hidden');
+                weatherLocation.textContent = conditionText;
+            } else {
+                weatherLocation.classList.add('hidden');
+            }
+        }
+
+        // Update weather temperature
+        const weatherFeelsLike = document.getElementById('progressWeatherFeelsLike');
+        if (weatherFeelsLike && data.weather.feelsLike !== undefined) {
+            const tempData = formatTemperature(data.weather.feelsLike);
+            const tempNumber = weatherFeelsLike.querySelector('.temp-number');
+            const tempUnit = weatherFeelsLike.querySelector('.temp-unit');
+            if (tempNumber) tempNumber.textContent = tempData.number;
+            if (tempUnit) tempUnit.textContent = tempData.unit;
+        }
+
+        // Update weather icon
+        const weatherIconContainer = document.getElementById('progressWeatherIcon');
+        if (weatherIconContainer && data.weather.condition) {
+            const weatherIconHtml = getWeatherIcon(data.weather.condition);
+            weatherIconContainer.innerHTML = weatherIconHtml;
+        }
+    }
+}
+
+// Update progress status text
+function updateProgressStatus(status) {
+    const statusElement = document.getElementById('progressStatusText');
+    if (statusElement) {
+        statusElement.textContent = status;
+    }
+}
+
+// Add reasoning text progressively as individual divs
+function addProgressReasoning(reason) {
+    if (!reason) return;
+
+    const reasoningElement = document.getElementById('progressReasoning');
+    const waitingElement = document.getElementById('progressReasoningWaiting');
+
+    if (reasoningElement) {
+        // Hide waiting dots when first reasoning arrives
+        if (waitingElement) {
+            waitingElement.style.display = 'none';
+        }
+
+        // Create new div for this reasoning
+        const reasonDiv = document.createElement('div');
+        reasonDiv.className = 'progress-reasoning-item';
+
+        const reasonSpan = document.createElement('span');
+        reasonSpan.textContent = reason.trim();
+
+        reasonDiv.appendChild(reasonSpan);
+        reasoningElement.appendChild(reasonDiv);
+
+        // Auto-scroll to bottom
+        reasoningElement.scrollTop = reasoningElement.scrollHeight;
+    }
+}
+
+// Hide dynamic generation progress overlay
+function hideDynamicGenerationProgressOverlay() {
+    const overlay = document.getElementById('dynamicGenerationProgressOverlay');
+    if (overlay) {
+        overlay.classList.add('hidden');
+    }
+}
+
+// Make functions globally available
+window.updateDynamicGenerationProgressOverlay = updateDynamicGenerationProgressOverlay;
+window.hideDynamicGenerationProgressOverlay = hideDynamicGenerationProgressOverlay;
 
 // ============================================================================
 // MODAL MANAGEMENT FUNCTIONS

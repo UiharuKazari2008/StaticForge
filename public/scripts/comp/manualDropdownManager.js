@@ -38,10 +38,8 @@ const manualModelDropdownBtn = document.getElementById('manualModelDropdownBtn')
 const manualModelDropdownMenu = document.getElementById('manualModelDropdownMenu');
 const manualModelSelected = document.getElementById('manualModelSelected');
 const manualModelHidden = document.getElementById('manualModel');
-const manualNoiseSchedulerDropdown = document.getElementById('manualNoiseSchedulerDropdown');
-const manualNoiseSchedulerDropdownBtn = document.getElementById('manualNoiseSchedulerDropdownBtn');
-const manualNoiseSchedulerDropdownMenu = document.getElementById('manualNoiseSchedulerDropdownMenu');
-const manualNoiseSchedulerSelected = document.getElementById('manualNoiseSchedulerSelected');
+// Noise scheduler dropdown has been integrated into sampler dropdown
+// Keeping only the hidden input reference
 const manualNoiseSchedulerHidden = document.getElementById('manualNoiseScheduler');
 const datasetDropdown = document.getElementById('datasetDropdown');
 const datasetDropdownBtn = document.getElementById('datasetDropdownBtn');
@@ -54,9 +52,18 @@ const subTogglesDropdownMenu = document.getElementById('subTogglesDropdownMenu')
 const ucPresetsDropdown = document.getElementById('ucPresetsDropdown');
 const ucPresetsDropdownBtn = document.getElementById('ucPresetsDropdownBtn');
 const ucPresetsDropdownMenu = document.getElementById('ucPresetsDropdownMenu');
+const nsfwDropdown = document.getElementById('nsfwDropdown');
+const nsfwToggleBtn = document.getElementById('nsfwToggleBtn');
+const nsfwDropdownMenu = document.getElementById('nsfwDropdownMenu');
 const transformationDropdown = document.getElementById('transformationDropdown');
 const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
 const transformationDropdownMenu = document.getElementById('transformationDropdownMenu');
+const manualWorkspaceDropdown = document.getElementById('manualWorkspaceDropdown');
+const manualWorkspaceDropdownBtn = document.getElementById('manualWorkspaceDropdownBtn');
+const manualWorkspaceDropdownMenu = document.getElementById('manualWorkspaceDropdownMenu');
+const manualWorkspaceSelected = document.getElementById('manualWorkspaceSelected');
+const manualWorkspaceColorIndicator = document.getElementById('manualWorkspaceColorIndicator');
+const manualWorkspaceHidden = document.getElementById('manualWorkspace');
 const manualPresetName = document.getElementById('manualPresetName');
 const manualPresetToggleBtn = document.getElementById('manualPresetToggleBtn');
 const manualPresetToggleIcon = document.getElementById('manualPresetToggleIcon');
@@ -71,9 +78,12 @@ let manualSelectedResolution = '';
 let manualSelectedSampler = '';
 let manualSelectedModel = '';
 let manualSelectedNoiseScheduler = '';
+let manualSelectedWorkspace = '';
 let selectedPreset = '';
 let selectedDatasets = [];
 let datasetBias = {};
+let selectedNsfwValue = 0; // Default to Neutral
+let nsfwBias = 1.0; // Default bias
 let selectedUcPreset = 3; // Default to "Heavy"
 let appendQuality = true;
 let presetAutocompleteTimeout = null;
@@ -338,13 +348,84 @@ function generateSamplerOptions() {
  * @param {string} selectedVal - Currently selected sampler value
  * @function
  * @name renderManualSamplerDropdown
- * @description Renders the sampler dropdown menu with options from SAMPLER_MAP
+ * @description Renders the sampler dropdown menu with options from SAMPLER_MAP and noise scheduler options
  * @example
  * renderManualSamplerDropdown('k_euler'); // Shows sampler dropdown with k_euler selected
  */
 function renderManualSamplerDropdown(selectedVal) {
-    renderSimpleDropdown(manualSamplerDropdownMenu, SAMPLER_MAP, 'meta', 'display', selectManualSampler, closeManualSamplerDropdown, selectedVal, { preventFocusTransfer: true });
+    manualSamplerDropdownMenu.innerHTML = '';
+    
+    // Add noise scheduler section header
+    const samplerHeader = document.createElement('div');
+    samplerHeader.className = 'custom-dropdown-group';
+    samplerHeader.textContent = 'Sampler';
+    manualSamplerDropdownMenu.appendChild(samplerHeader);
+
+    // Add sampler options
+    SAMPLER_MAP.forEach(sampler => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option' + (selectedVal === sampler.meta ? ' selected' : '');
+        option.tabIndex = 0;
+        option.dataset.value = sampler.meta;
+        option.innerHTML = `<span>${sampler.display}</span>`;
+        
+        const action = () => {
+            selectManualSampler(sampler.meta);
+            closeManualSamplerDropdown();
+        };
+        
+        option.addEventListener('click', (e) => {
+            e.preventDefault();
+            action();
+        });
+        
+        option.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                action();
+            }
+        });
+        
+        manualSamplerDropdownMenu.appendChild(option);
+    });
+    
+    // Add noise scheduler section header
+    const noiseHeader = document.createElement('div');
+    noiseHeader.className = 'custom-dropdown-group';
+    noiseHeader.textContent = 'Noise Scheduler';
+    manualSamplerDropdownMenu.appendChild(noiseHeader);
+    
+    // Add noise scheduler options - all are visible
+    NOISE_MAP.forEach(noise => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option' + (manualSelectedNoiseScheduler === noise.meta ? ' selected' : '');
+        option.tabIndex = 0;
+        option.dataset.value = noise.meta;
+        option.dataset.noiseOption = 'true';
+        option.innerHTML = `<span>${noise.display}</span>`;
+
+        const action = () => {
+            selectManualNoiseScheduler(noise.meta);
+            closeManualSamplerDropdown();
+        };
+
+        option.addEventListener('click', (e) => {
+            e.preventDefault();
+            action();
+        });
+
+        option.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                action();
+            }
+        });
+
+        manualSamplerDropdownMenu.appendChild(option);
+    });
 }
+
+// shouldHideNoiseOption function removed - all noise scheduler options are now visible in the dropdown
 
 /**
  * Select manual sampler and update UI
@@ -357,26 +438,52 @@ function renderManualSamplerDropdown(selectedVal) {
  */
 function selectManualSampler(value) {
     manualSelectedSampler = value;
-    const s = SAMPLER_MAP.find(s => s.meta.toLowerCase() === value.toLowerCase());
-    if (s) {
-        manualSamplerSelected.innerHTML = [
-            `<span class="custom-dropdown-text small-viewport">${s.display_short || s.display}</span>`,
-            `<span class="custom-dropdown-text full-viewport">${s.display_short_full || s.display}</span>`,
-            s.badge ? `<span class="custom-dropdown-badge small-viewport ${s.badge_class}">${s.badge}</span>` : '',
-            s.full_badge ? `<span class="custom-dropdown-badge full-viewport ${s.badge_class}">${s.full_badge}</span>` : ''
-        ].filter(Boolean).join(' ');
-    } else {
-        manualSamplerSelected.innerHTML = 'Select sampler...';
-    }
-    if (manualSamplerHidden) manualSamplerHidden.value = value;
-
+    
     // Auto-set noise scheduler based on sampler selection
     if (value === 'k_dpmpp_2m') {
         selectManualNoiseScheduler('exponential');
     } else {
         selectManualNoiseScheduler('karras');
     }
+    
+    updateSamplerDisplay();
+}
 
+/**
+ * Update sampler display with current sampler and noise scheduler
+ * @function
+ * @name updateSamplerDisplay
+ * @description Updates the sampler button display with both sampler and noise scheduler badges
+ */
+function updateSamplerDisplay() {
+    const s = SAMPLER_MAP.find(s => s.meta.toLowerCase() === manualSelectedSampler.toLowerCase());
+    const n = NOISE_MAP.find(n => n.meta.toLowerCase() === manualSelectedNoiseScheduler.toLowerCase());
+
+    if (s) {
+        // Map full noise scheduler names to short versions
+        const noiseShortMap = {
+            'karras': 'Karras',
+            'exponential': 'Expo',
+            'polyexponential': 'PolyEx'
+        };
+        const noiseShort = noiseShortMap[n?.meta] || n?.display || '';
+
+        // Determine if noise scheduler badge should be shown
+        // Show badge if: (sampler is dpmpp_2m AND noise is NOT exponential) OR (sampler is NOT dpmpp_2m AND noise is NOT karras)
+        const showNoiseBadge = (manualSelectedSampler === 'k_dpmpp_2m' && manualSelectedNoiseScheduler !== 'exponential') ||
+                              (manualSelectedSampler !== 'k_dpmpp_2m' && manualSelectedNoiseScheduler !== 'karras');
+
+        manualSamplerSelected.innerHTML = [
+            `<span class="custom-dropdown-text small-viewport">${s.display_short || s.display}</span>`,
+            `<span class="custom-dropdown-text full-viewport">${s.display_short_full || s.display}</span>`,
+            s.badge ? `<span class="custom-dropdown-badge small-viewport ${s.badge_class || ''}">${s.badge}</span>` : '',
+            s.full_badge ? `<span class="custom-dropdown-badge full-viewport ${s.badge_class || ''}">${s.full_badge}</span>` : '',
+            showNoiseBadge && noiseShort ? `<span class="custom-dropdown-badge noise-scheduler-badge">${noiseShort}</span>` : ''
+        ].filter(Boolean).join(' ');
+    } else {
+        manualSamplerSelected.innerHTML = 'Select sampler...';
+    }
+    if (manualSamplerHidden) manualSamplerHidden.value = manualSelectedSampler;
 }
 
 /**
@@ -413,19 +520,6 @@ function generateNoiseSchedulerOptions() {
 }
 
 /**
- * Render manual noise scheduler dropdown options
- * @param {string} selectedVal - Currently selected noise scheduler value
- * @function
- * @name renderManualNoiseSchedulerDropdown
- * @description Renders the noise scheduler dropdown menu with options from NOISE_MAP
- * @example
- * renderManualNoiseSchedulerDropdown('karras'); // Shows noise scheduler dropdown with karras selected
- */
-function renderManualNoiseSchedulerDropdown(selectedVal) {
-    renderSimpleDropdown(manualNoiseSchedulerDropdownMenu, NOISE_MAP, 'meta', 'display', selectManualNoiseScheduler, closeManualNoiseSchedulerDropdown, selectedVal, { preventFocusTransfer: true });
-}
-
-/**
  * Select manual noise scheduler and update UI
  * @param {string} value - Selected noise scheduler value (meta name)
  * @function
@@ -436,27 +530,13 @@ function renderManualNoiseSchedulerDropdown(selectedVal) {
  */
 function selectManualNoiseScheduler(value) {
     manualSelectedNoiseScheduler = value;
-    const n = NOISE_MAP.find(n => n.meta.toLowerCase() === value.toLowerCase());
-    if (n) {
-      manualNoiseSchedulerSelected.textContent = n.display;
-    } else {
-      manualNoiseSchedulerSelected.textContent = 'Select noise scheduler...';
-    }
     if (manualNoiseSchedulerHidden) manualNoiseSchedulerHidden.value = value;
+    
+    // Update the sampler display to show the new noise scheduler badge
+    updateSamplerDisplay();
+    
     // Update price display
     updateManualPriceDisplay();
-}
-
-/**
- * Close manual noise scheduler dropdown
- * @function
- * @name closeManualNoiseSchedulerDropdown
- * @description Closes the manual noise scheduler dropdown menu using the core dropdown system
- * @example
- * closeManualNoiseSchedulerDropdown(); // Closes the noise scheduler dropdown menu
- */
-function closeManualNoiseSchedulerDropdown() {
-    closeDropdown(manualNoiseSchedulerDropdownMenu, manualNoiseSchedulerDropdownBtn);
 }
 
 /**
@@ -490,6 +570,69 @@ function generateModelOptions() {
  */
 function renderManualModelDropdown(selectedVal) {
     renderGroupedDropdown(manualModelDropdownMenu, modelGroups, selectManualModel, closeManualModelDropdown, selectedVal, (opt, group) => `<span>${opt.name}</span>`, { preventFocusTransfer: true });
+}
+
+function renderManualWorkspaceDropdown(selectedVal) {
+    if (!manualWorkspaceDropdownMenu) return;
+
+    manualWorkspaceDropdownMenu.innerHTML = '';
+
+    // Sort workspaces by their sort order - workspaces is an object, not an array
+    const sortedWorkspaces = Object.values(workspaces).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+
+    sortedWorkspaces.forEach(workspace => {
+        const option = document.createElement('div');
+        // Use activeWorkspace variable instead of workspace.isActive property
+        const isActive = workspace.id === activeWorkspace;
+        option.className = 'custom-dropdown-option' + (isActive ? ' selected' : '');
+        option.tabIndex = 0;
+        option.dataset.value = workspace.id;
+
+        option.innerHTML = `
+            <div class="workspace-option-content">
+                <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#102040'}"></div>
+                <span class="workspace-name">${workspace.name}</span>
+                <span class="workspace-counts">${workspace.fileCount} files</span>
+            </div>
+        `;
+
+        const action = () => {
+            if (!isActive) {
+                selectManualWorkspace(workspace.id);
+            }
+            closeManualWorkspaceDropdown();
+        };
+
+        option.addEventListener('click', action);
+        option.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                action();
+            }
+        });
+
+        manualWorkspaceDropdownMenu.appendChild(option);
+    });
+}
+
+/**
+ * Select manual workspace
+ */
+function selectManualWorkspace(workspaceId) {
+    manualSelectedWorkspace = workspaceId;
+
+    // Set the active workspace
+    setActiveWorkspace(workspaceId);
+
+    // Update the display
+    updateManualWorkspaceDisplay();
+}
+
+
+/**
+ * Close manual workspace dropdown
+ */
+function closeManualWorkspaceDropdown() {
+    closeDropdown(manualWorkspaceDropdownMenu, manualWorkspaceDropdownBtn);
 }
 
 /**
@@ -868,7 +1011,6 @@ function renderDatasetDropdown() {
             <div class="dataset-option-content">
                 <div class="dataset-option-left">
                     <span class="dataset-name">${dataset.display}</span>
-                    ${isSelected ? '<i class="fas fa-check dataset-check-icon"></i>' : ''}
                 </div>
                 <div class="dataset-option-right">
                     ${isSelected ? `
@@ -1452,6 +1594,216 @@ function closeUcPresetsDropdown() {
 }
 
 /**
+ * Render NSFW dropdown options
+ * @function
+ * @name renderNsfwDropdown
+ * @description Renders the NSFW dropdown menu with value and bias options
+ * @example
+ * renderNsfwDropdown(); // Shows NSFW dropdown with current selection and bias controls
+ */
+function renderNsfwDropdown() {
+    nsfwDropdownMenu.innerHTML = '';
+
+    // Define NSFW options
+    const nsfwOptions = [
+        { value: 3, name: 'Nude' },
+        { value: 2, name: 'Skimpy' },
+        { value: 1, name: 'Allow' },
+        { value: 0, name: 'Neutral' },
+        { value: -1, name: 'Remove' },
+        { value: -2, name: 'Clense' }
+    ];
+
+    nsfwOptions.forEach(option => {
+        const optionElement = document.createElement('div');
+        optionElement.className = 'custom-dropdown-option dataset-dropdown-option';
+        optionElement.dataset.value = option.value;
+
+        const isSelected = selectedNsfwValue === option.value;
+        if (isSelected) {
+            optionElement.classList.add('selected');
+        }
+
+        const biasValue = nsfwBias || 1.0;
+        const biasDisplay = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
+
+        optionElement.innerHTML = `
+            <div class="dataset-option-content">
+                <div class="dataset-option-left">
+                    <span class="dataset-name">${option.name}</span>
+                </div>
+                <div class="dataset-option-right">
+                    ${isSelected ? `
+                        <div class="dataset-bias-controls">
+                            <button type="button" class="dataset-bias-decrease" title="Decrease bias" data-nsfw="${option.value}">
+                                <i class="fas fa-minus"></i>
+                            </button>
+                            <span class="dataset-bias-value" data-nsfw="${option.value}">${biasDisplay}</span>
+                            <button type="button" class="dataset-bias-increase" title="Increase bias" data-nsfw="${option.value}">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+
+        // Add click handler for the main option (toggle selection)
+        const optionLeft = optionElement.querySelector('.dataset-option-left');
+        optionLeft.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            selectNsfwValue(option.value);
+        });
+
+        // Add click handlers for bias controls (only if NSFW option is selected)
+        if (isSelected) {
+            const decreaseBtn = optionElement.querySelector('.dataset-bias-decrease');
+            const increaseBtn = optionElement.querySelector('.dataset-bias-increase');
+            const biasValueSpan = optionElement.querySelector('.dataset-bias-value');
+
+            decreaseBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                adjustNsfwBias(-0.1);
+            });
+
+            increaseBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                adjustNsfwBias(0.1);
+            });
+
+            // Add wheel event for bias value span
+            biasValueSpan.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                adjustNsfwBias(delta);
+
+                // Add visual feedback
+                biasValueSpan.classList.add('scrolling');
+                setTimeout(() => {
+                    biasValueSpan.classList.remove('scrolling');
+                }, 200);
+            });
+        }
+
+        nsfwDropdownMenu.appendChild(optionElement);
+    });
+}
+
+/**
+ * Select NSFW value
+ * @param {number} value - NSFW value to select (-2, -1, 0, 1, 2, 3)
+ * @function
+ * @name selectNsfwValue
+ * @description Updates the selected NSFW value and updates the UI accordingly
+ * @example
+ * selectNsfwValue(1); // Selects 'Allow' NSFW setting
+ */
+function selectNsfwValue(value) {
+    selectedNsfwValue = value;
+
+    // Update button display based on selected value
+    updateNsfwButtonDisplay();
+
+    // Re-render dropdown to show new selection
+    renderNsfwDropdown();
+
+    // Update prompt status icons if needed
+    updatePromptStatusIcons();
+}
+
+/**
+ * Adjust NSFW bias value
+ * @param {number} delta - Amount to adjust bias by (e.g., 0.1, -0.1)
+ * @function
+ * @name adjustNsfwBias
+ * @description Adjusts the NSFW bias value within valid range (0.1 to 3.0)
+ * @example
+ * adjustNsfwBias(0.1); // Increases NSFW bias by 0.1
+ */
+function adjustNsfwBias(delta) {
+    const currentValue = nsfwBias || 1.0;
+    const newValue = Math.max(0.1, Math.min(3.0, currentValue + delta));
+    nsfwBias = Math.round(newValue * 10) / 10; // Round to 1 decimal place
+
+    // Update the bias value display in the dropdown
+    const biasValueSpan = document.querySelector(`.dataset-bias-value[data-nsfw="${selectedNsfwValue}"]`);
+    if (biasValueSpan) {
+        const displayValue = nsfwBias !== 1.0 ? nsfwBias.toFixed(1) : '1.0';
+        biasValueSpan.textContent = displayValue;
+    }
+
+    // Update dropdown display
+    updateNsfwButtonDisplay();
+}
+
+/**
+ * Update NSFW button display
+ * @function
+ * @name updateNsfwButtonDisplay
+ * @description Updates the NSFW button display based on current NSFW value and bias
+ * @example
+ * updateNsfwButtonDisplay(); // Updates NSFW button to reflect current state
+ */
+function updateNsfwButtonDisplay() {
+    if (!nsfwToggleBtn) return;
+
+    // Map NSFW values to display states
+    const stateMap = {
+        2: 'on',    // Nude
+        1: 'on',    // Allow
+        0: 'neutral', // Neutral
+        '-1': 'off', // Remove
+        '-2': 'off'  // Clense
+    };
+
+    const currentState = stateMap[selectedNsfwValue.toString()] || 'neutral';
+    nsfwToggleBtn.setAttribute('data-state', currentState);
+
+    // Update icon based on state
+    const icon = nsfwToggleBtn.querySelector('i');
+    if (icon) {
+        const iconMap = {
+            'on': 'fas fa-face-grin-hearts',
+            'neutral': 'fas fa-shield',
+            'off': 'fas fa-shield-xmark'
+        };
+        icon.className = iconMap[currentState] || 'fas fa-shield';
+    }
+
+    // Update prompt status icons to reflect NSFW changes
+    updatePromptStatusIcons();
+}
+
+
+/**
+ * Open NSFW dropdown
+ * @function
+ * @name openNsfwDropdown
+ * @description Opens the NSFW dropdown menu using the core dropdown system
+ * @example
+ * openNsfwDropdown(); // Opens the NSFW dropdown menu
+ */
+function openNsfwDropdown() {
+    openDropdown(nsfwDropdownMenu, nsfwToggleBtn);
+}
+
+/**
+ * Close NSFW dropdown
+ * @function
+ * @name closeNsfwDropdown
+ * @description Closes the NSFW dropdown menu using the core dropdown system
+ * @example
+ * closeNsfwDropdown(); // Closes the NSFW dropdown menu
+ */
+function closeNsfwDropdown() {
+    closeDropdown(nsfwDropdownMenu, nsfwToggleBtn);
+}
+
+/**
  * Process resolution value - MOVED FROM app.js
  * @param {string} resolutionValue - Resolution value to process (may include 'custom_' prefix)
  * @returns {Object} Object with width, height, and isCustom properties
@@ -1626,71 +1978,3 @@ function openReferenceBrowserWithFilter(filterMode) {
     }
 }
 
-function renderManualSamplerDropdown(selectedVal) {
-  renderSimpleDropdown(manualSamplerDropdownMenu, SAMPLER_MAP, 'meta', 'display', selectManualSampler, closeManualSamplerDropdown, selectedVal, { preventFocusTransfer: true });
-}
-
-function renderManualNoiseSchedulerDropdown(selectedVal) {
-  renderSimpleDropdown(manualNoiseSchedulerDropdownMenu, NOISE_MAP, 'meta', 'display', selectManualNoiseScheduler, closeManualNoiseSchedulerDropdown, selectedVal, { preventFocusTransfer: true });
-}
-
-function selectManualNoiseScheduler(value) {
-  manualSelectedNoiseScheduler = value;
-  const n = NOISE_MAP.find(n => n.meta.toLowerCase() === value.toLowerCase());
-  if (n) {
-    manualNoiseSchedulerSelected.textContent = n.display;
-  } else {
-    manualNoiseSchedulerSelected.textContent = 'Select noise scheduler...';
-  }
-  if (manualNoiseSchedulerHidden) manualNoiseSchedulerHidden.value = value;
-  if (typeof updateGenerateButton === 'function') updateGenerateButton();
-  // Update price display
-  updateManualPriceDisplay();
-}
-function renderManualModelDropdown(selectedVal) {
-    renderGroupedDropdown(manualModelDropdownMenu, modelGroups, selectManualModel, closeManualModelDropdown, selectedVal, (opt, group) => `<span>${opt.name}</span>`, { preventFocusTransfer: true });
-}
-
-function selectManualModel(value, group, preventPropagation = false) {
-  manualSelectedModel = value;
-  window.manualSelectedModel = value;
-
-  // If group is not provided, find it automatically
-  if (!group) {
-    for (const g of modelGroups) {
-      const found = g.options.find(o => o.value === value.toLowerCase());
-      if (found) {
-        group = g.group;
-        break;
-      }
-    }
-  }
-
-  // Update button display
-  const groupObj = modelGroups.find(g => g.group === group);
-  const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
-  if (optObj) {
-    manualModelSelected.innerHTML = [
-        `<span class="custom-dropdown-text small-viewport">${optObj.display}</span>`,
-        `<span class="custom-dropdown-text full-viewport">${optObj.display_full}</span>`,
-        optObj.badge ? `<span class="custom-dropdown-badge small-viewport ${optObj.badge_class}">${optObj.badge}</span>` : '',
-        optObj.badge_full ? `<span class="custom-dropdown-badge full-viewport ${optObj.badge_class}">${optObj.badge_full}</span>` : ''
-    ].filter(Boolean).join(' ');
-  } else {
-    manualModelSelected.textContent = 'Select model...';
-  }
-
-  // Sync with hidden input for compatibility
-  if (manualModelHidden) manualModelHidden.value = value.toLowerCase();
-
-  if (preventPropagation) return;
-  // Update UI visibility based on model selection
-  updateV3ModelVisibility();
-
-  // Trigger any listeners (e.g., updateGenerateButton or manual form update)
-  if (typeof updateGenerateButton === 'function') updateGenerateButton();
-  updateManualPriceDisplay();
-  
-  // Refresh reference browser for model changes
-  refreshReferenceBrowserForModelChange();
-}

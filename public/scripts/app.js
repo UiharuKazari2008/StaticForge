@@ -18,10 +18,39 @@ let previewRatio = 1;
 // Function to calculate and set previewRatio based on container dimensions
 
 
-// Global button click handler function
+/**
+ * Handles click events for toast notification buttons
+ *
+ * Looks up the button handler by ID, validates the handler object,
+ * executes the onClick callback, and optionally closes the toast.
+ * Cleans up the handler after use to prevent memory leaks.
+ *
+ * @param {string|number} buttonId - The unique identifier for the button handler
+ */
 function handleToastButtonClick(buttonId) {
+    // Validate input - accept both strings and numbers since buttonId can be either
+    if (buttonId === null || buttonId === undefined || buttonId === '') {
+        console.error('handleToastButtonClick: Invalid buttonId provided:', buttonId);
+        return;
+    }
+
+    // Convert to number if it's a string representation of a number
+    if (typeof buttonId === 'string' && /^\d+$/.test(buttonId)) {
+        buttonId = parseInt(buttonId, 10);
+    }
+
     const handler = buttonHandlers.get(buttonId);
     if (handler) {
+        // Validate handler object
+        if (typeof handler.onClick !== 'function') {
+            console.error('handleToastButtonClick: Handler onClick is not a function:', handler);
+            return;
+        }
+        if (!handler.toastId) {
+            console.error('handleToastButtonClick: Handler missing toastId:', handler);
+            return;
+        }
+
         try {
             handler.onClick(handler.toastId);
             if (handler.closeOnClick !== false) {
@@ -30,10 +59,78 @@ function handleToastButtonClick(buttonId) {
             // Clean up the handler after use
             buttonHandlers.delete(buttonId);
         } catch (error) {
-            console.error('Error in button click handler:', error);
+            handleError('Button click handler', error, 'Failed to handle button click');
         }
     } else {
-        console.error('Button handler not found for ID:', buttonId);
+        handleError('Button handler lookup', `Button handler not found for ID: ${buttonId}`, 'Invalid button ID');
+    }
+}
+
+// Application constants
+const APP_CONSTANTS = {
+    // Timeouts and delays
+    TIMEOUT_UI_DEFAULT: 3000,        // Default UI timeout (3 seconds)
+    TIMEOUT_FOCUS: 100,              // Focus timeout (100ms)
+    TIMEOUT_GENERATION: 1000,        // Generation timeout (1 second)
+    TIMEOUT_CONNECTION_STABILITY: 2000, // Connection stability timeout (2 seconds)
+    TIMEOUT_GEOLOCATION: 10000,      // Geolocation timeout (10 seconds)
+    TIMEOUT_GEOLOCATION_MAX_AGE: 300000, // Geolocation max age (5 minutes)
+
+    // Progress percentages
+    PROGRESS_INIT_BASE: 25,          // Base progress for initialization
+    PROGRESS_INIT_STEPS: 75,         // Progress allocated to init steps
+
+    // Validation limits
+    VALIDATION_HOUR_MIN: 0,          // Minimum hour value
+    VALIDATION_HOUR_MAX: 23,         // Maximum hour value
+    VALIDATION_MINUTE_MIN: 0,        // Minimum minute value
+    VALIDATION_MINUTE_MAX: 59,       // Maximum minute value
+    VALIDATION_DAY_MIN: 1,           // Minimum day value
+    VALIDATION_DAY_MAX: 31,          // Maximum day value
+    VALIDATION_MONTH_MIN: 1,         // Minimum month value
+    VALIDATION_MONTH_MAX: 12,        // Maximum month value
+
+    // UI dimensions and ratios
+    UI_RATIO_MIN: 0.1,               // Minimum UI ratio
+    UI_RATIO_MAX: 2.0,               // Maximum UI ratio
+    UI_RATIO_DEFAULT: 1.0,           // Default UI ratio
+
+    // Conversion factors
+    CONVERSION_MPS_TO_MPH: 2.237,    // Meters per second to miles per hour
+    CONVERSION_MPH_TO_MPS: 1 / 2.237 // Miles per hour to meters per second
+};
+
+// HTML escaping utility functions
+function escapeHtml(text) {
+    if (text == null) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function escapeHtmlAttribute(text) {
+    if (text == null) return '';
+    return text.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Standardized error handling function
+function handleError(context, error, fallbackMessage = 'An error occurred') {
+    const errorMessage = error?.message || error || fallbackMessage;
+    console.error(`❌ ${context}:`, errorMessage);
+
+    // Show user-friendly error toast if available
+    showGlassToast('error', 'Error', errorMessage);
+
+    return errorMessage;
+}
+
+// Standardized async operation wrapper
+async function safeAsyncOperation(context, operation, fallbackMessage = 'Operation failed') {
+    try {
+        return await operation();
+    } catch (error) {
+        handleError(context, error, fallbackMessage);
+        throw error; // Re-throw to maintain error propagation
     }
 }
 
@@ -50,7 +147,7 @@ const backgroundUpdateState = {
 // Global debounced background update function
 const updateBlurredBackground = createAnimationAwareDebounce(async (imageUrl) => {
     await updateManualPreviewBlurredBackground(imageUrl);
-}, 300);
+}, APP_CONSTANTS.TIMEOUT_FOCUS);
 
 // MANUAL PREVIEW SYSTEM - Move to manualPreviewManager.js
 // This system handles the manual preview functionality, lightbox, and preview image management
@@ -63,6 +160,9 @@ const updateBlurredBackground = createAnimationAwareDebounce(async (imageUrl) =>
 let isGenerating = false;
 let isQueueStopped = false;
 let isQueueProcessing = false;
+
+// Global progress toast ID to prevent multiple progress toasts
+let progressToastId = null;
 
 // Error Sub-Header Functions
 let errorSubHeaderTimeout = null;
@@ -131,6 +231,16 @@ if (typeof u1 !== 'undefined') {
 
 
 // Load preset into manual form
+/**
+ * Loads a preset configuration and applies it to the manual generation form
+ *
+ * Shows a progress toast while generating the image, then updates all form
+ * fields with the preset values. Handles cleanup of progress indicators.
+ *
+ * @param {string} presetName - The name of the preset to load
+ * @returns {Promise<Object>} The generation result containing filename and seed
+ * @throws {Error} If preset loading or generation fails
+ */
 async function loadPresetIntoForm(presetName) {
     try {
         // Use WebSocket for preset loading
@@ -140,8 +250,6 @@ async function loadPresetIntoForm(presetName) {
 
         const presetData = await window.wsClient.loadPreset(presetName);
         await loadIntoManualForm(presetData);
-
-        showGlassToast('success', null, `${presetName} Loaded`);
         
         // Update prompt status icons after loading preset
         updatePromptStatusIcons();
@@ -156,17 +264,19 @@ async function generateFromPreset(presetName) {
     isGenerating = true;
     isInModal = false;
 
-    let toastId;
     let progressInterval;
-    
-    toastId = showGlassToast('info', 'Generating Image', 'Generating image...', true, false, '<i class="nai-sparkles"></i>');
-    
+
+    // Create or update progress toast using global pattern
+    if (!progressToastId) {
+        progressToastId = showGlassToast('info', 'Generating Image', 'Generating image...', true, false, '<i class="nai-sparkles"></i>');
+    }
+
     // Start progress animation (1% per second)
     let progress = 0;
     progressInterval = setInterval(() => {
         progress += 1;
-        updateGlassToastProgress(toastId, progress);
-    }, 1000);
+        updateGlassToastProgress(progressToastId, progress);
+    }, APP_CONSTANTS.TIMEOUT_GENERATION);
 
     try {
         // Generate image using WebSocket
@@ -177,14 +287,17 @@ async function generateFromPreset(presetName) {
         const seed = result.seed;
 
         // Update the existing toast to show completion
-        updateGlassToastComplete(toastId, {
+        updateGlassToastComplete(progressToastId, {
             type: 'success',
             title: 'Image Generated',
             message: 'Image generated successfully and added to gallery',
             customIcon: '<i class="nai-check"></i>',
             showProgress: false
         });
-        
+
+        // Clear the global progress toast ID after completion
+        progressToastId = null;
+
         createConfetti();
         await loadGallery(true);
         
@@ -206,7 +319,7 @@ async function generateFromPreset(presetName) {
     } catch (error) {
         console.error('Generation error:', error);
         // Update the existing toast to show error
-        updateGlassToastComplete(toastId, {
+        updateGlassToastComplete(progressToastId, {
             type: 'error',
             title: 'Generation Failed',
             message: error.message,
@@ -224,6 +337,9 @@ async function generateFromPreset(presetName) {
         if (isInModal) {
             showManualLoading(false);
         }
+
+        // Reset progress toast ID
+        progressToastId = null;
     }
 }
 
@@ -269,9 +385,9 @@ async function deletePreset(presetName) {
         
         // Show success message
         if (result && result.data && result.data.message) {
-            showGlassToast('success', null, result.data.message);
+            showGlassToast('success', null, result.data.message, false, undefined, '<i class="fas fa-book-sparkles"></i>');
         } else {
-            showGlassToast('success', null, `Preset "${presetName}" deleted successfully`);
+            showGlassToast('success', null, `Preset "${presetName}" deleted`, false, undefined, '<i class="fas fa-book-sparkles"></i>');
         }
         
         // Clear the manual preset name input and hide delete button
@@ -447,7 +563,7 @@ function updateManualPresetPlaceholder() {
 // Dynamic Generation Functions
 function updateDynamicGenerationToggleBtn() {
     const isOpen = !dynamicGenerationGroup.classList.contains('hidden');
-    const hasActiveOverrides = ['todBtn', 'weatherBtn', 'seasonBtn', 'activityBtn', 'actionBtn', 'locationBtn', 'creativeBtn']
+    const hasActiveOverrides = ['todBtn', 'weatherBtn', 'seasonBtn', 'actionBtn', 'creativeBtn']
         .some(btnId => {
             const btn = document.getElementById(btnId);
             return btn && btn.dataset.state === 'on' && btn.getAttribute('data-override');
@@ -456,12 +572,15 @@ function updateDynamicGenerationToggleBtn() {
 
     let state = 'off'; // default
 
+    dynamicGenerationLockedBtn.classList.remove('hidden');
     if (hasCompiledPrompt) {
         state = 'compiled'; // has compiled prompt available
     } else if (hasActiveOverrides) {
         state = 'on'; // has active overrides
     } else if (isOpen) {
         state = 'open'; // group is open but no active overrides
+    } else {
+        dynamicGenerationLockedBtn.classList.add('hidden');
     }
 
     // Update button state
@@ -474,10 +593,1044 @@ function updateDynamicGenerationToggleBtn() {
     }
 }
 
+// Holiday mapping from client values to server holiday names
+const CLIENT_HOLIDAY_MAP = {
+    'christmas': 'Christmas/Holiday Season',
+    'newyears': 'New Year\'s Celebration',
+    'halloween': 'Halloween',
+    'thanksgiving': 'Thanksgiving',
+    'independenceday': 'Independence Day',
+    'valentinesday': 'Valentine\'s Day',
+    'easter': 'Easter/Spring Holiday',
+    'stpatricksday': 'St. Patrick\'s Day',
+    'memorialday': 'Memorial Day',
+    'laborday': 'Labor Day',
+    'veteransday': 'Veterans Day',
+    'japanesenewyear': 'Japanese New Year (Oshogatsu)',
+    'cherryblossom': 'Cherry Blossom Season (Hanami)',
+    'tanabatafestival': 'Star Festival (Tanabata)',
+    'goldenweek': 'Golden Week (Shukujitsu)',
+    'childrensday': 'Children\'s Day (Kodomo no Hi)',
+    'tsukimi': 'Autumn Moon Festival (Tsukimi)',
+    'obonfestival': 'Obon Festival (Bon Odori)',
+    'nearest': 'nearest' // Special case for nearest holiday
+};
+
+// Function to get holiday date (simplified client-side version)
+function getHolidayDateClient(holidayValue) {
+    const now = new Date();
+    const year = now.getFullYear();
+
+    // Handle nearest holiday
+    if (holidayValue === 'nearest') {
+        // For simplicity, return current date for nearest - server will handle the actual logic
+        return now;
+    }
+
+    const holidayName = CLIENT_HOLIDAY_MAP[holidayValue];
+    if (!holidayName) return null;
+
+    // Simplified holiday date calculation (basic implementation)
+    const holidayDates = {
+        'Christmas/Holiday Season': new Date(year, 11, 25), // Dec 25
+        'New Year\'s Celebration': new Date(year, 0, 1), // Jan 1
+        'Halloween': new Date(year, 9, 31), // Oct 31
+        'Thanksgiving': (() => {
+            // Last Thursday in November
+            const november = new Date(year, 10, 1);
+            const thanksgiving = new Date(year, 10, 26); // Usually around Nov 26
+            return thanksgiving;
+        })(),
+        'Independence Day': new Date(year, 6, 4), // Jul 4
+        'Valentine\'s Day': new Date(year, 1, 14), // Feb 14
+        'Easter/Spring Holiday': (() => {
+            // Simplified - March/April, actual calculation is complex
+            return new Date(year, 3, 4); // April 4 as approximation
+        })(),
+        'St. Patrick\'s Day': new Date(year, 2, 17), // Mar 17
+        'Memorial Day': (() => {
+            // Last Monday in May
+            const may = new Date(year, 4, 31);
+            const memorialDay = new Date(year, 4, 31 - may.getDay());
+            return memorialDay;
+        })(),
+        'Labor Day': (() => {
+            // First Monday in September
+            const sept = new Date(year, 8, 1);
+            const laborDay = new Date(year, 8, 1 + (7 - sept.getDay()));
+            return laborDay;
+        })(),
+        'Veterans Day': new Date(year, 10, 11), // Nov 11
+        // Japanese holidays - approximate dates
+        'Japanese New Year (Oshogatsu)': new Date(year, 0, 1),
+        'Cherry Blossom Season (Hanami)': new Date(year, 3, 1), // April
+        'Star Festival (Tanabata)': new Date(year, 6, 7), // Jul 7
+        'Golden Week (Shukujitsu)': new Date(year, 4, 29), // Late May
+        'Children\'s Day (Kodomo no Hi)': new Date(year, 4, 5), // May 5
+        'Autumn Moon Festival (Tsukimi)': new Date(year, 8, 13), // Sep 13
+        'Obon Festival (Bon Odori)': new Date(year, 7, 16) // Aug 16
+    };
+
+    return holidayDates[holidayName] || null;
+}
+
+// Open time/date selection modal
+function openTimeDateModal() {
+    const modal = document.getElementById('timeDateModal');
+    if (!modal) {
+        console.error('Time/Date modal not found in HTML');
+        return;
+    }
+
+    const todBtn = document.getElementById('todBtn');
+    const currentOverride = todBtn ? todBtn.getAttribute('data-override') : null;
+
+    const hourInput = document.getElementById('timeDateHour');
+    const minuteInput = document.getElementById('timeDateMinute');
+    const dayInput = document.getElementById('timeDateDay');
+    const monthInput = document.getElementById('timeDateMonth');
+
+    // Default to current date/time
+    let targetDate = new Date();
+
+    if (currentOverride) {
+        if (currentOverride.includes('_')) {
+            // TIME_DATE format
+            const parts = currentOverride.split('_');
+            const timePart = parts[0];
+            const datePart = parts[1];
+
+            // Handle time part
+            if (timePart && timePart.length === 4 && /^\d{4}$/.test(timePart)) {
+                // HHmm format
+                const hour = parseInt(timePart.substring(0, 2));
+                const minute = parseInt(timePart.substring(2, 4));
+                targetDate.setHours(hour, minute);
+            }
+            // Named time values (dawn, sunrise, etc.) leave time as current
+
+            // Handle date part
+            if (datePart) {
+                if (datePart === 'tomorrow') {
+                    targetDate.setDate(targetDate.getDate() + 1);
+                } else if (CLIENT_HOLIDAY_MAP[datePart]) {
+                    // Holiday date
+                    const holidayDate = getHolidayDateClient('true_' + datePart);
+                    if (holidayDate) {
+                        targetDate = holidayDate;
+                        // Preserve time from timePart if it was set
+                        if (timePart && timePart.length === 4 && /^\d{4}$/.test(timePart)) {
+                            const hour = parseInt(timePart.substring(0, 2));
+                            const minute = parseInt(timePart.substring(2, 4));
+                            targetDate.setHours(hour, minute);
+                        }
+                    }
+                }
+                // Other date values (today, nextweek, etc.) leave date as current
+            }
+        }
+        // Single values without underscore are handled by current date/time
+    }
+
+    // Populate inputs with target date
+    if (hourInput) hourInput.value = targetDate.getHours();
+    if (minuteInput) minuteInput.value = targetDate.getMinutes();
+    if (dayInput) dayInput.value = targetDate.getDate();
+    if (monthInput) monthInput.value = targetDate.getMonth() + 1; // JavaScript months are 0-based
+
+    openModal(modal);
+}
+
+// Handle time/date modal save
+/**
+ * Saves the time/date settings from the modal and applies them to the UI
+ *
+ * Validates all input fields (hour, minute, day, month), creates a Date object,
+ * formats the values into the required override string format, and applies
+ * the override to the time-of-day button. Shows success feedback to the user.
+ *
+ * @throws {Error} Implicitly throws validation errors via toast notifications
+ */
+function saveTimeDateModal() {
+    const hour = parseInt(document.getElementById('timeDateHour').value);
+    const minute = parseInt(document.getElementById('timeDateMinute').value);
+    const day = parseInt(document.getElementById('timeDateDay').value);
+    const month = parseInt(document.getElementById('timeDateMonth').value);
+
+    // Validate inputs
+    if (isNaN(hour) || hour < 0 || hour > 23) {
+        showGlassToast('error', null, 'Invalid hour. Must be between 0-23.', false, undefined, '<i class="fas fa-clock"></i>');
+        return;
+    }
+    if (isNaN(minute) || minute < 0 || minute > 59) {
+        showGlassToast('error', null, 'Invalid minute. Must be between 0-59.', false, undefined, '<i class="fas fa-clock"></i>');
+        return;
+    }
+    if (isNaN(day) || day < 1 || day > 31) {
+        showGlassToast('error', null, 'Invalid day. Must be between 1-31.', false, undefined, '<i class="fas fa-clock"></i>');
+        return;
+    }
+    if (isNaN(month) || month < 1 || month > 12) {
+        showGlassToast('error', null, 'Invalid month. Must be between 1-12.', false, undefined, '<i class="fas fa-clock"></i>');
+        return;
+    }
+
+    // Create a date object with the selected values (using current year)
+    const now = new Date();
+    const selectedDate = new Date(now.getFullYear(), month - 1, day, hour, minute);
+
+    // Create a custom override value in the format %HHmm_MMDD
+    const formattedHour = hour.toString().padStart(2, '0');
+    const formattedMinute = minute.toString().padStart(2, '0');
+    const formattedDay = day.toString().padStart(2, '0');
+    const formattedMonth = month.toString().padStart(2, '0');
+    const timeDateValue = `%${formattedHour}${formattedMinute}_${formattedMonth}${formattedDay}`;
+
+    // Set the dynamic override on the time of day button
+    setDynamicOverride(document.getElementById('todBtn'), timeDateValue);
+
+    // Close the modal
+    const modal = document.getElementById('timeDateModal');
+    closeModal(modal);
+
+    showGlassToast('success', null, `Time/Date set to ${selectedDate.toLocaleString()}`, undefined, undefined, '<i class="fas fa-clock"></i>');
+}
+
+// WEATHER LOCATION MODAL FUNCTIONS
+
+// Open the weather location modal
+function openWeatherLocationModal() {
+    const modal = document.getElementById('weatherLocationModal');
+    if (!modal) {
+        console.error('Weather location modal not found in HTML');
+        return;
+    }
+
+    // Reset form state
+    const input = document.getElementById('weatherLocationInput');
+    const matchDisplay = document.getElementById('weatherLocationMatch');
+    const saveBtn = document.getElementById('saveWeatherLocationBtn');
+
+    input.value = '';
+    matchDisplay.textContent = 'Enter a city name and click Verify to see the matched location.';
+    matchDisplay.className = 'weather-location-match';
+    saveBtn.disabled = true;
+    saveBtn.dataset.location = '';
+
+    // Show the modal
+    openModal(modal);
+}
+
+// Verify weather location via WebSocket
+async function verifyWeatherLocation() {
+    const input = document.getElementById('weatherLocationInput');
+    const matchDisplay = document.getElementById('weatherLocationMatch');
+    const saveBtn = document.getElementById('saveWeatherLocationBtn');
+
+    const cityName = input.value.trim();
+    if (!cityName) {
+        matchDisplay.textContent = 'Please enter a city name.';
+        matchDisplay.className = 'weather-location-match error';
+        saveBtn.disabled = true;
+        return;
+    }
+
+    try {
+        matchDisplay.textContent = 'Searching...';
+        matchDisplay.className = 'weather-location-match loading';
+
+        // Send WebSocket request for city lookup
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        const response = await window.wsClient.lookupCity(cityName);
+
+        if (response && response.longitude !== undefined && response.latitude !== undefined) {
+            const result = response;
+
+            // Display matched location with current time
+            const locationText = `${result.city || cityName}, ${result.state || ''} ${result.country || ''}`.trim();
+            let displayText = `Found: ${locationText}`;
+
+            // Add current time if timezone is available
+            if (result.timezone) {
+                try {
+                    const now = new Date();
+                    const timeString = now.toLocaleTimeString('en-US', {
+                        timeZone: result.timezone,
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true
+                    });
+                    displayText += ` (Current time: ${timeString})`;
+                } catch (error) {
+                    console.warn('Failed to format time for timezone:', result.timezone, error);
+                }
+            }
+
+            matchDisplay.textContent = displayText;
+            matchDisplay.className = 'weather-location-match success';
+
+            // Enable save button and store coordinates
+            saveBtn.disabled = false;
+            saveBtn.dataset.location = `${result.longitude}_${result.latitude}`;
+            saveBtn.dataset.displayName = locationText;
+        } else {
+            matchDisplay.textContent = 'City not found. Please try a different name.';
+            matchDisplay.className = 'weather-location-match error';
+            saveBtn.disabled = true;
+        }
+    } catch (error) {
+        console.error('City lookup error:', error);
+        matchDisplay.textContent = error.message || 'Error searching for city. Please try again.';
+        matchDisplay.className = 'weather-location-match error';
+        saveBtn.disabled = true;
+    }
+}
+
+// Save weather location
+function saveWeatherLocation() {
+    const saveBtn = document.getElementById('saveWeatherLocationBtn');
+    const locationData = saveBtn.dataset.location;
+    const displayName = saveBtn.dataset.displayName;
+
+    if (!locationData) {
+        showGlassToast('error', null, 'No location to save.', false, undefined, '<i class="fas fa-location-dot-slash"></i>');
+        return;
+    }
+
+    // Set the location on the weather button
+    const weatherBtn = document.getElementById('weatherBtn');
+    if (weatherBtn) {
+        weatherBtn.setAttribute('data-location', locationData);
+        weatherBtn.dataset.locationDisplay = displayName;
+
+        // Also set it as active if not already
+        weatherBtn.dataset.state = 'on';
+        weatherBtn.classList.add('active');
+
+        showGlassToast('success', null, `Location set to ${displayName}`, undefined, undefined, '<i class="fas fa-map-marker-alt"></i>');
+
+        // Update status icons to reflect the location change
+        updatePromptStatusIcons();
+    }
+
+    // Close the modal
+    const modal = document.getElementById('weatherLocationModal');
+    closeModal(modal);
+}
+
+// Clear weather location
+function clearWeatherLocation() {
+    const weatherBtn = document.getElementById('weatherBtn');
+    if (weatherBtn) {
+        const hadLocation = weatherBtn.hasAttribute('data-location');
+        weatherBtn.removeAttribute('data-location');
+        delete weatherBtn.dataset.locationDisplay;
+
+        if (hadLocation) {
+            updatePromptStatusIcons();
+        }
+    }
+}
+
+// Set current location using browser geolocation, fallback to server-side IP lookup
+function setCurrentLocation() {
+    if (!navigator.geolocation) {
+        showGlassToast('error', null, 'Geolocation is not supported by this browser', false, undefined, '<i class="fas fa-location-dot-slash"></i>');
+    }
+
+    showGlassToast('info', null, 'Getting current location...', false, undefined, '<i class="fas fa-location-dot"></i>');
+
+    // Fallback to server-side IP geolocation
+    function fallbackToServerIP() {
+        const weatherBtn = document.getElementById('weatherBtn');
+        if (weatherBtn) {
+            weatherBtn.setAttribute('data-location', 'CLIENT');
+            weatherBtn.dataset.locationDisplay = 'Current Location (Server IP)';
+
+            // Also set it as active if not already
+            weatherBtn.dataset.state = 'on';
+            weatherBtn.classList.add('active');
+
+            showGlassToast('warning', null, 'Location will be determined by your IP', undefined, undefined, '<i class="fas fa-map-marker-alt"></i>');
+
+            // Update status icons to reflect the location change
+            updatePromptStatusIcons();
+        }
+    }
+
+    // Try GPS/network location first, then fallback to server IP lookup
+    function tryGPSLocation(options) {
+        let timeoutId;
+
+        const successCallback = function(position) {
+            clearTimeout(timeoutId);
+            const latitude = position.coords.latitude;
+            const longitude = position.coords.longitude;
+
+            // Set the location on the weather button
+            const weatherBtn = document.getElementById('weatherBtn');
+            if (weatherBtn) {
+                const locationData = `${longitude}_${latitude}`;
+                const displayName = `Current Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+
+                weatherBtn.setAttribute('data-location', locationData);
+                weatherBtn.dataset.locationDisplay = displayName;
+
+                // Also set it as active if not already
+                weatherBtn.dataset.state = 'on';
+                weatherBtn.classList.add('active');
+
+                showGlassToast('success', null, `Location set to current location`, undefined, undefined, '<i class="fas fa-map-marker-alt"></i>');
+
+                // Update status icons to reflect the location change
+                updatePromptStatusIcons();
+            }
+        };
+
+        const errorCallback = function(error) {
+            clearTimeout(timeoutId);
+
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    showGlassToast('error', null, 'Location access denied. Please allow location access in your browser settings.', false, undefined, '<i class="fas fa-location-dot-slash"></i>');
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                case error.TIMEOUT:
+                    // Browser geolocation failed, use server-side IP lookup
+                    fallbackToServerIP();
+                    break;
+            }
+        };
+
+        // Set a timeout to handle silent failures (some browsers don't call error callback)
+        timeoutId = setTimeout(() => {
+            fallbackToServerIP();
+        }, options.timeout + 1000);
+
+        navigator.geolocation.getCurrentPosition(successCallback, errorCallback, options);
+    }
+
+    // Start with high accuracy GPS/network location
+    tryGPSLocation({
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 300000 // 5 minutes
+    });
+}
+
+// TEXT REPLACEMENT LOCK MODAL FUNCTIONS
+let currentTextReplacementSeeds = [];
+
+// Helper function to get display-friendly replacement type names
+function getReplacementTypeDisplay(type) {
+    switch (type) {
+        case 'incrementing':
+            return 'incrementing';
+        case 'bracketed_incrementing':
+        case 'bracketed_expanded':
+        case 'bracketed_prefix':
+        case 'bracketed_expanded_pick':
+        case 'bracketed_prefix_pick':
+        case 'bracketed_expanded_combine':
+        case 'bracketed_prefix_combine':
+        case 'combine':
+            return 'pick';
+        default:
+            return type;
+    }
+}
+
+// Open the text replacement lock modal
+function openTextReplacementLockModal() {
+    const modal = document.getElementById('textReplacementLockModal');
+    const listContainer = document.getElementById('textReplacementLockList');
+
+    if (!modal || !listContainer) {
+        console.error('Text replacement lock modal elements not found');
+        return;
+    }
+
+    // Clear previous content
+    listContainer.innerHTML = '';
+
+    // Get current text replacement seeds from the last generation or preview
+    // This would be populated from window.lastGenerationTextReplacements
+    currentTextReplacementSeeds = window.lastGenerationTextReplacements || [];
+
+    // Render the text replacement list
+    renderTextReplacementLockList();
+
+    openModal(modal);
+}
+
+// Select all text replacements
+function selectAllTextReplacements() {
+    const buttons = document.querySelectorAll('.text-replacement-lock-btn');
+    buttons.forEach(button => {
+        const item = button.closest('.text-replacement-lock-item');
+        const index = parseInt(item.dataset.index);
+
+        // Update UI
+        item.classList.add('selected');
+        button.setAttribute('data-state', 'on');
+
+        // Update data
+        if (currentTextReplacementSeeds[index]) {
+            currentTextReplacementSeeds[index].locked = true;
+        }
+    });
+    updateLockStatusText();
+}
+
+// Deselect all text replacements
+function deselectAllTextReplacements() {
+    const buttons = document.querySelectorAll('.text-replacement-lock-btn');
+    buttons.forEach(button => {
+        const item = button.closest('.text-replacement-lock-item');
+        const index = parseInt(item.dataset.index);
+
+        // Update UI
+        item.classList.remove('selected');
+        button.setAttribute('data-state', 'off');
+
+        // Update data
+        if (currentTextReplacementSeeds[index]) {
+            currentTextReplacementSeeds[index].locked = false;
+        }
+    });
+    updateLockStatusText();
+}
+
+// Apply the selected text replacement locks
+function applyTextReplacementLocks() {
+    // Get seeds that are marked as locked based on their locked property
+    const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
+
+    // Store the locked replacements for use in generation
+    window.lockedTextReplacements = lockedSeeds;
+
+    // Close the modal
+    const modal = document.getElementById('textReplacementLockModal');
+    closeModal(modal);
+
+    // Update the main lock button indicator
+    updateMainLockButtonState();
+}
+
+
+// Update the lock status text in the modal
+function updateLockStatusText() {
+    const statusText = document.getElementById('textReplacementLockStatusText');
+    if (!statusText) return;
+
+    const selectedCount = document.querySelectorAll('.text-replacement-lock-item.selected').length;
+    const lockableCount = document.querySelectorAll('.text-replacement-lock-btn').length;
+
+    if (lockableCount === 0) {
+        statusText.textContent = 'No lockable replacements';
+        return;
+    }
+
+    if (selectedCount === 0) {
+        statusText.textContent = 'No replacements locked';
+    } else if (selectedCount === lockableCount) {
+        statusText.textContent = 'All lockable replacements locked';
+    } else {
+        statusText.textContent = `${selectedCount} of ${lockableCount} lockable replacements locked`;
+    }
+}
+
+// Update the main lock button indicator state
+function updateMainLockButtonState() {
+    if (!dynamicGenerationLockedBtn) return;
+
+    const lockedCount = window.lockedTextReplacements ? window.lockedTextReplacements.length : 0;
+    const availableCount = window.lastGenerationTextReplacements ?
+        window.lastGenerationTextReplacements.filter(r => r.can_lock !== undefined ? r.can_lock !== false : true).length : 0;
+
+    if (availableCount === 0) {
+        // No replacements available, hide button
+        textReplacementLockBtn.classList.add('hidden');
+        textReplacementLockBtn.setAttribute('data-state', 'off');
+        textReplacementLockBtn.title = 'No text replacements available';
+    } else {
+        // Replacements available, show button
+        textReplacementLockBtn.classList.remove('hidden');
+
+        if (lockedCount === 0) {
+            // None locked, button is off
+            textReplacementLockBtn.setAttribute('data-state', 'off');
+            textReplacementLockBtn.title = 'Click to lock text replacements';
+        } else if (lockedCount === availableCount) {
+            // All locked, button is on
+            textReplacementLockBtn.setAttribute('data-state', 'on');
+            textReplacementLockBtn.title = 'All text replacements locked';
+        } else {
+            // Some locked, button is partial
+            textReplacementLockBtn.setAttribute('data-state', 'partial');
+            textReplacementLockBtn.title = `${lockedCount} of ${availableCount} replacements locked`;
+        }
+    }
+}
+
+// Text replacement manual selection modal variables
+let currentManualSelectionSeed = null;
+let currentManualSelectionIndex = null;
+
+// Open text replacement manual selection modal
+// Initialize manual selection modal dropdown (called once during app initialization)
+function initializeManualSelectionDropdown() {
+    const container = document.getElementById('manualSelectionDropdownContainer');
+    const button = document.getElementById('manualSelectionDropdownBtn');
+    const menu = document.getElementById('manualSelectionDropdownMenu');
+
+    if (container && button && menu) {
+        setupDropdown(
+            container,
+            button,
+            menu,
+            () => {}, // No render function needed as we populate manually
+            () => document.getElementById('manualSelectionDropdownSelected').textContent,
+            { preventFocusTransfer: true }
+        );
+    }
+}
+
+async function openTextReplacementManualSelectionModal(seed, index) {
+    currentManualSelectionSeed = seed;
+    currentManualSelectionIndex = index;
+
+    const modal = document.getElementById('textReplacementManualSelectionModal');
+    const selectedElement = document.getElementById('manualSelectionDropdownSelected');
+    const menuElement = document.getElementById('manualSelectionDropdownMenu');
+
+    if (!modal || !selectedElement || !menuElement) {
+        console.error('Manual selection modal elements not found');
+        return;
+    }
+
+
+    // Set initial selected value
+    selectedElement.textContent = 'Loading options...';
+
+    // Clear menu
+    menuElement.innerHTML = '';
+
+    // Request options from server
+    try {
+        const result = await window.wsClient.sendMessage('get_text_replacement_options', {
+            pattern: seed.pattern || `!${seed.key}`,
+            presetName: seed.presetName,
+            model: window.currentModel,
+            periodKey: window.currentPeriodKey
+        });
+
+        if (result && result.success && result.options) {
+            populateManualSelectionDropdown(result.options, seed.value);
+        } else {
+            selectedElement.textContent = 'No options available';
+            menuElement.innerHTML = '<div class="custom-dropdown-option">No options available</div>';
+        }
+    } catch (error) {
+        console.error('Error getting text replacement options:', error);
+        selectedElement.textContent = 'Error loading options';
+        menuElement.innerHTML = '<div class="custom-dropdown-option">Error loading options</div>';
+    }
+
+    openModal(modal);
+}
+
+// Populate the manual selection dropdown with options
+function populateManualSelectionDropdown(options, currentValue) {
+    const selectedElement = document.getElementById('manualSelectionDropdownSelected');
+    const menuElement = document.getElementById('manualSelectionDropdownMenu');
+
+    if (!selectedElement || !menuElement) return;
+
+    // Set current selection - find the option that matches currentValue
+    const currentOption = options.find(opt => opt.value === currentValue);
+    selectedElement.textContent = currentOption ? currentOption.value : (currentValue || 'Select an option...');
+
+    // Clear menu
+    menuElement.innerHTML = '';
+
+    // Add options
+    options.forEach(option => {
+        const optionElement = document.createElement('div');
+        optionElement.className = 'custom-dropdown-option' +
+            (option.value === currentValue ? ' selected' : '');
+        optionElement.dataset.value = option.value;
+        optionElement.dataset.key = option.key;
+        optionElement.dataset.index = option.index;
+        optionElement.textContent = option.value;
+
+        optionElement.addEventListener('click', () => {
+            selectedElement.textContent = option.value;
+            closeDropdown(menuElement, document.getElementById('manualSelectionDropdownBtn'));
+
+            // Update the current selection with the correct key and index
+            if (currentManualSelectionSeed) {
+                currentManualSelectionSeed.value = option.value;
+                currentManualSelectionSeed.key = option.key;
+                currentManualSelectionSeed.index = option.index;
+            }
+        });
+
+        menuElement.appendChild(optionElement);
+    });
+}
+
+// Apply manual selection
+function applyManualSelection() {
+    if (!currentManualSelectionSeed || currentManualSelectionIndex === null) return;
+
+    const selectedElement = document.getElementById('manualSelectionDropdownSelected');
+    if (!selectedElement) return;
+
+    const selectedValue = selectedElement.textContent;
+    if (selectedValue === 'Select an option...' || selectedValue === 'Loading options...' || selectedValue === 'No options available' || selectedValue === 'Error loading options') {
+        return;
+    }
+
+    // The seed data should already be updated by the dropdown click handler
+    // Just make sure it's locked
+    currentManualSelectionSeed.locked = true;
+
+    // Update the UI in the lock modal to show it's locked
+    updateTextReplacementLockItem(currentManualSelectionIndex, currentManualSelectionSeed);
+
+    // Also update the lock button state in the UI
+    const item = document.querySelector(`.text-replacement-lock-item[data-index="${currentManualSelectionIndex}"]`);
+    if (item) {
+        // Mark as selected (locked)
+        item.classList.add('selected');
+        // Update the lock button state
+        const lockButton = item.querySelector('.text-replacement-lock-btn');
+        if (lockButton) {
+            lockButton.setAttribute('data-state', 'on');
+        }
+    }
+
+    // Update the lock status text
+    updateLockStatusText();
+
+    // Update the locked replacements for immediate use in generation
+    const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
+    window.lockedTextReplacements = lockedSeeds;
+
+    // Update the main lock button indicator
+    updateMainLockButtonState();
+
+    // Close the modal
+    const modal = document.getElementById('textReplacementManualSelectionModal');
+    closeModal(modal);
+}
+
+// Select random text replacement
+function selectRandomTextReplacement(seed, index) {
+    // Request options from server to get all possible values
+    window.wsClient.sendMessage('get_text_replacement_options', {
+        pattern: seed.pattern || `!${seed.key}`,
+        presetName: seed.presetName,
+        model: window.currentModel,
+        periodKey: window.currentPeriodKey
+    }).then(result => {
+        if (result && result.success && result.options && result.options.length > 0) {
+            const randomOption = result.options[Math.floor(Math.random() * result.options.length)];
+
+            // Update the seed data
+            seed.value = randomOption.value;
+            seed.key = randomOption.key;
+            seed.index = randomOption.index;
+            // Lock the replacement so it gets applied
+            seed.locked = true;
+
+            // Update the UI in the lock modal
+            updateTextReplacementLockItem(index, seed);
+
+            // Also update the lock button state in the UI
+            const item = document.querySelector(`.text-replacement-lock-item[data-index="${index}"]`);
+            if (item) {
+                // Mark as selected (locked)
+                item.classList.add('selected');
+                // Update the lock button state
+                const lockButton = item.querySelector('.text-replacement-lock-btn');
+                if (lockButton) {
+                    lockButton.setAttribute('data-state', 'on');
+                }
+            }
+
+            // Update the lock status text
+            updateLockStatusText();
+
+            // Update the locked replacements for immediate use in generation
+            const lockedSeeds = currentTextReplacementSeeds.filter(s => s.locked === true);
+            window.lockedTextReplacements = lockedSeeds;
+
+            // Update the main lock button indicator
+            updateMainLockButtonState();
+        } else {
+            console.warn('No options available for random selection');
+        }
+    }).catch(error => {
+        console.error('Error getting options for random selection:', error);
+    });
+}
+
+// Replace placeholder in the corresponding prompt textarea
+function replacePlaceholderInPrompt(seed, index) {
+    // Find the textarea based on the seed's source
+    let textarea = null;
+    if (seed.source === 'prompt') {
+        textarea = document.getElementById('manualPrompt');
+    } else if (seed.source === 'negative_prompt') {
+        textarea = document.getElementById('manualUc');
+    } else if (seed.source && seed.source.startsWith('character_') && seed.source.endsWith('_prompt')) {
+        // For character prompts, we might need to handle this differently
+        // For now, just use the main prompt
+        textarea = document.getElementById('manualPrompt');
+    } else if (seed.source && seed.source.startsWith('character_') && seed.source.endsWith('_uc')) {
+        // For character negative prompts, use the negative prompt
+        textarea = document.getElementById('manualUc');
+    }
+
+    if (!textarea) {
+        console.warn('Could not find textarea for replacement source:', seed.source);
+        return;
+    }
+
+    // Get the original pattern to replace
+    const patternToReplace = seed.pattern || `!${seed.key}`;
+
+    // Escape special regex characters in the pattern
+    const escapedPattern = patternToReplace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Replace the pattern with the resolved value
+    const currentText = textarea.value;
+    const newText = currentText.replace(new RegExp(escapedPattern, 'g'), seed.value);
+
+    // Update the textarea
+    textarea.value = newText;
+
+    // Trigger input event to update any dependent UI
+    const inputEvent = new Event('input', { bubbles: true });
+    textarea.dispatchEvent(inputEvent);
+
+    // Remove this replacement from the current seeds and locked replacements
+    removeTextReplacement(index);
+
+    // Show a brief success indication
+    showGlassToast('success', null, `Replaced "${patternToReplace}" with "${seed.value}" and removed from replacements`, false, 2500, '<i class="fas fa-exchange-alt"></i>');
+}
+
+// Remove a text replacement from both current seeds and locked replacements
+function removeTextReplacement(index) {
+    // Remove from current text replacement seeds
+    if (currentTextReplacementSeeds && currentTextReplacementSeeds[index]) {
+        currentTextReplacementSeeds.splice(index, 1);
+
+        // Update the indices of remaining items and refresh the UI
+        const modal = document.getElementById('textReplacementLockModal');
+        if (modal) {
+            const listContainer = modal.querySelector('.text-replacement-lock-list');
+            if (listContainer) {
+                // Re-render the entire list with updated indices
+                renderTextReplacementLockList();
+            }
+        }
+    }
+
+    // Remove from locked replacements if it exists there
+    if (window.lockedTextReplacements && Array.isArray(window.lockedTextReplacements)) {
+        // Find and remove the replacement at the specified index
+        if (window.lockedTextReplacements[index]) {
+            window.lockedTextReplacements.splice(index, 1);
+        }
+    }
+
+    // Update the main lock button indicator
+    updateMainLockButtonState();
+}
+
+// Re-render the text replacement lock list after changes
+function renderTextReplacementLockList() {
+    const listContainer = document.getElementById('textReplacementLockList');
+    if (!listContainer) return;
+
+    listContainer.innerHTML = '';
+
+    if (currentTextReplacementSeeds.length === 0) {
+        listContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">No text replacements available. Generate an image first to see replacement options.</div>';
+        updateLockStatusText();
+        return;
+    }
+
+    currentTextReplacementSeeds.forEach((seed, index) => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'text-replacement-lock-item';
+        itemDiv.dataset.index = index;
+
+        const isLocked = seed.locked === true;
+        const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
+
+        itemDiv.classList.toggle('selected', isLocked);
+
+        const indexDisplay = seed.index !== null && seed.index !== undefined ? `<span class="text-replacement-index">${seed.index}</span>` : '';
+        let originalPattern = seed.pattern;
+        if (!originalPattern) {
+            if (seed.type.startsWith('bracketed_')) {
+                originalPattern = seed.pattern;
+            } else {
+                originalPattern = `!${seed.key}${seed.type === 'combine' ? '~+' : '~'}`;
+            }
+        }
+
+        itemDiv.innerHTML = `
+            <div class="text-replacement-lock-content">
+                <div class="text-replacement-lock-info">
+                    <div class="text-replacement-lock-row">
+                        <div class="text-replacement-lock-pattern">
+                            <span class="text-replacement-original">${originalPattern}</span>
+                            <i class="fas fa-arrow-right text-replacement-arrow"></i>
+                            <span class="text-replacement-selected">!${seed.key}${indexDisplay}</span>
+                        </div>
+                        <div class="text-replacement-lock-badges">
+                            <span class="text-replacement-badge text-replacement-badge-location">${seed.source}</span>
+                            <span class="text-replacement-badge text-replacement-badge-type">${getReplacementTypeDisplay(seed.type)}</span>
+                        </div>
+                    </div>
+                    <div class="text-replacement-full-value">${seed.value}</div>
+                </div>
+                <div class="text-replacement-lock-actions">
+                    <button type="button" class="text-replacement-manual-select-btn btn-secondary" title="Manual Selection" id="tr-manual-${index}">
+                        <i class="fas fa-list"></i>
+                    </button>
+                    <button type="button" class="text-replacement-random-btn btn-secondary" title="Random Selection" id="tr-random-${index}">
+                        <i class="fas fa-dice"></i>
+                    </button>
+                    <button type="button" class="text-replacement-replace-btn btn-secondary" title="Replace in Prompt" id="tr-replace-${index}">
+                        <i class="fas fa-floppy-disk-circle-arrow-right"></i>
+                    </button>
+                    <button type="button" class="text-replacement-lock-btn btn-secondary indicator" data-state="${isLocked ? 'on' : 'off'}" id="tr-lock-${index}">
+                        <i class="fas fa-lock"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // Add event listeners for the buttons
+        if (canLock) {
+            // Lock button
+            const lockButton = itemDiv.querySelector('.text-replacement-lock-btn');
+            lockButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                const isCurrentlyLocked = itemDiv.classList.contains('selected');
+                const newState = !isCurrentlyLocked;
+
+                itemDiv.classList.toggle('selected', newState);
+                lockButton.setAttribute('data-state', newState ? 'on' : 'off');
+
+                currentTextReplacementSeeds[index].locked = newState;
+                updateLockStatusText();
+
+                // Update locked replacements
+                const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
+                window.lockedTextReplacements = lockedSeeds;
+                updateMainLockButtonState();
+            });
+
+            // Manual selection button
+            const manualButton = itemDiv.querySelector('.text-replacement-manual-select-btn');
+            manualButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                openTextReplacementManualSelectionModal(seed, index);
+            });
+
+            // Random selection button
+            const randomButton = itemDiv.querySelector('.text-replacement-random-btn');
+            randomButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                selectRandomTextReplacement(seed, index);
+            });
+
+            // Replace in prompt button
+            const replaceButton = itemDiv.querySelector('.text-replacement-replace-btn');
+            replaceButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                replacePlaceholderInPrompt(seed, index);
+            });
+        } else {
+            // For non-lockable replacements, show info only
+            const originalPattern = seed.pattern || `!${seed.key}`;
+            itemDiv.innerHTML = `
+                <div class="text-replacement-lock-content">
+                    <div class="text-replacement-lock-info">
+                        <div class="text-replacement-lock-row">
+                            <div class="text-replacement-lock-pattern">
+                                <span class="text-replacement-original">${originalPattern}</span>
+                                <i class="fas fa-arrow-right text-replacement-arrow"></i>
+                                <span class="text-replacement-selected">!${seed.key}</span>
+                            </div>
+                            <div class="text-replacement-lock-badges">
+                                <span class="text-replacement-badge text-replacement-badge-location">${seed.source}</span>
+                                <span class="text-replacement-badge text-replacement-badge-type">${getReplacementTypeDisplay(seed.type)}</span>
+                            </div>
+                        </div>
+                        <div class="text-replacement-full-value">${seed.value}</div>
+                    </div>
+                    <div class="text-replacement-lock-actions">
+                        <button type="button" class="text-replacement-replace-btn btn-secondary" title="Replace in Prompt" id="tr-replace-${index}">
+                            <i class="fas fa-floppy-disk-circle-arrow-right"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            // Replace in prompt button for non-lockable replacements
+            const replaceButton = itemDiv.querySelector('.text-replacement-replace-btn');
+            replaceButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                replacePlaceholderInPrompt(seed, index);
+            });
+        }
+
+        listContainer.appendChild(itemDiv);
+    });
+
+    updateLockStatusText();
+}
+
+// Update text replacement lock item display
+function updateTextReplacementLockItem(index, updatedSeed) {
+    const item = document.querySelector(`.text-replacement-lock-item[data-index="${index}"]`);
+    if (!item) return;
+
+    // Update the value display
+    const valueElement = item.querySelector('.text-replacement-full-value');
+    if (valueElement) {
+        valueElement.textContent = updatedSeed.value;
+    }
+
+    // Update the selected pattern display
+    const selectedElement = item.querySelector('.text-replacement-selected');
+    if (selectedElement && updatedSeed.key) {
+        const indexDisplay = updatedSeed.index !== null && updatedSeed.index !== undefined ? `<span class="text-replacement-index">${updatedSeed.index}</span>` : '';
+        selectedElement.innerHTML = `!${updatedSeed.key}${indexDisplay}`;
+    }
+
+    // Update the data
+    if (currentTextReplacementSeeds && currentTextReplacementSeeds[index]) {
+        currentTextReplacementSeeds[index] = updatedSeed;
+    }
+}
+
 // Show compiled prompt modal
 function showCompiledPromptModal() {
     if (!window.dynamicGenerationData || !window.dynamicGenerationData.compiled_prompt) {
-        showGlassToast('warning', null, 'No compiled prompt available to view.');
+        showGlassToast('warning', null, 'No compiled prompt available to view.', false, undefined, '<i class="fas fa-file-slash"></i>');
         return;
     }
 
@@ -490,13 +1643,38 @@ function showCompiledPromptModal() {
         return;
     }
 
-    // Helper function to create info item
-    const createInfoItem = (label, value, icon = '', className = '') => {
-        if (!value || value === 'Unknown') return '';
+    // Helper function to create info item with optional progress bar
+    const createInfoItem = (label, value, icon = '', className = '', progressValue = null) => {
+        // Filter out null, undefined, and invalid values
+        if (value === null || value === undefined) return '';
+
+        // Value should already be a properly formatted string from the calling code
+        // No conversion needed here - the calling code handles formatting
+        const displayValue = value;
+
+        // Check if this is a convertible unit (contains unit symbols)
+        const isConvertible = typeof displayValue === 'string' && (
+                             displayValue.includes('°C') || displayValue.includes('°F') ||
+                             displayValue.includes('m/s') || displayValue.includes('mph') ||
+                             displayValue.includes('km') || displayValue.includes('mi') ||
+                             displayValue.includes('mm/hr') || displayValue.includes('in/hr') ||
+                             displayValue.includes(' mm') || displayValue.includes(' cm') || displayValue.includes(' in') ||
+                             displayValue.includes(' hPa') || displayValue.includes(' inHg'));
+
+        const clickableClass = isConvertible ? 'clickable' : '';
+        const onclickAttr = isConvertible ? ' onclick="toggleWeatherUnits()"' : '';
+
+        // Add progress bar for percentage values
+        let progressBar = '';
+        if (progressValue !== null && progressValue >= 0 && progressValue <= 100) {
+            progressBar = `<div class="progress-bar"><div class="progress-fill" style="width: ${progressValue}%"></div></div>`;
+        }
+
         return `
             <div class="info-item ${className}">
                 <span class="info-label">${icon} ${label}</span>
-                <span>${value}</span>
+                <span class="${clickableClass}"${onclickAttr}>${displayValue}</span>
+                ${progressBar}
             </div>
         `;
     };
@@ -506,10 +1684,266 @@ function showCompiledPromptModal() {
         if (!content) return '';
         return `
             <div class="content-wrapper${contentClass}">
-                <label><strong>${icon} ${title}</strong></label>
+                ${title ? '<label><strong>' + icon + ' ' + title + '</strong></label>' : ''}
                 ${content}
             </div>
         `;
+    };
+
+    // Weather icon mapping function using Weather Icons
+    function getWeatherIcon(condition) {
+        if (!condition) return '<i class="wi wi-day-sunny"></i>';
+
+        const iconMap = {
+            'clear sky': '<i class="wi wi-day-sunny"></i>',
+            'mainly clear': '<i class="wi wi-day-sunny-overcast"></i>',
+            'partly cloudy': '<i class="wi wi-day-cloudy"></i>',
+            'overcast': '<i class="wi wi-cloudy"></i>',
+            'fog': '<i class="wi wi-fog"></i>',
+            'depositing rime fog': '<i class="wi wi-fog"></i>',
+            'light drizzle': '<i class="wi wi-day-showers"></i>',
+            'moderate drizzle': '<i class="wi wi-day-showers"></i>',
+            'dense drizzle': '<i class="wi wi-day-showers"></i>',
+            'light freezing drizzle': '<i class="wi wi-day-snow"></i>',
+            'dense freezing drizzle': '<i class="wi wi-day-snow"></i>',
+            'slight rain': '<i class="wi wi-day-rain"></i>',
+            'moderate rain': '<i class="wi wi-day-rain"></i>',
+            'heavy rain': '<i class="wi wi-day-rain"></i>',
+            'light freezing rain': '<i class="wi wi-day-snow"></i>',
+            'heavy freezing rain': '<i class="wi wi-day-snow"></i>',
+            'slight snow fall': '<i class="wi wi-day-snow"></i>',
+            'moderate snow fall': '<i class="wi wi-snow"></i>',
+            'heavy snow fall': '<i class="wi wi-snow"></i>',
+            'snow grains': '<i class="wi wi-snow"></i>',
+            'slight rain showers': '<i class="wi wi-day-showers"></i>',
+            'moderate rain showers': '<i class="wi wi-day-rain"></i>',
+            'violent rain showers': '<i class="wi wi-day-storm-showers"></i>',
+            'slight snow showers': '<i class="wi wi-day-snow"></i>',
+            'heavy snow showers': '<i class="wi wi-snow"></i>',
+            'thunderstorm': '<i class="wi wi-day-thunderstorm"></i>',
+            'thunderstorm with slight hail': '<i class="wi wi-day-thunderstorm"></i>',
+            'thunderstorm with heavy hail': '<i class="wi wi-day-thunderstorm"></i>'
+        };
+        return iconMap[condition] || '<i class="wi wi-day-sunny"></i>';
+    }
+
+    // Unit conversion functions
+    function celsiusToFahrenheit(celsius) {
+        return Math.round((celsius * 9/5) + 32);
+    }
+
+    function mpsToMph(mps) {
+        return Math.round(mps * 2.237);
+    }
+
+    function mpsToKmh(mps) {
+        return Math.round(mps * 3.6);
+    }
+
+    // Global unit preference (can be made persistent later)
+    let useMetric = localStorage.getItem('weather_units_metric') !== 'false'; // Default to true if not set
+
+    // Function to get wind direction from degrees
+    function getWindDirection(degrees) {
+        if (degrees === null || degrees === undefined) return 'N/A';
+        const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+        const index = Math.round(degrees / 22.5) % 16;
+        return directions[index];
+    }
+
+
+    // Function to toggle weather units
+    window.toggleWeatherUnits = function() {
+        useMetric = !useMetric;
+
+        // Update main card temperature
+        const mainTempNumber = content.querySelector('.weather-temp-number');
+        const mainTempUnit = content.querySelector('.weather-temp-unit');
+        const feelsLikeElement = content.querySelector('.weather-feels-like');
+        if (mainTempNumber && mainTempUnit) {
+            const currentTemp = parseFloat(mainTempNumber.textContent);
+            if (!isNaN(currentTemp)) {
+                let newTemp, newFeelsTemp;
+                if (useMetric) {
+                    // Convert F to C
+                    newTemp = Math.round((currentTemp - 32) * 5/9);
+                    mainTempUnit.textContent = '°C';
+                } else {
+                    // Convert C to F
+                    newTemp = Math.round((currentTemp * 9/5) + 32);
+                    mainTempUnit.textContent = '°F';
+                }
+                mainTempNumber.textContent = newTemp;
+
+                // Update feels like temperature if present
+                if (feelsLikeElement) {
+                    const feelsText = feelsLikeElement.textContent;
+                    const feelsMatch = feelsText.match(/Feels like (\d+)°[CF]/);
+                    if (feelsMatch) {
+                        const feelsTemp = parseFloat(feelsMatch[1]);
+                        if (!isNaN(feelsTemp)) {
+                            if (useMetric) {
+                                newFeelsTemp = Math.round((feelsTemp - 32) * 5/9);
+                            } else {
+                                newFeelsTemp = Math.round((feelsTemp * 9/5) + 32);
+                            }
+                            feelsLikeElement.textContent = `Feels like ${newFeelsTemp}°${useMetric ? 'C' : 'F'}`;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update all weather value displays (both old info-item format and new weather display)
+        const allValueElements = content.querySelectorAll('.info-item span:last-child, .weather-detail-value');
+        allValueElements.forEach(el => {
+            const currentText = el.textContent;
+            if (currentText.includes('°C') || currentText.includes('°F')) {
+                const tempValue = parseFloat(currentText.replace('°C', '').replace('°F', ''));
+                if (!isNaN(tempValue)) {
+                    if (useMetric) {
+                        // Convert F to C
+                        const celsius = Math.round((tempValue - 32) * 5/9);
+                        el.textContent = `${celsius}°C`;
+                    } else {
+                        // Convert C to F
+                        const fahrenheit = Math.round((tempValue * 9/5) + 32);
+                        el.textContent = `${fahrenheit}°F`;
+                    }
+                }
+            } else if (currentText.includes('m/s') || currentText.includes('mph')) {
+                const windValue = parseFloat(currentText.replace(' m/s', '').replace(' mph', ''));
+                if (!isNaN(windValue)) {
+                    if (useMetric) {
+                        // Convert mph to m/s
+                        const mps = Math.round(windValue / 2.237);
+                        el.textContent = `${mps} m/s`;
+                    } else {
+                        // Convert m/s to mph
+                        const mph = Math.round(windValue * 2.237);
+                        el.textContent = `${mph} mph`;
+                    }
+                }
+            } else if (currentText.includes('km') || currentText.includes('mi')) {
+                const visibilityValue = parseFloat(currentText.replace(' km', '').replace(' mi', ''));
+                if (!isNaN(visibilityValue)) {
+                    if (useMetric) {
+                        // Convert miles to km
+                        const km = (visibilityValue / 0.621371).toFixed(1);
+                        el.textContent = `${km} km`;
+                    } else {
+                        // Convert km to miles
+                        const mi = (visibilityValue * 0.621371).toFixed(1);
+                        el.textContent = `${mi} mi`;
+                    }
+                }
+            } else if (currentText.includes(' hPa') || currentText.includes(' inHg')) {
+                const pressureValue = parseFloat(currentText.replace(' hPa', '').replace(' inHg', ''));
+                if (!isNaN(pressureValue)) {
+                    if (useMetric) {
+                        // Convert inHg to hPa
+                        const hPa = Math.round(pressureValue * 33.8639);
+                        el.textContent = `${hPa} hPa`;
+                    } else {
+                        // Convert hPa to inHg
+                        const inHg = (pressureValue / 33.8639).toFixed(2);
+                        el.textContent = `${inHg} inHg`;
+                    }
+                }
+            } else if (currentText.includes('mm/hr') || currentText.includes('in/hr')) {
+                const precipValue = parseFloat(currentText.replace(' mm/hr', '').replace(' in/hr', ''));
+                if (!isNaN(precipValue)) {
+                    if (useMetric) {
+                        // Convert inches to mm
+                        const mm = precipValue / 0.0394;
+                        el.textContent = `${mm.toFixed(1)} mm/hr`;
+                    } else {
+                        // Convert mm to inches
+                        const inches = precipValue * 0.0394;
+                        el.textContent = `${inches.toFixed(2)} in/hr`;
+                    }
+                }
+            } else if (currentText.includes('mm') || currentText.includes('cm') || currentText.includes('in')) {
+                // Handle other precipitation units (rain, snowfall, etc.)
+                const precipValue = parseFloat(currentText.replace(' mm', '').replace(' cm', '').replace(' in', ''));
+                if (!isNaN(precipValue)) {
+                    const labelElement = el.closest('.weather-detail-card')?.querySelector('.weather-detail-label') ||
+                                       el.previousElementSibling;
+                    if (labelElement && labelElement.textContent.includes('Snowfall')) {
+                        // Snowfall uses cm/in
+                        if (useMetric) {
+                            // Convert inches to cm
+                            const cm = precipValue / 0.393701;
+                            el.textContent = `${cm.toFixed(1)} cm`;
+                        } else {
+                            // Convert cm to inches
+                            const inches = precipValue * 0.393701;
+                            el.textContent = `${inches.toFixed(2)} in`;
+                        }
+                    } else {
+                        // Rain/showers use mm/in
+                        if (useMetric) {
+                            // Convert inches to mm
+                            const mm = precipValue / 0.0394;
+                            el.textContent = `${mm.toFixed(1)} mm`;
+                        } else {
+                            // Convert mm to inches
+                            const inches = precipValue * 0.0394;
+                            el.textContent = `${inches.toFixed(2)} in`;
+                        }
+                    }
+                }
+            }
+        });
+
+        // Update hourly forecast temperatures
+        const hourTempElements = content.querySelectorAll('.hour-temp, .weather-hour-temp');
+        hourTempElements.forEach(el => {
+            const currentText = el.textContent;
+            if (currentText.includes('°C') || currentText.includes('°F')) {
+                const tempValue = parseFloat(currentText.replace('°C', '').replace('°F', ''));
+                if (!isNaN(tempValue)) {
+                    if (useMetric) {
+                        // Convert F to C
+                        const celsius = Math.round((tempValue - 32) * 5/9);
+                        el.textContent = `${celsius}°C`;
+                    } else {
+                        // Convert C to F
+                        const fahrenheit = Math.round((tempValue * 9/5) + 32);
+                        el.textContent = `${fahrenheit}°F`;
+                    }
+                }
+            }
+        });
+
+        // Update hourly precipitation displays
+        const hourPrecipElements = content.querySelectorAll('.hour-precip, .weather-hour-precip');
+        hourPrecipElements.forEach(el => {
+            const currentText = el.textContent;
+            if (currentText.includes('mm') || currentText.includes('in')) {
+                const precipValue = parseFloat(currentText.replace('mm', '').replace('in', ''));
+                if (!isNaN(precipValue)) {
+                    if (useMetric) {
+                        // Convert inches to mm
+                        const mm = Math.round(precipValue / 0.0394);
+                        el.textContent = `${mm}mm`;
+                    } else {
+                        // Convert mm to inches
+                        const inches = (precipValue * 0.0394).toFixed(2);
+                        el.textContent = `${inches}in`;
+                    }
+                }
+            }
+        });
+
+        // Save preference to localStorage
+        localStorage.setItem('weather_units_metric', useMetric.toString());
+
+        // Update dynamic generation overlay to reflect new units
+        const context = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.context;
+        updateDynamicGenerationOverlay(context);
+
+        // Note: Unit toggle button removed since we're using info-item format
     };
 
     // Build context section
@@ -518,23 +1952,417 @@ function showCompiledPromptModal() {
         const context = compiled.context;
         const weather = context.weather || {};
         const time = context.time || {};
+        let weatherItems = [];
 
-        const contextItems = [
-            createInfoItem('Weather Condition', weather.condition, '🌤️'),
-            createInfoItem('Temperature', weather.temperature ? `${weather.temperature}°C` : null, '🌡️'),
-            createInfoItem('Feels Like', weather.feelsLike ? `${weather.feelsLike}°C` : null, '🌡️'),
-            createInfoItem('Humidity', weather.humidity ? `${weather.humidity}%` : null, '💧'),
-            createInfoItem('Wind Speed', weather.windSpeed ? `${weather.windSpeed} m/s` : null, '💨'),
-            createInfoItem('Time Period', time.period, '🕐'),
-            createInfoItem('Lighting', time.lighting, '💡'),
-            createInfoItem('Atmosphere', time.atmosphere, '🌫️'),
-            createInfoItem('Season', context.season, '🍂'),
-            createInfoItem('Hour', time.hour !== undefined ? `${time.hour}:${String(time.minute || 0).padStart(2, '0')}` : null, '🕐'),
-            createInfoItem('Timezone', time.timezone, '🌍')
-        ].filter(item => item).join('');
+        // Build modern weather section
+        let weatherContent = '';
+        if (weather.condition || weather.temperature !== undefined) {
+            const weatherIcon = getWeatherIcon(weather.condition);
 
-        if (contextItems) {
-            contextContent = `<div class="info-grid">${contextItems}</div>`;
+            // Get weather alerts
+            const alerts = weather.weatherQuality?.alerts || [];
+            const hasAlerts = alerts.length > 0;
+
+            // Get heat index and wind chill
+            const heatIndex = weather.weatherQuality?.heatIndex;
+            const windChill = weather.weatherQuality?.windChill;
+            const uvWarnings = weather.weatherQuality?.uvWarnings;
+
+            // Temperature with unit toggle
+            const tempC = weather.temperature;
+            const tempF = tempC !== undefined ? celsiusToFahrenheit(tempC) : null;
+            const tempDisplay = useMetric ?
+                (tempC !== undefined ? `${tempC}°C` : 'N/A') :
+                (tempF !== undefined ? `${tempF}°F` : 'N/A');
+
+            // Feels like temperature
+            const feelsC = weather.feelsLike;
+            const feelsF = feelsC !== undefined ? celsiusToFahrenheit(feelsC) : null;
+            const feelsDisplay = useMetric ?
+                (feelsC !== undefined ? `${feelsC}°C` : 'N/A') :
+                (feelsF !== undefined ? `${feelsF}°F` : 'N/A');
+
+            // Wind speed with unit toggle
+            const windMps = weather.windSpeed;
+            const windMph = windMps !== undefined ? mpsToMph(windMps) : null;
+            const windDisplay = useMetric ?
+                (windMps !== undefined ? `${windMps} m/s` : 'N/A') :
+                (windMph !== undefined ? `${windMph} mph` : 'N/A');
+
+            // Format all weather values as strings with proper units
+            const weatherCondition = weather.condition || 'Unknown';
+            const comfortLevel = weather.weatherQuality?.comfortLevel || 'Unknown conditions';
+            const humidityValue = weather.humidity !== undefined ? `${weather.humidity}%` : null;
+            const windDirection = weather.windDirection !== undefined ? getWindDirection(weather.windDirection) : null;
+            const pressureValue = weather.pressure !== undefined ? (useMetric ? `${weather.pressure} hPa` : `${(weather.pressure / 33.8639).toFixed(2)} inHg`) : null;
+            const cloudCoverValue = weather.cloudCoverage !== undefined ? `${weather.cloudCoverage}%` : null;
+            const visibilityValue = useMetric ?
+                (weather.visibility !== undefined ? `${(weather.visibility / 1000).toFixed(1)} km` : null) :
+                (weather.visibility !== undefined ? `${(weather.visibility * 0.000621371).toFixed(1)} mi` : null);
+            const uvIndexValue = weather.uvIndex !== undefined ? `${weather.uvIndex} (${uvWarnings?.category || 'Unknown'})` : null;
+            const heatIndexValue = heatIndex !== null ? (useMetric ? `${heatIndex}°C` : `${celsiusToFahrenheit(heatIndex)}°F`) : null;
+            const windChillValue = windChill !== null ? (useMetric ? `${windChill}°C` : `${celsiusToFahrenheit(windChill)}°F`) : null;
+
+            // Build main weather card - display temperature in correct format based on user preference
+            const displayTemp = useMetric ? tempC : tempF;
+            const displayFeels = useMetric ? feelsC : feelsF;
+
+            // Format time and date separately
+            let timeText = '';
+            let dateText = '';
+
+            if (time.hour !== undefined && time.minute !== undefined) {
+                // Create date object for formatting
+                const now = new Date();
+                dateText = now.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric'
+                });
+
+                const hour24 = time.hour;
+                const minuteStr = String(time.minute).padStart(2, '0');
+                timeText = `${hour24}:${minuteStr}`;
+            }
+
+            const seasonText = context.season || '';
+            const location = context.location || {};
+            const locationText = location.city && location.country ?
+                `${location.city}, ${location.country}` :
+                location.city || location.country || '';
+
+            // Determine main card background based on season and pressure
+            let cardBackgroundClass = '';
+            if (context.season && weather.pressure !== undefined) {
+                const season = context.season.toLowerCase();
+                const pressure = weather.pressure;
+
+                // Base season colors with pressure variations
+                if (season.includes('spring')) {
+                    if (pressure < 1000) {
+                        cardBackgroundClass = 'season-spring-stormy';
+                    } else if (pressure < 1013) {
+                        cardBackgroundClass = 'season-spring-unstable';
+                    } else if (pressure < 1020) {
+                        cardBackgroundClass = 'season-spring-normal';
+                    } else {
+                        cardBackgroundClass = 'season-spring-stable';
+                    }
+                } else if (season.includes('summer')) {
+                    if (pressure < 1000) {
+                        cardBackgroundClass = 'season-summer-stormy';
+                    } else if (pressure < 1013) {
+                        cardBackgroundClass = 'season-summer-unstable';
+                    } else if (pressure < 1020) {
+                        cardBackgroundClass = 'season-summer-normal';
+                    } else {
+                        cardBackgroundClass = 'season-summer-stable';
+                    }
+                } else if (season.includes('fall') || season.includes('autumn')) {
+                    if (pressure < 1000) {
+                        cardBackgroundClass = 'season-fall-stormy';
+                    } else if (pressure < 1013) {
+                        cardBackgroundClass = 'season-fall-unstable';
+                    } else if (pressure < 1020) {
+                        cardBackgroundClass = 'season-fall-normal';
+                    } else {
+                        cardBackgroundClass = 'season-fall-stable';
+                    }
+                } else if (season.includes('winter')) {
+                    if (pressure < 1000) {
+                        cardBackgroundClass = 'season-winter-stormy';
+                    } else if (pressure < 1013) {
+                        cardBackgroundClass = 'season-winter-unstable';
+                    } else if (pressure < 1020) {
+                        cardBackgroundClass = 'season-winter-normal';
+                    } else {
+                        cardBackgroundClass = 'season-winter-stable';
+                    }
+                }
+            } else if (context.season) {
+                // Fallback to season-only colors if no pressure data
+                const season = context.season.toLowerCase();
+                if (season.includes('spring')) {
+                    cardBackgroundClass = 'season-spring-normal';
+                } else if (season.includes('summer')) {
+                    cardBackgroundClass = 'season-summer-normal';
+                } else if (season.includes('fall') || season.includes('autumn')) {
+                    cardBackgroundClass = 'season-fall-normal';
+                } else if (season.includes('winter')) {
+                    cardBackgroundClass = 'season-winter-normal';
+                }
+            }
+
+            const mainCardHtml = `
+                <div class="weather-main-card ${cardBackgroundClass}">
+                    <div class="weather-current-temp">
+                        <div class="weather-temp-value">
+                            <span class="weather-temp-number clickable" onclick="toggleWeatherUnits()">${displayTemp !== undefined ? displayTemp : '--'}</span>
+                            <span class="weather-temp-unit">${useMetric ? '°C' : '°F'}</span>
+                        </div>
+                        ${displayFeels !== undefined ? `<div class="weather-feels-like">Feels like ${displayFeels}°${useMetric ? 'C' : 'F'}</div>` : ''}
+                    </div>
+                    <div class="weather-condition-display">
+                        <div class="weather-condition-icon">${weatherIcon}</div>
+                        <div class="weather-condition-text">${weatherCondition}</div>
+                        <div class="weather-condition-details">
+                            ${humidityValue ? `<div class="weather-condition-detail"><i class="fa-solid fa-droplet"></i>${humidityValue}</div>` : ''}
+                            ${windDisplay !== 'N/A' ? `<div class="weather-condition-detail"><i class="fa-solid fa-wind"></i>${windDisplay}${windDirection ? ` (${windDirection})` : ''}</div>` : ''}
+                            ${cloudCoverValue ? `<div class="weather-condition-detail"><i class="fa-solid fa-cloud"></i>${cloudCoverValue}</div>` : ''}
+                            ${uvIndexValue ? `<div class="weather-condition-detail"><i class="fa-solid fa-sun"></i>${weather.uvIndex}</div>` : ''}
+                            ${(() => {
+                                let precipElements = [];
+
+                                // Precipitation rate
+                                if (weather.precipitation !== undefined && weather.precipitation > 0) {
+                                    const precipRate = useMetric ? `${weather.precipitation} mm/hr` : `${(weather.precipitation * 0.0393701).toFixed(2)} in/hr`;
+                                    precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-rain"></i>${precipRate}</div>`);
+                                }
+
+                                // Rain amount
+                                if (weather.rain > 0) {
+                                    const rainAmount = useMetric ? `${weather.rain} mm` : `${(weather.rain * 0.0393701).toFixed(2)} in`;
+                                    precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-rain"></i>Rain: ${rainAmount}</div>`);
+                                }
+
+                                // Showers amount
+                                if (weather.showers > 0) {
+                                    const showerAmount = useMetric ? `${weather.showers} mm` : `${(weather.showers * 0.0393701).toFixed(2)} in`;
+                                    precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-showers-heavy"></i>Showers: ${showerAmount}</div>`);
+                                }
+
+                                // Snowfall amount
+                                if (weather.snowfall > 0) {
+                                    const snowAmount = useMetric ? `${weather.snowfall} cm` : `${(weather.snowfall * 0.393701).toFixed(2)} in`;
+                                    precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-snowflake"></i>Snow: ${snowAmount}</div>`);
+                                }
+
+                                // Precipitation type - only show if there's actual precipitation
+                                if (weather.precipitationType && (weather.precipitation > 0 || weather.rain > 0 || weather.showers > 0 || weather.snowfall > 0)) {
+                                    precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-rain"></i>${weather.precipitationType.description || weather.precipitationType}</div>`);
+                                }
+
+                                return precipElements.join('');
+                            })()}
+                        </div>
+                    </div>
+                    <div class="weather-card-header">
+                        <div class="weather-date-time">
+                            <div class="time-text">${timeText || 'Time not available'}</div>
+                            <div class="date-season-container">
+                                ${seasonText ? `<div class="season-badge">${seasonText}</div>` : ''}
+                                <div class="date-text">${dateText || 'Date not available'}</div>
+                            </div>
+                            ${locationText ? `<div class="location-text"><i class="fas fa-map-marker-alt"></i> ${locationText}</div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Helper function to create modern weather detail card
+            const createWeatherDetailCard = (label, value, icon, progressValue = null, isClickable = false) => {
+                if (!value) return '';
+
+                const clickableClass = isClickable ? 'clickable' : '';
+                const onclickAttr = isClickable ? ' onclick="toggleWeatherUnits()"' : '';
+
+                let progressBar = '';
+                if (progressValue !== null && progressValue >= 0 && progressValue <= 100) {
+                    progressBar = `<div class="weather-progress-bar"><div class="weather-progress-fill" style="width: ${progressValue}%"></div></div>`;
+                }
+
+                return `
+                    <div class="weather-detail-card">
+                        <div class="weather-detail-icon">${icon}</div>
+                        <div class="weather-detail-content">
+                            <div class="weather-detail-label">${label}</div>
+                            <div class="weather-detail-value ${clickableClass}"${onclickAttr}>${value}</div>
+                            ${progressBar}
+                        </div>
+                    </div>
+                `;
+            };
+
+            // Build weather details grid
+            const detailCards = [
+                createWeatherDetailCard('Comfort Level', comfortLevel, '<i class="fa-solid fa-person"></i>'),
+                createWeatherDetailCard('Visibility', visibilityValue, '<i class="fa-solid fa-eye"></i>', null, true),
+                createWeatherDetailCard('Heat Index', heatIndexValue, '<i class="fa-solid fa-fire"></i>'),
+                createWeatherDetailCard('Wind Chill', windChillValue, '<i class="fa-solid fa-snowflake"></i>'),
+            ].filter(card => card);
+
+            // Add wind gust if available
+            if (weather.windGust) {
+                detailCards.push(createWeatherDetailCard('Wind Gust', useMetric ? `${weather.windGust} m/s` : `${mpsToMph(weather.windGust)} mph`, '<i class="fa-solid fa-wind"></i>', null, true));
+            }
+
+            const detailsGridHtml = detailCards.length > 0 ? `<div class="weather-details-grid">${detailCards.join('')}</div>` : '';
+
+            // Build weather alerts
+            let alertsHtml = '';
+            if (hasAlerts) {
+                alertsHtml = alerts.map((alert, index) => `
+                    <div class="weather-alert-card ${alert.severity}">
+                        <div class="weather-alert-content">
+                            <div class="weather-alert-icon">
+                                ${alert.severity === 'danger' ? '<i class="fa-solid fa-triangle-exclamation"></i>' : '<i class="fa-solid fa-exclamation-triangle"></i>'}
+                            </div>
+                            <div class="weather-alert-text">
+                                <div class="weather-alert-title">${alert.title}</div>
+                                <div class="weather-alert-message">${alert.message}</div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            weatherContent = `<div class="weather-display">${mainCardHtml}${detailsGridHtml}${alertsHtml}</div>`;
+        }
+
+        // Hourly forecast section - modern design
+        let hourlyHtml = '';
+        if (weather.hourly && Array.isArray(weather.hourly) && weather.hourly.length > 0) {
+            const nextHours = weather.hourly.slice(0, 6); // Show next 6 hours for compact display
+            const hourlyItems = nextHours.map((hour, index) => {
+                const hourTime = new Date(hour.timestamp);
+                const hourTemp = useMetric ?
+                    (hour.temperature !== undefined ? `${hour.temperature}°C` : 'N/A') :
+                    (hour.temperature !== undefined ? `${celsiusToFahrenheit(hour.temperature)}°F` : 'N/A');
+                const timeLabel = index === 0 ? 'Now' : `${hourTime.getHours().toString().padStart(2, '0')}:00`;
+                const precipDisplay = hour.precipitation > 0 ?
+                    (useMetric ? `${hour.precipitation}mm` : `${(hour.precipitation * 0.0394).toFixed(1)}in`) : '';
+
+                return `
+                    <div class="weather-hour-item">
+                        <div class="weather-hour-time">${timeLabel}</div>
+                        <div class="weather-hour-icon">${getWeatherIcon(hour.condition)}</div>
+                        <div class="weather-hour-temp">${hourTemp}</div>
+                        ${precipDisplay ? `<div class="weather-hour-precip">${precipDisplay}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            hourlyHtml = `
+                <div class="weather-hourly-forecast">
+                    <div class="weather-hourly-title">
+                        <i class="fa-solid fa-clock"></i>
+                        Hourly Forecast
+                    </div>
+                    <div class="weather-hourly-grid">
+                        ${hourlyItems}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Time and season information
+        const timeItems = [
+            createInfoItem('Time Period', time.period, '<i class="fa-solid fa-clock"></i>'),
+            createInfoItem('Lighting', time.lighting, '<i class="fa-solid fa-lightbulb"></i>'),
+            createInfoItem('Atmosphere', time.atmosphere, '<i class="fa-solid fa-smog"></i>'),
+            createInfoItem('Season', context.season, '<i class="fa-solid fa-leaf"></i>'),
+            createInfoItem('Hour', time.hour !== undefined ? `${time.hour}:${String(time.minute || 0).padStart(2, '0')}` : null, '<i class="fa-solid fa-clock"></i>'),
+            createInfoItem('Timezone', time.timezone, '<i class="fa-solid fa-globe"></i>')
+        ].filter(item => item);
+
+        // Create period information card
+        let periodCardHtml = '';
+        if (context.season && time.period) {
+            // Determine background class based on season + time period + lighting/atmosphere
+            let periodBgClass = 'period-default';
+
+            const season = context.season.toLowerCase();
+            const period = time.period ? time.period.toLowerCase() : '';
+            const lighting = time.lighting ? time.lighting.toLowerCase() : '';
+            const atmosphere = time.atmosphere ? time.atmosphere.toLowerCase() : '';
+
+            // Combine factors for background selection
+            if (season.includes('spring')) {
+                if (period.includes('dawn') || period.includes('sunrise')) {
+                    periodBgClass = 'period-spring-dawn';
+                } else if (period.includes('morning')) {
+                    periodBgClass = 'period-spring-morning';
+                } else if (period.includes('noon') || period.includes('afternoon')) {
+                    periodBgClass = 'period-spring-day';
+                } else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) {
+                    periodBgClass = 'period-spring-dusk';
+                } else if (period.includes('night')) {
+                    periodBgClass = 'period-spring-night';
+                }
+            } else if (season.includes('summer')) {
+                if (period.includes('dawn') || period.includes('sunrise')) {
+                    periodBgClass = 'period-summer-dawn';
+                } else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) {
+                    periodBgClass = 'period-summer-day';
+                } else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) {
+                    periodBgClass = 'period-summer-dusk';
+                } else if (period.includes('night')) {
+                    periodBgClass = 'period-summer-night';
+                }
+            } else if (season.includes('fall') || season.includes('autumn')) {
+                if (period.includes('dawn') || period.includes('sunrise')) {
+                    periodBgClass = 'period-fall-dawn';
+                } else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) {
+                    periodBgClass = 'period-fall-day';
+                } else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) {
+                    periodBgClass = 'period-fall-dusk';
+                } else if (period.includes('night')) {
+                    periodBgClass = 'period-fall-night';
+                }
+            } else if (season.includes('winter')) {
+                if (period.includes('dawn') || period.includes('sunrise')) {
+                    periodBgClass = 'period-winter-dawn';
+                } else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) {
+                    periodBgClass = 'period-winter-day';
+                } else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) {
+                    periodBgClass = 'period-winter-dusk';
+                } else if (period.includes('night')) {
+                    periodBgClass = 'period-winter-night';
+                }
+            }
+
+            // Adjust for atmospheric conditions
+            if (atmosphere.includes('fog') || atmosphere.includes('mist')) {
+                periodBgClass += ' foggy';
+            } else if (atmosphere.includes('cloud') || atmosphere.includes('overcast')) {
+                periodBgClass += ' cloudy';
+            } else if (atmosphere.includes('clear') || atmosphere.includes('bright')) {
+                periodBgClass += ' clear';
+            }
+
+            // Convert periodKey to pretty display name
+            let shortTitle = 'Time';
+            if (time.periodKey) {
+                shortTitle = time.periodKey
+                    .split('_')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ');
+            }
+
+            periodCardHtml = `
+                <div class="period-info-card ${periodBgClass}">
+                    <div class="period-info-content">
+                        <div class="period-main-info">
+                            <div class="period-title">${shortTitle}</div>
+                            <div class="period-details">
+                                ${context.season ? `<div class="period-detail"><i class="fa-solid fa-leaf"></i><div class="detail-content"><div class="detail-label">Season</div><div class="detail-value">${context.season}</div></div></div>` : ''}
+                                ${time.period ? `<div class="period-detail"><i class="fa-solid fa-clock"></i><div class="detail-content"><div class="detail-label">Period</div><div class="detail-value">${time.period}</div></div></div>` : ''}
+                                ${time.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value">${time.lighting}</div></div></div>` : ''}
+                                ${time.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value">${time.atmosphere}</div></div></div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Combine weather and time content
+        if (weatherContent) {
+            contextContent = periodCardHtml + weatherContent + (hourlyHtml ? hourlyHtml : '');
+        }
+
+        // Add time and season information if no weather
+        if (!weatherContent && timeItems.length > 0) {
+            contextContent = periodCardHtml + `<div class="info-grid">${timeItems.filter(item => item).join('')}</div>`;
         }
     }
 
@@ -549,43 +2377,89 @@ function showCompiledPromptModal() {
         modificationsContent = `<div class="info-list compact">${modItems}</div>`;
     }
 
-    // Build text replacements section
+    // Build text replacements section with individual cards per replacement
     let replacementsContent = '';
     if (compiled.text_replacements) {
         const replacements = [];
 
-        const addReplacements = (items, title, icon) => {
-            if (items && items.length > 0) {
-                replacements.push(`<div class="content-header"><strong>${icon} ${title}:</strong></div>`);
-                items.forEach(rep => {
-                    replacements.push(`
-                        <div class="replacement-item">
-                            <div class="find-text">Find: "${rep.select_text}"</div>
-                            <div class="replace-text">Replace: "${rep.replace_text}"</div>
+        const createReplacementCard = (rep, type, source) => {
+            const typeBadge = type === 'prompt' ? 'Prompt' : type === 'uc' ? 'Negative' : 'Character';
+            const sourceBadge = source === 'base' ? 'Base' : `Character ${source + 1}`;
+
+            return `
+                <div class="replacement-info-card">
+                    <div class="replacement-info-content">
+                        <div class="period-main-info">
+                            <div class="period-title">
+                                <div class="replacement-header">
+                                    <span class="find-text">"${rep.select_text}"</span>
+                                    <div class="replacement-badges">
+                                        <span class="replacement-badge ${source}">${sourceBadge}</span>
+                                        <span class="replacement-badge ${type}">${typeBadge}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="replacement-content">
+                                <div class="replacement-text">"${rep.replace_text}"</div>
+                                ${rep.reason ? `<div class="replacement-reason">${rep.reason}</div>` : ''}
+                            </div>
                         </div>
-                    `);
-                });
-            }
+                    </div>
+                </div>
+            `;
         };
 
-        addReplacements(compiled.text_replacements.prompt, 'Prompt Replacements', '<i class="fas fa-input-text"></i>');
-        addReplacements(compiled.text_replacements.uc, 'Negative Prompt Replacements', '<i class="fas fa-ban"></i>');
+        // Add prompt replacements
+        if (compiled.text_replacements.prompt && compiled.text_replacements.prompt.length > 0) {
+            compiled.text_replacements.prompt.forEach(rep => {
+                replacements.push(createReplacementCard(rep, 'prompt', 'base'));
+            });
+        }
 
+        // Add negative prompt replacements
+        if (compiled.text_replacements.uc && compiled.text_replacements.uc.length > 0) {
+            compiled.text_replacements.uc.forEach(rep => {
+                replacements.push(createReplacementCard(rep, 'uc', 'base'));
+            });
+        }
+
+        // Add character replacements
         if (compiled.text_replacements.character_prompts && compiled.text_replacements.character_prompts.length > 0) {
-            replacements.push(`<div class="content-header"><strong>👥 Character Replacements:</strong></div>`);
             compiled.text_replacements.character_prompts.forEach((char, charIndex) => {
-                if (char && (char.input?.length > 0 || char.uc?.length > 0)) {
-                    replacements.push(`<div class="info-item"><strong>Character ${charIndex + 1}:</strong></div>`);
-                    addReplacements(char.input, 'Input Replacements', '<i class="fas fa-input-text"></i>');
-                    addReplacements(char.uc, 'Negative Replacements', '<i class="fas fa-ban"></i>');
+                if (char && char.input && char.input.length > 0) {
+                    char.input.forEach(rep => {
+                        replacements.push(createReplacementCard(rep, 'prompt', charIndex));
+                    });
+                }
+                if (char && char.uc && char.uc.length > 0) {
+                    char.uc.forEach(rep => {
+                        replacements.push(createReplacementCard(rep, 'uc', charIndex));
+                    });
                 }
             });
         }
 
         if (replacements.length > 0) {
-            replacementsContent = `<div class="info-list">${replacements.join('')}</div>`;
+            replacementsContent = replacements.join('');
         } else {
-            replacementsContent = '<div class="content-header">No text replacements were applied</div>';
+            replacementsContent = `
+                <div class="period-info-card">
+                    <div class="period-info-content">
+                        <div class="period-main-info">
+                            <div class="period-title">Text Replacements</div>
+                            <div class="period-details">
+                                <div class="period-detail">
+                                    <i class="fas fa-info-circle"></i>
+                                    <div class="detail-content">
+                                        <div class="detail-label">Status</div>
+                                        <div class="detail-value">No text replacements were applied</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
         }
     }
 
@@ -595,22 +2469,33 @@ function showCompiledPromptModal() {
         reasoningContent = `<div class="reasoning-content">${compiled.reasoning}</div>`;
     }
 
-    // Build metadata section
+    // Build metadata section using individual card elements like weather
+    let metadataContent = '';
     const metadataItems = [
-        createInfoItem('Timestamp', compiled.timestamp ? new Date(compiled.timestamp).toLocaleString() : null, '🕐'),
-        createInfoItem('AI Processed', compiled.ai_processed ? 'Yes' : 'No', '🤖'),
-        createInfoItem('Cache Status', compiled.prompt_hash ? 'Cached' : 'Fresh', '💾')
-    ].filter(item => item);
+        { label: 'Timestamp', value: compiled.timestamp ? new Date(compiled.timestamp).toLocaleString() : null, icon: 'fa-clock' },
+        { label: 'AI Processed', value: compiled.ai_processed ? 'Yes' : 'No', icon: 'fa-robot' },
+        { label: 'Cache Status', value: compiled.prompt_hash ? 'Cached' : 'Fresh', icon: 'fa-database' }
+    ].filter(item => item.value !== null);
 
-    const metadataContent = metadataItems.length > 0 ? `<div class="info-grid compact">${metadataItems.join('')}</div>` : '';
+    if (metadataItems.length > 0) {
+        metadataContent = metadataItems.map(item => `
+            <div class="weather-detail-card">
+                <div class="weather-detail-icon">
+                    <i class="fas ${item.icon}"></i>
+                </div>
+                <div class="weather-detail-content">
+                    <div class="weather-detail-label">${item.label}</div>
+                    <div class="weather-detail-value">${item.value}</div>
+                </div>
+            </div>
+        `).join('');
+    }
 
     // Combine all sections
     content.innerHTML = [
-        createSection('Context', contextContent, '🌍'),
-        createSection('Text Replacements', replacementsContent, '📝'),
-        createSection('Modifications Made', modificationsContent, '🔧'),
-        createSection('AI Reasoning', reasoningContent, '🤖'),
-        createSection('Metadata', metadataContent, '📊')
+        contextContent,
+        replacementsContent,
+        metadataContent
     ].filter(section => section).join('');
 
     // Show modal
@@ -623,7 +2508,7 @@ function showCompiledPromptModal() {
 // Clear compiled prompt
 async function clearCompiledPrompt() {
     if (!window.dynamicGenerationData || !window.dynamicGenerationData.compiled_prompt) {
-        showGlassToast('warning', null, 'No compiled prompt to clear.');
+        showGlassToast('warning', null, 'No compiled prompt to clear.', false, undefined, '<i class="fas fa-file-slash"></i>');
         return;
     }
 
@@ -654,8 +2539,6 @@ async function clearCompiledPrompt() {
 
     // Update UI
     updateDynamicGenerationToggleBtn();
-
-    showGlassToast('success', null, 'Compiled prompt cleared.');
 }
 
 function collectDynamicButtonState(btn) {
@@ -704,103 +2587,277 @@ function collectDynamicButtonState(btn) {
     return false;
 }
 
+// Get current TOD value display for context menu
+function getCurrentTodDisplay() {
+    const todBtn = document.getElementById('todBtn');
+    const currentOverride = todBtn ? todBtn.getAttribute('data-override') : null;
+
+    if (!currentOverride || todBtn.dataset.state === 'off') {
+        return 'No override set';
+    }
+
+    if (currentOverride.includes('_')) {
+        // TIME_DATE format
+        const parts = currentOverride.split('_');
+        const timePart = parts[0];
+        const datePart = parts[1];
+
+        let timeDisplay = '';
+        let dateDisplay = '';
+
+        // Handle time part
+        if (timePart) {
+            if (timePart.length === 4 && /^\d{4}$/.test(timePart)) {
+                // HHmm format - convert to 12-hour with AM/PM
+                const hour24 = parseInt(timePart.substring(0, 2));
+                const minute = timePart.substring(2, 4);
+                timeDisplay = `${hour24}:${minute}`;
+            } else {
+                // Named time value
+                const timeNames = {
+                    'dawn': 'Dawn', 'sunrise': 'Sunrise', 'early_morning': 'Early Morning',
+                    'morning': 'Morning', 'late_morning': 'Late Morning', 'daytime': 'Daytime',
+                    'afternoon': 'Afternoon', 'late_afternoon': 'Late Afternoon', 'golden_hour': 'Golden Hour',
+                    'sunset': 'Sunset', 'dusk': 'Dusk', 'early_evening': 'Early Evening',
+                    'evening': 'Evening', 'late_evening': 'Late Evening', 'midnight': 'Midnight'
+                };
+                timeDisplay = timeNames[timePart] || timePart;
+            }
+        }
+
+        // Handle date part
+        if (datePart) {
+            if (CLIENT_HOLIDAY_MAP[datePart]) {
+                // Holiday
+                dateDisplay = CLIENT_HOLIDAY_MAP[datePart];
+            } else if (datePart.length === 4 && /^\d{4}$/.test(datePart)) {
+                // Numeric MMDD format
+                const month = parseInt(datePart.substring(0, 2)) - 1; // 0-based
+                const day = parseInt(datePart.substring(2, 4));
+                const currentYear = new Date().getFullYear();
+                const numericDate = new Date(currentYear, month, day);
+                dateDisplay = numericDate.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric'
+                });
+            } else {
+                // Calculate actual dates for relative date values
+                let targetDate = new Date();
+
+                switch (datePart) {
+                    case 'today':
+                        dateDisplay = 'Today';
+                        break;
+                    case 'tomorrow':
+                        dateDisplay = 'Tomorrow';
+                        break;
+                    default:
+                        // Fallback for unknown date values
+                        dateDisplay = datePart.replace(/([A-Z])/g, ' $1').trim();
+                        break;
+                }
+            }
+        }
+
+        // Combine displays
+        if (timeDisplay && dateDisplay) {
+            return `${timeDisplay} on ${dateDisplay}`;
+        } else if (timeDisplay) {
+            return timeDisplay;
+        } else if (dateDisplay) {
+            return dateDisplay;
+        }
+
+        return 'Custom time/date';
+    } else {
+        // Single value without underscore
+        const timeNames = {
+            'dawn': 'Dawn', 'sunrise': 'Sunrise', 'early_morning': 'Early Morning',
+            'morning': 'Morning', 'late_morning': 'Late Morning', 'daytime': 'Daytime',
+            'afternoon': 'Afternoon', 'late_afternoon': 'Late Afternoon', 'golden_hour': 'Golden Hour',
+            'sunset': 'Sunset', 'dusk': 'Dusk', 'early_evening': 'Early Evening',
+            'evening': 'Evening', 'late_evening': 'Late Evening', 'midnight': 'Midnight'
+        };
+
+        if (timeNames[currentOverride]) {
+            return timeNames[currentOverride];
+        }
+
+        if (CLIENT_HOLIDAY_MAP[currentOverride]) {
+            return CLIENT_HOLIDAY_MAP[currentOverride];
+        }
+
+        // Handle numeric MMDD date format
+        if (currentOverride.length === 4 && /^\d{4}$/.test(currentOverride)) {
+            const month = parseInt(currentOverride.substring(0, 2)) - 1; // 0-based
+            const day = parseInt(currentOverride.substring(2, 4));
+            const currentYear = new Date().getFullYear();
+            const numericDate = new Date(currentYear, month, day);
+            return numericDate.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+
+        // Handle date-only values
+        let targetDate = new Date();
+        switch (currentOverride) {
+            case 'today':
+                return 'Today';
+            case 'tomorrow':
+                return 'Tomorrow';
+        }
+
+        return currentOverride;
+    }
+
+    return 'Unknown';
+}
+
 function setupDynamicGenerationContextMenus() {
     // Time of Day options - Enhanced with detailed transitional periods
     const todMenuConfig = {
-        sections: [{
-            type: 'list',
-            title: 'Time of Day',
-            items: [
-                { text: '🌅 Dawn - Pre-sunrise soft light', action: 'setTodOverride', value: 'dawn' },
-                { text: '🌄 Sunrise - Sun rising, golden light', action: 'setTodOverride', value: 'sunrise' },
-                { text: '🌅 Early Morning - Post-sunrise fresh air', action: 'setTodOverride', value: 'early_morning' },
-                { text: '🌞 Morning - Mid-morning bright light', action: 'setTodOverride', value: 'morning' },
-                { text: '☀️ Late Morning - Approaching noon', action: 'setTodOverride', value: 'late_morning' },
-                { text: '☀️ Daytime - Sun at highest point', action: 'setTodOverride', value: 'daytime' },
-                { text: '☀️ Afternoon - Full warm sunlight', action: 'setTodOverride', value: 'afternoon' },
-                { text: '🌅 Late Afternoon - Golden hour approaching', action: 'setTodOverride', value: 'late_afternoon' },
-                { text: '🌅 Golden Hour - Warm magical light', action: 'setTodOverride', value: 'golden_hour' },
-                { text: '🌇 Sunset - Sun setting, dramatic colors', action: 'setTodOverride', value: 'sunset' },
-                { text: '🌆 Dusk - Fading light to twilight', action: 'setTodOverride', value: 'dusk' },
-                { text: '🌃 Early Evening - Residual twilight', action: 'setTodOverride', value: 'early_evening' },
-                { text: '🌙 Evening - Full night atmosphere', action: 'setTodOverride', value: 'evening' },
-                { text: '🌙 Late Evening - Deep night darkness', action: 'setTodOverride', value: 'late_evening' },
-                { text: '🌙 Midnight - Complete darkness', action: 'setTodOverride', value: 'midnight' }
-            ]
-        }]
+        sections: [
+            {
+                type: 'list',
+                title: () => getCurrentTodDisplay(),
+                items: [
+                    {
+                        text: 'Select Date & Time',
+                        icon: 'fas fa-clock',
+                        action: 'openTimeDateModal'
+                    },
+                    {
+                        text: 'Tomorrow',
+                        icon: 'fas fa-calendar-day',
+                        action: 'setTodDateOverride',
+                        value: 'tomorrow'
+                    }
+                ]
+            },
+            {
+                type: 'list',
+                items: [
+                    {
+                        text: 'Time of Day',
+                        icon: 'fas fa-clock',
+                        submenu: [
+                            { text: 'Dawn - Pre-sunrise soft light', icon: 'fas fa-sunrise', action: 'setTodTimeOverride', value: 'dawn' },
+                            { text: 'Sunrise - Sun rising, golden light', icon: 'fas fa-sunrise', action: 'setTodTimeOverride', value: 'sunrise' },
+                            { text: 'Early Morning - Post-sunrise fresh air', icon: 'fas fa-sunrise', action: 'setTodTimeOverride', value: 'early_morning' },
+                            { text: 'Morning - Mid-morning bright light', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'morning' },
+                            { text: 'Late Morning - Approaching noon', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'late_morning' },
+                            { text: 'Daytime - Sun at highest point', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'daytime' },
+                            { text: 'Afternoon - Full warm sunlight', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'afternoon' },
+                            { text: 'Late Afternoon - Golden hour approaching', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'late_afternoon' },
+                            { text: 'Golden Hour - Warm magical light', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'golden_hour' },
+                            { text: 'Sunset - Sun setting, dramatic colors', icon: 'fas fa-sunset', action: 'setTodTimeOverride', value: 'sunset' },
+                            { text: 'Dusk - Fading light to twilight', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'dusk' },
+                            { text: 'Early Evening - Residual twilight', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'early_evening' },
+                            { text: 'Evening - Full night atmosphere', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'evening' },
+                            { text: 'Late Evening - Deep night darkness', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'late_evening' },
+                            { text: 'Midnight - Complete darkness', icon: 'fas fa-star', action: 'setTodTimeOverride', value: 'midnight' },
+                        ]
+                    },
+                    {
+                        text: 'Holiday',
+                        icon: 'fas fa-party-horn',
+                        submenu: [
+                            { text: 'Nearest Holiday', icon: 'fas fa-calendar-alt', action: 'setTodDateOverride', value: 'nearest' },
+                            { text: 'Christmas', icon: 'fas fa-gift', action: 'setTodDateOverride', value: 'christmas' },
+                            { text: 'New Year\'s', icon: 'fas fa-fireworks', action: 'setTodDateOverride', value: 'newyears' },
+                            { text: 'Halloween', icon: 'fas fa-ghost', action: 'setTodDateOverride', value: 'halloween' },
+                            { text: 'Thanksgiving', icon: 'fas fa-turkey', action: 'setTodDateOverride', value: 'thanksgiving' },
+                            { text: 'Independence Day', icon: 'fas fa-flag-usa', action: 'setTodDateOverride', value: 'independenceday' },
+                            { text: 'Valentine\'s Day', icon: 'fas fa-heart', action: 'setTodDateOverride', value: 'valentinesday' },
+                            { text: 'Easter', icon: 'fas fa-egg', action: 'setTodDateOverride', value: 'easter' },
+                            { text: 'St. Patrick\'s Day', icon: 'fas fa-shamrock', action: 'setTodDateOverride', value: 'stpatricksday' },
+                            { text: 'Memorial Day', icon: 'fas fa-umbrella-beach', action: 'setTodDateOverride', value: 'memorialday' },
+                            { text: 'Labor Day', icon: 'fas fa-football', action: 'setTodDateOverride', value: 'laborday' },
+                            { text: 'Veterans Day', icon: 'fas fa-medal', action: 'setTodDateOverride', value: 'veteransday' },
+                            { text: 'Japanese New Year', icon: 'fas fa-torii-gate', action: 'setTodDateOverride', value: 'japanesenewyear' },
+                            { text: 'Cherry Blossom', icon: 'fas fa-cherry-blossom', action: 'setTodDateOverride', value: 'cherryblossom' },
+                            { text: 'Tanabata Festival', icon: 'fas fa-star-and-crescent', action: 'setTodDateOverride', value: 'tanabatafestival' },
+                            { text: 'Golden Week', icon: 'fas fa-flag', action: 'setTodDateOverride', value: 'goldenweek' },
+                            { text: 'Children\'s Day', icon: 'fas fa-child', action: 'setTodDateOverride', value: 'childrensday' },
+                            { text: 'Tsukimi', icon: 'fas fa-moon', action: 'setTodDateOverride', value: 'tsukimi' },
+                            { text: 'Obon Festival', icon: 'fas fa-pray', action: 'setTodDateOverride', value: 'obonfestival' },
+                        ]
+                    }
+                ]
+            }
+        ]
     };
 
     // Weather options - Comprehensive weather conditions
     const weatherMenuConfig = {
         sections: [
             {
-            type: 'list',
-                title: 'Clear & Fair Weather',
-            items: [
-                    { text: '☀️ Clear Sky - Perfect blue sky, no clouds', action: 'setWeatherOverride', value: 'clear_sky' },
-                    { text: '🌤️ Few Clouds - Mostly clear with scattered clouds', action: 'setWeatherOverride', value: 'few_clouds' },
-                    { text: '⛅ Partly Cloudy - Mix of sun and clouds', action: 'setWeatherOverride', value: 'partly_cloudy' },
-                    { text: '🌤️ Fair Weather - Pleasant, mild conditions', action: 'setWeatherOverride', value: 'fair' }
-                ]
-            },
-            {
                 type: 'list',
-                title: 'Cloudy Conditions',
+                title: function() {
+                    const weatherBtn = document.getElementById('weatherBtn');
+                    const locationDisplay = weatherBtn?.dataset?.locationDisplay;
+                    return locationDisplay ? `Weather (${locationDisplay})` : 'Weather';
+                },
                 items: [
-                    { text: '☁️ Scattered Clouds - Some cloud coverage', action: 'setWeatherOverride', value: 'scattered_clouds' },
-                    { text: '☁️ Broken Clouds - Significant cloud coverage', action: 'setWeatherOverride', value: 'broken_clouds' },
-                    { text: '☁️ Overcast - Completely cloudy sky', action: 'setWeatherOverride', value: 'overcast' },
-                    { text: '🌫️ Mostly Cloudy - Predominantly cloudy', action: 'setWeatherOverride', value: 'mostly_cloudy' }
-                ]
-            },
-            {
-                type: 'list',
-                title: 'Precipitation',
-                items: [
-                    { text: '🌦️ Light Rain - Gentle, steady rain', action: 'setWeatherOverride', value: 'light_rain' },
-                    { text: '🌧️ Moderate Rain - Steady rainfall', action: 'setWeatherOverride', value: 'moderate_rain' },
-                    { text: '⛈️ Heavy Rain - Intense downpour', action: 'setWeatherOverride', value: 'heavy_rain' },
-                    { text: '🌨️ Light Snow - Gentle snowfall', action: 'setWeatherOverride', value: 'light_snow' },
-                    { text: '❄️ Moderate Snow - Steady snow', action: 'setWeatherOverride', value: 'moderate_snow' },
-                    { text: '❄️ Heavy Snow - Intense snowfall', action: 'setWeatherOverride', value: 'heavy_snow' },
-                    { text: '🌧️ Freezing Rain - Rain that freezes on contact', action: 'setWeatherOverride', value: 'freezing_rain' },
-                    { text: '🌨️ Sleet - Mix of rain and snow', action: 'setWeatherOverride', value: 'sleet' }
-                ]
-            },
-            {
-                type: 'list',
-                title: 'Severe Weather',
-                items: [
-                    { text: '⛈️ Thunderstorm - Lightning and thunder', action: 'setWeatherOverride', value: 'thunderstorm' },
-                    { text: '⛈️ Severe Thunderstorm - Intense electrical storm', action: 'setWeatherOverride', value: 'severe_thunderstorm' },
-                    { text: '🌪️ Tornado - Severe rotating storm', action: 'setWeatherOverride', value: 'tornado' },
-                    { text: '🌀 Hurricane - Tropical cyclone', action: 'setWeatherOverride', value: 'hurricane' },
-                    { text: '🌊 Tropical Storm - Weaker tropical system', action: 'setWeatherOverride', value: 'tropical_storm' }
-                ]
-            },
-            {
-                type: 'list',
-                title: 'Atmospheric Conditions',
-                items: [
-                    { text: '🌫️ Mist - Light fog, poor visibility', action: 'setWeatherOverride', value: 'mist' },
-                    { text: '🌫️ Fog - Dense fog, very poor visibility', action: 'setWeatherOverride', value: 'fog' },
-                    { text: '🌫️ Dense Fog - Extremely poor visibility', action: 'setWeatherOverride', value: 'dense_fog' },
-                    { text: '💨 Haze - Atmospheric particles reducing visibility', action: 'setWeatherOverride', value: 'haze' },
-                    { text: '🏜️ Dust - Dusty conditions', action: 'setWeatherOverride', value: 'dust' },
-                    { text: '🌋 Volcanic Ash - Ash from volcanic activity', action: 'setWeatherOverride', value: 'volcanic_ash' },
-                    { text: '💨 Sand - Sandy conditions', action: 'setWeatherOverride', value: 'sand' },
-                    { text: '💨 Squalls - Sudden, strong winds', action: 'setWeatherOverride', value: 'squalls' }
-                ]
-            },
-            {
-                type: 'list',
-                title: 'Special Conditions',
-                items: [
-                    { text: '🌈 Rainbow - Colorful arc after rain', action: 'setWeatherOverride', value: 'rainbow' },
-                    { text: '❄️ Blizzard - Severe snowstorm with high winds', action: 'setWeatherOverride', value: 'blizzard' },
-                    { text: '🌊 High Surf - Large ocean waves', action: 'setWeatherOverride', value: 'high_surf' },
-                    { text: '☀️ Heat Wave - Extremely hot conditions', action: 'setWeatherOverride', value: 'heat_wave' },
-                    { text: '🥶 Cold Wave - Extremely cold conditions', action: 'setWeatherOverride', value: 'cold_wave' }
+                    { text: 'Forecast', icon: 'fas fa-calendar', action: 'setWeatherOverride', value: 'forecast' },
+                    { text: 'Set Location', icon: 'fas fa-map-marker-alt', action: 'openWeatherLocationModal' },
+                    { text: 'Current Location', icon: 'fas fa-location-arrow', action: 'setCurrentLocation' },
+                    {
+                        text: 'Clear Location',
+                        icon: 'fas fa-times',
+                        action: 'clearWeatherLocation',
+                        loadfn: function(item) {
+                            const weatherBtn = document.getElementById('weatherBtn');
+                            item.disabled = !weatherBtn || !weatherBtn.getAttribute('data-location');
+                        }
+                    },
+                    { separator: true },
+                    {
+                        text: 'Conditions',
+                        icon: 'fas fa-cloud',
+                        submenu: [
+                            { text: 'Clear Sky - Perfect blue sky, no clouds', icon: 'fas fa-sun', action: 'setWeatherOverride', value: 'clear_sky' },
+                            { text: 'Few Clouds - Mostly clear with scattered clouds', icon: 'fas fa-cloud-sun', action: 'setWeatherOverride', value: 'few_clouds' },
+                            { text: 'Partly Cloudy - Mix of sun and clouds', icon: 'fas fa-cloud-sun', action: 'setWeatherOverride', value: 'partly_cloudy' },
+                            { text: 'Fair Weather - Pleasant, mild conditions', icon: 'fas fa-sun', action: 'setWeatherOverride', value: 'fair' },
+                            { separator: true },
+                            { text: 'Scattered Clouds - Some cloud coverage', icon: 'fas fa-cloud', action: 'setWeatherOverride', value: 'scattered_clouds' },
+                            { text: 'Broken Clouds - Significant cloud coverage', icon: 'fas fa-cloud', action: 'setWeatherOverride', value: 'broken_clouds' },
+                            { text: 'Overcast - Completely cloudy sky', icon: 'fas fa-cloud', action: 'setWeatherOverride', value: 'overcast' },
+                            { text: 'Mostly Cloudy - Predominantly cloudy', icon: 'fas fa-cloud', action: 'setWeatherOverride', value: 'mostly_cloudy' },
+                            { separator: true },
+                            { text: 'Light Rain - Gentle, steady rain', icon: 'fas fa-cloud-rain', action: 'setWeatherOverride', value: 'light_rain' },
+                            { text: 'Moderate Rain - Steady rainfall', icon: 'fas fa-cloud-rain', action: 'setWeatherOverride', value: 'moderate_rain' },
+                            { text: 'Heavy Rain - Intense downpour', icon: 'fas fa-cloud-showers-heavy', action: 'setWeatherOverride', value: 'heavy_rain' },
+                            { text: 'Light Snow - Gentle snowfall', icon: 'fas fa-snowflake', action: 'setWeatherOverride', value: 'light_snow' },
+                            { text: 'Moderate Snow - Steady snow', icon: 'fas fa-snowflake', action: 'setWeatherOverride', value: 'moderate_snow' },
+                            { text: 'Heavy Snow - Intense snowfall', icon: 'fas fa-snowflake', action: 'setWeatherOverride', value: 'heavy_snow' },
+                            { text: 'Freezing Rain - Rain that freezes on contact', icon: 'fas fa-cloud-rain', action: 'setWeatherOverride', value: 'freezing_rain' },
+                            { text: 'Sleet - Mix of rain and snow', icon: 'fas fa-snowflake', action: 'setWeatherOverride', value: 'sleet' },
+                            { separator: true },
+                            { text: 'Thunderstorm - Lightning and thunder', icon: 'fas fa-bolt', action: 'setWeatherOverride', value: 'thunderstorm' },
+                            { text: 'Severe Thunderstorm - Intense electrical storm', icon: 'fas fa-bolt', action: 'setWeatherOverride', value: 'severe_thunderstorm' },
+                            { text: 'Tornado - Severe rotating storm', icon: 'fas fa-tornado', action: 'setWeatherOverride', value: 'tornado' },
+                            { text: 'Hurricane - Tropical cyclone', icon: 'fas fa-wind', action: 'setWeatherOverride', value: 'hurricane' },
+                            { text: 'Tropical Storm - Weaker tropical system', icon: 'fas fa-wind', action: 'setWeatherOverride', value: 'tropical_storm' },
+                            { separator: true },
+                            { text: 'Mist - Light fog, poor visibility', icon: 'fas fa-smog', action: 'setWeatherOverride', value: 'mist' },
+                            { text: 'Fog - Dense fog, very poor visibility', icon: 'fas fa-smog', action: 'setWeatherOverride', value: 'fog' },
+                            { text: 'Dense Fog - Extremely poor visibility', icon: 'fas fa-smog', action: 'setWeatherOverride', value: 'dense_fog' },
+                            { text: 'Haze - Atmospheric particles reducing visibility', icon: 'fas fa-smog', action: 'setWeatherOverride', value: 'haze' },
+                            { text: 'Dust - Dusty conditions', icon: 'fas fa-dust', action: 'setWeatherOverride', value: 'dust' },
+                            { text: 'Volcanic Ash - Ash from volcanic activity', icon: 'fas fa-volcano', action: 'setWeatherOverride', value: 'volcanic_ash' },
+                            { text: 'Sand - Sandy conditions', icon: 'fas fa-dust', action: 'setWeatherOverride', value: 'sand' },
+                            { text: 'Squalls - Sudden, strong winds', icon: 'fas fa-wind', action: 'setWeatherOverride', value: 'squalls' },
+                            { separator: true },
+                            { text: 'Rainbow - Colorful arc after rain', icon: 'fas fa-rainbow', action: 'setWeatherOverride', value: 'rainbow' },
+                            { text: 'Blizzard - Severe snowstorm with high winds', icon: 'fas fa-snowflake', action: 'setWeatherOverride', value: 'blizzard' },
+                            { text: 'High Surf - Large ocean waves', icon: 'fas fa-water', action: 'setWeatherOverride', value: 'high_surf' },
+                            { text: 'Heat Wave - Extremely hot conditions', icon: 'fas fa-thermometer-full', action: 'setWeatherOverride', value: 'heat_wave' },
+                            { text: 'Cold Wave - Extremely cold conditions', icon: 'fas fa-thermometer-empty', action: 'setWeatherOverride', value: 'cold_wave' }
+                        ]
+                    }
                 ]
             }
         ]
@@ -810,39 +2867,15 @@ function setupDynamicGenerationContextMenus() {
     const seasonMenuConfig = {
         sections: [
             {
-            type: 'list',
-            title: 'Season',
-            items: [
-                    { text: '🌿 Seasonal Decor', action: 'setSeasonOverride', value: true },
-                    { text: '🎯 Nearest Holiday', action: 'setSeasonOverride', value: 'nearest' },
+                type: 'list',
+                title: 'Season',
+                items: [
+                    { text: 'Seasonal Decor', icon: 'fas fa-magic-wand-sparkles', action: 'setSeasonOverride', value: true },
                     { separator: true },
-                    { text: '🌸 Spring', action: 'setSeasonOverride', value: 1 },
-                    { text: '☀️ Summer', action: 'setSeasonOverride', value: 2 },
-                    { text: '🍂 Autumn', action: 'setSeasonOverride', value: 3 },
-                    { text: '❄️ Winter', action: 'setSeasonOverride', value: 4 },
-                    {
-                        text: '🎉 Holiday',
-                        submenu: [
-                            { text: '🎄 Christmas', action: 'setSeasonOverride', value: 10 },
-                            { text: '🎆 New Year\'s', action: 'setSeasonOverride', value: 11 },
-                            { text: '👻 Halloween', action: 'setSeasonOverride', value: 12 },
-                            { text: '🦃 Thanksgiving', action: 'setSeasonOverride', value: 13 },
-                            { text: '🇺🇸 Independence Day', action: 'setSeasonOverride', value: 14 },
-                            { text: '💝 Valentine\'s Day', action: 'setSeasonOverride', value: 15 },
-                            { text: '🐰 Easter', action: 'setSeasonOverride', value: 16 },
-                            { text: '🍀 St. Patrick\'s Day', action: 'setSeasonOverride', value: 17 },
-                            { text: '🏖️ Memorial Day', action: 'setSeasonOverride', value: 18 },
-                            { text: '⚽ Labor Day', action: 'setSeasonOverride', value: 19 },
-                            { text: '🎖️ Veterans Day', action: 'setSeasonOverride', value: 20 },
-                            { text: '🎎 Japanese New Year', action: 'setSeasonOverride', value: 21 },
-                            { text: '🌸 Cherry Blossom', action: 'setSeasonOverride', value: 22 },
-                            { text: '🏮 Tanabata Festival', action: 'setSeasonOverride', value: 23 },
-                            { text: '🎌 Golden Week', action: 'setSeasonOverride', value: 24 },
-                            { text: '🎏 Children\'s Day', action: 'setSeasonOverride', value: 25 },
-                            { text: '🎑 Tsukimi', action: 'setSeasonOverride', value: 26 },
-                            { text: '🪔 Obon Festival', action: 'setSeasonOverride', value: 27 }
-                        ]
-                    }
+                    { text: 'Spring', icon: 'fas fa-leaf', action: 'setSeasonOverride', value: 1 },
+                    { text: 'Summer', icon: 'fas fa-sun', action: 'setSeasonOverride', value: 2 },
+                    { text: 'Autumn', icon: 'fas fa-tree', action: 'setSeasonOverride', value: 3 },
+                    { text: 'Winter', icon: 'fas fa-snowflake', action: 'setSeasonOverride', value: 4 }
                 ]
             }
         ]
@@ -885,7 +2918,7 @@ function setupDynamicGenerationContextMenus() {
     const lockMenuConfig = {
         sections: [{
             type: 'list',
-            title: 'Cache Responses',
+            title: 'Dynamic Generation',
             loadfn: function(section) {
                 // Show timestamp in header if compiled prompt exists
                 const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
@@ -903,12 +2936,11 @@ function setupDynamicGenerationContextMenus() {
                     action: 'toggleUseCache',
                     icon: 'fas fa-floppy-disk',
                     loadfn: function(item) {
-                        const lockBtn = document.getElementById('lockBtn');
                         const hasCache = window.dynamicGenerationData?.compiled_prompt;
-                        const useCache = lockBtn?.getAttribute('data-use-cache') === 'true';
+                        const useCache = dynamicGenerationLockedBtn?.getAttribute('data-use-cache') === 'true';
 
                         item.disabled = !hasCache;
-                        item.icon = useCache ? 'fas fa-bot' : 'fas fa-floppy-disk';
+                        item.icon = useCache ? 'fas fa-gear-code' : 'fas fa-floppy-disk';
                         item.text = useCache ? 'Regenerate Data' : 'Use Cache Response';
                         item.className = useCache ? 'text-success' : 'text-danger';
                     }
@@ -931,9 +2963,85 @@ function setupDynamicGenerationContextMenus() {
     window.contextMenu.attachToElement(document.getElementById('todBtn'), todMenuConfig);
     window.contextMenu.attachToElement(document.getElementById('weatherBtn'), weatherMenuConfig);
     window.contextMenu.attachToElement(document.getElementById('seasonBtn'), seasonMenuConfig);
-    window.contextMenu.attachToElement(document.getElementById('activityBtn'), activityMenuConfig);
-    window.contextMenu.attachToElement(document.getElementById('locationBtn'), locationMenuConfig);
     window.contextMenu.attachToElement(document.getElementById('lockBtn'), lockMenuConfig);
+}
+
+// Handle TOD override (preserves existing date/time or sets preset values)
+function setTodOverride(value) {
+    const todBtn = document.getElementById('todBtn');
+    setDynamicOverride(todBtn, value);
+}
+
+// Handle time-only override (preserves existing date)
+function setTodTimeOverride(timeValue) {
+    const todBtn = document.getElementById('todBtn');
+    const currentOverride = todBtn ? todBtn.getAttribute('data-override') : null;
+
+    let newValue;
+
+    if (currentOverride && currentOverride.includes('_')) {
+        // Replace the time part (before "_") with new time
+        const parts = currentOverride.split('_');
+        newValue = `${timeValue}_${parts[1]}`;
+    } else {
+        // No existing date, use current date
+        newValue = timeValue;
+    }
+
+    setDynamicOverride(todBtn, newValue);
+}
+
+// Handle date-only override (preserves existing time)
+function setTodDateOverride(dateValue) {
+    const todBtn = document.getElementById('todBtn');
+    const currentOverride = todBtn ? todBtn.getAttribute('data-override') : null;
+
+    let newValue;
+
+    if (currentOverride && currentOverride.includes('_')) {
+        // Replace the 2nd part (after "_")
+        const parts = currentOverride.split('_');
+        newValue = `${parts[0]}_${dateValue}`;
+    } else {
+        // No current override or no underscore, just use the date value directly
+        newValue = 'auto_' + dateValue;
+    }
+
+    setDynamicOverride(todBtn, newValue);
+}
+
+// Update TOD button icon based on current override state
+function updateTodButtonIcon() {
+    const todBtn = document.getElementById('todBtn');
+    if (!todBtn) return;
+
+    const state = todBtn.dataset.state;
+    const override = todBtn.dataset.override;
+    const iconElement = todBtn.querySelector('i');
+
+    if (!iconElement) return;
+
+    if (override) {
+        // Determine icon based on override type when on
+        if (override.includes('_')) {
+            if (override.startsWith('auto_')) {
+                // Custom date with auto time (e.g., "auto_tomorrow", "auto_christmas")
+                iconElement.className = 'fa-solid fa-calendar-day';
+            } else {
+                // Both custom date and time from modal (e.g., "%1430_1004")
+                iconElement.className = 'fa-solid fa-calendar-clock';
+            }
+        } else {
+            // Preset values (dawn, morning, afternoon, etc.) or holiday names
+            iconElement.className = 'fa-solid fa-clock';
+        }
+    } else if (state === 'on') {
+        // Reset to original icon
+        iconElement.className = 'fa-solid fa-clock';
+    } else {
+        // Reset to original icon
+        iconElement.className = 'fa-regular fa-clock';
+    }
 }
 
 // Handle context menu actions
@@ -941,27 +3049,29 @@ document.addEventListener('contextMenuAction', (e) => {
     const { action, target } = e.detail;
 
     if (action === 'setTodOverride') {
-        setDynamicOverride(document.getElementById('todBtn'), e.detail.item.value);
+        setTodOverride(e.detail.item.value);
+    } else if (action === 'setTodTimeOverride') {
+        setTodTimeOverride(e.detail.item.value);
+    } else if (action === 'setTodDateOverride') {
+        setTodDateOverride(e.detail.item.value);
+    } else if (action === 'openTimeDateModal') {
+        openTimeDateModal();
     } else if (action === 'setWeatherOverride') {
         setDynamicOverride(document.getElementById('weatherBtn'), e.detail.item.value);
+    } else if (action === 'openWeatherLocationModal') {
+        openWeatherLocationModal();
+    } else if (action === 'clearWeatherLocation') {
+        clearWeatherLocation();
+    } else if (action === 'setCurrentLocation') {
+        setCurrentLocation();
     } else if (action === 'setSeasonOverride') {
         setSeasonOverride(document.getElementById('seasonBtn'), e.detail.item.value);
-    } else if (action === 'setActivityOverride') {
-        setDynamicOverride(document.getElementById('activityBtn'), e.detail.item.value);
-    } else if (action === 'setLocationOverride') {
-        setDynamicOverride(document.getElementById('locationBtn'), e.detail.item.value);
     } else if (action === 'clearCompiledPrompt') {
         clearCompiledPrompt();
     } else if (action === 'toggleUseCache') {
-        // Toggle whether to include compiled_prompt in requests
-        const lockBtn = document.getElementById('lockBtn');
-        if (lockBtn) {
-            const currentUseCache = lockBtn.getAttribute('data-use-cache') === 'true';
-            const newUseCache = !currentUseCache;
-            lockBtn.setAttribute('data-use-cache', newUseCache.toString());
-
-            console.log(`Include compiled_prompt in requests: ${newUseCache ? 'enabled' : 'disabled'}`);
-        }
+        const currentUseCache = dynamicGenerationLockedBtn.getAttribute('data-use-cache') === 'true';
+        const newUseCache = !currentUseCache;
+        dynamicGenerationLockedBtn.setAttribute('data-use-cache', newUseCache.toString());
     }
 });
 
@@ -969,7 +3079,14 @@ function setDynamicOverride(btn, value) {
     btn.setAttribute('data-override', value);
     btn.dataset.state = 'on';
     btn.classList.add('active');
+
+    // Update TOD button icon if this is the TOD button
+    if (btn.id === 'todBtn') {
+        updateTodButtonIcon();
+    }
+
     updateDynamicGenerationToggleBtn();
+    updatePromptStatusIcons();
 }
 
 function setSeasonOverride(btn, value) {
@@ -979,24 +3096,21 @@ function setSeasonOverride(btn, value) {
         btn.setAttribute('data-override', 'true');
         btn.dataset.state = 'on';
         btn.classList.add('active');
-    } else if (value === 'nearest') {
-        // Nearest Holiday
-        btn.setAttribute('data-override', 'nearest');
-        btn.dataset.state = 'on';
-        btn.classList.add('active');
+    // 'nearest' removed - holidays now handled through TOD system
     } else if (value === false || value === null) {
         // Disable seasonal
         btn.dataset.state = 'off';
         btn.removeAttribute('data-override');
         btn.classList.remove('active');
     } else {
-        // Season index (1-4) or holiday index (10-27)
+        // Season index (1-4) - holiday indices removed, holidays now handled through TOD system
         btn.setAttribute('data-override', value);
         btn.dataset.state = 'on';
         btn.classList.add('active');
     }
 
     updateDynamicGenerationToggleBtn();
+    updatePromptStatusIcons();
 }
 
 // TRANSFORMATION SYSTEM - Move to transformationManager.js
@@ -1032,7 +3146,7 @@ async function moveToScraps(image) {
                 return;
         }
 
-        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-fire"></i>');
+        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
 
         // If currently viewing scraps, reload them
         switchGalleryView(currentGalleryView, true);
@@ -1078,7 +3192,7 @@ async function moveImageToScrapsDirect(filename, event = null) {
             return;
         }
 
-        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-fire"></i>');
+        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
 
         // If currently viewing scraps, reload them
         switchGalleryView(currentGalleryView, true);
@@ -1124,27 +3238,27 @@ async function moveManualPreviewToScraps() {
             if (newImage) {
                 // Update the preview with the new image at the same index
                 await updateManualPreview(currentIndex, null, newImage.metadata);
-                showGlassToast('success', null, 'Image scrapped');
+                showGlassToast('success', null, 'Image scrapped', undefined, undefined, '<i class="fas fa-bin-bottles-recycle"></i>');
             } else {
                 // No image at this index anymore, try the previous index
                 if (currentIndex > 0) {
                     const prevImage = await window.wsClient.requestImageByIndex(currentIndex - 1, viewType);
                     if (prevImage) {
                         await updateManualPreview(currentIndex - 1, null, prevImage.metadata);
-                        showGlassToast('success', null, 'Image scrapped');
+                        showGlassToast('success', null, 'Image scrapped', undefined, undefined, '<i class="fas fa-bin-bottles-recycle"></i>');
                     } else {
                         resetManualPreview();
-                        showGlassToast('success', null, 'Image scrapped!');
+                        showGlassToast('success', null, 'Image scrapped!', undefined, undefined, '<i class="fas fa-bin-bottles-recycle"></i>');
                     }
                 } else {
                     resetManualPreview();
-                    showGlassToast('success', null, 'Image scrapped!');
+                    showGlassToast('success', null, 'Image scrapped!', undefined, undefined, '<i class="fas fa-bin-bottles-recycle"></i>');
                 }
             }
         } catch (error) {
             console.warn('Failed to load new image after scrap:', error);
             resetManualPreview();
-            showGlassToast('success', null, 'Image scrapped!');
+            showGlassToast('success', null, 'Image scrapped!', undefined, undefined, '<i class="fas fa-bin-bottles-recycle"></i>');
         }
 
         // Refresh gallery after processing is complete
@@ -1174,7 +3288,7 @@ async function removeFromScraps(image) {
         
         await window.wsClient.removeScrap(activeWorkspace, filename);
 
-        showGlassToast('success', null, 'Image removed from scraps', false, 3000, '<i class="fas fa-undo"></i>');
+        showGlassToast('success', null, 'Image removed from scraps', undefined, undefined, '<i class="fas fa-undo"></i>');
 
         // If currently viewing scraps, reload them
         switchGalleryView(currentGalleryView, true);
@@ -1203,7 +3317,7 @@ async function togglePinImage(image, pinBtn = null) {
             }
             
             await window.wsClient.removePinned(activeWorkspace, filename);
-            showGlassToast('success', null, 'Image unpinned', false, 5000, '<i class="fa-regular fa-star"></i>');
+            showGlassToast('success', null, 'Image unpinned', undefined, undefined, '<i class="fa-regular fa-star"></i>');
         } else {
             // Add to pinned
             if (!window.wsClient || !window.wsClient.isConnected()) {
@@ -1211,7 +3325,7 @@ async function togglePinImage(image, pinBtn = null) {
             }
             
             await window.wsClient.addPinned(activeWorkspace, filename);
-            showGlassToast('success', null, 'Image pinned', false, 5000, '<i class="fa-solid fa-star"></i>');
+            showGlassToast('success', null, 'Image pinned', undefined, undefined, '<i class="fa-solid fa-star"></i>');
         }
 
         // Update the specific pin button that was clicked
@@ -1343,24 +3457,6 @@ function updateGalleryPinButtons(filename, isPinned) {
         });
     } catch (error) {
         console.error('Error updating gallery pin buttons:', error);
-    }
-}
-
-function setSeedInputGroupState(open) {
-    if (open) {
-        manualSeed?.classList.remove('hidden');
-        // Only show sprout seed button if there's a seed available
-        if (window.lastLoadedSeed) {
-            sproutSeedBtn?.classList.remove('hidden');
-        }
-        clearSeedBtn?.classList.toggle('hidden', !manualSeed?.value);
-        editSeedBtn?.classList.add('hidden');
-    } else {
-        manualSeed?.classList.add('hidden');
-        // Don't hide sprout seed button here - it should only be hidden when no seed is available
-        // sproutSeedBtn?.classList.add('hidden');
-        clearSeedBtn?.classList.add('hidden');
-        editSeedBtn?.classList.remove('hidden');
     }
 }
 
@@ -1560,10 +3656,205 @@ function setupEventListeners() {
         e.preventDefault();
         hideManualModal();
     });
+
+    // TIME/DATE MODAL SYSTEM
+    const closeTimeDateModalBtn = document.getElementById('closeTimeDateModalBtn');
+    const saveTimeDateBtn = document.getElementById('saveTimeDateBtn');
+
+    if (closeTimeDateModalBtn) {
+        closeTimeDateModalBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const modal = document.getElementById('timeDateModal');
+            closeModal(modal);
+        });
+    }
+
+    if (saveTimeDateBtn) {
+        saveTimeDateBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            saveTimeDateModal();
+        });
+    }
+
+    // WEATHER LOCATION MODAL SYSTEM
+    const weatherLocationModal = document.getElementById('weatherLocationModal');
+    const closeWeatherLocationModalBtn = document.getElementById('closeWeatherLocationModalBtn');
+    const verifyWeatherLocationBtn = document.getElementById('verifyWeatherLocationBtn');
+    const saveWeatherLocationBtn = document.getElementById('saveWeatherLocationBtn');
+    const weatherLocationInput = document.getElementById('weatherLocationInput');
+
+    if (closeWeatherLocationModalBtn) {
+        closeWeatherLocationModalBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            closeModal(weatherLocationModal);
+        });
+    }
+
+    if (verifyWeatherLocationBtn) {
+        verifyWeatherLocationBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            verifyWeatherLocation();
+        });
+    }
+
+    if (saveWeatherLocationBtn) {
+        saveWeatherLocationBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            saveWeatherLocation();
+        });
+    }
+
+    if (weatherLocationInput) {
+        weatherLocationInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                verifyWeatherLocation();
+            }
+        });
+    }
+
+    if (textReplacementLockBtn) {
+        textReplacementLockBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            openTextReplacementLockModal();
+        });
+
+        // Add context menu for lock/unlock all options
+        const lockBtnContextMenu = {
+            sections: [
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            text: 'Lock All',
+                            icon: 'fas fa-lock',
+                            action: 'lockAllReplacements'
+                        },
+                        {
+                            text: 'Unlock All',
+                            icon: 'fas fa-unlock',
+                            action: 'unlockAllReplacements'
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Attach context menu to the lock button
+        window.contextMenu.attachToElement(textReplacementLockBtn, lockBtnContextMenu);
+    }
+
+    if (closeTextReplacementLockModalBtn) {
+        closeTextReplacementLockModalBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            closeModal(textReplacementLockModal);
+        });
+    }
+
+    if (selectAllTextReplacementsBtn) {
+        selectAllTextReplacementsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            selectAllTextReplacements();
+        });
+    }
+
+    if (deselectAllTextReplacementsBtn) {
+        deselectAllTextReplacementsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            deselectAllTextReplacements();
+        });
+    }
+
+    if (applyTextReplacementLocksBtn) {
+        applyTextReplacementLocksBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            applyTextReplacementLocks();
+        });
+    }
+
+    // Manual selection modal event listeners
+    const closeManualSelectionModalBtn = document.getElementById('closeTextReplacementManualSelectionModalBtn');
+    const applyManualSelectionBtn = document.getElementById('applyManualSelectionBtn');
+    const randomSelectionBtn = document.getElementById('randomSelectionBtn');
+
+    if (closeManualSelectionModalBtn) {
+        closeManualSelectionModalBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const modal = document.getElementById('textReplacementManualSelectionModal');
+            closeModal(modal);
+        });
+    }
+
+    if (applyManualSelectionBtn) {
+        applyManualSelectionBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            applyManualSelection();
+        });
+    }
+
+    if (randomSelectionBtn) {
+        randomSelectionBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (currentManualSelectionSeed && currentManualSelectionIndex !== null) {
+                // Get the options directly from the dropdown menu that's already loaded
+                const menuElement = document.getElementById('manualSelectionDropdownMenu');
+                const selectedElement = document.getElementById('manualSelectionDropdownSelected');
+
+                if (menuElement && selectedElement) {
+                    // Find all option elements that have data-value, data-key, and data-index
+                    const optionElements = menuElement.querySelectorAll('.custom-dropdown-option[data-value][data-key][data-index]');
+
+                    if (optionElements.length > 0) {
+                        // Pick a random option
+                        const randomOption = optionElements[Math.floor(Math.random() * optionElements.length)];
+
+                        const randomValue = randomOption.dataset.value;
+                        const randomKey = randomOption.dataset.key;
+                        const randomIndex = parseInt(randomOption.dataset.index);
+
+                        // Update the seed data
+                        currentManualSelectionSeed.value = randomValue;
+                        currentManualSelectionSeed.key = randomKey;
+                        currentManualSelectionSeed.index = randomIndex;
+                        // Lock the replacement so it gets applied
+                        currentManualSelectionSeed.locked = true;
+
+                        // Update the dropdown display
+                        selectedElement.textContent = randomValue;
+
+                        // Update the UI in the lock modal
+                        updateTextReplacementLockItem(currentManualSelectionIndex, currentManualSelectionSeed);
+
+                        // Also update the lock button state in the UI
+                        const item = document.querySelector(`.text-replacement-lock-item[data-index="${currentManualSelectionIndex}"]`);
+                        if (item) {
+                            // Mark as selected (locked)
+                            item.classList.add('selected');
+                            // Update the lock button state
+                            const lockButton = item.querySelector('.text-replacement-lock-btn');
+                            if (lockButton) {
+                                lockButton.setAttribute('data-state', 'on');
+                            }
+                        }
+
+                        // Update the lock status text
+                        updateLockStatusText();
+
+                        // Update the locked replacements for immediate use in generation
+                        const lockedSeeds = currentTextReplacementSeeds.filter(s => s.locked === true);
+                        window.lockedTextReplacements = lockedSeeds;
+
+                        // Update the main lock button indicator
+                        updateMainLockButtonState();
+                    }
+                }
+            }
+        });
+    }
     manualPreviewCloseBtn.addEventListener('click', (e) => {
         e.preventDefault();
         
-        if (window.innerWidth > 1400) {
+        if (window.innerWidth >= 1300) {
             hideManualModal(e, false);
         } else {
             hideManualPreviewResponsive();
@@ -1665,19 +3956,19 @@ function setupEventListeners() {
         if (window.currentManualPreviewImage) {
             upscaleImage(window.currentManualPreviewImage, e);
         } else {
-            showGlassToast('error', 'Upscale Failed', 'No image available');
+            showGlassToast('error', 'Upscale Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
         }
     });
 
     manualPreviewLoadBtn.addEventListener('click', (e) => {
         e.preventDefault();
         if (window.currentManualPreviewImage) {
-            if (window.innerWidth <= 1400 && manualModal.classList.contains('show-preview')) {
+            if (window.innerWidth <= 1300 && manualModal.classList.contains('show-preview')) {
                 hideManualPreviewResponsive();
             }
             rerollImageWithEdit(window.currentManualPreviewImage);
         } else {
-            showGlassToast('error', 'Load Failed', 'No image available');
+            showGlassToast('error', 'Load Failed', 'No image available', false, undefined, '<i class="fas fa-camera-slash"></i>');
         }
     });
 
@@ -1747,10 +4038,10 @@ function setupEventListeners() {
                 hideManualPreviewResponsive();
 
             } else {
-                showGlassToast('error', 'Variation Failed', 'No image found');
+                showGlassToast('error', 'Variation Failed', 'No image found', false, undefined, '<i class="fas fa-image-slash"></i>');
             }
         } else {
-            showGlassToast('error', 'Variation Failed', 'No image available');
+            showGlassToast('error', 'Variation Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
         }
     });
 
@@ -1769,7 +4060,7 @@ function setupEventListeners() {
         if (window.currentManualPreviewImage) {
             togglePinImage(window.currentManualPreviewImage, manualPreviewPinBtn);
         } else {
-            showGlassToast('error', 'Pin Failed', 'No image available');
+            showGlassToast('error', 'Pin Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
         }
     });
 
@@ -1782,9 +4073,27 @@ function setupEventListeners() {
                 moveManualPreviewToScraps();
             }
         } else {
-            showGlassToast('error', 'Load Failed', 'No image available');
+            showGlassToast('error', 'Load Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
         }
     });
+
+    // Workspace image grid overlay
+    const manualPreviewWorkspaceBtn = document.getElementById('manualPreviewWorkspaceBtn');
+    const closeWorkspaceOverlayBtn = document.getElementById('closeWorkspaceOverlayBtn');
+
+    if (manualPreviewWorkspaceBtn) {
+        manualPreviewWorkspaceBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            showWorkspaceImageOverlay();
+        });
+    }
+
+    if (closeWorkspaceOverlayBtn) {
+        closeWorkspaceOverlayBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            hideWorkspaceImageOverlay();
+        });
+    }
 
     // SEARCH SYSTEM - Search toggle button events
     if (searchToggleBtn) {
@@ -1813,12 +4122,6 @@ function setupEventListeners() {
         e.preventDefault();
         clearSeed();
     });
-    
-    editSeedBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        setSeedInputGroupState(true);
-        manualSeed?.focus();
-    });
 
     // TOGGLE SYSTEM - Various toggle button events (paid request, quality, vibe normalize)
     paidRequestToggle.addEventListener('click', (e) => {
@@ -1830,6 +4133,12 @@ function setupEventListeners() {
     manualControlsToggle.addEventListener('click', (e) => {
         e.preventDefault();
         manualModal.classList.toggle('min-controls');
+        manualControlsToggle.querySelector('i').classList.remove('fa-square-sliders', 'fa-down-to-dotted-line');
+        if (manualModal.classList.contains('min-controls')) {
+            manualControlsToggle.querySelector('i').classList.add('fa-down-to-dotted-line');
+        } else {
+            manualControlsToggle.querySelector('i').classList.add('fa-square-sliders');
+        }   
     });
 
     qualityToggleBtn.addEventListener('click', (e) => {
@@ -1845,25 +4154,27 @@ function setupEventListeners() {
     });
 
     // CHARACTER AUTOCOMPLETE SYSTEM - Character prompt and UC field autocomplete events
-    manualPrompt.addEventListener('input', handleCharacterAutocompleteInput);
-    manualPrompt.addEventListener('keydown', handleCharacterAutocompleteKeydown);
-    manualPrompt.addEventListener('focus', () => startEmphasisHighlighting(manualPrompt));
-    manualPrompt.addEventListener('blur', () => {
+    addSafeEventListener(manualPrompt, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+    addSafeEventListener(manualPrompt, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+    addSafeEventListener(manualPrompt, 'focus', () => startEmphasisHighlighting(manualPrompt), 'focus');
+    addSafeEventListener(manualPrompt, 'blur', () => {
         applyFormattedText(manualPrompt, true);
         updateEmphasisHighlighting(manualPrompt);
+        autoResizeTextarea(manualPrompt);
         stopEmphasisHighlighting();
-    });
-    manualUc.addEventListener('input', handleCharacterAutocompleteInput);
-    manualUc.addEventListener('keydown', handleCharacterAutocompleteKeydown);
-    manualUc.addEventListener('focus', () => startEmphasisHighlighting(manualUc));
-    manualUc.addEventListener('blur', () => {
+    }, 'blur');
+    addSafeEventListener(manualUc, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+    addSafeEventListener(manualUc, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+    addSafeEventListener(manualUc, 'focus', () => startEmphasisHighlighting(manualUc), 'focus');
+    addSafeEventListener(manualUc, 'blur', () => {
         applyFormattedText(manualUc, true);
         updateEmphasisHighlighting(manualUc);
+        autoResizeTextarea(manualUc);
         stopEmphasisHighlighting();
-    });
+    }, 'blur');
 
     // TEXTAREA AUTOCOMPLETE SYSTEM - Auto-resize functionality for manual UC field
-    manualUc.addEventListener('input', () => autoResizeTextarea(manualUc));
+    addSafeEventListener(manualUc, 'input', () => autoResizeTextarea(manualUc), 'resize');
 
     // PRESET AUTOCOMPLETE SYSTEM - Preset name field autocomplete events
     manualPresetName.addEventListener('input', handlePresetAutocompleteInput);
@@ -2251,7 +4562,7 @@ function setupEventListeners() {
             if (variationImage && variationImage.src && variationImage.src !== '') {
                 showLightbox({ url: variationImage.src });
             } else {
-                showGlassToast('error', 'Preview Failed', 'No base image available');
+                showGlassToast('error', 'Preview Failed', 'No base image available', false, undefined, '<i class="fas fa-image-slash"></i>');
             }
         });
     }
@@ -2264,7 +4575,7 @@ function setupEventListeners() {
             if (directorReferenceImage && directorReferenceImage.src && directorReferenceImage.src !== '') {
                 showLightbox({ url: directorReferenceImage.src });
             } else {
-                showGlassToast('error', 'Preview Failed', 'No character reference image available');
+                showGlassToast('error', 'Preview Failed', 'No character reference image available', false, undefined, '<i class="fas fa-image-slash"></i>');
             }
         });
     }
@@ -2289,6 +4600,24 @@ function setupEventListeners() {
             e.preventDefault();
             toggleDirectorReferenceStyle();
         });
+    }
+
+    if (directorReferenceFidelityInput) {
+        directorReferenceFidelityInput.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.05 : 0.05;
+            const currentValue = parseFloat(this.value) || 1.0;
+            const newValue = Math.max(0.0, Math.min(1.0, currentValue + delta));
+            this.value = newValue.toFixed(2);
+            if (directorReferenceFidelityOverlay)
+                updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0);
+        });
+
+        if (directorReferenceFidelityOverlay) {
+            directorReferenceFidelityInput.addEventListener('input', () => updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0));
+            directorReferenceFidelityInput.addEventListener('blur', () => updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0));
+            updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0);
+        }
     }
 
 
@@ -2521,6 +4850,48 @@ function setupEventListeners() {
         }
     }
 
+    // TIME/DATE MODAL - Wheel event handlers for numeric inputs
+    const timeDateHour = document.getElementById('timeDateHour');
+    const timeDateMinute = document.getElementById('timeDateMinute');
+    const timeDateDay = document.getElementById('timeDateDay');
+    const timeDateMonth = document.getElementById('timeDateMonth');
+
+    if (timeDateHour) {
+        timeDateHour.addEventListener('wheel', function(e) {
+            const delta = e.deltaY > 0 ? -1 : 1;
+            const currentValue = parseInt(this.value) || 12;
+            const newValue = Math.max(0, Math.min(23, currentValue + delta));
+            this.value = newValue;
+        });
+    }
+
+    if (timeDateMinute) {
+        timeDateMinute.addEventListener('wheel', function(e) {
+            const delta = e.deltaY > 0 ? -1 : 1;
+            const currentValue = parseInt(this.value) || 0;
+            const newValue = Math.max(0, Math.min(59, currentValue + delta));
+            this.value = newValue;
+        });
+    }
+
+    if (timeDateDay) {
+        timeDateDay.addEventListener('wheel', function(e) {
+            const delta = e.deltaY > 0 ? -1 : 1;
+            const currentValue = parseInt(this.value) || 15;
+            const newValue = Math.max(1, Math.min(31, currentValue + delta));
+            this.value = newValue;
+        });
+    }
+
+    if (timeDateMonth) {
+        timeDateMonth.addEventListener('wheel', function(e) {
+            const delta = e.deltaY > 0 ? -1 : 1;
+            const currentValue = parseInt(this.value) || 6;
+            const newValue = Math.max(1, Math.min(12, currentValue + delta));
+            this.value = newValue;
+        });
+    }
+
     // Tab switching functionality for prompt/UC tabs (Manual Generation Model)
     const manualTabButtons = document.querySelectorAll('#manualModal .prompt-tabs .gallery-toggle-group .gallery-toggle-btn');
     const showBothBtn = document.getElementById('showBothBtn');
@@ -2569,14 +4940,6 @@ function setupEventListeners() {
         e.preventDefault();
         transferRandomPrompt();
     });
-    document.getElementById('randomPromptNsfwBtn').addEventListener('click', (e) => {
-        e.preventDefault();
-        const btn = e.currentTarget;
-        const state = btn.dataset.state === 'on' ? 'off' : 'on';
-        btn.dataset.state = state;
-        btn.classList.toggle('active', state === 'on');
-        executeRandomPrompt();
-    });
 
     document.getElementById('manualPreviewHandle').addEventListener('click', (e) => {
         e.preventDefault();
@@ -2611,10 +4974,12 @@ function setupEventListeners() {
         }
         // Update the button state after toggling
         updateDynamicGenerationToggleBtn();
+        // Refresh status icons after toggle (will automatically hide them if controls are visible)
+        updatePromptStatusIcons();
     });
 
     // Dynamic Generation button click handlers
-    [todBtn, weatherBtn, seasonBtn, clothingBtn, activityBtn, actionBtn, locationBtn, optimizeBtn, dynamicGenerationLockedBtn, creativeBtn].forEach(btn => {
+    [todBtn, weatherBtn, seasonBtn, clothingBtn, actionBtn, dynamicGenerationLockedBtn, creativeBtn].forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             const state = btn.dataset.state === 'on' ? 'off' : 'on';
@@ -2625,6 +4990,14 @@ function setupEventListeners() {
             if (state === 'off') {
                 btn.removeAttribute('data-override');
             }
+
+            // Update TOD button icon if this is the TOD button
+            if (btn.id === 'todBtn') {
+                updateTodButtonIcon();
+            }
+
+            // Update status icons to reflect the button state change
+            updatePromptStatusIcons();
         });
     });
 
@@ -2796,8 +5169,6 @@ function setupEventListeners() {
     
     setupDropdown(manualSamplerDropdown, manualSamplerDropdownBtn, manualSamplerDropdownMenu, renderManualSamplerDropdown, () => manualSelectedSampler, { preventFocusTransfer: true });
     
-    setupDropdown(manualNoiseSchedulerDropdown, manualNoiseSchedulerDropdownBtn, manualNoiseSchedulerDropdownMenu, renderManualNoiseSchedulerDropdown, () => manualSelectedNoiseScheduler, { preventFocusTransfer: true });
-    
     setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel, { preventFocusTransfer: true });
     
     setupDropdown(transformationDropdown, transformationDropdownBtn, transformationDropdownMenu, renderTransformationDropdown, () => document.getElementById('transformationType').value, { preventFocusTransfer: true });
@@ -2807,6 +5178,17 @@ function setupEventListeners() {
     setupDropdown(subTogglesDropdown, subTogglesBtn, subTogglesDropdownMenu, renderSubTogglesDropdown, () => selectedDatasets, { preventFocusTransfer: true });
 
     setupDropdown(ucPresetsDropdown, ucPresetsDropdownBtn, ucPresetsDropdownMenu, renderUcPresetsDropdown, () => selectedUcPreset, { preventFocusTransfer: true });
+
+    setupDropdown(nsfwDropdown, nsfwToggleBtn, nsfwDropdownMenu, renderNsfwDropdown, () => selectedNsfwValue, { preventFocusTransfer: true });
+
+    setupDropdown(manualWorkspaceDropdown, manualWorkspaceDropdownBtn, manualWorkspaceDropdownMenu, renderManualWorkspaceDropdown, () => manualSelectedWorkspace, { preventFocusTransfer: true });
+
+    // Initialize manual workspace selection to current active workspace
+    manualSelectedWorkspace = activeWorkspace;
+    updateManualWorkspaceDisplay();
+
+    // Initialize manual selection dropdown
+    initializeManualSelectionDropdown();
 
     updatePresetLoadSaveState();
     updateManualPresetPlaceholder();
@@ -3065,8 +5447,8 @@ function switchManualTab(targetTab, previouslyFocused = null) {
         setTimeout(() => {
             if (focusTarget && focusTarget.focus) {
                 focusTarget.focus();
-                // Update emphasis highlighting for the focused textarea
                 updateEmphasisHighlighting(focusTarget);
+                autoResizeTextarea(focusTarget);
             }
         }, 10);
     }
@@ -3107,10 +5489,11 @@ function syncCharacterPromptTabs(mainTab) {
             toggleGroup.setAttribute('data-active', mainTab);
         }
 
-        // Update emphasis highlighting for the active textarea (but don't change focus)
+        // Update emphasis highlighting and auto-resize for the active textarea (but don't change focus)
         const activeTextarea = characterItem.querySelector(`#${characterId}_${mainTab}`);
         if (activeTextarea) {
             updateEmphasisHighlighting(activeTextarea);
+            autoResizeTextarea(activeTextarea);
         }
     });
 }
@@ -3146,47 +5529,11 @@ function syncCharacterPromptTabsShowBoth() {
         
         if (promptTextarea) {
             updateEmphasisHighlighting(promptTextarea);
+            autoResizeTextarea(promptTextarea);
         }
         if (ucTextarea) {
             updateEmphasisHighlighting(ucTextarea);
-        }
-    });
-}
-
-function syncCharacterPromptTabsShowBoth() {
-    const characterItems = document.querySelectorAll('.character-prompt-item');
-    
-    characterItems.forEach(characterItem => {
-        const characterTabButtons = characterItem.querySelectorAll('.gallery-toggle-btn');
-        const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
-        const toggleGroup = characterItem.querySelector('.gallery-toggle-group');
-        const characterPromptTabs = characterItem.querySelector('.character-prompt-tabs');
-        const characterId = characterItem.id;
-
-        // Show both character tab buttons and panes
-        characterTabButtons.forEach(btn => btn.classList.add('active'));
-        characterTabPanes.forEach(pane => pane.classList.add('active'));
-        
-        // Add show-both class to character-prompt-tabs for visual separation
-        if (characterPromptTabs) {
-            characterPromptTabs.classList.add('show-both');
-        }
-        
-        // Update the data-active attribute for the character's slider (keep current state)
-        if (toggleGroup) {
-            const currentActive = toggleGroup.getAttribute('data-active') || 'prompt';
-            toggleGroup.setAttribute('data-active', currentActive);
-        }
-
-        // Update emphasis highlighting for both prompt and UC textareas
-        const promptTextarea = characterItem.querySelector(`#${characterId}_prompt`);
-        const ucTextarea = characterItem.querySelector(`#${characterId}_uc`);
-        
-        if (promptTextarea) {
-            updateEmphasisHighlighting(promptTextarea);
-        }
-        if (ucTextarea) {
-            updateEmphasisHighlighting(ucTextarea);
+            autoResizeTextarea(ucTextarea);
         }
     });
 }
@@ -3454,14 +5801,16 @@ async function rerollImage(image, event = null) {
         }
     
         if (!isInModal) {
-            // Use glass toast with progress when not in modal
-            toastId = showGlassToast('info', 'Rerolling Image', 'Generating new image...', true, false, '<i class="fas fa-dice"></i>');
-            
+            // Use glass toast with progress when not in modal (global pattern)
+            if (!progressToastId) {
+                progressToastId = showGlassToast('info', 'Rerolling Image', 'Generating new image...', true, false, '<i class="fas fa-dice"></i>');
+            }
+
             // Start progress animation (1% per second)
             let progress = 0;
             progressInterval = setInterval(() => {
                 progress += 1;
-                updateGlassToastProgress(toastId, progress);
+                updateGlassToastProgress(progressToastId, progress);
             }, 1000);
         } else {
             // Use existing modal loading overlay when in modal
@@ -3500,14 +5849,17 @@ async function rerollImage(image, event = null) {
                     // Show success message
                     if (!isInModal) {
                         clearInterval(progressInterval);
-                        updateGlassToastProgress(toastId, 100);
-                        updateGlassToastComplete(toastId, {
+                        updateGlassToastProgress(progressToastId, 100);
+                        updateGlassToastComplete(progressToastId, {
                             type: 'success',
                             title: 'Reroll Complete',
                             message: 'Image generated successfully!',
                             customIcon: '<i class="nai-check"></i>',
                             showProgress: false
                         });
+
+                        // Clear the global progress toast ID after completion
+                        progressToastId = null;
                     } else {
                         showGlassToast('success', 'Reroll Complete', 'Image generated successfully!');
                         hideManualLoading();
@@ -3552,13 +5904,16 @@ async function rerollImage(image, event = null) {
         console.error('Direct reroll error:', error);
         if (!isInModal) {
             clearInterval(progressInterval);
-            updateGlassToastComplete(toastId, {
+            updateGlassToastComplete(progressToastId, {
                 type: 'error',
                 title: 'Reroll Failed',
                 message: 'Image reroll failed: ' + error.message,
                 customIcon: '<i class="nai-cross"></i>',
                 showProgress: false
             });
+
+            // Clear the global progress toast ID after error
+            progressToastId = null;
         } else {
             showError('Image reroll failed: ' + error.message);
             hideManualLoading();
@@ -3704,14 +6059,16 @@ async function upscaleImage(image, event = null) {
     let progressInterval;
     
     if (!isInModal) {
-        // Use glass toast with progress when not in modal
-        toastId = showGlassToast('info', 'Upscaling Image', 'Upscaling image...', true, false, '<i class="nai-upscale"></i>');
-        
+        // Use glass toast with progress when not in modal (global pattern)
+        if (!progressToastId) {
+            progressToastId = showGlassToast('info', 'Upscaling Image', 'Upscaling image...', true, false, '<i class="nai-upscale"></i>');
+        }
+
         // Start progress animation (1% per second)
         let progress = 0;
         progressInterval = setInterval(() => {
             progress += 1;
-            updateGlassToastProgress(toastId, progress);
+            updateGlassToastProgress(progressToastId, progress);
         }, 1000);
     } else {
         // Use preview animation when in modal for upscaling
@@ -3740,14 +6097,17 @@ async function upscaleImage(image, event = null) {
                 // Show success message
                 if (!isInModal) {
                     clearInterval(progressInterval);
-                    updateGlassToastProgress(toastId, 100);
-                    updateGlassToastComplete(toastId, {
+                    updateGlassToastProgress(progressToastId, 100);
+                    updateGlassToastComplete(progressToastId, {
                         type: 'success',
                         title: 'Upscale Complete',
                         message: 'Image upscaled successfully!',
                         customIcon: '<i class="nai-check"></i>',
                         showProgress: false
                     });
+
+                    // Clear the global progress toast ID after completion
+                    progressToastId = null;
                 } else {
                     showGlassToast('success', 'Upscale Complete', 'Image upscaled successfully!');
                 }
@@ -3783,13 +6143,16 @@ async function upscaleImage(image, event = null) {
             console.error('Upscaling error:', error);
             if (!isInModal) {
                 if (progressInterval) clearInterval(progressInterval);
-                updateGlassToastComplete(toastId, {
+                updateGlassToastComplete(progressToastId, {
                     type: 'error',
                     title: 'Upscale Failed',
                     message: 'Image upscaling failed. Please try again.',
                     customIcon: '<i class="nai-cross"></i>',
                     showProgress: false
                 });
+
+                // Clear the global progress toast ID after error
+                progressToastId = null;
             } else {
                 showError('Image upscaling failed. Please try again.');
             }
@@ -3799,7 +6162,7 @@ async function upscaleImage(image, event = null) {
         console.error('Upscaling error:', error);
         if (!isInModal) {
             if (progressInterval) clearInterval(progressInterval);
-            updateGlassToastComplete(toastId, {
+            updateGlassToastComplete(progressToastId, {
                 type: 'error',
                 title: 'Upscale Failed',
                 message: 'Image upscaling failed. Please try again.',
@@ -4050,142 +6413,94 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
     
 
-    if (previewImage && previewPlaceholder) {
-        // Get the image at the specified index
-        let imageData = null;
-        let imageUrl = null;
-        
-        if (response && response.headers) {
-            // For newly generated images, use the response data
-            const generatedFilename = response.headers.get('X-Generated-Filename');
-            if (generatedFilename) {
-                imageUrl = `/images/${generatedFilename}`;
-                imageData = {
-                    original: generatedFilename,
-                    base: generatedFilename,
-                    upscaled: null
-                };
-            }
-        } else {
-            // For existing images, request from server by index
-            try {
-                const viewType = currentGalleryView || 'images';
-                imageData = await window.wsClient.requestImageByIndex(index, viewType);
-                if (imageData) {
-                    imageUrl = `/images/${imageData.original}`;
+    try {
+        if (previewImage && previewPlaceholder) {
+            window.showManualPreviewNavigationLoading(true);
+            // Get the image at the specified index
+            let imageData = null;
+            let imageUrl = null;
+            
+            if (response && response.headers) {
+                // For newly generated images, use the response data
+                const generatedFilename = response.headers.get('X-Generated-Filename');
+                if (generatedFilename) {
+                    imageUrl = `/images/${generatedFilename}`;
+                    imageData = {
+                        original: generatedFilename,
+                        base: generatedFilename,
+                        upscaled: null
+                    };
                 }
-            } catch (error) {
-                console.warn('Failed to get image by index:', error);
+            } else {
+                // For existing images, request from server by index
+                try {
+                    const viewType = currentGalleryView || 'images';
+                    imageData = await window.wsClient.requestImageByIndex(index, viewType);
+                    if (imageData) {
+                        imageUrl = `/images/${imageData.original}`;
+                    }
+                } catch (error) {
+                    console.warn('Failed to get image by index:', error);
+                    return;
+                }
+            }
+            
+            if (!imageData || !imageUrl) {
+                console.warn('No image data available for index:', index);
                 return;
             }
-        }
-        
-        if (!imageData || !imageUrl) {
-            console.warn('No image data available for index:', index);
-            return;
-        }
-        
-        // Wait for the manual preview preload to complete before applying the image
-        let imageWidth, imageHeight;
-        await new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => {
-                // Store image dimensions for container sizing
-                imageWidth = img.naturalWidth;
-                imageHeight = img.naturalHeight;
-                // Preload completed successfully
-                resolve();
-            };
-            img.onerror = () => {
-                reject(new Error('Failed to preload image'));
-            };
-            img.src = imageUrl;
-        });
-        
-        // Now apply the image after preload is complete
-        previewImage.src = imageUrl;
-        previewImage.classList.remove('hidden');
-        previewPlaceholder.classList.add('hidden');
-
-        // Store the blob URL for download functionality
-        previewImage.dataset.blobUrl = imageUrl;
-        
-        // Stop generation animation when image is actually loaded
-        previewImage.onload = () => {
-            if (generationAnimationActive) {
-                stopPreviewAnimation();
-            }
-        };
-        
-        // Apply dynamic container sizing based on image aspect ratio
-        if (imageWidth && imageHeight) {
-            sizeManualPreviewContainer(imageWidth, imageHeight);
-        }
-
-        // Update blurred background with debouncing
-        // Always use the debounced version to prevent duplicate calls
-        updateBlurredBackground(imageUrl);
-
-        // Check if we have initialEdit data for side-by-side preview
-        if (window.initialEdit && window.initialEdit.image) {
-            // Show original image for comparison
-            if (originalImage) {
-                const originalImageUrl = `/images/${window.initialEdit.image.original || window.initialEdit.image.filename}`;
-                originalImage.src = originalImageUrl;
-                originalImage.classList.remove('hidden');
-                
-                // Add click handler to load original image into main preview
-                originalImage.onclick = function() {
-                    swapManualPreviewImages();
+            
+            // Wait for the manual preview preload to complete before applying the image
+            let imageWidth, imageHeight;
+            await new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Store image dimensions for container sizing
+                    imageWidth = img.naturalWidth;
+                    imageHeight = img.naturalHeight;
+                    // Preload completed successfully
+                    resolve();
                 };
-                
-                // Enable dual mode
-                imageContainers.forEach(container => {
-                    container.classList.add('dual-mode');
-                });
-            }
-        } else if (index !== 0) {
-            // If we're navigating to a different image (not index 0), try to show last generation on the right
-            // First, try to get the last generation from window.lastGeneration
-            let lastGenImage = null;
-            if (window.lastGeneration && window.lastGeneration.filename) {
-                lastGenImage = window.lastGeneration;
-            } else if (allImages && allImages.length > 0) {
-                // If no lastGeneration, use the first image (index 0) as the "last generation"
-                lastGenImage = allImages[0];
-            }
+                img.onerror = () => {
+                    reject(new Error('Failed to preload image'));
+                };
+                img.src = imageUrl;
+            });
             
-            if (lastGenImage && originalImage) {
-                const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
-                if (lastGenFilename) {
-                    originalImage.src = `/images/${lastGenFilename}`;
-                    originalImage.classList.remove('hidden');
-                    originalImage.onclick = function() {
-                        // When clicked, restore the original image
-                        restoreOriginalImage();
-                    };
-                    
-                    // Enable dual mode
-                    imageContainers.forEach(container => {
-                        container.classList.add('dual-mode');
-                    });
+            // Now apply the image after preload is complete
+            previewImage.src = imageUrl;
+            previewImage.classList.remove('hidden');
+            previewPlaceholder.classList.add('hidden');
+
+            // Store the blob URL for download functionality
+            previewImage.dataset.blobUrl = imageUrl;
+            
+            // Stop generation animation when image is actually loaded
+            // BUT NOT during active generation (let the generation code handle this)
+            previewImage.onload = () => {
+                if (generationAnimationActive && !manualForm?.classList.contains('generating')) {
+                    stopPreviewAnimation();
                 }
-            }
-        } else if (index === 0) {
-            // For index 0, show the last generation on the right side if available
-            let lastGenImage = null;
-            if (window.lastGeneration && window.lastGeneration.filename) {
-                lastGenImage = window.lastGeneration;
-            } else if (allImages && allImages.length > 0) {
-                // Use the first image as the "last generation"
-                lastGenImage = allImages[0];
-            }
+            };
             
-            if (lastGenImage && originalImage) {
-                const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
-                if (lastGenFilename) {
-                    originalImage.src = `/images/${lastGenFilename}`;
+            // Apply dynamic container sizing based on image aspect ratio
+            if (imageWidth && imageHeight) {
+                sizeManualPreviewContainer(imageWidth, imageHeight);
+            }
+
+            // Update blurred background with debouncing
+            // Always use the debounced version to prevent duplicate calls
+            updateBlurredBackground(imageUrl);
+
+            // Check if we have initialEdit data for side-by-side preview
+            if (window.initialEdit && window.initialEdit.image) {
+                // Show original image for comparison
+                if (originalImage) {
+                    const originalImageUrl = `/images/${window.initialEdit.image.original || window.initialEdit.image.filename}`;
+                    originalImage.src = originalImageUrl;
                     originalImage.classList.remove('hidden');
+                    
+                    // Add click handler to load original image into main preview
                     originalImage.onclick = function() {
                         swapManualPreviewImages();
                     };
@@ -4194,105 +6509,163 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     imageContainers.forEach(container => {
                         container.classList.add('dual-mode');
                     });
+                }
+            } else if (index !== 0) {
+                // If we're navigating to a different image (not index 0), try to show last generation on the right
+                // First, try to get the last generation from window.lastGeneration
+                let lastGenImage = null;
+                if (window.lastGeneration && window.lastGeneration.filename) {
+                    lastGenImage = window.lastGeneration;
+                } else if (allImages && allImages.length > 0) {
+                    // If no lastGeneration, use the first image (index 0) as the "last generation"
+                    lastGenImage = allImages[0];
+                }
+                
+                if (lastGenImage && originalImage) {
+                    const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
+                    if (lastGenFilename) {
+                        originalImage.src = `/images/${lastGenFilename}`;
+                        originalImage.classList.remove('hidden');
+                        originalImage.onclick = function() {
+                            // When clicked, restore the original image
+                            restoreOriginalImage();
+                        };
+                        
+                        // Enable dual mode
+                        imageContainers.forEach(container => {
+                            container.classList.add('dual-mode');
+                        });
+                    }
+                }
+            } else if (index === 0) {
+                // For index 0, show the last generation on the right side if available
+                let lastGenImage = null;
+                if (window.lastGeneration && window.lastGeneration.filename) {
+                    lastGenImage = window.lastGeneration;
+                } else if (allImages && allImages.length > 0) {
+                    // Use the first image as the "last generation"
+                    lastGenImage = allImages[0];
+                }
+                
+                if (lastGenImage && originalImage) {
+                    const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
+                    if (lastGenFilename) {
+                        originalImage.src = `/images/${lastGenFilename}`;
+                        originalImage.classList.remove('hidden');
+                        originalImage.onclick = function() {
+                            swapManualPreviewImages();
+                        };
+                        
+                        // Enable dual mode
+                        imageContainers.forEach(container => {
+                            container.classList.add('dual-mode');
+                        });
+                    } else {
+                    }
                 } else {
                 }
             } else {
-            }
-        } else {
-            // Single image mode
-            if (originalImage) {
-                originalImage.classList.add('hidden');
-            }
-            imageContainers.forEach(container => {
-                container.classList.remove('dual-mode', 'original-hidden');
-            });
-        }
-
-        // Set the current image and index
-        window.currentManualPreviewImage = imageData;
-        // Director new session functionality is always available
-        window.currentManualPreviewIndex = index;
-
-        // Use passed metadata if available, otherwise use metadata from imageData
-            if (metadata) {
-            imageData.metadata = metadata;
-        } else if (imageData.metadata) {
-            // Metadata already included from server
-        } else if (imageData.original) {
-            // Load metadata if not available
-            try {
-                const loadedMetadata = await getImageMetadata(imageData.original);
-                imageData.metadata = loadedMetadata;
-                } catch (error) {
-                    console.warn('Failed to load metadata for image:', error);
+                // Single image mode
+                if (originalImage) {
+                    originalImage.classList.add('hidden');
                 }
-        }
+                imageContainers.forEach(container => {
+                    container.classList.remove('dual-mode', 'original-hidden');
+                });
+            }
 
-        // Show control buttons
-        if (downloadBtn) downloadBtn.classList.remove('hidden');
-        if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
-        if (upscaleBtn) upscaleBtn.classList.remove('hidden');
-        if (rerollBtn) rerollBtn.classList.remove('hidden');
-        if (variationBtn) variationBtn.classList.remove('hidden');
-        if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.remove('hidden');
-        
-        // Show and update pin button
-        if (manualPreviewPinBtn) {
-            manualPreviewPinBtn.classList.remove('hidden');
-            if (window.currentManualPreviewImage) {
-                const filename = window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
-                if (filename) {
-                    updatePinButtonAppearance(manualPreviewPinBtn, filename);
-                }
-            }
-        }
-        
-        const scrapBtn = document.getElementById('manualPreviewScrapBtn');
-        if (scrapBtn) {
-            scrapBtn.classList.remove('hidden');
-            // Update scrap button based on current view
-            if (currentGalleryView === 'scraps') {
-                scrapBtn.innerHTML = '<i class="fas fa-undo"></i>';
-                scrapBtn.title = 'Remove from scraps';
-            } else {
-                scrapBtn.innerHTML = '<i class="fas fa-bin-recycle"></i>';
-                scrapBtn.title = 'Move to scraps';
-            }
-        }
-        if (deleteBtn) deleteBtn.classList.remove('hidden');
-
-        // Initialize lightbox functionality
-        setTimeout(() => {
-            initializeManualPreviewLightbox();
-        }, 100);
-
-        // Update seed display
-        if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata && window.currentManualPreviewImage.metadata.seed !== undefined) {
-            window.lastGeneratedSeed = window.currentManualPreviewImage.metadata.seed;
-            sproutSeedBtn.classList.add('available');
-            updateSproutSeedButtonFromPreviewSeed();
-        } else {
-            window.lastGeneratedSeed = null;
-            sproutSeedBtn.classList.remove('available');
-            updateSproutSeedButtonFromPreviewSeed();
-        }
-        if (window.currentManualPreviewImage) {
-            if (window.currentManualPreviewImage.metadata) {
-                window.lastGeneration = window.currentManualPreviewImage.metadata;
-            }
-            if (window.currentManualPreviewImage.filename) {
-                window.lastGeneration.filename = window.currentManualPreviewImage.filename;
-            }
+            // Set the current image and index
+            window.currentManualPreviewImage = imageData;
             // Director new session functionality is always available
-        }
+            window.currentManualPreviewIndex = index;
 
-        // Update navigation buttons
-        updateManualPreviewNavigation();
+            // Use passed metadata if available, otherwise use metadata from imageData
+                if (metadata) {
+                imageData.metadata = metadata;
+            } else if (imageData.metadata) {
+                // Metadata already included from server
+            } else if (imageData.original) {
+                // Load metadata if not available
+                try {
+                    const loadedMetadata = await getImageMetadata(imageData.original);
+                    imageData.metadata = loadedMetadata;
+                    } catch (error) {
+                        console.warn('Failed to load metadata for image:', error);
+                    }
+            }
 
-        // Update dynamic generation overlay
-        if (typeof updateDynamicGenerationOverlay === 'function') {
-            updateDynamicGenerationOverlay();
+            // Show control buttons
+            if (downloadBtn) downloadBtn.classList.remove('hidden');
+            if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
+            if (upscaleBtn) upscaleBtn.classList.remove('hidden');
+            if (rerollBtn) rerollBtn.classList.remove('hidden');
+            if (variationBtn) variationBtn.classList.remove('hidden');
+            if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.remove('hidden');
+            
+            // Show and update pin button
+            if (manualPreviewPinBtn) {
+                manualPreviewPinBtn.classList.remove('hidden');
+                if (window.currentManualPreviewImage) {
+                    const filename = window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
+                    if (filename) {
+                        updatePinButtonAppearance(manualPreviewPinBtn, filename);
+                    }
+                }
+            }
+            
+            const scrapBtn = document.getElementById('manualPreviewScrapBtn');
+            if (scrapBtn) {
+                scrapBtn.classList.remove('hidden');
+                // Update scrap button based on current view
+                if (currentGalleryView === 'scraps') {
+                    scrapBtn.innerHTML = '<i class="fas fa-undo"></i>';
+                    scrapBtn.title = 'Remove from scraps';
+                } else {
+                    scrapBtn.innerHTML = '<i class="fas fa-bin-recycle"></i>';
+                    scrapBtn.title = 'Move to scraps';
+                }
+            }
+            if (deleteBtn) deleteBtn.classList.remove('hidden');
+
+            // Initialize lightbox functionality
+            setTimeout(() => {
+                initializeManualPreviewLightbox();
+            }, 100);
+
+            manualPreviewImage.title = ''; // Clear streaming title
+            manualPreviewImage.style.width = '';
+            manualPreviewImage.style.height = '';
+            
+            // Update seed display
+            if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata && window.currentManualPreviewImage.metadata.seed !== undefined) {
+                window.lastGeneratedSeed = window.currentManualPreviewImage.metadata.seed;
+                sproutSeedBtn.classList.add('available');
+                updateSproutSeedButtonFromPreviewSeed();
+            } else {
+                window.lastGeneratedSeed = null;
+                sproutSeedBtn.classList.remove('available');
+                updateSproutSeedButtonFromPreviewSeed();
+            }
+            if (window.currentManualPreviewImage) {
+                if (window.currentManualPreviewImage.metadata) {
+                    window.lastGeneration = window.currentManualPreviewImage.metadata;
+                }
+                if (window.currentManualPreviewImage.filename) {
+                    window.lastGeneration.filename = window.currentManualPreviewImage.filename;
+                }
+                // Director new session functionality is always available
+            }
+
+            // Update navigation buttons
+            updateManualPreviewNavigation();
+
+            // Update dynamic generation overlay
+            const context = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.context;
+            updateDynamicGenerationOverlay(context);
         }
+    } finally {
+        // Hide loading overlay if it was shown
+        window.showManualPreviewNavigationLoading(false);
     }
 }
 
@@ -4308,137 +6681,150 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
 
-    if (previewImage && previewPlaceholder) {
-        // Construct image URL from the image object
-        const imageUrl = `/images/${imageObj.upscaled || imageObj.original || imageObj.filename}`;
-        
-        // Wait for the manual preview preload to complete before applying the image
-        let imageWidth, imageHeight;
-        await new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => {
-                // Store image dimensions for container sizing
-                imageWidth = img.naturalWidth;
-                imageHeight = img.naturalHeight;
-                // Preload completed successfully
-                resolve();
-            };
-            img.onerror = () => {
-                reject(new Error('Failed to preload image'));
-            };
-            img.src = imageUrl;
-        });
-        
-        // Now apply the image after preload is complete
-        previewImage.src = imageUrl;
-        previewImage.classList.remove('hidden');
-        previewPlaceholder.classList.add('hidden');
 
-        // Store the blob URL for download functionality
-        previewImage.dataset.blobUrl = imageUrl;
-        
-        // Stop generation animation when image is actually loaded
-        previewImage.onload = () => {
-            if (generationAnimationActive) {
-                stopPreviewAnimation();
+    try {
+        // Show loading overlay for direct preview updates
+        window.showManualPreviewNavigationLoading(true);
+        if (previewImage && previewPlaceholder) {
+            // Construct image URL from the image object
+            const imageUrl = `/images/${imageObj.upscaled || imageObj.original || imageObj.filename}`;
+            
+            // Wait for the manual preview preload to complete before applying the image
+            let imageWidth, imageHeight;
+            await new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    // Store image dimensions for container sizing
+                    imageWidth = img.naturalWidth;
+                    imageHeight = img.naturalHeight;
+                    // Preload completed successfully
+                    resolve();
+                };
+                img.onerror = () => {
+                    reject(new Error('Failed to preload image'));
+                };
+                img.src = imageUrl;
+            });
+            
+            // Now apply the image after preload is complete
+            previewImage.src = imageUrl;
+            previewImage.classList.remove('hidden');
+            previewPlaceholder.classList.add('hidden');
+
+            // Store the blob URL for download functionality
+            previewImage.dataset.blobUrl = imageUrl;
+            
+            // Stop generation animation when image is actually loaded
+            // BUT NOT during active generation (let the generation code handle this)
+            previewImage.onload = () => {
+                if (generationAnimationActive && !manualForm?.classList.contains('generating')) {
+                    stopPreviewAnimation();
+                }
+            };
+            
+            // Apply dynamic container sizing based on image aspect ratio
+            if (imageWidth && imageHeight) {
+                sizeManualPreviewContainer(imageWidth, imageHeight);
             }
-        };
-        
-        // Apply dynamic container sizing based on image aspect ratio
-        if (imageWidth && imageHeight) {
-            sizeManualPreviewContainer(imageWidth, imageHeight);
-        }
 
-        // Update blurred background
-        updateBlurredBackground(imageUrl);
+            // Update blurred background
+            updateBlurredBackground(imageUrl);
 
-        // Set the current image
-        window.currentManualPreviewImage = imageObj;
-        if (window.currentManualPreviewImage.metadata) {
-            window.lastGeneration = window.currentManualPreviewImage.metadata;
-        }
-        if (window.currentManualPreviewImage.filename) {
-            window.lastGeneration.filename = window.currentManualPreviewImage.filename;
-        }
-        // Director new session functionality is always available
-        
-        // Try to find the index of this image in the gallery
-        let imageIndex = -1;
-        if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
-            // Search mode - use filtered results
-            imageIndex = window.originalAllImages.findIndex(img => {
-                return img.upscaled === imageObj.upscaled || 
-                       img.original === imageObj.original ||
-                       img.filename === imageObj.filename;
-            });
-        } else if (allImages && allImages.length > 0) {
-            // Normal mode - use current allImages
-            imageIndex = allImages.findIndex(img => {
-                return img.upscaled === imageObj.upscaled || 
-                       img.original === imageObj.original ||
-                       img.filename === imageObj.filename;
-            });
-        }
-        
-        // Update the current index (use found index or keep as -1 if not found)
-        window.currentManualPreviewIndex = imageIndex !== -1 ? imageIndex : null;
-        
-        // Use passed metadata if available
-        if (metadata) {
-            imageObj.metadata = metadata;
-        }
+            // Set the current image
+            window.currentManualPreviewImage = imageObj;
+            if (window.currentManualPreviewImage.metadata) {
+                window.lastGeneration = window.currentManualPreviewImage.metadata;
+            }
+            if (window.currentManualPreviewImage.filename) {
+                window.lastGeneration.filename = window.currentManualPreviewImage.filename;
+            }
+            // Director new session functionality is always available
+            
+            // Try to find the index of this image in the gallery
+            let imageIndex = -1;
+            if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
+                // Search mode - use filtered results
+                imageIndex = window.originalAllImages.findIndex(img => {
+                    return img.upscaled === imageObj.upscaled || 
+                        img.original === imageObj.original ||
+                        img.filename === imageObj.filename;
+                });
+            } else if (allImages && allImages.length > 0) {
+                // Normal mode - use current allImages
+                imageIndex = allImages.findIndex(img => {
+                    return img.upscaled === imageObj.upscaled || 
+                        img.original === imageObj.original ||
+                        img.filename === imageObj.filename;
+                });
+            }
+            
+            // Update the current index (use found index or keep as -1 if not found)
+            window.currentManualPreviewIndex = imageIndex !== -1 ? imageIndex : null;
+            
+            // Use passed metadata if available
+            if (metadata) {
+                imageObj.metadata = metadata;
+            }
 
-        // Show control buttons
-        if (downloadBtn) downloadBtn.classList.remove('hidden');
-        if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
-        if (upscaleBtn) upscaleBtn.classList.remove('hidden');
-        if (rerollBtn) rerollBtn.classList.remove('hidden');
-        if (variationBtn) variationBtn.classList.remove('hidden');
-        if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.remove('hidden');
-        
-        // Show and update pin button
-        if (manualPreviewPinBtn) {
-            manualPreviewPinBtn.classList.remove('hidden');
-            if (window.currentManualPreviewImage) {
-                const filename = window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
-                if (filename) {
-                    updatePinButtonAppearance(manualPreviewPinBtn, filename);
+            // Show control buttons
+            if (downloadBtn) downloadBtn.classList.remove('hidden');
+            if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
+            if (upscaleBtn) upscaleBtn.classList.remove('hidden');
+            if (rerollBtn) rerollBtn.classList.remove('hidden');
+            if (variationBtn) variationBtn.classList.remove('hidden');
+            if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.remove('hidden');
+            
+            // Show and update pin button
+            if (manualPreviewPinBtn) {
+                manualPreviewPinBtn.classList.remove('hidden');
+                if (window.currentManualPreviewImage) {
+                    const filename = window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
+                    if (filename) {
+                        updatePinButtonAppearance(manualPreviewPinBtn, filename);
+                    }
                 }
             }
-        }
-        
-        const scrapBtn = document.getElementById('manualPreviewScrapBtn');
-        if (scrapBtn) {
-            scrapBtn.classList.remove('hidden');
-            // Update scrap button based on current view
-            if (currentGalleryView === 'scraps') {
-                scrapBtn.innerHTML = '<i class="fas fa-undo"></i>';
-                scrapBtn.title = 'Remove from scraps';
-            } else {
-                scrapBtn.innerHTML = '<i class="fas fa-bin-recycle"></i>';
-                scrapBtn.title = 'Move to scraps';
+            
+            const scrapBtn = document.getElementById('manualPreviewScrapBtn');
+            if (scrapBtn) {
+                scrapBtn.classList.remove('hidden');
+                // Update scrap button based on current view
+                if (currentGalleryView === 'scraps') {
+                    scrapBtn.innerHTML = '<i class="fas fa-undo"></i>';
+                    scrapBtn.title = 'Remove from scraps';
+                } else {
+                    scrapBtn.innerHTML = '<i class="fas fa-bin-recycle"></i>';
+                    scrapBtn.title = 'Move to scraps';
+                }
             }
+            if (deleteBtn) deleteBtn.classList.remove('hidden');
+
+            // Initialize lightbox functionality
+            setTimeout(() => {
+                initializeManualPreviewLightbox();
+            }, 100);
+
+            // Update seed display
+            if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata && window.currentManualPreviewImage.metadata.seed !== undefined) {
+                window.lastGeneratedSeed = window.currentManualPreviewImage.metadata.seed;
+                sproutSeedBtn.classList.add('available');
+                updateSproutSeedButtonFromPreviewSeed();
+            } else {
+                window.lastGeneratedSeed = null;
+                sproutSeedBtn.classList.remove('available');
+                updateSproutSeedButtonFromPreviewSeed();
+            }
+
+            // Update navigation buttons
+            updateManualPreviewNavigation();
+
+            // Update dynamic generation overlay
+            const context = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.context;
+            updateDynamicGenerationOverlay(context);
         }
-        if (deleteBtn) deleteBtn.classList.remove('hidden');
-
-        // Initialize lightbox functionality
-        setTimeout(() => {
-            initializeManualPreviewLightbox();
-        }, 100);
-
-        // Update seed display
-        if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata && window.currentManualPreviewImage.metadata.seed !== undefined) {
-            window.lastGeneratedSeed = window.currentManualPreviewImage.metadata.seed;
-            sproutSeedBtn.classList.add('available');
-            updateSproutSeedButtonFromPreviewSeed();
-        } else {
-            window.lastGeneratedSeed = null;
-            sproutSeedBtn.classList.remove('available');
-            updateSproutSeedButtonFromPreviewSeed();
-        }
-
-        // Update navigation buttons
-        updateManualPreviewNavigation();
+    } finally {
+        // Hide loading overlay if it was shown
+        window.showManualPreviewNavigationLoading(false);
     }
 }
 
@@ -4847,11 +7233,11 @@ async function saveManualPreset(presetName, config) {
         
         // Handle the response properly
         if (result && result.data && result.data.message) {
-            showGlassToast('success', null, result.data.message);
+            showGlassToast('success', null, result.data.message, false, undefined, '<i class="fas fa-book-sparkles"></i>');
         } else if (result && result.message) {
-            showGlassToast('success', null, result.message);
+            showGlassToast('success', null, result.message, false, undefined, '<i class="fas fa-book-sparkles"></i>');
         } else {
-            showGlassToast('success', null, `Preset "${presetName}" saved successfully`);
+            showGlassToast('success', null, `Preset "${presetName}" saved successfully`, false, undefined, '<i class="fas fa-book-sparkles"></i>');
         }
 
         // Refresh the preset list
@@ -5172,14 +7558,16 @@ async function generateImage(event = null) {
     let progressInterval;
     
     if (!isInModal) {
-        // Use glass toast with progress when not in modal
-        toastId = showGlassToast('info', 'Generating Image', 'Generating image...', true, false, '<i class="nai-sparkles"></i>');
-        
+        // Use glass toast with progress when not in modal (global pattern)
+        if (!progressToastId) {
+            progressToastId = showGlassToast('info', 'Generating Image', 'Generating image...', true, false, '<i class="nai-sparkles"></i>');
+        }
+
         // Start progress animation (1% per second)
         let progress = 0;
         progressInterval = setInterval(() => {
             progress += 1;
-            updateGlassToastProgress(toastId, progress);
+            updateGlassToastProgress(progressToastId, progress);
         }, 1000);
     } else {
         // Use existing modal loading overlay when in modal
@@ -5192,10 +7580,9 @@ async function generateImage(event = null) {
         
         // Extract data from the standard response format
         const filename = result.filename;
-        const seed = result.seed;
 
         // Update the existing toast to show completion
-        updateGlassToastComplete(toastId, {
+        updateGlassToastComplete(progressToastId, {
             type: 'success',
             title: 'Image Generated',
             message: 'Image generated successfully and added to gallery',
@@ -5226,7 +7613,7 @@ async function generateImage(event = null) {
     } catch (error) {
         console.error('Generation error:', error);
         // Update the existing toast to show error
-        updateGlassToastComplete(toastId, {
+        updateGlassToastComplete(progressToastId, {
             type: 'error',
             title: 'Generation Failed',
             message: error.message,
@@ -5609,6 +7996,105 @@ async function deleteManualPreviewImage() {
     loadGallery(true);
 }
 
+// Workspace Image Overlay Functions
+function showWorkspaceImageOverlay() {
+    const overlay = document.getElementById('manualPreviewWorkspaceOverlay');
+    if (overlay) {
+        overlay.classList.remove('hidden');
+        setTimeout(() => {
+            overlay.classList.add('visible');
+        }, 1);
+        loadWorkspaceImagesForOverlay();
+    }
+}
+
+function hideWorkspaceImageOverlay() {
+    const overlay = document.getElementById('manualPreviewWorkspaceOverlay');
+    if (overlay) {
+        overlay.classList.remove('visible');
+        setTimeout(() => {
+            overlay.classList.add('hidden');
+        }, 850);
+    }
+}
+
+async function loadWorkspaceImagesForOverlay() {
+    const grid = document.getElementById('workspaceImageGrid');
+    const empty = document.getElementById('workspaceImageEmpty');
+
+    if (!grid || !empty) return;
+
+    // Show loading
+    grid.innerHTML = '';
+    empty.classList.add('hidden');
+
+    try {
+        // Use the existing allImages array from the gallery instead of making a new request
+        const galleryData = allImages || [];
+
+        if (galleryData && galleryData.length > 0) {
+            // Hide loading and empty states
+            empty.classList.add('hidden');
+
+            // Create image items
+            galleryData.forEach((image, index) => {
+                const imageItem = document.createElement('div');
+                imageItem.className = 'workspace-image-item';
+                imageItem.dataset.imageIndex = index;
+
+                const img = document.createElement('img');
+                // Use preview image for thumbnails
+                if (image.preview) {
+                    img.src = `/previews/${encodeURIComponent(window.deviceUtils.getGalleryPreviewUrl(image.preview))}`;
+                } else {
+                    // Fallback to full image if no preview available
+                    img.src = `/images/${image.upscaled || image.original || image.filename}`;
+                }
+                img.alt = image.prompt || 'Generated image';
+                img.loading = 'lazy';
+
+                // Add click handler to load by index
+                imageItem.addEventListener('click', () => {
+                    loadImageIntoManualPreview(index);
+                    hideWorkspaceImageOverlay();
+                });
+
+                imageItem.appendChild(img);
+                grid.appendChild(imageItem);
+            });
+        } else {
+            // Show empty state
+            empty.classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Error loading workspace images:', error);
+        empty.classList.remove('hidden');
+        showGlassToast('error', 'Load Failed', 'Failed to load workspace images', false, undefined, '<i class="fas fa-image-slash"></i>');
+    }
+}
+
+async function loadImageIntoManualPreview(imageIndex) {
+    try {
+        // Add initializing class to modal
+        const manualModal = document.getElementById('manualModal');
+        if (manualModal) {
+            manualModal.classList.add('initializing');
+        }
+
+        // Use the existing updateManualPreview function with index (loading overlay handled internally)
+        await updateManualPreview(imageIndex);        
+    } catch (error) {
+        console.error('Error loading image into preview:', error);
+        showGlassToast('error', 'Load Failed', 'Failed to load image into preview', false, undefined, '<i class="fas fa-image-slash"></i>');
+    } finally {
+        // Remove initializing class
+        const manualModal = document.getElementById('manualModal');
+        if (manualModal) {
+            manualModal.classList.remove('initializing');
+        }
+    }
+}
+
 
 // Show error message (simple glass toast)
 function showError(message) {
@@ -5733,8 +8219,9 @@ async function handleResize() {
         updateMenuBarHeight();
         
         // Recalculate previewRatio if manual modal is open
-        if (manualModal && !manualModal.classList.contains('hidden')) {
-            calculatePreviewRatio();
+        if (manualModal && !manualModal.classList.contains('hidden')) {            
+            // Update preview container sizing if there's a loaded image
+            sizeManualPreviewContainer();
         }
     }, 250); // 250ms delay
 }
@@ -5992,7 +8479,7 @@ function clearSeed() {
             manualSeed.placeholder = 'Randomize';
         }
     } else {
-        setSeedInputGroupState(false);
+        clearSeedBtn?.classList.add('hidden');
     }
 }
 
@@ -6018,7 +8505,7 @@ function updateSproutSeedButton() {
 
 function updateSproutSeedButtonFromPreviewSeed() {
     if (sproutSeedBtn) {
-        const seedValue = window.lastGeneratedSeed;
+        const seedValue = window.lastGeneratedSeed || window.lastLoadedSeed;
         if (seedValue !== null && seedValue !== undefined) {
             // Enable the sprout seed button and show it
             sproutSeedBtn.classList.remove('hidden');
@@ -6099,13 +8586,36 @@ function toggleSproutSeed() {
     if (newState === 'off') {
         // Set the seed value and disable the field
         manualSeed.value = window.lastLoadedSeed;
-        setSeedInputGroupState(true);
-        manualSeed.disabled = true;
+        if (window.lastLoadedSeed) {
+            sproutSeedBtn?.classList.remove('hidden');
+        }
+
         // Hide the clear seed button
         if (clearSeedBtn) clearSeedBtn.classList.add('hidden');
+        manualSeed.disabled = true;
         // Update placeholder to show the seed value
         if (manualSeed) {
             manualSeed.placeholder = window.lastLoadedSeed || 'Randomize';
+        }
+
+        // Load text replacement seed data from current image
+        if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata) {
+            const metadata = window.currentManualPreviewImage.metadata;
+            if (metadata.text_replacements_seed && Array.isArray(metadata.text_replacements_seed)) {
+                // Load the replacements and lock ALL of them when seed is locked
+                const replacementsWithLockStatus = metadata.text_replacements_seed
+                .filter(r => r.can_lock !== undefined ? r.can_lock !== false : true)
+                .map(replacement => ({
+                    ...replacement,
+                    locked: true // Lock ALL replacements when seed is locked
+                }));
+
+                window.lastGenerationTextReplacements = replacementsWithLockStatus;
+                window.lockedTextReplacements = replacementsWithLockStatus; // All are locked
+
+                // Update the lock button state
+                updateMainLockButtonState();
+            }
         }
     } else {
         // Clear the seed value and enable the field, but don't hide the sprout button
@@ -6113,7 +8623,6 @@ function toggleSproutSeed() {
         manualSeed.disabled = false;
         // Show the clear seed button
         if (clearSeedBtn) clearSeedBtn.classList.add('hidden');
-        // Don't call setSeedInputGroupState(false) here as it would hide the sprout button
         // Update placeholder to show the seed value (since it's still available)
         if (manualSeed) {
             manualSeed.placeholder = window.lastLoadedSeed || 'Randomize';
@@ -6140,11 +8649,11 @@ async function handleImageUpload(event) {
     const nonImageFiles = files.filter(file => !file.type.startsWith('image/'));
 
     if (nonImageFiles.length > 0) {
-        showGlassToast('warning', 'Invalid Files', `${nonImageFiles.length} non-image files were skipped`);
+        showGlassToast('warning', 'Invalid Files', `${nonImageFiles.length} non-image files were skipped`, false, undefined, '<i class="fas fa-file-circle-question"></i>');
     }
 
     if (imageFiles.length === 0) {
-        showGlassToast('error', 'No Images', 'Please select image files only');
+        showGlassToast('error', 'No Images', 'Please select image files only', false, undefined, '<i class="fas fa-file-circle-xmark"></i>');
         return;
     }
 
@@ -6182,8 +8691,8 @@ async function checkSubscriptionExpiration() {
 
     if (daysUntilExpiration <= 7 && daysUntilExpiration > 0) {
         if (!showSubscriptionExpirationToast) {
-            let message = daysUntilExpiration === 1 
-                ? `Your NovelAI ${subName} subscription renews tomorrow!` 
+            let message = daysUntilExpiration === 1
+                ? `Your NovelAI ${subName} subscription renews tomorrow!`
                 : `Your NovelAI ${subName} subscription will renew in ${daysUntilExpiration} days! (${renewalDateStr})`;
             showGlassToast('warning', 'NovelAI Subscription Status', message, false, 15000);
             showSubscriptionExpirationToast = true;
@@ -6695,7 +9204,7 @@ function getRequestTypeForRandomPrompt() {
  */
 async function executeRandomPrompt() {
     const requestType = getRequestTypeForRandomPrompt();
-    const nsfw = document.getElementById('randomPromptNsfwBtn').dataset.state === 'on';
+    const nsfw = (selectedNsfwValue.toString() === '1' || selectedNsfwValue.toString() === '2' || selectedNsfwValue.toString() === '3');
 
     const promptData = await randomPrompt(requestType, nsfw);
 
@@ -6708,18 +9217,21 @@ async function executeRandomPrompt() {
             autoResizeTextarea(manualPrompt);
             updateEmphasisHighlighting(manualPrompt);
         }
+
         if (manualUc) {
             manualUc.value = '';
             autoResizeTextarea(manualUc);
             updateEmphasisHighlighting(manualUc);
         }
-
+        
         const characterPrompts = promptData.slice(1).map(p => ({ prompt: p, uc: '', enabled: true }));
+
         savedRandomPromptState = {
             basePrompt: promptData[0],
             baseUc: '',
             characters: characterPrompts
         };
+
         loadCharacterPrompts(characterPrompts, false);
     }
 }
@@ -6731,7 +9243,6 @@ function transferRandomPrompt() {
     const toggleBtn = document.getElementById('randomPromptToggleBtn');
     const refreshBtn = document.getElementById('randomPromptRefreshBtn');
     const transferBtn = document.getElementById('randomPromptTransferBtn');
-    const nsfwBtn = document.getElementById('randomPromptNsfwBtn');
     const divider = document.getElementById('randomPromptDivider');
 
     // Check if random mode is active
@@ -6761,7 +9272,6 @@ function transferRandomPrompt() {
     toggleBtn.classList.remove('active');
     refreshBtn.classList.add('hidden');
     transferBtn.classList.add('hidden');
-    nsfwBtn.classList.add('hidden');
     divider.classList.add('hidden');
     // Clear saved states
     savedRandomPromptState = null;
@@ -6778,7 +9288,6 @@ async function toggleRandomPrompt() {
     const toggleBtn = document.getElementById('randomPromptToggleBtn');
     const refreshBtn = document.getElementById('randomPromptRefreshBtn');
     const transferBtn = document.getElementById('randomPromptTransferBtn');
-    const nsfwBtn = document.getElementById('randomPromptNsfwBtn');
     const divider = document.getElementById('randomPromptDivider');
     const isEnabled = toggleBtn.dataset.state === 'on';
 
@@ -6794,7 +9303,6 @@ async function toggleRandomPrompt() {
         toggleBtn.classList.remove('active');
         refreshBtn.classList.add('hidden');
         transferBtn.classList.add('hidden');
-        nsfwBtn.classList.add('hidden');
         divider.classList.add('hidden');
 
         if (lastPromptState) {
@@ -6827,7 +9335,6 @@ async function toggleRandomPrompt() {
         toggleBtn.classList.add('active');
         refreshBtn.classList.remove('hidden');
         transferBtn.classList.remove('hidden');
-        nsfwBtn.classList.remove('hidden');
         divider.classList.remove('hidden');
 
         // Check if we have a saved random prompt state
@@ -6878,22 +9385,22 @@ function addCharacterPrompt() {
                     </div>
                 </div>
                 <div class="character-prompt-preview">
-                    <input type="text" id="${characterId}_preview" readonly placeholder="Click to expand and edit prompt..."></input>
+                    <input type="text" id="${escapeHtmlAttribute(characterId)}_preview" readonly placeholder="Click to expand and edit prompt..."></input>
                 </div>
                     <div class="character-prompt-controls">
-                        <button type="button" class="btn-secondary character-prompt-collapse-toggle" onclick="toggleCharacterPromptCollapse('${characterId}')" title="Collapse/Expand">
+                        <button type="button" class="btn-secondary character-prompt-collapse-toggle" onclick="toggleCharacterPromptCollapse('${escapeHtmlAttribute(characterId)}')" title="Collapse/Expand">
                             <i class="nai-fold"></i>
                         </button>
-                        <button type="button" class="btn-secondary move-up-btn" onclick="moveCharacterPrompt('${characterId}', 'up')" style="display: inline-flex;">
+                        <button type="button" class="btn-secondary move-up-btn" onclick="moveCharacterPrompt('${escapeHtmlAttribute(characterId)}', 'up')" style="display: inline-flex;">
                             <i class="nai-directional-arrow-up"></i>
                         </button>
-                        <button type="button" class="btn-secondary move-down-btn" onclick="moveCharacterPrompt('${characterId}', 'down')" style="display: inline-flex;">
+                        <button type="button" class="btn-secondary move-down-btn" onclick="moveCharacterPrompt('${escapeHtmlAttribute(characterId)}', 'down')" style="display: inline-flex;">
                             <i class="nai-directional-arrow-down"></i>
                         </button>
-                        <button type="button" class="btn-secondary position-btn hidden" onclick="showPositionDialog('${characterId}')">
+                        <button type="button" class="btn-secondary position-btn hidden" onclick="showPositionDialog('${escapeHtmlAttribute(characterId)}')">
                             <i class="fas fa-crosshairs"></i>
                         </button>
-                        <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${characterId}')">
+                        <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${escapeHtmlAttribute(characterId)}')">
                             <i class="fas fa-trash-alt"></i>
                         </button>
                         <button type="button" class="btn-secondary indicator" id="${characterId}_enabled" data-state="on" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
@@ -6997,23 +9504,23 @@ function addCharacterPrompt() {
 
     characterPromptsContainer.appendChild(characterItem);
 
-
-
     // Add autocomplete event listeners for prompt and UC fields
     const promptField = document.getElementById(`${characterId}_prompt`);
     const ucField = document.getElementById(`${characterId}_uc`);
 
             if (promptField) {
-            addSafeEventListener(promptField, 'input', handleCharacterAutocompleteInput);
-            addSafeEventListener(promptField, 'keydown', handleCharacterAutocompleteKeydown);
-            addSafeEventListener(promptField, 'focus', () => startEmphasisHighlighting(promptField));
+            addSafeEventListener(promptField, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+            addSafeEventListener(promptField, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+            addSafeEventListener(promptField, 'focus', () => startEmphasisHighlighting(promptField), 'focus');
             addSafeEventListener(promptField, 'blur', () => {
                 applyFormattedText(promptField, true);
                 updateEmphasisHighlighting(promptField);
+                autoResizeTextarea(promptField);
                 stopEmphasisHighlighting();
-            });
+            }, 'blur');
             // Add auto-resize functionality
-            addSafeEventListener(promptField, 'input', () => autoResizeTextarea(promptField));
+            const debouncedResize = debounce(() => autoResizeTextarea(promptField), 50);
+addSafeEventListener(promptField, 'input', debouncedResize, 'resize');
             // Initialize emphasis highlighting overlay
             initializeEmphasisOverlay(promptField);
             // Initialize toolbar for dynamic textarea
@@ -7023,16 +9530,18 @@ function addCharacterPrompt() {
         }
 
             if (ucField) {
-            addSafeEventListener(ucField, 'input', handleCharacterAutocompleteInput);
-            addSafeEventListener(ucField, 'keydown', handleCharacterAutocompleteKeydown);
-            addSafeEventListener(ucField, 'focus', () => startEmphasisHighlighting(ucField));
+            addSafeEventListener(ucField, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+            addSafeEventListener(ucField, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+            addSafeEventListener(ucField, 'focus', () => startEmphasisHighlighting(ucField), 'focus');
             addSafeEventListener(ucField, 'blur', () => {
                 applyFormattedText(ucField, true);
                 updateEmphasisHighlighting(ucField);
+                autoResizeTextarea(ucField);
                 stopEmphasisHighlighting();
-            });
+            }, 'blur');
             // Add auto-resize functionality
-            addSafeEventListener(ucField, 'input', () => autoResizeTextarea(ucField));
+            const debouncedUcResize = debounce(() => autoResizeTextarea(ucField), 50);
+addSafeEventListener(ucField, 'input', debouncedUcResize, 'resize');
             initializeEmphasisOverlay(ucField);
             // Initialize toolbar for dynamic textarea
             if (window.handleDynamicTextarea) {
@@ -7097,6 +9606,17 @@ function addCharacterPrompt() {
 function deleteCharacterPrompt(characterId) {
     const characterItem = document.getElementById(characterId);
     if (characterItem) {
+        // Clean up event listeners before removing the element
+        const promptField = document.getElementById(`${characterId}_prompt`);
+        const ucField = document.getElementById(`${characterId}_uc`);
+        
+        if (promptField) {
+            cleanupSafeEventListeners(promptField);
+        }
+        if (ucField) {
+            cleanupSafeEventListeners(ucField);
+        }
+        
         characterItem.remove();
         updateAutoPositionToggle();
     }
@@ -7298,6 +9818,22 @@ function getCharacterPrompts() {
 
 function clearCharacterPrompts() {
     const characterPromptsContainer = document.getElementById('characterPromptsContainer');
+    
+    // Clean up event listeners for all character prompt textareas before clearing
+    const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
+    characterItems.forEach(item => {
+        const characterId = item.id;
+        const promptField = document.getElementById(`${characterId}_prompt`);
+        const ucField = document.getElementById(`${characterId}_uc`);
+        
+        if (promptField) {
+            cleanupSafeEventListeners(promptField);
+        }
+        if (ucField) {
+            cleanupSafeEventListeners(ucField);
+        }
+    });
+    
     characterPromptsContainer.innerHTML = '';
     characterPromptCounter = 0;
 }
@@ -7360,19 +9896,19 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                     <input type="text" id="${characterId}_preview" readonly placeholder="Click to expand and edit prompt..." value="${character.prompt || ''}"></input>
                 </div>
                     <div class="character-prompt-controls">
-                        <button type="button" class="btn-secondary character-prompt-collapse-toggle" onclick="toggleCharacterPromptCollapse('${characterId}')" title="Collapse/Expand">
+                        <button type="button" class="btn-secondary character-prompt-collapse-toggle" onclick="toggleCharacterPromptCollapse('${escapeHtmlAttribute(characterId)}')" title="Collapse/Expand">
                             <i class="nai-fold"></i>
                         </button>
-                        <button type="button" class="btn-secondary move-up-btn" onclick="moveCharacterPrompt('${characterId}', 'up')" style="display: inline-flex;">
+                        <button type="button" class="btn-secondary move-up-btn" onclick="moveCharacterPrompt('${escapeHtmlAttribute(characterId)}', 'up')" style="display: inline-flex;">
                             <i class="nai-directional-arrow-up"></i>
                         </button>
-                        <button type="button" class="btn-secondary move-down-btn" onclick="moveCharacterPrompt('${characterId}', 'down')" style="display: inline-flex;">
+                        <button type="button" class="btn-secondary move-down-btn" onclick="moveCharacterPrompt('${escapeHtmlAttribute(characterId)}', 'down')" style="display: inline-flex;">
                             <i class="nai-directional-arrow-down"></i>
                         </button>
-                        <button type="button" class="btn-secondary position-btn${positionBtnHidden ? ' hidden' : ''}" onclick="showPositionDialog('${characterId}')">
+                        <button type="button" class="btn-secondary position-btn${positionBtnHidden ? ' hidden' : ''}" onclick="showPositionDialog('${escapeHtmlAttribute(characterId)}')">
                             ${positionBtnText}
                         </button>
-                        <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${characterId}')">
+                        <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${escapeHtmlAttribute(characterId)}')">
                             <i class="fas fa-trash-alt"></i>
                         </button>
                         <button type="button" class="btn-secondary indicator" id="${characterId}_enabled" data-state="${character.enabled ? 'on' : 'off'}" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
@@ -7485,23 +10021,23 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
 
         characterPromptsContainer.appendChild(characterItem);
 
-
-
         // Add autocomplete event listeners for prompt and UC fields
         const promptField = document.getElementById(`${characterId}_prompt`);
         const ucField = document.getElementById(`${characterId}_uc`);
 
         if (promptField) {
-            addSafeEventListener(promptField, 'input', handleCharacterAutocompleteInput);
-            addSafeEventListener(promptField, 'keydown', handleCharacterAutocompleteKeydown);
-            addSafeEventListener(promptField, 'focus', () => startEmphasisHighlighting(promptField));
+            addSafeEventListener(promptField, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+            addSafeEventListener(promptField, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+            addSafeEventListener(promptField, 'focus', () => startEmphasisHighlighting(promptField), 'focus');
             addSafeEventListener(promptField, 'blur', () => {
                 applyFormattedText(promptField, true);
                 updateEmphasisHighlighting(promptField);
+                autoResizeTextarea(promptField);
                 stopEmphasisHighlighting();
-            });
+            }, 'blur');
             // Add auto-resize functionality
-            addSafeEventListener(promptField, 'input', () => autoResizeTextarea(promptField));
+            const debouncedResize = debounce(() => autoResizeTextarea(promptField), 50);
+            addSafeEventListener(promptField, 'input', debouncedResize, 'resize');
             // Initialize emphasis highlighting overlay
             initializeEmphasisOverlay(promptField);
             // Apply initial resizing and highlighting after content is set
@@ -7514,16 +10050,18 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
         }
 
         if (ucField) {
-            addSafeEventListener(ucField, 'input', handleCharacterAutocompleteInput);
-            addSafeEventListener(ucField, 'keydown', handleCharacterAutocompleteKeydown);
-            addSafeEventListener(ucField, 'focus', () => startEmphasisHighlighting(ucField));
+            addSafeEventListener(ucField, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+            addSafeEventListener(ucField, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+            addSafeEventListener(ucField, 'focus', () => startEmphasisHighlighting(ucField), 'focus');
             addSafeEventListener(ucField, 'blur', () => {
                 applyFormattedText(ucField, true);
                 updateEmphasisHighlighting(ucField);
+                autoResizeTextarea(ucField);
                 stopEmphasisHighlighting();
-            });
+            }, 'blur');
             // Add auto-resize functionality
-            addSafeEventListener(ucField, 'input', () => autoResizeTextarea(ucField));
+            const debouncedUcResize = debounce(() => autoResizeTextarea(ucField), 50);
+            addSafeEventListener(ucField, 'input', debouncedUcResize, 'resize');
             // Initialize emphasis highlighting overlay
             initializeEmphasisOverlay(ucField);
             // Apply initial resizing and highlighting after content is set
@@ -7827,7 +10365,7 @@ function handleServerPing(data) {
     // Set timeout for next ping (15 seconds)
     pingTimeoutId = setTimeout(() => {
         if (!connectionToastId) {
-            connectionToastId = showGlassToast('warning', 'Connection Warning', 'No server response detected. Check your connection.', false);
+            connectionToastId = showGlassToast('warning', 'Connection Status', 'Waiting for server response...', false, undefined, '<i class="fas fa-phone-arrow-up-right fa-fade"></i>');
         }
     }, 15000);
 }
@@ -7840,6 +10378,12 @@ async function ensureSessionValid() {
                 await window.wsClient.pingWithAuth();
             return true;
             } catch (wsError) {
+                // Check if this is a timeout error (not authentication failure)
+                if (wsError.code === 'PING_TIMEOUT') {
+                    console.warn('WebSocket ping timeout, connection may be unstable:', wsError);
+                    // For timeouts, don't treat as auth failure - just return false
+                    return false;
+                }
                 console.warn('WebSocket ping failed, authentication required:', wsError);
         }
         }
@@ -8278,7 +10822,7 @@ function setupMainMenuContextMenus() {
                 setActiveWorkspace(workspaceId)
                 .catch(error => {
                     console.error('Error switching workspace:', error);
-                    showGlassToast('error', 'Workspace Switch Failed', 'Failed to switch workspace: ' + error.message, false, 5000);
+                    showGlassToast('error', 'Workspace Switch Failed', 'Failed to switch workspace: ' + error.message, false, 5000, '<i class="fas fa-plane-slash"></i>');
                 });
             }
         }
@@ -8663,7 +11207,26 @@ function setupMainMenuContextMenus() {
                 // Open IP manager modal directly
                 window.ipManagement.openIPManagementModal();
                 break;
-                
+
+            case 'lockAllReplacements':
+                // Lock all available text replacements
+                if (window.lastGenerationTextReplacements && Array.isArray(window.lastGenerationTextReplacements)) {
+                    const lockableReplacements = window.lastGenerationTextReplacements.map(r => ({ ...r, locked: r.can_lock !== undefined ? r.can_lock !== false : true }));
+                    window.lockedTextReplacements = lockableReplacements.filter(r => r.locked === true);
+                    window.lastGenerationTextReplacements = lockableReplacements;
+                    updateMainLockButtonState();
+                    showGlassToast('success', null, `Locked ${lockableReplacements.length} text replacement${lockableReplacements.length === 1 ? '' : 's'}.`);
+                }
+                break;
+
+            case 'unlockAllReplacements':
+                // Unlock all text replacements
+                window.lockedTextReplacements = [];
+                window.lastGenerationTextReplacements = window.lastGenerationTextReplacements.map(r => ({ ...r, locked: false }));
+                updateMainLockButtonState();
+                showGlassToast('success', null, 'Unlocked all text replacements.');
+                break;
+
             case 'text-replacement-manager':
                 // Open text replacement manager modal directly
                 showTextReplacementManager();
@@ -8990,8 +11553,15 @@ if (window.wsClient) {
     
     // Removed continuous polling - /status is now only called during connection process
     // Status checks are handled by websocket.js pingHost() during connection
-    
-    // Priority 5: Initialize main app components
+
+    // Priority 0: Check for and download updates (before loading options)
+    window.wsClient.registerInitStep(0, 'Checking for Updates', async () => {
+        if (window.serviceWorkerManager) {
+            await window.serviceWorkerManager.checkAndDownloadUpdatesForInit();
+        }
+    });
+
+    // Priority 1: Initialize main app components
     window.wsClient.registerInitStep(1, 'Loading Application Data', async () => {
         try {
             await loadOptions();
@@ -9041,7 +11611,6 @@ if (window.wsClient) {
 
         renderManualSamplerDropdown(manualSelectedSampler);
         renderManualResolutionDropdown(manualSelectedResolution);
-        renderManualNoiseSchedulerDropdown(manualSelectedNoiseScheduler);
         renderManualModelDropdown(manualSelectedModel);
         renderDatasetDropdown();
 
@@ -9080,9 +11649,6 @@ if (window.wsClient) {
         // Initialize emphasis highlighting for manual fields
         await initializeEmphasisOverlay(manualPrompt);
         await initializeEmphasisOverlay(manualUc);
-
-        // Start closed
-        setSeedInputGroupState(false);
     });
 }
 
@@ -9273,94 +11839,4 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-});
-window.enableDevMode = function() {
-    localStorage.setItem('staticforge_dev_mode', 'true');
-    console.log('🔧 Development mode enabled. Please refresh the page.');
-    return true;
-};
-
-window.disableDevMode = function() {
-    localStorage.removeItem('staticforge_dev_mode');
-    console.log('🔧 Development mode disabled. Please refresh the page.');
-    return false;
-};
-
-window.toggleDevMode = function() {
-    const currentMode = localStorage.getItem('staticforge_dev_mode') === 'true';
-    if (currentMode) {
-        return window.disableDevMode();
-    } else {
-        return window.enableDevMode();
-    }
-};
-
-window.isDevModeEnabled = function() {
-    return localStorage.getItem('staticforge_dev_mode') === 'true';
-};
-
-// Master Window Management Functions
-window.setAsMasterWindow = function() {
-    if (window.masterWindowClient) {
-        window.masterWindowClient.setAsMaster();
-        console.log('🔧 Master Window: Set as master window');
-    } else {
-        console.error('🔧 Master Window: Master window client not available');
-    }
-};
-
-// Function to update transformation dropdown button active state based on vibe presence
-
-
-window.clearMasterWindow = function() {
-    if (window.masterWindowClient) {
-        window.masterWindowClient.clearMaster();
-        console.log('🔧 Master Window: Cleared master window status');
-    } else {
-        console.error('🔧 Master Window: Master window client not available');
-    }
-};
-
-window.isMasterWindow = function() {
-    if (window.masterWindowClient) {
-        return window.masterWindowClient.isMasterWindow();
-    }
-    return false;
-};
-
-// MCP Take Ownership (dumb function - always available)
-window.mcpTakeOwnership = function() {
-    if (window.masterWindowClient) {
-        // Use the full master window client if available
-        window.masterWindowClient.setAsMaster();
-        console.log('🔧 MCP: Set as master window via master window client');
-    } else {
-        // Dumb function - just set localStorage and suggest refresh
-        localStorage.setItem('staticforge_master_window', JSON.stringify({
-            isMaster: true,
-            sessionId: 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
-            timestamp: Date.now()
-        }));
-        console.log('🔧 MCP: Master window status set in localStorage. Please refresh the page to activate.');
-    }
-};
-
-// Add master window status to the UI
-document.addEventListener('DOMContentLoaded', function() {
-    // Update master window indicator periodically
-    setInterval(function() {
-        if (window.masterWindowClient) {
-            const isMaster = window.masterWindowClient.isMasterWindow();
-            const indicators = document.querySelectorAll('.master-indicator');
-            indicators.forEach(indicator => {
-                if (isMaster) {
-                    indicator.textContent = '🔧 Master';
-                    indicator.style.color = '#4CAF50';
-                } else {
-                    indicator.textContent = '⚪ Client';
-                    indicator.style.color = '#666';
-                }
-            });
-        }
-    }, 1000);
 });

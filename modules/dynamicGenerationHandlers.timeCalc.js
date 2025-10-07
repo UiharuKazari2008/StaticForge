@@ -30,8 +30,10 @@ async function getSunriseSunset(location, date = new Date()) {
     // Use established sunrise-sunset-js package for accurate calculations
 
     try {
-        const sunrise = getSunriseSunsetLib.getSunrise(lat, lon, date);
-        const sunset = getSunriseSunsetLib.getSunset(lat, lon, date);
+        // Create date at noon UTC for the given date to ensure consistent timezone handling
+        const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0));
+        const sunrise = getSunriseSunsetLib.getSunrise(lat, lon, utcDate);
+        const sunset = getSunriseSunsetLib.getSunset(lat, lon, utcDate);
 
         // Check for polar conditions - when sunrise and sunset times are the same
         // This indicates either polar day (midnight sun) or polar night
@@ -55,8 +57,12 @@ async function getSunriseSunset(location, date = new Date()) {
             };
         }
 
-        const sunriseHour = sunrise.getHours() + sunrise.getMinutes() / 60 + sunrise.getSeconds() / 3600;
-        const sunsetHour = sunset.getHours() + sunset.getMinutes() / 60 + sunset.getSeconds() / 3600;
+        // Convert UTC times to local timezone for hour calculation
+        const sunriseLocal = new Date(sunrise.toLocaleString('en-US', { timeZone: location.timezone || 'UTC' }));
+        const sunsetLocal = new Date(sunset.toLocaleString('en-US', { timeZone: location.timezone || 'UTC' }));
+
+        const sunriseHour = sunriseLocal.getHours() + sunriseLocal.getMinutes() / 60 + sunriseLocal.getSeconds() / 3600;
+        const sunsetHour = sunsetLocal.getHours() + sunsetLocal.getMinutes() / 60 + sunsetLocal.getSeconds() / 3600;
 
         return {
             sunrise: sunrise.getTime(),
@@ -466,8 +472,66 @@ function buildEnvironmentalContext(soilAnalysis, atmosphericMoistureAnalysis, cl
         }
     }
 
-    // Return combined context or empty string
-    return contextParts.length > 0 ? contextParts.join(', ') : '';
+    // Filter out undefined values and return combined context
+    const validParts = contextParts.filter(part => part !== undefined);
+    return validParts.length > 0 ? validParts.join(', ') : '';
+}
+
+/**
+ * Calculates perceived time adjustment factors based on season, daylight duration, and weather conditions.
+ * Perceived time refers to subjective time experience that can differ from clock time due to
+ * psychological, cultural, and environmental factors.
+ *
+ * Based on research showing seasonal variations in human psychology (Hohm et al., 2023):
+ * - Winter: Shorter days and colder temperatures may make time feel slower
+ * - Summer: Longer days and warmer temperatures may make time feel faster
+ * - Spring: Renewal energy and changing conditions may affect time perception
+ * - Autumn: Transition and cooling may influence perceived time passage
+ *
+ * @param {string} season - Current season ('spring', 'summer', 'autumn', 'winter')
+ * @param {number} daylightHours - Number of daylight hours (sunset - sunrise)
+ * @param {Object} weather - Weather conditions affecting time perception
+ * @returns {Object} Time adjustment factors (multipliers for time period durations)
+ */
+function getPerceivedTimeFactors(season, daylightHours, weather = null) {
+    // Base seasonal factors derived from psychological research on seasonal affective patterns
+    // These are conservative estimates based on qualitative research findings
+    const baseFactors = {
+        spring: { morningStretch: 1.03, daytimeStretch: 1.05, eveningStretch: 0.97 }, // Moderate renewal effect
+        summer: { morningStretch: 1.06, daytimeStretch: 1.08, eveningStretch: 0.94 }, // Relaxation from long days
+        autumn: { morningStretch: 0.97, daytimeStretch: 0.99, eveningStretch: 1.03 }, // Transition slowing
+        winter: { morningStretch: 0.94, daytimeStretch: 0.96, eveningStretch: 1.06 }  // Short days, colder temps
+    };
+
+    let factors = baseFactors[season] || { morningStretch: 1.0, daytimeStretch: 1.0, eveningStretch: 1.0 };
+
+    // Daylight duration adjustment - longer days may make time feel slower (conservative effect)
+    const daylightAdjustment = Math.max(0.95, Math.min(1.05, daylightHours / 12));
+    factors.morningStretch *= daylightAdjustment;
+    factors.daytimeStretch *= daylightAdjustment;
+    factors.eveningStretch /= daylightAdjustment; // Subtle inverse for evening
+
+    // Weather-based adjustments (supported by time perception research)
+    if (weather) {
+        const temp = weather.temperature || 20;
+
+        // Cold temperatures may slow perceived time (psychophysical research)
+        if (temp < 10) {
+            factors.morningStretch *= 0.97;
+            factors.daytimeStretch *= 0.98;
+        } else if (temp > 25) {
+            // Warm temperatures may slightly accelerate perceived time
+            factors.morningStretch *= 1.02;
+            factors.daytimeStretch *= 1.01;
+        }
+    }
+
+    // Ensure factors stay within conservative bounds to avoid extreme distortions
+    factors.morningStretch = Math.max(0.85, Math.min(1.15, factors.morningStretch));
+    factors.daytimeStretch = Math.max(0.90, Math.min(1.10, factors.daytimeStretch));
+    factors.eveningStretch = Math.max(0.90, Math.min(1.15, factors.eveningStretch));
+
+    return factors;
 }
 
 /**
@@ -491,7 +555,36 @@ async function determineTimePeriod(time, season, location, weather = null) {
     const currentHour = time.hour + time.minute / 60; // Decimal hour
 
     try {
-        const sunTimes = await getSunriseSunset(location, new Date(time.timestamp));
+        let sunTimes;
+
+        // Use weather data sunrise/sunset if available (more accurate than astronomical calculation)
+        if (weather && weather.sunrise && weather.sunset && location.timezone) {
+            // Convert UTC sunrise/sunset to local time using timezone
+            const sunriseUTC = new Date(weather.sunrise);
+            const sunsetUTC = new Date(weather.sunset);
+
+            // Convert to local time using timezone
+            const sunriseLocal = new Date(sunriseUTC.toLocaleString('en-US', { timeZone: location.timezone }));
+            const sunsetLocal = new Date(sunsetUTC.toLocaleString('en-US', { timeZone: location.timezone }));
+
+            const sunriseHour = sunriseLocal.getHours() + sunriseLocal.getMinutes() / 60 + sunriseLocal.getSeconds() / 3600;
+            const sunsetHour = sunsetLocal.getHours() + sunsetLocal.getMinutes() / 60 + sunsetLocal.getSeconds() / 3600;
+
+            sunTimes = {
+                sunrise: sunriseLocal.getTime(),
+                sunset: sunsetLocal.getTime(),
+                sunriseHour,
+                sunsetHour,
+                isPolarDay: false,
+                isPolarNight: false,
+                source: 'weather_api'
+            };
+        } else {
+            // Fall back to astronomical calculation
+            // Create date at noon UTC for the given date to ensure consistent timezone handling
+            const utcDate = new Date(Date.UTC(time.year, time.month, time.dayOfMonth, 12, 0, 0));
+            sunTimes = await getSunriseSunset(location, utcDate);
+        }
 
         // Check for polar conditions or calculation errors
         if (sunTimes.isPolarDay) {
@@ -507,10 +600,10 @@ async function determineTimePeriod(time, season, location, weather = null) {
             };
         } else if (sunTimes.isPolarNight) {
             return {
-                period: 'polar night, continuous darkness',
+                period: 'polar night, extended darkness',
                 periodKey: 'polar_night',
-                lighting: 'complete darkness, no sunlight, stars always visible',
-                atmosphere: 'arctic or antarctic conditions with constant darkness',
+                lighting: 'extended nighttime darkness, no sunlight, stars and aurora visible',
+                atmosphere: 'arctic or antarctic conditions with extended darkness',
                 season: season,
                 timeOfDay: 'night',
                 transitionType: 'polar_conditions',
@@ -536,38 +629,42 @@ async function determineTimePeriod(time, season, location, weather = null) {
             };
         }
 
-        // Define granular time periods with transitions
-        const dawnStart = sunriseHour - 1;         // 1 hour before sunrise
-        const sunriseStart = sunriseHour - 0.25;   // 15 min before sunrise
-        const sunriseEnd = sunriseHour + 0.25;     // 15 min after sunrise
-        const earlyMorningEnd = sunriseHour + 1;   // 1 hour after sunrise
-        const morningEnd = sunriseHour + 2.5;      // 2.5 hours after sunrise (~9-10 AM)
-        const lateMorningEnd = sunriseHour + 4;    // 4 hours after sunrise (~11-12 PM)
+        // Calculate perceived time adjustments based on season and daylight
+        const daylightHours = sunsetHour - sunriseHour;
+        const perceivedTimeFactors = getPerceivedTimeFactors(season, daylightHours, weather);
 
         // Calculate solar noon (when sun is at its highest point) as midpoint between sunrise and sunset
         const solarNoon = (sunriseHour + sunsetHour) / 2;
 
+        // Define granular time periods with transitions and perceived time adjustments
+        const dawnStart = sunriseHour - 1;         // 1 hour before sunrise
+        const sunriseStart = sunriseHour - 0.25;   // 15 min before sunrise
+        const sunriseEnd = sunriseHour + 0.25;     // 15 min after sunrise
+        const earlyMorningEnd = sunriseHour + 1 * perceivedTimeFactors.morningStretch;   // 1 hour after sunrise (adjusted)
+        const morningEnd = sunriseHour + 2.5 * perceivedTimeFactors.morningStretch;      // 2.5 hours after sunrise (~9-10 AM)
+        const daytimeStart = solarNoon - 1.5 * perceivedTimeFactors.daytimeStretch;      // Start 1.5 hours before solar noon (adjusted)
+
         const goldenHourStart = sunsetHour - 0.75; // 45 min before sunset
 
-        // Define afternoon period as 2 hours before golden hour
-        const afternoonStart = goldenHourStart - 2; // 2 hours before golden hour
+        // Define afternoon period as 2 hours before golden hour (adjusted for perceived time)
+        const afternoonStart = goldenHourStart - 2 * perceivedTimeFactors.eveningStretch; // 2 hours before golden hour
 
         // Define daytime period around solar noon (when sun is highest in sky)
-        const daytimeStart = solarNoon - 1.5;      // Start 1.5 hours before solar noon
         const daytimeEnd = afternoonStart;         // End when afternoon starts
         const sunsetStart = sunsetHour - 0.25;     // 15 min before sunset
         const sunsetEnd = sunsetHour + 0.25;       // 15 min after sunset
-        const duskEnd = sunsetHour + 0.75;         // 45 min after sunset
-        const earlyEveningEnd = sunsetHour + 1.5;  // 1.5 hours after sunset
-        const eveningEnd = sunsetHour + 3;         // 3 hours after sunset
+        const duskEnd = sunsetHour + 0.75 * perceivedTimeFactors.eveningStretch;         // 45 min after sunset (adjusted)
+        const earlyEveningEnd = sunsetHour + 1.5 * perceivedTimeFactors.eveningStretch;  // 1.5 hours after sunset (adjusted)
+        const eveningEnd = sunsetHour + 3 * perceivedTimeFactors.eveningStretch;         // 3 hours after sunset (adjusted)
 
         // Determine detailed time period with lighting characteristics
         let periodKey, periodDescription, lightingDescription, atmosphericNotes;
 
-        // Debug: Log time calculations
+        // Debug: Log time calculations with perceived time adjustments
         console.log(`🌅 Its Currently ${currentHour.toFixed(2)}:${time.minute.toFixed(2)} // ${time.dayOfWeek} // ${time.month} ${time.dayOfMonth}, ${time.year}`);
-        console.log(`🌅 Sunrise: ${sunriseHour.toFixed(2)}, Sunset: ${sunsetHour.toFixed(2)}`);
-        console.log(`🌅 Late Morning End: ${lateMorningEnd.toFixed(2)}`);
+        console.log(`🌅 Sunrise: ${sunriseHour.toFixed(2)}, Sunset: ${sunsetHour.toFixed(2)} (${daylightHours.toFixed(1)}h daylight)`);
+        console.log(`🌅 Perceived Time Factors (${season}): morning=${perceivedTimeFactors.morningStretch.toFixed(2)}, daytime=${perceivedTimeFactors.daytimeStretch.toFixed(2)}, evening=${perceivedTimeFactors.eveningStretch.toFixed(2)}`);
+        console.log(`🌅 Morning End: ${(sunriseHour + 2.5 * perceivedTimeFactors.morningStretch).toFixed(2)}, Daytime Start: ${daytimeStart.toFixed(2)}`);
         console.log(`🌅 Solar Noon: ${solarNoon.toFixed(2)}`);
         console.log(`🌅 Daytime Period: ${daytimeStart.toFixed(2)} - ${daytimeEnd.toFixed(2)}`);
         console.log(`🌅 Afternoon Period: ${afternoonStart.toFixed(2)} - ${goldenHourStart.toFixed(2)}`);
@@ -578,7 +675,10 @@ async function determineTimePeriod(time, season, location, weather = null) {
         const temperature = weather?.temperature || 20; // Default to moderate temperature
         const humidity = weather?.humidity || 50; // Default to moderate humidity
         const precipitationRate = weather?.precipitationRate || 0;
-        const windSpeed = weather?.windSpeed || 0;
+        const precipitationType = weather?.precipitationType || 'rain'; // Default to rain if not specified
+        const environmentType = weather?.environmentType || location?.environmentType || 'mixed'; // urban, natural, or mixed
+        // Use average wind speed if available, otherwise use the single windSpeed value
+        const windSpeed = (weather?.windSpeed?.avg !== undefined) ? weather.windSpeed.avg : (weather?.windSpeed || 0);
         const dewPoint = weather?.dewPoint || 15; // Default moderate dew point
         const isDaylight = currentHour >= sunriseHour && currentHour <= sunsetHour;
 
@@ -596,15 +696,14 @@ async function determineTimePeriod(time, season, location, weather = null) {
         const soilAnalysis = analyzeSoilConditions(soilTemperature, soilMoisture, temperature);
         const atmosphericMoistureAnalysis = analyzeAtmosphericMoisture(evapotranspiration, et0, vapourPressureDeficit, temperature, humidity);
         const cloudLayerAnalysis = analyzeCloudLayers(cloudCoverLow, cloudCoverMid, cloudCoverHigh, cloudCoverage);
-        const surfacePressureAnalysis = analyzeSurfacePressure(weather.surfacePressure || weather.pressure, weather.pressure, weather.location?.altitude || 0);
+        const surfacePressureAnalysis = analyzeSurfacePressure(weather?.surfacePressure || weather?.pressure, weather?.pressure, weather?.location?.altitude || 0);
 
         // Calculate derived weather factors
         const temperatureDewPointDiff = temperature - dewPoint; // For moisture assessment
         const isHumid = humidity >= 70;
         const isDry = humidity <= 30;
         const hasPrecipitation = precipitationRate > 0;
-        const windSpeedMph = windSpeed * 2.237; // Convert m/s to mph
-        const isWindy = windSpeedMph >= 15; // mph threshold for noticeable wind (15 mph = ~6.7 m/s)
+        const isWindy = windSpeed >= 20; // m/s threshold for noticeable wind (20 m/s minimum)
         const isCold = temperature <= 5;
         const isHot = temperature >= 25;
 
@@ -644,7 +743,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
             } else {
                 atmosphereBase = 'cool, peaceful';
             }
-            atmosphereBase += ', anticipation of sunrise, minimal shadows';
+            atmosphereBase += ', anticipation of sunrise';
 
             // Integrate atmospheric moisture for fog/mist formation
             if (atmosphericMoistureAnalysis.atmosphericDryness === 'very_dry') {
@@ -655,9 +754,10 @@ async function determineTimePeriod(time, season, location, weather = null) {
 
             // Humidity affects lighting quality with environmental context
             if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ', thick fog or mist hanging low';
                 if (atmosphericMoistureAnalysis.atmosphericDryness === 'humid') {
-                    atmosphereBase += ' with high atmospheric moisture content';
+                    atmosphereBase += ', thick fog hanging low with atmospheric moisture content';
+                } else {
+                    atmosphereBase += ', mist hanging low';
                 }
             } else if (isDry) {
                 atmosphereBase += ', exceptionally clear and dry air';
@@ -669,9 +769,13 @@ async function determineTimePeriod(time, season, location, weather = null) {
             // Precipitation affects atmosphere
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ', light rain or snow falling softly';
+                    atmosphereBase += `, light ${precipitationType} fall`;
                 } else {
-                    atmosphereBase += ', fine mist or drizzle in the air';
+                    if (precipitationType === 'rain') {
+                        atmosphereBase += ', fine drizzle in the air';
+                    } else {
+                        atmosphereBase += ', fine mist in the air';
+                    }
                 }
             }
 
@@ -687,10 +791,10 @@ async function determineTimePeriod(time, season, location, weather = null) {
             if (cloudCoverage >= 80) {
                 // Heavy overcast completely changes the lighting character
                 lightingParts = ['muted pre-dawn illumination under heavy overcast conditions'];
-                atmosphereBase += ', heavy cloud cover dominating visibility';
+                atmosphereBase += ', heavy cloud cover, dimmed lighting';
             } else if (cloudCoverage >= 50) {
                 lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with moderate cloud diffusion affecting light quality';
+                atmosphereBase += ' with moderate cloud cover, reduced lighting';
             } else if (cloudCoverage >= 20) {
                 lightingParts.push('filtered by light cloud cover');
                 atmosphereBase += ' with light cloud filtering of emerging light';
@@ -723,7 +827,11 @@ async function determineTimePeriod(time, season, location, weather = null) {
             if (isCold) {
                 atmosphereBase = 'crisp cold morning air';
                 if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', frost or ice crystals sparkling on surfaces';
+                    if (soilAnalysis.frostRisk) {
+                        atmosphereBase += ', frost sparkling on surfaces';
+                    } else {
+                        atmosphereBase += ', ice crystals sparkling on surfaces';
+                    }
                     if (soilAnalysis.frostRisk) {
                         atmosphereBase += ' with ground frost catching golden light';
                     }
@@ -750,7 +858,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
                 }
             } else if (isDry) {
                 atmosphereBase += ', exceptionally clear and dry morning air';
-                lightingParts.push('with crystal clear golden illumination');
+                lightingParts.push('golden illumination');
                 if (atmosphericMoistureAnalysis.atmosphericDryness === 'very_dry') {
                     atmosphereBase += ' under extremely dry atmospheric conditions';
                 }
@@ -759,8 +867,8 @@ async function determineTimePeriod(time, season, location, weather = null) {
             // Precipitation affects atmosphere
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ', rain or snow mixing with golden light';
-                    lightingParts.push('with precipitation catching golden rays');
+                    atmosphereBase += `, ${precipitationType} with golden lighting`;
+                    lightingParts.push(`${precipitationType} with golden light rays`);
                 } else {
                     atmosphereBase += ', fine mist enhancing golden glow';
                 }
@@ -769,7 +877,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
             // Wind affects atmosphere and light
             if (isWindy) {
                 atmosphereBase += ', wind carrying fresh morning energy';
-                lightingParts.push('with wind moving through golden light');
+                lightingParts.push('wind moving through golden light');
             } else {
                 atmosphereBase += ', calm morning stillness';
             }
@@ -778,10 +886,10 @@ async function determineTimePeriod(time, season, location, weather = null) {
             if (cloudCoverage >= 80) {
                 // Heavy overcast completely changes sunrise character
                 lightingParts = ['diffused early morning light under heavy overcast conditions'];
-                atmosphereBase += ', heavy cloud cover dominating visibility';
+                atmosphereBase += ', heavy cloud cover, dimmed lighting';
             } else if (cloudCoverage >= 50) {
                 lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with moderate cloud diffusion affecting light quality';
+                atmosphereBase += ' with moderate cloud cover, reduced lighting';
             } else if (cloudCoverage >= 20) {
                 lightingParts.push('filtered by light cloud cover');
                 atmosphereBase += ' with light cloud filtering of golden sunlight';
@@ -791,9 +899,9 @@ async function determineTimePeriod(time, season, location, weather = null) {
             if (uvIndex > 0) {
                 const effectiveUV = uvIndex * (1 - cloudCoverage / 100);
                 if (effectiveUV >= 6) {
-                    lightingParts.push('with strong UV presence');
+                    lightingParts.push('strong UV presence');
                 } else if (effectiveUV >= 3) {
-                    lightingParts.push('with moderate UV levels');
+                    lightingParts.push('moderate UV levels');
                 }
             }
 
@@ -816,7 +924,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
                 }
             } else if (isHot) {
                 lightingBase = 'bright morning light, soft shadows, golden undertones';
-                atmosphereBase = 'warm humid morning air, morning dew, warming temperatures, quiet activity';
+                atmosphereBase = 'warm humid morning air, morning dew, increasing temperatures, quiet activity';
                 if (temperatureDewPointDiff < 5) {
                     atmosphereBase += ', heavy dew evaporating quickly';
                     if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
@@ -828,54 +936,43 @@ async function determineTimePeriod(time, season, location, weather = null) {
                 atmosphereBase = 'crisp fresh air, morning dew, cool temperatures, quiet activity';
             }
 
-            // Humidity affects light quality
+            // Humidity affects atmosphere and light quality
             if (isHumid && temperatureDewPointDiff < 5) {
                 atmosphereBase += ', humid mist hanging in low areas';
-                lightingBase += ', diffused through morning humidity';
+                lightingBase += ', soft focus, diffused lighting';
             } else if (isDry) {
                 atmosphereBase += ', exceptionally dry morning air';
-                lightingBase += ', crystal clear illumination';
+                lightingBase += ', clear lighting';
             }
 
-            // Precipitation affects atmosphere
+            // Precipitation affects atmosphere and lighting
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ', light precipitation dampening surfaces';
-                    lightingBase += ', with water droplets catching light';
+                    atmosphereBase += `, light ${precipitationType} on surfaces`;
+                    lightingBase += `, light refraction, ${precipitationType} droplets reflecting sunlight`;
                 } else {
                     atmosphereBase += ', fine mist in the air';
                 }
             }
 
-            // Wind affects atmosphere
+            // Wind affects atmosphere (not lighting directly)
             if (isWindy) {
-                atmosphereBase += ', wind rustling morning stillness';
-                lightingBase += ', with subtle wind movement';
-            } else {
-                atmosphereBase += ', perfect morning calm';
+                atmosphereBase += ', windy';
             }
 
             // Cloud coverage effects
             if (cloudCoverage >= 80) {
                 lightingBase = 'muted morning light, soft shadows, cool blueish undertones under heavy overcast conditions';
-                atmosphereBase += ', heavy cloud cover dominating visibility';
+                atmosphereBase += ', heavy cloud cover, dimmed lighting';
             } else if (cloudCoverage >= 50) {
                 lightingBase = 'bright morning light diffused through moderate cloud cover, soft shadows, cool blueish undertones';
-                atmosphereBase += ' with moderate cloud diffusion affecting light quality';
+                atmosphereBase += ' with moderate cloud cover, reduced lighting';
             } else if (cloudCoverage >= 20) {
                 lightingBase = 'bright morning light filtered by light cloud cover, soft shadows, cool blueish undertones';
-                atmosphereBase += ' with light cloud filtering of sunlight';
+                atmosphereBase += ' with light cloud cover';
             }
 
-            // Add UV effects for early morning
-            if (uvIndex > 0 && isDaylight) {
-                const effectiveUV = uvIndex * (1 - cloudCoverage / 100);
-                if (effectiveUV >= 6) {
-                    lightingBase += ' with strong UV presence';
-                } else if (effectiveUV >= 3) {
-                    lightingBase += ' with moderate UV levels';
-                }
-            }
+            // UV effects are atmospheric, not lighting-related
 
             lightingDescription = lightingBase;
             atmosphericNotes = atmosphereBase;
@@ -883,54 +980,76 @@ async function determineTimePeriod(time, season, location, weather = null) {
             periodKey = 'morning';
             periodDescription = 'morning, mid-morning, bright daylight';
             // Build morning lighting and atmosphere with weather effects
-            // Build lighting and atmosphere bases based on temperature
+            // Build lighting and atmosphere bases based on temperature and season
             let lightingBase, atmosphereBase;
             if (isCold) {
                 lightingBase = 'sharp bright morning sunlight, defined shadows, clear illumination';
-                atmosphereBase = 'cool, active morning atmosphere, clear visibility';
+                atmosphereBase = 'cool, active morning atmosphere';
                 if (temperatureDewPointDiff < 5) {
                     atmosphereBase += ', frost sublimating in sunlight';
                     if (soilAnalysis.frostRisk) {
                         atmosphereBase += ' with lingering ground frost';
                     }
                 }
+                // Add seasonal context for cold temperatures
+                if (season === 'winter') {
+                    atmosphereBase += ', crisp winter morning theme';
+                } else if (season === 'autumn') {
+                    atmosphereBase += ', autumn cool theme';
+                }
             } else if (isHot) {
-                lightingBase = 'bright morning sunlight, defined shadows, clear illumination, with heat shimmer beginning';
-                atmosphereBase = 'warm, active morning atmosphere, clear visibility';
+                lightingBase = 'bright morning sunlight, defined shadows, clear illumination';
+                atmosphereBase = 'warm, active morning atmosphere theme';
                 if (temperatureDewPointDiff < 5) {
                     atmosphereBase += ', humidity rising with morning warmth';
                     if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
                         atmosphereBase += ' creating warming evaporative effects';
                     }
                 }
+                // Add seasonal context for hot temperatures
+                if (season === 'summer') {
+                    atmosphereBase += ', summer morning heat';
+                } else if (season === 'spring') {
+                    atmosphereBase += ', spring warmth';
+                }
             } else {
+                // Moderate temperatures - describe based on seasonal context
                 lightingBase = 'bright morning sunlight, defined shadows, clear illumination';
-                atmosphereBase = 'golden, active morning atmosphere, clear visibility';
+                if (season === 'winter') {
+                    atmosphereBase = 'chilly morning atmosphere, cool winter air';
+                } else if (season === 'spring') {
+                    atmosphereBase = 'fresh morning atmosphere, mild spring conditions';
+                } else if (season === 'summer') {
+                    atmosphereBase = 'golden, active morning atmosphere';
+                } else if (season === 'autumn') {
+                    atmosphereBase = 'cool morning atmosphere, crisp autumn air';
+                } else {
+                    atmosphereBase = 'moderate morning atmosphere';
+                }
             }
 
-            // Humidity affects light quality
+            // Humidity affects atmosphere and light quality
             if (isHumid && temperatureDewPointDiff < 5) {
                 atmosphereBase += ' , humid air softening morning light';
-                lightingBase += ' , diffused through morning humidity';
+                lightingBase += ' , softly diffused lighting through haze';
             } else if (isDry) {
                 atmosphereBase += ' , exceptionally dry crisp air';
-                lightingBase += ' , crystal clear sharp illumination';
+                lightingBase += ' , intense lighting';
             }
 
-            // Precipitation affects atmosphere
+            // Precipitation affects atmosphere and lighting
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ' , precipitation dampening morning energy';
-                    lightingBase += ' , with rain or snow catching sunlight';
+                    atmosphereBase += ` , ${precipitationType} dampening morning energy`;
+                    lightingBase += ` , light refraction, ${precipitationType} droplets reflecting sunlight`;
                 } else {
                     atmosphereBase += ' , fine mist softening atmosphere';
                 }
             }
 
-            // Wind affects atmosphere
+            // Wind affects atmosphere (not lighting directly)
             if (isWindy) {
                 atmosphereBase += ' , wind energizing morning atmosphere';
-                lightingBase += ' , with wind affecting shadow play';
             } else {
                 atmosphereBase += ' , calm morning serenity';
             }
@@ -938,168 +1057,126 @@ async function determineTimePeriod(time, season, location, weather = null) {
             // Cloud coverage effects
             if (cloudCoverage >= 80) {
                 lightingBase = 'muted morning sunlight, defined shadows, diffused illumination under heavy overcast conditions';
-                atmosphereBase += ' , heavy cloud cover dominating visibility';
+                atmosphereBase += ' , heavy cloud cover, dimmed lighting';
             } else if (cloudCoverage >= 50) {
                 lightingBase = 'bright morning sunlight diffused through moderate cloud cover, defined shadows, clear illumination';
-                atmosphereBase += ' with moderate cloud diffusion affecting light quality';
+                atmosphereBase += ' with moderate cloud cover, reduced lighting';
             } else if (cloudCoverage >= 20) {
                 lightingBase = 'bright morning sunlight filtered by light cloud cover, defined shadows, clear illumination';
-                atmosphereBase += ' with light cloud filtering of sunlight';
+                atmosphereBase += ' with light cloud cover';
             }
 
-            // Add UV effects for morning
-            if (uvIndex > 0 && isDaylight) {
-                const effectiveUV = uvIndex * (1 - cloudCoverage / 100);
-                if (effectiveUV >= 8) {
-                    lightingBase += ' with intense UV radiation';
-                } else if (effectiveUV >= 6) {
-                    lightingBase += ' with strong UV presence';
-                } else if (effectiveUV >= 3) {
-                    lightingBase += ' with moderate UV levels';
-                }
-            }
+            // UV effects are atmospheric, not lighting-related
 
             lightingDescription = lightingBase;
             atmosphericNotes = atmosphereBase;
 
             if (cloudCoverage >= 80) {
                 lightingBase = 'muted morning sunlight, defined shadows, diffused illumination under heavy overcast conditions';
-                atmosphereBase = 'warm, morning atmosphere, visibility reduced by heavy cloud cover dominating visibility';
+                atmosphereBase = 'warm, morning atmosphere, heavy cloud cover reducing visibility';
             } else if (cloudCoverage >= 50) {
                 lightingBase = 'bright morning sunlight diffused through moderate cloud cover, defined shadows, clear illumination';
-                atmosphereBase = 'warm, morning atmosphere, clear visibility with moderate cloud diffusion affecting light quality';
+                atmosphereBase = 'warm, morning atmosphere with moderate cloud cover';
             } else if (cloudCoverage >= 20) {
                 lightingBase = 'bright morning sunlight filtered by light cloud cover, defined shadows, clear illumination';
-                atmosphereBase = 'warm, morning atmosphere, clear visibility with light cloud filtering of sunlight';
+                atmosphereBase = 'warm, morning atmosphere with light cloud filtering of sunlight';
             }
 
             lightingDescription = lightingBase;
             atmosphericNotes = atmosphereBase;
 
-            // Add UV effects for morning
-            if (uvIndex > 0 && isDaylight) {
-                const effectiveUV = uvIndex * (1 - cloudCoverage / 100);
-                if (effectiveUV >= 8) {
-                    lightingDescription += ' with intense UV radiation';
-                } else if (effectiveUV >= 6) {
-                    lightingDescription += ' with strong UV presence';
-                } else if (effectiveUV >= 3) {
-                    lightingDescription += ' with moderate UV levels';
-                }
-            }
-        } else if (currentHour >= morningEnd && currentHour < lateMorningEnd) {
+            // UV effects are atmospheric, not lighting-related
+        } else if (currentHour >= morningEnd && currentHour < daytimeStart) {
             periodKey = 'late_morning';
             periodDescription = 'late morning, approaching noon, intense daylight';
-            console.log(`🌅 SELECTED: late_morning (${currentHour.toFixed(2)} is between ${morningEnd.toFixed(2)} and ${lateMorningEnd.toFixed(2)})`);
+            console.log(`🌅 SELECTED: late_morning (${currentHour.toFixed(2)} is between ${morningEnd.toFixed(2)} and ${daytimeStart.toFixed(2)})`);
             // Build late morning lighting and atmosphere with weather effects
             // Build lighting and atmosphere bases based on temperature
             let lightingBase, atmosphereBase;
             if (isCold) {
-                lightingBase = 'sharp overhead light, minimal shadows, high contrast';
+                lightingBase = 'sharp overhead light';
                 atmosphereBase = 'cool crisp air, peak morning activity, bright and clear';
                 if (temperatureDewPointDiff < 5) {
                     atmosphereBase += ', frost lingering in shaded areas';
                     if (soilAnalysis.frostRisk) {
-                        atmosphereBase += ' with persistent ground frost in shadows';
+                        atmosphereBase += ' persistent ground frost in shadows';
                     }
                 }
             } else if (isHot) {
-                lightingBase = 'intense overhead light, minimal shadows, high contrast, with heat haze developing';
+                lightingBase = 'intense overhead light';
                 atmosphereBase = 'hot building air, peak morning activity, bright and clear';
                 if (temperatureDewPointDiff < 5) {
                     atmosphereBase += ', humidity creating sultry atmosphere';
                     if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                        atmosphereBase += ' with intense evaporative heat';
+                        atmosphereBase += ' intense evaporative heat';
                     }
                 }
                 if (atmosphericMoistureAnalysis.atmosphericDryness === 'very_dry') {
-                    lightingBase += ' with extreme heat distortion';
                     atmosphereBase += ' under very dry atmospheric conditions';
                 }
             } else {
-                lightingBase = 'harsh overhead light, minimal shadows, high contrast';
+                lightingBase = 'harsh overhead light';
                 atmosphereBase = 'warm air, peak morning activity, bright and clear';
             }
 
-            // Humidity affects light quality
+            // Humidity affects atmosphere and light quality
             if (isHumid && temperatureDewPointDiff < 5) {
                 atmosphereBase += ' , humid air softening harsh light';
-                lightingBase += ' , diffused through humid atmosphere';
+                lightingBase += ' , softly diffused lighting';
             } else if (isDry) {
                 atmosphereBase += ' , exceptionally dry air amplifying brightness';
-                lightingBase += ' , crystal clear intense illumination';
+                lightingBase += ' , intense lighting';
             }
 
-            // Precipitation affects atmosphere
+            // Precipitation affects atmosphere and lighting
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ' , precipitation cooling morning heat';
-                    lightingBase += ' , with rain or snow particles in air';
+                    atmosphereBase += ` , ${precipitationType} in cool morning heat`;
+                    lightingBase += ` , light refraction, ${precipitationType} droplets reflecting light`;
                 } else {
                     atmosphereBase += ' , fine mist cooling atmosphere';
                 }
             }
 
-            // Wind affects atmosphere
+            // Wind affects atmosphere (not lighting directly)
             if (isWindy) {
                 atmosphereBase += ' , wind disrupting morning calm';
-                lightingBase += ' , with wind affecting light angles';
             } else {
                 atmosphereBase += ' , still morning intensity';
             }
 
             // Cloud coverage effects
             if (cloudCoverage >= 80) {
-                lightingBase = 'diffused overhead light, minimal shadows, reduced contrast under heavy overcast conditions';
-                atmosphereBase += ' , heavy cloud cover dominating visibility';
+                lightingBase = 'diffused overhead light, dark shadows, reduced contrast under heavy overcast conditions';
+                atmosphereBase += ' , heavy cloud cover, dimmed lighting';
             } else if (cloudCoverage >= 50) {
-                lightingBase = 'harsh overhead light diffused through moderate cloud cover, minimal shadows, high contrast';
-                atmosphereBase += ' with moderate cloud diffusion affecting light quality';
+                lightingBase = 'harsh overhead light diffused through moderate cloud cover, dark shadows';
+                atmosphereBase += ' with moderate cloud cover, reduced lighting';
             } else if (cloudCoverage >= 20) {
-                lightingBase = 'harsh overhead light filtered by light cloud cover, minimal shadows, high contrast';
-                atmosphereBase += ' with light cloud filtering of sunlight';
+                lightingBase = 'harsh overhead light filtered by light cloud cover, dark shadows';
+                atmosphereBase += ' with light cloud cover';
             }
 
-            // Add UV effects for late morning
-            if (uvIndex > 0 && isDaylight) {
-                const effectiveUV = uvIndex * (1 - cloudCoverage / 100);
-                if (effectiveUV >= 8) {
-                    lightingBase += ' with intense UV radiation';
-                } else if (effectiveUV >= 6) {
-                    lightingBase += ' with strong UV presence';
-                } else if (effectiveUV >= 3) {
-                    lightingBase += ' with moderate UV levels';
-                }
-            }
+            // UV effects are atmospheric, not lighting-related
 
             lightingDescription = lightingBase;
             atmosphericNotes = atmosphereBase;
 
             if (cloudCoverage >= 80) {
-                lightingBase = 'diffused overhead light, minimal shadows, reduced contrast under heavy overcast conditions';
-                atmosphereBase = 'warm air, morning activity, visibility reduced by heavy cloud cover dominating visibility';
+                lightingBase = 'diffused overhead light, dark shadows, reduced contrast under heavy overcast conditions';
+                atmosphereBase = 'warm air, morning activity, heavy cloud cover reducing visibility';
             } else if (cloudCoverage >= 50) {
-                lightingBase = 'harsh overhead light diffused through moderate cloud cover, minimal shadows, high contrast';
-                atmosphereBase = 'warm air, morning activity, bright conditions with moderate cloud diffusion affecting light quality';
+                lightingBase = 'harsh overhead light diffused through moderate cloud cover, dark shadows';
+                atmosphereBase = 'warm air, morning activity, bright conditions with moderate cloud cover';
             } else if (cloudCoverage >= 20) {
-                lightingBase = 'harsh overhead light filtered by light cloud cover, minimal shadows, high contrast';
+                lightingBase = 'harsh overhead light filtered by light cloud cover, dark shadows';
                 atmosphereBase = 'warm air, morning activity, bright and clear with light cloud filtering of sunlight';
             }
 
             lightingDescription = lightingBase;
             atmosphericNotes = atmosphereBase;
 
-            // Add UV effects for late morning
-            if (uvIndex > 0 && isDaylight) {
-                const effectiveUV = uvIndex * (1 - cloudCoverage / 100);
-                if (effectiveUV >= 8) {
-                    lightingDescription += ' with intense UV radiation';
-                } else if (effectiveUV >= 6) {
-                    lightingDescription += ' with strong UV presence';
-                } else if (effectiveUV >= 3) {
-                    lightingDescription += ' with moderate UV levels';
-                }
-            }
+            // UV effects are atmospheric, not lighting-related
         } else if (currentHour >= daytimeStart && currentHour <= daytimeEnd) {
             periodKey = 'daytime';
             periodDescription = 'daytime, high sun, gentle overhead light';
@@ -1108,7 +1185,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
             // Similar to afternoon but with more intense overhead lighting
             let lightingBase, atmosphereBase;
             if (isCold) {
-                lightingBase = 'gentle overhead light, minimal shadows, high contrast';
+                lightingBase = 'gentle overhead light';
                 atmosphereBase = 'cool, maximum daylight exposure';
                 if (temperatureDewPointDiff < 5) {
                     atmosphereBase += ', crisp cool air at peak intensity';
@@ -1117,74 +1194,61 @@ async function determineTimePeriod(time, season, location, weather = null) {
                     atmosphereBase += ' with cool ground retaining some warmth';
                 }
             } else if (isHot) {
-                lightingBase = 'gentle overhead light, minimal shadows, high contrast, with maximum heat shimmer';
+                lightingBase = 'overhead lighting, soft shadows';
                 atmosphereBase = 'hot, maximum heat shimmer and sun heat exposure';
                 if (temperatureDewPointDiff < 5) {
                     atmosphereBase += ', oppressive humid heat at its peak';
                 }
                 if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    lightingBase += ' with intense evaporative shimmer';
-                    atmosphereBase += ' with maximum evaporative stress';
+                    atmosphereBase += ', intense heat shimmer';
                 }
                 if (atmosphericMoistureAnalysis.atmosphericDryness === 'very_dry') {
-                    lightingBase += ' with extreme atmospheric heat distortion';
-                    atmosphereBase += ' under severely dry air conditions';
+                    atmosphereBase += ' dry air and extreme heat distortion';
                 }
             } else {
-                lightingBase = 'gentle overhead light, minimal shadows, high contrast';
+                lightingBase = 'gentle overhead light';
                 atmosphereBase = 'warm, maximum daylight intensity';
             }
 
-            // Humidity affects light quality
+            // Humidity affects atmosphere and light quality
             if (isHumid && temperatureDewPointDiff < 5) {
                 atmosphereBase += ' , humid air creating intense haze effects';
-                lightingBase += ' , diffused through humid atmosphere at peak intensity';
+                lightingBase += ' , softly diffused lighting';
             } else if (isDry) {
                 atmosphereBase += ' , exceptionally dry air amplifying maximum brightness';
-                lightingBase += ' , crystal clear intense illumination at solar peak';
+                lightingBase += ' , intense lighting';
             }
 
-            // Precipitation affects atmosphere
+            // Precipitation affects atmosphere and lighting
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ' , precipitation cooling intense daylight';
-                    lightingBase += ' , with rain or snow particles in intense overhead light';
+                    atmosphereBase += ` , ${precipitationType} cool intense daylight`;
+                    lightingBase += ` , light refraction, ${precipitationType} droplets reflecting overhead light rays`;
                 } else {
                     atmosphereBase += ' , fine mist cooling hot surfaces under peak sun';
                 }
             }
 
-            // Wind affects atmosphere
+            // Wind affects atmosphere (not lighting directly)
             if (isWindy) {
                 atmosphereBase += ' , wind disrupting intense daylight calm';
-                lightingBase += ' , with wind affecting intense light angles';
             } else {
                 atmosphereBase += ' , still intense daylight maximum';
             }
 
             // Cloud coverage effects
             if (cloudCoverage >= 80) {
-                lightingBase = 'diffused intense overhead light, minimal shadows, reduced contrast under heavy overcast at solar peak';
-                atmosphereBase += ' , heavy cloud cover dominating maximum daylight visibility';
+                lightingBase = 'diffused intense overhead light, reduced contrast under heavy overcast at solar peak';
+                atmosphereBase += ' , heavy cloud cover, dimmed lighting';
             } else if (cloudCoverage >= 50) {
-                lightingBase = 'intense overhead light diffused through moderate cloud cover, minimal shadows, high contrast';
-                atmosphereBase += ' with moderate cloud diffusion affecting maximum light quality';
+                lightingBase = 'intense overhead light diffused through moderate cloud cover';
+                atmosphereBase += ' with moderate cloud cover, reduced lighting';
             } else if (cloudCoverage >= 20) {
-                lightingBase = 'intense overhead light filtered by light cloud cover, minimal shadows, high contrast';
+                lightingBase = 'intense overhead light filtered by light cloud cover';
                 atmosphereBase += ' with light cloud filtering of maximum sunlight';
             }
 
-            // Add UV effects for daytime
-            if (uvIndex > 0 && isDaylight) {
-                const effectiveUV = uvIndex * (1 - cloudCoverage / 100);
-                if (effectiveUV >= 8) {
-                    lightingBase += ' with maximum UV radiation exposure';
-                } else if (effectiveUV >= 6) {
-                    lightingBase += ' with strong maximum UV presence';
-                } else if (effectiveUV >= 3) {
-                    lightingBase += ' with moderate maximum UV levels';
-                }
-            }
+            // UV effects are atmospheric, not lighting-related
 
             lightingDescription = lightingBase;
             atmosphericNotes = atmosphereBase;
@@ -1193,59 +1257,79 @@ async function determineTimePeriod(time, season, location, weather = null) {
             periodDescription = 'afternoon, full daylight, warm sunlight';
             console.log(`🌅 SELECTED: afternoon (${currentHour.toFixed(2)} is between ${afternoonStart.toFixed(2)} and ${goldenHourStart.toFixed(2)})`);
             // Build afternoon lighting and atmosphere with weather effects
-            // Build lighting and atmosphere bases based on temperature
-            let lightingBase, atmosphereBase;
+            // Build lighting and atmosphere bases based on temperature and season
+            let lightingBase, atmosphereBase = 'afternoon atmosphere';
             if (isCold) {
                 lightingBase = 'cool daytime light, moderate shadows';
                 atmosphereBase = 'cool, active atmosphere, no heat shimmer';
                 if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', crisp cool air dominating';
+                    atmosphereBase += ', crisp cool';
                 }
                 if (soilAnalysis.groundHeatRetention) {
-                    atmosphereBase += ' with ground maintaining cool temperatures';
+                    atmosphereBase += ' with cool temperatures';
+                }
+                // Add seasonal context for cold temperatures
+                if (season === 'winter') {
+                    atmosphereBase += ', winter cool theme';
+                } else if (season === 'autumn') {
+                    atmosphereBase += ', crisp autumn theme';
                 }
             } else if (isHot) {
-                lightingBase = 'warm daytime light, moderate shadows, with intense heat distortion';
+                lightingBase = 'warm daytime light, soft shadows';
                 atmosphereBase = 'golden, active atmosphere, strong heat shimmer developing';
                 if (temperatureDewPointDiff < 5) {
                     atmosphereBase += ', oppressive humid heat';
                 }
                 if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    lightingBase += ' with pronounced evaporative heat waves';
-                    atmosphereBase += ' with intense evaporative cooling effects';
+                    atmosphereBase += ' with intense evaporative cooling effects and pronounced heat waves';
                 }
                 if (atmosphericMoistureAnalysis.atmosphericDryness === 'very_dry') {
-                    lightingBase += ' with severe atmospheric heat distortion';
-                    atmosphereBase += ' under extremely dry air conditions';
+                    atmosphereBase += ' under extremely dry air conditions with severe heat distortion';
+                }
+                // Add seasonal context for hot temperatures
+                if (season === 'summer') {
+                    atmosphereBase += ', summer heat';
+                } else if (season === 'spring') {
+                    atmosphereBase += ', warmth';
                 }
             } else {
-                lightingBase = 'warm daytime light, moderate shadows';
-                atmosphereBase = 'warm, active atmosphere, slight heat shimmer possible';
+                // Moderate temperatures - describe based on seasonal context
+                lightingBase = 'moderate daytime light, balanced shadows';
+                if (season === 'winter') {
+                    atmosphereBase = 'chilly, active atmosphere, cool winter theme';
+                } else if (season === 'spring') {
+                    atmosphereBase = 'fresh, active atmosphere, spring theme';
+                } else if (season === 'summer') {
+                    atmosphereBase = 'warm, active atmosphere, slight heat shimmer possible';
+                } else if (season === 'autumn') {
+                    atmosphereBase = 'cool, active atmosphere, crisp autumn theme';
+                } else {
+                    atmosphereBase = 'moderate';
+                }
             }
 
-            // Humidity affects light and heat effects
+            // Humidity affects atmosphere and light quality
             if (isHumid && temperatureDewPointDiff < 5) {
                 atmosphereBase += ' , humid air amplifying heat effects';
-                lightingBase += ' , diffused through humid haze';
+                lightingBase += ' , softly diffused lighting through haze';
             } else if (isDry) {
                 atmosphereBase += ' , dry air intensifying heat';
-                lightingBase += ' , crystal clear with heat waves';
+                lightingBase += ' , intense lighting';
             }
 
-            // Precipitation affects cooling and atmosphere
+            // Precipitation affects atmosphere and lighting
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ' , precipitation providing cooling relief';
-                    lightingBase += ' , with rain or snow cooling atmosphere';
+                    atmosphereBase += ` , ${precipitationType} providing cooling relief`;
+                    lightingBase += ` , light refraction, ${precipitationType} droplets reflecting light`;
                 } else {
                     atmosphereBase += ' , fine mist cooling hot surfaces';
                 }
             }
 
-            // Wind affects heat distribution
+            // Wind affects atmosphere (not lighting directly)
             if (isWindy) {
                 atmosphereBase += ' , wind providing some heat relief';
-                lightingBase += ' , with wind affecting heat shimmer patterns';
             } else {
                 atmosphereBase += ' , still hot afternoon air';
             }
@@ -1253,52 +1337,48 @@ async function determineTimePeriod(time, season, location, weather = null) {
             // Cloud coverage effects
             if (cloudCoverage >= 80) {
                 lightingBase = 'muted daytime light, moderate shadows under heavy overcast conditions';
-                atmosphereBase += ' , heavy cloud cover dominating visibility';
+                atmosphereBase += ' , heavy cloud cover, dimmed lighting';
             } else if (cloudCoverage >= 50) {
                 lightingBase = 'warm daytime light diffused through moderate cloud cover, moderate shadows';
-                atmosphereBase += ' with moderate cloud diffusion affecting light quality';
+                atmosphereBase += ' with moderate cloud cover, reduced lighting';
             } else if (cloudCoverage >= 20) {
                 lightingBase = 'warm daytime light filtered by light cloud cover, moderate shadows';
-                atmosphereBase += ' with light cloud filtering of sunlight';
+                atmosphereBase += ' with light cloud cover';
             }
 
-            // Add UV effects for afternoon
-            if (uvIndex > 0 && isDaylight) {
-                const effectiveUV = uvIndex * (1 - cloudCoverage / 100);
-                if (effectiveUV >= 8) {
-                    lightingBase += ' with intense UV radiation';
-                } else if (effectiveUV >= 6) {
-                    lightingBase += ' with strong UV presence';
-                } else if (effectiveUV >= 3) {
-                    lightingBase += ' with moderate UV levels';
-                }
-            }
+            // UV effects are atmospheric, not lighting-related
 
-            lightingDescription = lightingBase;
-            atmosphericNotes = atmosphereBase;
-
+            // Apply cloud coverage effects while preserving temperature-based atmosphere and lighting
             if (cloudCoverage >= 80) {
-                lightingBase = 'muted daytime light, moderate shadows under heavy overcast conditions';
-                atmosphereBase = 'warm, active atmosphere, slight heat shimmer possible, heavy cloud cover dominating visibility';
+                if (season === 'winter') {
+                    lightingBase = 'muted cool light, soft shadows under heavy winter overcast';
+                } else if (season === 'summer') {
+                    lightingBase = 'muted warm light, soft shadows under heavy summer overcast';
+                } else {
+                    lightingBase = 'muted daytime light, soft shadows under heavy overcast conditions';
+                }
+                atmosphereBase += 'heavy cloud cover, dimmed lighting';
             } else if (cloudCoverage >= 50) {
-                lightingBase = 'warm daytime light diffused through moderate cloud cover, moderate shadows';
-                atmosphereBase = 'warm, active atmosphere, slight heat shimmer possible with moderate cloud diffusion affecting light quality';
+                if (season === 'winter') {
+                    lightingBase = 'cool daytime light diffused through moderate cloud cover, soft shadows';
+                } else if (season === 'summer') {
+                    lightingBase = 'warm daytime light diffused through moderate cloud cover, soft shadows';
+                } else {
+                    lightingBase = 'moderate daytime light diffused through moderate cloud cover, soft shadows';
+                }
+                atmosphereBase += 'moderate cloud diffusion affecting light quality';
             } else if (cloudCoverage >= 20) {
-                lightingBase = 'warm daytime light filtered by light cloud cover, moderate shadows';
-                atmosphereBase = 'warm, active atmosphere, slight heat shimmer possible with light cloud filtering of sunlight';
+                if (season === 'winter') {
+                    lightingBase = 'cool daytime light filtered by light cloud cover, moderate shadows';
+                } else if (season === 'summer') {
+                    lightingBase = 'warm daytime light filtered by light cloud cover, moderate shadows';
+                } else {
+                    lightingBase = 'moderate daytime light filtered by light cloud cover, moderate shadows';
+                }
+                atmosphereBase += 'light cloud filtering of sunlight';
             }
 
-            // Add UV effects for afternoon
-            if (uvIndex > 0 && isDaylight) {
-                const effectiveUV = uvIndex * (1 - cloudCoverage / 100);
-                if (effectiveUV >= 8) {
-                    lightingBase += ' with intense UV radiation';
-                } else if (effectiveUV >= 6) {
-                    lightingBase += ' with strong UV presence';
-                } else if (effectiveUV >= 3) {
-                    lightingBase += ' with moderate UV levels';
-                }
-            }
+            // UV effects are atmospheric, not lighting-related
 
             lightingDescription = lightingBase;
             atmosphericNotes = atmosphereBase;
@@ -1341,7 +1421,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
                     atmosphereBase += ' with lingering evaporative warmth';
                 }
                 if (atmosphericMoistureAnalysis.atmosphericDryness === 'very_dry') {
-                    lightingParts.push('with crystal clear golden intensity');
+                    lightingParts.push('intense golden haze');
                     atmosphereBase += ' under exceptionally dry air conditions';
                 }
             } else {
@@ -1354,14 +1434,13 @@ async function determineTimePeriod(time, season, location, weather = null) {
                 lightingParts.push('diffused golden rays through mist');
             } else if (isDry) {
                 atmosphereBase += ' , exceptionally clear golden illumination';
-                lightingParts.push('crystal clear golden magic');
             }
 
             // Precipitation affects golden atmosphere
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ' , rain or snow catching golden light';
-                    lightingParts.push('with precipitation sparkling in golden rays');
+                    atmosphereBase += ` , ${precipitationType} catching golden light`;
+                    lightingParts.push(`with ${precipitationType} sparkling in golden rays`);
                 } else {
                     atmosphereBase += ' , fine mist enhancing golden glow';
                 }
@@ -1379,10 +1458,10 @@ async function determineTimePeriod(time, season, location, weather = null) {
             if (cloudCoverage >= 80) {
                 // Heavy overcast completely changes golden hour character
                 lightingParts = ['muted golden hour illumination under heavy overcast conditions'];
-                atmosphereBase += ' , heavy cloud cover dominating visibility';
+                atmosphereBase += ' , heavy cloud cover, dimmed lighting';
             } else if (cloudCoverage >= 50) {
                 lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with moderate cloud diffusion affecting light quality';
+                atmosphereBase += ' with moderate cloud cover, reduced lighting';
             } else if (cloudCoverage >= 20) {
                 lightingParts.push('filtered by light cloud cover');
                 atmosphereBase += ' with light cloud filtering of golden light';
@@ -1404,10 +1483,10 @@ async function determineTimePeriod(time, season, location, weather = null) {
             if (cloudCoverage >= 80) {
                 // Heavy overcast completely changes golden hour character
                 lightingParts = ['muted golden hour illumination under heavy overcast conditions'];
-                atmosphereBase = 'warm glow, peaceful transition, anticipation of evening, heavy cloud cover dominating visibility';
+                atmosphereBase = 'warm glow, peaceful transition, anticipation of evening, heavy cloud cover, dimmed lighting';
             } else if (cloudCoverage >= 50) {
                 lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with moderate cloud diffusion affecting light quality';
+                atmosphereBase += ' with moderate cloud cover, reduced lighting';
             } else if (cloudCoverage >= 20) {
                 lightingParts.push('filtered by light cloud cover');
                 atmosphereBase += ' with light cloud filtering of golden light';
@@ -1475,14 +1554,14 @@ async function determineTimePeriod(time, season, location, weather = null) {
                 lightingParts.push('diffused through humid evening air');
             } else if (isDry) {
                 atmosphereBase += ' , exceptionally clear sunset visibility';
-                lightingParts.push('crystal clear sunset drama');
+                lightingParts.push('sunset');
             }
 
             // Precipitation affects sunset atmosphere
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ' , rain or snow framing sunset';
-                    lightingParts.push('with precipitation catching final light');
+                    atmosphereBase += ` , ${precipitationType} framing sunset`;
+                    lightingParts.push(`with ${precipitationType} catching final light`);
                 } else {
                     atmosphereBase += ' , fine mist enhancing sunset glow';
                 }
@@ -1500,10 +1579,10 @@ async function determineTimePeriod(time, season, location, weather = null) {
             if (cloudCoverage >= 80) {
                 // Heavy overcast completely changes sunset character
                 lightingParts = ['muted twilight illumination under heavy overcast conditions'];
-                atmosphereBase += ' , heavy cloud cover dominating visibility';
+                atmosphereBase += ' , heavy cloud cover, dimmed lighting';
             } else if (cloudCoverage >= 50) {
                 lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with moderate cloud diffusion affecting light quality';
+                atmosphereBase += ' with moderate cloud cover';
             } else if (cloudCoverage >= 20) {
                 lightingParts.push('filtered by light cloud cover');
                 atmosphereBase += ' with light cloud filtering of sunset light';
@@ -1523,10 +1602,10 @@ async function determineTimePeriod(time, season, location, weather = null) {
             if (cloudCoverage >= 80) {
                 // Heavy overcast completely changes sunset character
                 lightingParts = ['muted twilight illumination under heavy overcast conditions'];
-                atmosphereBase = 'cooling temperatures, peaceful transition, end of day atmosphere, heavy cloud cover dominating visibility';
+                atmosphereBase = 'cooling temperatures, peaceful transition, end of day atmosphere, heavy cloud cover, dimmed lighting';
             } else if (cloudCoverage >= 50) {
                 lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with moderate cloud diffusion affecting light quality';
+                atmosphereBase += ' with moderate cloud cover, reduced lighting';
             } else if (cloudCoverage >= 20) {
                 lightingParts.push('filtered by light cloud cover');
                 atmosphereBase += ' with light cloud filtering of sunset light';
@@ -1554,7 +1633,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
             const twilightBrackets = Math.round((1 - twilightWeight) * 3); // Twilight fading (use [] to subtract)
             const nightSkyBraces = Math.round(nightSkyWeight * 3); // Night sky dominating (use {} to add)
             const twilightText = twilightBrackets > 0 ? '['.repeat(twilightBrackets) + 'twilight fading' + ']'.repeat(twilightBrackets) : '';
-            const nightSkyText = nightSkyBraces > 0 ? '{'.repeat(nightSkyBraces) + 'night sky dominating' + '}'.repeat(nightSkyBraces) : '';
+            const nightSkyText = nightSkyBraces > 0 ? '{'.repeat(nightSkyBraces) + 'night sky' + '}'.repeat(nightSkyBraces) : '';
 
             // Build dusk lighting and atmosphere with weather effects
             let lightingParts = [twilightText, nightSkyText].filter(Boolean);
@@ -1589,14 +1668,14 @@ async function determineTimePeriod(time, season, location, weather = null) {
                 lightingParts.push('diffused through evening humidity');
             } else if (isDry) {
                 atmosphereBase += ' , exceptionally clear evening air';
-                lightingParts.push('crystal clear twilight illumination');
+                lightingParts.push('twilight illumination');
             }
 
             // Precipitation affects evening atmosphere
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ' , evening precipitation beginning';
-                    lightingParts.push('with rain or snow in twilight');
+                    atmosphereBase += ` , light evening ${precipitationType}`;
+                    lightingParts.push(` ${precipitationType} in twilight`);
                 } else {
                     atmosphereBase += ' , fine evening mist';
                 }
@@ -1604,7 +1683,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
 
             // Wind affects evening transition
             if (isWindy) {
-                atmosphereBase += ' , wind carrying evening sounds';
+                atmosphereBase += ' , wind, evening';
                 lightingParts.push('with wind affecting twilight shadows');
             } else {
                 atmosphereBase += ' , calm evening descent';
@@ -1614,10 +1693,10 @@ async function determineTimePeriod(time, season, location, weather = null) {
             if (cloudCoverage >= 80) {
                 // Heavy overcast completely changes dusk character
                 lightingParts = ['muted twilight illumination under heavy overcast conditions'];
-                atmosphereBase += ' , heavy cloud cover completely blocking celestial visibility';
+                atmosphereBase += ' , heavy cloud cover completely blocking celestial visibility, dimmed lighting';
             } else if (cloudCoverage >= 50) {
                 lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with partially obscured stars through cloud cover';
+                atmosphereBase += ' with partially obscured stars through cloud cover, reduced lighting';
             } else if (cloudCoverage >= 20) {
                 lightingParts.push('filtered by light cloud cover');
                 atmosphereBase += ' with stars visible through thin cloud cover';
@@ -1632,10 +1711,10 @@ async function determineTimePeriod(time, season, location, weather = null) {
             if (cloudCoverage >= 80) {
                 // Heavy overcast completely changes dusk character
                 lightingParts = ['muted twilight illumination under heavy overcast conditions'];
-                atmosphereBase = 'cool evening air, transition to night, residual warmth, heavy cloud cover completely blocking celestial visibility';
+                atmosphereBase = 'cool evening air, transition to night, residual warmth, heavy cloud cover completely blocking celestial visibility, dimmed lighting';
             } else if (cloudCoverage >= 50) {
                 lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with partially obscured stars through cloud cover';
+                atmosphereBase += ' with partially obscured stars through cloud cover, reduced lighting';
             } else if (cloudCoverage >= 20) {
                 lightingParts.push('filtered by light cloud cover');
                 atmosphereBase += ' with stars visible through thin cloud cover';
@@ -1658,7 +1737,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
             // Temperature influences evening activity and atmosphere
             if (isCold) {
                 atmosphereBase = atmosphereBase.replace('cooling rapidly', 'cooling quickly');
-                lightingBase = lightingBase.replace('dim twilight illumination', 'sharp dim twilight illumination');
+                lightingBase = lightingBase.replace('dim twilight illumination', 'crisp dim twilight illumination');
                 if (temperatureDewPointDiff < 5) {
                     atmosphereBase += ' , frost visible on cool surfaces';
                     if (soilAnalysis.frostRisk) {
@@ -1667,29 +1746,29 @@ async function determineTimePeriod(time, season, location, weather = null) {
                 }
             } else if (isHot) {
                 atmosphereBase = atmosphereBase.replace('cooling rapidly', 'slowly cooling');
-                lightingBase += ' , with residual heat glow';
+                lightingBase += ' , residual heat glow';
                 if (temperatureDewPointDiff < 5) {
                     atmosphereBase += ' , humid evening air thick with moisture';
                 }
                 if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    atmosphereBase += ' with evening evaporative cooling beginning';
+                    atmosphereBase += ' evening evaporative cooling';
                 }
             }
 
-            // Humidity affects evening lighting
+            // Humidity affects atmosphere and evening light quality
             if (isHumid && temperatureDewPointDiff < 5) {
                 atmosphereBase += ' , humid mist developing in low areas';
-                lightingBase += ' , diffused through evening humidity';
+                lightingBase += ' , softly diffused lighting';
             } else if (isDry) {
                 atmosphereBase += ' , exceptionally clear evening air';
-                lightingBase += ' , crystal clear mixed illumination';
+                lightingBase += ' , intense mixed lighting, artificial lighting';
             }
 
             // Precipitation affects evening activities
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ' , evening precipitation affecting activities';
-                    lightingBase += ' , with rain or snow in artificial lights';
+                    atmosphereBase += ` , light evening ${precipitationType}`;
+                    lightingBase += ` , ${precipitationType} in artificial lights`;
                 } else {
                     atmosphereBase += ' , fine evening mist';
                 }
@@ -1697,10 +1776,9 @@ async function determineTimePeriod(time, season, location, weather = null) {
 
             // Wind affects evening atmosphere
             if (isWindy) {
-                atmosphereBase += ' , wind carrying evening sounds and cool air';
-                lightingBase += ' , with wind affecting light mixing';
+                atmosphereBase += ' , wind, evening';
             } else {
-                atmosphereBase += ' , calm evening beginning';
+                atmosphereBase += ' , calm evening';
             }
 
             // Cloud coverage effects for twilight period
@@ -1709,10 +1787,10 @@ async function determineTimePeriod(time, season, location, weather = null) {
                 atmosphereBase += ' , heavy cloud cover completely blocking celestial visibility';
             } else if (cloudCoverage >= 50) {
                 lightingBase = 'dim twilight illumination diffused through moderate cloud cover, artificial lights emerging';
-                atmosphereBase += ' with partially obscured stars through cloud cover';
+                atmosphereBase += ' partially obscured stars through cloud cover';
             } else if (cloudCoverage >= 20) {
                 lightingBase = 'dim twilight illumination filtered by light cloud cover, artificial lights emerging';
-                atmosphereBase += ' with stars visible through thin cloud cover';
+                atmosphereBase += ' stars visible through thin cloud cover';
             } else {
                 // Clear skies - add star visibility
                 atmosphereBase += ' , emerging stars becoming visible';
@@ -1723,7 +1801,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
 
             if (cloudCoverage >= 80) {
                 lightingBase = 'dim twilight illumination under heavy overcast conditions, artificial lights emerging';
-                atmosphereBase = 'cooling rapidly, evening activities beginning, mixed lighting, heavy cloud cover completely blocking celestial visibility';
+                atmosphereBase = 'cooling rapidly, evening activities, mixed lighting, heavy cloud cover completely blocking celestial visibility';
             } else if (cloudCoverage >= 50) {
                 lightingBase = 'dim twilight illumination diffused through moderate cloud cover, artificial lights emerging';
                 atmosphereBase = 'cooling rapidly, evening activities beginning, mixed lighting with partially obscured stars through cloud cover';
@@ -1741,83 +1819,82 @@ async function determineTimePeriod(time, season, location, weather = null) {
             // No UV effects for early evening (twilight)
         } else if (currentHour >= earlyEveningEnd && currentHour < eveningEnd) {
             periodKey = 'evening';
-            periodDescription = 'evening, full night atmosphere, artificial lighting dominant';
+            periodDescription = 'full night, deep nighttime shadows';
             // Build evening lighting and atmosphere with weather effects
-            let lightingBase = 'artificial lighting dominant, warm indoor lights, street lamps';
-            let atmosphereBase = 'cool night air, evening activities, urban or natural night sounds';
+            let lightingBase = 'artificial lighting dominant in nighttime darkness, deep shadows';
+            let atmosphereBase = `full night sky, nighttime darkness, deep shadows, ${environmentType === 'urban' ? 'urban night' : environmentType === 'natural' ? 'natural night' : 'mixed urban and natural night'}`;
 
-            // Temperature influences night atmosphere and activities
+            // Temperature influences night atmosphere and nighttime darkness
             if (isCold) {
-                atmosphereBase = atmosphereBase.replace('cool night air', 'cold night air');
-                lightingBase += ' , with crisp cold air affecting visibility';
+                atmosphereBase = atmosphereBase.replace('full night sky, nighttime darkness, deep shadows', 'full night sky, nighttime darkness, deep shadows, cold night air');
+                lightingBase += ' , crisp cold air creating deep nighttime shadows';
                 if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ' , frost patterns on surfaces and windows';
+                    atmosphereBase += ' , frost patterns on surfaces and windows in nighttime darkness';
                     if (soilAnalysis.frostRisk) {
-                        atmosphereBase += ' with ground frost visible under artificial lights';
+                        atmosphereBase += ' with ground frost visible under artificial lights in deep nighttime shadows';
                     }
                 }
             } else if (isHot) {
-                atmosphereBase = atmosphereBase.replace('cool night air', 'warm night air');
-                lightingBase += ' , with lingering heat in air';
+                atmosphereBase = atmosphereBase.replace('full night sky, nighttime darkness, deep shadows', 'full night sky, nighttime darkness, deep shadows, warm night air');
+                lightingBase += ' , lingering heat in nighttime darkness';
                 if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ' , humid night air heavy and still';
+                    atmosphereBase += ' , humid night air heavy and still in nighttime darkness';
                 }
                 if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    atmosphereBase += ' with night time evaporative cooling';
+                    atmosphereBase += ' with night time evaporative cooling in nighttime darkness';
                 }
             }
 
-            // Humidity affects night lighting
+            // Humidity affects atmosphere and night light quality in nighttime darkness
             if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ' , humid mist affecting night sounds';
-                lightingBase += ' , diffused through night humidity';
+                atmosphereBase += ' , humid mist in nighttime darkness';
+                lightingBase += ' , softly diffused lighting in deep nighttime shadows';
             } else if (isDry) {
-                atmosphereBase += ' , exceptionally clear night air carrying sounds';
-                lightingBase += ' , crystal clear artificial illumination';
+                atmosphereBase += ' , clear night in nighttime darkness';
+                lightingBase += ' , artificial illumination creating deep nighttime shadows';
             }
 
-            // Precipitation affects night activities
+            // Precipitation affects night in nighttime darkness
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ' , precipitation mixing with night activities';
-                    lightingBase += ' , with rain or snow reflecting artificial lights';
+                    atmosphereBase += ` , ${precipitationType} falling in nighttime darkness`;
+                    lightingBase += ` , ${precipitationType} reflecting artificial lights in deep nighttime shadows`;
                 } else {
-                    atmosphereBase += ' , fine mist dampening night air';
+                    atmosphereBase += ' , fine mist dampening night air in nighttime darkness';
                 }
             }
 
-            // Wind affects night atmosphere
+            // Wind affects night atmosphere in nighttime darkness
             if (isWindy) {
-                atmosphereBase += ' , wind carrying night sounds and cool air';
-                lightingBase += ' , with wind affecting light pools';
+                atmosphereBase += ' , wind, nighttime darkness';
             } else {
-                atmosphereBase += ' , still night atmosphere amplifying sounds';
+                atmosphereBase += ' , still night atmosphere in nighttime darkness';
             }
 
-            // Cloud coverage effects
+            // Cloud coverage effects in nighttime darkness
             if (cloudCoverage >= 80) {
-                lightingBase = 'artificial lighting dominant under heavy overcast conditions, warm indoor lights, street lamps';
-                atmosphereBase += ' , heavy cloud cover dominating visibility';
+                lightingBase = 'artificial lighting dominant under heavy overcast conditions in nighttime darkness, deep shadows';
+                atmosphereBase += ' , heavy cloud cover blocking most natural light, dark night atmosphere';
             } else if (cloudCoverage >= 50) {
-                lightingBase = 'artificial lighting dominant diffused through moderate cloud cover, warm indoor lights, street lamps';
-                atmosphereBase += ' with moderate cloud diffusion affecting light quality';
+                lightingBase = 'artificial lighting dominant diffused through moderate cloud cover in nighttime darkness, deep shadows';
+                atmosphereBase += ' with moderate cloud cover blocking natural light, dark night atmosphere';
             } else if (cloudCoverage >= 20) {
-                lightingBase = 'artificial lighting dominant filtered by light cloud cover, warm indoor lights, street lamps';
-                atmosphereBase += ' with light cloud filtering of moonlight';
+                lightingBase = 'artificial lighting dominant filtered by light cloud cover in nighttime darkness, deep shadows';
+                atmosphereBase += ' with light cloud cover blocking natural light, dark night atmosphere';
             }
 
             lightingDescription = lightingBase;
             atmosphericNotes = atmosphereBase;
 
             if (cloudCoverage >= 80) {
-                lightingBase = 'artificial lighting dominant under heavy overcast conditions, warm indoor lights, street lamps';
-                atmosphereBase = 'cool night air, evening activities, urban or natural night sounds, heavy cloud cover dominating visibility';
+                lightingBase = 'artificial lighting dominant under heavy overcast conditions in nighttime darkness, deep shadows';
+                atmosphereBase = `full night sky, dark night atmosphere, deep shadows, ${environmentType === 'urban' ? 'urban night' : environmentType === 'natural' ? 'natural night' : 'mixed urban and natural night'}, heavy cloud cover blocking most natural light`;
             } else if (cloudCoverage >= 50) {
-                lightingBase = 'artificial lighting dominant diffused through moderate cloud cover, warm indoor lights, street lamps';
-                atmosphereBase = 'cool night air, evening activities, urban or natural night sounds with moderate cloud diffusion affecting light quality';
+                lightingBase = 'artificial lighting dominant diffused through moderate cloud cover in nighttime darkness, deep shadows';
+                atmosphereBase = `full night sky, dark night atmosphere, deep shadows, ${environmentType === 'urban' ? 'urban night' : environmentType === 'natural' ? 'natural night' : 'mixed urban and natural night'} with moderate cloud cover blocking natural light`;
             } else if (cloudCoverage >= 20) {
-                lightingBase = 'artificial lighting dominant filtered by light cloud cover, warm indoor lights, street lamps';
-                atmosphereBase = 'cool night air, evening activities, urban or natural night sounds with light cloud filtering of moonlight';
+                lightingBase = 'artificial lighting dominant filtered by light cloud cover in nighttime darkness, deep shadows';
+                atmosphereBase = `full night sky, dark night atmosphere, deep shadows, ${environmentType === 'urban' ? 'urban night' : environmentType === 'natural' ? 'natural night' : 'mixed urban and natural night'} with light cloud cover blocking natural light`;
             }
 
             lightingDescription = lightingBase;
@@ -1826,169 +1903,137 @@ async function determineTimePeriod(time, season, location, weather = null) {
             // No UV effects for evening (night time)
         } else if (currentHour >= eveningEnd && currentHour < 24) {
             periodKey = 'late_evening';
-            periodDescription = 'late evening, deep night, minimal activity';
+            periodDescription = 'deep night, dark night atmosphere, deep shadows';
             // Build late evening lighting and atmosphere with weather effects
-            let lightingBase = 'dim artificial lighting, moon/star light if visible';
-            let atmosphereBase = 'cool deep night, quiet atmosphere, winding down activities';
+            let lightingBase = 'dim artificial lighting in nighttime darkness, deep shadows, minimal natural light';
+            let atmosphereBase = 'full night sky, dark night atmosphere, deep shadows, minimal activity';
 
-            // Temperature influences deep night atmosphere
+            // Temperature influences deep night atmosphere in nighttime darkness
             if (isCold) {
-                atmosphereBase = atmosphereBase.replace('cool deep night', 'cold deep night');
-                lightingBase = lightingBase.replace('dim artificial lighting', 'sharp dim artificial lighting');
+                atmosphereBase = atmosphereBase.replace('full night sky, dark night atmosphere, deep shadows', 'full night sky, dark night atmosphere, deep shadows, cold deep night');
+                lightingBase = lightingBase.replace('dim artificial lighting in nighttime darkness, deep shadows, minimal natural light', 'crisp dim artificial lighting in nighttime darkness, deep shadows');
                 if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ' , frost crystals sparkling in dim light';
+                    atmosphereBase += ' , frost crystals sparkling in dim artificial light in nighttime darkness';
                     if (soilAnalysis.frostRisk) {
-                        atmosphereBase += ' with crystalline frost patterns on surfaces';
+                        atmosphereBase += ' with crystalline frost patterns on surfaces in deep shadows';
                     }
                 }
             } else if (isHot) {
-                atmosphereBase = atmosphereBase.replace('cool deep night', 'warm deep night');
-                lightingBase += ' , with residual heat hanging in air';
+                atmosphereBase = atmosphereBase.replace('full night sky, dark night atmosphere, deep shadows', 'full night sky, dark night atmosphere, deep shadows, warm deep night');
+                lightingBase += ' , residual heat hanging in nighttime darkness';
                 if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ' , humid night air amplifying stillness';
+                    atmosphereBase += ' , humid night air amplifying stillness in nighttime darkness';
                 }
                 if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    atmosphereBase += ' with deep night evaporative cooling';
+                    atmosphereBase += ' with deep night evaporative cooling in nighttime darkness';
                 }
             }
 
-            // Humidity affects deep night quality
+            // Humidity affects atmosphere and deep night light quality in nighttime darkness
             if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ' , humid mist muffling sounds';
-                lightingBase += ' , diffused through night humidity';
+                atmosphereBase += ' , humid mist, nighttime darkness';
+                lightingBase += ' , softly diffused lighting in deep shadows';
             } else if (isDry) {
-                atmosphereBase += ' , exceptionally clear night air carrying distant sounds';
-                lightingBase += ' , crystal clear in still air';
+                atmosphereBase += ' , clear night in nighttime darkness';
             }
 
-            // Precipitation affects late night quiet
+            // Precipitation affects late night quiet in nighttime darkness
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ' , precipitation adding to night quiet';
-                    lightingBase += ' , with rain or snow patterns in dim light';
+                    atmosphereBase += ` , ${precipitationType} adding to night quiet in nighttime darkness`;
+                    lightingBase += ` , ${precipitationType} in dim artificial light, deep shadows`;
                 } else {
-                    atmosphereBase += ' , fine mist enhancing stillness';
+                    atmosphereBase += ' , fine mist enhancing stillness in nighttime darkness';
                 }
             }
 
-            // Wind affects deep night atmosphere
+            // Wind affects deep night atmosphere in nighttime darkness
             if (isWindy) {
-                atmosphereBase += ' , wind whispering through deep night';
-                lightingBase += ' , with subtle wind movement in shadows';
+                atmosphereBase += ' , wind whispering through deep night darkness';
             } else {
-                atmosphereBase += ' , perfect night stillness';
+                atmosphereBase += ' , perfect night stillness in nighttime darkness';
             }
 
-            // Cloud coverage effects
+            // Cloud coverage effects on lighting in nighttime darkness (visible cloud descriptions removed for night)
             if (cloudCoverage >= 80) {
-                lightingBase = 'dim artificial lighting under heavy overcast conditions, moon/star light blocked';
-                atmosphereBase += ' , heavy cloud cover dominating visibility';
+                lightingBase = 'dim artificial lighting in nighttime darkness, cloudy night sky blocking most natural light';
+                atmosphereBase += ' , dark night atmosphere with dimmed artificial lighting';
             } else if (cloudCoverage >= 50) {
-                lightingBase = 'dim artificial lighting diffused through moderate cloud cover, moon/star light partially obscured';
-                atmosphereBase += ' with moderate cloud diffusion affecting light quality';
+                lightingBase = 'dim artificial lighting diffused through moderate cloud cover in nighttime darkness, cloudy night sky';
+                atmosphereBase += ' , dark night atmosphere with reduced artificial lighting';
             } else if (cloudCoverage >= 20) {
-                lightingBase = 'dim artificial lighting filtered by light cloud cover, moon/star light visible';
-                atmosphereBase += ' with light cloud filtering of starlight';
+                lightingBase = 'dim artificial lighting filtered by light cloud cover in nighttime darkness, minimal natural light visible';
             }
 
             lightingDescription = lightingBase;
             atmosphericNotes = atmosphereBase;
 
-            if (cloudCoverage >= 80) {
-                lightingBase = 'dim artificial lighting under heavy overcast conditions, moon/star light blocked';
-                atmosphereBase = 'cool deep night, quiet atmosphere, winding down activities, heavy cloud cover dominating visibility';
-            } else if (cloudCoverage >= 50) {
-                lightingBase = 'dim artificial lighting diffused through moderate cloud cover, moon/star light partially obscured';
-                atmosphereBase = 'cool deep night, quiet atmosphere, winding down activities with moderate cloud diffusion affecting light quality';
-            } else if (cloudCoverage >= 20) {
-                lightingBase = 'dim artificial lighting filtered by light cloud cover, moon/star light visible';
-                atmosphereBase = 'cool deep night, quiet atmosphere, winding down activities with light cloud filtering of starlight';
-            }
-
-            lightingDescription = lightingBase;
-            atmosphericNotes = atmosphereBase;
 
             // No UV effects for late evening (night time)
         } else {
             // Late night/early morning before dawn
             periodKey = 'midnight';
-            periodDescription = 'midnight, middle of night, dark';
+            periodDescription = 'midnight, dark night atmosphere, deep shadows';
             // Build midnight lighting and atmosphere with weather effects
-            let lightingBase = 'minimal artificial lighting, starlight, moon if present';
-            let atmosphereBase = 'cool deep night, very quiet, minimal activity, stillness';
+            let lightingBase = 'minimal artificial lighting in nighttime darkness, deep shadows, minimal natural light';
+            let atmosphereBase = 'full night sky, dark night atmosphere, deep shadows, stillness';
 
-            // Temperature influences midnight stillness
+            // Temperature influences midnight stillness in nighttime darkness
             if (isCold) {
-                atmosphereBase = atmosphereBase.replace('cool deep night', 'cold deep night');
-                lightingBase = lightingBase.replace('minimal artificial lighting', 'sharp minimal artificial lighting');
+                atmosphereBase = atmosphereBase.replace('full night sky, dark night atmosphere, deep shadows', 'full night sky, dark night atmosphere, deep shadows, cold deep night');
+                lightingBase = lightingBase.replace('minimal artificial lighting in nighttime darkness, deep shadows, minimal natural light', 'sharp minimal artificial lighting in nighttime darkness, deep shadows');
                 if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ' , frost creating crystalline silence';
+                    atmosphereBase += ' , frost creating crystalline silence in nighttime darkness';
                     if (soilAnalysis.frostRisk) {
-                        atmosphereBase += ' with frost crystals creating perfect acoustic stillness';
+                        atmosphereBase += ' frost crystals creating perfect acoustic stillness in deep shadows';
                     }
                 }
             } else if (isHot) {
-                atmosphereBase = atmosphereBase.replace('cool deep night', 'warm deep night');
-                lightingBase += ' , with lingering midnight heat';
+                atmosphereBase = atmosphereBase.replace('full night sky, dark night atmosphere, deep shadows', 'full night sky, dark night atmosphere, deep shadows, warm deep night');
+                lightingBase += ' , midnight heat in nighttime darkness';
                 if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ' , humid air creating heavy stillness';
+                    atmosphereBase += ' , humid air creating heavy stillness in nighttime darkness';
                 }
                 if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    atmosphereBase += ' with midnight evaporative cooling creating absolute stillness';
+                    atmosphereBase += ' midnight evaporative cooling creating absolute stillness in nighttime darkness';
                 }
             }
 
-            // Humidity affects midnight quality
+            // Humidity affects atmosphere and midnight light quality in nighttime darkness
             if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ' , humid mist amplifying silence';
-                lightingBase += ' , diffused through midnight humidity';
+                atmosphereBase += ' , humid mist amplifying silence in nighttime darkness';
+                lightingBase += ' , softly diffused lighting in deep shadows';
             } else if (isDry) {
-                atmosphereBase += ' , exceptionally clear night air with perfect acoustics';
-                lightingBase += ' , crystal clear in midnight stillness';
+                atmosphereBase += ' , exceptionally clear night air with perfect acoustics in nighttime darkness';
+                lightingBase += ' , midnight stillness in deep shadows';
             }
 
-            // Precipitation affects midnight minimal activity
+            // Precipitation affects midnight minimal activity in nighttime darkness
             if (hasPrecipitation) {
                 if (precipitationRate > 5) {
-                    atmosphereBase += ' , precipitation adding subtle rhythm to stillness';
-                    lightingBase += ' , with rain or snow patterns in minimal light';
+                    atmosphereBase += ` , ${precipitationType} adding subtle stillness in nighttime darkness`;
+                    lightingBase += ` , ${precipitationType} falling in nighttime darkness`;
                 } else {
-                    atmosphereBase += ' , fine mist enhancing midnight calm';
+                    atmosphereBase += ' , fine mist enhancing midnight calm in nighttime darkness';
                 }
             }
 
-            // Wind affects midnight atmosphere
+            // Wind affects midnight atmosphere in nighttime darkness
             if (isWindy) {
-                atmosphereBase += ' , wind creating subtle midnight movement';
-                lightingBase += ' , with faint wind affecting light pools';
+                atmosphereBase += ' , wind creating subtle midnight movement through nighttime darkness';
             } else {
-                atmosphereBase += ' , absolute midnight stillness';
+                atmosphereBase += ' , absolute midnight stillness in nighttime darkness';
             }
 
-            // Cloud coverage effects
+            // Cloud coverage effects on lighting in nighttime darkness (visible cloud descriptions removed for night)
             if (cloudCoverage >= 80) {
-                lightingBase = 'minimal artificial lighting under heavy overcast conditions, starlight and moon blocked';
-                atmosphereBase += ' , heavy cloud cover dominating visibility';
+                lightingBase = 'minimal artificial lighting in nighttime darkness, cloudy night sky blocking most natural light';
+                atmosphereBase += ' , dark night atmosphere with dimmed artificial lighting';
             } else if (cloudCoverage >= 50) {
-                lightingBase = 'minimal artificial lighting diffused through moderate cloud cover, starlight and moon partially obscured';
-                atmosphereBase += ' with moderate cloud diffusion affecting light quality';
+                lightingBase = 'minimal artificial lighting diffused through moderate cloud cover in nighttime darkness, cloudy night sky';
+                atmosphereBase += ' , dark night atmosphere with reduced artificial lighting';
             } else if (cloudCoverage >= 20) {
-                lightingBase = 'minimal artificial lighting filtered by light cloud cover, starlight and moon visible';
-                atmosphereBase += ' with light cloud filtering of starlight';
-            }
-
-            lightingDescription = lightingBase;
-            atmosphericNotes = atmosphereBase;
-
-            if (cloudCoverage >= 80) {
-                lightingBase = 'minimal artificial lighting under heavy overcast conditions, starlight and moon blocked';
-                atmosphereBase = 'cool deep night, very quiet, minimal activity, stillness, heavy cloud cover dominating visibility';
-            } else if (cloudCoverage >= 50) {
-                lightingBase = 'minimal artificial lighting diffused through moderate cloud cover, starlight and moon partially obscured';
-                atmosphereBase = 'cool deep night, very quiet, minimal activity, stillness with moderate cloud diffusion affecting light quality';
-            } else if (cloudCoverage >= 20) {
-                lightingBase = 'minimal artificial lighting filtered by light cloud cover, starlight and moon visible';
-                atmosphereBase = 'cool deep night, very quiet, minimal activity, stillness with light cloud filtering of starlight';
+                lightingBase = 'minimal artificial lighting filtered by light cloud cover in nighttime darkness, minimal natural light visible';
             }
 
             lightingDescription = lightingBase;

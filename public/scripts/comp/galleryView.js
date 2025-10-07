@@ -199,7 +199,7 @@ async function switchGalleryView(view, force = false) {
     }
     
     // Don't switch gallery view if manual modal is open (unless forced)
-    if (!manualModal.classList.contains('hidden')) return;
+    //if (!manualModal.classList.contains('hidden')) return;
     
     currentGalleryView = view;
     // Update global variable for WebSocket event handlers
@@ -232,6 +232,11 @@ async function switchGalleryView(view, force = false) {
             document.body.classList.remove('scraps-grayscale');
             await loadUpscaled();
             break;
+    }
+    if (!manualModal.classList.contains('hidden')) {
+        if (manualPreviewWorkspaceOverlay.classList.contains('visible')) {
+            loadWorkspaceImagesForOverlay();
+        }
     }
 }
 
@@ -319,7 +324,9 @@ async function loadGallery(addLatest) {
             const galleryData = newImages.gallery || newImages;
 
             // Check if images have actually changed to avoid unnecessary updates
-            if (JSON.stringify(allImages) === JSON.stringify(galleryData)) {
+            const dataChanged = JSON.stringify(allImages) !== JSON.stringify(galleryData);
+            if (!dataChanged && !window.workspaceLoadingCompleteCallback) {
+                // If data hasn't changed and we're not in a workspace switch, return early
                 return;
             }
 
@@ -337,6 +344,13 @@ async function loadGallery(addLatest) {
                 } else {
                     await addNewGalleryItemAfterGeneration(galleryData[0]);
                 }
+            } else if (addLatest) {
+                await addNewGalleryItemAfterGeneration(galleryData[0]);
+            }
+
+            // Call workspace completion callback if it exists (for workspace switching)
+            if (window.workspaceLoadingCompleteCallback) {
+                window.workspaceLoadingCompleteCallback();
             }
         } else {
             throw new Error('WebSocket not connected');
@@ -345,10 +359,15 @@ async function loadGallery(addLatest) {
         console.error('Error loading gallery:', error);
         // Don't throw error for gallery loading failure
         allImages = [];
-        
+
         // Only update gallery display if manual modal is not open
         if (manualModal.classList.contains('hidden')) {
             displayCurrentPageOptimized();
+        }
+
+        // Call workspace completion callback if it exists (for workspace switching)
+        if (window.workspaceLoadingCompleteCallback) {
+            window.workspaceLoadingCompleteCallback();
         }
     }
 }
@@ -902,7 +921,7 @@ function createGalleryItem(image, index) {
                     type: 'list',
                     items: [
                         {
-                            icon: 'nai-dice',
+                            icon: 'fas fa-dice-three',
                             text: 'Reroll',
                             action: 'reroll'
                         },
@@ -942,11 +961,6 @@ function createGalleryItem(image, index) {
                             icon: 'nai-img2img',
                             text: 'New Reference',
                             action: 'create-reference'
-                        },
-                        {
-                            icon: 'mdi mdi-data-matrix-scan',
-                            text: 'New Encoding',
-                            action: 'create-encoding'
                         }
                     ]
                 },
@@ -977,8 +991,8 @@ function createGalleryItem(image, index) {
                             }
                         },
                         {
-                            icon: 'nai-trash',
-                            text: 'Delete',
+                            icon: 'fas fa-fire',
+                            text: 'Incinerate',
                             action: 'delete'
                         }
                     ]
@@ -1059,8 +1073,8 @@ function createGalleryItem(image, index) {
                             disabled: false
                         },
                         {
-                            icon: 'nai-trash',
-                            text: 'Delete',
+                            icon: 'fas fa-fire',
+                            text: 'Incinerate',
                             action: 'bulk-delete',
                             disabled: false,
                             className: 'context-menu-item-danger'

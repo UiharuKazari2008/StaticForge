@@ -138,13 +138,19 @@ window.handleSearchResponse = function(message) {
         // Use request ID if available, otherwise fall back to timestamp check
         const requestId = message.requestId;
         const isCurrentRequest = requestId ? requestId === currentSearchRequestId : (currentSearchTimestamp && messageTimestamp >= currentSearchTimestamp);
-        console.log('🔍 Request check for service:', serviceName, 'requestId:', requestId, 'currentRequestId:', currentSearchRequestId, 'isCurrentRequest:', isCurrentRequest);
         if (isCurrentRequest) {
             // Store results for this service in both Maps for compatibility
             serviceResults.set(serviceName, results);
             searchResultsByService.set(serviceName, results);
+
+            // Also populate textReplacementResults for text replacement results
+            const textReplacementResultsArray = results.filter(result => result.type === 'textReplacement');
+            if (textReplacementResultsArray.length > 0) {
+                textReplacementResults.set(serviceName, textReplacementResultsArray);
+            }
+
             // Results stored for service
-            
+
             // Update service status
             if (results.length === 0) {
                 serviceStatuses.set(serviceName, 'no-results');
@@ -614,172 +620,173 @@ function getNormalizedTagCount(tag) {
 
 // Rebuild and display all results in proper order
 async function rebuildAndDisplayResults() {
-    // Collect all results from all services
+    // Collect all results from all services with top 3 limitation for characters and text replacements
     allSearchResults = [];
-    
-    // Collect all results from all services
-    
-    // Use the new serviceResults Map for real-time results
-    for (const [serviceName, results] of serviceResults) {
-        if (results && Array.isArray(results)) {
-            // Separate tag and non-tag results
-            const tagResults = results.filter(result => result.type === 'tag' || result.tag);
-            const nonTagResults = results.filter(result => result.type !== 'tag' && !result.tag);
-            
-            // Enhance tag results with predictionary and dual match merging
-            if (tagResults.length > 0) {
-                const enhancedTags = await enhanceTagResultsWithPredictionary(tagResults, lastSearchQuery);
-                allSearchResults.push(...enhancedTags);
-            }
-            
-            // Enhance character results with predictionary
-            if (nonTagResults.length > 0) {
-                const enhancedResults = await enhanceCharacterResultsWithPredictionary(nonTagResults, lastSearchQuery);
-                allSearchResults.push(...enhancedResults);
-            }
-        }
-    }
     
     // Merge spell check results from all services (prioritize the most comprehensive one)
     const bestSpellCheckResult = getBestSpellCheckResult();
-    
-    // Add the best spell check result to allSearchResults if it exists
-    if (bestSpellCheckResult) {
-        allSearchResults.push(bestSpellCheckResult);
+
+    // Collect character results separately for limiting
+    const allCharacterResults = [];
+    for (const [serviceName, results] of serviceResults) {
+        if (results && Array.isArray(results)) {
+            const characterResults = results.filter(result => result.type === 'character' || (result.type !== 'tag' && !result.tag));
+            if (characterResults.length > 0) {
+                const enhancedCharacters = await enhanceCharacterResultsWithPredictionary(characterResults, lastSearchQuery);
+                allCharacterResults.push(...enhancedCharacters);
+            }
+        }
     }
-    
+
+    // Collect tag results (no limit on tags)
+    const allTagResults = [];
+    for (const [serviceName, results] of serviceResults) {
+        if (results && Array.isArray(results)) {
+            const tagResults = results.filter(result => result.type === 'tag' || result.tag);
+            if (tagResults.length > 0) {
+                const enhancedTags = await enhanceTagResultsWithPredictionary(tagResults, lastSearchQuery);
+                allTagResults.push(...enhancedTags);
+            }
+        }
+    }
+
     // Merge text replacement results from all services with predictionary enhancement
     const allTextReplacements = getAllTextReplacementResults();
     const enhancedTextReplacements = await enhanceTextReplacementResults(allTextReplacements, lastSearchQuery);
-    
+
     // Get the best text replacement match for the current query
     const bestTextReplacement = getBestTextReplacementMatch(enhancedTextReplacements, lastSearchQuery);
-    
-    // Add all enhanced text replacements to results
-    allSearchResults.push(...enhancedTextReplacements);
-    
+
+    // Separate top results from each category and combine them with specific ordering
+    const topResults = [];
+    const bottomResults = [];
+
+    // Add spell check result to top if it exists
+    if (bestSpellCheckResult) {
+        topResults.push({...bestSpellCheckResult, _isTopTier: true});
+    }
+
+    // Sort character results and limit to top 3
+    if (allCharacterResults.length > 0) {
+        allCharacterResults.sort((a, b) => {
+            const aRanking = calculateComprehensiveRanking(a, lastSearchQuery, bestTextReplacement);
+            const bRanking = calculateComprehensiveRanking(b, lastSearchQuery, bestTextReplacement);
+            return bRanking.score - aRanking.score;
+        });
+
+        // Take top 3 characters for top results, rest go to bottom
+        const topCharacters = allCharacterResults.slice(0, 3);
+        const bottomCharacters = allCharacterResults.slice(3);
+
+        topResults.push(...topCharacters.map(result => ({...result, _isTopTier: true})));
+        bottomResults.push(...bottomCharacters.map(result => ({...result, _isTopTier: false})));
+    }
+
+    // Sort text replacement results and limit to top 3
+    if (enhancedTextReplacements.length > 0) {
+        enhancedTextReplacements.sort((a, b) => {
+            const aRanking = calculateComprehensiveRanking(a, lastSearchQuery, bestTextReplacement);
+            const bRanking = calculateComprehensiveRanking(b, lastSearchQuery, bestTextReplacement);
+            return bRanking.score - aRanking.score;
+        });
+
+        // Take top 3 text replacements for top results, rest go to bottom
+        const topTextReplacements = enhancedTextReplacements.slice(0, 3);
+        const bottomTextReplacements = enhancedTextReplacements.slice(3);
+
+        topResults.push(...topTextReplacements.map(result => ({...result, _isTopTier: true})));
+        bottomResults.push(...bottomTextReplacements.map(result => ({...result, _isTopTier: false})));
+    }
+
+    // Add all tag results (no limit) - these are always in bottom tier
+    bottomResults.push(...allTagResults.map(result => ({...result, _isTopTier: false})));
+
     // Apply deduplication to remove duplicate results from different services
-    allSearchResults = deduplicateResults(allSearchResults);
-    
+    const allResultsBeforeDedup = [...topResults, ...bottomResults];
+    const dedupedResults = deduplicateResults(allResultsBeforeDedup);
+
+    // Separate back into top and bottom using the _isTopTier marker (not type)
+    const finalTopResults = [];
+    const finalBottomResults = [];
+
+    for (const result of dedupedResults) {
+        if (result._isTopTier) {
+            finalTopResults.push(result);
+        } else {
+            finalBottomResults.push(result);
+        }
+    }
+
+    // Combine top results with bottom results
+    allSearchResults = [...finalTopResults, ...finalBottomResults];
+
+    // Filter results for text replacement searches (queries starting with '!')
+    if (lastSearchQuery && lastSearchQuery.startsWith('!')) {
+        allSearchResults = allSearchResults.filter(result => result.type === 'textReplacement');
+    }
+
     // Debug logging for ranking
     logRankingDebug(allSearchResults, lastSearchQuery);
-    
-    // Sort results by ranking and type
+
+    // Apply final sorting within top and bottom sections
     allSearchResults.sort((a, b) => {
-        // Add null safety checks
         const aType = a.type || '';
         const bType = b.type || '';
-        
-        // Spell check results go to the top
-        if (aType === 'spellcheck' && bType !== 'spellcheck') {
-            return -1;
+
+        // Determine if items are in top or bottom tier using the marker
+        const aIsTopTier = a._isTopTier === true;
+        const bIsTopTier = b._isTopTier === true;
+
+        // Top tier items always come before bottom tier items
+        if (aIsTopTier && !bIsTopTier) return -1;
+        if (!aIsTopTier && bIsTopTier) return 1;
+
+        // Within the same tier, apply ranking
+        const aRanking = calculateComprehensiveRanking(a, lastSearchQuery, bestTextReplacement);
+        const bRanking = calculateComprehensiveRanking(b, lastSearchQuery, bestTextReplacement);
+
+        // Compare ranking scores (higher score = better ranking)
+        if (aRanking.score !== bRanking.score) {
+            return bRanking.score - aRanking.score;
         }
-        if (aType !== 'spellcheck' && bType === 'spellcheck') {
-            return 1;
+
+        // If scores are equal, use tiebreakers in order of importance
+        // 1. Exact match priority
+        if (aRanking.isExactMatch !== bRanking.isExactMatch) {
+            return aRanking.isExactMatch ? -1 : 1;
         }
-        
-        // Handle text replacements with special logic
-        if (aType === 'textReplacement' && bType === 'textReplacement') {
-            // If one is the best match, prioritize it
-            if (bestTextReplacement && a.name === bestTextReplacement.name && a.placeholder === bestTextReplacement.placeholder) {
-                return -1; // Best match goes first
+
+        // 2. Prefix match priority
+        if (aRanking.isPrefixMatch !== bRanking.isPrefixMatch) {
+            return aRanking.isPrefixMatch ? -1 : 1;
+        }
+
+        // 3. Type hierarchy within same tier
+        if (aIsTopTier && bIsTopTier) {
+            // Within top tier: spellcheck > characters > textReplacements
+            const topTypeOrder = { spellcheck: 3, character: 2, textReplacement: 1 };
+            const aTopPriority = topTypeOrder[aType] || 0;
+            const bTopPriority = topTypeOrder[bType] || 0;
+            if (aTopPriority !== bTopPriority) {
+                return bTopPriority - aTopPriority;
             }
-            if (bestTextReplacement && b.name === bestTextReplacement.name && b.placeholder === bestTextReplacement.placeholder) {
-                return 1; // Best match goes first
-            }
-            
-            // For non-best matches, sort by predictionary score if available
-            const aScore = a.predictionaryScore || a.matchScore || calculateStringSimilarity(lastSearchQuery, a.name);
-            const bScore = b.predictionaryScore || b.matchScore || calculateStringSimilarity(lastSearchQuery, b.name);
-            
-            // Only use score if it's significantly different (>= 10 points)
-            if (Math.abs(aScore - bScore) >= 10) {
-                return bScore - aScore; // Higher score first
-            }
-            
-            // Otherwise, sort alphabetically
-            const aName = a.name || '';
-            const bName = b.name || '';
-            return aName.localeCompare(bName);
+        } else if (!aIsTopTier && !bIsTopTier) {
+            // Within bottom tier: tags have priority over any other types
+            if (aType === 'tag' && bType !== 'tag') return -1;
+            if (aType !== 'tag' && bType === 'tag') return 1;
         }
-        
-        // Text replacements go to the bottom (except the best match which is already handled above)
-        if (aType === 'textReplacement' && bType !== 'textReplacement') {
-            return 1;
+
+        // 4. Frequency/popularity as final tiebreaker
+        const aFreq = a.count || a.frequency || 0;
+        const bFreq = b.count || b.frequency || 0;
+        if (aFreq !== bFreq) {
+            return bFreq - aFreq;
         }
-        if (aType !== 'textReplacement' && bType === 'textReplacement') {
-            return -1;
-        }
-        
-        // For tags, sort by enhanced confidence (predictionary + existing confidence)
-        if (aType === 'tag' && bType === 'tag') {
-            const aEnhancedConfidence = a.enhancedConfidence || a.confidence || 0;
-            const bEnhancedConfidence = b.enhancedConfidence || b.confidence || 0;
-            
-            if (aEnhancedConfidence !== bEnhancedConfidence) {
-                return bEnhancedConfidence - aEnhancedConfidence; // Higher confidence first
-            }
-            
-            // Then sort by count, handling furry tags differently
-            const aCount = getNormalizedTagCount(a);
-            const bCount = getNormalizedTagCount(b);
-            return bCount - aCount; // Higher count first
-        }
-        
-        // For characters, sort by enhanced similarity (predictionary + existing similarity)
-        if (aType === 'character' && bType === 'character') {
-            const aName = a.name || '';
-            const bName = b.name || '';
-            const aTotalScore = a.enhancedSimilarity || (calculateStringSimilarity(lastSearchQuery, aName) * 0.5) + ((a.similarity || 0) * 0.5);
-            const bTotalScore = b.enhancedSimilarity || (calculateStringSimilarity(lastSearchQuery, bName) * 0.5) + ((b.similarity || 0) * 0.5);
-            
-            if (aTotalScore !== bTotalScore) {
-                return bTotalScore - aTotalScore; // Higher score first
-            }
-            
-            // Fallback to count
-            const aCount = a.count || 0;
-            const bCount = b.count || 0;
-            return bCount - aCount;
-        }
-        
-        // Mixed types: establish proper hierarchy and scoring
-        if (aType === 'tag' && bType === 'character') {
-            const tagScore = a.enhancedConfidence || a.confidence || 0;
-            const bName = b.name || '';
-            const charScore = a.enhancedSimilarity || (calculateStringSimilarity(lastSearchQuery, bName) * 0.5) + ((b.similarity || 0) * 0.5);
-            
-            // Tags generally have higher priority unless character has exceptional similarity
-            // Only prioritize character if it has very high similarity (>= 80) AND tag has low confidence (< 30)
-            if (charScore >= 80 && tagScore < 30) {
-                return 1; // Character comes first (only for exceptional matches)
-            }
-            
-            // Tags come first in all other cases
-            return -1;
-        }
-        if (aType === 'character' && bType === 'tag') {
-            const aName = a.name || '';
-            const charScore = a.enhancedSimilarity || (calculateStringSimilarity(lastSearchQuery, aName) * 0.5) + ((a.similarity || 0) * 0.5);
-            const tagScore = b.enhancedConfidence || b.confidence || 0;
-            
-            // Tags generally have higher priority unless character has exceptional similarity
-            // Only prioritize character if it has very high similarity (>= 80) AND tag has low confidence (< 30)
-            if (charScore >= 80 && tagScore < 30) {
-                return -1; // Character comes first (only for exceptional matches)
-            }
-            
-            // Tags come first in all other cases
-            return 1;
-        }
-        
-        // Fallback to service order
-        if (a.serviceOrder !== b.serviceOrder) {
-            return a.serviceOrder - b.serviceOrder;
-        }
-        
-        // Final fallback: alphabetical by type (with null safety)
-        return aType.localeCompare(bType);
+
+        // 5. Alphabetical as absolute last resort
+        const aName = (a.name || a.placeholder || '').toLowerCase();
+        const bName = (b.name || b.placeholder || '').toLowerCase();
+        return aName.localeCompare(bName);
     });
     
     // Update the display with the sorted results
@@ -1177,7 +1184,7 @@ function handleCharacterAutocompleteInput(e) {
             } else {
                 hideCharacterAutocomplete();
             }
-        }, 250); // Reduced from 500ms for better responsiveness
+        }, 200); // Optimized for better responsiveness while reducing server load
         
         return;
     }
@@ -1250,7 +1257,7 @@ function handleCharacterAutocompleteInput(e) {
         } else {
             hideCharacterAutocomplete();
         }
-    }, 250); // Reduced from 500ms for better responsiveness
+    }, 200); // Optimized for better responsiveness while reducing server load
     
 }
 
@@ -1947,11 +1954,11 @@ async function searchCharacters(query, target) {
         let searchQuery = query;
         let hasPickSuffix = false;
 
-        if (query.startsWith('!') && query.includes('~')) {
-            // Extract the name between ! and ~
-            const match = query.match(/^!([^~]+)~/);
+        if (query.startsWith('!') && (query.includes('~') || query.includes('~+'))) {
+            // Extract the name between ! and ~ or ~+
+            const match = query.match(/^!([^~+]+)[~+]/);
             if (match) {
-                searchQuery = match[1]; // Remove ! and ~ for searching
+                searchQuery = match[1]; // Remove ! and suffix for searching
                 hasPickSuffix = true;
             }
         }
@@ -1966,7 +1973,7 @@ async function searchCharacters(query, target) {
             // Perform text replacement search via WebSocket
             if (window.wsClient && window.wsClient.isConnected()) {
                 try {
-                    await window.wsClient.searchCharacters(query, manualModel.value);
+                    await window.wsClient.searchCharacters(query, manualModel.value, { requestId: currentSearchRequestId });
                 } catch (wsError) {
                     console.error('WebSocket text replacement search failed:', wsError);
                     searchServices.set('textReplacements', 'error');
@@ -4299,6 +4306,86 @@ function clearDynamicResults() {
     persistentSpellCheckData = null;
 }
 
+// Calculate comprehensive ranking for search results
+function calculateComprehensiveRanking(result, query, bestTextReplacement = null) {
+    const resultType = result.type || '';
+    const resultName = result.name || result.placeholder || '';
+    const queryLower = query.toLowerCase();
+    const nameLower = resultName.toLowerCase();
+
+    let score = 0;
+    let isExactMatch = false;
+    let isPrefixMatch = false;
+
+    // Base score from similarity calculation
+    const similarityScore = result.predictionaryScore ||
+                           result.enhancedSimilarity ||
+                           result.matchScore ||
+                           calculateStringSimilarity(query, resultName);
+
+    // Exact match bonus (highest priority)
+    if (nameLower === queryLower) {
+        score += 1000;
+        isExactMatch = true;
+    }
+
+    // Prefix match bonus (second highest priority)
+    if (!isExactMatch && nameLower.startsWith(queryLower)) {
+        score += 500;
+        isPrefixMatch = true;
+    }
+
+    // Contains query bonus
+    if (!isExactMatch && !isPrefixMatch && nameLower.includes(queryLower)) {
+        score += 200;
+    }
+
+    // Add similarity score (weighted)
+    score += similarityScore * 2;
+
+    // Type-specific adjustments
+    switch (resultType) {
+        case 'character':
+            // Characters get bonus for being more specific
+            score += 50;
+            // Add existing similarity score if available
+            if (result.similarity) {
+                score += result.similarity * 0.5;
+            }
+            break;
+
+        case 'tag':
+            // Tags get confidence bonus
+            const confidence = result.enhancedConfidence || result.confidence || 0;
+            score += confidence * 0.8;
+            break;
+
+        case 'textReplacement':
+            // Text replacements get bonus if they're the best match
+            if (bestTextReplacement &&
+                resultName === bestTextReplacement.name &&
+                result.placeholder === bestTextReplacement.placeholder) {
+                score += 300; // Significant bonus for best text replacement match
+            }
+
+            // Bonus for placeholder matches
+            if (result.placeholder && result.placeholder.toLowerCase() === queryLower) {
+                score += 400;
+            }
+            break;
+    }
+
+    // Frequency/popularity bonus (small, as tiebreaker)
+    const frequency = result.count || result.frequency || 0;
+    score += Math.min(frequency * 0.1, 10); // Cap at 10 points
+
+    return {
+        score: Math.round(score * 100) / 100, // Round to 2 decimal places
+        isExactMatch,
+        isPrefixMatch
+    };
+}
+
 // Calculate string similarity score for better ranking
 function calculateStringSimilarity(query, text) {
     if (!query || !text) return 0;
@@ -4709,6 +4796,9 @@ function handlePromptTabCycling(e) {
             }
             
             targetElement.focus();
+            
+            // Auto-resize the textarea after tab switch
+            autoResizeTextarea(targetElement);
             
             // If the element was collapsed, wait for animation to complete before scrolling
             if (wasCollapsed) {

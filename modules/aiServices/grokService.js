@@ -2,12 +2,12 @@ const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 const promptManager = require('../promptManager');
-const { addChatMessage, updateConversationData } = require('../chatDatabase');
+const { addChatMessage } = require('../chatDatabase');
 const memoryManager = require('../memoryManager');
 const streamingEventProcessor = require('../streamingEventProcessor');
 const { zodResponseFormat } = require("openai/helpers/zod");
-const { z } = require('zod');
-const jaison = require('jaison');
+const clarinet = require('clarinet');
+const config = require('../../config.json');
 
 // Load secure config
 let secureConfig = {};
@@ -781,24 +781,24 @@ async function executeTool(toolCall) {
 }
 
 // Modified callDirectorAIWithStructuredOutput with tool calling loop
-async function callDirectorAIWithStructuredOutput(messages, model, reasoningEffort = 'low', timeout = 60000, dryrun = false, enableLiveSearch = false, onStreamUpdate = null, responseSchema = null) {
+async function callDirectorAIWithStructuredOutput(messages, options = {}, onStreamUpdate = null) {
     try {
         let currentMessages = [...messages];
-        let maxLoops = 5; // Prevent infinite loops
+        let maxLoops = options?.toolLoops || 5; // Prevent infinite loops
 
         while (maxLoops > 0) {
         // Determine response format based on responseSchema parameter
         let responseFormat = null;
         
-        if (responseSchema === null || responseSchema === undefined) {
+        if (options?.responseSchema === null || options?.responseSchema === undefined) {
             // No schema provided - use normal text response
             responseFormat = null;
-        } else if (typeof responseSchema === 'string') {
+        } else if (typeof options?.responseSchema === 'string') {
             // String format provided (e.g., "json_object")
-            responseFormat = { type: responseSchema };
-        } else if (typeof responseSchema === 'object' && responseSchema._def) {
+            responseFormat = { type: options?.responseSchema };
+        } else if (typeof options?.responseSchema === 'object' && options?.responseSchema._def) {
             // Zod schema provided - use structured output
-            responseFormat = zodResponseFormat(responseSchema, "response");
+            responseFormat = zodResponseFormat(options?.responseSchema, "response");
         } else {
             // Fallback to normal text if invalid schema type
             console.warn('⚠️ Invalid responseSchema type, falling back to normal text response');
@@ -806,14 +806,14 @@ async function callDirectorAIWithStructuredOutput(messages, model, reasoningEffo
         }
         
         let apiConfig = {
-            model: model || "grok-4",
+            model: options?.model || "grok-4",
             messages: currentMessages,
-            max_completion_tokens: 8000,
-            timeout: timeout,
-            store: true,
-            stream: true, // Always use streaming
-            tools: directorTools,
-            tool_choice: "auto"
+            max_completion_tokens: options?.max_completion_tokens || 8000,
+            timeout: options?.timeout || 60000,
+            store: options?.store || true,
+            stream: options?.stream || config?.chat_streaming_enabled || false, // Always use streaming
+            tools: options?.tools || undefined,
+            tool_choice: options?.tool_choice || !!options?.tools ? "auto" : undefined
         };
         
         // Only add response_format if we have one
@@ -822,13 +822,13 @@ async function callDirectorAIWithStructuredOutput(messages, model, reasoningEffo
         }
         
         // Add reasoning effort for supported models
-        if (reasoningEffort === 'high' && model !== 'grok-4') {
+        if (options?.reasoningEffort === 'high' && apiConfig.model !== 'grok-4') {
             apiConfig.reasoning_effort = 'high';
         }
 
         // Add live search parameters if enabled
-        if (enableLiveSearch) {
-            apiConfig.search_parameters = {
+        if (options?.liveSearch) {
+            apiConfig.search_parameters = options?.search_parameters || {
                 mode: "auto", // Enable live search
                 return_citations: true,
                 sources: [
@@ -845,7 +845,7 @@ async function callDirectorAIWithStructuredOutput(messages, model, reasoningEffo
             console.log('🔍 Live search enabled for director AI call');
         }
 
-        console.log(`🎯 Calling Director AI with model: ${model}, reasoning: ${apiConfig.reasoning_effort || 'none'}, timeout: ${timeout}ms`);
+        console.log(`🎯 Calling Director AI with model: ${apiConfig.model}, reasoning: ${apiConfig.reasoning_effort || 'none'}, timeout: ${apiConfig.timeout}ms`);
 
         // Retry streaming up to 3 times before giving up
         let retryCount = 0;
@@ -859,12 +859,127 @@ async function callDirectorAIWithStructuredOutput(messages, model, reasoningEffo
                 let fullResponse = '';
                 let lastChunk = null;
 
-                // Real-time JSON parsing using jaison (AI-optimized JSON parser)
-                console.log('\n🔄 STARTING LIVE AI-OPTIMIZED JSON PARSING WITH JAISON');
+                // Real-time JSON parsing using clarinet (streaming SAX parser)
+                console.log('\n🔄 STARTING LIVE STREAMING JSON PARSING WITH CLARINET');
                 console.log('='.repeat(70));
 
-                let jsonAccumulator = '';
+                // Check if key filtering is enabled
+                const extractKeys = options?.extractKeys;
+                if (extractKeys) {
+                    const patterns = Array.isArray(extractKeys) ? extractKeys : [extractKeys];
+                    console.log(`🔍 KEY FILTERING ENABLED - Extracting only: ${patterns.join(', ')}`);
+                } else {
+                    console.log('🔍 KEY FILTERING DISABLED - Extracting all keys');
+                }
+
+                // Function to check if a key path matches the specified patterns
+                function shouldExtractKey(fullPath) {
+                    if (!extractKeys) return true; // Extract all if no filter specified
+
+                    const patterns = Array.isArray(extractKeys) ? extractKeys : [extractKeys];
+
+                    return patterns.some(pattern => {
+                        // Convert glob pattern to regex
+                        let regexPattern = pattern
+                            .replace(/\[\*\]\./g, '.')  // Replace [*]. with . first (since clarinet flattens arrays)
+                            .replace(/\*/g, '.*');     // Then * matches any characters including dots
+
+                        // Also try the pattern with [*] replaced by array indices
+                        const arrayRegexPattern = pattern
+                            .replace(/\[\*\]/g, '\\[\\d+\\]')  // [*] matches [0], [1], etc.
+                            .replace(/\*/g, '.*');
+
+                        const regex1 = new RegExp(`^${regexPattern}$`);
+                        const regex2 = new RegExp(`^${arrayRegexPattern}$`);
+
+                        return regex1.test(fullPath) || regex2.test(fullPath);
+                    });
+                }
+
                 let seenKeys = new Set();
+                let extractedKeysInChunk = []; // Track keys extracted in current chunk
+                const jsonParser = clarinet.createStream();
+                const path = [];
+
+                // Set up clarinet event handlers for live key extraction
+                jsonParser.on('openobject', (key) => {
+                    if (key !== undefined) {
+                        path.push(key);
+                        const fullPath = path.join('.');
+                        const eventKey = `${fullPath}:object`;
+
+                        if (!seenKeys.has(eventKey) && shouldExtractKey(fullPath)) {
+                            seenKeys.add(eventKey);
+                            console.log(`🏗️  LIVE: ${fullPath} = {object}`);
+                            extractedKeysInChunk.push({ path: fullPath, value: 'object', type: 'openobject' });
+                        }
+                    }
+                });
+
+                jsonParser.on('key', (key) => {
+                    // Handle array indices
+                    if (!isNaN(key)) {
+                        path.push(`[${key}]`);
+                    } else {
+                        path.push(key);
+                    }
+                });
+
+                jsonParser.on('value', (value) => {
+                    const fullPath = path.join('.');
+                    const eventKey = `${fullPath}:${JSON.stringify(value)}`;
+
+                    if (!seenKeys.has(eventKey) && shouldExtractKey(fullPath)) {
+                        seenKeys.add(eventKey);
+
+                        // Format and display the value
+                        let displayValue;
+                        if (typeof value === 'string' && value.length > 80) {
+                            displayValue = value.substring(0, 80) + '...';
+                        } else {
+                            displayValue = value;
+                        }
+
+                        if (typeof value === 'string') {
+                            console.log(`📊 LIVE: ${fullPath} = "${displayValue}"`);
+                        } else {
+                            console.log(`📊 LIVE: ${fullPath} = ${displayValue}`);
+                        }
+
+                        extractedKeysInChunk.push({ path: fullPath, value: value, type: 'value' });
+                    }
+
+                    path.pop(); // Remove the key after processing value
+                });
+
+                jsonParser.on('openarray', () => {
+                    const fullPath = path.join('.');
+                    const eventKey = `${fullPath}:array`;
+
+                    if (!seenKeys.has(eventKey) && shouldExtractKey(fullPath)) {
+                        seenKeys.add(eventKey);
+                        console.log(`📋 LIVE: ${fullPath} = [array]`);
+                        extractedKeysInChunk.push({ path: fullPath, value: 'array', type: 'openarray' });
+                    }
+                });
+
+                jsonParser.on('closeobject', () => {
+                    if (path.length > 0) path.pop();
+                });
+
+                jsonParser.on('closearray', () => {
+                    if (path.length > 0) path.pop();
+                });
+
+                jsonParser.on('end', () => {
+                    console.log(`\\n🏁 COMPLETE JSON OBJECT RECEIVED`);
+                    console.log(`📊 Total unique elements extracted: ${seenKeys.size}`);
+                });
+
+                jsonParser.on('error', (error) => {
+                    console.warn('⚠️ Clarinet parsing error (JSON may be incomplete):', error.message);
+                    // Clarinet handles incomplete JSON gracefully - continues parsing valid portions
+                });
 
                 // Process streaming chunks with live output
                 for await (const chunk of stream) {
@@ -872,176 +987,27 @@ async function callDirectorAIWithStructuredOutput(messages, model, reasoningEffo
                     if (content) {
                         fullResponse += content;
                         lastChunk = chunk;
-                        jsonAccumulator += content;
 
-                        // Send streaming update to UI if callback provided
+                        // Reset extracted keys for this chunk
+                        extractedKeysInChunk = [];
+
+                        // Feed content to clarinet parser - extracts keys LIVE as they arrive
+                        jsonParser.write(content);
+
+                        // Send streaming update to UI if callback provided (after processing)
                         if (onStreamUpdate) {
-                            onStreamUpdate(content, fullResponse);
-                        }
-
-                        // Try to extract and display individual key-value pairs as they become available
-                        extractLiveKeyValuePairs(jsonAccumulator, seenKeys);
-                    }
-                }
-
-                // Final comprehensive parsing of complete response
-                console.log('\\n🏁 FINAL PARSING ATTEMPT...');
-                if (jsonAccumulator.trim()) {
-                    try {
-                        const parsed = jaison(jsonAccumulator);
-                        if (parsed && typeof parsed === 'object') {
-                            console.log('🏗️  COMPLETE OBJECT RECEIVED');
-                            extractPairsFromJaisonObject(parsed, '', seenKeys);
-                        }
-                    } catch (error) {
-                        console.warn('⚠️ Jaison parsing failed:', error.message);
-                        // Fallback to regular JSON.parse
-                        try {
-                            const parsed = JSON.parse(jsonAccumulator);
-                            extractPairsFromJaisonObject(parsed, '', seenKeys);
-                        } catch (fallbackError) {
-                            console.warn('⚠️ Fallback JSON parsing also failed:', fallbackError.message);
+                            // Call with extracted keys as third parameter for filtering support
+                            // Backward compatible - existing callbacks that expect 2 params still work
+                            onStreamUpdate(content, fullResponse, extractedKeysInChunk);
                         }
                     }
                 }
 
-                console.log(`\\n✅ LIVE AI-OPTIMIZED JSON PARSING COMPLETED - Total unique elements: ${seenKeys.size}`);
+                // Signal end of stream to clarinet
+                jsonParser.end();
+
+                console.log(`\\n✅ LIVE STREAMING JSON PARSING COMPLETED - Total unique elements: ${seenKeys.size}`);
                 console.log('='.repeat(70));
-
-                // Simple and robust live key-value extraction
-                function extractLiveKeyValuePairs(jsonStr, seenKeys) {
-                    // Only process if we have meaningful data
-                    if (jsonStr.length < 20) return;
-
-                    // Look for complete key-value pairs using simple regex patterns
-                    const patterns = [
-                        // String values: "key": "value" followed by , } or ]
-                        /"([^"]+)"\s*:\s*"((?:[^"\\]|\\.)*)"(\s*[,\]\}])/g,
-                        // Number values: "key": 123 followed by , } or ]
-                        /"([^"]+)"\s*:\s*([0-9]+(?:\.[0-9]+)?)(\s*[,\]\}])/g,
-                        // Boolean/null: "key": true/false/null followed by , } or ]
-                        /"([^"]+)"\s*:\s*(true|false|null)(\s*[,\]\}])/g
-                    ];
-
-                    for (const pattern of patterns) {
-                        let match;
-                        pattern.lastIndex = 0; // Reset regex
-
-                        while ((match = pattern.exec(jsonStr)) !== null) {
-                            const key = match[1];
-                            const value = match[2];
-                            const terminator = match[3];
-
-                            // Only process if we have a proper terminator (indicating complete value)
-                            if (terminator && terminator.trim()) {
-                                const pairKey = `root.${key}`;
-
-                                if (!seenKeys.has(pairKey)) {
-                                    seenKeys.add(pairKey);
-
-                                    // Format and display the value
-                                    let displayValue;
-                                    if (typeof value === 'string' && value.length > 80) {
-                                        displayValue = value.substring(0, 80) + '...';
-                                    } else {
-                                        displayValue = value;
-                                    }
-
-                                    // Display based on value type
-                                    if (pattern.source.includes('"((?:[^"\\\\]|\\\\.)*)"')) {
-                                        // String value
-                                        console.log(`📊 ${key} = "${displayValue}"`);
-                                    } else {
-                                        // Number, boolean, or null
-                                        console.log(`📊 ${key} = ${displayValue}`);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Look for object/array starts (simpler detection)
-                    const structPatterns = [
-                        /"([^"]+)"\s*:\s*\{/g,  // Object start
-                        /"([^"]+)"\s*:\s*\[/g   // Array start
-                    ];
-
-                    for (const pattern of structPatterns) {
-                        let match;
-                        pattern.lastIndex = 0;
-
-                        while ((match = pattern.exec(jsonStr)) !== null) {
-                            const key = match[1];
-                            const structKey = `root.${key}_struct`;
-
-                            if (!seenKeys.has(structKey)) {
-                                seenKeys.add(structKey);
-
-                                if (pattern.source.includes('\\{')) {
-                                    console.log(`🏗️  ${key} = {object}`);
-                                } else {
-                                    console.log(`📋 ${key} = [array]`);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Helper function to show live values
-                function showLiveValue(path, key, value, seenKeys) {
-                    const fullKey = `${path}.${key}`;
-                    if (!seenKeys.has(fullKey)) {
-                        seenKeys.add(fullKey);
-
-                        // Parse the value
-                        let parsedValue;
-                        if (value.startsWith('"') && value.endsWith('"')) {
-                            parsedValue = value.slice(1, -1);
-                        } else {
-                            parsedValue = value;
-                        }
-
-                        const indent = '\t'.repeat(Math.max(0, path.split('.').length - 1));
-                        const displayValue = typeof parsedValue === 'string' && parsedValue.length > 100
-                            ? parsedValue.substring(0, 100) + '...'
-                            : parsedValue;
-
-                        if (typeof parsedValue === 'string') {
-                            console.log(`${indent}📊 ${key} = "${displayValue}"`);
-                        } else {
-                            console.log(`${indent}📊 ${key} = ${displayValue}`);
-                        }
-                    }
-                }
-
-                // Helper function for jaison object extraction
-                function extractPairsFromJaisonObject(obj, path, seenKeys) {
-                    for (const [key, value] of Object.entries(obj)) {
-                        const fullPath = path ? `${path}.${key}` : key;
-                        const pairKey = `${fullPath}:${JSON.stringify(value)}`;
-
-                        if (!seenKeys.has(pairKey)) {
-                            seenKeys.add(pairKey);
-
-                            // Format value for display
-                            let displayValue;
-                            if (typeof value === 'string' && value.length > 100) {
-                                displayValue = value.substring(0, 100) + '...';
-                            } else {
-                                displayValue = JSON.stringify(value);
-                            }
-
-                            console.log(`📊 ${fullPath}: ${key} = ${displayValue}`);
-
-                            // Recursively extract nested objects
-                            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                                extractPairsFromJaisonObject(value, fullPath, seenKeys);
-                            } else if (Array.isArray(value)) {
-                                console.log(`📊 ${fullPath}: ${key}[] = ${value.length} items`);
-                            }
-                        }
-                    }
-                }
 
 
                 // Get the response message for tool calling
@@ -1088,11 +1054,11 @@ async function callDirectorAIWithStructuredOutput(messages, model, reasoningEffo
                     let parsedResponse;
                     if (typeof response === 'string' && response.trim()) {
                         // Handle different response types based on responseSchema
-                        if (responseSchema === null || responseSchema === undefined) {
+                        if (options?.responseSchema === null || options?.responseSchema === undefined) {
                             // Normal text response - return as is
                             parsedResponse = response;
                             console.log('✅ Normal text response received');
-                        } else if (typeof responseSchema === 'string') {
+                        } else if (typeof options?.responseSchema === 'string') {
                             // String format response (e.g., "json_object") - parse as JSON
                             try {
                                 const rawJson = JSON.parse(response);
@@ -1102,11 +1068,11 @@ async function callDirectorAIWithStructuredOutput(messages, model, reasoningEffo
                                 console.warn('⚠️ Failed to parse JSON response:', parseError.message);
                                 parsedResponse = { error: 'Invalid JSON response from AI', content: response, citations: citations };
                             }
-                        } else if (typeof responseSchema === 'object' && responseSchema._def) {
+                        } else if (typeof options?.responseSchema === 'object' && options?.responseSchema._def) {
                             // Zod schema response - validate with schema
                             try {
                                 const rawJson = JSON.parse(response);
-                                const validatedResponse = responseSchema.parse(rawJson);
+                                const validatedResponse = options?.responseSchema.parse(rawJson);
                                 parsedResponse = { ...validatedResponse, citations: citations };
                                 console.log('✅ Zod schema validation passed');
                             } catch (parseError) {
@@ -1132,7 +1098,7 @@ async function callDirectorAIWithStructuredOutput(messages, model, reasoningEffo
                     console.log(`✅ Streaming completed: ${fullResponse.length} characters received in ${Math.round(streamDuration/1000)}s`);
 
                     // Determine if response is structured based on responseSchema type
-                    const isStructured = responseSchema !== null && responseSchema !== undefined;
+                    const isStructured = options?.responseSchema !== null && options?.responseSchema !== undefined;
                     
                     return {
                         content: parsedResponse,

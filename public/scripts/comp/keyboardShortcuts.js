@@ -19,69 +19,101 @@ function createShortcutsOverlay() {
     shortcutsOverlay.innerHTML = `
         <div class="shortcuts-content">
             <div class="shortcuts-title">Keyboard Shortcuts</div>
-            <div class="shortcuts-grid">
-                <div class="shortcut-item">
-                    <span class="shortcut-key">F1</span>
-                    <span class="shortcut-desc"><span>Prompts</span><i class="fas fa-compass-drafting"></i></span>
+            <div class="shortcuts-grids">
+                <div class="shortcuts-grid left">
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">ALT + A</span>
+                        <span class="shortcut-desc"><span>Add Character</span><i class="fa fa-user-plus"></i></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">CTRL + F</span>
+                        <span class="shortcut-desc"><span>Inline Search</span><i class="fa fa-search"></i></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">CTRL + I</span>
+                        <span class="shortcut-desc"><span>Toggle Autofill</span><i class="fa fa-lightbulb"></i></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">Alt + F</span>
+                        <span class="shortcut-desc"><span>Favorite Tag</span><i class="fa fa-star"></i></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">Alt + D</span>
+                        <span class="shortcut-desc"><span>Disable Syntax</span><i class="fa fa-ban"></i></span>
+                    </div>
+                    <div class="divider"></div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">Alt + ,</span>
+                        <span class="shortcut-desc"><span>Previous Image</span><i class="fa fa-arrow-left"></i></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">Alt + .</span>
+                        <span class="shortcut-desc"><span>Next Image</span><i class="fa fa-arrow-right"></i></span>
+                    </div>
                 </div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">F2</span>
-                    <span class="shortcut-desc"><span>UC</span><i class="fa fa-ban"></i></span>
-                </div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">ALT + F1</span>
-                    <span class="shortcut-desc"><span>Prompts/UC</span><i class="nai-detatch-up"></i></span>
-                </div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">F3</span>
-                    <span class="shortcut-desc"><span>Emphasis</span><i class="fa fa-scale-unbalanced-flip"></i></span>
-                </div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">F4</span>
-                    <span class="shortcut-desc"><span>Quick Access</span><i class="fa fa-book-font"></i></span>
-                </div>
-                <div class="divider"></div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">F5</span>
-                    <span class="shortcut-desc"><span>Generate</span><i class="fa fa-sparkles"></i></span>
-                </div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">F6</span>
-                    <span class="shortcut-desc"><span>References</span><i class="nai-img2img"></i></span>
-                </div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">F7</span>
-                    <span class="shortcut-desc"></span>
-                </div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">F8</span>
-                    <span class="shortcut-desc"><span>Keep Seed</span><i class="fas fa-dice"></i></span>
-                </div>
-                <div class="divider"></div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">ALT + A</span>
-                    <span class="shortcut-desc"><span>Add Character</span><i class="fa fa-user-plus"></i></span>
-                </div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">CTRL + F</span>
-                    <span class="shortcut-desc"><span>Inline Search</span><i class="fa fa-search"></i></span>
-                </div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">CTRL + I</span>
-                    <span class="shortcut-desc"><span>Toggle Autofill</span><i class="fa fa-lightbulb"></i></span>
-                </div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">Alt + F</span>
-                    <span class="shortcut-desc"><span>Favorite Tag</span><i class="fa fa-star"></i></span>
-                </div>
-                <div class="divider"></div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">Alt + ,</span>
-                    <span class="shortcut-desc"><span>Previous Image</span><i class="fa fa-arrow-left"></i></span>
-                </div>
-                <div class="shortcut-item">
-                    <span class="shortcut-key">Alt + .</span>
-                    <span class="shortcut-desc"><span>Next Image</span><i class="fa fa-arrow-right"></i></span>
+                <div class="shortcuts-grid right">
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">F1</span>
+                        <span class="shortcut-desc"><span>Prompts</span><i class="fas fa-compass-drafting"></i></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">F2</span>
+                        <span class="shortcut-desc"><span>UC</span><i class="fa fa-ban"></i></span>
+                    </div>
+                    <div class="shortcut-item alt">
+                        <span class="shortcut-key">ALT + F1</span>
+                        <span class="shortcut-desc"><span>Prompts/UC</span><i class="nai-detatch-up"></i></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">F3</span>
+                        <span class="shortcut-desc"><span>Emphasis</span><i class="fa fa-scale-unbalanced-flip"></i></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">F4</span>
+                        <span class="shortcut-desc"><span>Quick Access</span><i class="fa fa-book-font"></i></span>
+                    </div>
+                    <div class="divider"></div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">F5</span>
+                        <span class="shortcut-desc"><span>Generate</span><i class="fa fa-sparkles"></i></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">F6</span>
+                        <span class="shortcut-desc"><span>References</span><i class="nai-img2img"></i></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">F7</span>
+                        <span class="shortcut-desc"><span>Reset to Normal</span><i class="fa fa-undo"></i></span>
+                    </div>
+                    <div class="shortcut-item alt">
+                        <span class="shortcut-key">ALT + F7</span>
+                        <span class="shortcut-desc"><span>Maximum Quality</span><i class="fa fa-bolt"></i></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">F8</span>
+                        <span class="shortcut-desc"><span>Lock Seed</span><i class="fas fa-dice"></i></span>
+                    </div>
+                    <div class="shortcut-item alt">
+                        <span class="shortcut-key">ALT + F8</span>
+                        <span class="shortcut-desc"><span>Allow Paid</span><i class="fa fa-dollar-sign"></i></span>
+                    </div>
+                    <div class="divider"></div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">F9</span>
+                        <span class="shortcut-desc"></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">F10</span>
+                        <span class="shortcut-desc"></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">F11</span>
+                        <span class="shortcut-desc"></span>
+                    </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">F12</span>
+                        <span class="shortcut-desc"></span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -120,19 +152,16 @@ function handleKeyDown(event) {
     
     switch (`${event.ctrlKey ? 'CTRL+' : ''}${event.altKey ? 'ALT+' : ''}${event.metaKey ? 'META+' : ''}${event.shiftKey ? 'SHIFT+' : ''}${event.key.toUpperCase()}`) {
         case 'F1':
-            if (isTextReplacementModalOpen || isCreateTextReplacementModalOpen) return;
             event.preventDefault();
             event.stopPropagation();
             switchManualTab('prompt', document.activeElement);
             break;
         case 'F2':
-            if (isTextReplacementModalOpen || isCreateTextReplacementModalOpen) return;
             event.preventDefault();
             event.stopPropagation();
             switchManualTab('uc', document.activeElement);
             break;
         case 'ALT+F1':
-            if (isTextReplacementModalOpen || isCreateTextReplacementModalOpen) return;
             event.preventDefault();
             event.stopPropagation();
             toggleManualShowBoth();
@@ -157,8 +186,6 @@ function handleKeyDown(event) {
         case 'F5':
             event.preventDefault();
             event.stopPropagation();
-            if (isTextReplacementModalOpen || isCreateTextReplacementModalOpen) return;
-            
             // Check if manual modal is open
             const manualModal = document.getElementById('manualModal');
             const isInModal = manualModal && !manualModal.classList.contains('hidden');
@@ -182,13 +209,72 @@ function handleKeyDown(event) {
             }
             break;
         case 'F6':
-            if (isTextReplacementModalOpen || isCreateTextReplacementModalOpen) return;
             event.preventDefault();
             event.stopPropagation();
             showCacheBrowser();
             break;
+        case 'F7':
+            event.preventDefault();
+            event.stopPropagation();
+            // Reset steps if over 28
+            const stepsVal = parseInt(manualSteps.value);
+            if (stepsVal > 28) {
+                manualSteps.value = 28;
+                manualSteps.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            
+            // Reset resolution to normal if large or wallpaper
+            const resVal = manualResolutionHidden ? manualResolutionHidden.value : '';
+            if (resVal && (resVal.startsWith('large_') || resVal.startsWith('wallpaper_'))) {
+                const parts = resVal.split('_');
+                if (parts.length >= 2) {
+                    const aspect = parts[1];
+                    const newRes = 'normal_' + aspect;
+                    // Check if normal version exists
+                    if (typeof RESOLUTIONS !== 'undefined' && RESOLUTIONS.find(r => r.value === newRes)) {
+                        if (typeof selectManualResolution === 'function') {
+                            selectManualResolution(newRes, 'Normal');
+                        }
+                    }
+                }
+            }
+            forcePaidRequest = false;
+            paidRequestToggle.setAttribute('data-state', 'off');
+            manualUpscale.setAttribute('data-state', 'off');
+            break;
+        case 'ALT+F7':
+            event.preventDefault();
+            event.stopPropagation();
+            // Set Max Steps
+            manualSteps.value = 50;
+            manualSteps.dispatchEvent(new Event('input', { bubbles: true }));
+            
+            // Set Max Resolution
+            const inputResVal = manualResolutionHidden ? manualResolutionHidden.value : '';
+            if (inputResVal && !(inputResVal.startsWith('large_') || inputResVal.startsWith('wallpaper_'))) {
+                const parts = inputResVal.split('_');
+                if (parts.length >= 2) {
+                    const aspect = parts[1];
+                    const newRes = 'large_' + aspect;
+                    // Check if normal version exists
+                    if (typeof RESOLUTIONS !== 'undefined' && RESOLUTIONS.find(r => r.value === newRes)) {
+                        if (typeof selectManualResolution === 'function') {
+                            selectManualResolution(newRes, 'Large');
+                        }
+                    }
+                }
+            }
+            forcePaidRequest = true;
+            paidRequestToggle.setAttribute('data-state', 'on');
+            manualUpscale.setAttribute('data-state', 'off');
+            break;
+        case 'ALT+F8':
+            event.preventDefault();
+            event.stopPropagation();
+            paidRequestToggle.setAttribute('data-state', !forcePaidRequest ? 'on' : 'off');
+            forcePaidRequest = !forcePaidRequest;
+            break;
         case 'F8':
-            if (isTextReplacementModalOpen || isCreateTextReplacementModalOpen) return;
             event.preventDefault();
             event.stopPropagation();
             if (window.lastLoadedSeed) {
@@ -197,13 +283,11 @@ function handleKeyDown(event) {
             }
             break;
         case 'ALT+A':
-            if (isTextReplacementModalOpen || isCreateTextReplacementModalOpen) return;
             event.preventDefault();
             event.stopPropagation();
             addCharacterPrompt();
             break;
         case 'CTRL+F':
-            if (isTextReplacementModalOpen || isCreateTextReplacementModalOpen) return;
             // Trigger inline search in the active prompt toolbar
             const searchTextarea = document.activeElement;
             if (searchTextarea && (searchTextarea.matches('.prompt-textarea, .character-prompt-textarea'))) {
@@ -221,14 +305,12 @@ function handleKeyDown(event) {
             break;
         case 'ALT+,':
         case 'ALT+≤':
-            if (isTextReplacementModalOpen || isCreateTextReplacementModalOpen) return;
             event.preventDefault();
             event.stopPropagation();
             navigateManualPreview({ currentTarget: { id: 'manualPreviewPrevBtn' } });
             break;
         case 'ALT+.':
         case 'ALT+≥':
-            if (isTextReplacementModalOpen || isCreateTextReplacementModalOpen) return;
             event.preventDefault();
             event.stopPropagation();
             navigateManualPreview({ currentTarget: { id: 'manualPreviewNextBtn' } });
@@ -266,6 +348,18 @@ function handleKeyDown(event) {
                     if (window.showAddToFavoritesDialog) {
                         window.showAddToFavoritesDialog(selectedText.trim());
                     }
+                }
+            }
+            break;
+        case 'ALT+D':
+            // Toggle disable syntax (!/ /) for selected text or remove if cursor is inside
+            if (document.activeElement && (document.activeElement.type === 'textarea' ||
+                document.activeElement.classList.contains('prompt-textarea') ||
+                document.activeElement.classList.contains('character-prompt-textarea'))) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (window.toggleDisableSyntax) {
+                    window.toggleDisableSyntax(document.activeElement);
                 }
             }
             break;

@@ -260,7 +260,7 @@ async function initializePhotoSwipe() {
                         },
                         {
                             className: 'reroll-button',
-                            icon: '<i class="nai-dice"></i>',
+                            icon: '<i class="fa-light fa-dice-three"></i>',
                             label: 'Recast Spell',
                             onClick: (e) => {
                                 const currentItem = pswp.currSlide;
@@ -307,7 +307,7 @@ async function initializePhotoSwipe() {
                             }
                         },
                         {
-                            className: 'delete-button',
+                            className: 'delete-button btn-danger',
                             icon: '<i class="fa-light fa-fire"></i>',
                             label: 'Destroy image',
                             onClick: () => {

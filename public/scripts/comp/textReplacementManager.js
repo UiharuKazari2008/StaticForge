@@ -227,7 +227,6 @@ async function loadTextReplacements() {
 }
 
 
-
 // Update pagination controls
 function updatePaginationControls() {
     const pageInfo = document.getElementById('textReplacementPageInfo');
@@ -381,9 +380,9 @@ function renderArrayValue(key, value) {
 function toggleEditMode(key) {
     const item = document.querySelector(`[data-key="${key}"]`);
     if (!item) return;
-    
+
     const isEditing = item.classList.contains('editing');
-    
+
     if (isEditing) {
         // Exit edit mode and revert changes
         exitEditMode(key, true); // true = revert changes
@@ -540,25 +539,23 @@ function convertToDisplayMode(key) {
 function setupTextReplacementTextarea(textarea) {
     if (!textarea || !textarea.matches('.character-prompt-textarea')) return;
     
+    // Cache DOM elements to avoid repeated queries
+    const container = textarea.closest('.character-prompt-textarea-container');
+    const toolbar = container?.querySelector('.prompt-textarea-toolbar');
+    
     // Add event listeners for focus/blur to show/hide toolbar
-    textarea.addEventListener('focus', () => {
-        const toolbar = textarea.closest('.character-prompt-textarea-container')?.querySelector('.prompt-textarea-toolbar');
+    addSafeEventListener(textarea, 'focus', () => {
         if (toolbar) {
             toolbar.classList.remove('hidden');
             updateTextReplacementTokenCount(textarea);
         }
         
-        // Add focus class to container
-        const container = textarea.closest('.character-prompt-textarea-container');
         if (container) {
             container.classList.add('textarea-focused');
         }
-    });
+    }, 'toolbar');
     
-    textarea.addEventListener('blur', () => {
-        const toolbar = textarea.closest('.character-prompt-textarea-container')?.querySelector('.prompt-textarea-toolbar');
-        const container = textarea.closest('.character-prompt-textarea-container');
-        
+    addSafeEventListener(textarea, 'blur', () => {
         if (toolbar) {
             toolbar.classList.add('hidden');
         }
@@ -566,27 +563,29 @@ function setupTextReplacementTextarea(textarea) {
         if (container) {
             container.classList.remove('textarea-focused');
         }
-    });
+    }, 'toolbar');
     
-    // Add input event listener for token count updates
-    textarea.addEventListener('input', () => {
+    // Add input event listener for token count updates with debouncing
+    const debouncedTokenUpdate = debounce(() => {
         updateTextReplacementTokenCount(textarea);
-    });
+    }, 150); // 150ms debounce for token counting
+    
+    addSafeEventListener(textarea, 'input', debouncedTokenUpdate, 'tokenCount');
     
     // Add character autocomplete events
-    textarea.addEventListener('input', handleCharacterAutocompleteInput);
-    textarea.addEventListener('keydown', handleCharacterAutocompleteKeydown);
-    textarea.addEventListener('focus', () => startEmphasisHighlighting(textarea));
-    textarea.addEventListener('blur', () => {
+    addSafeEventListener(textarea, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+    addSafeEventListener(textarea, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+    addSafeEventListener(textarea, 'focus', () => startEmphasisHighlighting(textarea), 'focus');
+    addSafeEventListener(textarea, 'blur', () => {
         applyFormattedText(textarea, true);
         updateEmphasisHighlighting(textarea);
         stopEmphasisHighlighting();
-    });
+    }, 'blur');
     
     // Setup toolbar button event listeners
-    const toolbar = textarea.closest('.character-prompt-textarea-container')?.querySelector('.prompt-textarea-toolbar');
-    if (toolbar) {
-        setupTextReplacementToolbar(toolbar, textarea);
+    const toolbarElement = textarea.closest('.character-prompt-textarea-container')?.querySelector('.prompt-textarea-toolbar');
+    if (toolbarElement) {
+        setupTextReplacementToolbar(toolbarElement, textarea);
     }
     
     // Initial token count
@@ -854,43 +853,40 @@ function addArrayItem(key) {
     if (!Array.isArray(textReplacementData[key]))
         textReplacementData[key] = [textReplacementData[key]];
     textReplacementData[key].push('');
-    
+
     // Re-render the specific item
     const item = document.querySelector(`[data-key="${key}"]`);
     if (item) {
         const isArray = Array.isArray(textReplacementData[key]);
         const isModified = hasChanges(key, textReplacementData[key]);
         const isNew = !originalTextReplacementData.hasOwnProperty(key);
-        
+
         const newItem = createTextReplacementItem(key, textReplacementData[key], isArray, isModified, isNew);
-        
+
         // Preserve edit mode
-        if (item.classList.contains('editing')) {
+        const wasEditing = item.classList.contains('editing');
+
+        item.replaceWith(newItem);
+
+        if (wasEditing) {
             newItem.classList.add('editing');
-            // Make inputs editable
-            const inputs = newItem.querySelectorAll('input, textarea');
-            inputs.forEach(input => {
-                input.readOnly = false;
-                input.addEventListener('input', () => updateTextReplacementValue(key));
-            });
-            
-            // Update button icons and show/hide buttons
+            convertToEditMode(key);
+
+            // Update button states for edit mode
             const editBtn = newItem.querySelector('.edit-btn');
             const saveBtn = newItem.querySelector('.save-btn');
-            
+
             if (editBtn) {
                 editBtn.innerHTML = '<i class="fas fa-times"></i>';
                 editBtn.title = 'Cancel';
                 editBtn.className = 'btn-small btn-secondary edit-btn';
             }
-            
+
             if (saveBtn) {
                 saveBtn.classList.remove('hidden');
             }
         }
-        
-        item.replaceWith(newItem);
-        
+
         // Focus the new item
         const newInput = newItem.querySelector(`[data-index="${textReplacementData[key].length - 1}"]`);
         if (newInput) {
@@ -919,31 +915,28 @@ function removeArrayItem(key, index) {
         const newItem = createTextReplacementItem(key, textReplacementData[key], isArray, isModified, isNew);
         
         // Preserve edit mode
-        if (item.classList.contains('editing')) {
+        const wasEditing = item.classList.contains('editing');
+
+        item.replaceWith(newItem);
+
+        if (wasEditing) {
             newItem.classList.add('editing');
-            // Make inputs editable
-            const inputs = newItem.querySelectorAll('input, textarea');
-            inputs.forEach(input => {
-                input.readOnly = false;
-                input.addEventListener('input', () => updateTextReplacementValue(key));
-            });
-            
-            // Update button icons and show/hide buttons
+            convertToEditMode(key);
+
+            // Update button states for edit mode
             const editBtn = newItem.querySelector('.edit-btn');
             const saveBtn = newItem.querySelector('.save-btn');
-            
+
             if (editBtn) {
                 editBtn.innerHTML = '<i class="fas fa-times"></i>';
                 editBtn.title = 'Cancel';
                 editBtn.className = 'btn-small btn-secondary edit-btn';
             }
-            
+
             if (saveBtn) {
                 saveBtn.classList.remove('hidden');
             }
         }
-        
-        item.replaceWith(newItem);
     }
 }
 
@@ -1278,7 +1271,296 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Favorites Management Variables
+let favoritesData = {
+    tags: [],
+    textReplacements: []
+};
+let currentFavoritesType = 'tags';
+
+// Initialize favorites manager
+function initializeFavoritesManager() {
+    const closeFavoritesManagerBtn = document.getElementById('closeFavoritesManagerBtn');
+    
+    if (closeFavoritesManagerBtn) {
+        closeFavoritesManagerBtn.addEventListener('click', hideFavoritesManager);
+    }
+}
+
+// Show favorites manager modal
+async function showFavoritesManager() {
+    const modal = document.getElementById('favoritesManagerModal');
+    if (!modal) return;
+    
+    console.log('Opening favorites manager...');
+    await loadFavorites();
+    console.log('Favorites loaded, rendering list...');
+    renderFavoritesList();
+    openModal(modal);
+}
+
+// Hide favorites manager modal
+function hideFavoritesManager() {
+    const modal = document.getElementById('favoritesManagerModal');
+    if (modal) {
+        closeModal(modal);
+    }
+
+    // Clear search input when modal is closed
+    const searchInput = document.getElementById('favoritesSearch');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    const favoritesSearchContainer = document.getElementById('favoritesSearchContainer');
+    if (favoritesSearchContainer) {
+        favoritesSearchContainer.classList.add('hidden');
+    }
+}
+
+// Load favorites from server
+async function loadFavorites() {
+    try {
+        if (window.wsClient && window.wsClient.isConnected()) {
+            // Request favorites via WebSocket
+            console.log('Client: Requesting favorites from server...');
+            const result = await window.wsClient.sendMessage('favorites_get', {});
+            console.log('Client: Received result from server:', result);
+
+            // Handle both old and new response formats
+            let favorites = null;
+            if (result && result.data && result.data.favorites) {
+                // New format: {data: {favorites: {...}}}
+                console.log('Client: Using new format');
+                favorites = result.data.favorites;
+            } else if (result && result.favorites) {
+                // Old format: {favorites: {...}}
+                console.log('Client: Using old format');
+                favorites = result.favorites;
+            }
+            
+            if (favorites) {
+                // The favorites object should contain tags and textReplacements arrays
+                favoritesData = {
+                    tags: favorites.tags || [],
+                    textReplacements: favorites.textReplacements || []
+                };
+                updateFavoritesCounts();
+                console.log('Loaded favorites:', favoritesData);
+            } else {
+                console.warn('No favorites received from server:', result);
+                favoritesData = { tags: [], textReplacements: [] };
+            }
+        } else {
+            console.error('WebSocket connection not available');
+            showGlassToast('error', null, 'Unable to load favorites: not connected to server', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+        }
+    } catch (error) {
+        console.error('Error loading favorites:', error);
+        showGlassToast('error', null, 'Error loading favorites', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+}
+
+// Update favorites counts in tabs
+function updateFavoritesCounts() {
+    // Counts are no longer displayed in tabs
+}
+
+// Render favorites list for current tab
+function renderFavoritesList() {
+    const favoritesList = document.getElementById('favoritesList');
+    if (!favoritesList) return;
+    
+    favoritesList.innerHTML = '';
+    
+    // Combine all favorites into a single list with type indicators
+    const allFavorites = [];
+    
+    // Add tags with type indicator
+    favoritesData.tags.forEach((tag, index) => {
+        allFavorites.push({
+            type: 'tag',
+            data: tag,
+            index: index
+        });
+    });
+    
+    // Add text replacements with type indicator
+    favoritesData.textReplacements.forEach((textReplacement, index) => {
+        allFavorites.push({
+            type: 'textReplacement',
+            data: textReplacement,
+            index: index
+        });
+    });
+    
+    if (allFavorites.length === 0) {
+        favoritesList.innerHTML = `
+            <div class="favorites-empty">
+                <i class="fas fa-star"></i>
+                <p>No favorites yet</p>
+                <small>Add tags and text replacements to your favorites from other parts of the app</small>
+            </div>
+        `;
+        return;
+    }
+    
+    // Render all favorites
+    allFavorites.forEach((favorite, globalIndex) => {
+        if (favorite.type === 'tag') {
+            const tagElement = createFavoriteTagItem(favorite.data, favorite.index);
+            favoritesList.appendChild(tagElement);
+        } else {
+            const textReplacementElement = createFavoriteTextReplacementItem(favorite.data, favorite.index);
+            favoritesList.appendChild(textReplacementElement);
+        }
+    });
+}
+
+
+// Create favorite tag item element
+function createFavoriteTagItem(tag, index) {
+    const item = document.createElement('div');
+    item.className = 'favorites-item';
+    item.dataset.index = index;
+    item.dataset.type = 'tag';
+
+    item.innerHTML = `
+        <div class="favorites-item-content">
+            <div class="favorites-item-icon">
+                <i class="fas fa-tag"></i>
+            </div>
+            <div class="favorites-item-details">
+                <div class="favorites-item-name">
+                    <span class="favorites-item-type-badge tag-badge">Tag</span>
+                    ${escapeHtml(tag.name)}
+                </div>
+                ${tag.description ? `<div class="favorites-item-description">${escapeHtml(tag.description)}</div>` : ''}
+                <div class="favorites-item-meta">
+                    <span class="favorites-item-date">Added: ${new Date(tag.dateAdded).toLocaleDateString()}</span>
+                </div>
+            </div>
+        </div>
+        <div class="favorites-item-actions">
+            <button type="button" class="btn-secondary btn-small remove-favorite-btn" data-type="tags" data-index="${index}" title="Remove from Favorites">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    `;
+
+    // Add event listener after creating the element
+    const removeBtn = item.querySelector('.remove-favorite-btn');
+    if (removeBtn) {
+        removeBtn.addEventListener('click', (e) => {
+            console.log('Delete button clicked for tags:', index);
+            removeFavorite('tags', index);
+        });
+    }
+
+    return item;
+}
+
+// Create favorite text replacement item element
+function createFavoriteTextReplacementItem(textReplacement, index) {
+    const item = document.createElement('div');
+    item.className = 'favorites-item';
+    item.dataset.index = index;
+    item.dataset.type = 'textReplacement';
+
+    item.innerHTML = `
+        <div class="favorites-item-content">
+            <div class="favorites-item-icon">
+                <i class="fas fa-language"></i>
+            </div>
+            <div class="favorites-item-details">
+                <div class="favorites-item-name">
+                    <span class="favorites-item-type-badge text-replacement-badge">Text</span>
+                    !${escapeHtml(textReplacement.placeholder)}
+                </div>
+                ${textReplacement.replacementValue ? `<div class="favorites-item-description">${escapeHtml(textReplacement.replacementValue)}</div>` : ''}
+                <div class="favorites-item-meta">
+                    <span class="favorites-item-date">Added: ${new Date(textReplacement.dateAdded).toLocaleDateString()}</span>
+                </div>
+            </div>
+        </div>
+        <div class="favorites-item-actions">
+            <button type="button" class="btn-secondary btn-small remove-favorite-btn" data-type="textReplacements" data-index="${index}" title="Remove from Favorites">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    `;
+
+    // Add event listener after creating the element
+    const removeBtn = item.querySelector('.remove-favorite-btn');
+    if (removeBtn) {
+        removeBtn.addEventListener('click', (e) => {
+            console.log('Delete button clicked for textReplacements:', index);
+            removeFavorite('textReplacements', index);
+        });
+    }
+
+    return item;
+}
+
+// Remove favorite item
+async function removeFavorite(type, index) {
+    console.log('removeFavorite called with type:', type, 'index:', index);
+
+    const favorites = favoritesData[type] || [];
+    const item = favorites[index];
+
+    console.log('Item found:', item);
+
+    if (!item) {
+        console.error('Item not found at index:', index);
+        return;
+    }
+
+    const itemName = item.name || item.placeholder || 'item';
+    console.log('Showing confirmation dialog for:', itemName);
+
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to remove "${itemName}" from favorites?`,
+        [
+            { text: 'Cancel', value: false, className: 'btn-secondary' },
+            { text: 'Remove', value: true, className: 'btn-danger' }
+        ]
+    );
+
+    console.log('Confirmation result:', confirmed);
+
+    if (confirmed) {
+        try {
+            if (window.wsClient && window.wsClient.isConnected()) {
+                // Send remove request via WebSocket
+                const result = await window.wsClient.sendMessage('favorites_remove', {
+                    favoriteType: type,
+                    itemId: item.id
+                });
+                
+                if (result && result.success) {
+                    // Remove from local data
+                    favoritesData[type].splice(index, 1);
+                    updateFavoritesCounts();
+                    renderFavoritesList();
+                    
+                    showGlassToast('success', null, `Removed "${itemName}" from favorites`, false, 3000, '<i class="fas fa-trash"></i>');
+                } else {
+                    const errorMsg = result?.error || 'Unknown error occurred';
+                    showGlassToast('error', null, `Failed to remove favorite: ${errorMsg}`, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+                }
+            } else {
+                showGlassToast('error', null, 'Unable to remove favorite: not connected to server', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            }
+        } catch (error) {
+            console.error('Error removing favorite:', error);
+            showGlassToast('error', null, 'Error removing favorite', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+        }
+    }
+}
+
+
 // Initialize when DOM is loaded
 window.wsClient.registerInitStep(45, 'Initializing Text Replacement Manager', async () => {
     initializeTextReplacementManager();
+    initializeFavoritesManager();
 });

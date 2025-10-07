@@ -113,6 +113,7 @@
         <link rel="stylesheet" href="/dist/fontawesome/css/fontawesome.min.css">
         <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
         <link rel="stylesheet" href="/dist/mdi/materialdesignicons.min.css">
+        <link rel="stylesheet" href="/dist/fonts/weather-icons.min.css">
     </head>
     <body class="initializing">
 
@@ -202,6 +203,15 @@
             </div>
         </div>  
 
+        <div id="overall-status-bar" class="mobile-only">
+            <div class="websocket-ticker">
+                <div class="websocket-ticker-content">
+                    <i class="fas fa-info-circle websocket-ticker-icon"></i>
+                    <span class="websocket-ticker-text">Connected</span>
+                    <span class="websocket-ticker-badge">0</span>
+                </div>
+            </div>
+        </div>
         <div id="main-menu-bar" class="floating-bar-left">
             <div class="main-menu-bar-overlay mobile-only" id="mainMenuBarOverlay">
                 <span class="menu-logo">
@@ -320,7 +330,7 @@
 
         <!-- Manual Generation Modal -->
         <div id="manualModal" class="modal hidden">
-            <form class="modal-content manual-modal-content" id="manualForm">
+            <form class="manual-modal-content" id="manualForm">
                 <div class="manual-modal-split">
                     <div class="manual-modal-form-section">
                         <div class="prompt-options-container">
@@ -529,10 +539,7 @@
                                                     <i class="fa-regular fa-bookmark"></i>
                                                 </button>
                                                 <button type="button" id="dynamicGenerationToggleBtn" class="btn-secondary indicator" data-state="off" title="Dynamic Generation">
-                                                    <i class="fas fa-flask-round-potion"></i>
-                                                </button>
-                                                <button type="button" class="btn-secondary indicator" id="showBothBtn" data-state="off" title="Show both panes">
-                                                    <i class="nai-detatch-up"></i>
+                                                    <i class="fas fa-house-day"></i>
                                                 </button>
                                             </div>
                                         </div>
@@ -549,6 +556,33 @@
                                                                 <div class="uc-level-dot"></div>
                                                                 <div class="uc-level-dot"></div>
                                                             </div>
+                                                        </div>
+                                                        <div class="prompt-status-icon time-of-day-enabled hidden" title="Time of day enabled">
+                                                            <i class="fas fa-clock"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon custom-date-set hidden" title="Custom date set">
+                                                            <i class="fas fa-calendar"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon weather-enabled hidden" title="Weather enabled">
+                                                            <i class="fas fa-cloud-sun"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon location-set hidden" title="Location set">
+                                                            <i class="fas fa-map-marker-alt"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon season-enabled hidden" title="Season set">
+                                                            <i class="fas fa-leaf"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon clothing-enabled hidden" title="Clothing adaptation enabled">
+                                                            <i class="fas fa-tshirt"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon activity-enabled hidden" title="Character action enabled">
+                                                            <i class="fas fa-running"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon creative-enabled hidden" title="Creative mode enabled">
+                                                            <i class="fas fa-brush"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon nsfw-enabled hidden" title="NSFW content control active">
+                                                            <i class="fas fa-shield"></i>
                                                         </div>
                                                         <div class="prompt-status-icon quality-enabled hidden" title="Quality preset enabled">
                                                             <i class="fa-crown fas"></i>
@@ -573,40 +607,37 @@
                                                             <!-- Regular Toolbar Buttons -->
                                                             <div class="toolbar-regular-buttons">
                                                                 <!-- Dataset Dropdown -->
-                                                                <div id="datasetDropdown" class="custom-dropdown dropright dark">
-                                                                    <button type="button" id="datasetDropdownBtn" class="btn-secondary btn-small indicator" data-state="off" title="Dataset Selection">
+                                                                <div id="datasetDropdown" class="custom-dropdown dark">
+                                                                    <button type="button" id="datasetDropdownBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" title="Dataset Selection">
                                                                         <i id="datasetIcon" class="nai-sakura"></i>
                                                                         <span id="datasetSelected" class="badge hidden"></span>
                                                                     </button>
                                                                     <div id="datasetDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                                                 </div>
                                                                 <!-- Sub Toggles Dropdown -->
-                                                                <div id="subTogglesDropdown" class="custom-dropdown dropright dark">
+                                                                <div id="subTogglesDropdown" class="custom-dropdown dark">
                                                                     <!-- Sub Toggles Button -->
-                                                                    <button type="button" id="subTogglesBtn" class="btn-secondary btn-small indicator" data-state="off" title="Dataset Adjustment Toggles">
+                                                                    <button type="button" id="subTogglesBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" title="Dataset Adjustment Toggles">
                                                                         <i class="fas fa-diamond-half-stroke"></i>
                                                                     </button>
                                                                     <div id="subTogglesDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                                                 </div>
                                                                 <!-- Quality Toggle -->
-                                                                <button type="button" id="qualityToggleBtn" class="btn-small btn-secondary indicator" data-state="off" title="Enable Quality Enhancements">
+                                                                <button type="button" id="qualityToggleBtn" class="btn-small btn-secondary indicator toolbar-btn" data-state="off" title="Enable Quality Enhancements">
                                                                     <i class="fa-crown fas"></i>
                                                                 </button>
-                                                                <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                                                <!-- NSFW Dropdown -->
+                                                                <div id="nsfwDropdown" class="custom-dropdown dark">
+                                                                    <button type="button" id="nsfwToggleBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="neutral" title="NSFW Content Control">
+                                                                        <i class="fas fa-shield"></i>
+                                                                    </button>
+                                                                    <div id="nsfwDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                                                                </div>
+                                                                <button type="button" class="btn-secondary btn-small toolbar-btn indicator toolbar-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
                                                                     <i class="fas fa-lightbulb"></i>
                                                                 </button>
-                                                                <button type="button" id="randomPromptToggleBtn" class="btn-secondary btn-small indicator" data-state="off" title="Random Prompt">
-                                                                    <i class="nai-dice"></i>
-                                                                </button>
-                                                                <div id="randomPromptDivider" class="divider hidden"></div>
-                                                                <button type="button" id="randomPromptRefreshBtn" class="btn-secondary btn-small hidden" title="Generate new random prompt" class="hidden">
-                                                                    <i class="nai-reload"></i>
-                                                                </button>
-                                                                <button type="button" id="randomPromptNsfwBtn" class="btn-secondary btn-small indicator hidden" data-state="off" title="Toggle NSFW content">
-                                                                    <i class="fas fa-ban"></i>
-                                                                </button>
-                                                                <button type="button" id="randomPromptTransferBtn" class="btn-secondary btn-small hidden" title="Transfer random prompt to main prompt and exit random mode" class="hidden">
-                                                                    <i class="fas fa-floppy-disk-circle-arrow-right"></i>
+                                                                <button type="button" class="btn-secondary btn-small toolbar-btn indicator" id="showBothBtn" data-state="off" title="Show Both Prompt and UC Panes">
+                                                                    <i class="nai-detatch-up"></i>
                                                                 </button>
                                                                 <div class="divider"></div>
                                                                 <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
@@ -643,6 +674,33 @@
                                                                 <div class="uc-level-dot"></div>
                                                             </div>
                                                         </div>
+                                                        <div class="prompt-status-icon time-of-day-enabled hidden" title="Time of day enabled">
+                                                            <i class="fas fa-clock"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon custom-date-set hidden" title="Custom date set">
+                                                            <i class="fas fa-calendar"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon weather-enabled hidden" title="Weather enabled">
+                                                            <i class="fas fa-cloud-sun"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon location-set hidden" title="Location set">
+                                                            <i class="fas fa-map-marker-alt"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon season-enabled hidden" title="Season set">
+                                                            <i class="fas fa-leaf"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon clothing-enabled hidden" title="Clothing adaptation enabled">
+                                                            <i class="fas fa-tshirt"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon activity-enabled hidden" title="Character action enabled">
+                                                            <i class="fas fa-running"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon creative-enabled hidden" title="Creative mode enabled">
+                                                            <i class="fas fa-brush"></i>
+                                                        </div>
+                                                        <div class="prompt-status-icon nsfw-enabled hidden" title="NSFW content control active">
+                                                            <i class="fas fa-shield"></i>
+                                                        </div>
                                                         <div class="prompt-status-icon quality-enabled hidden" title="Quality preset enabled">
                                                             <i class="fa-crown fas"></i>
                                                         </div>
@@ -667,7 +725,7 @@
                                                             <div class="toolbar-regular-buttons">
                                                                 <!-- UC Presets Dropdown -->
                                                                 <div id="ucPresetsDropdown" class="custom-dropdown dropup dropright">
-                                                                    <button type="button" id="ucPresetsDropdownBtn" class="btn-secondary btn-small indicator" data-state="off" title="UC Presets">
+                                                                    <button type="button" id="ucPresetsDropdownBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" title="UC Presets">
                                                                         <div class="uc-boxes">
                                                                             <div class="uc-box" data-level="1"></div>
                                                                             <div class="uc-box" data-level="2"></div>
@@ -677,7 +735,7 @@
                                                                     </button>
                                                                     <div id="ucPresetsDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                                                 </div>
-                                                                <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                                                <button type="button" class="btn-secondary btn-small toolbar-btn indicator toolbar-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
                                                                     <i class="fas fa-lightbulb"></i>
                                                                 </button>
                                                                 <div class="divider"></div>
@@ -714,7 +772,7 @@
                                                         <i class="fa-regular fa-clock"></i>
                                                     </button>
                                                     <button type="button" id="weatherBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Weather">
-                                                        <i class="fa-regular fa-temperature-sun"></i>
+                                                        <i class="fa-regular fa-cloud-sun"></i>
                                                     </button>
                                                     <button type="button" id="seasonBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Season">
                                                         <i class="fas fa-leaf-maple"></i>
@@ -722,26 +780,13 @@
                                                     <button type="button" id="clothingBtn" class="btn-secondary btn-small indicator" data-state="off" title="Clothing Adaptation">
                                                         <i class="fas fa-shirt"></i>
                                                     </button>
-                                                    <button type="button" id="activityBtn" class="btn-secondary btn-small indicator hidden" data-state="off" data-override="" title="Activity">
-                                                        <i class="fa-regular fa-person-walking"></i>
-                                                    </button>
                                                     <button type="button" id="actionBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Character Action">
                                                         <i class="fa-regular fa-person-running"></i>
                                                     </button>
-                                                    <button type="button" id="locationBtn" class="btn-secondary btn-small indicator hidden" data-state="off" data-override="" title="Location">
-                                                        <i class="fas fa-plane"></i>
-                                                    </button>
-                                                    <div class="divider"></div>
                                                     <button type="button" id="creativeBtn" class="btn-secondary btn-small indicator" data-state="off" title="Creative Mode">
-                                                        <i class="fa-solid fa-magic-wand-sparkles"></i>
-                                                    </button>
-                                                    <button type="button" id="optimizeBtn" class="btn-secondary btn-small indicator" data-state="off" title="Optimize Mode">
-                                                        <i class="fa-regular fa-broom-wide"></i>
+                                                        <i class="fa-solid fa-brush"></i>
                                                     </button>
                                                     <div class="divider"></div>
-                                                    <button type="button" id="lockBtn" class="btn-secondary btn-small indicator" data-state="off" data-use-cache="true" data-has-cache="false" title="Lock Results">
-                                                        <i class="fas fa-lock"></i>
-                                                    </button>
                                                     <button type="button" id="dynamicGenerationViewBtn" class="btn-secondary btn-small" disabled>
                                                         <i class="fa-regular fa-memo-pad"></i>
                                                     </button>
@@ -755,6 +800,16 @@
                                 <div class="form-group">
                                     <div class="character-prompts-header">
                                         <div class="character-prompts-title-group">
+                                            <button type="button" id="randomPromptToggleBtn" class="btn-secondary indicator" data-state="off" title="Random Prompt">
+                                                <i class="nai-dice"></i>
+                                            </button>
+                                            <div id="randomPromptDivider" class="divider hidden"></div>
+                                            <button type="button" id="randomPromptRefreshBtn" class="btn-secondary hidden" title="Generate new random prompt" class="hidden">
+                                                <i class="nai-reload"></i>
+                                            </button>
+                                            <button type="button" id="randomPromptTransferBtn" class="btn-secondary hidden" title="Transfer random prompt to main prompt and exit random mode" class="hidden">
+                                                <i class="fas fa-arrow-alt-square-up"></i>
+                                            </button>
                                         </div>
                                         <div class="character-prompts-controls">
                                             <button type="button" id="manualTextReplacementManagerBtn" class="btn-secondary" title="Manage Text Expanders">
@@ -768,7 +823,7 @@
                                             </button>
                                             <!-- Custom Transformation Dropdown -->
                                             <button type="button" id="addCharacterBtn" class="btn-secondary">
-                                                <i class="nai-plus"></i> Character
+                                                Character <i class="nai-plus"></i>
                                             </button>
                                         </div>
                                     </div>
@@ -862,7 +917,10 @@
                                         </div>
                                         
                                         <div id="CharacterReferenceGroup" class="vibe-reference-info">
-                                            <div></div>
+                                            <div class="percentage-input-container hover-show colored">
+                                                <span class="percentage-input-overlay">100%</span>
+                                                <input type="number" id="directorReferenceFidelityInput" class="form-control" min="0.0" max="1.0" step="0.05" value="1.0" placeholder="1.0">
+                                            </div>
                                             <button type="button" id="directorReferenceStyleBtn" class="btn-secondary indicator" data-state="off" title="Use character reference with style">
                                                 <i class="fas fa-palette"></i>
                                             </button>
@@ -960,25 +1018,54 @@
                                 </div>
                             </div>
                             <div class="manual-preview-content">
-                                <!-- Navigation buttons -->
-                                <div class="manual-preview-image-container">
-                                    <img id="manualPreviewOriginalImage" src="" alt="Original Image" class="manual-preview-original-image hidden">
-                                    <div class="manual-preview-image-container-inner">
-                                        <div id="manualBlockContainer" class="block-container"></div>
-                                        <img id="manualPreviewImage" src="" alt="Generated Image" class="hidden">
-                                        <!-- Dynamic Generation Context Overlay -->
-                                        <div id="dynamicGenerationOverlay" class="dynamic-generation-overlay hidden">
-                                            <div class="dynamic-generation-overlay-content">
-                                                <div class="dynamic-generation-overlay-header">
-                                                    <i class="fas fa-magic"></i>
-                                                    <span>AI Context</span>
+                                <!-- Dynamic Generation Progress Overlay -->
+                                <div id="dynamicGenerationProgressOverlay" class="dynamic-generation-progress-overlay hidden">
+                                    <div class="progress-overlay-header">
+                                        <div class="progress-loader">
+                                            <div class="progress-spinner"></div>
+                                        </div>
+                                        <div class="progress-status" id="progressStatusText">Processing...</div>
+                                    </div>
+
+                                    <div class="progress-overlay-content">
+                                        <div class="progress-row">
+                                            <div class="progress-time-info" id="progressTimeInfo">
+                                                <span class="progress-time" id="progressTime">--:--</span>
+                                                <span class="progress-date" id="progressDate">--/--</span>
+                                            </div>
+                                            <div class="overlay-weather-section">
+                                                <div class="overlay-weather-info">
+                                                    <div class="overlay-weather-feels-like" id="progressWeatherFeelsLike">
+                                                        <span class="temp-number">--</span>
+                                                        <span class="temp-unit">°C</span>
+                                                    </div>
+                                                    <div class="overlay-weather-condition" id="progressWeatherCondition">Unknown</div>
+                                                    <div class="overlay-weather-condition" id="progressWeatherLocation" class="hidden">Unknown</div>
                                                 </div>
-                                                <div id="dynamicGenerationOverlayBody" class="dynamic-generation-overlay-body">
-                                                    <!-- Context info populated by JavaScript -->
+                                                <div class="overlay-weather-icon" id="progressWeatherIcon">
+                                                    <span class="weather-fallback-icon">🌤️</span>
                                                 </div>
                                             </div>
                                         </div>
+
+                                        <div class="progress-row">
+                                            <span class="progress-holiday" id="progressHoliday"></span>
+                                            <span class="progress-season" id="progressSeason">Season</span>
+                                        </div>
+
+                                        <div class="progress-row reasoning-row">
+                                            <div class="progress-reasoning-wrapper">
+                                                <div class="progress-reasoning" id="progressReasoning"></div>
+                                            </div>
+                                        </div>
                                     </div>
+                                </div>
+                                <!-- Navigation buttons -->
+                                <div class="manual-preview-image-container">
+                                    <div class="manual-preview-image-container-inner" id="manualPreviewImageContainerInner">
+                                        <img id="manualPreviewImage" src="" alt="Generated Image" class="hidden">
+                                    </div>
+                                    <img id="manualPreviewOriginalImage" src="" alt="Original Image" class="manual-preview-original-image hidden">
                                     <div id="manualPreviewPlaceholder" class="manual-preview-placeholder">
                                         <i class="mdi mdi-draw-pen"></i>
                                         <p>Generate an image to see preview</p>
@@ -986,47 +1073,76 @@
                                 </div>
                                 <div class="manual-preview-controls">
                                     <div class="manual-preview-controls-left">
-                                        <button type="button" id="manualPreviewPrevBtn" class="btn-secondary round-button blur" disabled>
+                                        <button type="button" id="manualPreviewPrevBtn" class="btn-secondary round-button" disabled>
                                             <i class="nai-directional-arrow-left"></i>
                                         </button>
-                                        <button type="button" id="manualPreviewNextBtn" class="btn-secondary round-button blur" disabled>
+                                        <button type="button" id="manualPreviewNextBtn" class="btn-secondary round-button" disabled>
                                             <i class="nai-directional-arrow-right"></i>
+                                        </button>
+                                        <button type="button" id="manualPreviewWorkspaceBtn" class="btn-secondary round-button" title="Load from workspace">
+                                            <i class="nai-image-count"></i>
                                         </button>
                                     </div>
                                     <div class="manual-preview-controls-center">
                                     </div>
                                     <div class="manual-preview-controls-right">
-                                        <button type="button" id="manualPreviewDownloadBtn" class="btn-secondary round-button blur hidden">
+                                        <button type="button" id="manualPreviewDownloadBtn" class="btn-secondary round-button hidden">
                                             <i class="fas fa-download"></i>
                                         </button>
-                                        <button type="button" id="manualPreviewCopyBtn" class="btn-secondary round-button blur hidden">
+                                        <button type="button" id="manualPreviewCopyBtn" class="btn-secondary round-button hidden">
                                             <i class="nai-clipboard"></i>
                                         </button>
-                                        <button type="button" id="manualPreviewPinBtn" class="btn-secondary round-button blur hidden">
+                                        <button type="button" id="manualPreviewPinBtn" class="btn-secondary round-button hidden">
                                             <i class="fa-regular fa-star"></i>
                                         </button>
-                                        <button type="button" id="manualPreviewUpscaleBtn" class="btn-secondary round-button blur hidden">
+                                        <button type="button" id="manualPreviewUpscaleBtn" class="btn-secondary round-button hidden">
                                             <i class="nai-upscale"></i>
                                         </button>
-                                        <button type="button" id="manualPreviewScrapBtn" class="btn-secondary round-button blur hidden">
+                                        <button type="button" id="manualPreviewScrapBtn" class="btn-secondary round-button hidden">
                                             <i class="fas fa-bin-recycle"></i>
                                         </button>
-                                        <button type="button" id="manualPreviewDeleteBtn" class="btn-danger round-button blur hidden">
+                                        <button type="button" id="manualPreviewDeleteBtn" class="btn-danger round-button hidden">
                                             <i class="fas fa-fire"></i>
+                                        </button>
+                                        <button type="submit" id="manualGenerateBtn" class="btn-primary round-button wide-button">
+                                            <span>Generate</span>
+                                            <i id="manualGenerateBtnIcon" class="nai-sparkles"></i>
                                         </button>
                                     </div>
                                 </div>
                                 <div class="manual-preview-controls-top-left">
-                                    <button type="button" id="manualPreviewLoadBtn" class="btn-secondary round-button wide-button blur hidden">
+                                    <button type="button" id="manualPreviewLoadBtn" class="btn-secondary round-button wide-button hidden">
                                         <i class="fas fa-arrow-left"></i>
                                         <span>Modify</span>
                                     </button>
-                                    <button type="button" id="manualPreviewVariationBtn" class="btn-secondary round-button blur hidden">
+                                    <button type="button" id="manualPreviewVariationBtn" class="btn-secondary round-button hidden">
                                         <i class="nai-img2img"></i>
                                     </button>
                                 </div>
                                 <div class="manual-preview-controls-top-right">
-                                    <button type="button" id="manualPreviewCloseBtn" class="btn-secondary round-button blur">
+                                    <!-- Dynamic Generation Context Overlay -->
+                                    <div id="dynamicGenerationOverlay" class="dynamic-generation-overlay hidden">
+                                        <div id="dynamicGenerationOverlayBody" class="dynamic-generation-overlay-body">
+                                            <div class="overlay-weather-section">
+                                                <div class="overlay-weather-info">
+                                                    <div class="overlay-weather-feels-like" id="overlayWeatherFeelsLike">
+                                                        <span class="temp-number">--</span>
+                                                        <span class="temp-unit">°C</span>
+                                                    </div>
+                                                    <div class="overlay-weather-condition" id="overlayWeatherCondition">Unknown</div>
+                                                    <div class="overlay-weather-condition" id="overlayWeatherLocation" class="hidden">Unknown</div>
+                                                </div>
+                                                <div class="overlay-weather-icon" id="overlayWeatherIcon">
+                                                    <span class="weather-fallback-icon">🌤️</span>
+                                                </div>
+                                            </div>
+                                            <div class="overlay-time-section">
+                                                <div id="overlayTimeDisplay" class="overlay-time">--:-- </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Manual Preview Close Button -->
+                                    <button type="button" id="manualPreviewCloseBtn" class="btn-secondary round-button">
                                         <i class="nai-thin-cross"></i>
                                     </button>
                                 </div>
@@ -1048,6 +1164,24 @@
                                 <div class="preview-line"></div>
                                 <div class="preview-line"></div>
                                 <div class="preview-line"></div>
+                            </div>
+
+                            <!-- Workspace Image Grid Overlay -->
+                            <div id="manualPreviewWorkspaceOverlay" class="manual-preview-workspace-overlay hidden">
+                                <div class="workspace-overlay-header">
+                                    <button type="button" id="closeWorkspaceOverlayBtn" class="btn-secondary btn-small round-button">
+                                        <i class="fas fa-chevron-left"></i>
+                                    </button>
+                                </div>
+                                <div class="workspace-overlay-content">
+                                    <div id="workspaceImageGrid" class="workspace-image-grid">
+                                        <!-- Images will be populated here -->
+                                    </div>
+                                    <div id="workspaceImageEmpty" class="workspace-image-empty hidden">
+                                        <i class="fas fa-images"></i>
+                                        <p>No images found in workspace</p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <!-- Reference Browser Container (Desktop Only) -->
@@ -1099,7 +1233,7 @@
                 </div>
                 <div class="form-section model-control">
                     <div class="control-holder">
-                        <div class="form-row control-row-0">
+                        <div class="form-row control-row-model">
                             <div class="form-group" id="manualModelGroup">
                                 <label for="manualModel">Model</label>
                                 <div id="manualModelDropdown" class="custom-dropdown dropup">
@@ -1111,7 +1245,7 @@
                                 <input type="hidden" id="manualModel" value="">
                             </div>
                         </div>
-                        <div class="form-row control-row-1">
+                        <div class="form-row control-row-steps">
                             <div class="form-group">
                                 <label for="manualSteps">Steps</label>
                                 <input type="number" id="manualSteps" class="form-control hover-show colored" min="1" max="50" value="25" placeholder="25">
@@ -1133,7 +1267,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="form-row control-row-2">
+                        <div class="form-row control-row-resolution">
                             <div id="manualResolutionGroup" class="form-group">
                                 <label for="manualResolution">Resolution</label>
                                 <div class="resolution-group">
@@ -1158,9 +1292,9 @@
                                 </div>
                             </div>
                         </div>
-                        <div id="manualImg2ImgGroup" class="form-row control-row-3">
+                        <div id="manualImg2ImgGroup" class="form-row control-row-img2imgctrl">
                             <div class="form-group">
-                                <label for="manualStrength"><i class="nai-img2img"></i>Strength</label>
+                                <label for="manualStrength"><i class="nai-img2img"></i><span class="full-viewport">Strength</span><span class="small-viewport">Str</span></label>
                                 <div class="percentage-input-container hover-show colored">
                                     <span class="percentage-input-overlay">80%</span>
                                     <input type="number" id="manualStrengthValue" class="form-control slider-value-input" min="0.00" max="1.00" step="0.01" value="0.80" tabindex="0">
@@ -1174,7 +1308,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="form-row control-row-4">
+                        <div class="form-row control-row-sampler">
                             <div class="form-group auto-flex">
                                 <label for="manualSampler">Sampler</label>
                                 <!-- Custom Manual Sampler Dropdown -->
@@ -1185,27 +1319,29 @@
                                     <div id="manualSamplerDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                 </div>
                                 <input type="hidden" id="manualSampler" value="">
-                            </div>
-                            <div class="form-group auto-flex">
-                                <label for="manualNoiseScheduler"><span class="small-viewport">Noise Sch.</span><span class="full-viewport">Noise Scheduler</span></label>
-                                <!-- Custom Manual Noise Scheduler Dropdown -->
-                                <div id="manualNoiseSchedulerDropdown" class="custom-dropdown dropup">
-                                    <button type="button" id="manualNoiseSchedulerDropdownBtn" class="custom-dropdown-btn hover-show colored">
-                                        <span id="manualNoiseSchedulerSelected">Select noise scheduler...</span>
-                                    </button>
-                                    <div id="manualNoiseSchedulerDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                                </div>
                                 <input type="hidden" id="manualNoiseScheduler" value="">
                             </div>
                         </div>
-                        <div class="form-row control-row-5">
+                        <div class="form-row control-row-workspace">
+                            <div class="form-group auto-flex">
+                                <label for="manualWorkspace">Workspace</label>
+                                <div id="manualWorkspaceDropdown" class="custom-dropdown dropup">
+                                    <button type="button" id="manualWorkspaceDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                        <div class="workspace-option-content" style="display: flex; align-items: center; gap: 8px;">
+                                            <div id="manualWorkspaceColorIndicator" class="workspace-color-indicator" style="width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;"></div>
+                                            <span id="manualWorkspaceSelected">Select workspace...</span>
+                                        </div>
+                                    </button>
+                                    <div id="manualWorkspaceDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                                </div>
+                                <input type="hidden" id="manualWorkspace" value="">
+                            </div>
+                        </div>
+                        <div class="form-row control-row-seed">
                             <div class="form-group" style="flex: unset;">
                                 <label for="manualSeed">Seed</label>
                                 <div class="seed-input-group">
-                                    <button type="button" id="editSeedBtn" class="btn-secondary hover-show" data-state="off" title="Edit seed">
-                                        <i class="nai-seed"></i>
-                                    </button>
-                                    <input type="number" id="manualSeed" class="form-control hover-show colored" placeholder="Random" style="width: 125px;">
+                                    <input type="number" id="manualSeed" class="form-control hover-show right colored" placeholder="Random" style="width: 120px;">
                                     <button type="button" id="loadSeedBtn" class="btn-primary" title="Paste seed">
                                         <i class="nai-seed"></i>
                                     </button>
@@ -1213,44 +1349,52 @@
                                         <i class="nai-thin-cross"></i>
                                     </button>
                                     <button type="button" id="sproutSeedBtn" class="btn-secondary indicator hidden" data-state="on" title="Use Random Seed">
-                                        <i class="fas fa-dice"></i>
+                                        <i class="fas fa-seedling"></i>
+                                    </button>
+                                    <button type="button" id="textReplacementLockBtn" class="btn-secondary indicator hidden" data-state="off" title="Lock Text Replacements">
+                                        <i class="fas fa-square-a-lock"></i>
+                                    </button>
+                                    <button type="button" id="lockBtn" class="btn-secondary indicator hidden" data-state="off" data-use-cache="true" data-has-cache="false" title="Lock Results">
+                                        <i class="fas fa-house-lock"></i>
                                     </button>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="form-actions btn-group">
-                        <div class="footer-left">
-                            <div id="manualPriceDisplay" class="inset-badge price-display hidden">
-                                <i class="nai-anla"></i>
-                                <span id="manualPriceList" class="price-list">-</span>
-                                <span id="manualBalanceDisplay" class="price-list balanceAmount">-</span>
+                        <div class="form-row control-row-last">
+                            <div class="form-group">
+                                <label for="manualGenerateBtn">&nbsp;</label>
+                                <div class="form-row gen-controls">
+                                    <div class="controls-flex-left">
+                                        <div id="manualPriceDisplay" class="inset-badge price-display hidden" style="height: 32px;">
+                                            <i class="nai-anla"></i>
+                                            <span id="manualPriceList" class="price-list">-</span>
+                                            <span id="manualBalanceDisplay" class="price-list balanceAmount">-</span>
+                                        </div>
+                                        <button type="button" id="paidRequestToggle" class="btn-secondary indicator flashing" data-state="off" title="Force Paid Request">
+                                            <i class="fas fa-dollar-sign"></i>
+                                        </button>
+                                        <button type="button" id="controlsToggle" class="btn-secondary" title="Toggle Generations Settings">
+                                            <i class="fas fa-square-sliders"></i>
+                                        </button>
+                                    </div>
+                                    <div class="controls-flex-right">
+                                        <div id="manualPendingRequestsSpinner" class="websocket-ticker">
+                                            <div class="websocket-ticker-content">
+                                                <i class="fas fa-info-circle websocket-ticker-icon"></i>
+                                                <span class="websocket-ticker-text">Connected</span>
+                                                <span class="websocket-ticker-badge">0</span>
+                                            </div>
+                                        </div>
+                                        <button type="button" id="closeManualBtn" class="btn-secondary">
+                                            <i class="nai-thin-cross"></i>
+                                        </button>
+                                        <button type="button" id="directorAutoGenerateBtn" class="btn-secondary indicator hidden" data-state="off" title="Auto Generate">
+                                            <i class="fas fa-play"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                            <button type="button" id="paidRequestToggle" class="btn-secondary indicator flashing" data-state="off" title="Force Paid Request">
-                                <i class="fas fa-dollar-sign"></i>
-                            </button>
-                            <button type="button" id="controlsToggle" class="btn-secondary small-viewport" title="Toggle Generations Settings">
-                                <i class="fas fa-gear"></i>
-                            </button>
-                            <!-- Preset Toggle Button -->
                         </div>
-                        <div id="manualPendingRequestsSpinner" class="websocket-ticker">
-                            <div class="websocket-ticker-content">
-                                <i class="fas fa-info-circle websocket-ticker-icon"></i>
-                                <span class="websocket-ticker-text">Connected</span>
-                                <span class="websocket-ticker-badge">0</span>
-                            </div>
-                        </div>
-                        <button type="button" id="closeManualBtn" class="btn-secondary">
-                            <i class="nai-thin-cross"></i>
-                        </button>
-                        <button type="button" id="directorAutoGenerateBtn" class="btn-secondary indicator hidden" data-state="off" title="Auto Generate">
-                            <i class="fas fa-play"></i>
-                        </button>
-                        <button type="submit" id="manualGenerateBtn" class="btn-primary">
-                            <span>Generate</span>
-                            <i id="manualGenerateBtnIcon" class="nai-sparkles"></i>
-                        </button>
                     </div>
                 </div>
             </form>
@@ -1269,7 +1413,7 @@
                     <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
-            <div class="modal-content position-dialog-content center">
+            <div class="modal-content modal-padding position-dialog-content center">
                 <div class="position-dialog-body">
                     <div class="position-grid">
                         <div class="position-row">
@@ -1315,6 +1459,168 @@
             </div>
         </div>
 
+        <!-- Text Replacement Lock Modal -->
+        <div id="textReplacementLockModal" class="modal hidden">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-lock-a"></i>
+                    <span>Compiled Text Replacements</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" id="selectAllTextReplacementsBtn" class="btn-secondary btn-small">
+                    <i class="fas fa-check-square"></i>
+                </button>
+                <button type="button" id="deselectAllTextReplacementsBtn" class="btn-secondary btn-small">
+                    <i class="fas fa-square"></i>
+                </button>
+                <button type="button" id="closeTextReplacementLockModalBtn" class="btn-danger close-btn btn-small">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
+            <div class="modal-content modal-padding">
+                <div class="modal-body">
+                    <div id="textReplacementLockList" class="text-replacement-lock-list">
+                        <!-- Text replacement items will be populated here -->
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" id="applyTextReplacementLocksBtn" class="btn-primary">
+                            <span>Save</span>
+                            <i class="fas fa-floppy-disk"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Text Replacement Manual Selection Modal -->
+        <div id="textReplacementManualSelectionModal" class="modal hidden">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-list"></i>
+                    <span>Placeholder Resolution</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" id="closeTextReplacementManualSelectionModalBtn" class="btn-danger close-btn btn-small">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
+            <div class="modal-content modal-padding">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="manualSelectionDropdown">Select Value:</label>
+                        <div id="manualSelectionDropdownContainer" class="custom-dropdown">
+                            <button type="button" id="manualSelectionDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <span id="manualSelectionDropdownSelected">Loading options...</span>
+                            </button>
+                            <div id="manualSelectionDropdownMenu" class="custom-dropdown-menu hidden">
+                                <!-- Options will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <div class="controls-flex-right">
+                            <button type="button" id="randomSelectionBtn" class="btn-secondary">
+                                <i class="fas fa-dice"></i>
+                            </button>
+                            <button type="button" id="applyManualSelectionBtn" class="btn-primary">
+                                <span>Write</span>
+                                <i class="fas fa-floppy-disk"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Time/Date Selection Modal -->
+        <div id="timeDateModal" class="modal hidden">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-clock"></i>
+                    <span>Select Time and Date</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" id="closeTimeDateModalBtn" class="btn-danger close-btn btn-small">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
+            <div class="modal-content modal-padding time-date-modal-content">
+                <div class="modal-body time-date-modal-body">
+                    <div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="timeDateHour">Hour</label>
+                                <input type="number" id="timeDateHour" min="0" max="23" value="12" class="form-control hover-show colored">
+                            </div>
+                            <div class="form-group">
+                                <label for="timeDateMinute">Minute</label>
+                                <input type="number" id="timeDateMinute" min="0" max="59" value="0" class="form-control hover-show colored">
+                            </div>
+                            <div class="form-group">
+                                <label for="timeDateMonth">Month</label>
+                                <input type="number" id="timeDateMonth" min="1" max="12" value="6" class="form-control hover-show colored">
+                            </div>
+                            <div class="form-group">
+                                <label for="timeDateDay">Day</label>
+                                <input type="number" id="timeDateDay" min="1" max="31" value="15" class="form-control hover-show colored">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="modal-actions">
+                        <button type="button" id="saveTimeDateBtn" class="btn-primary">
+                            <i class="fas fa-save"></i> Save
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Weather Location Modal -->
+        <div id="weatherLocationModal" class="modal hidden">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>Set Weather Location</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" id="closeWeatherLocationModalBtn" class="btn-danger close-btn btn-small">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
+            <div class="modal-content modal-padding weather-location-modal-content">
+                <div class="modal-body weather-location-modal-body">
+                    <div class="form-group">
+                        <label for="weatherLocationInput">Enter City Name</label>
+                        <div class="form-row">
+                            <input type="text" id="weatherLocationInput" placeholder="e.g., New York, Tokyo, London" class="form-control hover-show colored">
+                            <button type="button" id="verifyWeatherLocationBtn" class="btn-secondary">
+                                <i class="fas fa-search"></i> Verify
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Matched Location</label>
+                        <div id="weatherLocationMatch" class="weather-location-match">
+                            Enter a city name and click Verify to see the matched location.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="modal-actions">
+                        <button type="button" id="saveWeatherLocationBtn" class="btn-primary" disabled>
+                            <i class="fas fa-save"></i> Save Location
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Mask Editor Dialog Modal -->
         <div id="maskEditorDialog" class="modal resizeable-window hidden">
             <div class="modal-window-title">
@@ -1337,7 +1643,7 @@
                     <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
-            <div class="modal-content mask-editor-content">
+            <div class="modal-content modal-padding mask-editor-content">
                 <div class="modal-body">
                     <div class="mask-editor-tools">
                         <button type="button" id="maskBrushBtn" class="btn-secondary indicator" data-state="on" title="Brush Tool">
@@ -1382,7 +1688,7 @@
                     <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
-            <div class="modal-content image-bias-adjustment-content">
+            <div class="modal-content modal-padding image-bias-adjustment-content">
                 <div class="modal-body">
                     <!-- Bias Controls Section -->
                     <div class="bias-controls-section main-controls">
@@ -1457,7 +1763,7 @@
                     <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
-            <div class="modal-content bias-confirm-content center">
+            <div class="modal-content modal-padding bias-confirm-content center">
                 <div class="bias-confirm-body">
                     <p>Review the previews below to confirm your bias adjustment:</p>
                     <div class="bias-confirm-previews">
@@ -1494,7 +1800,7 @@
                     <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
-            <div class="modal-content center">
+            <div class="modal-content modal-padding center">
                 <div class="modal-body">
                     <p>You have character prompt data that won't be processed by V3 models.</p>
                     <div class="modal-actions form-actions">
@@ -1522,7 +1828,7 @@
                     <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
-            <div class="modal-content center">
+            <div class="modal-content modal-padding center">
                 <div class="modal-body">
                     <p>Are you sure you want to replace the reference image?</p>
                     <p><b>The inpainting mask will be erased.</b></p>
@@ -1680,7 +1986,7 @@
                     <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
-            <div class="modal-content">
+            <div class="modal-content modal-padding">
                 <div class="modal-body">
                     <div id="workspaceManageList" class="workspace-manage-list">
                     </div>
@@ -1702,7 +2008,7 @@
                 </button>
             </div>
             <div class="modal-content">
-                <div class="modal-body" id="compiledPromptContent" style="max-height: 60vh; overflow-y: auto;">
+                <div class="modal-body modal-padding" id="compiledPromptContent" style="overflow-y: auto;">
                     <!-- Content will be populated by JavaScript -->
                 </div>
             </div>
@@ -1720,6 +2026,9 @@
                 <button type="button" id="createTextReplacementBtn" class="btn-secondary" onclick="createTextReplacement()" title="Create New Text Replacement">
                     <i class="fas fa-plus"></i>
                 </button>
+                <button type="button" id="manageFavoritesBtn" class="btn-secondary" onclick="showFavoritesManager()" title="Manage Favorites">
+                    <i class="fas fa-star"></i>
+                </button>
                 <button type="button" id="toggleTextReplacementSearchBtn" class="btn-secondary" title="Search Text Replacements">
                     <i class="fas fa-search"></i>
                 </button>
@@ -1727,7 +2036,7 @@
                     <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
-            <div class="modal-content text-replacement-manager-content">
+            <div class="modal-content modal-padding text-replacement-manager-content">
                 <div class="modal-body">
                     <div id="textReplacementSearchContainer" class="text-replacement-search hidden">
                         <input type="text" id="textReplacementSearch" class="form-control" placeholder="Search text replacements...">
@@ -1764,7 +2073,7 @@
             <div class="modal-window-controls">
                 <button type="button" id="createTextReplacementCancelBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content create-text-replacement-content">
+            <div class="modal-content modal-padding create-text-replacement-content">
                 <div class="modal-body">
                     <div class="form-section">
                         <div class="form-row">
@@ -1796,6 +2105,34 @@
             </div>
         </div>
 
+        <!-- Favorites Manager Modal -->
+        <div id="favoritesManagerModal" class="modal resizeable-window hidden">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-star"></i>
+                    <span>Manage Favorites</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" id="closeFavoritesManagerBtn" class="btn-danger close-btn btn-small">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
+            <div class="modal-content modal-padding text-replacement-manager-content">
+                <div class="modal-body">
+                    <div id="favoritesSearchContainer" class="text-replacement-search hidden">
+                        <input type="text" id="favoritesSearch" class="form-control" placeholder="Search favorites...">
+                        <i class="fas fa-search"></i>
+                    </div>
+                    <div id="favoritesListContainer" class="text-replacement-list-container">
+                        <div id="favoritesList" class="text-replacement-list">
+                            <!-- Favorites will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Preset Manager Modal -->
         <div id="presetManagerModal" class="modal resizeable-window hidden">
             <div class="modal-window-title">
@@ -1810,7 +2147,7 @@
                 </button>
                 <button type="button" id="closePresetManagerBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content text-replacement-manager-content">
+            <div class="modal-content modal-padding text-replacement-manager-content">
                 <div class="modal-body">
                     <div id="presetSearchContainer" class="text-replacement-search hidden">
                         <input type="text" id="presetSearch" class="form-control" placeholder="Search presets...">
@@ -1847,7 +2184,7 @@
             <div class="modal-window-controls">
                 <button type="button" id="updatePresetCancelBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content">
+            <div class="modal-content modal-padding">
                 <div class="modal-body">
                     <div class="form-section">
                         <div class="form-row">
@@ -1886,7 +2223,7 @@
                                 </div>
                             </div>
                             <div class="form-group">
-                                <label for="updatePresetWorkspaceInput">Target Workspace</label>
+                                <label for="updatePresetWorkspaceInput">Workspace</label>
                                 <div id="updatePresetWorkspaceDropdown" class="custom-dropdown">
                                     <button type="button" id="updatePresetWorkspaceDropdownBtn" class="btn-secondary custom-dropdown-btn hover-show">
                                         <div class="workspace-option-content">
@@ -1902,48 +2239,43 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Crossover</label>
-                                <div class="dynamic-generation-container">
-                                    <div class="dynamic-generation-buttons">
-                                        <!-- Dynamic Generation Buttons -->
-                                    </div>
-                                    <div class="dynamic-generation-actions">
-                                        <button type="button" id="updatePresetTodBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Time of Day">
-                                            <i class="fa-regular fa-clock"></i>
-                                        </button>
-                                        <button type="button" id="updatePresetWeatherBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Weather">
-                                            <i class="fa-regular fa-temperature-sun"></i>
-                                        </button>
-                                        <button type="button" id="updatePresetSeasonBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Season">
-                                            <i class="fas fa-leaf-maple"></i>
-                                        </button>
-                                        <button type="button" id="updatePresetClothingBtn" class="btn-secondary btn-small indicator" data-state="off" title="Clothing Adaptation">
-                                            <i class="fas fa-shirt"></i>
-                                        </button>
-                                        <button type="button" id="updatePresetActivityBtn" class="btn-secondary btn-small indicator hidden" data-state="off" data-override="" title="Activity">
-                                            <i class="fa-regular fa-person-walking"></i>
-                                        </button>
-                                        <button type="button" id="updatePresetActionBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Character Action">
-                                            <i class="fa-regular fa-person-running"></i>
-                                        </button>
-                                        <button type="button" id="updatePresetLocationBtn" class="btn-secondary btn-small indicator hidden" data-state="off" data-override="" title="Location">
-                                            <i class="fas fa-plane"></i>
-                                        </button>
-                                        <div class="divider"></div>
-                                        <button type="button" id="updatePresetCreativeBtn" class="btn-secondary btn-small indicator" data-state="off" title="Creative Mode">
-                                            <i class="fa-solid fa-magic-wand-sparkles"></i>
-                                        </button>
-                                        <button type="button" id="updatePresetOptimizeBtn" class="btn-secondary btn-small indicator" data-state="off" title="Optimize Mode">
-                                            <i class="fa-regular fa-broom-wide"></i>
-                                        </button>
-                                        <div class="divider"></div>
-                                        <button type="button" id="updatePresetUseCacheResponsesBtn" class="btn-secondary btn-small indicator" data-state="on" title="Use Cache Responses (Preset Only)">
-                                            <i class="fas fa-lock"></i>
-                                        </button>
-                                    </div>
+                                <div class="form-group-row">
+                                    <button type="button" id="updatePresetTodBtn" class="btn-secondary indicator" data-state="off" data-override="" title="Time of Day">
+                                        <i class="fa-regular fa-clock"></i>
+                                    </button>
+                                    <button type="button" id="updatePresetWeatherBtn" class="btn-secondary indicator" data-state="off" data-override="" title="Weather">
+                                        <i class="fa-regular fa-temperature-sun"></i>
+                                    </button>
+                                    <button type="button" id="updatePresetSeasonBtn" class="btn-secondary indicator" data-state="off" data-override="" title="Season">
+                                        <i class="fas fa-leaf-maple"></i>
+                                    </button>
+                                    <button type="button" id="updatePresetClothingBtn" class="btn-secondary indicator" data-state="off" title="Clothing Adaptation">
+                                        <i class="fas fa-shirt"></i>
+                                    </button>
+                                    <button type="button" id="updatePresetActionBtn" class="btn-secondary indicator" data-state="off" data-override="" title="Character Action">
+                                        <i class="fa-regular fa-person-running"></i>
+                                    </button>
+                                    <button type="button" id="updatePresetLocationBtn" class="btn-secondary indicator hidden" data-state="off" data-override="" title="Location">
+                                        <i class="fas fa-plane"></i>
+                                    </button>
                                 </div>
                             </div>
                         </div>
-
+                        <!-- Dynamic Generation Section -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Crossover Data</label>
+                                <div class="form-group-row">
+                                    <button type="button" id="updatePresetCreativeBtn" class="btn-secondary indicator" data-state="off" title="Creative Mode">
+                                        <i class="fa-solid fa-brush"></i>
+                                    </button>
+                                    <div class="divider"></div>
+                                    <button type="button" id="updatePresetUseCacheResponsesBtn" class="btn-secondary indicator" data-state="on" title="Use Cache Responses (Preset Only)">
+                                        <i class="fas fa-floppy-disk"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-actions btn-group">
@@ -1968,7 +2300,7 @@
                 </button>
                 <button type="button" id="closeIPManagementBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content ip-management-content">
+            <div class="modal-content modal-padding ip-management-content">
                 <div class="modal-body">
                     <div class="ip-management-stats">
                         <div class="stat-item">
@@ -2020,7 +2352,7 @@
                 </button>
                 <button type="button" id="closeIPDetailsBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content">
+            <div class="modal-content modal-padding">
                 <div class="modal-body">
                     <div class="ip-details-content" id="ipDetailsContent">
                         <!-- IP details will be populated here -->
@@ -2042,7 +2374,7 @@
             <div class="modal-window-controls">
                 <button type="button" id="workspaceCancelBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content">
+            <div class="modal-content modal-padding">
                 <div class="modal-body">
                     <div class="form-section">
                         <div class="form-row">
@@ -2104,7 +2436,7 @@
             <div class="modal-window-controls">
                 <button type="button" id="workspaceDumpCancelBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content">
+            <div class="modal-content modal-padding">
                 <div class="modal-body">
                     <p>Select the target workspace to merge all items from <strong id="dumpSourceWorkspaceName"></strong>:</p>
                     <div class="form-group">
@@ -2143,7 +2475,7 @@
                 </button>
                 <button type="button" id="closeCacheManagerBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content cache-manager-content">
+            <div class="modal-content modal-padding cache-manager-content">
                 <div class="modal-body">
                     <div class="cache-manager-controls">
                         <div class="cache-manager-header">
@@ -2608,7 +2940,7 @@
             <div class="modal-window-controls">
                 <button type="button" id="closePersonaSettingsBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content">
+            <div class="modal-content modal-padding">
                 <div class="modal-body">
                     <div class="persona-settings-form">
                         <div class="form-group">
@@ -2773,7 +3105,7 @@
             <div class="modal-window-controls">
                 <button type="button" id="closeVibeManagerDeleteBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content">
+            <div class="modal-content modal-padding">
                 <div class="modal-header">
                     <h3>Delete Vibe Items</h3>
                 </div>
@@ -2833,7 +3165,7 @@
             <div class="modal-window-controls">
                 <button type="button" id="bulkChangePresetCancelBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content">
+            <div class="modal-content modal-padding">
                 <div class="modal-body">
                     <p>Change preset name for <span id="bulkChangePresetSelectedCount">0</span> selected image(s):</p>
                     <div class="form-group">
@@ -2852,7 +3184,7 @@
 
         <!-- PIN Re-authentication Modal -->
         <div id="pinModal" class="alert-theme modal hidden">
-            <div class="modal-content center" style="width: auto;">
+            <div class="modal-content modal-padding center" style="width: auto;">
                 <div class="modal-window-title">
                     <div class="modal-window-title-main">
                         <i class="fas fa-lock"></i>
@@ -2925,7 +3257,7 @@
             <div class="modal-window-controls">
                 <button type="button" class="btn-danger btn-small modal-close" id="closeCacheMetadataModalBtn" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content cache-metadata-content">
+            <div class="modal-content modal-padding cache-metadata-content">
                 <div class="modal-body">
                     <div class="cache-metadata-form">
                         
@@ -3057,7 +3389,7 @@
                 <div id="measurementsTabs" class="measurements-tabs hidden">
                     <!-- Character tabs will be populated here -->
                 </div>
-                <div id="measurementsContent" class="measurements-grid">
+                <div id="measurementsContent" class="measurements-grid modal-padding">
                     <!-- Measurements will be populated here -->
                 </div>
             </div>
@@ -3074,20 +3406,161 @@
             <div class="modal-window-controls">
                 <button type="button" id="closeSpellbookModalBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content">
+            <div class="modal-content modal-padding">
                 <div class="modal-body">
                     <div class="spellbook-modal-layout">
                         <!-- Preview Container -->
                         <div class="spellbook-preview-container">
                             <div class="spellbook-preview-image-container">
+                                <!-- Animation Layers -->
+                                <!-- Stars Layer -->
+                                <div id="spellbookPreviewStars" class="preview-stars hidden">
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <!-- Additional 15 stars for top, bottom, and edges -->
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                    <div class="preview-star"></div>
+                                </div>
+
+                                <!-- Background Lines Layer (behind content) -->
+                                <div id="spellbookPreviewBackgroundLines" class="preview-lines-layer preview-lines-background hidden">
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                </div>
+
                                 <!-- Blur background layers -->
                                 <div id="spellbookBlurBackground1" class="spellbook-blur-background"></div>
                                 <div id="spellbookBlurBackground2" class="spellbook-blur-background"></div>
 
+                                <!-- Dynamic Generation Progress Overlay -->
+                                <div id="spellbookDynamicGenerationProgressOverlay" class="dynamic-generation-progress-overlay hidden">
+                                    <div class="progress-overlay-header">
+                                        <div class="progress-loader">
+                                            <div class="progress-spinner"></div>
+                                        </div>
+                                        <div class="progress-status" id="spellbookProgressStatusText">Processing...</div>
+                                    </div>
+
+                                    <div class="progress-overlay-content">
+                                        <div class="progress-row">
+                                            <div class="progress-time-info" id="spellbookProgressTimeInfo">
+                                                <span class="progress-time" id="spellbookProgressTime">--:--</span>
+                                                <span class="progress-date" id="spellbookProgressDate">--/--</span>
+                                            </div>
+                                            <div class="overlay-weather-section">
+                                                <div class="overlay-weather-info">
+                                                    <div class="overlay-weather-feels-like" id="spellbookProgressWeatherFeelsLike">
+                                                        <span class="temp-number">--</span>
+                                                        <span class="temp-unit">°C</span>
+                                                    </div>
+                                                    <div class="overlay-weather-condition" id="spellbookProgressWeatherCondition">Unknown</div>
+                                                    <div class="overlay-weather-condition" id="spellbookProgressWeatherLocation" class="hidden">Unknown</div>
+                                                </div>
+                                                <div class="overlay-weather-icon" id="spellbookProgressWeatherIcon">
+                                                    <span class="weather-fallback-icon">🌤️</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="progress-row">
+                                            <span class="progress-holiday" id="spellbookProgressHoliday"></span>
+                                            <span class="progress-season" id="spellbookProgressSeason">Season</span>
+                                        </div>
+
+                                        <div class="progress-row reasoning-row">
+                                            <div class="progress-reasoning-wrapper">
+                                                <div class="progress-reasoning" id="spellbookProgressReasoning"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Dynamic Generation Overlay -->
+                                <div id="spellbookDynamicGenerationOverlay" class="dynamic-generation-overlay hidden">
+                                    <div id="spellbookDynamicGenerationOverlayBody" class="dynamic-generation-overlay-body">
+                                        <div class="overlay-weather-section">
+                                            <div class="overlay-weather-info">
+                                                <div class="overlay-weather-feels-like" id="spellbookOverlayWeatherFeelsLike">
+                                                    <span class="temp-number">--</span>
+                                                    <span class="temp-unit">°C</span>
+                                                </div>
+                                                <div class="overlay-weather-condition" id="spellbookOverlayWeatherCondition">Unknown</div>
+                                                <div class="overlay-weather-condition" id="spellbookOverlayWeatherLocation" class="hidden">Unknown</div>
+                                            </div>
+                                            <div class="overlay-weather-icon" id="spellbookOverlayWeatherIcon">
+                                                <span class="weather-fallback-icon">🌤️</span>
+                                            </div>
+                                        </div>
+                                        <div class="overlay-time-section">
+                                            <div id="spellbookOverlayTimeDisplay" class="overlay-time">--:--</div>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <img id="spellbookPreviewImage" src="" alt="Preview" class="spellbook-preview-image hidden">
-                                <div id="spellbookBlockContainer" class="spellbook-block-container block-container"></div>
                                 <!-- Confetti container for spellbook modal -->
                                 <div id="spellbookConfettiContainer" class="confetti-container"></div>
+
+                                <!-- Foreground Lines Layer (above content) -->
+                                <div id="spellbookPreviewForegroundLines" class="preview-lines-layer preview-lines-foreground hidden">
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                    <div class="preview-line"></div>
+                                </div>
 
                                 <!-- Overlay buttons -->
                                 <div class="spellbook-overlay-buttons">
@@ -3100,20 +3573,20 @@
 
                                     <!-- Bottom left: Download & Copy -->
                                     <div class="spellbook-bottom-left-buttons">
-                                        <button type="button" id="spellbookDownloadBtn" class="round-button" title="Download Image">
+                                        <button type="button" id="spellbookDownloadBtn" class="btn-secondary round-button" title="Download Image">
                                             <i class="fas fa-download"></i>
                                         </button>
-                                        <button type="button" id="spellbookCopyBtn" class="round-button" title="Copy Image">
-                                            <i class="fas fa-copy"></i>
+                                        <button type="button" id="spellbookCopyBtn" class="btn-secondary round-button" title="Copy Image">
+                                            <i class="fa-regular fa-clipboard"></i>
                                         </button>
-                                        <button type="button" id="spellbookUpscaleBtn" class="round-button" title="Upscale Image">
+                                        <button type="button" id="spellbookUpscaleBtn" class="btn-secondary round-button" title="Upscale Image">
                                             <i class="nai-upscale"></i>
                                         </button>
                                     </div>
 
                                     <!-- Bottom right: Go to workspace -->
                                     <div class="spellbook-bottom-right-buttons">
-                                        <button type="button" id="spellbookGoToWorkspaceBtn" class="round-button" title="Go to Planet">
+                                        <button type="button" id="spellbookGoToWorkspaceBtn" class="btn-secondary round-button" title="Go to Planet">
                                             <i class="fas fa-planet-ringed"></i>
                                         </button>
                                     </div>
@@ -3161,7 +3634,7 @@
             <div class="modal-window-controls">
                 <button id="closeDirectorSettingsBtn" class="btn-danger btn-small modal-close" type="button" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content">
+            <div class="modal-content modal-padding">
                 <div class="modal-body">
                     <form id="directorSettingsForm">
                         <div class="form-group">
@@ -3223,7 +3696,7 @@
                     </button>
                 </div>
             </div>
-            <div class="modal-content image-viewer-content">
+            <div class="modal-content modal-padding image-viewer-content">
                 <div class="image-viewer-body">
                     <div class="image-container">
                         <img id="imageViewerImage" src="" alt="Image" class="viewer-image">
@@ -3257,6 +3730,7 @@
             </div>
         </div>
 
+        <script src="scripts/comp/toastManager.js"></script>
         <script src="scripts/websocket.js"></script>
         <script src="scripts/comp/serviceWorkerManager.js"></script>
         <script src="scripts/comp/dropdown.js"></script>
@@ -3291,7 +3765,6 @@
 
         <!-- New Component Files - Added for modularization -->
         <script src="scripts/comp/utilities.js"></script>
-        <script src="scripts/comp/toastManager.js"></script>
         <script src="scripts/comp/manualDropdownManager.js"></script>
         <script src="scripts/comp/manualModalManager.js"></script>
         <!-- <script src="scripts/comp/presetManagement.js"></script>

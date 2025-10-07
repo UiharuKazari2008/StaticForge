@@ -16,26 +16,18 @@ class PromptTextareaToolbar {
     }
 
     setupEventListeners() {
-        // Listen for focus events on prompt textareas
+        // Optimized event delegation - use a single delegated listener for both focus events
         document.addEventListener('focusin', (e) => {
             if (e.target.matches('.prompt-textarea, .character-prompt-textarea')) {
                 this.handleTextareaFocus(e.target);
             }
-        });
+        }, true); // Use capture phase for better performance
 
-        // Listen for blur events
         document.addEventListener('focusout', (e) => {
             if (e.target.matches('.prompt-textarea, .character-prompt-textarea')) {
                 this.handleTextareaBlur(e.target);
             }
-        });
-
-        // Listen for input events to update token count
-        document.addEventListener('input', (e) => {
-            if (e.target.matches('.prompt-textarea, .character-prompt-textarea')) {
-                this.updateTokenCount(e.target);
-            }
-        });
+        }, true); // Use capture phase for better performance
 
         // Listen for toolbar button clicks
         document.addEventListener('click', (e) => {

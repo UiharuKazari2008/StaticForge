@@ -23,6 +23,7 @@ let activeWorkspace = 'default';
 let currentWorkspaceOperation = null;
 let isWorkspaceSwitching = false; // Flag to prevent duplicate calls during workspace switching
 let workspaceStyleElement = null; // Global style element for all workspace styles
+let workspaceToastId = null; // ID of the workspace switching toast
 
 // Automatic background system
 let automaticBackgroundInterval = null;
@@ -238,8 +239,8 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
         `--text-accent: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}%);`,
         `--shadow-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 30%);`,
         `--text-accent-tinted: hsl(${workspaceHsl.h} 100% 85%);`,
-        `--btn-hover-bg-primary: radial-gradient(hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 38%), hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 84%));`,
-        `--btn-hover-border-primary: hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 80%);`,
+        `--btn-hover-bg-primary: radial-gradient(hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 50%), hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 90%));`,
+        `--btn-hover-border-primary: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 80%);`,
         `--btn-hover-text-primary: #ffffff;`,
         `--btn-shadow-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 89%);`,
         `--btn-shadow-primary-glow: 0 2px 16px hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 89%);`,
@@ -1184,26 +1185,10 @@ async function setActiveWorkspace(id) {
         isWorkspaceSwitching = true;
         window.isWorkspaceSwitching = true;
 
-        // Create workspace-specific loading overlay in the center of the gallery
-        const gallery = document.getElementById('gallery');
-        if (gallery) {
-            // Create workspace loading overlay
-            const workspaceLoadingOverlay = document.createElement('div');
-            workspaceLoadingOverlay.id = 'workspaceLoadingOverlay';
-            workspaceLoadingOverlay.className = 'workspace-loading-overlay';
-            workspaceLoadingOverlay.innerHTML = `
-                <div class="workspace-loading-content">
-                    <img class="loading" src="/static_images/azuspin.gif" alt="Loading">
-                    <p class="loading">Switching Workspace...</p>
-                </div>
-            `;
-            
-            // Insert the overlay into the gallery container
-            const galleryContainer = gallery.parentElement;
-            if (galleryContainer) {
-                galleryContainer.appendChild(workspaceLoadingOverlay);
-            }
-        }
+        // Show glass toast with loading gif
+        const targetWorkspace = workspaces[id];
+        const workspaceName = targetWorkspace ? targetWorkspace.name : id;
+        workspaceToastId = showGlassToast('info', 'Teleporting', `Switching to ${workspaceName} planet...`, false, false, '<img class="loading" src="/static_images/azuspin.gif" alt="Loading" style="width: 34px; height: 34px;">');
 
         // Fade out gallery
         if (gallery) {
@@ -1234,10 +1219,10 @@ async function setActiveWorkspace(id) {
             gallery.style.opacity = 1;
         }
         
-        // Remove workspace loading overlay on error
-        const workspaceLoadingOverlay = document.getElementById('workspaceLoadingOverlay');
-        if (workspaceLoadingOverlay) {
-            workspaceLoadingOverlay.remove();
+        // Remove workspace loading toast on error
+        if (workspaceToastId) {
+            removeGlassToast(workspaceToastId);
+            workspaceToastId = null;
         }
         
         // Clear the workspace switching flag on error
@@ -1397,6 +1382,29 @@ function updateActiveWorkspaceDisplay() {
         workspaceSelected.forEach(workspace => {
             workspace.textContent = activeWorkspaceData.name;
         });
+    }
+
+    // Update manual workspace dropdown to match active workspace
+    manualSelectedWorkspace = activeWorkspace;
+    updateManualWorkspaceDisplay();
+}
+
+/**
+ * Update manual workspace dropdown display
+ */
+function updateManualWorkspaceDisplay() {
+    const workspaceData = workspaces[manualSelectedWorkspace];
+    if (workspaceData && manualWorkspaceSelected && manualWorkspaceColorIndicator) {
+        manualWorkspaceSelected.textContent = workspaceData.name;
+        manualWorkspaceColorIndicator.style.backgroundColor = workspaceData.color || '#102040';
+        if (manualWorkspaceHidden) {
+            manualWorkspaceHidden.value = manualSelectedWorkspace;
+        }
+    } else if (manualWorkspaceSelected) {
+        manualWorkspaceSelected.textContent = 'Select workspace...';
+        if (manualWorkspaceColorIndicator) {
+            manualWorkspaceColorIndicator.style.backgroundColor = 'transparent';
+        }
     }
 }
 function openWorkspaceDropdown() {
@@ -2132,10 +2140,10 @@ function completeWorkspaceSwitch() {
         gallery.style.opacity = '';
     }
     
-    // Remove workspace loading overlay
-    const workspaceLoadingOverlay = document.getElementById('workspaceLoadingOverlay');
-    if (workspaceLoadingOverlay) {
-        workspaceLoadingOverlay.remove();
+    // Remove workspace loading toast
+    if (workspaceToastId) {
+        removeGlassToast(workspaceToastId);
+        workspaceToastId = null;
     }
     
     // Clear the workspace switching flag

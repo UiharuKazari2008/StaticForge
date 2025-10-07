@@ -812,8 +812,8 @@ function generateDirectorSystemMessage(presetConfig = null, model = null, enable
     console.log('=' .repeat(80));
 
     return [{
-    type: "text",
-    text: finalSystemMessage
+        type: "text",
+        text: finalSystemMessage
     }];
 }
 
@@ -2195,7 +2195,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                     // Create streaming callback to send updates to client
                     const streamCallback = ((wsRef, handlerRef, sessionIdRef) => {
                         let lastSendTime = 0;
-                        return (chunk, fullContent) => {
+                        return (chunk, fullContent, extractedKeys = []) => {
                             const now = Date.now();
                             // Throttle updates to maximum every 250ms
                             if (now - lastSendTime >= 250) {
@@ -2208,7 +2208,8 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                                             data: {
                                                 sessionId: sessionIdRef,
                                                 chunk: chunk,
-                                                fullContent: fullContent
+                                                fullContent: fullContent,
+                                                extractedKeys: extractedKeys // Filtered keys from streaming JSON parsing
                                             },
                                             timestamp: new Date().toISOString()
                                         });
@@ -2227,7 +2228,14 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                         };
                     })(ws, handler, sessionId);
 
-                    aiResponse = await callDirectorAIWithStructuredOutput(conversationMessages, selectedModel, reasoningEffort, timeout, dryrun, enableLiveSearch, streamCallback);
+                    aiResponse = await callDirectorAIWithStructuredOutput(conversationMessages, {
+                        model: selectedModel,
+                        reasoningEffort,
+                        timeout,
+                        store: true,
+                        liveSearch: enableLiveSearch,
+                        responseSchema: DirectorResponseSchema,
+                    }, streamCallback);
                     const duration = Date.now() - startTime;
                     console.log(`✅ AI request completed successfully in ${Math.round(duration/1000)}s`);
                     break; // Success, exit retry loop

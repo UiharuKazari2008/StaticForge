@@ -27,11 +27,20 @@ class WebSocketServer {
 
             const { session, sessionId, userType } = sessionResult;
 
+            // Get client IP address
+            const clientIP = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+                            req.headers['x-real-ip'] ||
+                            req.connection?.remoteAddress ||
+                            req.socket?.remoteAddress ||
+                            req.ip ||
+                            false;
+
             // Store client information
             this.clients.set(ws, {
                 sessionId,
                 authenticated: true,
                 userType: userType || 'admin',
+                clientIP: clientIP,
                 connectedAt: new Date(),
                 lastActivity: new Date()
             });
@@ -215,6 +224,7 @@ class WebSocketServer {
             case 'ping':
                 this.sendToClient(ws, {
                     type: 'pong',
+                    requestId: message.requestId,
                     timestamp: new Date().toISOString()
                 });
                 break;

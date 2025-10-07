@@ -289,17 +289,22 @@ function extractAssistantData(rawContent) {
 function getDirectorMessages(sessionId, limit = 100, offset = 0, includeSystem = false, includeExtraFields = true) {
     try {
         // Filter out system messages unless explicitly requested
-        const whereClause = includeSystem ? 
-            'WHERE director_session_id = ?' : 
-            'WHERE director_session_id = ? AND role != \'system\'';
-            
-        const stmt = db.prepare(`
-            SELECT * FROM director_messages 
-            ${whereClause}
-            ORDER BY created_at ASC 
-            LIMIT ? OFFSET ?
-        `);
-        const messages = stmt.all(sessionId, limit, offset);
+        let sql = 'SELECT * FROM director_messages';
+        let params = [];
+
+        if (includeSystem) {
+            sql += ' WHERE director_session_id = ?';
+            params.push(sessionId);
+        } else {
+            sql += ' WHERE director_session_id = ? AND role != ?';
+            params.push(sessionId, 'system');
+        }
+
+        sql += ' ORDER BY created_at ASC LIMIT ? OFFSET ?';
+        params.push(limit, offset);
+
+        const stmt = db.prepare(sql);
+        const messages = stmt.all(...params);
         
         // Return messages in OpenAI format
         return messages.map(msg => {

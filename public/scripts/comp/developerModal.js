@@ -41,27 +41,11 @@ class DeveloperModal {
             return;
         }
         
-        this.setupKeyboardShortcuts();
         this.loadSettings();
         this.updateStatus();
         
         // Listen for dev bridge events
         this.setupDevBridgeListeners();
-    }
-    
-    setupKeyboardShortcuts() {
-        document.addEventListener('keydown', (e) => {
-            // CTRL + LEFT SHIFT + F8
-            if (e.ctrlKey && e.shiftKey && e.key === 'F8' && e.location === 1) { // location 1 = left side
-                e.preventDefault();
-                this.toggleModal();
-            }
-            
-            // ESC to close modal
-            if (e.key === 'Escape' && !this.modal.classList.contains('hidden')) {
-                this.closeModal();
-            }
-        });
     }
     
     setupDevBridgeListeners() {

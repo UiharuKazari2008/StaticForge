@@ -805,10 +805,7 @@ async function loadPresetIntoUpdateModal(presetName) {
         { id: 'updatePresetWeatherBtn', key: 'weather' },
         { id: 'updatePresetSeasonBtn', key: 'season' },
         { id: 'updatePresetClothingBtn', key: 'clothing' },
-        { id: 'updatePresetActivityBtn', key: 'activity' },
         { id: 'updatePresetActionBtn', key: 'action' },
-        { id: 'updatePresetLocationBtn', key: 'location' },
-        { id: 'updatePresetOptimizeBtn', key: 'optimize' },
         { id: 'updatePresetCreativeBtn', key: 'creative' },
         { id: 'updatePresetUseCacheResponsesBtn', key: 'use_cache_responses' }
     ];
@@ -1029,8 +1026,7 @@ function initializeUpdatePresetToggleButtons() {
     // Dynamic generation buttons
     const dynamicGenerationButtons = [
         'updatePresetTodBtn', 'updatePresetWeatherBtn', 'updatePresetSeasonBtn',
-        'updatePresetClothingBtn', 'updatePresetActivityBtn', 'updatePresetActionBtn',
-        'updatePresetLocationBtn', 'updatePresetOptimizeBtn', 'updatePresetCreativeBtn',
+        'updatePresetClothingBtn', 'updatePresetActionBtn', 'updatePresetCreativeBtn',
         'updatePresetUseCacheResponsesBtn'
     ];
 
@@ -1071,8 +1067,7 @@ function hideUpdatePresetModal() {
     // Reset dynamic generation buttons
     const dynamicGenerationButtons = [
         'updatePresetTodBtn', 'updatePresetWeatherBtn', 'updatePresetSeasonBtn',
-        'updatePresetClothingBtn', 'updatePresetActivityBtn', 'updatePresetActionBtn',
-        'updatePresetLocationBtn', 'updatePresetOptimizeBtn', 'updatePresetCreativeBtn',
+        'updatePresetClothingBtn', 'updatePresetActionBtn', 'updatePresetCreativeBtn',
         'updatePresetUseCacheResponsesBtn'
     ];
 
@@ -1189,10 +1184,7 @@ function getUpdatePresetFormData() {
         { id: 'updatePresetWeatherBtn', key: 'weather' },
         { id: 'updatePresetSeasonBtn', key: 'season' },
         { id: 'updatePresetClothingBtn', key: 'clothing' },
-        { id: 'updatePresetActivityBtn', key: 'activity' },
         { id: 'updatePresetActionBtn', key: 'action' },
-        { id: 'updatePresetLocationBtn', key: 'location' },
-        { id: 'updatePresetOptimizeBtn', key: 'optimize' },
         { id: 'updatePresetCreativeBtn', key: 'creative' }
     ];
 

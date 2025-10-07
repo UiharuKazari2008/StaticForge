@@ -12,7 +12,6 @@ class SpellbookModalManager {
         this.generateBtn = null;
         this.editorBtn = null;
         this.previewImage = null;
-        this.blockContainer = null;
         this.isGenerating = false;
 
         this.selectedPreset = '';
@@ -26,7 +25,7 @@ class SpellbookModalManager {
     init() {
         this.cacheElements();
         this.setupEventListeners();
-        this.initializeBlockContainer();
+        window.updateSpellbookDynamicGenerationProgressOverlay = this.updateSpellbookDynamicGenerationProgressOverlay.bind(this);
     }
 
     cacheElements() {
@@ -48,6 +47,33 @@ class SpellbookModalManager {
         this.confettiContainer = document.getElementById('spellbookConfettiContainer');
         this.blurBackground1 = document.getElementById('spellbookBlurBackground1');
         this.blurBackground2 = document.getElementById('spellbookBlurBackground2');
+
+        // Animation elements
+        this.previewStars = document.getElementById('spellbookPreviewStars');
+        this.previewBackgroundLines = document.getElementById('spellbookPreviewBackgroundLines');
+        this.previewForegroundLines = document.getElementById('spellbookPreviewForegroundLines');
+
+        // Dynamic generation overlay elements
+        this.dynamicGenerationOverlay = document.getElementById('spellbookDynamicGenerationOverlay');
+        this.dynamicGenerationOverlayBody = document.getElementById('spellbookDynamicGenerationOverlayBody');
+        this.overlayWeatherFeelsLike = document.getElementById('spellbookOverlayWeatherFeelsLike');
+        this.overlayWeatherCondition = document.getElementById('spellbookOverlayWeatherCondition');
+        this.overlayWeatherLocation = document.getElementById('spellbookOverlayWeatherLocation');
+        this.overlayWeatherIcon = document.getElementById('spellbookOverlayWeatherIcon');
+        this.overlayTimeDisplay = document.getElementById('spellbookOverlayTimeDisplay');
+
+        // Dynamic generation progress overlay elements
+        this.dynamicGenerationProgressOverlay = document.getElementById('spellbookDynamicGenerationProgressOverlay');
+        this.progressStatusText = document.getElementById('spellbookProgressStatusText');
+        this.progressTime = document.getElementById('spellbookProgressTime');
+        this.progressDate = document.getElementById('spellbookProgressDate');
+        this.progressWeatherFeelsLike = document.getElementById('spellbookProgressWeatherFeelsLike');
+        this.progressWeatherCondition = document.getElementById('spellbookProgressWeatherCondition');
+        this.progressWeatherLocation = document.getElementById('spellbookProgressWeatherLocation');
+        this.progressWeatherIcon = document.getElementById('spellbookProgressWeatherIcon');
+        this.progressHoliday = document.getElementById('spellbookProgressHoliday');
+        this.progressSeason = document.getElementById('spellbookProgressSeason');
+        this.progressReasoning = document.getElementById('spellbookProgressReasoning');
 
         // Button elements
         this.downloadBtn = document.getElementById('spellbookDownloadBtn');
@@ -115,6 +141,39 @@ class SpellbookModalManager {
         });
     }
 
+    updateSpellbookDynamicGenerationProgressOverlay(phase, data) {
+        // Only handle updates if the spellbook modal is currently generating
+        if (!this.isGenerating) return;
+
+        const overlay = this.dynamicGenerationProgressOverlay;
+        if (!overlay) return;
+
+        // Update content based on phase
+        switch (phase) {
+            case 'context':
+                this.updateSpellbookProgressContext(data);
+                overlay.classList.remove('hidden'); // Ensure overlay is visible for new session
+                break;
+            case 'thinking':
+                this.updateSpellbookProgressStatus('Getting Ready...');
+                break;
+            case 'streaming':
+                this.updateSpellbookProgressStatus('Reading Response...');
+                this.addSpellbookProgressReasoning(data?.reason);
+                break;
+            case 'completion':
+                this.updateSpellbookProgressStatus('Starting Generation...');
+                // Show completion for 2 seconds then hide
+                this.hideSpellbookDynamicGenerationProgressOverlay();
+                break;
+            case 'error':
+                this.updateSpellbookProgressStatus('Error: ' + (data?.error || 'Dynamic generation failed'));
+                // Hide overlay after showing error for 3 seconds
+                this.hideSpellbookDynamicGenerationProgressOverlay();
+                break;
+        }
+    }
+
     handleImageClick() {
         if (!this.previewImage || this.previewImage.classList.contains('hidden')) return;
 
@@ -126,22 +185,6 @@ class SpellbookModalManager {
                 height: this.previewImage.naturalHeight || 1024
             });
         }
-    }
-
-    initializeBlockContainer() {
-        if (!document.getElementById('spellbookBlockContainer')) return;
-
-        this.blockContainer = new BlockContainer('#spellbookBlockContainer', {
-            row: 15,
-            col: 15,
-            opacityRange: [0.03, 0.2],
-            waveDelay: 40,
-            randomAdjustInterval: 2500,
-            batchSize: 40,
-            useRequestAnimationFrame: true
-        });
-
-        this.blockContainer.init('ready');
     }
 
     openModal() {
@@ -190,10 +233,9 @@ class SpellbookModalManager {
         if (!this.modal) return;
 
         closeModal(this.modal);
-
-        // Stop any ongoing animations
-        if (this.blockContainer) {
-            this.blockContainer.stop();
+        
+        if (this.dynamicGenerationOverlay) {
+            this.dynamicGenerationOverlay.classList.add('hidden');
         }
     }
 
@@ -571,25 +613,8 @@ class SpellbookModalManager {
                 }
             }
 
-            // Ensure block container is initialized and ready
-            if (!this.blockContainer) {
-                this.initializeBlockContainer();
-            }
-
-            // Start block animation
-            if (this.blockContainer) {
-                // Start the wave animation using the same method as manual modal
-                try {
-                    this.blockContainer.ensureWaveReady();
-                    await this.blockContainer.createOpacityWave('rand');
-                } catch (error) {
-                    console.warn('Failed to start block container wave:', error);
-                }
-                // Hide preview image and show block animation
-                if (this.previewImage) {
-                    this.previewImage.classList.add('hidden');
-                }
-            }
+            // Start generation animations and overlay
+            this.startSpellbookGenerationAnimation();
 
             // Show progress toast
             toastId = showGlassToast('info', 'Generating Image', 'Generating image...', true, false, '<i class="nai-sparkles"></i>');
@@ -601,8 +626,8 @@ class SpellbookModalManager {
                 updateGlassToastProgress(toastId, progress);
             }, 1000);
 
-            // Generate image using WebSocket
-            const result = await window.wsClient.generatePreset(this.selectedPreset, allowPaid);
+            // Generate image using WebSocket with streaming enabled
+            const result = await window.wsClient.generatePreset(this.selectedPreset, null, allowPaid, true);
 
             // Extract data from the response
             const filename = result.filename;
@@ -622,6 +647,13 @@ class SpellbookModalManager {
                 customIcon: '<i class="nai-check"></i>',
                 showProgress: false
             });
+
+            // Wait for all queued streaming steps to be displayed before finalizing
+            if (window.wsClient && window.wsClient.waitForStreamingStepsComplete) {
+                console.log('⏳ Waiting for spellbook streaming steps to complete...');
+                await window.wsClient.waitForStreamingStepsComplete('spellbook');
+                console.log('✅ All spellbook streaming steps displayed');
+            }
 
             // Create confetti effect
             console.log('About to create spellbook confetti');
@@ -646,23 +678,13 @@ class SpellbookModalManager {
                 // Update blur background
                 this.updateSpellbookBlurredBackground(imageUrl);
             }
+
+            // Stop animations and overlay AFTER image is displayed
+            this.stopSpellbookGenerationAnimation();
             // Reset generating state
             this.isGenerating = false;
             this.generateBtn.disabled = false;
             this.generateBtn.innerHTML = '<i class="nai-sparkles"></i>';
-            // Stop the animation (same as manual modal)
-            if (this.blockContainer) {
-                try {
-                    await this.blockContainer.returnToNormalOpacity(true);
-                    // Add 1.5 second delay before unloading the block container
-                    await new Promise(resolve => setTimeout(resolve, 1500));
-                    // Unload the container to free up resources
-                    await this.blockContainer.unload();
-                    this.blockContainer = null;
-                } catch (error) {
-                    console.warn('Failed to stop block container wave:', error);
-                }
-            }
             
             await loadGallery(true);
 
@@ -693,19 +715,8 @@ class SpellbookModalManager {
             this.generateBtn.disabled = false;
             this.generateBtn.innerHTML = '<i class="nai-sparkles"></i>';
 
-            // Stop the animation on error (same cleanup as success)
-            if (this.blockContainer) {
-                try {
-                    await this.blockContainer.returnToNormalOpacity(true);
-                    // Add 1.5 second delay before unloading the block container
-                    await new Promise(resolve => setTimeout(resolve, 1500));
-                    // Unload the container to free up resources
-                    await this.blockContainer.unload();
-                    this.blockContainer = null;
-                } catch (error) {
-                    console.warn('Failed to stop block container wave on error:', error);
-                }
-            }
+            // Stop animations and overlay on error
+            this.stopSpellbookGenerationAnimation();
         }
     }
 
@@ -1067,6 +1078,381 @@ class SpellbookModalManager {
                 this.upscaleBtn.innerHTML = '<i class="nai-upscale"></i>';
             }
         }
+    }
+
+    // Animation and overlay methods (similar to manual modal)
+    startSpellbookGenerationAnimation() {
+        if (!this.previewStars || !this.previewBackgroundLines || !this.previewForegroundLines) {
+            console.warn('Spellbook generation animation elements not found');
+            return;
+        }
+
+        this.previewStars.classList.remove('hidden');
+        this.previewBackgroundLines.classList.remove('hidden');
+        this.previewForegroundLines.classList.remove('hidden');
+
+        // Fade in stars (0.25s)
+        setTimeout(() => {
+            if (this.previewStars) {
+                this.previewStars.style.opacity = '1';
+            }
+        }, 10);
+        
+        // Start lines rising
+        const lines = this.modal.querySelectorAll('.preview-line');
+        lines.forEach((line, index) => {
+            line.style.animationPlayState = 'running';
+            line.style.transition = 'opacity 0.3s ease-out, visibility 0.3s ease-out';
+            line.style.opacity = '1';
+            line.style.visibility = 'visible';
+        });
+        
+    }
+
+    stopSpellbookGenerationAnimation() {
+        if (!this.previewStars || !this.previewBackgroundLines || !this.previewForegroundLines) {
+            return;
+        }
+
+        this.previewBackgroundLines.classList.add('fadeOut');
+        this.previewForegroundLines.classList.add('fadeOut');
+        
+        // Fade out stars after lines start fading (1.5s)
+        setTimeout(() => {
+            if (this.previewStars) {
+                this.previewStars.style.opacity = '0';
+            }
+        }, 1500);
+        
+        // Hide everything after fade out completes (2.5s total)
+        setTimeout(() => {
+            if (this.previewStars) {
+                this.previewStars.classList.add('hidden');
+            }
+            if (this.previewBackgroundLines) {
+                this.previewBackgroundLines.classList.add('hidden');
+                this.previewBackgroundLines.classList.remove('fadeOut');
+            }
+            if (this.previewForegroundLines) {
+                this.previewForegroundLines.classList.add('hidden');
+                this.previewForegroundLines.classList.remove('fadeOut');
+            }
+            
+            // Reset line states
+            const lines = this.modal.querySelectorAll('.preview-line');
+            lines.forEach(line => {
+                line.style.opacity = '1';
+                line.style.visibility = 'visible';
+            });
+        }, 2500);
+    }
+
+    resetSpellbookGenerationAnimation() {
+        if (this.previewStars) {
+            this.previewStars.classList.add('hidden');
+            this.previewStars.style.opacity = '0';
+        }
+        if (this.previewBackgroundLines) {
+            this.previewBackgroundLines.classList.add('hidden');
+            this.previewBackgroundLines.classList.remove('fadeOut');
+        }
+        if (this.previewForegroundLines) {
+            this.previewForegroundLines.classList.add('hidden');
+            this.previewForegroundLines.classList.remove('fadeOut');
+        }
+        
+        // Reset line states
+        const lines = this.modal.querySelectorAll('.preview-line');
+        lines.forEach(line => {
+            line.style.opacity = '1';
+            line.style.visibility = 'visible';
+            line.style.animationPlayState = 'paused';
+        });
+    }
+
+    showSpellbookDynamicGenerationOverlay() {
+        if (this.dynamicGenerationOverlay) {
+            this.dynamicGenerationOverlay.classList.remove('hidden');
+        }
+    }
+
+    hideSpellbookDynamicGenerationOverlay() {
+        if (this.dynamicGenerationOverlay) {
+            this.dynamicGenerationOverlay.classList.add('hidden');
+        }
+    }
+
+    hideSpellbookDynamicGenerationProgressOverlay() {
+        if (this.dynamicGenerationProgressOverlay) {
+            this.dynamicGenerationProgressOverlay.classList.add('hidden');
+        }
+    }
+
+    updateSpellbookProgressStatus(status) {
+        if (this.progressStatusText) {
+            this.progressStatusText.textContent = status;
+        }
+    }
+
+    addSpellbookProgressReasoning(reason) {
+        if (!reason) return;
+
+        if (this.progressReasoning) {
+            // Create waiting dots element if it doesn't exist
+            let waitingElement = this.progressReasoning.querySelector('.progress-reasoning-waiting');
+            if (!waitingElement) {
+                waitingElement = document.createElement('div');
+                waitingElement.className = 'progress-reasoning-waiting';
+                waitingElement.innerHTML = '<span class="progress-reasoning-dots">●●●</span>';
+                this.progressReasoning.appendChild(waitingElement);
+            }
+
+            // Hide waiting dots when first reasoning arrives
+            if (waitingElement) {
+                waitingElement.style.display = 'none';
+            }
+
+            // Create new div for this reasoning
+            const reasonDiv = document.createElement('div');
+            reasonDiv.className = 'progress-reasoning-item';
+
+            const reasonSpan = document.createElement('span');
+            reasonSpan.textContent = reason.trim();
+
+            reasonDiv.appendChild(reasonSpan);
+            this.progressReasoning.appendChild(reasonDiv);
+
+            // Auto-scroll to bottom
+            this.progressReasoning.scrollTop = this.progressReasoning.scrollHeight;
+        }
+    }
+
+    updateSpellbookProgressContext(data) {
+        if (!data) return;
+
+        // Complete reset for new dynamic generation session
+        this.resetSpellbookProgressOverlay();
+
+        // Update time in both overlays
+        const timeString = data.time ? new Date(`2000-01-01T${data.time}`).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '--:--';
+
+        if (this.overlayTimeDisplay) {
+            this.overlayTimeDisplay.textContent = timeString;
+        }
+        if (this.progressTime) {
+            this.progressTime.textContent = timeString;
+        }
+
+        // Update date in progress overlay
+        if (this.progressDate && data.date) {
+            let formattedDate;
+            if (typeof data.date === 'object' && data.date.year !== undefined) {
+                const date = new Date(data.date.year, data.date.month, data.date.day);
+                formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            } else {
+                const date = new Date(data.date);
+                formattedDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            }
+            this.progressDate.textContent = formattedDate;
+        }
+
+        // Update season and holiday in progress overlay
+        if (this.progressSeason && data.season) {
+            this.progressSeason.textContent = data.season;
+        }
+        if (this.progressHoliday) {
+            if (data.holiday) {
+                this.progressHoliday.textContent = data.holiday;
+                this.progressHoliday.style.display = 'inline';
+            } else {
+                this.progressHoliday.style.display = 'none';
+            }
+        }
+
+        // Update weather using existing overlay weather functions
+        if (data.weather) {
+            const conditionText = data.weather.condition || 'Unknown';
+            const locationText = this.getLocationText(data.location);
+
+            // Update simple overlay
+            if (this.overlayWeatherCondition) {
+                this.overlayWeatherCondition.textContent = conditionText;
+            }
+            if (this.overlayWeatherLocation) {
+                if (locationText) {
+                    this.overlayWeatherLocation.classList.remove('hidden');
+                    this.overlayWeatherLocation.textContent = locationText;
+                } else {
+                    this.overlayWeatherLocation.classList.add('hidden');
+                }
+            }
+            if (this.overlayWeatherFeelsLike && data.weather.feelsLike !== undefined) {
+                const tempData = this.formatTemperature(data.weather.feelsLike);
+                const tempNumber = this.overlayWeatherFeelsLike.querySelector('.temp-number');
+                const tempUnit = this.overlayWeatherFeelsLike.querySelector('.temp-unit');
+                if (tempNumber) tempNumber.textContent = tempData.number;
+                if (tempUnit) tempUnit.textContent = tempData.unit;
+            }
+            if (this.overlayWeatherIcon && data.weather.condition) {
+                const weatherIconHtml = this.getWeatherIcon(data.weather.condition);
+                this.overlayWeatherIcon.innerHTML = weatherIconHtml;
+            }
+
+            // Update progress overlay
+            if (this.progressWeatherCondition) {
+                this.progressWeatherCondition.textContent = conditionText;
+            }
+            if (this.progressWeatherLocation) {
+                if (locationText) {
+                    this.progressWeatherLocation.classList.remove('hidden');
+                    this.progressWeatherLocation.textContent = locationText;
+                } else {
+                    this.progressWeatherLocation.classList.add('hidden');
+                }
+            }
+            if (this.progressWeatherFeelsLike && data.weather.feelsLike !== undefined) {
+                const tempData = this.formatTemperature(data.weather.feelsLike);
+                const tempNumber = this.progressWeatherFeelsLike.querySelector('.temp-number');
+                const tempUnit = this.progressWeatherFeelsLike.querySelector('.temp-unit');
+                if (tempNumber) tempNumber.textContent = tempData.number;
+                if (tempUnit) tempUnit.textContent = tempData.unit;
+            }
+            if (this.progressWeatherIcon && data.weather.condition) {
+                const weatherIconHtml = this.getWeatherIcon(data.weather.condition);
+                this.progressWeatherIcon.innerHTML = weatherIconHtml;
+            }
+        }
+
+        // Show the simple overlay
+        this.showSpellbookDynamicGenerationOverlay();
+    }
+
+    getLocationText(location) {
+        if (!location) return null;
+        if (location.city && location.country) {
+            return `${location.city}, ${location.country}`;
+        } else if (location.city) {
+            return location.city;
+        } else if (location.country) {
+            return location.country;
+        }
+        return null;
+    }
+
+    resetSpellbookProgressOverlay() {
+        // Reset simple overlay time
+        if (this.overlayTimeDisplay) {
+            this.overlayTimeDisplay.textContent = '--:--';
+        }
+
+        // Reset simple overlay weather
+        if (this.overlayWeatherFeelsLike) {
+            const tempNumber = this.overlayWeatherFeelsLike.querySelector('.temp-number');
+            if (tempNumber) tempNumber.textContent = '--';
+        }
+        if (this.overlayWeatherCondition) {
+            this.overlayWeatherCondition.textContent = 'Unknown';
+        }
+        if (this.overlayWeatherLocation) {
+            this.overlayWeatherLocation.classList.add('hidden');
+            this.overlayWeatherLocation.textContent = 'Unknown';
+        }
+        if (this.overlayWeatherIcon) {
+            this.overlayWeatherIcon.innerHTML = '<span class="weather-fallback-icon">🌤️</span>';
+        }
+
+        // Reset progress overlay
+        if (this.progressTime) {
+            this.progressTime.textContent = '--:--';
+        }
+        if (this.progressDate) {
+            this.progressDate.textContent = '--/--';
+        }
+        if (this.progressSeason) {
+            this.progressSeason.textContent = 'Season';
+        }
+        if (this.progressHoliday) {
+            this.progressHoliday.style.display = 'none';
+            this.progressHoliday.textContent = '';
+        }
+        if (this.progressStatusText) {
+            this.progressStatusText.textContent = 'Processing...';
+        }
+
+        // Reset progress overlay weather
+        if (this.progressWeatherFeelsLike) {
+            const tempNumber = this.progressWeatherFeelsLike.querySelector('.temp-number');
+            if (tempNumber) tempNumber.textContent = '--';
+        }
+        if (this.progressWeatherCondition) {
+            this.progressWeatherCondition.textContent = 'Unknown';
+        }
+        if (this.progressWeatherLocation) {
+            this.progressWeatherLocation.classList.add('hidden');
+            this.progressWeatherLocation.textContent = 'Unknown';
+        }
+        if (this.progressWeatherIcon) {
+            this.progressWeatherIcon.innerHTML = '<span class="weather-fallback-icon">🌤️</span>';
+        }
+
+        // Clear reasoning
+        if (this.progressReasoning) {
+            this.progressReasoning.innerHTML = '';
+        }
+
+        this.hideSpellbookDynamicGenerationOverlay();
+        this.hideSpellbookDynamicGenerationProgressOverlay();
+    }
+
+    getWeatherIcon(condition) {
+        if (!condition) return '<i class="wi wi-day-sunny"></i>';
+
+        const iconMap = {
+            'clear sky': '<i class="wi wi-day-sunny"></i>',
+            'mainly clear': '<i class="wi wi-day-sunny-overcast"></i>',
+            'partly cloudy': '<i class="wi wi-day-cloudy"></i>',
+            'overcast': '<i class="wi wi-cloudy"></i>',
+            'fog': '<i class="wi wi-fog"></i>',
+            'depositing rime fog': '<i class="wi wi-fog"></i>',
+            'light drizzle': '<i class="wi wi-day-showers"></i>',
+            'moderate drizzle': '<i class="wi wi-day-showers"></i>',
+            'dense drizzle': '<i class="wi wi-day-showers"></i>',
+            'light freezing drizzle': '<i class="wi wi-day-snow"></i>',
+            'dense freezing drizzle': '<i class="wi wi-day-snow"></i>',
+            'slight rain': '<i class="wi wi-day-rain"></i>',
+            'moderate rain': '<i class="wi wi-day-rain"></i>',
+            'heavy rain': '<i class="wi wi-day-rain"></i>',
+            'light freezing rain': '<i class="wi wi-day-snow"></i>',
+            'heavy freezing rain': '<i class="wi wi-day-snow"></i>',
+            'slight snow fall': '<i class="wi wi-day-snow"></i>',
+            'moderate snow fall': '<i class="wi wi-snow"></i>',
+            'heavy snow fall': '<i class="wi wi-snow"></i>',
+            'snow grains': '<i class="wi wi-snow"></i>',
+            'slight rain showers': '<i class="wi wi-day-showers"></i>',
+            'moderate rain showers': '<i class="wi wi-day-rain"></i>',
+            'violent rain showers': '<i class="wi wi-day-storm-showers"></i>',
+            'slight snow showers': '<i class="wi wi-day-snow"></i>',
+            'heavy snow showers': '<i class="wi wi-snow"></i>',
+            'thunderstorm': '<i class="wi wi-day-thunderstorm"></i>',
+            'thunderstorm with slight hail': '<i class="wi wi-day-thunderstorm"></i>',
+            'thunderstorm with heavy hail': '<i class="wi wi-day-thunderstorm"></i>'
+        };
+        return iconMap[condition] || '<i class="wi wi-day-sunny"></i>';
+    }
+
+    // Utility functions
+    formatTemperature(temp) {
+        const useFahrenheit = localStorage.getItem('useFahrenheit') === 'true';
+        if (useFahrenheit) {
+            return {
+                number: Math.round((temp * 9/5) + 32),
+                unit: '°F'
+            };
+        }
+        return {
+            number: Math.round(temp),
+            unit: '°C'
+        };
     }
 
     handleGoToWorkspace() {

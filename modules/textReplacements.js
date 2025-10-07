@@ -102,20 +102,453 @@ function savePromptConfig(config) {
 // Utility function for random selection
 const getReplacementValue = value => Array.isArray(value) ? value[Math.floor(Math.random() * value.length)] : value;
 
-// Text replacement functions
-const applyTextReplacements = (text, presetName, model = null, periodKey = null) => {
+// Handle incrementing index for queries ending with #
+function getIncrementingIndex(key, presetName, locked = false, allValuesLength = null) {
     const currentPromptConfig = loadPromptConfig();
-    if (!text || !currentPromptConfig.text_replacements) return text;
+
+    // For presets, store index in preset data
+    if (presetName && currentPromptConfig.presets && currentPromptConfig.presets[presetName]) {
+        const preset = currentPromptConfig.presets[presetName];
+
+        // Initialize incrementing indices if not exists
+        if (!preset.incrementing_indices) {
+            preset.incrementing_indices = {};
+        }
+
+        // Get current index, default to 0
+        const currentIndex = preset.incrementing_indices[key] || 0;
+
+        // Only increment if not locked
+        if (!locked) {
+            // Use provided length for bracketed incrementing, otherwise calculate from key
+            const length = allValuesLength !== null ? allValuesLength : getArrayLengthForKey(key, currentPromptConfig);
+            preset.incrementing_indices[key] = (currentIndex + 1) % length;
+            // Save the updated config with incrementing indices
+            savePromptConfig(currentPromptConfig);
+        }
+
+        return currentIndex;
+    }
+
+    // For non-presets, use a global incrementing state (in-memory only)
+    if (!global.incrementingIndices) {
+        global.incrementingIndices = {};
+    }
+
+    if (!global.incrementingIndices[key]) {
+        global.incrementingIndices[key] = 0;
+    }
+
+    const currentIndex = global.incrementingIndices[key];
+
+    // Only increment if not locked
+    if (!locked) {
+        // Use provided length for bracketed incrementing, otherwise calculate from key
+        const length = allValuesLength !== null ? allValuesLength : getArrayLengthForKey(key, currentPromptConfig);
+        global.incrementingIndices[key] = (currentIndex + 1) % length;
+    }
+
+    return currentIndex;
+}
+
+// Helper function to get array length for a key
+function getArrayLengthForKey(key, config) {
+    const value = config.text_replacements[key];
+    if (Array.isArray(value)) {
+        return value.length;
+    }
+    return 1; // Single values have length 1
+}
+
+// Text replacement functions
+const applyTextReplacements = (text, presetName, model = null, periodKey = null, lockedReplacements = null) => {
+    const currentPromptConfig = loadPromptConfig();
+    if (!text || !currentPromptConfig.text_replacements) return { text: text, replacements: [] };
 
     let result = text.replace(/!PRESET_NAME/g, presetName);
+    const replacements = [];
 
-    // Handle PICK replacements (using ~ suffix)
-    result = result.replace(/!([a-zA-Z0-9_]+)~/g, (match, name) => {
+    // Handle disable syntax !/content/ - remove content from text and trim
+    result = result.replace(/(\s*)!\/([^\/]+)\/(\s*)/g, (match, beforeSpace, content, afterSpace) => {
+        // Remove the entire match and trim surrounding whitespace
+        return '';
+    });
+
+    // Handle incrementing queries ending with # (processed after bracketed syntax)
+    result = result.replace(/!([a-zA-Z0-9_]+)#/g, (match, key) => {
+        // Check if this replacement is locked
+        const lockedReplacement = lockedReplacements?.find(lr => lr.key === key && lr.type === 'incrementing');
+        const isLocked = !!lockedReplacement;
+
+        let currentIndex;
+        if (isLocked && lockedReplacement.index !== undefined) {
+            // Use the locked index, don't increment
+            currentIndex = lockedReplacement.index;
+        } else {
+            // Get incrementing index (will only increment if not locked)
+            currentIndex = getIncrementingIndex(key, presetName, isLocked);
+        }
+
+        const replacementValue = currentPromptConfig.text_replacements[key];
+
+        if (!replacementValue) {
+            throw new Error(`No replacement found for incrementing key: ${key}`);
+        }
+
+        let selectedValue;
+        let arrayLength = 1;
+
+        if (Array.isArray(replacementValue)) {
+            arrayLength = replacementValue.length;
+            selectedValue = replacementValue[currentIndex % arrayLength];
+        } else {
+            selectedValue = replacementValue;
+        }
+
+        // Calculate next index (only increment if not locked)
+        const nextIndex = isLocked ?
+            currentIndex : // Don't increment if locked
+            (currentIndex + 1) % arrayLength;
+
+        replacements.push({
+            key: key,
+            value: selectedValue,
+            presetName: presetName,
+            index: currentIndex,
+            type: 'incrementing',
+            pattern: `!${key}#`,
+            next_index: nextIndex,
+            locked: isLocked,
+            can_lock: true
+        });
+
+        return selectedValue;
+    });
+
+    // Handle bracketed syntax: !KEY[subkey1 subkey2]_~+ expands to !KEY_subkey1_~+ and !KEY_subkey2_~+
+    result = result.replace(/!([a-zA-Z0-9_]*)\[([^\]]+)\](_*)(~\+|~)?(#)?/g, (match, baseKey, bracketContent, underscores, suffix, hasHash) => {
+        const subKeys = bracketContent.trim().split(/\s+/).filter(s => s.length > 0);
+        if (subKeys.length === 0) {
+            throw new Error(`Empty bracket content in: ${match}`);
+        }
+
+        // Create expanded keys: baseKey + cleaned subKey for each subKey
+        // When baseKey is empty, treat subKeys as prefixes to search for
+        const expandedKeys = subKeys.map(subKey => {
+            // Clean the subKey by trimming underscores
+            const cleanSubKey = subKey.replace(/^_+|_+$/g, '');
+            return baseKey ? `${baseKey}_${cleanSubKey}` : cleanSubKey;
+        });
+
+        // Handle incrementing behavior when # is present
+        if (hasHash) {
+            // For incrementing, we need to track index across the entire bracketed set
+            const isLocked = lockedReplacements?.some(lr => lr.pattern === match);
+            const lockedIndex = lockedReplacements?.find(lr => lr.pattern === match)?.index;
+
+            let currentIndex;
+            if (isLocked && lockedIndex !== undefined) {
+                currentIndex = lockedIndex;
+            } else {
+                // Get incrementing index for the entire bracketed pattern
+                // First calculate allValues to get the length
+                const tempAllValues = [];
+                expandedKeys.forEach(expandedKey => {
+                    const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(k =>
+                        baseKey ? (k === expandedKey) : k.startsWith(expandedKey)
+                    );
+
+                    matchingKeys.forEach(key => {
+                        const replacementValue = currentPromptConfig.text_replacements[key];
+                        if (Array.isArray(replacementValue)) {
+                            tempAllValues.push(...replacementValue);
+                        } else {
+                            tempAllValues.push(replacementValue);
+                        }
+                    });
+                });
+                currentIndex = getIncrementingIndex(match, presetName, isLocked, tempAllValues.length);
+            }
+
+            // For incrementing, we cycle through all possible values from the expanded keys
+            const allValues = [];
+            expandedKeys.forEach(expandedKey => {
+                const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(k =>
+                    baseKey ? (k === expandedKey) : k.startsWith(expandedKey)
+                );
+
+                matchingKeys.forEach(key => {
+                    const replacementValue = currentPromptConfig.text_replacements[key];
+                    if (Array.isArray(replacementValue)) {
+                        allValues.push(...replacementValue);
+                    } else {
+                        allValues.push(replacementValue);
+                    }
+                });
+            });
+
+            if (allValues.length === 0) {
+                throw new Error(`No values found for incrementing bracketed pattern: ${match}`);
+            }
+
+            const selectedValue = allValues[currentIndex % allValues.length];
+            const nextIndex = isLocked ? currentIndex : (currentIndex + 1) % allValues.length;
+
+            replacements.push({
+                key: match, // Use the full pattern as key for incrementing
+                value: selectedValue,
+                presetName: presetName,
+                index: currentIndex,
+                type: 'bracketed_incrementing',
+                pattern: match,
+                next_index: nextIndex,
+                locked: isLocked,
+                can_lock: true
+            });
+
+            return selectedValue;
+        }
+
+        if (!suffix) {
+            // No suffix - pick one expanded key/prefix randomly and find a matching key
+            const selectedPrefix = expandedKeys[Math.floor(Math.random() * expandedKeys.length)];
+            const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(k =>
+                baseKey ? (k === selectedPrefix) : k.startsWith(selectedPrefix)
+            );
+
+            if (matchingKeys.length === 0) {
+                throw new Error(`No ${baseKey ? 'exact' : 'prefix'} matches found for: ${selectedPrefix}`);
+            }
+
+            const selectedKey = matchingKeys[Math.floor(Math.random() * matchingKeys.length)];
+            const replacementValue = currentPromptConfig.text_replacements[selectedKey];
+            const resolvedValue = getReplacementValue(replacementValue);
+
+            replacements.push({
+                key: selectedKey,
+                value: resolvedValue,
+                presetName: presetName,
+                index: Array.isArray(replacementValue) ? replacementValue.indexOf(resolvedValue) : 0,
+                type: baseKey ? 'bracketed_expanded' : 'bracketed_prefix',
+                pattern: `!${baseKey}[${bracketContent}]`,
+                can_lock: true
+            });
+
+            return resolvedValue;
+        }
+
+        if (suffix === '~') {
+            // Pick one expanded key/prefix and find a matching key
+            const selectedPrefix = expandedKeys[Math.floor(Math.random() * expandedKeys.length)];
+            const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(k =>
+                baseKey ? (k === selectedPrefix) : k.startsWith(selectedPrefix)
+            );
+
+            if (matchingKeys.length === 0) {
+                throw new Error(`No ${baseKey ? 'exact' : 'prefix'} matches found for: ${selectedPrefix}`);
+            }
+
+            const selectedKey = matchingKeys[Math.floor(Math.random() * matchingKeys.length)];
+            const replacementValue = currentPromptConfig.text_replacements[selectedKey];
+            const resolvedValue = getReplacementValue(replacementValue);
+
+            replacements.push({
+                key: selectedKey,
+                value: resolvedValue,
+                presetName: presetName,
+                index: Array.isArray(replacementValue) ? replacementValue.indexOf(resolvedValue) : 0,
+                type: baseKey ? 'bracketed_expanded_pick' : 'bracketed_prefix_pick',
+                pattern: `!${baseKey}[${bracketContent}]~`,
+                can_lock: true
+            });
+
+            return resolvedValue;
+        }
+
+        if (suffix === '~+') {
+            // Combine all expanded keys/prefixes and apply ~+ logic (maintain seeding)
+            const combinedPool = [];
+
+            expandedKeys.forEach(expandedKey => {
+                const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(k =>
+                    baseKey ? (k === expandedKey) : k.startsWith(expandedKey)
+                );
+
+                matchingKeys.forEach(key => {
+                    const replacementValue = currentPromptConfig.text_replacements[key];
+                    if (Array.isArray(replacementValue)) {
+                        replacementValue.forEach((item, index) => {
+                            combinedPool.push({
+                                key: key,
+                                index: index,
+                                value: item,
+                                expandedKey: expandedKey
+                            });
+                        });
+                    } else {
+                        combinedPool.push({
+                            key: key,
+                            index: 0,
+                            value: replacementValue,
+                            expandedKey: expandedKey
+                        });
+                    }
+                });
+            });
+
+            if (combinedPool.length === 0) {
+                throw new Error(`No items found for bracketed combined replacement: ${match}`);
+            }
+
+            // Select one item from the combined pool (maintains seeding across all expanded keys)
+            let selectedItem;
+            if (lockedReplacements) {
+                const lockedMatch = combinedPool.find(item =>
+                    lockedReplacements.some(lr => lr.key === item.key && lr.index === item.index)
+                );
+                if (lockedMatch) {
+                    selectedItem = lockedMatch;
+                }
+            }
+
+            if (!selectedItem) {
+                selectedItem = combinedPool[Math.floor(Math.random() * combinedPool.length)];
+            }
+
+            const isLocked = lockedReplacements && lockedReplacements.some(lr => lr.key === selectedItem.key && lr.index === selectedItem.index);
+            replacements.push({
+                key: selectedItem.key,
+                value: selectedItem.value,
+                presetName: presetName,
+                index: selectedItem.index,
+                type: baseKey ? 'bracketed_expanded_combine' : 'bracketed_prefix_combine',
+                pattern: `!${baseKey}[${bracketContent}]~+`,
+                expandedKeys: expandedKeys,
+                locked: isLocked,
+                can_lock: true
+            });
+
+            return selectedItem.value;
+        }
+
+        return match; // Should not reach here
+    });
+
+    // Handle PICK replacements (using ~ and ~+ suffixes)
+    result = result.replace(/!([a-zA-Z0-9_]+)(~\+|~)/g, (match, name, suffix) => {
         const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(key =>
-            key.startsWith(name) && key !== name
+            key.startsWith(name) || key === name
         );
         if (matchingKeys.length === 0) throw new Error(`No text replacements found starting with: ${name}`);
-        return getReplacementValue(currentPromptConfig.text_replacements[matchingKeys[Math.floor(Math.random() * matchingKeys.length)]]);
+
+        if (suffix === '~+') {
+            // Combine all items into a fair pool, then pick one (like ~ but from combined pool)
+            const combinedPool = [];
+            matchingKeys.forEach(key => {
+                const replacementValue = currentPromptConfig.text_replacements[key];
+                if (Array.isArray(replacementValue)) {
+                    replacementValue.forEach((item, index) => {
+                        combinedPool.push({
+                            key: key,
+                            index: index,
+                            value: item
+                        });
+                    });
+                } else {
+                    combinedPool.push({
+                        key: key,
+                        index: 0,
+                        value: replacementValue
+                    });
+                }
+            });
+
+            if (combinedPool.length === 0) throw new Error(`No items found for combined replacement: ${name}`);
+
+            // Select one item from the combined pool (respecting locked preferences)
+            let selectedItem;
+            if (lockedReplacements) {
+                // Find if any item in the pool matches a locked replacement
+                const lockedMatch = combinedPool.find(item =>
+                    lockedReplacements.some(lr => lr.key === item.key && lr.index === item.index)
+                );
+                if (lockedMatch) {
+                    selectedItem = lockedMatch;
+                }
+            }
+
+            // If no locked match, pick random
+            if (!selectedItem) {
+                selectedItem = combinedPool[Math.floor(Math.random() * combinedPool.length)];
+            }
+
+            // Track only the selected item
+            const isLocked = lockedReplacements && lockedReplacements.some(lr => lr.key === selectedItem.key && lr.index === selectedItem.index);
+            replacements.push({
+                key: selectedItem.key,
+                value: selectedItem.value,
+                presetName: presetName,
+                index: selectedItem.index,
+                type: 'combine',
+                pattern: `!${name}~+`, // Store original pattern for display
+                locked: isLocked, // Mirror locked state from input
+                can_lock: true
+            });
+
+            return selectedItem.value;
+        } else {
+            // Regular ~ behavior - pick one value (use locked replacement if available)
+            let selectedKey, selectedValue, replacementIndex = null;
+
+            // Check if we have a locked replacement for this key
+            if (lockedReplacements) {
+                const lockedMatch = lockedReplacements.find(lr => lr.key === name || matchingKeys.includes(lr.key));
+                if (lockedMatch) {
+                    selectedKey = lockedMatch.key;
+                    const replacementValue = currentPromptConfig.text_replacements[selectedKey];
+                    if (replacementValue) {
+                        // Use the specified index if it's an array, otherwise use the single value
+                        if (Array.isArray(replacementValue)) {
+                            selectedValue = replacementValue[lockedMatch.index] || replacementValue[0];
+                            replacementIndex = lockedMatch.index;
+                        } else {
+                            selectedValue = replacementValue;
+                            replacementIndex = 0;
+                        }
+                        console.log(`🔒 Using locked replacement: ${selectedKey}[${replacementIndex}] = ${selectedValue}`);
+                    }
+                }
+            }
+
+            // If no locked replacement found, use random selection
+            if (!selectedKey) {
+                const selectedKeyIndex = Math.floor(Math.random() * matchingKeys.length);
+                selectedKey = matchingKeys[selectedKeyIndex];
+                const replacementValue = currentPromptConfig.text_replacements[selectedKey];
+                selectedValue = getReplacementValue(replacementValue);
+
+                // Track the replacement details
+                if (Array.isArray(replacementValue)) {
+                    // Find which index was selected
+                    const originalValue = getReplacementValue(replacementValue);
+                    replacementIndex = replacementValue.indexOf(originalValue);
+                    if (replacementIndex === -1) replacementIndex = 0; // fallback
+                }
+            }
+
+            replacements.push({
+                key: selectedKey,
+                value: selectedValue,
+                presetName: presetName,
+                index: replacementIndex,
+                type: 'pick',
+                pattern: `!${name}~`, // Store original pattern for display
+                locked: !!selectedKey && lockedReplacements && lockedReplacements.some(lr => lr.key === selectedKey && lr.index === replacementIndex),
+                can_lock: true
+            });
+
+            return selectedValue;
+        }
     });
 
     // Handle regular replacements with word boundary approach
@@ -132,24 +565,69 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null)
 
         // Check for replacements in priority order: Period+Model > Period > Model > Base
         let replacementValue = null;
+        let actualKey = baseKey;
         if (periodKey && model && currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`]) {
             replacementValue = currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`];
+            actualKey = `${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`;
         }
         // Check for periodKey-specific replacement
         else if (periodKey && currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}`]) {
             replacementValue = currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}`];
+            actualKey = `${baseKey}_${periodKey.toUpperCase()}`;
         }
         // Then check for model-specific replacement
         else if (model && currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`]) {
             replacementValue = currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`];
+            actualKey = `${baseKey}_${model.toUpperCase()}`;
         }
         // Finally fall back to base replacement
         else if (currentPromptConfig.text_replacements[baseKey]) {
             replacementValue = currentPromptConfig.text_replacements[baseKey];
+            actualKey = baseKey;
         }
 
         if (replacementValue !== null) {
-            result = result.replace(pattern, getReplacementValue(replacementValue));
+            let selectedValue;
+            let replacementIndex = null;
+            let isLocked = false;
+            
+            // Check if this replacement is locked
+            if (lockedReplacements && lockedReplacements.length > 0) {
+                const lockedReplacement = lockedReplacements.find(lr => lr.key === actualKey);
+                if (lockedReplacement && Array.isArray(replacementValue) && lockedReplacement.index !== null) {
+                    // Use the locked index to select the value
+                    replacementIndex = lockedReplacement.index;
+                    selectedValue = replacementValue[replacementIndex];
+                    isLocked = true;
+                } else if (lockedReplacement && !Array.isArray(replacementValue)) {
+                    // For non-array values, use the locked value directly
+                    selectedValue = lockedReplacement.value;
+                    isLocked = true;
+                }
+            }
+            
+            // If not locked or no locked replacement found, use random selection
+            if (!isLocked) {
+                selectedValue = getReplacementValue(replacementValue);
+                if (Array.isArray(replacementValue)) {
+                    // Find which index was selected
+                    replacementIndex = replacementValue.indexOf(selectedValue);
+                    if (replacementIndex === -1) replacementIndex = 0; // fallback
+                }
+            }
+
+        replacements.push({
+            key: actualKey,
+            value: selectedValue,
+            presetName: presetName,
+            index: replacementIndex,
+            type: 'regular',
+            pattern: `!${baseKey}`,
+            can_lock: replacementIndex !== null, // Regular replacements can be locked if they have an index (from arrays)
+            locked: isLocked
+        });
+
+            result = result.replace(pattern, selectedValue);
         }
     }
 
@@ -158,68 +636,170 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null)
         throw new Error(`Invalid text replacement: ${remainingReplacements.join(', ')}`);
     }
 
-    return result;
+    return { text: result, replacements: replacements };
 };
 
-const getUsedReplacements = (text, model = null, periodKey = null) => {
+// Get all possible options for a text replacement pattern
+const getTextReplacementOptions = (pattern, presetName, model = null, periodKey = null) => {
     const currentPromptConfig = loadPromptConfig();
-    if (!text || !currentPromptConfig.text_replacements) return [];
+    if (!currentPromptConfig.text_replacements) return [];
 
-    const usedKeys = [];
-    if (text.includes('!PRESET_NAME')) usedKeys.push('PRESET_NAME');
+    const optionsMap = new Map(); // Use Map for deduplication with composite key
 
-    // PICK replacements (using ~ suffix)
-    let pickMatch;
-    const pickPattern = /!([a-zA-Z0-9_]+)~/g;
-    while ((pickMatch = pickPattern.exec(text)) !== null) {
+    // Handle bracketed patterns first (most specific)
+    const bracketMatch = pattern.match(/^!([a-zA-Z0-9_]*)\[([^\]]+)\](_*)(~\+|~)?(#)?/);
+    if (bracketMatch) {
+        const baseKey = bracketMatch[1];
+        const bracketContent = bracketMatch[2];
+        const underscores = bracketMatch[3];
+        const suffix = bracketMatch[4];
+        const hasHash = bracketMatch[5];
+
+        const subKeys = bracketContent.trim().split(/\s+/).filter(s => s.length > 0);
+
+        const expandedKeys = subKeys.map(subKey => {
+            const cleanSubKey = subKey.replace(/^_+|_+$/g, '');
+            return baseKey ? `${baseKey}_${cleanSubKey}` : cleanSubKey;
+        });
+
+        if (suffix === '~+') {
+            // For bracketed ~+, combine all values from all expanded keys into a single pool
+            expandedKeys.forEach(expandedKey => {
+                const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(k =>
+                    baseKey ? (k === expandedKey) : k.startsWith(expandedKey)
+                );
+
+                matchingKeys.forEach(key => {
+                    const replacementValue = currentPromptConfig.text_replacements[key];
+                    if (Array.isArray(replacementValue)) {
+                        replacementValue.forEach((value, index) => {
+                            const compositeKey = `${value}|${key}|${index}`;
+                            optionsMap.set(compositeKey, {value, key, index});
+                        });
+                    } else {
+                        const compositeKey = `${replacementValue}|${key}|0`;
+                        optionsMap.set(compositeKey, {value: replacementValue, key, index: 0});
+                    }
+                });
+            });
+        } else {
+            // For other bracketed patterns, collect values from expanded keys
+            expandedKeys.forEach(expandedKey => {
+                const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(k =>
+                    baseKey ? (k === expandedKey) : k.startsWith(expandedKey)
+                );
+
+                matchingKeys.forEach(key => {
+                    const replacementValue = currentPromptConfig.text_replacements[key];
+                    if (Array.isArray(replacementValue)) {
+                        replacementValue.forEach((value, index) => {
+                            const compositeKey = `${value}|${key}|${index}`;
+                            optionsMap.set(compositeKey, {value, key, index});
+                        });
+                    } else {
+                        const compositeKey = `${replacementValue}|${key}|0`;
+                        optionsMap.set(compositeKey, {value: replacementValue, key, index: 0});
+                    }
+                });
+            });
+        }
+        return Array.from(optionsMap.values());
+    }
+
+    // Handle ~ and ~+ patterns
+    if (pattern.endsWith('~+')) {
+        // Extract the base key (remove ! and ~+)
+        const baseKey = pattern.slice(1, -2); // Remove ! and ~+
+
+        // For ~+, combine all values from all matching keys into a single pool
+        // ~+ does NOT use priority-based key resolution, it directly matches prefixes
         const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(key =>
-            key.startsWith(pickMatch[1]) && key !== pickMatch[1]
+            key.startsWith(baseKey) || key === baseKey
         );
-        if (matchingKeys.length > 0) usedKeys.push(`${pickMatch[1]}~ (${matchingKeys.length} options)`);
+
+        matchingKeys.forEach(key => {
+            const replacementValue = currentPromptConfig.text_replacements[key];
+            if (Array.isArray(replacementValue)) {
+                replacementValue.forEach((value, index) => {
+                    const compositeKey = `${value}|${key}|${index}`;
+                    optionsMap.set(compositeKey, {value, key, index});
+                });
+            } else {
+                const compositeKey = `${replacementValue}|${key}|0`;
+                optionsMap.set(compositeKey, {value: replacementValue, key, index: 0});
+            }
+        });
+        return Array.from(optionsMap.values());
+    } else if (pattern.endsWith('~')) {
+        // Extract the base key (remove ! and ~)
+        const baseKey = pattern.slice(1, -1); // Remove ! and ~
+
+        // For ~, collect all values from all matching keys
+        // ~ does NOT use priority-based key resolution, it directly matches prefixes
+        const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(key =>
+            key.startsWith(baseKey) || key === baseKey
+        );
+
+        matchingKeys.forEach(key => {
+            const replacementValue = currentPromptConfig.text_replacements[key];
+            if (Array.isArray(replacementValue)) {
+                replacementValue.forEach((value, index) => {
+                    const compositeKey = `${value}|${key}|${index}`;
+                    optionsMap.set(compositeKey, {value, key, index});
+                });
+            } else {
+                const compositeKey = `${replacementValue}|${key}|0`;
+                optionsMap.set(compositeKey, {value: replacementValue, key, index: 0});
+            }
+        });
+        return Array.from(optionsMap.values());
     }
 
-    // Regular replacements
-    const foundKeys = new Set();
-    let match;
-    const keyPattern = /!([a-zA-Z0-9_]+)(?=[,\s|\[\]{}:]|$)/g;
-    while ((match = keyPattern.exec(text)) !== null) {
-        foundKeys.add(match[1]);
+    // Handle regular patterns and incrementing patterns
+    const keyMatch = pattern.match(/^!([a-zA-Z0-9_]+)(#)?/);
+    if (!keyMatch) return [];
+
+    const baseKey = keyMatch[1];
+    const isIncrementing = keyMatch[2] === '#';
+
+    // Check priority order: Period+Model > Period > Model > Base
+    let replacementValue = null;
+    let actualKey = baseKey;
+    if (periodKey && model && currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`]) {
+        replacementValue = currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`];
+        actualKey = `${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`;
+    }
+    // Check for periodKey-specific replacement
+    else if (periodKey && currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}`]) {
+        replacementValue = currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}`];
+        actualKey = `${baseKey}_${periodKey.toUpperCase()}`;
+    }
+    // Then check for model-specific replacement
+    else if (model && currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`]) {
+        replacementValue = currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`];
+        actualKey = `${baseKey}_${model.toUpperCase()}`;
+    }
+    // Finally fall back to base replacement
+    else if (currentPromptConfig.text_replacements[baseKey]) {
+        replacementValue = currentPromptConfig.text_replacements[baseKey];
+        actualKey = baseKey;
     }
 
-    for (const baseKey of foundKeys) {
-        if (baseKey === 'PRESET_NAME') continue;
-
-        // Check for replacements in priority order: Period+Model > Period > Model > Base
-        let value = null;
-        let source = '';
-        if (periodKey && model && currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`]) {
-            value = currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`];
-            source = ` (${periodKey.toLowerCase()})`;
-        }
-        // Check for periodKey-specific replacement
-        else if (periodKey && currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}`]) {
-            value = currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}`];
-            source = ` (${periodKey.toLowerCase()})`;
-        }
-        // Then check for model-specific replacement
-        else if (model && currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`]) {
-            value = currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`];
-            source = ` (${model.toUpperCase()})`;
-        }
-        // Finally fall back to base replacement
-        else if (currentPromptConfig.text_replacements[baseKey]) {
-            value = currentPromptConfig.text_replacements[baseKey];
-            source = '';
-        }
-
-        if (value !== null) {
-            const isRandom = Array.isArray(value);
-            usedKeys.push(`${baseKey}${source}${isRandom ? ' (random)' : ''}`);
+    if (replacementValue) {
+        if (Array.isArray(replacementValue)) {
+            replacementValue.forEach((value, index) => {
+                const compositeKey = `${value}|${actualKey}|${index}`;
+                optionsMap.set(compositeKey, {value, key: actualKey, index});
+            });
+        } else {
+            const compositeKey = `${replacementValue}|${actualKey}|0`;
+            optionsMap.set(compositeKey, {value: replacementValue, key: actualKey, index: 0});
         }
     }
 
-    return usedKeys;
+    return Array.from(optionsMap.values());
 };
+
 // Search functionality module
 class SearchService {
     constructor(context = {}) {
@@ -564,12 +1144,17 @@ class SearchService {
             let searchQuery = query;
             let hasPickSuffix = false;
 
-            if (query.startsWith('!') && query.includes('~')) {
-                // Extract the name between ! and ~
-                const match = query.match(/^!([^~]+)~/);
-                if (match) {
-                    searchQuery = match[1]; // Remove ! and ~ for searching
-                    hasPickSuffix = true;
+            if (query.startsWith('!')) {
+                if (query.includes('~') || query.includes('~+')) {
+                    // Extract the name between ! and ~ or ~+
+                    const match = query.match(/^!([^~+]+)[~+]/);
+                    if (match) {
+                        searchQuery = match[1]; // Remove ! and suffix for searching
+                        hasPickSuffix = true;
+                    }
+                } else {
+                    // Just remove the ! prefix for searching
+                    searchQuery = query.substring(1);
                 }
             }
 
@@ -1730,16 +2315,27 @@ class SearchService {
             }
             
             const results = this.searchTextReplacements(query, hasPickSuffix);
-            
-            // Send completion status for textReplacements service
+
+            // Send results immediately for real-time display (like other services)
             if (ws) {
+                const message = {
+                    type: 'search_results_update',
+                    service: 'textReplacements',
+                    results: results,
+                    isComplete: true,
+                    timestamp: new Date().toISOString(),
+                    requestId: requestId
+                };
+                ws.send(JSON.stringify(message));
+
+                // Send completion status for textReplacements service
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
                     services: [{ name: 'textReplacements', status: 'completed' }],
                     requestId: requestId
                 }));
             }
-            
+
             return results;
         } catch (error) {
             console.error('Text replacement search error:', error);
@@ -1916,7 +2512,7 @@ module.exports = {
     savePromptConfig,
     getReplacementValue,
     applyTextReplacements,
-    getUsedReplacements,
+    getTextReplacementOptions,
     generateUUID,
     SearchService,
     // Checkpoint management

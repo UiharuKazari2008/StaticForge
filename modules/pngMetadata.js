@@ -319,12 +319,14 @@ function extractNovelAIMetadata(filePath) {
                     'characterNames',
                     'chara_reference_source',
                     'chara_reference_with_style',
+                    'chara_reference_fidelity',
                     'chara_reference_image',
                     'director_session_id',
                     'director_message_id',
                     'software',
                     'history',
-                    'dynamic_generation'
+                    'dynamic_generation',
+                    'text_replacements_seed'
                 ];
                 
                 const filteredForgeData = {};
@@ -651,9 +653,24 @@ async function extractRelevantFields(meta, filename) {
         result.director_message_id = forgeData.director_message_id;
     }
 
+    // Add image source seed for preset-based img2img
+    if (forgeData.image_source_seed !== undefined) {
+        result.image_source_seed = forgeData.image_source_seed;
+    }
+
     // Add dynamic generation data
     if (forgeData.dynamic_generation) {
         result.dynamic_generation = forgeData.dynamic_generation;
+    }
+
+    // Add text replacement seed data
+    if (forgeData.text_replacements_seed) {
+        result.text_replacements_seed = forgeData.text_replacements_seed;
+    }
+
+    // Add character reference fidelity data
+    if (forgeData.chara_reference_fidelity !== undefined) {
+        result.chara_reference_fidelity = forgeData.chara_reference_fidelity;
     }
 
     return result;

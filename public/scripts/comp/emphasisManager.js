@@ -905,18 +905,49 @@ function applyEmphasisEditing() {
     }
 }
 
+// Pre-compiled regex patterns for better performance
+const EMPHASIS_PATTERNS = {
+    weightEmphasis: /(-?\d+\.?\d*)::([^:]+)::/g,
+    braceEmphasis: /(\{+)([^}]+)(\}+)/g,
+    bracketEmphasis: /(\[+)([^\]]+)(\]+)/g,
+    bracketedIncrementing: /(!)\[([^\]]+)\](_*)(~\+|~)?(#)/g,
+    bracketedReplacement: /(!)\[([^\]]+)\](_*)(~\+|~)?/g,
+    disableSyntax: /(!)\/([^\/]+)\//g,
+    incrementingSyntax: /(!)([a-zA-Z0-9_]+)#/g,
+    pickReplacement: /(!)([a-zA-Z0-9_]+)(~\+|~)/g,
+    regularReplacement: /(!)([a-zA-Z0-9_]+)\b/g
+};
+
+// Store previous textarea values for NSFW tag detection
+const previousTextareaValues = new WeakMap();
+
 // Emphasis highlighting functions
+// Throttled version of updateEmphasisHighlighting to prevent excessive calls
+let emphasisHighlightingTimeout = null;
+function throttledUpdateEmphasisHighlighting(textarea) {
+    // Clear existing timeout
+    if (emphasisHighlightingTimeout) {
+        clearTimeout(emphasisHighlightingTimeout);
+    }
+    
+    // Throttle to prevent excessive calls during rapid typing
+    emphasisHighlightingTimeout = setTimeout(() => {
+        updateEmphasisHighlighting(textarea);
+        emphasisHighlightingTimeout = null;
+    }, 100); // 100ms throttle - 10fps for emphasis highlighting
+}
+
 function startEmphasisHighlighting(textarea) {
     if (emphasisHighlightingActive && emphasisHighlightingTarget === textarea) return;
 
     emphasisHighlightingActive = true;
     emphasisHighlightingTarget = textarea;
 
-    // Add event listeners for real-time highlighting
-    textarea.addEventListener('input', () => {
+    // Add event listeners for real-time highlighting using safe event listeners
+    addSafeEventListener(textarea, 'input', () => {
         autoResizeTextarea(textarea);
-        updateEmphasisHighlighting(textarea);
-    });
+        throttledUpdateEmphasisHighlighting(textarea);
+    }, 'emphasisHighlighting');
 
     // Initial highlighting
     autoResizeTextarea(textarea);
@@ -924,14 +955,68 @@ function startEmphasisHighlighting(textarea) {
 }
 
 function stopEmphasisHighlighting() {
+    if (emphasisHighlightingTarget) {
+        // Clean up the emphasis highlighting event listener
+        removeSafeEventListener(emphasisHighlightingTarget, 'input', 'emphasisHighlighting');
+    }
+    
     emphasisHighlightingActive = false;
     emphasisHighlightingTarget = null;
+}
+
+function handleNsfwTagDetection(textarea, currentValue) {
+    if (!textarea || !currentValue) return;
+
+    const previousValue = previousTextareaValues.get(textarea) || '';
+    const currentValueLower = currentValue.toLowerCase();
+    const previousValueLower = previousValue.toLowerCase();
+
+    // Check if "nsfw" was added (appears in current but not in previous)
+    const nsfwRegex = /\bnsfw\b/gi;
+    const hasNsfwNow = nsfwRegex.test(currentValueLower);
+    const hadNsfwBefore = nsfwRegex.test(previousValueLower);
+
+    if (hasNsfwNow && !hadNsfwBefore) {
+        // NSFW tag was just added, remove it and set appropriate mode
+
+        // Remove all instances of "nsfw" (case insensitive)
+        let cleanedValue = currentValue.replace(nsfwRegex, '').trim();
+
+        // Clean up extra spaces and commas
+        cleanedValue = cleanedValue.replace(/\s*,\s*,/g, ',').replace(/^,\s*/, '').replace(/,\s*$/, '');
+
+        // Update the textarea value
+        textarea.value = cleanedValue;
+
+        // Determine NSFW mode based on textarea type
+        let nsfwMode = 1; // Default for prompts
+
+        // Check if this is a UC textarea
+        const isUcTextarea = textarea.id === 'manualUc' ||
+                           textarea.classList.contains('uc-textarea') ||
+                           textarea.closest('.character-uc-container') ||
+                           textarea.getAttribute('data-type') === 'uc' ||
+                           (textarea.id && textarea.id.endsWith('_uc')); // Character UC textareas
+
+        if (isUcTextarea) {
+            nsfwMode = -1; // Remove mode for UC textareas
+        }
+
+        // Set the NSFW value
+        selectNsfwValue(nsfwMode);
+    }
+
+    // Store current value for next comparison
+    previousTextareaValues.set(textarea, currentValue);
 }
 
 function updateEmphasisHighlighting(textarea) {
     if (!textarea) return;
 
     const value = textarea.value;
+
+    // NSFW tag detection and auto-setting
+    handleNsfwTagDetection(textarea, value);
     const highlightedValue = highlightEmphasisInText(value);
 
     // Create or update the highlighting overlay
@@ -1081,8 +1166,22 @@ function highlightEmphasisInText(text) {
         }).join('|');
     }
 
+    // Step 1: Protect disable blocks from further processing
+    // This prevents any inner highlighting from being applied to disabled content
+    const disableBlocks = [];
+    highlightedText = highlightedText.replace(EMPHASIS_PATTERNS.disableSyntax, (match, exclamation, content) => {
+        const blockId = `__DISABLE_BLOCK_${disableBlocks.length}__`;
+        disableBlocks.push({
+            id: blockId,
+            original: match,
+            content: content
+        });
+        return blockId;
+    });
+
+    // Step 2: Process all other highlighting patterns (disable blocks are now protected)
     // Highlight weight::text:: format (ensure it's exactly two colons)
-    highlightedText = highlightedText.replace(/(-?\d+\.?\d*)::([^:]+)::/g, (match, weight, content) => {
+    highlightedText = highlightedText.replace(EMPHASIS_PATTERNS.weightEmphasis, (match, weight, content) => {
         const weightNum = parseFloat(weight);
         const colors = getEmphasisColors(weightNum);
 
@@ -1093,7 +1192,7 @@ function highlightEmphasisInText(text) {
     });
 
     // Highlight brace emphasis {text} - convert to weight equivalent
-    highlightedText = highlightedText.replace(/(\{+)([^}]+)(\}+)/g, (match, openBraces, content, closeBraces) => {
+    highlightedText = highlightedText.replace(EMPHASIS_PATTERNS.braceEmphasis, (match, openBraces, content, closeBraces) => {
         const braceLevel = Math.min(openBraces.length, closeBraces.length);
         const weight = 1.0 + (braceLevel * 0.1); // Convert brace level to weight (+0.1 per level)
         const colors = getEmphasisColors(weight);
@@ -1105,7 +1204,7 @@ function highlightEmphasisInText(text) {
     });
 
     // Highlight bracket emphasis [text] - convert to weight equivalent
-    highlightedText = highlightedText.replace(/(\[+)([^\]]+)(\]+)/g, (match, openBrackets, content, closeBrackets) => {
+    highlightedText = highlightedText.replace(EMPHASIS_PATTERNS.bracketEmphasis, (match, openBrackets, content, closeBrackets) => {
         const bracketLevel = Math.min(openBrackets.length, closeBrackets.length);
         const weight = 1.0 - (bracketLevel * 0.1); // Convert bracket level to weight (-0.1 per level)
         const colors = getEmphasisColors(weight);
@@ -1118,18 +1217,76 @@ function highlightEmphasisInText(text) {
 
     // Highlight text replacements <text> - no emphasis levels, just visual highlighting
     // Match patterns that look like valid text replacement keys (letters, numbers, underscores) - case insensitive
-    // Handle PICK replacements with ~ suffix
-    highlightedText = highlightedText.replace(/(!)([a-zA-Z0-9_]+)(~)/g, (match, exclamation, content, tilde) => {
+    // Handle bracketed incrementing syntax ![...]#
+    highlightedText = highlightedText.replace(EMPHASIS_PATTERNS.bracketedIncrementing, (match, exclamation, content, underscores, suffix, hash) => {
+        const backgroundColor = '#e91e63'; // Bracketed incrementing color (pink)
+
+        // Escape special characters for HTML display
+        const escapedMatch = match.replace(/!/g, '&#33;')
+                                 .replace(/\[/g, '&#91;')
+                                 .replace(/\]/g, '&#93;')
+                                 .replace(/~/g, '&#126;')
+                                 .replace(/\+/g, '&#43;')
+                                 .replace(/_/g, '&#95;')
+                                 .replace(/#/g, '&#35;');
+
+        return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+    });
+
+    // Handle bracketed syntax ![...] with optional suffixes
+    highlightedText = highlightedText.replace(EMPHASIS_PATTERNS.bracketedReplacement, (match, exclamation, content, underscores, suffix) => {
+        const backgroundColor = '#9c27b0'; // Bracketed replacement color (purple)
+
+        // Escape special characters for HTML display
+        const escapedMatch = match.replace(/!/g, '&#33;')
+                                 .replace(/\[/g, '&#91;')
+                                 .replace(/\]/g, '&#93;')
+                                 .replace(/~/g, '&#126;')
+                                 .replace(/\+/g, '&#43;')
+                                 .replace(/_/g, '&#95;');
+
+        return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+    });
+
+
+    // Handle incrementing syntax !KEY# (must come before bracketed)
+    highlightedText = highlightedText.replace(EMPHASIS_PATTERNS.incrementingSyntax, (match, exclamation, content) => {
+        const backgroundColor = '#ff9800'; // Incrementing syntax color (orange)
+
+        // Escape the ! character for HTML display
+        const escapedMatch = match.replace(/!/g, '&#33;');
+
+        return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+    });
+
+    // Handle bracketed incrementing syntax ![...]#
+    highlightedText = highlightedText.replace(EMPHASIS_PATTERNS.bracketedIncrementing, (match, exclamation, content, underscores, suffix, hash) => {
+        const backgroundColor = '#e91e63'; // Bracketed incrementing color (pink)
+
+        // Escape special characters for HTML display
+        const escapedMatch = match.replace(/!/g, '&#33;')
+                                 .replace(/\[/g, '&#91;')
+                                 .replace(/\]/g, '&#93;')
+                                 .replace(/~/g, '&#126;')
+                                 .replace(/\+/g, '&#43;')
+                                 .replace(/_/g, '&#95;')
+                                 .replace(/#/g, '&#35;');
+
+        return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+    });
+
+    // Handle PICK replacements with ~ and ~+ suffixes
+    highlightedText = highlightedText.replace(EMPHASIS_PATTERNS.pickReplacement, (match, exclamation, content, suffix) => {
         const backgroundColor = '#628a33'; // PICK replacement color
 
-        // Escape the ! and ~ characters for HTML display
-        const escapedMatch = match.replace(/!/g, '&#33;').replace(/~/g, '&#126;');
+        // Escape the ! and suffix characters for HTML display
+        const escapedMatch = match.replace(/!/g, '&#33;').replace(/~/g, '&#126;').replace(/\+/g, '&#43;');
 
         return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
     });
     
     // Handle regular replacements with word boundary matching
-    highlightedText = highlightedText.replace(/(!)([a-zA-Z0-9_]+)\b/g, (match, exclamation, content) => {
+    highlightedText = highlightedText.replace(EMPHASIS_PATTERNS.regularReplacement, (match, exclamation, content) => {
         const backgroundColor = '#8bc34a8a'; // Regular replacement color
 
         // Escape the ! character for HTML display
@@ -1164,6 +1321,19 @@ function highlightEmphasisInText(text) {
             
             return `<span class="emphasis-highlight" style="background: #ff49dd85; border-color: #ff49ddc9;">${tag}</span>`;
         });
+    });
+
+    // Step 3: Restore disable blocks with proper highlighting
+    disableBlocks.forEach(block => {
+        const backgroundColor = '#f44336'; // Disable syntax color (red)
+        
+        // Escape special characters for HTML display
+        const escapedMatch = block.original.replace(/!/g, '&#33;')
+                                         .replace(/\//g, '&#47;');
+
+        highlightedText = highlightedText.replace(block.id, 
+            `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`
+        );
     });
 
     return highlightedText;
@@ -1929,3 +2099,116 @@ Object.defineProperty(window, 'isCursorInsideEmphasisBlock', {
 Object.defineProperty(window, 'splitEmphasisBlock', {
     value: splitEmphasisBlock
 });
+
+// Disable syntax functions
+function isCursorInsideDisableBlock(target) {
+    if (!target) return null;
+    
+    const value = target.value;
+    const cursorPosition = target.selectionStart;
+    
+    // Look for disable blocks in the format: !/text/
+    const disablePattern = /!\/[^\/]+\//g;
+    let match;
+    
+    while ((match = disablePattern.exec(value)) !== null) {
+        const blockStart = match.index;
+        const blockEnd = match.index + match[0].length;
+        
+        // Check if cursor is inside this disable block
+        if (cursorPosition >= blockStart && cursorPosition <= blockEnd) {
+            return {
+                start: blockStart,
+                end: blockEnd,
+                content: match[0].slice(2, -1), // Remove !/ and /
+                fullMatch: match[0]
+            };
+        }
+    }
+    
+    return null;
+}
+
+function removeInnerDisableBlocks(text) {
+    // Remove all inner !/ / blocks from the text
+    return text.replace(/!\/[^\/]+\//g, (match) => {
+        // Extract content between !/ and /
+        return match.slice(2, -1);
+    });
+}
+
+function toggleDisableSyntax(target) {
+    if (!target) return;
+    
+    const value = target.value;
+    const selectionStart = target.selectionStart;
+    const selectionEnd = target.selectionEnd;
+    const hasSelection = selectionStart !== selectionEnd;
+    
+    // Check if cursor is inside a disable block
+    const disableInfo = isCursorInsideDisableBlock(target);
+    
+    if (disableInfo) {
+        // Remove the disable block
+        const beforeText = value.substring(0, disableInfo.start);
+        const afterText = value.substring(disableInfo.end);
+        const newValue = beforeText + disableInfo.content + afterText;
+        
+        target.value = newValue;
+        
+        // Set cursor position after the content
+        const newCursorPosition = disableInfo.start + disableInfo.content.length;
+        target.setSelectionRange(newCursorPosition, newCursorPosition);
+        
+        // Trigger input event to update any dependent UI
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+        
+        // Update emphasis highlighting
+        if (window.autoResizeTextarea) {
+            window.autoResizeTextarea(target);
+        }
+        if (window.updateEmphasisHighlighting) {
+            window.updateEmphasisHighlighting(target);
+        }
+        
+        return;
+    }
+    
+    // If there's a selection, wrap it with disable syntax
+    if (hasSelection) {
+        const selectedText = value.substring(selectionStart, selectionEnd).trim();
+        if (!selectedText) return;
+        
+        // Remove any inner disable blocks from the selected text
+        const cleanedText = removeInnerDisableBlocks(selectedText);
+        
+        // Wrap with disable syntax
+        const disabledText = `!/${cleanedText}/`;
+        
+        // Replace the selected text
+        const beforeText = value.substring(0, selectionStart);
+        const afterText = value.substring(selectionEnd);
+        const newValue = beforeText + disabledText + afterText;
+        
+        target.value = newValue;
+        
+        // Set cursor position after the disabled text
+        const newCursorPosition = selectionStart + disabledText.length;
+        target.setSelectionRange(newCursorPosition, newCursorPosition);
+        
+        // Trigger input event to update any dependent UI
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+        
+        // Update emphasis highlighting
+        if (window.autoResizeTextarea) {
+            window.autoResizeTextarea(target);
+        }
+        if (window.updateEmphasisHighlighting) {
+            window.updateEmphasisHighlighting(target);
+        }
+        
+        return;
+    }
+    
+    // If no selection and cursor is not inside a disable block, do nothing
+}

@@ -265,7 +265,7 @@ function hideCacheBrowser() {
     }
 
     // Clear active panel to show manual preview
-    if (!window.innerWidth <= 1400) {
+    if (!window.innerWidth <= 1300) {
         previewSection.removeAttribute('data-active-panel');
     }
     
@@ -3451,6 +3451,9 @@ function transformRawMetadataForEditor(metadata) {
         if (forgeData.chara_reference_with_style !== undefined) {
             transformed.chara_reference_with_style = forgeData.chara_reference_with_style;
         }
+        if (forgeData.chara_reference_fidelity !== undefined) {
+            transformed.chara_reference_fidelity = forgeData.chara_reference_fidelity;
+        }
         if (forgeData.img2img_strength !== undefined) {
             transformed.strength = forgeData.img2img_strength;
         }
@@ -3717,6 +3720,9 @@ function transformMetadataForEditor(metadata) {
             transformed.layer1_seed = transformed.forge_data.layer1_seed;
             transformed.layer2_seed = transformed.seed;
         }
+        if (transformed.forge_data.chara_reference_fidelity !== undefined) {
+            transformed.chara_reference_fidelity = transformed.forge_data.chara_reference_fidelity;
+        }
     }
     
     // Ensure resolution is properly set
@@ -3873,10 +3879,15 @@ async function importUnifiedBlueprint(file) {
         if (!uploadResponse.success) {
             throw new Error(uploadResponse.message || 'Upload failed');
         }
-        
-        removeGlassToast(toastId);
-        showGlassToast('success', 'Image Imported', 'Successfully imported image to workspace', false, true, '<i class="nai-check"></i>');
-                
+
+        updateGlassToastComplete(toastId, {
+            type: 'success',
+            title: 'Image Imported',
+            message: 'Successfully imported image to workspace',
+            customIcon: '<i class="nai-check"></i>',
+            showProgress: false
+        });
+
         // Refresh gallery to show the new image
         await loadGallery(true);
 
@@ -3884,9 +3895,14 @@ async function importUnifiedBlueprint(file) {
         unifiedUploadModalManager.hide();
     } catch (error) {
         console.error('Error importing blueprint:', error);
-        removeGlassToast(toastId);
+        updateGlassToastComplete(toastId, {
+            type: 'error',
+            title: 'Import Failed',
+            message: 'Blueprint import failed: ' + (error.message || 'Unknown error'),
+            customIcon: '<i class="nai-cross"></i>',
+            showProgress: false
+        });
         hideGalleryMoveRightPanelCover();
-        showGlassToast('error', null, 'Blueprint import failed: ' + (error.message || 'Unknown error'));
     }
 }
 
@@ -4243,9 +4259,14 @@ async function handleJsonFileImport(files) {
         
         unifiedUploadModalManager.hide();
     } catch (error) {
-        removeGlassToast(toastId);
+        updateGlassToastComplete(toastId, {
+            type: 'error',
+            title: 'Import Failed',
+            message: 'Import failed: ' + (error.message || 'Unknown error'),
+            customIcon: '<i class="nai-cross"></i>',
+            showProgress: false
+        });
         hideGalleryMoveRightPanelCover();
-        showGlassToast('error', null, 'Import failed: ' + (error.message || 'Unknown error'));
     }
 }
 
@@ -4495,9 +4516,14 @@ async function importUnifiedVibeFiles() {
 
     } catch (error) {
         console.error('Error importing vibe files:', error);
-        removeGlassToast(toastId);
+        updateGlassToastComplete(toastId, {
+            type: 'error',
+            title: 'Import Failed',
+            message: 'Import failed: ' + (error.message || 'Unknown error'),
+            customIcon: '<i class="nai-cross"></i>',
+            showProgress: false
+        });
         hideGalleryMoveRightPanelCover();
-        showGlassToast('error', null, 'Import failed: ' + (error.message || 'Unknown error'));
         throw error;
     }
 }

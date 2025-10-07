@@ -3,6 +3,7 @@
 
 // Load secure configuration
 let secureConfig = require('../secure.config.json');
+const config = require('../config.json');
 
 const https = require('https');
 const { z } = require('zod');
@@ -11,24 +12,166 @@ const { determineTimePeriod, getSunriseSunset } = require('./dynamicGenerationHa
 
 const { callDirectorAIWithStructuredOutput } = require('./aiServices/grokService');
 
-// Enhanced Weather System - Open-Meteo API (free, no API key required)
-// Weather data cache
-const weatherCache = new Map();
-const locationCache = new Map();
-const WEATHER_CACHE_DURATION = 3 * 60 * 1000; // 15 minutes in milliseconds
-const LOCATION_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+// Timezone lookup for offline timezone determination by coordinates
+const tzLookup = require('tz-lookup');
 
-// Open-Meteo API Configuration (free, no API key required)
-const OPEN_METEO_BASE = 'https://api.open-meteo.com/v1';
+// Reverse geocoding for location metadata
+const geo2city = require('geo2city');
+
+// Weather provider - Open-Meteo API (free, no API key required)
+// Weather data cache with size limits and LRU eviction
+class LRUCache {
+    constructor(maxSize = 1000) {
+        this.maxSize = maxSize;
+        this.cache = new Map();
+        this.accessOrder = new Map(); // For LRU tracking
+        this.accessCounter = 0;
+    }
+
+    get(key) {
+        if (this.cache.has(key)) {
+            // Update access time for LRU
+            this.accessOrder.set(key, ++this.accessCounter);
+            return this.cache.get(key);
+        }
+        return undefined;
+    }
+
+    set(key, value) {
+        // Update access time
+        this.accessOrder.set(key, ++this.accessCounter);
+
+        // If key exists, just update value
+        if (this.cache.has(key)) {
+            this.cache.set(key, value);
+            return;
+        }
+
+        // If at capacity after adding this item, remove least recently used item
+        if (this.cache.size >= this.maxSize) {
+            let oldestKey = null;
+            let oldestAccess = Infinity;
+
+            // Find the key with the smallest (oldest) access time
+            for (const [k, accessTime] of this.accessOrder) {
+                if (accessTime < oldestAccess) {
+                    oldestAccess = accessTime;
+                    oldestKey = k;
+                }
+            }
+
+            if (oldestKey !== null) {
+                this.cache.delete(oldestKey);
+                this.accessOrder.delete(oldestKey);
+                console.log(`🗑️ Cache eviction: removed ${oldestKey} due to LRU (access time: ${oldestAccess})`);
+            }
+        }
+
+        this.cache.set(key, value);
+    }
+
+    clear() {
+        this.cache.clear();
+        this.accessOrder.clear();
+        this.accessCounter = 0;
+    }
+
+    size() {
+        return this.cache.size;
+    }
+
+    // Periodic cleanup of expired entries
+    cleanupExpired(maxAge) {
+        const now = Date.now();
+        const keysToDelete = [];
+
+        for (const [key, value] of this.cache) {
+            if (value.timestamp && (now - value.timestamp) > maxAge) {
+                keysToDelete.push(key);
+            }
+        }
+
+        keysToDelete.forEach(key => {
+            this.cache.delete(key);
+            this.accessOrder.delete(key);
+        });
+
+        if (keysToDelete.length > 0) {
+            console.log(`🧹 Cache cleanup: removed ${keysToDelete.length} expired entries`);
+        }
+    }
+}
+
+const weatherCache = new LRUCache(config?.lruCache?.weatherSize || 500); // Max 500 weather cache entries
+const locationCache = new LRUCache(config?.lruCache?.locationSize || 50); // Max 50 location cache entries
+const WEATHER_CACHE_DURATION = config?.lruCache?.weatherDuration || 3 * 60 * 1000; // 3 minutes in milliseconds
+const LOCATION_CACHE_DURATION = config?.lruCache?.locationDuration || 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+const WEATHER_FAILURE_CACHE_DURATION = config?.lruCache?.weatherFailureDuration || 15 * 60 * 1000; // 15 minutes for failed requests
+
+// Periodic cache cleanup to prevent memory leaks from expired entries
+setInterval(() => {
+    try {
+        weatherCache.cleanupExpired(WEATHER_FAILURE_CACHE_DURATION);
+        locationCache.cleanupExpired(LOCATION_CACHE_DURATION);
+        console.log(`🧹 Periodic cache cleanup: weather=${weatherCache.size()}, location=${locationCache.size()}`);
+    } catch (error) {
+        console.warn('⚠️ Cache cleanup error:', error.message);
+    }
+}, 30 * 60 * 1000); // Run every 30 minutes
 
 // Enhanced weather cache for Open-Meteo data
-const enhancedWeatherCache = new Map();
 const ENHANCED_WEATHER_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes for enhanced data
 
 /**
- * Enhanced Weather Data Retrieval System using Open-Meteo API
- * Provides comprehensive weather data with temporal analysis capabilities
+ * Calculate vector average for circular quantities like wind direction
+ * @param {number[]} directions - Array of directions in degrees (0-360)
+ * @returns {number} Average direction in degrees (0-360)
  */
+function calculateVectorAverage(directions) {
+    if (!directions || directions.length === 0) return null;
+
+    // Convert degrees to radians and calculate vector components
+    let sumX = 0;
+    let sumY = 0;
+
+    for (const direction of directions) {
+        const rad = (direction * Math.PI) / 180;
+        sumX += Math.cos(rad);
+        sumY += Math.sin(rad);
+    }
+
+    // Calculate average direction
+    const avgRad = Math.atan2(sumY, sumX);
+    const avgDeg = (avgRad * 180) / Math.PI;
+
+    // Normalize to 0-360 range
+    return (avgDeg + 360) % 360;
+}
+
+/**
+ * Get timezone by latitude and longitude using offline lookup
+ * @param {number} latitude - Latitude coordinate
+ * @param {number} longitude - Longitude coordinate
+ * @returns {string} IANA timezone identifier (e.g., 'America/New_York')
+ */
+function getTimezoneByCoordinates(latitude, longitude) {
+    try {
+        // Validate coordinates
+        if (typeof latitude !== 'number' || typeof longitude !== 'number' ||
+            latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+            console.warn(`⚠️ Invalid coordinates for timezone lookup: lat=${latitude}, lon=${longitude}`);
+            return 'UTC';
+        }
+
+        // Use tz-lookup to get IANA timezone identifier
+        const timezone = tzLookup(latitude, longitude);
+        console.log(`🌍 Timezone lookup: (${latitude.toFixed(4)}, ${longitude.toFixed(4)}) → ${timezone}`);
+        return timezone;
+    } catch (error) {
+        console.warn(`⚠️ Timezone lookup failed for coordinates (${latitude}, ${longitude}):`, error.message);
+        return 'UTC'; // Fallback to UTC
+    }
+}
 
 /**
  * Weather condition code mapping for Open-Meteo (WMO Weather interpretation codes)
@@ -67,6 +210,44 @@ function mapOpenMeteoCondition(code) {
         99: 'thunderstorm with heavy hail'
     };
     return conditions[code] || 'unknown';
+}
+
+/**
+ * Reconcile weather condition with cloud coverage to avoid conflicting descriptions
+ * Prioritizes cloud coverage for cloud-based conditions but preserves weather phenomena
+ * @param {string} condition - Weather condition from weather code
+ * @param {number|null} cloudCover - Cloud coverage percentage (0-100)
+ * @returns {string} Accurate condition based on cloud coverage and weather code
+ */
+function reconcileConditionWithCloudCover(condition, cloudCover) {
+    // Conditions that are inherently weather phenomena (rain, snow, fog) should NOT be overridden by cloud coverage
+    const weatherPhenomenaConditions = [
+        'fog', 'depositing rime fog', 'light drizzle', 'moderate drizzle', 'dense drizzle',
+        'light freezing drizzle', 'dense freezing drizzle', 'slight rain', 'moderate rain',
+        'heavy rain', 'light freezing rain', 'heavy freezing rain', 'slight snow fall',
+        'moderate snow fall', 'heavy snow fall', 'snow grains', 'slight rain showers',
+        'moderate rain showers', 'violent rain showers', 'slight snow showers',
+        'heavy snow showers', 'thunderstorm', 'thunderstorm with slight hail',
+        'thunderstorm with heavy hail'
+    ];
+
+    // If it's a weather phenomenon, preserve it regardless of cloud coverage
+    if (weatherPhenomenaConditions.includes(condition)) {
+        return condition;
+    }
+
+    // For cloud-based conditions, use cloud coverage when available
+    if (cloudCover !== null && cloudCover !== undefined) {
+        if (cloudCover >= 90) return 'overcast';
+        if (cloudCover >= 80) return 'mostly cloudy sky';
+        if (cloudCover >= 60) return 'partly cloudy sky';
+        if (cloudCover >= 30) return 'mostly clear sky';
+        if (cloudCover >= 10) return 'few clouds';
+        return 'clear sky';
+    }
+
+    // Fall back to original condition when cloud coverage is unavailable
+    return condition;
 }
 
 /**
@@ -157,32 +338,46 @@ function analyzePrecipitationType(rain, showers, snowfall, temperature, code) {
     let primaryType = 'mixed';
     let intensity = 'light';
 
-    // Check weather code first for thunderstorm/heavy precipitation
+    // Priority 1: Thunderstorm (overrides all other types)
     if (code >= 95) {
         primaryType = 'thunderstorm';
         intensity = 'heavy';
-    } else if (snowfall > 0 && rain === 0 && showers === 0) {
+    }
+    // Priority 2: Snow (when snow is the only precipitation)
+    else if (snowfall > 0 && rain === 0 && showers === 0) {
         primaryType = 'snow';
-    } else if (rain > 0 && snowfall === 0) {
+    }
+    // Priority 3: Mixed precipitation with freezing temperatures = Sleet
+    else if (temperature <= 0 && rain > 0 && snowfall > 0) {
+        primaryType = 'sleet';
+    }
+    // Priority 4: Freezing rain (rain/showers with freezing temperatures)
+    else if (temperature <= 0 && (rain > 0 || showers > 0)) {
+        primaryType = 'freezing_rain';
+    }
+    // Priority 5: Mixed precipitation (rain + snow when temp > 0)
+    else if (rain > 0 && snowfall > 0) {
+        primaryType = 'mixed';
+    }
+    // Priority 6: Rain (steady rain, not showers)
+    else if (rain > 0 && showers === 0) {
         primaryType = 'rain';
-    } else if (showers > 0 && rain === 0 && snowfall === 0) {
+    }
+    // Priority 7: Showers (intermittent precipitation)
+    else if (showers > 0) {
         primaryType = 'showers';
-    } else if (rain > 0 && snowfall > 0) {
-        primaryType = temperature <= 0 ? 'sleet' : 'mixed';
     }
 
-    // Determine intensity based on total precipitation
-    if (totalPrecipitation > 10) {
+    // Determine intensity based on total precipitation and weather code
+    // Thunderstorms are always considered heavy regardless of amount
+    if (code >= 95) {
+        intensity = 'very heavy';
+    } else if (totalPrecipitation > 10) {
         intensity = 'heavy';
     } else if (totalPrecipitation > 2.5) {
         intensity = 'moderate';
     } else if (totalPrecipitation > 0.1) {
         intensity = 'light';
-    }
-
-    // Special handling for freezing conditions
-    if (temperature <= 0 && (rain > 0 || showers > 0)) {
-        primaryType = 'freezing_rain';
     }
 
     // Create description
@@ -227,18 +422,20 @@ function analyzePrecipitationType(rain, showers, snowfall, temperature, code) {
 }
 
 /**
- * Retrieve comprehensive weather data using Open-Meteo API
- * Supports current, historical, and forecast data with flexible time ranges
+ * Get weather data from Open-Meteo API
  * @param {Object} location - Location object with lat/lon
  * @param {Object} options - Configuration options
- * @returns {Promise<Object>} Enhanced weather data
+ * @returns {Promise<Object>} Weather data from Open-Meteo
  */
-async function getEnhancedWeatherData(location, options = {}) {
+async function getWeatherFromBestProvider(location, options = {}) {
+    console.log('🌤️ Using Open-Meteo as weather data provider');
     const {
         includeCurrent = true,
         pastHours = 2, // Past hours to retrieve (in 30min intervals)
         forecastHours = 1, // Future hours to forecast (in 30min intervals)
         includeWeekly = false, // Include weekly forecast
+        startDate = null, // Start date for historical data range (YYYY-MM-DD)
+        endDate = null, // End date for historical data range (YYYY-MM-DD)
         customDate = null, // Specific date for historical data (YYYY-MM-DD)
         customTimeOffset = null, // Time offset for custom scenarios (hours from now)
         timezone = null // Timezone for date calculations
@@ -279,11 +476,51 @@ async function getEnhancedWeatherData(location, options = {}) {
             ].join(',')
         });
 
+        // Add minutely data only for short-term forecasting (next 1-2 hours)
+        if (forecastHours > 0 && forecastHours <= 2) {
+            params.set('minutely_15', [
+                'temperature_2m',
+                'relative_humidity_2m',
+                'apparent_temperature',
+                'precipitation',
+                'weather_code',
+                'wind_speed_10m',
+                'wind_direction_10m'
+            ].join(','));
+        }
+
         // Handle different data scenarios
-        if (customDate) {
-            // Historical data for specific date
-            params.set('start_date', customDate);
-            params.set('end_date', customDate);
+        if (startDate && endDate) {
+            // Historical data range
+            params.set('start_date', startDate);
+            params.set('end_date', endDate);
+            params.set('daily', [
+                'weather_code',
+                'temperature_2m_max',
+                'temperature_2m_min',
+                'apparent_temperature_max',
+                'apparent_temperature_min',
+                'apparent_temperature_mean',
+                'sunrise',
+                'sunset',
+                'sunshine_duration',
+                'daylight_duration',
+                'uv_index_max',
+                'uv_index_clear_sky_max',
+                'precipitation_sum',
+                'rain_sum',
+                'showers_sum',
+                'snowfall_sum',
+                'precipitation_hours',
+                'precipitation_probability_max',
+                'precipitation_probability_mean',
+                'precipitation_probability_min',
+                'wind_speed_10m_max',
+                'wind_gusts_10m_max',
+                'wind_direction_10m_dominant',
+                'shortwave_radiation_sum',
+                'et0_fao_evapotranspiration'
+            ].join(','));
             params.set('hourly', [
                 'temperature_2m',
                 'relative_humidity_2m',
@@ -291,47 +528,292 @@ async function getEnhancedWeatherData(location, options = {}) {
                 'apparent_temperature',
                 'precipitation',
                 'rain',
+                'showers',
                 'snowfall',
+                'snow_depth',
                 'weather_code',
                 'pressure_msl',
+                'surface_pressure',
                 'cloud_cover',
+                'cloud_cover_low',
+                'cloud_cover_mid',
+                'cloud_cover_high',
+                'visibility',
+                'evapotranspiration',
+                'et0_fao_evapotranspiration',
+                'vapour_pressure_deficit',
                 'wind_speed_10m',
                 'wind_direction_10m',
-                'wind_gusts_10m'
+                'wind_gusts_10m',
+                'soil_temperature_0cm',
+                'soil_moisture_0_to_1cm'
             ].join(','));
-        } else if (customTimeOffset !== null) {
-            // Custom time offset scenario
-            const now = new Date();
-            const targetTime = new Date(now.getTime() + (customTimeOffset * 60 * 60 * 1000));
 
-            if (customTimeOffset < 0) {
-                // Past data - use historical API
-                const startDate = new Date(now.getTime() + (customTimeOffset * 60 * 60 * 1000));
-                const endDate = new Date(now.getTime() + ((customTimeOffset + 24) * 60 * 60 * 1000));
+            // Use archive endpoint for historical data older than 3 months
+            const useArchive = new Date(startDate) < new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+            const baseUrl = useArchive ? 'https://archive-api.open-meteo.com/v1' : 'https://api.open-meteo.com/v1';
+            const endpoint = useArchive ? 'archive' : 'forecast';
+            const url = `${baseUrl}/${endpoint}?${params.toString()}`;
 
-                params.set('start_date', startDate.toISOString().split('T')[0]);
-                params.set('end_date', endDate.toISOString().split('T')[0]);
-                params.set('hourly', [
-                    'temperature_2m',
-                    'relative_humidity_2m',
-                    'dewpoint_2m',
-                    'apparent_temperature',
-                    'precipitation',
-                    'rain',
-                    'snowfall',
-                    'weather_code',
-                    'pressure_msl',
-                    'cloud_cover',
-                    'wind_speed_10m',
-                    'wind_direction_10m',
-                    'wind_gusts_10m'
-                ].join(','));
-            } else {
-                // Future data - use forecast API with extended range
-                params.set('forecast_hours', Math.max(24, customTimeOffset + 24));
+            try {
+                const data = await makeHttpsRequest(url);
+                // Transform historical data
+                const result = {
+                    timestamp: Date.now(),
+                    dataSource: 'Open-Meteo Historical API',
+                    location: {
+                        latitude: data.latitude,
+                        longitude: data.longitude,
+                        timezone: data.timezone
+                    },
+                    dateRange: {
+                        start: startDate,
+                        end: endDate
+                    },
+                    daily: [],
+                    statistics: {}
+                };
+
+                if (data.hourly && data.hourly.time) {
+                    // Group by day and calculate daily statistics
+                    const dailyGroups = {};
+                    const times = data.hourly.time;
+
+                    for (let i = 0; i < times.length; i++) {
+                        const date = times[i].split('T')[0];
+                        if (!dailyGroups[date]) {
+                            dailyGroups[date] = {
+                                date,
+                                temperatures: [],
+                                humidities: [],
+                                dewPoints: [],
+                                apparentTemperatures: [],
+                                pressures: [],
+                                surfacePressures: [],
+                                cloudCovers: [],
+                                cloudCoverLows: [],
+                                cloudCoverMids: [],
+                                cloudCoverHighs: [],
+                                visibilities: [],
+                                evaporations: [],
+                                et0s: [],
+                                vapourDeficits: [],
+                                windDirections: [],
+                                windGusts: [],
+                                precipitations: [],
+                                rains: [],
+                                showers: [],
+                                snowfalls: [],
+                                snowDepths: [],
+                                windSpeeds: [],
+                                soilTemperatures: [],
+                                soilMoistures: [],
+                                conditions: [],
+                                weatherCodes: []
+                            };
+                        }
+
+                        dailyGroups[date].temperatures.push(data.hourly.temperature_2m[i]);
+                        dailyGroups[date].humidities.push(data.hourly.relative_humidity_2m[i]);
+                        if (data.hourly.dewpoint_2m) dailyGroups[date].dewPoints.push(data.hourly.dewpoint_2m[i]);
+                        if (data.hourly.apparent_temperature) dailyGroups[date].apparentTemperatures.push(data.hourly.apparent_temperature[i]);
+                        if (data.hourly.pressure_msl) dailyGroups[date].pressures.push(data.hourly.pressure_msl[i]);
+                        if (data.hourly.surface_pressure) dailyGroups[date].surfacePressures.push(data.hourly.surface_pressure[i]);
+                        if (data.hourly.cloud_cover) dailyGroups[date].cloudCovers.push(data.hourly.cloud_cover[i]);
+                        if (data.hourly.cloud_cover_low) dailyGroups[date].cloudCoverLows.push(data.hourly.cloud_cover_low[i]);
+                        if (data.hourly.cloud_cover_mid) dailyGroups[date].cloudCoverMids.push(data.hourly.cloud_cover_mid[i]);
+                        if (data.hourly.cloud_cover_high) dailyGroups[date].cloudCoverHighs.push(data.hourly.cloud_cover_high[i]);
+                        if (data.hourly.visibility) dailyGroups[date].visibilities.push(data.hourly.visibility[i]);
+                        if (data.hourly.evapotranspiration) dailyGroups[date].evaporations.push(data.hourly.evapotranspiration[i]);
+                        if (data.hourly.et0_fao_evapotranspiration) dailyGroups[date].et0s.push(data.hourly.et0_fao_evapotranspiration[i]);
+                        if (data.hourly.vapour_pressure_deficit) dailyGroups[date].vapourDeficits.push(data.hourly.vapour_pressure_deficit[i]);
+                        if (data.hourly.wind_direction_10m) dailyGroups[date].windDirections.push(data.hourly.wind_direction_10m[i]);
+                        if (data.hourly.wind_gusts_10m) dailyGroups[date].windGusts.push(data.hourly.wind_gusts_10m[i]);
+                        dailyGroups[date].precipitations.push(data.hourly.precipitation[i]);
+                        if (data.hourly.rain) dailyGroups[date].rains.push(data.hourly.rain[i] || 0);
+                        if (data.hourly.showers) dailyGroups[date].showers.push(data.hourly.showers[i] || 0);
+                        if (data.hourly.snowfall) dailyGroups[date].snowfalls.push(data.hourly.snowfall[i] || 0);
+                        if (data.hourly.snow_depth) dailyGroups[date].snowDepths.push(data.hourly.snow_depth[i] || 0);
+                        dailyGroups[date].windSpeeds.push(data.hourly.wind_speed_10m[i]);
+                        if (data.hourly.soil_temperature_0cm) dailyGroups[date].soilTemperatures.push(data.hourly.soil_temperature_0cm[i]);
+                        if (data.hourly.soil_moisture_0_to_1cm) dailyGroups[date].soilMoistures.push(data.hourly.soil_moisture_0_to_1cm[i]);
+                        dailyGroups[date].conditions.push(mapOpenMeteoCondition(data.hourly.weather_code[i]));
+                        dailyGroups[date].weatherCodes.push(data.hourly.weather_code[i]);
+                    }
+
+                    // Calculate daily statistics
+                    result.daily = Object.values(dailyGroups).map((day, index) => ({
+                        date: day.date,
+                        temperature: {
+                            min: Math.min(...day.temperatures),
+                            max: Math.max(...day.temperatures),
+                            avg: day.temperatures.reduce((a, b) => a + b, 0) / day.temperatures.length
+                        },
+                        humidity: {
+                            min: Math.min(...day.humidities),
+                            max: Math.max(...day.humidities),
+                            avg: day.humidities.reduce((a, b) => a + b, 0) / day.humidities.length
+                        },
+                        dewPoint: day.dewPoints.length > 0 ? {
+                            min: Math.min(...day.dewPoints),
+                            max: Math.max(...day.dewPoints),
+                            avg: day.dewPoints.reduce((a, b) => a + b, 0) / day.dewPoints.length
+                        } : null,
+                        apparentTemperature: day.apparentTemperatures.length > 0 ? {
+                            min: Math.min(...day.apparentTemperatures),
+                            max: Math.max(...day.apparentTemperatures),
+                            avg: day.apparentTemperatures.reduce((a, b) => a + b, 0) / day.apparentTemperatures.length
+                        } : null,
+                        pressure: day.pressures.length > 0 ? {
+                            min: Math.min(...day.pressures),
+                            max: Math.max(...day.pressures),
+                            avg: day.pressures.reduce((a, b) => a + b, 0) / day.pressures.length
+                        } : null,
+                        surfacePressure: day.surfacePressures.length > 0 ? {
+                            min: Math.min(...day.surfacePressures),
+                            max: Math.max(...day.surfacePressures),
+                            avg: day.surfacePressures.reduce((a, b) => a + b, 0) / day.surfacePressures.length
+                        } : null,
+                        cloudCover: day.cloudCovers.length > 0 ? {
+                            min: Math.min(...day.cloudCovers),
+                            max: Math.max(...day.cloudCovers),
+                            avg: day.cloudCovers.reduce((a, b) => a + b, 0) / day.cloudCovers.length
+                        } : null,
+                        cloudCoverage: day.cloudCovers.length > 0 ? day.cloudCovers.reduce((a, b) => a + b, 0) / day.cloudCovers.length : 0,
+                        cloudCoverLow: day.cloudCoverLows.length > 0 ? day.cloudCoverLows.reduce((a, b) => a + b, 0) / day.cloudCoverLows.length : null,
+                        cloudCoverMid: day.cloudCoverMids.length > 0 ? day.cloudCoverMids.reduce((a, b) => a + b, 0) / day.cloudCoverMids.length : null,
+                        cloudCoverHigh: day.cloudCoverHighs.length > 0 ? day.cloudCoverHighs.reduce((a, b) => a + b, 0) / day.cloudCoverHighs.length : null,
+                        visibility: day.visibilities.length > 0 ? {
+                            min: Math.min(...day.visibilities),
+                            max: Math.max(...day.visibilities),
+                            avg: day.visibilities.reduce((a, b) => a + b, 0) / day.visibilities.length
+                        } : null,
+                        evapotranspiration: day.evaporations.length > 0 ? day.evaporations.reduce((a, b) => a + b, 0) / day.evaporations.length : null,
+                        et0: day.et0s.length > 0 ? day.et0s.reduce((a, b) => a + b, 0) / day.et0s.length : null,
+                        vapourPressureDeficit: day.vapourDeficits.length > 0 ? day.vapourDeficits.reduce((a, b) => a + b, 0) / day.vapourDeficits.length : null,
+                        windDirection: day.windDirections.length > 0 ? {
+                            avg: Math.round(calculateVectorAverage(day.windDirections) * 10) / 10
+                        } : null,
+                        windGust: day.windGusts.length > 0 ? {
+                            max: Math.max(...day.windGusts) / 3.6, // Convert km/h to m/s
+                            avg: (day.windGusts.reduce((a, b) => a + b, 0) / day.windGusts.length) / 3.6 // Convert km/h to m/s
+                        } : null,
+                        precipitation: {
+                            total: day.precipitations.reduce((a, b) => a + b, 0),
+                            max: Math.max(...day.precipitations),
+                            rain: day.rains.length > 0 ? day.rains.reduce((a, b) => a + b, 0) : 0,
+                            showers: day.showers.length > 0 ? day.showers.reduce((a, b) => a + b, 0) : 0,
+                            snow: day.snowfalls.length > 0 ? day.snowfalls.reduce((a, b) => a + b, 0) : 0
+                        },
+                        snowDepth: day.snowDepths.length > 0 ? {
+                            max: Math.max(...day.snowDepths),
+                            avg: day.snowDepths.reduce((a, b) => a + b, 0) / day.snowDepths.length
+                        } : null,
+                        windSpeed: {
+                            max: Math.max(...day.windSpeeds) / 3.6, // Convert km/h to m/s
+                            avg: (day.windSpeeds.reduce((a, b) => a + b, 0) / day.windSpeeds.length) / 3.6 // Convert km/h to m/s
+                        },
+                        soilTemperature: day.soilTemperatures.length > 0 ? day.soilTemperatures.reduce((a, b) => a + b, 0) / day.soilTemperatures.length : null,
+                        soilMoisture: day.soilMoistures.length > 0 ? day.soilMoistures.reduce((a, b) => a + b, 0) / day.soilMoistures.length : null,
+                        // Use daily weather code from API if available, otherwise median of hourly
+                        dominantCondition: data.daily?.weather_code?.[index] ? mapOpenMeteoCondition(data.daily.weather_code[index]) : day.conditions[Math.floor(day.conditions.length / 2)],
+                        dominantWeatherCode: data.daily?.weather_code?.[index] || day.weatherCodes[Math.floor(day.weatherCodes.length / 2)],
+                        rawConditionId: data.daily?.weather_code?.[index] || day.weatherCodes[Math.floor(day.weatherCodes.length / 2)],
+                        conditions: [...new Set(day.conditions)], // Unique conditions for the day
+                        weatherCodes: [...new Set(day.weatherCodes)] // Unique weather codes for the day
+                    }));
+
+                    // Calculate overall statistics
+                    result.statistics = calculateHistoricalStatistics(result.daily);
+                }
+
+                return result;
+
+            } catch (error) {
+                console.error('Open-Meteo historical API error:', error);
+                return {
+                    timestamp: Date.now(),
+                    dataSource: 'Open-Meteo Historical API (error)',
+                    location,
+                    dateRange: { start: startDate, end: endDate },
+                    daily: [],
+                    statistics: {},
+                    error: error.message
+                };
             }
         } else {
-            // Current + recent past + near future scenario
+            // Default case: Current weather with past/future data
+            params.set('hourly', [
+                'temperature_2m',
+                'relative_humidity_2m',
+                'dewpoint_2m',
+                'apparent_temperature',
+                'precipitation',
+                'rain',
+                'showers',
+                'snowfall',
+                'snow_depth',
+                'weather_code',
+                'pressure_msl',
+                'surface_pressure',
+                'cloud_cover',
+                'cloud_cover_low',
+                'cloud_cover_mid',
+                'cloud_cover_high',
+                'visibility',
+                'evapotranspiration',
+                'et0_fao_evapotranspiration',
+                'vapour_pressure_deficit',
+                'wind_speed_10m',
+                'wind_direction_10m',
+                'wind_gusts_10m',
+                'soil_temperature_0cm',
+                'soil_moisture_0_to_1cm'
+            ].join(','));
+
+            // Add minutely data only for short-term forecasting (next 1-2 hours)
+            if (forecastHours > 0 && forecastHours <= 2) {
+                params.set('minutely_15', [
+                    'temperature_2m',
+                    'relative_humidity_2m',
+                    'apparent_temperature',
+                    'precipitation',
+                    'weather_code',
+                    'wind_speed_10m',
+                    'wind_direction_10m'
+                ].join(','));
+            }
+
+            // Add daily weather data for sunrise/sunset
+            params.set('daily', [
+                'weather_code',
+                'temperature_2m_max',
+                'temperature_2m_min',
+                'apparent_temperature_max',
+                'apparent_temperature_min',
+                'apparent_temperature_mean',
+                'sunrise',
+                'sunset',
+                'sunshine_duration',
+                'daylight_duration',
+                'uv_index_max',
+                'uv_index_clear_sky_max',
+                'precipitation_sum',
+                'rain_sum',
+                'showers_sum',
+                'snowfall_sum',
+                'precipitation_hours',
+                'precipitation_probability_max',
+                'precipitation_probability_mean',
+                'precipitation_probability_min',
+                'wind_speed_10m_max',
+                'wind_gusts_10m_max',
+                'wind_direction_10m_dominant',
+                'shortwave_radiation_sum',
+                'et0_fao_evapotranspiration'
+            ].join(','));
+
+            // Add current weather if requested
             if (includeCurrent) {
                 params.set('current', [
                     'temperature_2m',
@@ -351,9 +833,9 @@ async function getEnhancedWeatherData(location, options = {}) {
                 ].join(','));
             }
 
-            // Past hours (converted to past_days)
-            const pastDays = Math.ceil(pastHours / 24);
-            if (pastDays > 0) {
+            // Past hours - request enough historical data (Open-Meteo past_days gives hourly data for past days)
+            const pastDays = Math.max(2, Math.ceil(pastHours / 12)); // Request at least 2 days for better historical coverage
+            if (pastHours > 0) {
                 params.set('past_days', pastDays);
             }
 
@@ -361,29 +843,220 @@ async function getEnhancedWeatherData(location, options = {}) {
             if (forecastHours > 0) {
                 params.set('forecast_hours', forecastHours);
             }
+
+            // Add timezone - use auto detection if not specified
+            if (timezone) {
+                params.set('timezone', timezone);
+            } else {
+                // Use auto timezone detection based on coordinates
+                params.set('timezone', 'auto');
+            }
+
+            const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
+
+            try {
+                const data = await makeHttpsRequest(url);
+
+                // Transform and enhance the data
+                return transformOpenMeteoData(data, options);
+
+            } catch (error) {
+                console.error('Open-Meteo API error:', error);
+                // Return reasonable fallback weather data instead of null
+                return createFallbackWeatherData(location, options, error);
+            }
+        }
+    }, ENHANCED_WEATHER_CACHE_DURATION);
+}
+
+/**
+ * Get weather data for a specific date (historical or future)
+ * @param {Object} location - Location coordinates
+ * @param {string} dateString - Date in YYYY-MM-DD format
+ * @param {boolean} useArchive - Whether to use archive API (for old data)
+ * @returns {Object|null} Weather data or null if failed
+ */
+async function getWeatherForDate(location, dateString, useArchive = false) {
+    try {
+        const baseUrl = useArchive ? 'https://archive-api.open-meteo.com/v1/archive' : 'https://api.open-meteo.com/v1/forecast';
+        const endDate = new Date(new Date(dateString).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+        const url = `${baseUrl}?latitude=${location.lat}&longitude=${location.lon}&start_date=${dateString}&end_date=${endDate}&hourly=temperature_2m,relative_humidity_2m,dewpoint_2m,apparent_temperature,precipitation,rain,showers,snowfall,weather_code,pressure_msl,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover&daily=weather_code,uv_index_max&timezone=auto`;
+
+        const response = await fetch(url);
+        if (!response.ok) return null;
+
+        const data = await response.json();
+        if (!data.hourly?.time?.length) return null;
+
+        // Process into daily averages
+        const temps = data.hourly.temperature_2m || [];
+        const humidities = data.hourly.relative_humidity_2m || [];
+        const dewPoints = data.hourly.dewpoint_2m || [];
+        const apparentTemps = data.hourly.apparent_temperature || [];
+        const pressures = data.hourly.pressure_msl || [];
+        const visibilities = data.hourly.visibility || [];
+        const windSpeeds = data.hourly.wind_speed_10m || [];
+        const windDirections = data.hourly.wind_direction_10m || [];
+        const windGusts = data.hourly.wind_gusts_10m || [];
+        const precipitations = data.hourly.precipitation || [];
+        const rains = data.hourly.rain || [];
+        const showers = data.hourly.showers || [];
+        const snowfalls = data.hourly.snowfall || [];
+
+        const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
+        const avgHumidity = humidities.reduce((a, b) => a + b, 0) / humidities.length;
+        const avgDewPoint = dewPoints.length > 0 ? dewPoints.reduce((a, b) => a + b, 0) / dewPoints.length : undefined;
+        const avgApparentTemp = apparentTemps.length > 0 ? apparentTemps.reduce((a, b) => a + b, 0) / apparentTemps.length : undefined;
+        const avgPressure = pressures.reduce((a, b) => a + b, 0) / pressures.length;
+        const avgVisibility = visibilities.filter(v => v > 0).reduce((a, b) => a + b, 0) / visibilities.filter(v => v > 0).length || 10000;
+        const maxWindSpeed = Math.max(...windSpeeds) / 3.6; // Convert km/h to m/s
+        const maxWindGust = windGusts.length > 0 ? Math.max(...windGusts) / 3.6 : undefined; // Convert km/h to m/s
+        const avgWindDirection = windDirections.length > 0 ? windDirections.reduce((a, b) => a + b, 0) / windDirections.length : undefined;
+        const totalPrecip = precipitations.reduce((a, b) => a + b, 0);
+        const totalRain = rains.reduce((a, b) => a + b, 0);
+        const totalShowers = showers.reduce((a, b) => a + b, 0);
+        const totalSnow = snowfalls.reduce((a, b) => a + b, 0);
+
+        const weatherCode = data.daily?.weather_code?.[0] || data.hourly.weather_code?.[Math.floor(data.hourly.weather_code.length / 2)] || 800;
+
+        return {
+            temperature: Math.round(avgTemp),
+            condition: mapOpenMeteoCondition(weatherCode),
+            humidity: Math.round(avgHumidity),
+            windSpeed: Math.round(maxWindSpeed),
+            windGust: maxWindGust !== undefined ? Math.round(maxWindGust) : undefined,
+            windDirection: avgWindDirection !== undefined ? Math.round(avgWindDirection) : undefined,
+            pressure: Math.round(avgPressure) || 1013,
+            visibility: avgVisibility,
+            feelsLike: avgApparentTemp !== undefined ? Math.round(avgApparentTemp) : undefined,
+            dewPoint: avgDewPoint !== undefined ? Math.round(avgDewPoint * 10) / 10 : undefined,
+            cloudCoverage: Math.round((data.hourly.cloud_cover || []).reduce((a, b) => a + b, 0) / (data.hourly.cloud_cover || []).length) || 0,
+            precipitation: Math.round(totalPrecip * 100) / 100,
+            precipitationRate: totalPrecip / 24,
+            rain: Math.round(totalRain * 100) / 100,
+            showers: Math.round(totalShowers * 100) / 100,
+            snowfall: Math.round(totalSnow * 100) / 100,
+            sunrise: data.daily?.sunrise?.[index],
+            sunset: data.daily?.sunset?.[index],
+            uvIndex: data.daily?.uv_index_max?.[0] || 0,
+            rawConditionId: weatherCode,
+            icon: mapOpenMeteoIcon(weatherCode, true),
+            weatherQuality: { comfortLevel: getComfortLevel(Math.round(avgTemp), avgHumidity, maxWindSpeed) },
+            timestamp: new Date(dateString).getTime(),
+            dataSource: useArchive ? `Historical (${dateString})` : `Forecast (${dateString})`,
+            location
+        };
+    } catch (error) {
+        console.warn(`Failed to get weather for ${dateString}:`, error.message);
+        return null;
+    }
+}
+
+/**
+ * Calculate historical weather statistics from daily weather data
+ * @param {Array} dailyData - Array of daily weather data objects
+ * @returns {Object} Historical statistics
+ */
+function calculateHistoricalStatistics(dailyData) {
+    if (!dailyData || dailyData.length === 0) {
+        return {};
+    }
+
+    const stats = {
+        temperature: {
+            averageMin: 0,
+            averageMax: 0,
+            absoluteMin: Infinity,
+            absoluteMax: -Infinity,
+            average: 0
+        },
+        precipitation: {
+            averageDaily: 0,
+            rainyDays: 0,
+            totalPrecipitation: 0
+        },
+        conditionFrequency: {}
+    };
+
+    // Calculate temperature statistics
+    let totalMinTemp = 0;
+    let totalMaxTemp = 0;
+    let totalAvgTemp = 0;
+
+    // Calculate precipitation and condition statistics
+    let totalPrecipitation = 0;
+    let rainyDays = 0;
+    const conditionCounts = {};
+
+    for (const day of dailyData) {
+        // Temperature statistics
+        if (day.temperature) {
+            if (day.temperature.min !== undefined) {
+                totalMinTemp += day.temperature.min;
+                stats.temperature.absoluteMin = Math.min(stats.temperature.absoluteMin, day.temperature.min);
+            }
+            if (day.temperature.max !== undefined) {
+                totalMaxTemp += day.temperature.max;
+                stats.temperature.absoluteMax = Math.max(stats.temperature.absoluteMax, day.temperature.max);
+            }
+            if (day.temperature.avg !== undefined) {
+                totalAvgTemp += day.temperature.avg;
+            }
         }
 
-        // Add timezone - use auto detection if not specified
-        if (timezone) {
-            params.set('timezone', timezone);
-        } else {
-            // Use auto timezone detection based on coordinates
-            params.set('timezone', 'auto');
+        // Precipitation statistics
+        if (day.precipitation) {
+            const dailyPrecip = day.precipitation.total || 0;
+            totalPrecipitation += dailyPrecip;
+            if (dailyPrecip > 0) {
+                rainyDays++;
+            }
         }
 
-        const url = `${OPEN_METEO_BASE}/forecast?${params.toString()}`;
-
-        try {
-            const data = await makeHttpsRequest(url);
-
-            // Transform and enhance the data
-            return transformOpenMeteoData(data, options);
-
-        } catch (error) {
-            console.error('Open-Meteo API error:', error);
-            // Return reasonable fallback weather data instead of null
-            return createFallbackWeatherData(location, options, error);
+        // Condition frequency
+        if (day.dominantCondition) {
+            conditionCounts[day.dominantCondition] = (conditionCounts[day.dominantCondition] || 0) + 1;
         }
+    }
+
+    const numDays = dailyData.length;
+
+    // Calculate averages
+    if (numDays > 0) {
+        stats.temperature.averageMin = totalMinTemp / numDays;
+        stats.temperature.averageMax = totalMaxTemp / numDays;
+        stats.temperature.average = totalAvgTemp / numDays;
+        stats.precipitation.averageDaily = totalPrecipitation / numDays;
+    }
+
+    stats.precipitation.rainyDays = rainyDays;
+    stats.precipitation.totalPrecipitation = totalPrecipitation;
+
+    // Calculate condition frequency percentages
+    for (const [condition, count] of Object.entries(conditionCounts)) {
+        stats.conditionFrequency[condition] = {
+            count: count,
+            percentage: Math.round((count / numDays) * 100)
+        };
+    }
+
+    return stats;
+}
+
+/**
+ * Retrieve comprehensive weather data using the best available provider
+ * Uses Open-Meteo API for weather data
+ * Supports current, historical, and forecast data with flexible time ranges
+ * @param {Object} location - Location object with lat/lon
+ * @param {Object} options - Configuration options
+ * @returns {Promise<Object>} Enhanced weather data
+ */
+async function getEnhancedWeatherData(location, options = {}) {
+    const cacheKey = `enhanced_${location.lat}_${location.lon}_${JSON.stringify(options)}`;
+
+    return getCachedWeatherData(cacheKey, async () => {
+        return getWeatherFromBestProvider(location, options);
     }, ENHANCED_WEATHER_CACHE_DURATION);
 }
 
@@ -453,20 +1126,24 @@ function createFallbackWeatherData(location, options, error) {
         condition: 'partly cloudy',
         description: 'Unable to retrieve live weather data',
         precipitation: 0,
+        precipitationRate: 0,
         rain: 0,
         showers: 0,
         snowfall: 0,
         precipitationType: 'none',
         pressure: 1013,
-        cloudCover: 50,
+        cloudCoverage: 0,
         windSpeed: 5,
         windDirection: 180,
         windGust: null,
         visibility: 10000,
         uvIndex: 5,
-        rawConditionCode: 803,
+        rawConditionId: 803,
         timestamp: now,
         dataSource: 'Fallback Data (API unavailable)',
+        weatherQuality: {
+            comfortLevel: 'moderate'
+        },
         error: error.message
     };
 
@@ -534,8 +1211,8 @@ function transformOpenMeteoData(rawData, options) {
 
     // Validate input data
     if (!rawData || typeof rawData !== 'object') {
-        console.error('Invalid rawData provided to transformOpenMeteoData');
-        return createFallbackWeatherData({ lat: 0, lon: 0 }, options, new Error('Invalid API response data'));
+        console.error('Invalid rawData provided');
+        return false;
     }
 
     // Validate required location data
@@ -543,7 +1220,18 @@ function transformOpenMeteoData(rawData, options) {
         rawData.latitude < -90 || rawData.latitude > 90 ||
         rawData.longitude < -180 || rawData.longitude > 180) {
         console.error('Invalid or missing location data in API response');
-        return createFallbackWeatherData({ lat: rawData.latitude || 0, lon: rawData.longitude || 0 }, options, new Error('Invalid location data'));
+        return false;
+    }
+
+    // Determine timezone: prefer offline lookup, fallback to Open-Meteo API data
+    let timezoneSource = 'tz-lookup';
+    let finalTimezone = getTimezoneByCoordinates(rawData.latitude, rawData.longitude);
+
+    // Validate tz-lookup result - if it's invalid, fall back to Open-Meteo data
+    if (!finalTimezone || finalTimezone === 'UTC' || !finalTimezone.includes('/')) {
+        finalTimezone = rawData.timezone || 'UTC';
+        timezoneSource = 'open-meteo-fallback';
+        console.log(`⚠️ tz-lookup returned invalid timezone, using Open-Meteo fallback`);
     }
 
     const result = {
@@ -552,14 +1240,14 @@ function transformOpenMeteoData(rawData, options) {
         location: {
             latitude: rawData.latitude,
             longitude: rawData.longitude,
-            timezone: rawData.timezone || 'UTC',
+            timezone: finalTimezone,
             timezoneAbbreviation: rawData.timezone_abbreviation || 'UTC',
             utcOffsetSeconds: rawData.utc_offset_seconds || 0
         }
     };
 
     // Log timezone information for debugging
-    console.log(`🌍 Weather API timezone: ${result.location.timezone} (${result.location.timezoneAbbreviation}), UTC offset: ${result.location.utcOffsetSeconds / 3600} hours`);
+    console.log(`🌍 Weather timezone (${timezoneSource}): ${result.location.timezone} (${result.location.timezoneAbbreviation}), coordinates: (${rawData.latitude.toFixed(4)}, ${rawData.longitude.toFixed(4)})`);
 
     // Process current weather if available
     if (rawData.current) {
@@ -579,29 +1267,57 @@ function transformOpenMeteoData(rawData, options) {
         // Estimate UV index for solar radiation calculation
         const estimatedUVIndex = estimateUVIndex(new Date(), rawData.current.cloud_cover || 0, rawData.latitude);
 
+        // Handle cloud cover - fall back to hourly data if current is missing
+        let cloudCover = rawData.current.cloud_cover;
+        if (cloudCover === undefined && rawData.hourly && rawData.hourly.cloud_cover && rawData.hourly.cloud_cover.length > 0) {
+            // Use the most recent hourly cloud cover as fallback
+            cloudCover = rawData.hourly.cloud_cover[0];
+            console.log(`🌤️ Using hourly cloud cover (${cloudCover}%) as fallback for missing current cloud cover`);
+        }
+
+        const baseCondition = mapOpenMeteoCondition(rawData.current.weather_code);
+        const reconciledCondition = reconcileConditionWithCloudCover(baseCondition, cloudCover);
+
+        // Calculate enhanced weather metrics
+        const currentHumidity = rawData.current.relative_humidity_2m;
+        const currentWindSpeed = Math.round((rawData.current.wind_speed_10m / 3.6) * 10) / 10; // Convert km/h to m/s
+        const comfortLevel = getComfortLevel(currentTemp, currentHumidity, currentWindSpeed);
+
+        // Calculate heat index and wind chill
+        const heatIndex = calculateHeatIndex(currentTemp, currentHumidity);
+        const windChill = calculateWindChill(currentTemp, currentWindSpeed);
+
+        // Get UV warnings and protection advice
+        const uvWarnings = getUVWarnings(estimatedUVIndex);
+
         result.current = {
             temperature: currentTemp,
-            humidity: rawData.current.relative_humidity_2m,
+            humidity: currentHumidity,
             dewPoint: Math.round(rawData.current.dewpoint_2m * 10) / 10,
             feelsLike: Math.round(rawData.current.apparent_temperature * 10) / 10,
-            condition: mapOpenMeteoCondition(rawData.current.weather_code),
+            condition: reconciledCondition,
             precipitation: rawData.current.precipitation || 0,
+            precipitationRate: rawData.current.precipitation || 0,
             rain: currentRain,
             showers: currentShowers,
             snowfall: currentSnowfall,
             precipitationType: precipitationAnalysis,
             pressure: Math.round(rawData.current.pressure_msl),
             surfacePressure: Math.round(rawData.current.surface_pressure || rawData.current.pressure_msl),
-            cloudCover: rawData.current.cloud_cover,
-            windSpeed: Math.round(rawData.current.wind_speed_10m * 10) / 10,
+            cloudCoverage: cloudCover,
+            windSpeed: currentWindSpeed,
             windDirection: rawData.current.wind_direction_10m,
-            windGust: rawData.current.wind_gusts_10m || null,
+            windGust: rawData.current.wind_gusts_10m ? Math.round((rawData.current.wind_gusts_10m / 3.6) * 10) / 10 : null, // Convert km/h to m/s
             visibility: rawData.current.visibility || 10000,
             uvIndex: estimatedUVIndex,
             solarRadiation: estimatedUVIndex ? Math.round(estimatedUVIndex * 100) : 0,
-            rawConditionCode: rawData.current.weather_code,
+            rawConditionId: rawData.current.weather_code,
+            dataSource: result.dataSource,
             weatherQuality: {
-                comfortLevel: getComfortLevel(currentTemp, rawData.current.relative_humidity_2m, Math.round(rawData.current.wind_speed_10m * 10) / 10)
+                comfortLevel: comfortLevel,
+                heatIndex: heatIndex,
+                windChill: windChill,
+                uvWarnings: uvWarnings
             }
         };
     }
@@ -619,7 +1335,7 @@ function transformOpenMeteoData(rawData, options) {
             if (!rawData.hourly[arrayName] || !Array.isArray(rawData.hourly[arrayName]) ||
                 rawData.hourly[arrayName].length !== arrayLength) {
                 console.error(`Missing or invalid ${arrayName} array in hourly data`);
-                return createFallbackWeatherData({ lat: rawData.latitude, lon: rawData.longitude }, options, new Error(`Invalid hourly data: ${arrayName}`));
+                return false;
             }
         }
 
@@ -638,14 +1354,18 @@ function transformOpenMeteoData(rawData, options) {
                 rawData.hourly.weather_code[i]
             );
 
+            const hourlyBaseCondition = mapOpenMeteoCondition(rawData.hourly.weather_code[i]);
+            const hourlyReconciledCondition = reconcileConditionWithCloudCover(hourlyBaseCondition, rawData.hourly.cloud_cover[i]);
+
             hourlyData.push({
                 timestamp,
                 temperature: hourlyTemp,
                 humidity: rawData.hourly.relative_humidity_2m[i],
                 dewPoint: Math.round(rawData.hourly.dewpoint_2m[i] * 10) / 10,
                 feelsLike: Math.round(rawData.hourly.apparent_temperature[i] * 10) / 10,
-                condition: mapOpenMeteoCondition(rawData.hourly.weather_code[i]),
+                condition: hourlyReconciledCondition,
                 precipitation: rawData.hourly.precipitation[i] || 0,
+                precipitationRate: rawData.hourly.precipitation[i] || 0,
                 rain: hourlyRain,
                 showers: hourlyShowers,
                 snowfall: hourlySnowfall,
@@ -653,7 +1373,7 @@ function transformOpenMeteoData(rawData, options) {
                 snowDepth: rawData.hourly.snow_depth ? rawData.hourly.snow_depth[i] || 0 : 0,
                 pressure: Math.round(rawData.hourly.pressure_msl[i]),
                 surfacePressure: Math.round(rawData.hourly.surface_pressure[i]),
-                cloudCover: rawData.hourly.cloud_cover[i],
+                cloudCoverage: rawData.hourly.cloud_cover[i],
                 cloudCoverLow: rawData.hourly.cloud_cover_low ? rawData.hourly.cloud_cover_low[i] : null,
                 cloudCoverMid: rawData.hourly.cloud_cover_mid ? rawData.hourly.cloud_cover_mid[i] : null,
                 cloudCoverHigh: rawData.hourly.cloud_cover_high ? rawData.hourly.cloud_cover_high[i] : null,
@@ -661,39 +1381,108 @@ function transformOpenMeteoData(rawData, options) {
                 evapotranspiration: rawData.hourly.evapotranspiration ? rawData.hourly.evapotranspiration[i] : null,
                 et0: rawData.hourly.et0_fao_evapotranspiration ? rawData.hourly.et0_fao_evapotranspiration[i] : null,
                 vapourPressureDeficit: rawData.hourly.vapour_pressure_deficit ? rawData.hourly.vapour_pressure_deficit[i] : null,
-                windSpeed: Math.round(rawData.hourly.wind_speed_10m[i] * 10) / 10,
+                windSpeed: Math.round((rawData.hourly.wind_speed_10m[i] / 3.6) * 10) / 10, // Convert km/h to m/s
                 windDirection: rawData.hourly.wind_direction_10m[i],
-                windGust: rawData.hourly.wind_gusts_10m ? rawData.hourly.wind_gusts_10m[i] || null : null,
+                windGust: rawData.hourly.wind_gusts_10m ? Math.round((rawData.hourly.wind_gusts_10m[i] / 3.6) * 10) / 10 : null, // Convert km/h to m/s
                 soilTemperature: rawData.hourly.soil_temperature_0cm ? Math.round(rawData.hourly.soil_temperature_0cm[i] * 10) / 10 : null,
                 soilMoisture: rawData.hourly.soil_moisture_0_to_1cm ? rawData.hourly.soil_moisture_0_to_1cm[i] : null,
-                rawConditionCode: rawData.hourly.weather_code[i],
+                rawConditionId: rawData.hourly.weather_code[i],
                 uvIndex: estimateUVIndex(new Date(timestamp), rawData.hourly.cloud_cover[i], rawData.latitude),
                 solarRadiation: (() => {
                     const uv = estimateUVIndex(new Date(timestamp), rawData.hourly.cloud_cover[i], rawData.latitude);
                     return uv ? Math.round(uv * 100) : 0;
                 })(),
                 weatherQuality: {
-                    comfortLevel: getComfortLevel(hourlyTemp, rawData.hourly.relative_humidity_2m[i], Math.round(rawData.hourly.wind_speed_10m[i] * 10) / 10)
+                    comfortLevel: getComfortLevel(hourlyTemp, rawData.hourly.relative_humidity_2m[i], Math.round((rawData.hourly.wind_speed_10m[i] / 3.6) * 10) / 10)
                 }
             });
         }
 
         result.hourly = hourlyData;
 
+        // Process minutely data for more granular next-hour forecasting (only if available and appropriate)
+        // Skip minutely data for long future forecasts (customTimeOffset > 2 hours)
+        const shouldProcessMinutely = rawData.minutely_15 && rawData.minutely_15.time && Array.isArray(rawData.minutely_15.time) &&
+                                     !(customTimeOffset !== null && customTimeOffset > 2);
+
+        if (shouldProcessMinutely) {
+            try {
+                const minutelyData = [];
+                const minutelyTimes = rawData.minutely_15.time;
+
+                // Validate that we have at least the basic required data
+                if (minutelyTimes.length > 0) {
+                    for (let i = 0; i < minutelyTimes.length; i++) {
+                        const timestamp = new Date(minutelyTimes[i]).getTime();
+                        const minutelyTemp = rawData.minutely_15.temperature_2m ? Math.round(rawData.minutely_15.temperature_2m[i] * 10) / 10 : null;
+                        const minutelyHumidity = rawData.minutely_15.relative_humidity_2m ? rawData.minutely_15.relative_humidity_2m[i] : null;
+
+                        minutelyData.push({
+                            timestamp,
+                            temperature: minutelyTemp,
+                            humidity: minutelyHumidity,
+                            feelsLike: rawData.minutely_15.apparent_temperature ? Math.round(rawData.minutely_15.apparent_temperature[i] * 10) / 10 : null,
+                            precipitation: rawData.minutely_15.precipitation ? rawData.minutely_15.precipitation[i] : 0,
+                            precipitationRate: rawData.minutely_15.precipitation ? rawData.minutely_15.precipitation[i] : 0,
+                            condition: rawData.minutely_15.weather_code ? mapOpenMeteoCondition(rawData.minutely_15.weather_code[i]) : null,
+                            windSpeed: rawData.minutely_15.wind_speed_10m ? Math.round((rawData.minutely_15.wind_speed_10m[i] / 3.6) * 10) / 10 : null, // Convert km/h to m/s
+                            windDirection: rawData.minutely_15.wind_direction_10m ? rawData.minutely_15.wind_direction_10m[i] : null,
+                            rawConditionId: rawData.minutely_15.weather_code ? rawData.minutely_15.weather_code[i] : null
+                        });
+                    }
+
+                    // Only include minutely data if we successfully processed some points
+                    if (minutelyData.length > 0) {
+                        result.minutely = minutelyData;
+                    }
+                }
+            } catch (error) {
+                console.warn('Failed to process minutely data:', error.message);
+                // Continue without minutely data - it's optional
+            }
+        }
+
         // Extract specific time periods
         const now = Date.now();
 
-        // Past hours (hourly data from API)
+        // Past hours - use actual API data points (no interpolation)
         const pastData = hourlyData
             .filter(h => h.timestamp <= now)
             .sort((a, b) => b.timestamp - a.timestamp)
-            .slice(0, pastHours); // Use pastHours directly since API returns hourly data
+            .slice(0, Math.min(pastHours + 1, hourlyData.length)); // Include past hours + current hour for context
 
-        // Future hours (hourly data from API)
-        const futureData = hourlyData
+        // Future hours - handle customTimeOffset scenarios differently
+        let futureData = [];
+        const targetTime = customTimeOffset !== null ? now + (customTimeOffset * 60 * 60 * 1000) : now;
+
+        // For customTimeOffset scenarios, skip minutely data and use hourly data directly
+        if (customTimeOffset !== null) {
+            futureData = hourlyData
+                .filter(h => h.timestamp >= targetTime)
+                .sort((a, b) => a.timestamp - b.timestamp)
+                .slice(0, Math.min(forecastHours, hourlyData.length));
+        } else {
+            // Standard scenario - try minutely data first, then hourly
+        // First try to get minutely data for the immediate next hour (more granular)
+        if (result.minutely && result.minutely.length > 0) {
+            const minutelyFuture = result.minutely
+                .filter(m => m.timestamp > now)
+                .sort((a, b) => a.timestamp - b.timestamp);
+
+            // Only use minutely data if we have at least 2 points (30+ minutes of data)
+            if (minutelyFuture.length >= 2) {
+                futureData = minutelyFuture.slice(0, Math.min(4, minutelyFuture.length)); // Up to 1 hour at 15-min intervals
+            }
+        }
+
+        // Fall back to hourly data if minutely data is insufficient or unavailable
+        if (futureData.length === 0) {
+            futureData = hourlyData
             .filter(h => h.timestamp > now)
             .sort((a, b) => a.timestamp - b.timestamp)
-            .slice(0, forecastHours); // Use forecastHours directly since API returns hourly data
+                .slice(0, forecastHours);
+            }
+        }
 
         if (pastData.length > 0) {
             result.pastPeriod = pastData.reverse(); // Chronological order
@@ -701,6 +1490,16 @@ function transformOpenMeteoData(rawData, options) {
 
         if (futureData.length > 0) {
             result.nextPeriod = futureData;
+        }
+
+        // Debug: Log temporal data availability
+        console.log(`📊 Temporal data extracted: pastPeriod=${pastData.length} points, nextPeriod=${futureData.length} points, total hourly=${hourlyData.length}, minutely=${result.minutely ? result.minutely.length : 0}`);
+        if (pastData.length > 0) {
+            console.log(`📊 Past period range: ${new Date(pastData[pastData.length-1].timestamp).toISOString()} to ${new Date(pastData[0].timestamp).toISOString()}`);
+        }
+        if (futureData.length > 0) {
+            const dataType = futureData[0].timestamp && result.minutely && result.minutely.some(m => m.timestamp === futureData[0].timestamp) ? 'minutely' : 'hourly';
+            console.log(`📊 Next period (${dataType}): ${new Date(futureData[0].timestamp).toISOString()} to ${new Date(futureData[futureData.length-1].timestamp).toISOString()}`);
         }
     }
 
@@ -760,14 +1559,35 @@ function analyzeWeatherPatterns(weatherData) {
         analysis.precipitation.intensity = 'light';
     }
 
-    // Analyze precipitation types
+    // Analyze precipitation types - handle both hourly and minutely data structures
+    const getPrecipitationType = (dataPoint) => {
+        // For hourly data with precipitationType structure
+        if (dataPoint.precipitationType && dataPoint.precipitationType.type) {
+            return dataPoint.precipitationType.type;
+        }
+        // For minutely data or direct precipitation
+        if (dataPoint.precipitation > 0) {
+            // Determine type based on other fields if available
+            if (dataPoint.weather_code) {
+                const code = dataPoint.weather_code;
+                if (code >= 51 && code <= 67) return 'rain'; // Drizzle/light rain codes
+                if (code >= 71 && code <= 77) return 'snow'; // Snow codes
+                if (code >= 80 && code <= 82) return 'rain'; // Rain shower codes
+                if (code >= 85 && code <= 86) return 'snow'; // Snow shower codes
+            }
+            // Fallback to rain if we have precipitation but no specific type
+            return 'rain';
+        }
+        return 'none';
+    };
+
     const pastPrecipTypes = past
-        .filter(h => h.precipitationType.type !== 'none')
-        .map(h => h.precipitationType.type);
+        .filter(h => getPrecipitationType(h) !== 'none')
+        .map(h => getPrecipitationType(h));
 
     const futurePrecipTypes = future
-        .filter(h => h.precipitationType.type !== 'none')
-        .map(h => h.precipitationType.type);
+        .filter(h => getPrecipitationType(h) !== 'none')
+        .map(h => getPrecipitationType(h));
 
     // Determine dominant precipitation types
     analysis.precipitation.recentTypes = [...new Set(pastPrecipTypes)];
@@ -932,233 +1752,6 @@ function generateEnvironmentalDescription(analysis, weatherData) {
     return descriptions;
 }
 
-/**
- * Retrieve historical weather data for past year analysis
- * @param {Object} location - Location object with lat/lon
- * @param {string} startDate - Start date in YYYY-MM-DD format
- * @param {string} endDate - End date in YYYY-MM-DD format
- * @returns {Promise<Object>} Historical weather data
- */
-async function getHistoricalWeatherData(location, startDate, endDate) {
-    const cacheKey = `historical_${location.lat}_${location.lon}_${startDate}_${endDate}`;
-
-    return getCachedWeatherData(cacheKey, async () => {
-        // Use Open-Meteo historical API
-        const params = new URLSearchParams({
-            latitude: location.lat,
-            longitude: location.lon,
-            start_date: startDate,
-            end_date: endDate,
-            hourly: [
-                'temperature_2m',
-                'relative_humidity_2m',
-                'dewpoint_2m',
-                'apparent_temperature',
-                'precipitation',
-                'rain',
-                'snowfall',
-                'weather_code',
-                'pressure_msl',
-                'cloud_cover',
-                'wind_speed_10m',
-                'wind_direction_10m',
-                'wind_gusts_10m'
-            ].join(',')
-        });
-
-        const url = `${OPEN_METEO_BASE}/forecast?${params.toString()}`;
-
-        try {
-            const data = await makeHttpsRequest(url);
-
-            // Transform historical data
-            const result = {
-                timestamp: Date.now(),
-                dataSource: 'Open-Meteo Historical API',
-                location: {
-                    latitude: data.latitude,
-                    longitude: data.longitude,
-                    timezone: data.timezone
-                },
-                dateRange: {
-                    start: startDate,
-                    end: endDate
-                },
-                daily: [],
-                statistics: {}
-            };
-
-            if (data.hourly && data.hourly.time) {
-                // Group by day and calculate daily statistics
-                const dailyGroups = {};
-                const times = data.hourly.time;
-
-                for (let i = 0; i < times.length; i++) {
-                    const date = times[i].split('T')[0];
-                    if (!dailyGroups[date]) {
-                        dailyGroups[date] = {
-                            date,
-                            temperatures: [],
-                            humidities: [],
-                            dewPoints: [],
-                            pressures: [],
-                            cloudCovers: [],
-                            windDirections: [],
-                            windGusts: [],
-                            precipitations: [],
-                            rains: [],
-                            snowfalls: [],
-                            windSpeeds: [],
-                            conditions: [],
-                            weatherCodes: []
-                        };
-                    }
-
-                    dailyGroups[date].temperatures.push(data.hourly.temperature_2m[i]);
-                    dailyGroups[date].humidities.push(data.hourly.relative_humidity_2m[i]);
-                    if (data.hourly.dewpoint_2m) dailyGroups[date].dewPoints.push(data.hourly.dewpoint_2m[i]);
-                    if (data.hourly.pressure_msl) dailyGroups[date].pressures.push(data.hourly.pressure_msl[i]);
-                    if (data.hourly.cloud_cover) dailyGroups[date].cloudCovers.push(data.hourly.cloud_cover[i]);
-                    if (data.hourly.wind_direction_10m) dailyGroups[date].windDirections.push(data.hourly.wind_direction_10m[i]);
-                    if (data.hourly.wind_gusts_10m) dailyGroups[date].windGusts.push(data.hourly.wind_gusts_10m[i]);
-                    dailyGroups[date].precipitations.push(data.hourly.precipitation[i]);
-                    if (data.hourly.rain) dailyGroups[date].rains.push(data.hourly.rain[i] || 0);
-                    if (data.hourly.snowfall) dailyGroups[date].snowfalls.push(data.hourly.snowfall[i] || 0);
-                    dailyGroups[date].windSpeeds.push(data.hourly.wind_speed_10m[i]);
-                    dailyGroups[date].conditions.push(mapOpenMeteoCondition(data.hourly.weather_code[i]));
-                    dailyGroups[date].weatherCodes.push(data.hourly.weather_code[i]);
-                }
-
-                // Calculate daily statistics
-                result.daily = Object.values(dailyGroups).map(day => ({
-                    date: day.date,
-                    temperature: {
-                        min: Math.min(...day.temperatures),
-                        max: Math.max(...day.temperatures),
-                        avg: day.temperatures.reduce((a, b) => a + b, 0) / day.temperatures.length
-                    },
-                    humidity: {
-                        min: Math.min(...day.humidities),
-                        max: Math.max(...day.humidities),
-                        avg: day.humidities.reduce((a, b) => a + b, 0) / day.humidities.length
-                    },
-                    dewPoint: day.dewPoints.length > 0 ? {
-                        min: Math.min(...day.dewPoints),
-                        max: Math.max(...day.dewPoints),
-                        avg: day.dewPoints.reduce((a, b) => a + b, 0) / day.dewPoints.length
-                    } : null,
-                    pressure: day.pressures.length > 0 ? {
-                        min: Math.min(...day.pressures),
-                        max: Math.max(...day.pressures),
-                        avg: day.pressures.reduce((a, b) => a + b, 0) / day.pressures.length
-                    } : null,
-                    cloudCover: day.cloudCovers.length > 0 ? {
-                        min: Math.min(...day.cloudCovers),
-                        max: Math.max(...day.cloudCovers),
-                        avg: day.cloudCovers.reduce((a, b) => a + b, 0) / day.cloudCovers.length
-                    } : null,
-                    windDirection: day.windDirections.length > 0 ? {
-                        avg: day.windDirections.reduce((a, b) => a + b, 0) / day.windDirections.length
-                    } : null,
-                    windGust: day.windGusts.length > 0 ? {
-                        max: Math.max(...day.windGusts),
-                        avg: day.windGusts.reduce((a, b) => a + b, 0) / day.windGusts.length
-                    } : null,
-                    precipitation: {
-                        total: day.precipitations.reduce((a, b) => a + b, 0),
-                        max: Math.max(...day.precipitations),
-                        rain: day.rains.length > 0 ? day.rains.reduce((a, b) => a + b, 0) : 0,
-                        snow: day.snowfalls.length > 0 ? day.snowfalls.reduce((a, b) => a + b, 0) : 0
-                    },
-                    windSpeed: {
-                        max: Math.max(...day.windSpeeds),
-                        avg: day.windSpeeds.reduce((a, b) => a + b, 0) / day.windSpeeds.length
-                    },
-                    dominantCondition: day.conditions[Math.floor(day.conditions.length / 2)], // Median condition
-                    dominantWeatherCode: day.weatherCodes[Math.floor(day.weatherCodes.length / 2)], // Median weather code
-                    conditions: [...new Set(day.conditions)], // Unique conditions for the day
-                    weatherCodes: [...new Set(day.weatherCodes)] // Unique weather codes for the day
-                }));
-
-                // Calculate overall statistics
-                result.statistics = calculateHistoricalStatistics(result.daily);
-            }
-
-            return result;
-
-        } catch (error) {
-            console.error('Historical weather API error:', error);
-            return null;
-        }
-    }, ENHANCED_WEATHER_CACHE_DURATION * 6); // Longer cache for historical data
-}
-
-/**
- * Calculate statistics from historical daily weather data
- * @param {Array} dailyData - Array of daily weather data
- * @returns {Object} Statistical analysis
- */
-function calculateHistoricalStatistics(dailyData) {
-    if (!dailyData || dailyData.length === 0) {
-        return {};
-    }
-
-    const temperatures = dailyData.flatMap(d => [d.temperature.min, d.temperature.max]);
-    const precipitations = dailyData.map(d => d.precipitation.total);
-
-    return {
-        temperature: {
-            absoluteMin: Math.min(...temperatures),
-            absoluteMax: Math.max(...temperatures),
-            averageMin: dailyData.reduce((sum, d) => sum + d.temperature.min, 0) / dailyData.length,
-            averageMax: dailyData.reduce((sum, d) => sum + d.temperature.max, 0) / dailyData.length,
-            average: dailyData.reduce((sum, d) => sum + d.temperature.avg, 0) / dailyData.length
-        },
-        precipitation: {
-            total: precipitations.reduce((a, b) => a + b, 0),
-            averageDaily: precipitations.reduce((a, b) => a + b, 0) / precipitations.length,
-            maxDaily: Math.max(...precipitations),
-            rainyDays: dailyData.filter(d => d.precipitation.total > 0.1).length
-        },
-        humidity: {
-            averageMin: dailyData.reduce((sum, d) => sum + d.humidity.min, 0) / dailyData.length,
-            averageMax: dailyData.reduce((sum, d) => sum + d.humidity.max, 0) / dailyData.length,
-            average: dailyData.reduce((sum, d) => sum + d.humidity.avg, 0) / dailyData.length
-        },
-        wind: {
-            maxSpeed: Math.max(...dailyData.map(d => d.windSpeed.max)),
-            averageSpeed: dailyData.reduce((sum, d) => sum + d.windSpeed.avg, 0) / dailyData.length
-        },
-        conditionFrequency: calculateConditionFrequency(dailyData)
-    };
-}
-
-/**
- * Calculate frequency of different weather conditions
- * @param {Array} dailyData - Array of daily weather data
- * @returns {Object} Condition frequency map
- */
-function calculateConditionFrequency(dailyData) {
-    const conditionCounts = {};
-
-    dailyData.forEach(day => {
-        day.conditions.forEach(condition => {
-            conditionCounts[condition] = (conditionCounts[condition] || 0) + 1;
-        });
-    });
-
-    // Convert to percentages
-    const totalDays = dailyData.length;
-    const frequency = {};
-    Object.keys(conditionCounts).forEach(condition => {
-        frequency[condition] = {
-            count: conditionCounts[condition],
-            percentage: Math.round((conditionCounts[condition] / totalDays) * 100)
-        };
-    });
-
-    return frequency;
-}
 
 /**
  * Retrieve weekly weather forecast (this week + next week)
@@ -1174,27 +1767,48 @@ async function getWeeklyWeatherForecast(location) {
             latitude: location.lat,
             longitude: location.lon,
             forecast_days: 14,
+            timezone: 'auto',
             daily: [
                 'temperature_2m_max',
                 'temperature_2m_min',
+                'temperature_2m_mean',
                 'apparent_temperature_max',
                 'apparent_temperature_min',
+                'apparent_temperature_mean',
                 'precipitation_sum',
                 'rain_sum',
                 'showers_sum',
                 'snowfall_sum',
                 'precipitation_hours',
                 'precipitation_probability_max',
+                'precipitation_probability_mean',
+                'precipitation_probability_min',
                 'weather_code',
                 'sunrise',
                 'sunset',
+                'sunshine_duration',
+                'daylight_duration',
                 'wind_speed_10m_max',
                 'wind_gusts_10m_max',
-                'wind_direction_10m_dominant'
+                'wind_direction_10m_dominant',
+                'shortwave_radiation_sum',
+                'et0_fao_evapotranspiration',
+                'uv_index_max',
+                'uv_index_clear_sky_max',
+                'relative_humidity_2m_mean',
+                'cloud_cover_mean'
+            ].join(','),
+            hourly: [
+                'temperature_2m',
+                'relative_humidity_2m',
+                'dewpoint_2m',
+                'pressure_msl',
+                'surface_pressure',
+                'visibility'
             ].join(',')
         });
 
-        const url = `${OPEN_METEO_BASE}/forecast?${params.toString()}`;
+        const url = `https://api.open-meteo.com/v1/forecast?${params.toString()}`;
 
         try {
             const data = await makeHttpsRequest(url);
@@ -1210,16 +1824,56 @@ async function getWeeklyWeatherForecast(location) {
                 weekly: []
             };
 
+            // Aggregate hourly data by day for missing daily fields
+            const hourlyAggregates = {};
+            if (data.hourly && data.hourly.time) {
+                data.hourly.time.forEach((timestamp, index) => {
+                    const date = timestamp.split('T')[0];
+                    if (!hourlyAggregates[date]) {
+                        hourlyAggregates[date] = {
+                            dewPoints: [],
+                            pressures: [],
+                            visibilities: []
+                        };
+                    }
+                    if (data.hourly.dewpoint_2m && data.hourly.dewpoint_2m[index] !== null) {
+                        hourlyAggregates[date].dewPoints.push(data.hourly.dewpoint_2m[index]);
+                    }
+                    if (data.hourly.pressure_msl && data.hourly.pressure_msl[index] !== null) {
+                        hourlyAggregates[date].pressures.push(data.hourly.pressure_msl[index]);
+                    }
+                    if (data.hourly.visibility && data.hourly.visibility[index] !== null) {
+                        hourlyAggregates[date].visibilities.push(data.hourly.visibility[index]);
+                    }
+                });
+
+                // Calculate daily averages
+                Object.keys(hourlyAggregates).forEach(date => {
+                    const dayData = hourlyAggregates[date];
+                    hourlyAggregates[date] = {
+                        dewPoint: dayData.dewPoints.length > 0 ? dayData.dewPoints.reduce((a, b) => a + b, 0) / dayData.dewPoints.length : null,
+                        pressure: dayData.pressures.length > 0 ? dayData.pressures.reduce((a, b) => a + b, 0) / dayData.pressures.length : null,
+                        visibility: dayData.visibilities.length > 0 ?
+                            dayData.visibilities.filter(v => v > 0).length > 0 ?
+                                dayData.visibilities.filter(v => v > 0).reduce((a, b) => a + b, 0) / dayData.visibilities.filter(v => v > 0).length
+                                : null
+                            : null
+                    };
+                });
+            }
+
             if (data.daily && data.daily.time) {
                 result.weekly = data.daily.time.map((date, index) => ({
                     date,
                     temperature: {
                         min: Math.round(data.daily.temperature_2m_min[index] * 10) / 10,
-                        max: Math.round(data.daily.temperature_2m_max[index] * 10) / 10
+                        max: Math.round(data.daily.temperature_2m_max[index] * 10) / 10,
+                        avg: data.daily.temperature_2m_mean ? Math.round(data.daily.temperature_2m_mean[index] * 10) / 10 : (data.daily.temperature_2m_min[index] + data.daily.temperature_2m_max[index]) / 2
                     },
                     feelsLike: {
                         min: Math.round(data.daily.apparent_temperature_min[index] * 10) / 10,
-                        max: Math.round(data.daily.apparent_temperature_max[index] * 10) / 10
+                        max: Math.round(data.daily.apparent_temperature_max[index] * 10) / 10,
+                        avg: data.daily.apparent_temperature_mean ? Math.round(data.daily.apparent_temperature_mean[index] * 10) / 10 : null
                     },
                     precipitation: {
                         total: Math.round(data.daily.precipitation_sum[index] * 100) / 100,
@@ -1227,17 +1881,31 @@ async function getWeeklyWeatherForecast(location) {
                         showers: Math.round(data.daily.showers_sum[index] * 100) / 100,
                         snowfall: Math.round(data.daily.snowfall_sum[index] * 100) / 100,
                         hours: data.daily.precipitation_hours[index],
-                        probability: data.daily.precipitation_probability_max[index]
+                        probability: data.daily.precipitation_probability_max[index],
+                        probabilityMean: data.daily.precipitation_probability_mean ? data.daily.precipitation_probability_mean[index] : null,
+                        probabilityMin: data.daily.precipitation_probability_min ? data.daily.precipitation_probability_min[index] : null
                     },
+                    humidity: Math.round(data.daily.relative_humidity_2m_mean[index]),
+                    cloudCoverage: Math.round(data.daily.cloud_cover_mean[index]),
                     condition: mapOpenMeteoCondition(data.daily.weather_code[index]),
                     wind: {
-                        maxSpeed: Math.round(data.daily.wind_speed_10m_max[index] * 10) / 10,
-                        maxGust: Math.round(data.daily.wind_gusts_10m_max[index] * 10) / 10,
+                        maxSpeed: Math.round((data.daily.wind_speed_10m_max[index] / 3.6) * 10) / 10, // Convert km/h to m/s
+                        maxGust: Math.round((data.daily.wind_gusts_10m_max[index] / 3.6) * 10) / 10, // Convert km/h to m/s
                         dominantDirection: data.daily.wind_direction_10m_dominant[index]
                     },
                     sunrise: data.daily.sunrise[index],
                     sunset: data.daily.sunset[index],
-                    rawConditionCode: data.daily.weather_code[index]
+                    sunshineDuration: data.daily.sunshine_duration ? Math.round(data.daily.sunshine_duration[index]) : null,
+                    daylightDuration: data.daily.daylight_duration ? Math.round(data.daily.daylight_duration[index]) : null,
+                    solarRadiation: data.daily.shortwave_radiation_sum ? Math.round(data.daily.shortwave_radiation_sum[index] * 10) / 10 : null,
+                    evapotranspiration: data.daily.et0_fao_evapotranspiration ? Math.round(data.daily.et0_fao_evapotranspiration[index] * 100) / 100 : null,
+                    uvIndex: data.daily.uv_index_max ? Math.round(data.daily.uv_index_max[index] * 10) / 10 : null,
+                    uvIndexClearSky: data.daily.uv_index_clear_sky_max ? Math.round(data.daily.uv_index_clear_sky_max[index] * 10) / 10 : null,
+                    // Add aggregated hourly data
+                    dewPoint: hourlyAggregates[date]?.dewPoint ? Math.round(hourlyAggregates[date].dewPoint * 10) / 10 : null,
+                    pressure: hourlyAggregates[date]?.pressure ? Math.round(hourlyAggregates[date].pressure * 10) / 10 : null,
+                    visibility: hourlyAggregates[date]?.visibility ? Math.round(hourlyAggregates[date].visibility) : null,
+                    rawConditionId: data.daily.weather_code[index]
                 }));
             }
 
@@ -1321,7 +1989,10 @@ async function getComprehensiveWeatherAnalysis(location, options = {}) {
             const endDate = new Date().toISOString().split('T')[0];
             const startDate = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-            results.historical = await getHistoricalWeatherData(location, startDate, endDate);
+            results.historical = await getWeatherFromBestProvider(location, {
+                startDate,
+                endDate
+            });
         }
 
         // 4. Generate comprehensive analysis
@@ -1344,6 +2015,11 @@ async function getComprehensiveWeatherAnalysis(location, options = {}) {
  * @returns {Object} Comprehensive analysis
  */
 function generateComprehensiveAnalysis(weatherData) {
+    // Handle null/undefined weather data gracefully
+    if (!weatherData) {
+        return false;
+    }
+
     const analysis = {
         environmental: {
             currentDescription: '',
@@ -1364,7 +2040,7 @@ function generateComprehensiveAnalysis(weatherData) {
     };
 
     // Current environmental description
-    if (weatherData.temporal && weatherData.temporal.analysis) {
+    if (weatherData?.temporal?.analysis?.environmental) {
         analysis.environmental.currentDescription = weatherData.temporal.analysis.environmental.description;
         analysis.environmental.temporalChanges = weatherData.temporal.analysis.environmental.environmentalChanges;
         analysis.environmental.characterImplications = [
@@ -1373,7 +2049,7 @@ function generateComprehensiveAnalysis(weatherData) {
     }
 
     // Weekly patterns
-    if (weatherData.weekly && weatherData.weekly.weekly) {
+    if (weatherData?.weekly?.weekly) {
         const weeklyData = weatherData.weekly.weekly;
 
         // Temperature trends
@@ -1621,8 +2297,8 @@ function generateEnvironmentalDetailRecommendations(analysis, weatherData) {
     if (weatherData.current) {
         const current = weatherData.current;
 
-        if (current.windSpeed > 15) {
-            recommendations.push('Include wind effects: moving foliage, loose clothing, hair movement, potential for debris');
+        if (current.windSpeed > 20) {
+            recommendations.push('Include wind effects: moving leaves, loose clothing, hair movement, potential for debris');
         }
 
         if (current.humidity > 80) {
@@ -2168,16 +2844,17 @@ function getVividWeatherDescription(condition, windDirection = null) {
 }
 
 /**
- * Generate extremely accurate weather conditions for custom weather overrides
- * Based on real meteorological data and weather patterns
+ * Generate SYNTHETIC/FAKE weather conditions for artistic/creative purposes only
+ * WARNING: This creates fictional weather data based on typical meteorological patterns - NOT real weather observations
+ * For real weather data, use actual weather APIs. This is only for image generation and creative applications.
  * @param {string} condition - Weather condition name (e.g., 'thunderstorm', 'snowing', 'foggy')
  * @param {Object} baseWeather - Optional base weather data to modify
- * @returns {Object} Realistic weather data with accurate ranges for the given condition
+ * @returns {Object} Synthetic weather data with typical ranges for the given condition
  */
 function generateAccurateWeatherConditions(condition, baseWeather = {}) {
     const normalizedCondition = condition.toLowerCase().replace(/[^a-z_\s]/g, '');
 
-    // Base realistic weather data ranges based on actual meteorological patterns
+    // SYNTHETIC weather data ranges based on TYPICAL meteorological patterns (not real-time data)
     const weatherRanges = {
         // Thunderstorm conditions - based on actual thunderstorm weather patterns
         'thunderstorm': {
@@ -2909,36 +3586,40 @@ function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0) {
     return z.object({
     text_replacements: z.object({
         prompt: z.array(z.object({
+            reason: z.string()
+                .describe("Plain text brief description of the reason for this replacement"),
             select_text: z.string()
-                .describe("Exact text to find and select in the original prompt (use 'EOF' to append at end)"),
+                .describe("EXACT text segment (1-5 words) that currently exists in the prompt as provided below (use 'EOF' to append at end)"),
             replace_text: z.string()
-                .describe("Text to replace the selected text with")
+                .describe("Text to replace the selected text with"),
         })).describe("Find-and-replace operations for the main prompt"),
         uc: z.array(z.object({
+            reason: z.string()
+                .describe("Plain text brief description of the reason for this replacement"),
             select_text: z.string()
-                .describe("Exact text to find and select in the original negative prompt (use 'EOF' to append at end)"),
+                .describe("EXACT text segment (1-5 words) that currently exists in the negative prompt as provided below (use 'EOF' to append at end)"),
             replace_text: z.string()
-                .describe("Text to replace the selected text with")
+                .describe("Text to replace the selected text with"),
         })).describe("Find-and-replace operations for the negative prompt"),
         character_prompts: z.array(z.object({
             input: z.array(z.object({
+                reason: z.string()
+                    .describe("Plain text brief description of the reason for this replacement"),
                 select_text: z.string()
-                    .describe("Exact text to find and select in this character prompt (use 'EOF' to append at end)"),
+                    .describe("EXACT text segment (1-5 words) that currently exists in the character prompt as provided below (use 'EOF' to append at end)"),
                 replace_text: z.string()
                     .describe("Text to replace the selected text with")
             })).describe("Find-and-replace operations for this character prompt input"),
             uc: z.array(z.object({
+                reason: z.string()
+                    .describe("Plain text brief description of the reason for this replacement"),
                 select_text: z.string()
-                    .describe("Exact text to find and select in this character negative prompt (use 'EOF' to append at end)"),
+                    .describe("EXACT text segment (1-5 words) that currently exists in the character negative prompt as provided below (use 'EOF' to append at end)"),
                 replace_text: z.string()
-                    .describe("Text to replace the selected text with")
+                    .describe("Text to replace the selected text with"),
             })).describe("Find-and-replace operations for this character negative prompt")
         })).describe("Array of find-and-replace operations for character prompts (one per character)")
         }).describe("MANDATORY structured find-and-replace operations - CRITICAL: Always use prompt array to add comprehensive weather descriptions"),
-        modifications_made: z.array(z.string())
-            .describe("List of specific changes made"),
-        reasoning: z.string()
-            .describe("Simple HTML summary of key enhancements and benefits")
 });
 }
 
@@ -2950,6 +3631,7 @@ function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0) {
  * @param {number} characterIndex - For character prompts, which character index (optional)
  * @param {string} characterField - For character prompts, 'input' or 'uc' (optional)
  * @returns {string} Modified content with replacements applied
+ * @throws {Error} If any text replacements fail to find their target text
  */
 function applyDynamicReplacements(originalContent, replacements, targetType = 'prompt', characterIndex = null, characterField = null) {
     let result = originalContent || '';
@@ -2968,32 +3650,71 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
         }
     }
 
-    for (const replacement of targetReplacements) {
-        const { select_text, replace_text } = replacement;
+    // Separate EOF replacements from regular replacements
+    const eofReplacements = [];
+    const regularReplacements = [];
 
-        if (select_text === 'EOF') {
-            // Smart EOF handling - inject before ", Text:" if present, otherwise at the end
-            const textBoundaryIndex = result.indexOf(', Text:');
-            if (textBoundaryIndex !== -1) {
-                // Inject before ", Text:" boundary to avoid placing content in display-only areas
-                result = result.substring(0, textBoundaryIndex).trimEnd() +
-                        (result[textBoundaryIndex - 1] === ' ' ? '' : ' ') + replace_text +
-                        result.substring(textBoundaryIndex);
-            } else {
-                // No boundary found, append to end
-                result = result.trimEnd() + (result.endsWith(' ') ? '' : ' ') + replace_text;
-            }
+    for (const replacement of targetReplacements) {
+        if (replacement.select_text === 'EOF') {
+            eofReplacements.push(replacement);
         } else {
-            // Find and replace exact text
-            const index = result.indexOf(select_text);
-            if (index !== -1) {
-                result = result.substring(0, index) +
-                        replace_text +
-                        result.substring(index + select_text.length);
-            } else {
-                // If exact text not found, throw error to indicate transformation failure
-                throw new Error(`Could not find exact text "${select_text}" in prompt for text replacement`);
-            }
+            regularReplacements.push(replacement);
+        }
+    }
+
+    // Apply regular replacements in order, allowing chaining but preventing exact duplicate applications
+    const appliedReplacements = new Set();
+    const failedReplacements = [];
+
+    for (const replacement of regularReplacements) {
+        const { select_text, replace_text } = replacement;
+        const trimmedSelectText = select_text.trim();
+        const replacementKey = `${select_text}|||${replace_text}`;
+
+        // Skip if we've already applied this exact replacement
+        if (appliedReplacements.has(replacementKey)) {
+            continue;
+        }
+
+        console.log(`🔄 Attempting replacement: "${trimmedSelectText}" → "${replace_text}"`);
+
+        const index = result.indexOf(trimmedSelectText);
+        if (index !== -1) {
+            const beforeReplace = result;
+            result = result.substring(0, index) +
+                    replace_text +
+                    result.substring(index + trimmedSelectText.length);
+
+            // Mark this replacement as applied
+            appliedReplacements.add(replacementKey);
+        } else {
+            // If exact text not found, track the failure - this will cause the entire process to fail
+            console.error(`❌ CRITICAL: Could not find exact text "${select_text}" in current result`);
+            failedReplacements.push(select_text);
+        }
+    }
+
+    // FAIL HARD: If any replacements failed, throw an error to invalidate cache and trigger regeneration
+    if (failedReplacements.length > 0) {
+        throw new Error(`Text replacement validation FAILED: Could not find ${failedReplacements.length} target text(s): ${failedReplacements.join(', ')}. This indicates the AI provided invalid replacement targets and requires regeneration.`);
+    }
+
+    // Apply EOF replacements last
+    for (const replacement of eofReplacements) {
+        const { replace_text } = replacement;
+        // Smart EOF handling - inject before ", Text:" if present, otherwise at the end
+        const textBoundaryIndex = result.indexOf(', Text:');
+        if (textBoundaryIndex !== -1) {
+            // Inject before ", Text:" boundary to avoid placing content in display-only areas
+            const beforeText = result.substring(0, textBoundaryIndex).trimEnd();
+            const needsComma = beforeText && (!beforeText.endsWith(',') || beforeText.endsWith('::'));
+            result = beforeText + (needsComma ? ', ' : ' ') + replace_text +
+                    result.substring(textBoundaryIndex);
+        } else {
+            // No boundary found, append to end with proper comma separation
+            const trimmedResult = result.trimEnd();
+            const needsComma = trimmedResult && (!trimmedResult.endsWith(',') || trimmedResult.endsWith('::'));
+            result = trimmedResult + (needsComma ? ', ' : ' ') + replace_text;
         }
     }
 
@@ -3160,18 +3881,7 @@ function getSeasonalConfig(seasonal, time) {
             const seasons = ['spring', 'summer', 'autumn', 'winter'];
             return { enabled: true, type: 'season', value: seasons[seasonal - 1] };
         }
-        if (seasonal >= 10 && seasonal <= 27) {
-            // Specific holiday override
-            return { enabled: true, type: 'holiday', value: HOLIDAY_NAMES[seasonal] || `Holiday ${seasonal}` };
-        }
-    }
-
-    // 'nearest' - find closest holiday
-    if (seasonal === 'nearest') {
-        const closest = findClosestHoliday(time);
-        if (closest) {
-            return { enabled: true, type: 'holiday', value: closest.name };
-        }
+        // Holiday indices 10-27 removed - holidays now handled through TOD system
     }
 
     // Fallback: disabled
@@ -3203,6 +3913,11 @@ function findClosestHoliday(time) {
             }
         }
 
+        // Skip holidays that are more than 7 days in the past
+        if (daysUntil < -7) {
+            return; // Skip this holiday
+        }
+
         const distance = Math.abs(daysUntil);
         if (distance < minDistance) {
             minDistance = distance;
@@ -3211,6 +3926,60 @@ function findClosestHoliday(time) {
     });
 
     return closest;
+}
+
+/**
+ * Get the date for a specific holiday name
+ * @param {string} holidayName - Name of the holiday
+ * @returns {Date|null} Date object for the holiday, or null if not found
+ */
+function getHolidayDate(holidayName) {
+    const now = new Date();
+    const year = now.getFullYear();
+
+    // Find the holiday by name
+    const holidayEntry = Object.entries(HOLIDAY_DATA).find(([id, holiday]) => holiday.name === holidayName);
+    if (!holidayEntry) return null;
+
+    const [id, holiday] = holidayEntry;
+    let holidayDate;
+
+    if (typeof holiday.dateLogic === 'function') {
+        // Handle dynamic dates (Memorial Day, Labor Day, etc.)
+        if (holiday.dateLogic === HOLIDAY_DATA[18].dateLogic) { // Memorial Day
+            const memorialDay = new Date(year, 4, 31);
+            memorialDay.setDate(memorialDay.getDate() - memorialDay.getDay());
+            holidayDate = memorialDay;
+        } else if (holiday.dateLogic === HOLIDAY_DATA[19].dateLogic) { // Labor Day
+            const laborDay = new Date(year, 8, 1);
+            laborDay.setDate(laborDay.getDate() + (7 - laborDay.getDay()));
+            holidayDate = laborDay;
+        } else {
+            // Standard fixed date
+            if (holiday.targetMonth !== undefined && holiday.targetDay !== undefined) {
+                holidayDate = new Date(year, holiday.targetMonth, holiday.targetDay);
+            }
+        }
+    } else {
+        // Standard fixed date
+        if (holiday.targetMonth !== undefined && holiday.targetDay !== undefined) {
+            holidayDate = new Date(year, holiday.targetMonth, holiday.targetDay);
+        }
+    }
+
+    if (!holidayDate) return null;
+
+    // Handle future dates: if holiday hasn't occurred this year yet, use last year's date
+    // Exception: if we're within 7 days of the holiday, use this year's date
+    const daysUntilHoliday = Math.ceil((holidayDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (daysUntilHoliday > 7) {
+        // Holiday is more than 7 days away - use last year's date for historical weather
+        holidayDate = new Date(holidayDate.getFullYear() - 1, holidayDate.getMonth(), holidayDate.getDate());
+    }
+    // If within 7 days or already passed, use the current year date
+
+    return holidayDate;
 }
 
 /**
@@ -3268,42 +4037,83 @@ if (!holidayDataValid) {
 }
 
 /**
- * Make HTTPS request with promise
+ * Make HTTPS request with promise and retry logic
  * @param {string} url - Request URL
  * @param {Object} options - Additional request options
+ * @param {number} maxRetries - Maximum number of retry attempts (default: 3)
+ * @param {number} baseDelay - Base delay in milliseconds for exponential backoff (default: 1000)
  * @returns {Promise<Object>} Parsed JSON response
  */
-function makeHttpsRequest(url, options = {}) {
-    return new Promise((resolve, reject) => {
-        const requestOptions = {
-            headers: {
-                'User-Agent': 'StaticForge-DynamicGeneration/1.0 (https://staticforge.app)',
-                ...options.headers
+async function makeHttpsRequest(url, options = {}, maxRetries = 3, baseDelay = 1000) {
+    let lastError;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            const result = await new Promise((resolve, reject) => {
+                const requestOptions = {
+                    headers: {
+                        'User-Agent': config?.userAgent || 'StaticForge/1.1a (https://staticforge.app)',
+                        ...options.headers
+                    },
+                    timeout: 5000 // 10 second timeout
+                };
+
+                const req = https.get(url, requestOptions, (res) => {
+                    let data = '';
+
+                    res.on('data', (chunk) => {
+                        data += chunk;
+                    });
+
+                    res.on('end', () => {
+                        try {
+                            if (res.statusCode === 200) {
+                                resolve(JSON.parse(data));
+                            } else if (res.statusCode >= 500 && attempt < maxRetries) {
+                                // Server errors - retry
+                                reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                            } else {
+                                // Client errors or final attempt - don't retry
+                                reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                            }
+                        } catch (e) {
+                            reject(new Error(`Failed to parse response: ${e.message}`));
+                        }
+                    });
+                });
+
+                req.on('error', (err) => {
+                    reject(err);
+                });
+
+                // Handle timeout
+                req.on('timeout', () => {
+                    req.destroy();
+                    reject(new Error('Request timeout'));
+                });
+            });
+
+            return result;
+
+        } catch (error) {
+            lastError = error;
+
+            // Don't retry on client errors (4xx) or if this is the last attempt
+            if (error.message.includes('HTTP 4') || attempt === maxRetries) {
+                break;
             }
-        };
 
-        https.get(url, requestOptions, (res) => {
-            let data = '';
+            // Calculate exponential backoff delay with jitter
+            const delay = baseDelay * Math.pow(2, attempt) + Math.random() * 1000;
+            console.warn(`🌐 API request failed (attempt ${attempt + 1}/${maxRetries + 1}): ${error.message}. Retrying in ${Math.round(delay)}ms...`);
 
-            res.on('data', (chunk) => {
-                data += chunk;
-            });
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
 
-            res.on('end', () => {
-                try {
-                    if (res.statusCode === 200) {
-                        resolve(JSON.parse(data));
-                    } else {
-                        reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-                    }
-                } catch (e) {
-                    reject(new Error(`Failed to parse response: ${e.message}`));
-                }
-            });
-        }).on('error', (err) => {
-            reject(err);
-        });
-    });
+    // All retries exhausted
+    console.error(`❌ API request failed after ${maxRetries + 1} attempts:`, lastError.message);
+    throw lastError;
 }
 
 /**
@@ -3339,17 +4149,35 @@ async function getCachedLocation(fetchFunction) {
 async function getCachedWeatherData(cacheKey, fetchFunction) {
     const cached = weatherCache.get(cacheKey);
 
-    if (cached && Date.now() - cached.timestamp < WEATHER_CACHE_DURATION) {
-        console.log(`🌤️ Using cached weather data for ${cacheKey}`);
-        return cached.data;
+    if (cached) {
+        const cacheAge = Date.now() - cached.timestamp;
+
+        // If we have valid cached data, return it
+        if (cached.data !== null && cacheAge < WEATHER_CACHE_DURATION) {
+            console.log(`🌤️ Using cached weather data for ${cacheKey}`);
+            return cached.data;
+        }
+
+        // If this is a failure cache and it's still within the failure cache duration, don't retry
+        if (cached.data === null && cacheAge < WEATHER_FAILURE_CACHE_DURATION) {
+            console.log(`⚠️ Skipping weather API call for ${cacheKey} - previous failure cached (${Math.round((WEATHER_FAILURE_CACHE_DURATION - cacheAge) / 60000)} min remaining)`);
+            return null;
+        }
     }
 
     console.log(`🌤️ Fetching fresh weather data for ${cacheKey}`);
     const data = await fetchFunction();
+
+    // Cache the result - use longer duration for failures to prevent rapid retries
     weatherCache.set(cacheKey, {
         data,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        isFailure: data === null
     });
+
+    if (data === null) {
+        console.log(`❌ Weather API call failed for ${cacheKey} - will not retry for ${Math.round(WEATHER_FAILURE_CACHE_DURATION / 60000)} minutes`);
+    }
 
     return data;
 }
@@ -3363,13 +4191,16 @@ async function getCurrentLocation() {
     try {
         const secureConfig = require('../secure.config.json');
         if (secureConfig.location && secureConfig.location.latitude !== null && secureConfig.location.longitude !== null) {
+            const lat = parseFloat(secureConfig.location.latitude);
+            const lon = parseFloat(secureConfig.location.longitude);
+            const accurateTimezone = getTimezoneByCoordinates(lat, lon);
             console.log('📍 Using configured coordinates from secure.config.json');
             return {
-                lat: parseFloat(secureConfig.location.latitude),
-                lon: parseFloat(secureConfig.location.longitude),
+                lat: lat,
+                lon: lon,
                 city: 'Configured Location',
                 country: 'Configured',
-                timezone: 'UTC',
+                timezone: accurateTimezone,
                 configured: true
             };
         }
@@ -3427,7 +4258,10 @@ async function getCurrentLocation() {
                 if (response && typeof response === 'object') {
                     const location = service.parse(response);
                     if (location && location.lat && location.lon) {
-                        console.log(`✅ Got location from ${service.name}: ${location.city}, ${location.country}`);
+                        // Use offline timezone lookup for accurate timezone determination
+                        const accurateTimezone = getTimezoneByCoordinates(location.lat, location.lon);
+                        location.timezone = accurateTimezone;
+                        console.log(`✅ Got location from ${service.name}: ${location.city}, ${location.country} (timezone: ${accurateTimezone})`);
                         return location;
                     }
                 }
@@ -3439,132 +4273,17 @@ async function getCurrentLocation() {
 
         console.warn('⚠️ All location services failed, using fallback location');
         // Fallback to a default location
+        const fallbackLat = 40.7128;
+        const fallbackLon = -74.0060;
+        const accurateTimezone = getTimezoneByCoordinates(fallbackLat, fallbackLon);
         return {
-            lat: 40.7128,
-            lon: -74.0060,
+            lat: fallbackLat,
+            lon: fallbackLon,
             city: 'New York',
             country: 'United States',
-            timezone: 'America/New_York'
+            timezone: accurateTimezone
         };
     });
-}
-
-
-/**
- * Get current weather conditions using enhanced Open-Meteo system
- * @param {Object} location - Location object with lat/lon
- * @param {Object} options - Configuration options
- * @returns {Promise<Object>} Weather data from enhanced system
- */
-async function getCurrentWeather(location, options = {}) {
-    console.log('🌤️ Getting current weather with enhanced Open-Meteo system');
-
-    const enhancedData = await getComprehensiveWeatherAnalysis(location, {
-        includeHistorical: false,
-        includeWeekly: false
-    });
-
-    // If enhancedData is null (API failed), return null
-    if (!enhancedData) return null;
-
-    // Return current weather with enhanced precipitation analysis
-    const current = enhancedData.current || enhancedData.temporal?.current;
-    if (!current) return null;
-
-    // Add proper icon mapping for the current weather
-    const isDay = true; // Assume day for now, could be enhanced with sunrise/sunset data
-    current.icon = mapOpenMeteoIcon(current.rawConditionCode, isDay);
-
-    return current;
-}
-
-
-/**
- * Get hourly weather forecast using enhanced Open-Meteo system
- * @param {Object} location - Location object with lat/lon
- * @param {number} hours - Number of hours to forecast
- * @param {Object} options - Configuration options
- * @returns {Promise<Array>} Array of hourly weather data
- */
-async function getWeatherForecast(location, hours = 24, options = {}) {
-    console.log(`🌤️ Getting ${hours}-hour weather forecast with enhanced Open-Meteo system`);
-
-    const enhancedData = await getComprehensiveWeatherAnalysis(location, {
-        includeHistorical: false,
-        includeWeekly: false
-    });
-
-    // If enhancedData is null (API failed), return null
-    if (!enhancedData) return null;
-
-    // Combine past period (chronological) and future period
-    const pastData = enhancedData.temporal?.pastPeriod || [];
-    const futureData = enhancedData.temporal?.nextPeriod || [];
-    const combinedForecast = [...pastData, ...futureData];
-
-    // Limit to requested hours and format with proper icons
-    return combinedForecast.slice(0, hours).map(hour => {
-        // Determine if it's day or night (simple heuristic based on hour)
-        const hourOfDay = new Date(hour.timestamp).getHours();
-        const isDay = hourOfDay >= 6 && hourOfDay <= 18;
-
-        return {
-            timestamp: hour.timestamp,
-            temperature: hour.temperature,
-            condition: hour.condition,
-            humidity: hour.humidity,
-            windSpeed: hour.windSpeed,
-            windDirection: hour.windDirection,
-            pressure: hour.pressure,
-                visibility: hour.visibility || 10000,
-            feelsLike: hour.feelsLike,
-            precipitation: hour.precipitation,
-            rain: hour.rain,
-            snow: hour.snowfall,
-            rawConditionId: hour.rawConditionCode,
-            description: hour.condition,
-            icon: mapOpenMeteoIcon(hour.rawConditionCode, isDay),
-            dataSource: 'Enhanced Open-Meteo System'
-        };
-    });
-}
-
-
-/**
- * Get weather for a specific time of day using hourly forecast
- * @param {Object} location - Location object with lat/lon
- * @param {number} timeframeIndex - Timeframe index (0 = current, 1 = next hour, etc.)
- * @param {string} timezone - Timezone string
- * @returns {Promise<Object>} Weather data for the specified time
- */
-async function getWeatherForTimeOfDay(location, timeframeIndex, timezone = null) {
-    console.log(`🌤️ Getting weather for timeframe index ${timeframeIndex}`);
-
-    const enhancedData = await getComprehensiveWeatherAnalysis(location, {
-        includeHistorical: false,
-        includeWeekly: false
-    });
-
-    if (!enhancedData) {
-        throw new Error('Weather data not available');
-    }
-
-    // Combine past and future data
-    const pastData = enhancedData.temporal?.pastPeriod || [];
-    const futureData = enhancedData.temporal?.nextPeriod || [];
-    const combinedForecast = [...pastData, ...futureData];
-
-    if (!combinedForecast || combinedForecast.length <= timeframeIndex) {
-        throw new Error(`Weather forecast not available for timeframe index ${timeframeIndex}`);
-    }
-
-    // Add proper icon mapping
-    const hour = combinedForecast[timeframeIndex];
-    const hourOfDay = new Date(hour.timestamp).getHours();
-    const isDay = hourOfDay >= 6 && hourOfDay <= 18;
-    hour.icon = mapOpenMeteoIcon(hour.rawConditionCode, isDay);
-
-    return hour;
 }
 
 /**
@@ -3595,109 +4314,13 @@ function getWindConditionDescription(windSpeedMs) {
     }
 }
 
-function getDetailedWindCharacterEffects(windSpeedMs) {
-    const windSpeedMph = windSpeedMs * 2.237;
-
-    if (windSpeedMph >= 100) {
-        return 'CATASTROPHIC WINDS: Characters physically thrown off balance, bodies slammed against structures, faces contorted in terror, hair ripped violently, eyes squeezed shut against debris, screaming against deafening roar, limbs flailing desperately for stability, heavy characters barely able to stand, slender ones tumbling helplessly';
-    } else if (windSpeedMph >= 80) {
-        return 'APOCALYPTIC WINDS: Characters fighting desperately to stay upright, bodies bent nearly horizontal, faces battered by flying debris, hair whipping like whips, clothes torn at seams, eyes tearing from wind pressure, heavy characters using weight advantage to anchor themselves, slender characters clinging desperately to objects';
-    } else if (windSpeedMph >= 60) {
-        return 'DESTRUCTIVE WINDS: Characters leaning dramatically into wind, bodies pushed back with visible effort, faces strained and red from exertion, hair lashing violently across faces, clothes pressed flat against skin, heavy characters more stable but still struggling, slender characters stumbling backward';
-    } else if (windSpeedMph >= 40) {
-        return 'VIOLENT WINDS: Characters bracing against powerful gusts, bodies rocking from side to side, faces contorted against wind pressure, hair whipping chaotically, clothes billowing then slamming flat, heavy characters using strength to resist, slender characters requiring support to stand';
-    } else if (windSpeedMph >= 30) {
-        return 'STRONG WINDS: Characters leaning noticeably into wind, bodies requiring effort to stay upright, faces showing strain, hair blown straight back, clothes flapping loudly, heavy characters more resistant, slender characters feeling significant pushback, occasional staggering';
-    } else if (windSpeedMph >= 20) {
-        return 'MODERATE WINDS: Characters feeling substantial wind pressure, bodies swaying slightly, hair flowing dramatically, clothes rippling and billowing, heavy characters largely unaffected, slender characters noticeably leaning, occasional need to adjust stance';
-    } else if (windSpeedMph >= 10) {
-        return 'BREEZY WINDS: Characters feeling wind on skin, hair moving noticeably, light clothing rippling, slender characters more affected than heavier ones, occasional face shielding from wind, comfortable but noticeable air movement';
-    } else if (windSpeedMph >= 5) {
-        return 'LIGHT WINDS: Characters feeling gentle breeze on skin, long hair showing subtle movement, loose clothing lifting slightly, very light and pleasant air movement, minimal physical effect on any character build';
-    } else {
-        return 'CALM AIR: Characters experiencing minimal air movement, only very long hair showing faint movement, clothing hanging naturally, peaceful stillness with no physical wind effects';
-    }
-}
-
-function getDetailedWindClothingEffects(windSpeedMs) {
-    const windSpeedMph = windSpeedMs * 2.237;
-
-    if (windSpeedMph >= 100) {
-        return 'CATASTROPHIC: Clothing torn from bodies, fabric ripping at seams, heavy clothing providing some protection but still dangerous, exposed skin battered by wind, garments wrapping around objects, complete loss of clothing modesty and function';
-    } else if (windSpeedMph >= 80) {
-        return 'APOCALYPTIC: Clothing pressed violently against skin, fabric stretched tight around curves, seams straining dangerously, hems whipping like flags, heavy fabrics providing some wind resistance, lighter clothing potentially torn';
-    } else if (windSpeedMph >= 60) {
-        return 'DESTRUCTIVE: Clothing molded tightly to body contours, fabric pressed flat showing every curve and detail, hems lifting dangerously high, loose garments billowing wildly then slamming back, wind penetrating through any gaps';
-    } else if (windSpeedMph >= 40) {
-        return 'VIOLENT: Clothing flapping loudly against body, fabric pressed against skin in some areas while billowing in others, hems flying up erratically, heavy clothing more stable, lighter garments whipping chaotically';
-    } else if (windSpeedMph >= 30) {
-        return 'STRONG: Clothing rippling and billowing significantly, hems lifting noticeably, fabric moving with wind currents, heavy characters\' clothes showing less movement, slender characters\' garments more affected';
-    } else if (windSpeedMph >= 20) {
-        return 'MODERATE: Clothing showing clear wind movement, hems lifting and falling, fabric rippling nicely, loose clothing billowing gracefully, tight clothing showing wind pressure effects';
-    } else if (windSpeedMph >= 10) {
-        return 'BREEZY: Light clothing rippling gently, hems lifting slightly, fabric moving with air currents, pleasant wind effects on appearance, subtle enhancement of clothing movement';
-    } else if (windSpeedMph >= 5) {
-        return 'LIGHT: Very subtle clothing movement, gentle lifting of loose hems, light fabrics showing faint ripples, natural and pleasant wind interaction with garments';
-    } else {
-        return 'CALM: Clothing hanging naturally with no wind interference, fabric draping normally, no movement or billowing effects, completely still garments';
-    }
-}
-
-function getDetailedWindEnvironmentalEffects(windSpeedMs) {
-    const windSpeedMph = windSpeedMs * 2.237;
-
-    if (windSpeedMph >= 100) {
-        return 'CATASTROPHIC: Buildings shaking violently, windows shattering, trees uprooted and hurled through air, debris missiles flying lethally, ground scoured clean, apocalyptic destruction with howling like freight trains, visibility zero from airborne debris';
-    } else if (windSpeedMph >= 80) {
-        return 'APOCALYPTIC: Large trees snapping like twigs, roofs tearing off buildings, vehicles overturning, massive debris flying horizontally, ground erosion visible, deafening roar drowning all other sounds, near total destruction';
-    } else if (windSpeedMph >= 60) {
-        return 'DESTRUCTIVE: Trees bending nearly to ground, large branches breaking off, roofs damaged, small structures collapsing, heavy debris flying dangerously, soil erosion, thunderous howling wind, widespread damage';
-    } else if (windSpeedMph >= 40) {
-        return 'VIOLENT: Large trees bending dramatically, branches whipping violently, loose objects becoming projectiles, shingles flying off roofs, soil blowing, loud roaring wind, significant structural stress';
-    } else if (windSpeedMph >= 30) {
-        return 'STRONG: Trees bending noticeably, smaller branches breaking, leaves stripped from trees, dust and debris flying, flags torn, loud wind noise, potential for minor structural damage';
-    } else if (windSpeedMph >= 20) {
-        return 'MODERATE: Trees swaying rhythmically, leaves rustling loudly, dust clouds forming, light debris flying, flags snapping sharply, noticeable wind noise, surface soil movement';
-    } else if (windSpeedMph >= 10) {
-        return 'BREEZY: Trees showing gentle swaying, leaves rustling pleasantly, light dust movement, flags waving, soft wind sounds, occasional light debris movement';
-    } else if (windSpeedMph >= 5) {
-        return 'LIGHT: Gentle tree movement, soft leaf rustling, faint dust stirring, flags barely moving, very light and pleasant wind sounds, minimal environmental disturbance';
-    } else {
-        return 'CALM: No environmental wind effects, complete stillness, natural quiet atmosphere, no movement of objects, peaceful and undisturbed surroundings';
-    }
-}
-
-function getWindIntensityScale(windSpeedMs) {
-    const windSpeedMph = windSpeedMs * 2.237;
-
-    if (windSpeedMph >= 100) {
-        return '🌪️🌪️🌪️🌪️🌪️ EXTREME CATASTROPHE - F5+ Tornado Force - Total Destruction Imminent';
-    } else if (windSpeedMph >= 80) {
-        return '🌪️🌪️🌪️🌪️ SEVERE CATASTROPHE - F4-F5 Tornado Force - Widespread Total Destruction';
-    } else if (windSpeedMph >= 60) {
-        return '🌪️🌪️🌪️ MAJOR CATASTROPHE - F3 Tornado Force - Severe Structural Damage';
-    } else if (windSpeedMph >= 40) {
-        return '🌪️🌪️🌪️ HIGH IMPACT - F2 Tornado Force - Significant Damage Expected';
-    } else if (windSpeedMph >= 30) {
-        return '🌪️🌪️🌪️ MODERATE IMPACT - F1 Tornado Force - Moderate Damage Possible';
-    } else if (windSpeedMph >= 20) {
-        return '🌪️🌪️ STRONG WINDS - High Wind Warning - Potential Damage';
-    } else if (windSpeedMph >= 10) {
-        return '💨🌪️ MODERATE WINDS - Wind Advisory - Minor Impacts Possible';
-    } else if (windSpeedMph >= 5) {
-        return '💨 LIGHT WINDS - Breezy Conditions - Noticeable but Safe';
-    } else {
-        return '😌 CALM - Minimal Air Movement - Peaceful Conditions';
-    }
-}
-
 /**
  * Detect seasonal holidays and events based on date with buffer periods
  * @param {Object} time - Time object with month, day, year
  * @param {string} season - Current season
  * @returns {Object} Holiday detection results with buffer handling
  */
-function detectSeasonalHolidays(time, season) {
+function detectSeasonalHolidays(time) {
     const { month, dayOfMonth, monthName, dayOfWeekName, year } = time;
     const holidays = [];
 
@@ -3846,6 +4469,17 @@ function generateProgressiveHolidayElements(holiday) {
  * @returns {Object} Seasonal modification guidelines
  */
 function generateSeasonalGuidelines(time, season, seasonalEnabled, forcedHoliday = null, weather = null) {
+    // Check for time-based conflicts that would make seasonal elements inappropriate
+    const isNightTime = time && (time.hour >= 22 || time.hour <= 4); // Late night/early morning
+    const isMidnight = time && time.hour >= 0 && time.hour <= 3; // True midnight hours
+    const hasConflictingTime = isNightTime || (time && time.period && (
+        time.period.includes('night') ||
+        time.period.includes('midnight') ||
+        time.period.includes('dawn')
+    ));
+
+    // Autumn elements don't make sense at midnight
+    const seasonalTimeConflict = (season === 'autumn' || season === 'fall') && hasConflictingTime;
     let holidayInfo;
 
     if (forcedHoliday) {
@@ -3898,7 +4532,7 @@ function generateSeasonalGuidelines(time, season, seasonalEnabled, forcedHoliday
             };
         }
     } else {
-        holidayInfo = detectSeasonalHolidays(time, season);
+        holidayInfo = detectSeasonalHolidays(time);
     }
 
     if (!seasonalEnabled) {
@@ -3957,7 +4591,7 @@ function generateSeasonalGuidelines(time, season, seasonalEnabled, forcedHoliday
             }
         }
 
-        springMods.push('Add renewal themes: fresh flowers, green foliage, lighter clothing');
+        springMods.push('Add renewal themes: fresh flowers, green leaves, lighter clothing');
         springMods.push('Use bright, warm lighting, fresh atmosphere, growth symbolism');
         modifications.push(...springMods);
 
@@ -3988,22 +4622,29 @@ function generateSeasonalGuidelines(time, season, seasonalEnabled, forcedHoliday
     } else if (season === 'autumn') {
         const autumnMods = ['Autumn creates cozy, transitional environments with warm colors'];
 
-        // Weather-compliant autumn modifications
-        if (weather) {
-            if (weather.windSpeed > 8) {
-                autumnMods.push('Windy autumn conditions accelerate leaf fall - show swirling leaves, bare branches, and dynamic seasonal change');
+        // Skip specific autumn elements if they conflict with night time (no autumn leaves at midnight)
+        if (!seasonalTimeConflict) {
+            // Weather-compliant autumn modifications
+            if (weather) {
+                if (weather.windSpeed > 8) {
+                    autumnMods.push('Windy autumn conditions accelerate leaf fall - show swirling leaves, bare branches, and dynamic seasonal change');
+                }
+
+                if (weather.temperature < 5) {
+                    autumnMods.push('Cool autumn weather enhances crisp fall atmosphere - emphasize layered clothing and harvest coziness');
+                }
+
+                if ((weather.cloudCoverage || 0) >= 60) {
+                    autumnMods.push(`Heavy cloud cover${weather.condition.toLowerCase().includes('fog') ? ' and fog' : ''} creates moody fall atmosphere - enhance with mist-shrouded trees and earthy tones`);
+                }
             }
 
-            if (weather.temperature < 5) {
-                autumnMods.push('Cool autumn weather enhances crisp fall atmosphere - emphasize layered clothing and harvest coziness');
-            }
-
-            if (weather.condition.toLowerCase().includes('fog')) {
-                autumnMods.push('Foggy autumn conditions create mystical, moody fall atmosphere - enhance with mist-shrouded trees and earthy tones');
-            }
+            autumnMods.push('Add fall elements: colored leaves, harvest themes, layered clothing');
+        } else {
+            // Time-conflicting autumn - use generic seasonal elements only
+            autumnMods.push('Use warm earth tones and cozy transitional atmosphere (avoid specific autumn elements that conflict with night time)');
         }
 
-        autumnMods.push('Add fall elements: colored leaves, harvest themes, layered clothing');
         autumnMods.push('Use golden hour lighting in the morning and evening, warm earth tones, nostalgic atmosphere');
         modifications.push(...autumnMods);
     }
@@ -4011,7 +4652,7 @@ function generateSeasonalGuidelines(time, season, seasonalEnabled, forcedHoliday
     // Holiday modifications with progressive intensity
     if (holidayInfo.isHolidayPeriod && holidayInfo.progressiveElements) {
         const prog = holidayInfo.progressiveElements;
-        modifications.push(
+        const holidayMods = [
             `🎉 HOLIDAY DETECTED: ${holidayInfo.primaryHoliday.name} (${prog.daysUntil} days, ${prog.level} intensity)`,
             prog.guidance,
             `Selected decorations (${prog.decorations.length}): ${prog.decorations.join(', ')}`,
@@ -4019,7 +4660,9 @@ function generateSeasonalGuidelines(time, season, seasonalEnabled, forcedHoliday
             `Color palette (${prog.colors.length}): ${prog.colors.join(', ')}`,
             prog.activities.length > 0 ? `Activity suggestions: ${prog.activities.join(', ')}` : null,
             'Integrate holiday elements progressively based on current intensity level'
-        ).filter(Boolean); // Remove null entries
+        ].filter(Boolean); // Remove null entries
+
+        modifications.push(...holidayMods);
     } else if (holidayInfo.isHolidayPeriod) {
         // Fallback for holidays without progressive elements
         modifications.push(
@@ -4058,30 +4701,45 @@ function getComfortLevel(temperature, humidity, windSpeed) {
     const windSpeedMph = windSpeed * 2.237;
 
     // Calculate heat index for hot conditions (temperature in Celsius)
-    if (temperature >= 27) { // 80°F
+    if (temperature >= 27) { // 80°F - NOAA standard threshold
         // Convert to Fahrenheit for heat index calculation
         const tempF = (temperature * 9/5) + 32;
         const humidityPercent = Math.max(0, Math.min(100, humidity)); // Ensure valid range
 
-        // NOAA Heat Index Formula (simplified Rothfusz regression)
-        let heatIndexF;
-        if (tempF >= 80 && humidityPercent >= 40) {
-            heatIndexF = -42.379 + (2.04901523 * tempF) + (10.14333127 * humidityPercent) -
-                        (0.22475541 * tempF * humidityPercent) - (6.83783e-3 * tempF * tempF) -
-                        (5.481717e-2 * humidityPercent * humidityPercent) +
-                        (1.22874e-3 * tempF * tempF * humidityPercent) +
-                        (8.5282e-4 * tempF * humidityPercent * humidityPercent) -
-                        (1.99e-6 * tempF * tempF * humidityPercent * humidityPercent);
-        } else {
-            heatIndexF = tempF; // No heat index adjustment for cooler conditions
+        // NOAA Heat Index Formula (Rothfusz regression)
+        let heatIndexF = -42.379 + (2.04901523 * tempF) + (10.14333127 * humidityPercent) -
+                        (0.22475541 * tempF * humidityPercent) - (0.00683783 * tempF * tempF) -
+                        (0.05481717 * humidityPercent * humidityPercent) +
+                        (0.00122874 * tempF * tempF * humidityPercent) +
+                        (0.00085282 * tempF * humidityPercent * humidityPercent) -
+                        (0.00000199 * tempF * tempF * humidityPercent * humidityPercent);
+
+        // Adjustments for low humidity (RH < 13% and 80°F ≤ T ≤ 112°F)
+        if (humidityPercent < 13 && tempF >= 80 && tempF <= 112) {
+            const adjustment = ((13 - humidityPercent) / 4) * Math.sqrt((17 - Math.abs(tempF - 95)) / 17);
+            heatIndexF -= adjustment;
+        }
+
+        // Adjustments for high humidity (RH > 85% and 80°F ≤ T ≤ 87°F)
+        if (humidityPercent > 85 && tempF >= 80 && tempF <= 87) {
+            const adjustment = ((humidityPercent - 85) / 10) * ((87 - tempF) / 5);
+            heatIndexF += adjustment;
+        }
+
+        // For conditions that don't warrant heat index, use simpler formula
+        if (heatIndexF < 80) {
+            heatIndexF = 0.5 * (tempF + 61.0 + ((tempF - 68.0) * 1.2) + (humidityPercent * 0.094));
+            // Average with temperature for consistency
+            heatIndexF = (heatIndexF + tempF) / 2;
         }
 
         const heatIndexC = (heatIndexF - 32) * 5/9; // Convert back to Celsius
 
-        if (heatIndexC >= 54) return 'extremely hot - dangerous heat index'; // ~130°F
-        if (heatIndexC >= 41) return 'very hot - high heat index'; // ~105°F
-        if (heatIndexC >= 32) return 'hot - moderate heat index'; // ~90°F
-        if (heatIndexC >= 27) return 'warm - low heat index'; // ~80°F
+        // NOAA heat index categories
+        if (heatIndexC >= 54) return 'extremely hot - dangerous heat index'; // 130°F+
+        if (heatIndexC >= 41) return 'very hot - high heat index'; // 105°F+
+        if (heatIndexC >= 32) return 'hot - moderate heat index'; // 90°F+
+        if (heatIndexC >= 27) return 'warm - low heat index'; // 80°F+
     }
 
     // Calculate wind chill for cold conditions (temperature in Celsius, wind in mph)
@@ -4113,12 +4771,120 @@ function getComfortLevel(temperature, humidity, windSpeed) {
 
     // Additional comfort assessments
     if (temperature < 0) return 'very cold - freezing temperatures';
-    if (temperature > 35) return 'very hot - extreme heat';
+    if (temperature > 40) return 'very hot - extreme heat';
     if (humidity > 80) return 'humid - high moisture content';
     if (humidity < 20) return 'dry - low humidity';
     if (windSpeedMph > 20) return 'windy - strong wind conditions';
 
     return 'moderate - acceptable conditions';
+}
+
+/**
+ * Calculate heat index using NOAA formula
+ * @param {number} temperature - Temperature in Celsius
+ * @param {number} humidity - Relative humidity percentage
+ * @returns {number} Heat index in Celsius, or temperature if conditions don't warrant heat index
+ */
+function calculateHeatIndex(temperature, humidity) {
+    // For conditions that don't warrant heat index calculation, return the actual temperature
+    if (temperature < 27 || humidity < 40) return Math.round(temperature * 10) / 10;
+
+    // Convert to Fahrenheit for calculation
+    const tempF = (temperature * 9/5) + 32;
+    const humidityPercent = Math.max(0, Math.min(100, humidity));
+
+    // NOAA Heat Index Formula (Rothfusz regression)
+    let heatIndexF = -42.379 + (2.04901523 * tempF) + (10.14333127 * humidityPercent) -
+                    (0.22475541 * tempF * humidityPercent) - (0.00683783 * tempF * tempF) -
+                    (0.05481717 * humidityPercent * humidityPercent) +
+                    (0.00122874 * tempF * tempF * humidityPercent) +
+                    (0.00085282 * tempF * humidityPercent * humidityPercent);
+
+    // Adjustments for low humidity (RH < 13% and 80°F ≤ T ≤ 112°F)
+    if (humidityPercent < 13 && tempF >= 80 && tempF <= 112) {
+        const adjustment = ((13 - humidityPercent) / 4) * Math.sqrt((17 - Math.abs(tempF - 95)) / 17);
+        heatIndexF -= adjustment;
+    }
+
+    // Adjustments for high humidity (RH > 85% and 80°F ≤ T ≤ 87°F)
+    if (humidityPercent > 85 && tempF >= 80 && tempF <= 87) {
+        const adjustment = ((humidityPercent - 85) / 10) * ((87 - tempF) / 5);
+        heatIndexF += adjustment;
+    }
+
+    // For conditions that don't warrant heat index, use simpler formula
+    if (heatIndexF < 80) {
+        heatIndexF = 0.5 * (tempF + 61.0 + ((tempF - 68.0) * 1.2) + (humidityPercent * 0.094));
+        // Average with temperature for consistency
+        heatIndexF = (heatIndexF + tempF) / 2;
+    }
+
+    // Convert back to Celsius
+    const heatIndexC = (heatIndexF - 32) * 5/9;
+    return Math.round(heatIndexC * 10) / 10;
+}
+
+/**
+ * Calculate wind chill using NOAA formula
+ * @param {number} temperature - Temperature in Celsius
+ * @param {number} windSpeed - Wind speed in m/s
+ * @returns {number|null} Wind chill in Celsius, or null if not applicable
+ */
+function calculateWindChill(temperature, windSpeed) {
+    if (temperature > 10 || windSpeed < 0.447) return null; // Wind chill only applies to cold, windy conditions
+
+    // Convert to mph and Fahrenheit for calculation
+    const tempF = (temperature * 9/5) + 32;
+    const windSpeedMph = windSpeed * 2.237;
+
+    // NOAA Wind Chill Formula (2001)
+    const windChillF = 35.74 + (0.6215 * tempF) - (35.75 * Math.pow(windSpeedMph, 0.16)) +
+                      (0.4275 * tempF * Math.pow(windSpeedMph, 0.16));
+
+    // Convert back to Celsius
+    const windChillC = (windChillF - 32) * 5/9;
+    return Math.round(windChillC * 10) / 10;
+}
+
+/**
+ * Get UV index warnings and protection recommendations
+ * @param {number} uvIndex - UV index value
+ * @returns {Object} UV warnings and recommendations
+ */
+function getUVWarnings(uvIndex) {
+    if (uvIndex === null || uvIndex === undefined) return null;
+
+    let category, risk, protection;
+
+    if (uvIndex <= 2) {
+        category = 'Low';
+        risk = 'Minimal';
+        protection = 'No protection needed';
+    } else if (uvIndex <= 5) {
+        category = 'Moderate';
+        risk = 'Low to moderate';
+        protection = 'Some protection recommended';
+    } else if (uvIndex <= 7) {
+        category = 'High';
+        risk = 'Moderate to high';
+        protection = 'Protection essential';
+    } else if (uvIndex <= 10) {
+        category = 'Very High';
+        risk = 'Very high';
+        protection = 'Extra protection required';
+    } else {
+        category = 'Extreme';
+        risk = 'Extreme';
+        protection = 'Avoid sun exposure';
+    }
+
+    return {
+        category: category,
+        risk: risk,
+        protection: protection,
+        index: uvIndex,
+        warning: uvIndex >= 6 ? `UV Index ${uvIndex} - ${category} risk` : null
+    };
 }
 
 /**
@@ -4250,6 +5016,227 @@ function getCurrentSeason(month, lat = 0) {
 }
 
 /**
+ * Generate cloud coverage description with emphasis based on percentage and condition
+ * @param {number} cloudCoverage - Cloud coverage percentage (0-100)
+ * @param {string} condition - Weather condition name (e.g., 'overcast', 'partly cloudy')
+ * @returns {string} Condition name with emphasis markers based on cloud coverage intensity
+ */
+function generateCloudCoverageDescription(cloudCoverage, condition = 'clear sky') {
+    const percentage = Math.round(cloudCoverage || 0);
+
+    // Use condition name but add emphasis based on cloud coverage intensity
+    let emphasizedCondition = condition;
+
+    if (percentage >= 90) {
+        emphasizedCondition = `{{{{${condition}}}}}`; // Extremely heavy
+    } else if (percentage >= 80) {
+        emphasizedCondition = `{{{${condition}}}}`; // Very heavy
+    } else if (percentage >= 70) {
+        emphasizedCondition = `{{${condition}}}`; // Heavy
+    } else if (percentage >= 60) {
+        emphasizedCondition = `{${condition}}`; // Moderate
+    } else if (percentage >= 40) {
+        emphasizedCondition = `${condition}`; // Light
+    } else if (percentage >= 20) {
+        emphasizedCondition = `[${condition}]`; // Minimal emphasis
+    } else {
+        emphasizedCondition = `[[${condition}]]`; // Clear
+    }
+
+    return emphasizedCondition;
+}
+
+/**
+ * Analyze weather patterns and trends for enhanced believability
+ * @param {Object} weatherData - Current weather data
+ * @param {Object} historicalData - Historical weather data for comparison
+ * @returns {Object} Pattern analysis results
+ */
+function analyzeWeatherPatterns(weatherData, historicalData = null) {
+    const patterns = {
+        stability: 'stable',
+        trends: [],
+        anomalies: [],
+        believability: 85
+    };
+
+    // Analyze temperature trends
+    if (historicalData?.daily && historicalData.daily.length > 0) {
+        const recentDays = historicalData.daily.slice(-3); // Last 3 days
+        const avgRecentTemp = recentDays.reduce((sum, day) => sum + day.temperature.avg, 0) / recentDays.length;
+        const tempDiff = weatherData.temperature - avgRecentTemp;
+
+        if (Math.abs(tempDiff) > 10) {
+            patterns.anomalies.push(`Temperature ${tempDiff > 0 ? 'spike' : 'drop'} of ${Math.abs(tempDiff).toFixed(1)}°C from recent average`);
+            patterns.believability -= 15;
+        } else if (Math.abs(tempDiff) > 5) {
+            patterns.trends.push(`Temperature ${tempDiff > 0 ? 'warming' : 'cooling'} trend`);
+        } else {
+            patterns.stability = 'very stable';
+        }
+    }
+
+    // Analyze precipitation patterns
+    if (weatherData.precipitation > 0) {
+        if (weatherData.precipitationProbability > 70) {
+            patterns.trends.push('High probability precipitation expected');
+        } else if (weatherData.precipitationProbability < 30) {
+            patterns.anomalies.push('Precipitation occurring despite low probability');
+            patterns.believability -= 10;
+        }
+    }
+
+    // Analyze wind patterns
+    if (weatherData.windGust && weatherData.windGust > weatherData.windSpeed * 1.5) {
+        patterns.trends.push('Gust fronts suggest changing weather patterns');
+    }
+
+    // Seasonal consistency check
+    const currentMonth = new Date().getMonth();
+    const expectedTempRange = getSeasonalTemperatureExpectations(currentMonth, weatherData.location);
+    if (weatherData.temperature < expectedTempRange.min || weatherData.temperature > expectedTempRange.max) {
+        patterns.anomalies.push(`Temperature ${weatherData.temperature}°C is unusual for this season and location`);
+        patterns.believability -= 10;
+    }
+
+    return patterns;
+}
+
+/**
+ * Get expected temperature ranges for different seasons based on location
+ * @param {number} month - Month (0-11)
+ * @param {Object} location - Location object with latitude/longitude
+ * @returns {Object} Temperature range expectations
+ */
+function getSeasonalTemperatureExpectations(month, location = null) {
+    // Base expectations for temperate climates (latitude 40-50°N)
+    const baseExpectations = [
+        { min: -5, max: 10 },   // January
+        { min: -2, max: 12 },   // February
+        { min: 0, max: 15 },    // March
+        { min: 5, max: 20 },    // April
+        { min: 10, max: 25 },   // May
+        { min: 15, max: 30 },   // June
+        { min: 18, max: 32 },   // July
+        { min: 17, max: 31 },   // August
+        { min: 12, max: 26 },   // September
+        { min: 5, max: 18 },    // October
+        { min: 0, max: 12 },    // November
+        { min: -3, max: 8 }     // December
+    ];
+
+    if (!location?.latitude) {
+        return baseExpectations[month] || { min: 0, max: 25 };
+    }
+
+    const latitude = Math.abs(location.latitude); // Use absolute value for hemisphere-independent logic
+
+    // Adjust expectations based on latitude
+    let adjustment = 0;
+
+    if (latitude < 20) {
+        // Tropical regions - warmer year-round
+        adjustment = 15;
+    } else if (latitude < 35) {
+        // Subtropical regions - moderate warming
+        adjustment = 8;
+    } else if (latitude < 50) {
+        // Temperate regions - base expectations
+        adjustment = 0;
+    } else if (latitude < 65) {
+        // Subarctic regions - cooler
+        adjustment = -8;
+    } else {
+        // Arctic regions - very cold
+        adjustment = -15;
+    }
+
+    // Apply seasonal inversion for Southern Hemisphere (month + 6)
+    const effectiveMonth = location.latitude < 0 ? (month + 6) % 12 : month;
+
+    const baseRange = baseExpectations[effectiveMonth] || { min: 0, max: 25 };
+
+    return {
+        min: Math.round(baseRange.min + adjustment),
+        max: Math.round(baseRange.max + adjustment)
+    };
+}
+
+/**
+ * Validate weather data for reasonableness and consistency
+ * @param {Object} weatherData - Weather data object to validate
+ * @returns {Object} Validation result with issues and confidence score
+ */
+function validateWeatherData(weatherData) {
+    const issues = [];
+    let confidenceScore = 100;
+
+    // Temperature validation
+    if (weatherData.temperature < -50 || weatherData.temperature > 60) {
+        issues.push(`Temperature ${weatherData.temperature}°C is outside reasonable bounds`);
+        confidenceScore -= 20;
+    }
+
+    // Feels like temperature should be close to actual temperature (within 10°C unless extreme conditions)
+    if (Math.abs(weatherData.feelsLike - weatherData.temperature) > 15) {
+        issues.push(`Feels-like temperature difference too large: ${weatherData.temperature}°C vs ${weatherData.feelsLike}°C`);
+        confidenceScore -= 10;
+    }
+
+    // Humidity validation
+    if (weatherData.humidity !== undefined && (weatherData.humidity < 0 || weatherData.humidity > 100)) {
+        issues.push(`Humidity ${weatherData.humidity}% is outside valid range 0-100%`);
+        confidenceScore -= 15;
+    }
+
+    // Cloud coverage validation
+    if (weatherData.cloudCoverage !== undefined && (weatherData.cloudCoverage < 0 || weatherData.cloudCoverage > 100)) {
+        issues.push(`Cloud coverage ${weatherData.cloudCoverage}% is outside valid range 0-100%`);
+        confidenceScore -= 15;
+    }
+
+    // Wind speed validation
+    if (weatherData.windSpeed < 0 || weatherData.windSpeed > 150) {
+        issues.push(`Wind speed ${weatherData.windSpeed} m/s is outside reasonable bounds`);
+        confidenceScore -= 10;
+    }
+
+    // Precipitation validation
+    if (weatherData.precipitation < 0) {
+        issues.push(`Precipitation ${weatherData.precipitation}mm cannot be negative`);
+        confidenceScore -= 10;
+    }
+
+    // UV index validation
+    if (weatherData.uvIndex !== undefined && (weatherData.uvIndex < 0 || weatherData.uvIndex > 15)) {
+        issues.push(`UV index ${weatherData.uvIndex} is outside valid range 0-15`);
+        confidenceScore -= 5;
+    }
+
+    // Cross-validation: Hot temperatures should have higher UV if clear skies
+    if (weatherData.temperature > 30 && weatherData.uvIndex !== undefined && weatherData.uvIndex < 3 && weatherData.cloudCoverage < 50) {
+        issues.push(`High temperature ${weatherData.temperature}°C with low UV ${weatherData.uvIndex} suggests possible data inconsistency`);
+        confidenceScore -= 10;
+    }
+
+    // Data freshness check (if timestamp is available)
+    if (weatherData.timestamp) {
+        const ageMinutes = (Date.now() - weatherData.timestamp) / (1000 * 60);
+        if (ageMinutes > 60) { // Data older than 1 hour
+            issues.push(`Weather data is ${Math.round(ageMinutes)} minutes old`);
+            confidenceScore -= Math.min(20, Math.round(ageMinutes / 60) * 5);
+        }
+    }
+
+    return {
+        isValid: issues.length === 0,
+        confidenceScore: Math.max(0, confidenceScore),
+        issues: issues,
+        dataQuality: confidenceScore >= 80 ? 'High' : confidenceScore >= 60 ? 'Medium' : 'Low'
+    };
+}
+
+/**
  * Generates integrated temperature analysis considering weather, UV, cloud coverage, and time period context
  * @param {Object} weather - Weather data object
  * @param {Object} timePeriodInfo - Time period information object
@@ -4316,44 +5303,62 @@ function generateIntegratedTemperatureAnalysis(weather, timePeriodInfo) {
         timeUVContext = ', low-angle UV with longer shadows';
     }
 
-    const result = [`The current temperature is ${weather.feelsLike}°C (feels like ${Math.round(adjustedTemp)}°C with ${timeContext})${uvIndex ? `, UV Index: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''}${timeUVContext}`];
+    // Create temperature description based on adjusted temperature
+    let tempDescription = 'moderate temperature';
+    if (adjustedTemp >= 40) {
+        tempDescription = 'extreme heat';
+    } else if (adjustedTemp >= 35) {
+        tempDescription = 'very hot conditions';
+    } else if (adjustedTemp >= 30) {
+        tempDescription = 'hot conditions';
+    } else if (adjustedTemp >= 15) {
+        tempDescription = 'warm conditions';
+    } else if (adjustedTemp >= 5) {
+        tempDescription = 'cool conditions';
+    } else if (adjustedTemp >= 0) {
+        tempDescription = 'cold conditions';
+    } else {
+        tempDescription = 'freezing conditions';
+    }
+
+    const result = [`Current temperature: ${tempDescription} with ${timeContext}${uvIndex ? `, UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''}${timeUVContext}`];
 
     // Generate temperature state based on adjusted temperature
-    if (adjustedTemp >= 35) {
+    if (adjustedTemp >= 40) {
         result.push(
-            `### **Extreme Heat** (≥35°C, UV: ${uvDescription}${cloudEffect})`,
-            `  - **Character Effects**: Heavy sweating proportional to body weight - fat and obese characters show rivers of sweat, labored breathing, flushed faces, exhaustion setting in quickly${effectiveUV >= 8 && !timePeriod.includes('night') ? ', severe sunburn risk with skin reddening from intense UV radiation, painful squinting against glare' : effectiveUV >= 6 && !timePeriod.includes('night') ? ', sunburn developing rapidly, UV-induced fatigue, urgently seeking shade' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', mild sun discomfort, occasional squinting against light' : ', heat exhaustion without UV amplification'}${transitionType === 'sunrise_transition' ? ', characters emerging from cool night into sudden heat' : transitionType === 'sunset_transition' ? ', heat lingering into cooling evening' : ''}`,
+            `### **Extreme Heat** (UV: ${uvDescription}${cloudEffect})`,
+            `  - **Character Effects**: Heavy sweating proportional to body weight - fat and obese characters show rivers of sweat, labored breathing, exhaustion setting in quickly${effectiveUV >= 8 && !timePeriod.includes('night') ? ', severe sunburn risk with skin reddening from intense UV radiation, painful squinting against glare' : effectiveUV >= 6 && !timePeriod.includes('night') ? ', sunburn developing rapidly, UV-induced fatigue, urgently seeking shade' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', mild sun discomfort, occasional squinting against light' : ', heat exhaustion without UV amplification'}${transitionType === 'sunrise_transition' ? ', characters emerging from cool night into sudden heat' : transitionType === 'sunset_transition' ? ', heat lingering into cooling evening' : ''}`,
             `  - **Clothing**: Sweat soaking through clothing, tight outfits clinging wetly, damp patches visible${effectiveUV >= 6 && !timePeriod.includes('night') ? ', UV-protective clothing essential, light fabrics offering minimal sun protection' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', sun protection considerations for fair skin' : ''}${transitionType === 'twilight_transition' ? ', considering evening chill despite heat' : ''}`,
             `  - **Environmental**: Heat shimmer distorting air, wilting vegetation, surfaces too hot to touch${effectiveUV >= 8 && !timePeriod.includes('night') ? ', intense solar radiation creating harsh shadows, bleaching colors, extreme light intensity' : effectiveUV >= 6 && !timePeriod.includes('night') ? ', strong sunlight casting deep shadows, bright illumination overwhelming' : cloudCoverage >= 50 ? ', diffused heat through cloud cover, softer shadows' : transitionType.includes('transition') ? ', transitional lighting affecting heat perception' : ', clear sky amplifying heat intensity'}${timePeriod.includes('sunrise') ? ', morning sun angle creating long shadows' : timePeriod.includes('sunset') ? ', evening sun angle with golden heat' : ''}`,
             `  - **Other Effects**: Heavy sweat effects, skin heavily glistening, exhausted expressions, wet sticky clothing layers, heat stress visible${effectiveUV >= 8 && !timePeriod.includes('night') ? ', intense light causing visual distortion, UV damage apparent on skin' : effectiveUV >= 6 && !timePeriod.includes('night') ? ', sun-induced skin warming and fatigue' : ''}${transitionType === 'sunrise_transition' ? ', morning heat building from cool dawn' : transitionType === 'sunset_transition' ? ', evening heat fading into twilight' : ''}`
         );
-    } else if (adjustedTemp >= 30) {
+    } else if (adjustedTemp >= 35) {
         result.push(
-            `### **Very Hot** (30-34°C, UV: ${uvDescription}${cloudEffect})`,
-            `  - **Character Effects**: Heavy sweating proportional to body weight - fat and obese characters show rivers of sweat, labored breathing, flushed faces, exhaustion setting in quickly${effectiveUV >= 6 && !timePeriod.includes('night') ? ', increasing sunburn risk, skin warming uncomfortably from sun exposure, seeking shade' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', mild sun warming, comfortable solar exposure' : ', heat effects without UV intensification'}${transitionType === 'sunrise_transition' ? ', morning heat rising from dawn coolness' : transitionType === 'sunset_transition' ? ', heat maintained into evening transition' : ''}`,
+            `### **Very Hot** (UV: ${uvDescription}${cloudEffect})`,
+            `  - **Character Effects**: Heavy sweating proportional to body weight - fat and obese characters show rivers of sweat, labored breathing, exhaustion setting in quickly${effectiveUV >= 6 && !timePeriod.includes('night') ? ', increasing sunburn risk, skin warming uncomfortably from sun exposure, seeking shade' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', mild sun warming, comfortable solar exposure' : ', heat effects without UV intensification'}${transitionType === 'sunrise_transition' ? ', morning heat rising from dawn coolness' : transitionType === 'sunset_transition' ? ', heat maintained into evening transition' : ''}`,
             `  - **Clothing**: Sweat soaking through clothing, tight outfits clinging wetly, damp patches visible${effectiveUV >= 6 && !timePeriod.includes('night') ? ', sun protective clothing needed, light fabrics offering limited sun protection' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', sun protection for prolonged exposure' : ''}${transitionType === 'twilight_transition' ? ', preparing for evening cooling' : ''}`,
             `  - **Environmental**: Heat shimmer distorting air, wilting plants, surfaces too hot to touch${effectiveUV >= 6 && !timePeriod.includes('night') ? ', bright sunlight creating strong contrasts, sun radiation affecting light quality' : cloudCoverage >= 50 ? ', moderated heat through cloud diffusion, softened sunlight' : transitionType.includes('transition') ? ', transitional lighting tempering heat perception' : ', clear skies intensifying heat effects'}${timePeriod.includes('sunrise') ? ', morning sun with warming light' : timePeriod.includes('sunset') ? ', evening sun with golden warmth' : ''}`,
             `  - **Other Effects**: Pronounced sweat effects, skin wet and shiny, fatigued expressions, light clothing damp with sweat${effectiveUV >= 6 && !timePeriod.includes('night') ? ', sun induced skin warming, increased light intensity' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', pleasant solar warmth on skin' : ''}${transitionType === 'sunrise_transition' ? ', heat building from morning transition' : transitionType === 'sunset_transition' ? ', heat sustained through evening' : ''}`
         );
-    } else if (adjustedTemp >= 25) {
+    } else if (adjustedTemp >= 30) {
         result.push(
-            `### **Hot** (25-29°C, UV: ${uvDescription}${cloudEffect})`,
-            `  - **Character Effects**: Light perspiration building up, comfortable warmth for most builds${effectiveUV >= 6 && !timePeriod.includes('night') ? ', mild sunburn possible, sun warming of skin, occasional squinting' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', gentle sun tanning effects, pleasant sunlight warmth' : cloudCoverage >= 70 ? ', comfortable warmth without harsh sun' : transitionType === 'twilight_transition' ? ', warmth fading into twilight coolness' : ''}${transitionType === 'sunrise_transition' ? ', morning warmth emerging from dawn' : transitionType === 'sunset_transition' ? ', pleasant evening warmth' : ''}`,
+            `### **Hot** (UV: ${uvDescription}${cloudEffect})`,
+            `  - **Character Effects**: Light sweat building up, comfortable warmth for most builds${effectiveUV >= 6 && !timePeriod.includes('night') ? ', mild sunburn possible, sun warming of skin, occasional squinting' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', gentle sun tanning effects, pleasant sunlight warmth' : cloudCoverage >= 70 ? ', comfortable warmth without harsh sun' : transitionType === 'twilight_transition' ? ', warmth fading into twilight coolness' : ''}${transitionType === 'sunrise_transition' ? ', morning warmth emerging from dawn' : transitionType === 'sunset_transition' ? ', pleasant evening warmth' : ''}`,
             `  - **Clothing**: Normal state, natural drape and movement${effectiveUV >= 3 && !timePeriod.includes('night') ? ', sun protection considerations for prolonged exposure' : ''}${transitionType === 'twilight_transition' ? ', considering evening temperature drop' : ''}`,
             `  - **Environmental**: Normal environmental state${effectiveUV >= 6 && !timePeriod.includes('night') ? ', bright sunlight, clear shadows, good visibility' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', pleasant sunlight, moderate illumination' : cloudCoverage >= 50 ? ', diffused comfortable lighting through clouds' : transitionType.includes('transition') ? ', transitional lighting creating comfortable atmosphere' : ', clear skies with comfortable warmth'}${timePeriod.includes('sunrise') ? ', morning sun with gentle warming' : timePeriod.includes('sunset') ? ', evening sun with golden comfort' : ''}`,
             `  - **Other Effects**: Subtle sweat effects, skin glistens lightly, relaxed or slightly fatigued expressions, light clothing adjustments${effectiveUV >= 3 && !timePeriod.includes('night') ? ', sun induced skin glow, comfortable solar warmth' : cloudCoverage >= 30 ? ', pleasant diffused lighting' : ''}${transitionType === 'sunrise_transition' ? ', warmth building from cool morning' : transitionType === 'sunset_transition' ? ', comfort maintained into evening' : ''}`
         );
     } else if (adjustedTemp >= 15) {
         result.push(
-            `### **Warm** (15-24°C${uvIndex > 0 ? `, UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''})`,
-            `  - **Character Effects**: Light perspiration building up, comfortable warmth for most builds${effectiveUV >= 3 && cloudCoverage < 50 && !timePeriod.includes('night') ? ', gentle sun tanning effects, pleasant sunlight warmth' : ''}${transitionType === 'sunrise_transition' ? ', morning warmth replacing dawn chill' : transitionType === 'sunset_transition' ? ', warmth giving way to evening coolness' : transitionType === 'twilight_transition' ? ', comfortable transition temperature' : ''}${timePeriod.includes('night') ? ', residual warmth carrying into night' : ''}`,
+            `### **Warm** (${uvIndex > 0 ? `UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''})`,
+            `  - **Character Effects**: Light sweat building up, comfortable warmth for most builds${effectiveUV >= 3 && cloudCoverage < 50 && !timePeriod.includes('night') ? ', gentle sun tanning effects, pleasant sunlight warmth' : ''}${transitionType === 'sunrise_transition' ? ', morning warmth replacing dawn chill' : transitionType === 'sunset_transition' ? ', warmth giving way to evening coolness' : transitionType === 'twilight_transition' ? ', comfortable transition temperature' : ''}${timePeriod.includes('night') ? ', residual warmth carrying into night' : ''}`,
             `  - **Clothing**: Normal state, natural drape and movement${effectiveUV >= 3 && cloudCoverage < 70 && !timePeriod.includes('night') ? ', optional sun protection for sensitive skin' : ''}${transitionType === 'twilight_transition' ? ', light layering for evening temperature changes' : ''}`,
             `  - **Environmental**: Normal environmental state${effectiveUV >= 3 && !timePeriod.includes('night') ? ', pleasant natural lighting' : cloudCoverage >= 50 ? ', comfortable diffused illumination' : transitionType.includes('transition') ? ', transitional lighting creating balanced atmosphere' : ', clear skies with natural light'}${timePeriod.includes('sunrise') ? ', morning light with natural warmth' : timePeriod.includes('sunset') ? ', evening light with gentle warmth' : ''}`,
             `  - **Other Effects**: Comfortable appearance, natural skin appearance, pleasant expressions, normal clothing choices${effectiveUV >= 3 && cloudCoverage < 80 && !timePeriod.includes('night') ? ', natural sun exposure benefits' : cloudCoverage >= 30 ? ', soft comfortable lighting' : ''}${transitionType === 'sunrise_transition' ? ', warmth emerging from cool transition' : transitionType === 'sunset_transition' ? ', comfort fading into twilight' : ''}`
         );
     } else if (adjustedTemp >= 5) {
         result.push(
-            `### **Cool** (5-14°C${uvIndex > 0 && effectiveUV >= 1 ? `, UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''})`,
+            `### **Cool** (${uvIndex > 0 && effectiveUV >= 1 ? `UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''})`,
             `  - **Character Effects**: Cool breeze felt more by slender characters, comfortable for heavier builds${effectiveUV >= 2 && cloudCoverage < 70 && timePeriod.includes('day') ? ', mild UV exposure without warmth, cool sun on skin' : ''}${transitionType === 'sunrise_transition' ? ', morning coolness giving way to daytime warmth' : transitionType === 'sunset_transition' ? ', evening cooling intensifying' : transitionType === 'twilight_transition' ? ', cool twilight air' : ''}${timePeriod.includes('night') ? ', night cooling effects amplified' : ''}`,
             `  - **Clothing**: Normal state, natural drape and movement${effectiveUV >= 2 && timePeriod.includes('day') ? ', light sun protection if needed' : ''}${transitionType === 'twilight_transition' ? ', light outer layers for evening chill' : ''}`,
             `  - **Environmental**: Normal environmental state${effectiveUV >= 2 && timePeriod.includes('day') ? ', cool sunlight, crisp shadows' : cloudCoverage >= 50 ? ', diffused cool lighting' : transitionType.includes('transition') ? ', transitional lighting with cool tones' : ', clear skies with cool illumination'}${timePeriod.includes('sunrise') ? ', cool morning light' : timePeriod.includes('sunset') ? ', cool evening light' : ''}`,
@@ -4361,7 +5366,7 @@ function generateIntegratedTemperatureAnalysis(weather, timePeriodInfo) {
         );
     } else if (adjustedTemp >= 0) {
         result.push(
-            `### **Cold** (0-4°C${uvIndex > 0 && effectiveUV >= 1 ? `, UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''})`,
+            `### **Cold** (${uvIndex > 0 && effectiveUV >= 1 ? `UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''})`,
             `  - **Character Effects**: Chilled skin showing goosebumps, visible breath clouds, light shivering starting in thinner characters${effectiveUV >= 1 && cloudCoverage < 80 && timePeriod.includes('day') ? ', cold UV exposure without warmth' : ''}${transitionType === 'sunrise_transition' ? ', cold morning air with emerging light' : transitionType === 'sunset_transition' ? ', cold intensifying in fading light' : transitionType === 'twilight_transition' ? ', bitter twilight chill' : ''}${timePeriod.includes('night') ? ', night cold effects pronounced' : ''}`,
             `  - **Clothing**: Normal state, natural drape and movement${effectiveUV >= 1 && timePeriod.includes('day') ? ', sun protection if exposed' : ''}${transitionType === 'twilight_transition' ? ', heavier layers for night cold' : ''}`,
             `  - **Environmental**: Normal environmental state${effectiveUV >= 1 && timePeriod.includes('day') ? ', cold sunlight, sharp shadows' : cloudCoverage >= 50 ? ', diffused cold lighting' : transitionType.includes('transition') ? ', cold transitional lighting' : ', clear cold skies'}${timePeriod.includes('sunrise') ? ', cold morning light' : timePeriod.includes('sunset') ? ', cold evening light' : ''}`,
@@ -4369,7 +5374,7 @@ function generateIntegratedTemperatureAnalysis(weather, timePeriodInfo) {
         );
     } else {
         result.push(
-            `### **Freezing** (≤0°C${uvIndex > 0 && effectiveUV >= 1 ? `, UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''})`,
+            `### **Freezing** (${uvIndex > 0 && effectiveUV >= 1 ? `UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''})`,
             `  - **Character Effects**: Heavy shivering in all characters, frost forming on heavier clothing layers${effectiveUV >= 1 && cloudCoverage < 90 && timePeriod.includes('day') ? ', freezing UV exposure creating dangerous cold burn risk' : ''}${transitionType === 'sunrise_transition' ? ', freezing morning cold with weak light' : transitionType === 'sunset_transition' ? ', freezing cold intensifying rapidly' : transitionType === 'twilight_transition' ? ', deadly twilight freeze' : ''}${timePeriod.includes('night') ? ', extreme night freezing effects' : ''}`,
             `  - **Clothing**: Frost riming on outer layers, stiff frozen fabric, characters hunching to preserve heat${effectiveUV >= 1 && timePeriod.includes('day') ? ', frozen sun protection layers' : ''}${transitionType === 'twilight_transition' ? ', maximum cold weather protection needed' : ''}`,
             `  - **Environmental**: Frost coating all surfaces, ice formations, visible cold mist in air${effectiveUV >= 1 && timePeriod.includes('day') ? ', freezing sunlight, ice crystal sparkles' : cloudCoverage >= 50 ? ', diffused freezing lighting through clouds' : transitionType.includes('transition') ? ', freezing transitional lighting' : ', clear freezing skies'}${timePeriod.includes('sunrise') ? ', freezing morning light on ice' : timePeriod.includes('sunset') ? ', freezing evening light' : ''}`,
@@ -4391,6 +5396,21 @@ function generateIntegratedTemperatureAnalysis(weather, timePeriodInfo) {
 function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
     const { time, weather, season: currentSeason, timePeriod, clothing, creative , optimize, activity, action, location} = context;
 
+    // Validate weather data - essential properties must be present
+    if (!weather || typeof weather !== 'object') {
+        throw new Error('Weather data is required but missing or invalid');
+    }
+    if (!weather.temperature || !weather.condition || !weather.windSpeed || !weather.humidity) {
+        throw new Error(`Invalid weather data: missing essential properties (temperature: ${weather.temperature}, condition: ${weather.condition}, windSpeed: ${weather.windSpeed}, humidity: ${weather.humidity})`);
+    }
+
+    // Verify calculations are correct
+    console.log(`🔍 Weather Data Verification:`);
+    console.log(`   Temperature: ${weather.temperature}°C, Humidity: ${weather.humidity}%, Heat Index: ${weather.heatIndex || 'calculated'}°C`);
+    console.log(`   Wind: ${weather.windSpeed} m/s (${Math.round(weather.windSpeed * 3.6)} km/h) from ${weather.windDirection || 'calculated'}°, Gusts: ${weather.windGust || 'calculated'} m/s (${Math.round((weather.windGust || 0) * 3.6)} km/h)`);
+    console.log(`   Data Source: ${weather.dataSource || 'unknown'}`);
+    console.log(`   Raw condition ID: ${weather.rawConditionId}, Condition: ${weather.condition}`);
+
     // Extract time period information (handle both string and object formats for backward compatibility)
     const timePeriodInfo = typeof timePeriod === 'object' ? timePeriod : {
         period: timePeriod,
@@ -4398,7 +5418,6 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         atmosphere: 'standard atmosphere',
         transitionType: 'steady_state'
     };
-
 
     // Extract seasonal configuration
     const seasonalEnabled = seasonalConfig.enabled || false;
@@ -4434,10 +5453,10 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
     };
 
     let systemMessageContent = [
-        'You are an expert NovelAI image generation prompt engineer specializing in contextual adaptation and creative enhancement of image generation prompts.',
+        'You are an expert NovelAI image generation prompt engineer specializing in contextual adaptation and creative enhancement.',
         '',
-        '# 🎯 MISSION BRIEFING',
-        'Your primary mission is to intelligently adapt NovelAI prompts to match real-world conditions while preserving artistic intent. You excel at context engineering - providing the right context rather than overwhelming details.',
+        '**CRITICAL MISSION**: Transform static prompts into immersive visual narratives by seamlessly integrating weather/time elements. Think like a cinematographer - weather must feel organically part of the scene, never artificially grafted.',
+        '**MANDATORY APPROACH**: Use detailed descriptive language that paints atmospheric scenes. Focus on natural enhancement, not forced additions. Maintain token efficiency while achieving visual coherence.',
         '',
     ]
     if (time) {
@@ -4448,11 +5467,11 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
             `🕐 **Time**: ${time.hour}:${time.minute.toString().padStart(2, '0')} ${time.am_pm}`,
             `🕐 **Time Period**: ${timePeriodInfo.period} (${time.hour}:${time.minute.toString().padStart(2, '0')})`,
             `💡 **Outdoor Lighting**: ${timePeriodInfo.lighting}`,
-            timePeriodInfo.lighting.includes('{') || timePeriodInfo.lighting.includes('[') ? `• **Emphasis Guide**: The lighting description "${timePeriodInfo.lighting}" will be automatically inserted before "Text:" in the final image generation prompt (or appended if no "Text:" marker exists). {element} means ADD/EMPHASIZE this lighting element, [element] means SUBTRACT/DE-EMPHASIZE this lighting element. Multiple braces/brackets control emphasis strength.` : '',
-            `🌫️ **General Atmosphere**: ${timePeriodInfo.atmosphere}`,
-            `🔄 **Transition**: ${timePeriodInfo.transitionType === 'sunrise_transition' ? 'Sunrise transition - magical lighting changes' : timePeriodInfo.transitionType === 'sunset_transition' ? 'Sunset transition - dramatic color shifts' : timePeriodInfo.transitionType === 'twilight_transition' ? 'Twilight transition - peaceful lighting evolution' : 'Steady state lighting'}`,
-            '',
-            '## Time Period Lighting Integration',
+            `🌫️ **Atmospheric Guidance**: ${timePeriodInfo.atmosphere}`,
+            '💭 **Atmosphere Usage**: Use the atmospheric guidance as thematic inspiration for mood and feeling. Adapt these concepts to fit the specific scene and character context rather than copying descriptions literally.',
+            ...((timePeriodInfo.transitionType && timePeriodInfo.transitionType !== 'steady_state') ? [`🔄 **Transition**: ${timePeriodInfo.transitionType === 'sunrise_transition' ? 'Sunrise transition - magical lighting changes' : timePeriodInfo.transitionType === 'sunset_transition' ? 'Sunset transition - dramatic color shifts' : timePeriodInfo.transitionType === 'twilight_transition' ? 'Twilight transition - peaceful lighting evolution' : 'Steady state lighting'}`,
+                '\n## Time Period Lighting Integration'
+            ] : []),
             timePeriodInfo.transitionType === 'sunrise_transition' ? [
                 '🌅 **SUNRISE TRANSITION**: Currently in sunrise transition period',
                 '• **Lighting Evolution**: Show the magical transformation from pre-dawn blue to golden sunrise colors',
@@ -4462,67 +5481,65 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
                 '• **Character Integration**: Reacting to the emerging light, waking up, morning routines'
             ].join('\n') :
             timePeriodInfo.transitionType === 'sunset_transition' ? [
-                '🌇 **SUNSET TRANSITION**: Currently in sunset transition period',
-                '• **Lighting Evolution**: Dramatic shift from warm daylight to rich twilight colors',
-                '• **Color Temperature Shift**: Warm golden tones deepening to red-orange-magenta',
-                '• **Atmospheric Effects**: Cooling air, lengthening shadows, peaceful transition',
-                '• **Character Integration**: Winding down activities, evening mood, anticipation of night'
+                '🌇 **SUNSET TRANSITION**: Currently in sunset transition period - sun has set, transitioning to nighttime darkness',
+                '• **Lighting Evolution**: Dramatic shift from warm daylight directly to nighttime darkness, no twilight or evening light',
+                '• **Color Temperature Shift**: Warm golden tones immediately giving way to full night sky, deep shadows',
+                '• **Atmospheric Effects**: Cooling air, lengthening shadows becoming deep nighttime shadows, peaceful transition to full night',
+                '• **Character Integration**: Activities in complete nighttime darkness, full night atmosphere, deep shadows'
             ].join('\n') :
             timePeriodInfo.transitionType === 'twilight_transition' ? [
-                '🌆 **TWILIGHT TRANSITION**: Currently in twilight transition period',
-                '• **Lighting Evolution**: Gradual fading from sunset colors to deep twilight blue',
-                '• **Atmospheric Effects**: Cooling temperatures, emerging stars, residual warmth',
-                '• **Character Integration**: Transition between day and night activities, evening activities'
+                '🌆 **TWILIGHT TRANSITION**: Currently in twilight transition period - transitioning to nighttime darkness',
+                '• **Lighting Evolution**: Gradual fading from any residual light directly to nighttime darkness, full night sky',
+                '• **Atmospheric Effects**: Cooling temperatures, emerging stars in nighttime darkness, transition to full night',
+                '• **Character Integration**: Activities in complete nighttime darkness, full night atmosphere, deep shadows'
             ].join('\n') :
-            [
-                '• **Consistent Lighting**: Use the described lighting characteristics consistently',
-                '• **Atmospheric Stability**: Maintain the described atmospheric conditions',
-                '• **Character Integration**: Adapted to current time of day'
-            ].join('\n'),
+            [],
             '',
             '### Time-of-Day Interactions',
             '**IMPORTANT: These are conceptual descriptions of how weather and time interact. DO NOT directly write these words in prompts. Instead, understand what they equate to in terms of appropriate tags, natural language descriptions, and visual elements that convey the same atmospheric mood and character reactions.**',
             '',
             (timePeriod && weather ? [
                 `• **Daytime Heat**: ${timePeriodInfo.period.includes('morning') || timePeriodInfo.period.includes('afternoon') && weather.temperature >= 25 ? 'characters show midday heat effects, sweat beads, shaded positions, cooling behaviors if temperature is high or there fat' : 'neutral daytime conditions'}`,
-                `• **Evening Cool**: ${timePeriodInfo.period.includes('sunset') || timePeriodInfo.period.includes('dusk') || timePeriodInfo.period.includes('twilight') ? 'characters show transitional temperature effects, cooling atmosphere, layered clothing considerations based on temperature' : 'steady temperature conditions'}`,
-                `• **Night Humidity**: ${timePeriodInfo.period.includes('night') && weather.humidity >= 70 ? 'characters show night moisture effects, cool dampness, evening mist interactions' : 'dry night conditions'}`,
+                `• **Night Darkness**: ${timePeriodInfo.period.includes('sunset') || timePeriodInfo.period.includes('dusk') || timePeriodInfo.period.includes('twilight') || timePeriodInfo.period.includes('evening') || timePeriodInfo.period.includes('night') ? `characters in nighttime darkness with deep shadows, full night sky, no evening or sunlight${clothing ? ', layered clothing considerations based on temperature in nighttime darkness' : ''}` : 'steady temperature conditions'}`,
+                `• **Night Humidity**: ${timePeriodInfo.period.includes('night') && weather.humidity >= 70 ? 'characters show humidity-related moisture effects in nighttime darkness (NOT precipitation), cool dampness from humid air, mist in nighttime darkness from high humidity' : 'dry night conditions in nighttime darkness'}`,
             ].join('\n') : ''),
             '',
         );
     }
     if (weather) {
         // Only include weather context if weather data is available
-            systemMessageContent.push(
-            '# 🌦️ WEATHER ANALYSIS & INTEGRATION CONTEXT',
-            '⚠️ **MANDATORY**: All weather data below MUST be analyzed together to create vivid visual descriptions. Consider character reactions, environmental effects, and atmospheric mood for each factor.',
+        systemMessageContent.push(
+            '# 🌦️ WEATHER CONTEXT',
+            '⚠️ **KEY DISTINCTION**: All Weather conditions are relative to the outdoor/outside conditions. Humidity = moisture in air (causes sweat, condensation). Precipitation = actual rain/snow falling.',
             '',
-            ...(currentSeason && !(seasonalGuidelines && seasonalGuidelines.mode === 'comprehensive') ? 
+            ...(currentSeason && !(seasonalGuidelines && seasonalGuidelines.mode === 'comprehensive') ?
             [`🍂 **Current Season**: ${currentSeason}`] : []),
-            `📅 **Outdoor Weather Condition**: ${weather.condition}${isCustomWeather ? ' (' + weather.description + ')' : ''}`,
+            `📅 **Condition**: ${generateCloudCoverageDescription(weather.cloudCoverage || 0, weather.condition)}${isCustomWeather ? ' (' + weather.description + ')' : ''}`,
+            `🧘 **Comfort Level**: ${weather.weatherQuality?.comfortLevel || 'Unknown'}`,
+            `👁️ **Visibility**: ${weather.visibility < 1 ? 'Poor visibility' : weather.visibility < 5 ? 'Moderate visibility' : 'Good visibility'}`,
             '',
-            `🧘 **Outdoor Comfort Level**: ${weather.weatherQuality?.comfortLevel || 'Unknown'}`,
-            `👁️ **Outdoor Visibility**: ${weather.visibility}km - ${weather.visibility < 1 ? 'Poor visibility' : weather.visibility < 5 ? 'Moderate visibility' : 'Good visibility'}`,
-            `⚡ **Outdoor Solar Radiation**: ${weather.solarRadiation || 'N/A'} W/m² - ${weather.solarRadiation > 800 ? 'Intense sunlight' : weather.solarRadiation > 400 ? 'Bright conditions' : 'Dim conditions'}`,
-            `📊 **Outdoor Atmospheric Pressure**: ${weather.pressure}hPa - ${weather.pressure > 1020 ? 'High pressure system' : weather.pressure < 1000 ? 'Low pressure system' : 'Normal pressure'}`,
-            '',
-            '## 🌡️ **TEMPERATURE ANALYSIS**',
-            '**IMPORTANT: Temperature descriptions are conceptual ideas based on meteorological data. DO NOT directly write temperature numbers or these exact descriptions in prompts. Instead, understand what they equate to in terms of visual cues, character reactions, and atmospheric elements.**',
+            '## 🌡️ **TEMPERATURE EFFECTS**',
+            '**Use temperature data to create appropriate visual cues and character reactions, not literal descriptions.**',
             '',
             ...generateIntegratedTemperatureAnalysis(weather, timePeriodInfo),
             '',
-            '## 💧 **MOISTURE & PRECIPITATION ANALYSIS**',
-            '**IMPORTANT: Moisture and precipitation descriptions are conceptual ideas based on meteorological data. DO NOT directly write humidity percentages, dew points, or precipitation rates in prompts. Instead, understand what they equate to in terms of wetness levels, visual moisture effects, and environmental atmosphere.**',
-            '',
+            '## 💧 **MOISTURE & PRECIPITATION**',
             ...(() => {
-                let conditions = [`${weather.humidity}% humidity`, `${weather.dewPoint}°C dew point`, `${weather.temperature}°C temperature`];
+                let conditions = [];
+
+                // Add humidity description
+                const humidity = weather.humidity;
+                if (humidity >= 80) conditions.push('very humid air');
+                else if (humidity >= 60) conditions.push('humid air');
+                else if (humidity >= 40) conditions.push('moderate humidity');
+                else conditions.push('dry air');
 
                 if (weather.precipitationRate > 1) {
                     const condition = weather.condition.toLowerCase();
                     let precipType = 'rain';
-                    if (condition.includes('snow')) precipType = 'snow';
-                    else if (condition.includes('sleet') || condition.includes('hail')) precipType = 'sleet';
-                    else if (condition.includes('drizzle')) precipType = 'drizzle';
+                    if ((weather.snowfall || 0) > 0) precipType = 'snow';
+                    else if ((weather.showers || 0) > (weather.rain || 0)) precipType = 'showers';
+                    else if (weather.precipitationRate < 2.5) precipType = 'drizzle';
 
                     let intensity = 'light';
                     if (weather.precipitationRate >= 50) intensity = 'extreme';
@@ -4530,98 +5547,41 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
                     else if (weather.precipitationRate >= 10) intensity = 'moderate';
                     else if (weather.precipitationRate < 2.5) intensity = 'drizzle';
 
-                    conditions.push(`${intensity} ${precipType} (${weather.precipitationRate}mm/h)`);
+                    conditions.push(`${intensity} ${precipType}`);
                 }
 
                 // Add wind conditions
                 const windSpeedMph = weather.windSpeed * 2.237;
-                if (windSpeedMph >= 10) { // Only show significant wind
-                    let windIntensity = 'moderate';
-                    if (windSpeedMph >= 40) windIntensity = 'high';
-                    else if (windSpeedMph >= 30) windIntensity = 'moderate-high';
-                    else if (windSpeedMph >= 20) windIntensity = 'strong';
-                    else if (windSpeedMph >= 10) windIntensity = 'moderate';
-
-                    const gustInfo = weather.windGust ? ` (gusts to ${Math.round(weather.windGust * 2.237)} mph)` : '';
-                    conditions.push(`${windIntensity} winds (${Math.round(windSpeedMph)} mph${gustInfo})`);
-                }
+                if (windSpeedMph >= 20) conditions.push('strong winds');
+                else if (windSpeedMph >= 10) conditions.push('moderate winds');
+                else conditions.push('light winds');
 
                 return [`Current conditions: ${conditions.join(', ')}`];
             })(),
-            `💭 **Consider**: Dew point shows actual moisture content, temperature-dew point differential indicates perceived humidity, relative humidity shows saturation level`,
             '',
             ...(weather.precipitationRate > 0 ? (() => {
                 const precipRate = weather.precipitationRate;
                 const condition = weather.condition.toLowerCase();
 
-                // Determine precipitation type and intensity
+                // Determine precipitation type from actual data
                 let precipType = 'rain';
-                if (condition.includes('snow')) precipType = 'snow';
-                else if (condition.includes('sleet') || condition.includes('hail')) precipType = 'sleet';
-                else if (condition.includes('drizzle')) precipType = 'drizzle';
+                if ((weather.snowfall || 0) > 0) precipType = 'snow';
+                else if ((weather.showers || 0) > (weather.rain || 0)) precipType = 'showers';
+                else if (precipRate < 2.5) precipType = 'drizzle';
 
-                let intensity, description;
+                let intensity = 'light';
                 if (precipRate >= 50) {
                     intensity = 'extreme';
-                    description = `Extreme ${precipType} (${precipRate}mm/h)`;
                 } else if (precipRate >= 25) {
                     intensity = 'heavy';
-                    description = `Heavy ${precipType} (${precipRate}mm/h)`;
                 } else if (precipRate >= 10) {
                     intensity = 'moderate';
-                    description = `Moderate ${precipType} (${precipRate}mm/h)`;
-                } else if (precipRate >= 2.5) {
-                    intensity = 'light';
-                    description = `Light ${precipType} (${precipRate}mm/h)`;
-                } else {
+                } else if (precipRate < 2.0) {
                     intensity = 'drizzle';
-                    description = `Drizzle ${precipType} (${precipRate}mm/h)`;
                 }
 
-                switch(intensity) {
-                    case 'extreme':
-                        return [
-                            `### **Extreme Precipitation** ${description}`,
-                            `  - **Character Effects**: Characters completely drenched, water streaming off bodies in sheets, shivering violently from cold/wet, struggling to see through downpour, expressions of utter misery`,
-                            `  - **Clothing**: Completely saturated, heavy and restrictive, translucent in places, water pouring off in streams, plastered to body contours`,
-                            `  - **Environmental**: Torrential downpour creating virtual waterfalls, streets becoming rivers, thunderous roar, near-zero visibility, dramatic flooding`,
-                            `  - **Other Effects**: Complete environmental chaos, characters barely able to function, extreme physical distress, overwhelming wetness`
-                        ];
-                    case 'heavy':
-                        return [
-                            `### **Heavy Precipitation** ${description}`,
-                            `  - **Character Effects**: Characters heavily soaked, water streaming down faces and bodies, labored breathing from chill, plastered wet hair obscuring vision, expressions of significant discomfort`,
-                            `  - **Clothing**: Thoroughly saturated, very heavy and clinging, water dripping constantly from hems and sleeves, translucent fabric areas`,
-                            `  - **Environmental**: Heavy downpour sounds, rapidly forming deep puddles, streets flooding, reduced visibility, water rebounding off surfaces`,
-                            `  - **Other Effects**: Dramatic wet chaos, characters struggling against elements, significant physical impact, overwhelming moisture`
-                        ];
-                    case 'moderate':
-                        return [
-                            `### **Moderate Precipitation** ${description}`,
-                            `  - **Character Effects**: Characters noticeably wet, water beading on skin and running down bodies, mild shivering, damp hair sticking to skin, uncomfortable but manageable`,
-                            `  - **Clothing**: Well dampened, heavier than normal, water beading on surfaces, beginning to cling to body, damp patches visible`,
-                            `  - **Environmental**: Steady precipitation sounds, forming puddles, wet gleaming surfaces, light reduction in visibility, water accumulation`,
-                            `  - **Other Effects**: Noticeable wetness throughout scene, characters adapting to moisture, moderate physical discomfort, consistent precipitation`
-                        ];
-                    case 'light':
-                        return [
-                            `### **Light Precipitation** ${description}`,
-                            `  - **Character Effects**: Characters lightly dampened, fine droplets on skin, occasional water running down faces, mild coolness, minimal discomfort`,
-                            `  - **Clothing**: Lightly spotted with droplets, slightly damp, water beading on surfaces, normal drape mostly maintained`,
-                            `  - **Environmental**: Gentle precipitation sounds, small puddles forming, surfaces beginning to gleam, minimal visibility impact`,
-                            `  - **Other Effects**: Subtle wetness effects, characters largely unaffected, light refreshing moisture, gentle atmospheric change`
-                        ];
-                    case 'drizzle':
-                        return [
-                            `### **Drizzle Precipitation** ${description}`,
-                            `  - **Character Effects**: Characters barely damp, fine mist on skin, hair lightly moistened, refreshing rather than uncomfortable`,
-                            `  - **Clothing**: Very light moisture, tiny droplets visible, barely damp, normal appearance maintained`,
-                            `  - **Environmental**: Soft precipitation sounds, minimal surface wetness, slight atmospheric moisture, clear visibility`,
-                            `  - **Other Effects**: Gentle misting effect, characters feel light refreshing moisture, subtle environmental enhancement, pleasant dampness`
-                        ];
-                    default:
-                        return [];
-                }
+                const intensityDesc = intensity.charAt(0).toUpperCase() + intensity.slice(1);
+                return [`### **${intensityDesc} ${precipType}**`];
             })() : []),
             ...(() => {
                 // Check if significant weather should override atmospheric moisture
@@ -4634,194 +5594,115 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
                     // The precipitation/wind states will be shown separately below
                     return [];
                 } else {
-                    // Show atmospheric moisture states (will be combined with light precipitation if present)
+                    // Show atmospheric moisture states based on meteorological values
                     const tempDewDiff = weather.temperature - weather.dewPoint;
                     const dewPoint = weather.dewPoint;
+                    const humidity = weather.humidity;
+                    const temperature = weather.temperature;
 
-                    let moistureLevel, description;
+                    // Determine atmospheric moisture using multiple meteorological factors
+                    let baseHumidity = 'moderate';
+                    let humidityModifier = '';
+                    let specialCondition = '';
 
+                    // Primary factor: temperature-dew point differential (perceived humidity)
                     if (tempDewDiff <= 2) {
-                        moistureLevel = 'oppressive';
-                        description = `Extremely humid (ΔT: ${tempDewDiff.toFixed(1)}°C)`;
+                        baseHumidity = 'oppressively humid';
                     } else if (tempDewDiff <= 5) {
-                        moistureLevel = 'very_high';
-                        description = `Very humid (ΔT: ${tempDewDiff.toFixed(1)}°C)`;
+                        baseHumidity = 'very humid';
                     } else if (tempDewDiff <= 8) {
-                        moistureLevel = 'high';
-                        description = `Humid (ΔT: ${tempDewDiff.toFixed(1)}°C)`;
+                        baseHumidity = 'humid';
                     } else if (tempDewDiff <= 12) {
-                        moistureLevel = 'moderate';
-                        description = `Moderately moist (ΔT: ${tempDewDiff.toFixed(1)}°C)`;
+                        baseHumidity = 'moderately humid';
                     } else if (tempDewDiff <= 18) {
-                        moistureLevel = 'comfortable';
-                        description = `Comfortable moisture (ΔT: ${tempDewDiff.toFixed(1)}°C)`;
+                        baseHumidity = 'comfortable';
                     } else if (tempDewDiff <= 25) {
-                        moistureLevel = 'dry';
-                        description = `Dry conditions (ΔT: ${tempDewDiff.toFixed(1)}°C)`;
+                        baseHumidity = 'dry';
                     } else {
-                        moistureLevel = 'arid';
-                        description = `Arid conditions (ΔT: ${tempDewDiff.toFixed(1)}°C)`;
+                        baseHumidity = 'very dry';
                     }
 
-                    const dewPointContext = dewPoint >= 24 ? ' (Tropical dew point)' :
-                                          dewPoint >= 18 ? ' (Muggy dew point)' :
-                                          dewPoint >= 13 ? ' (Humid dew point)' :
-                                          dewPoint >= 5 ? ' (Moderate dew point)' : ' (Dry dew point)';
-
-                    switch(moistureLevel) {
-                        case 'oppressive':
-                            return [
-                                `### **Oppressive Atmospheric Moisture** ${description}${dewPointContext}`,
-                                `  - **Character Effects**: Extreme moisture discomfort, sweat not evaporating, heavy labored breathing, clammy suffocating feeling, tropical humidity intensity`,
-                                `  - **Clothing**: Heavy condensation on all fabrics, water constantly beading, moisture saturation, oppressive dampness`,
-                                `  - **Environmental**: Water condensation everywhere, high humidity fog potential, saturated moisture atmosphere, tropical conditions`,
-                                `  - **Other Effects**: Characters drenched in sweat, skin constantly wet, maximum moisture discomfort, suffocating humidity levels`
-                            ];
-                        case 'very_high':
-                            return [
-                                `### **Very High Atmospheric Moisture** ${description}${dewPointContext}`,
-                                `  - **Character Effects**: Clammy skin, heavy breathing, sweat not evaporating, oppressive muggy feeling, high tropical moisture levels`,
-                                `  - **Clothing**: Constant moisture in air, condensation on surfaces, fabrics staying perpetually damp, muggy saturation`,
-                                `  - **Environmental**: Heavy moisture saturation throughout, condensation forming readily, humid tropical atmosphere`,
-                                `  - **Other Effects**: Characters appear moist and uncomfortable, skin glistening constantly, hair damp, clothing sticking persistently to skin`
-                            ];
-                        case 'high':
-                            return [
-                                `### **High Atmospheric Moisture** ${description}${dewPointContext}`,
-                                `  - **Character Effects**: Sticky skin, moderate perspiration, warm air clinging noticeably, humid discomfort levels`,
-                                `  - **Clothing**: Noticeable moisture in air, condensation forming, fabrics damp, humid atmospheric effects`,
-                                `  - **Environmental**: Significant moisture content throughout air, condensation possible, humid environmental conditions`,
-                                `  - **Other Effects**: Characters show moisture effects, skin has persistent sheen, hair slightly damp, clothing clings subtly but noticeably`
-                            ];
-                        case 'moderate':
-                            return [
-                                `### **Moderate Atmospheric Moisture** ${description}${dewPointContext}`,
-                                `  - **Character Effects**: Subtle moisture effects, natural skin sheen, atmosphere feels humid but manageable, comfortable moisture levels`,
-                                `  - **Clothing**: Balanced moisture levels, comfortable fabric feel, moderate humidity effects on materials`,
-                                `  - **Environmental**: Balanced moisture content in air, comfortable environmental conditions, pleasant humidity`,
-                                `  - **Other Effects**: Characters show subtle moisture effects, skin has natural sheen, atmosphere feels humid but completely manageable`
-                            ];
-                        case 'comfortable':
-                            return [
-                                `### **Comfortable Atmospheric Moisture** ${description}${dewPointContext}`,
-                                `  - **Character Effects**: Comfortable moisture levels, natural skin feel, pleasant atmospheric conditions, ideal humidity`,
-                                `  - **Clothing**: Balanced moisture levels, comfortable environmental feel, natural fabric state and drape`,
-                                `  - **Environmental**: Balanced moisture levels throughout, comfortable environmental feel, pleasant humidity conditions`,
-                                `  - **Other Effects**: Balanced moisture conditions, characters appear completely comfortable, natural skin appearance, pleasant atmosphere`
-                            ];
-                        case 'dry':
-                            return [
-                                `### **Dry Atmospheric Conditions** ${description}${dewPointContext}`,
-                                `  - **Character Effects**: Dry skin, rapid sweat evaporation, cool dry air, comfortable but with skin tightness`,
-                                `  - **Clothing**: Dry air, dust particles visible, crisp atmosphere, fabrics dry quickly and feel crisp`,
-                                `  - **Environmental**: Dry air throughout, dust particles visible, crisp atmosphere, low moisture content`,
-                                `  - **Other Effects**: Dry atmospheric conditions, characters appear comfortable but skin feels tight, rapid moisture evaporation, fresh air feel`
-                            ];
-                        case 'arid':
-                            return [
-                                `### **Arid Atmospheric Conditions** ${description}${dewPointContext}`,
-                                `  - **Character Effects**: Very dry conditions, skin cracking, electrostatic effects, parched uncomfortable atmosphere, desert-like dryness`,
-                                `  - **Clothing**: Very dry air, dust devils possible, cracked earth visible, arid desert conditions affecting fabrics`,
-                                `  - **Environmental**: Very dry air, dust devils possible, cracked earth, arid desert conditions throughout`,
-                                `  - **Other Effects**: Extremely dry conditions, characters show cracked skin, static electricity effects, parched uncomfortable appearance, desert atmosphere`
-                            ];
-                        default:
-                            return [];
+                    // Secondary factor: absolute dew point (actual moisture content)
+                    if (dewPoint >= 24) {
+                        humidityModifier = 'tropical';
+                        specialCondition = tempDewDiff <= 8 ? 'intense tropical humidity' : 'tropical warmth';
+                    } else if (dewPoint >= 18) {
+                        humidityModifier = 'muggy';
+                        specialCondition = tempDewDiff <= 8 ? 'heavy muggy humidity' : 'muggy warmth';
+                    } else if (dewPoint >= 13) {
+                        humidityModifier = tempDewDiff <= 8 ? 'humid' : 'moderately humid';
+                    } else if (dewPoint < 5) {
+                        humidityModifier = 'arid';
+                        specialCondition = 'arid dryness';
                     }
+
+                    // Tertiary factor: relative humidity context (refines the description)
+                    if (humidity >= 90) {
+                        if (baseHumidity.includes('humid') || humidityModifier === 'tropical' || humidityModifier === 'muggy') {
+                            specialCondition = 'extremely humid air';
+                        } else {
+                            baseHumidity = 'extremely humid';
+                        }
+                    } else if (humidity >= 80 && !specialCondition.includes('humid')) {
+                        if (baseHumidity.includes('humid') || humidityModifier === 'tropical' || humidityModifier === 'muggy') {
+                            specialCondition = 'very humid air';
+                        } else {
+                            baseHumidity = 'very humid';
+                        }
+                    } else if (humidity <= 30 && !specialCondition.includes('dry')) {
+                        if (baseHumidity.includes('dry') || humidityModifier === 'arid') {
+                            specialCondition = 'dry air';
+                        } else {
+                            baseHumidity = 'dry';
+                        }
+                    } else if (humidity <= 20 && !specialCondition.includes('dry')) {
+                        if (baseHumidity.includes('dry') || humidityModifier === 'arid') {
+                            specialCondition = 'very dry air';
+                        } else {
+                            baseHumidity = 'very dry';
+                        }
+                    }
+
+                    // Combine factors into coherent description
+                    let moistureDesc;
+                    if (specialCondition) {
+                        moistureDesc = specialCondition;
+                    } else if (humidityModifier && humidityModifier !== baseHumidity) {
+                        moistureDesc = `${humidityModifier} ${baseHumidity} air`;
+                    } else {
+                        moistureDesc = `${baseHumidity} air`;
+                    }
+
+                    return [`### **Atmospheric Moisture**: ${moistureDesc}`];
                 }
             })(),
-            ...(weather.condition.toLowerCase().includes('mist') ? [
-                `### **Misty Conditions**`,
-                `  - **Character Effects**: Dewy skin, hair slightly wet, soft misty atmosphere`,
-                `  - **Clothing**: Damp at edges, misty moisture`,
-                `  - **Environmental**: Soft misty atmosphere, reduced visibility`,
-                `  - **Other Effects**: Characters have dewy skin, hair slightly wet, clothing damp at edges, soft misty atmosphere, reduced visibility`
-            ] : []),
-            ...(weather.condition.toLowerCase().includes('fog') ? [
-                `### **Foggy Conditions**`,
-                `  - **Character Effects**: Misty aura, ethereal moisture, limited visibility`,
-                `  - **Clothing**: Damp appearance, water droplets on surfaces`,
-                `  - **Environmental**: Ethereal moisture, limited visibility`,
-                `  - **Other Effects**: Characters have misty aura, damp appearance, water droplets on surfaces, ethereal moisture, limited visibility`
-            ] : []),
-            ...(weather.condition.toLowerCase().includes('haze') ? [
-                `### **Hazy Conditions**`,
-                `  - **Character Effects**: Atmospheric haze, reduced clarity`,
-                `  - **Clothing**: Dry dust particles visible`,
-                `  - **Environmental**: Atmospheric haze, reduced clarity, golden atmospheric lighting`,
-                `  - **Other Effects**: Characters appear through atmospheric haze, dry dust particles visible, reduced clarity, golden atmospheric lighting`
-            ] : []),
-            ...(weather.condition.toLowerCase().includes('drizzle') ? [
-                `### **Light Drizzle**`,
-                `  - **Character Effects**: Fine mist on skin, hair lightly dampened`,
-                `  - **Clothing**: Surfaces glistening with tiny droplets`,
-                `  - **Environmental**: Gentle moisture, surfaces glistening`,
-                `  - **Other Effects**: Characters with fine mist on skin, hair lightly dampened, surfaces glistening with tiny droplets, gentle moisture`
-            ] : []).flat(),
+            ...(weather.condition.toLowerCase().includes('mist') ? ['### **Misty Conditions**'] : []),
+            ...(weather.condition.toLowerCase().includes('fog') ? ['### **Foggy Conditions**'] : []),
+            ...(weather.condition.toLowerCase().includes('haze') ? ['### **Hazy Conditions**'] : []),
+            ...((weather.visibility || 10) < 5 ? ['### **Reduced Visibility Conditions**'] : []),
+            ...((weather.cloudCoverage || 0) >= 80 ? ['### **Heavy Cloud Cover Conditions**'] : []),
             '',
-            '## 🌬️ **WIND ANALYSIS**',
-            '**IMPORTANT: Wind descriptions are conceptual ideas based on meteorological data. DO NOT directly write wind speeds or these exact descriptions in prompts. Instead, understand what they equate to in terms of movement, billowing effects, and atmospheric turbulence.**',
-            '',
+            '## 🌬️ **WIND CONDITIONS**',
             ...(() => {
-                // Check if significant wind should override other weather data
-                const windSpeedMph = weather.windSpeed * 2.237;
-                const hasSignificantWind = windSpeedMph >= 20; // Strong winds or higher
-
-                if (hasSignificantWind) {
-                    // Significant wind overrides other atmospheric effects
-                    const windIntensity = getWindIntensityScale(weather.windSpeed);
-
-                    let windCategory, description;
-                    if (windSpeedMph >= 100) {
-                        windCategory = 'catastrophic';
-                        description = `Catastrophic winds (${Math.round(windSpeedMph)} mph)`;
-                    } else if (windSpeedMph >= 80) {
-                        windCategory = 'severe_catastrophic';
-                        description = `Severe catastrophic winds (${Math.round(windSpeedMph)} mph)`;
-                    } else if (windSpeedMph >= 60) {
-                        windCategory = 'major_catastrophic';
-                        description = `Major catastrophic winds (${Math.round(windSpeedMph)} mph)`;
-                    } else if (windSpeedMph >= 40) {
-                        windCategory = 'high_impact';
-                        description = `High impact winds (${Math.round(windSpeedMph)} mph)`;
-                    } else if (windSpeedMph >= 30) {
-                        windCategory = 'moderate_impact';
-                        description = `Moderate impact winds (${Math.round(windSpeedMph)} mph)`;
-                    } else {
-                        windCategory = 'strong';
-                        description = `Strong winds (${Math.round(windSpeedMph)} mph)`;
-                    }
-
-                    const gustInfo = weather.windGust ? ` (gusts to ${Math.round(weather.windGust * 2.237)} mph)` : '';
-
-                    return [
-                        `### **${description}${gustInfo}**`,
-                        `  - **Character Effects**: ${getDetailedWindCharacterEffects(weather.windSpeed)}`,
-                        `  - **Clothing**: ${getDetailedWindClothingEffects(weather.windSpeed)}`,
-                        `  - **Environmental**: ${getDetailedWindEnvironmentalEffects(weather.windSpeed)}`,
-                        `  - **Other Effects**: ${windIntensity}`
-                    ];
-                } else if (windSpeedMph >= 10) {
-                    // Moderate winds - show alongside other weather
-                    const gustInfo = weather.windGust ? ` (gusts to ${Math.round(weather.windGust * 2.237)} mph)` : '';
-
-                    return [
-                        `### **Moderate Winds** (${Math.round(windSpeedMph)} mph${gustInfo})`,
-                        `  - **Character Effects**: ${getDetailedWindCharacterEffects(weather.windSpeed)}`,
-                        `  - **Clothing**: ${getDetailedWindClothingEffects(weather.windSpeed)}`,
-                        `  - **Environmental**: ${getDetailedWindEnvironmentalEffects(weather.windSpeed)}`,
-                        `  - **Other Effects**: ${getWindIntensityScale(weather.windSpeed)}`
-                    ];
-                } else {
-                    // Light winds or calm - minimal impact
-                    return [
-                        `### **Light Winds** (${Math.round(windSpeedMph)} mph)`,
-                        `  - **Character Effects**: Gentle breeze, hair moves slightly, light refreshing air movement`,
-                        `  - **Clothing**: Subtle movement in loose fabrics, gentle billowing of light clothing`,
-                        `  - **Environmental**: Leaves rustle softly, flags move gently, peaceful air movement`,
-                        `  - **Other Effects**: Calm, pleasant atmospheric movement, minimal physical impact on characters`
-                    ];
+                let windSpeedMph = weather.windSpeed * 2.237;
+                const hasGusts = weather.windGust && (weather.windGust * 2.237) > windSpeedMph;
+                if (hasGusts) {
+                    windSpeedMph = weather.windGust * 2.237;
                 }
+
+                // Perceptual wind descriptions for AI image generation
+                let windDesc = 'calm';
+                if (windSpeedMph >=25) {
+                    windDesc = 'strong winds';
+                } else if (windSpeedMph >= 15) {
+                    windDesc = 'windy conditions';
+                } else if (windSpeedMph >= 12.5) {
+                    windDesc = 'breeze';
+                } else if (windSpeedMph >= 8) {
+                    windDesc = 'gentle breeze';
+                }
+
+                return [`### **${windDesc}**`];
             })(),
             '',
             (() => {
@@ -4839,22 +5720,22 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
             '**IMPORTANT: Character reaction descriptions are conceptual ideas based on weather data and environmental context. DO NOT directly write these exact descriptions in prompts. Instead, understand what they equate to in terms of visual character cues, body language, and emotional expressions that convey the same physical responses and environmental interactions.**',
             '',
             '### Physical Characteristics & Weather Response',
-            '• **PHYSICAL CHARACTERISTICS MATTER**: Analyze character build, weight, clothing, and physical condition',
+            `• **PHYSICAL CHARACTERISTICS MATTER**: Analyze character build, weight${clothing ? ', clothing' : ''}, and physical condition`,
             '• **WEIGHT-BASED SWEATING**: Obese characters sweat more profusely in heat, show labored breathing and heat exhaustion. Consider ranging this based on between the ideas of chubby, overweight, fat, obese and morbidly obese and what you think would be most appropriate for the character and the scene.',
             '• **BUILD-SPECIFIC WIND EFFECTS**: Slender characters feel wind chill more, heavier characters are more wind-resistant',
-            '• **CLOTHING CONSIDERATIONS**: Tight clothing shows sweat patterns, loose clothing billows in wind',
+            ...(clothing ? ['• **OUTFIT CONSIDERATIONS**: tight clothing with sweat stains, loose clothing blowing in wind'] : []),
             '• **FATIGUE & DISCOMFORT**: Hot weather causes exhaustion, cold weather causes shivering and blue-tinged skin',
             '• **EMOTIONAL STATE INDICATORS**: Facial expressions show weather discomfort - squinting in sun, grimacing in cold',
             '',
             '### Environmental Context & Character Impact',
             '• **INDOOR PROTECTION**: Windows show weather effects but characters feel indirect impacts (room temperature changes, atmospheric pressure)',
-            '• **OUTDOOR EXPOSURE**: Direct physical reactions - sweat running down skin, wind whipping hair, rain soaking clothes',
+            `• **OUTDOOR EXPOSURE**: Direct physical reactions - sweat running down skin, wind whipping hair${clothing ? ', rain soaking clothes' : ''}`,
             '• **CHARACTER COMFORT ZONES**: Adjust descriptions based on whether character appears comfortable or distressed',
             '• **SHELTER SEEKING**: Characters may seek shade, cover from rain, or warmth based on their physical state',
             '• **ACTIVITY ADAPTATION**: Characters modify behavior based on environmental conditions (seeking shelter in storms, staying cool in heat) unless they are doing something that is specifically related to the weather (e.g. fishing, snowboarding, in a park, walking outside, etc.)',
             '',
             '### Multi-Factor Character Response Examples',
-            '• **Hot + Obese Character**: "sweat beading on skin, heavy breathing, flushed face, damp clothing clinging to body, exhausted expression"',
+            `• **Hot + Obese Character**: "sweat dripping, heavy breathing${clothing ? ', damp clothes clinging to body' : ''}, exhausted expression"`,
             '• **Cold + Thin Character**: "shivering, huddled posture, visible breath in cold air, chattering teeth"',
             '• **Humid + Active Scene**: "sticky skin, hair matted with moisture, glistening sweat, labored breathing, oppressive atmosphere"',
             '',
@@ -4869,17 +5750,19 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
             '• **Visibility Effects**: Poor visibility creates fog, mist, or atmospheric perspective effects',
             '',
             '### Weather-Driven Visual Elements',
-            '• **High Humidity + Temperature**: Creates visible heat shimmer, sweat effects, and atmospheric haze',
-            '• **Wind + Precipitation**: Generates rain-swept scenes, wind-blown elements, and dynamic weather',
+            '• **High Humidity + High Temperature**: Creates visible heat shimmer, sweat effects, and atmospheric haze (humidity = moisture in air, NOT precipitation)',
+            '• **Wind + Precipitation**: Generates rain-swept scenes, wind-blown elements, and dynamic weather (precipitation = actual rain/snow falling)',
             '• **Cloud Coverage + Time**: Creates dramatic lighting transitions and atmospheric mood',
             '• **Temperature Extremes**: Heat shimmer, cold breath, thermal distortion effects',
             '',
             '### Comprehensive Weather Descriptions',
             '🌧️ **Thunderstorm (Multi-Factor)** → "dark ominous clouds boiling overhead, heavy warm rain falling in sheets soaking everything, brilliant lightning flashes illuminating terrified faces, thunder rumbling through chest, strong wind bending trees nearly horizontal, character\'s hair plastered to face, clothes heavy with water, panicked breathing, dramatic stormy chaos"',
-            '☀️ **Hot Sunny Day (Character Impact)** → "scorching sunlight beating down relentlessly, sweat pouring down character\'s face in rivulets, heavy breathing from heat exhaustion, flushed skin glowing red, squinting eyes against glare, wilting vegetation around, shimmering heat haze distorting distance"',
+            '☀️ **Hot Sunny Day (Character Impact)** → "scorching sunlight beating down relentlessly, sweat pouring down character\'s face in rivulets, heavy breathing from heat exhaustion, squinting eyes against glare, wilting vegetation around, shimmering heat haze distorting distance"',
             '❄️ **Cold Snowy Night (Atmospheric)** → "bitter cold snow falling silently in large flakes, character\'s breath forming thick clouds, shivering violently, snow crunching under boots, wind howling through bare trees, icy crystals forming on eyelashes, desolate winter night atmosphere"',
             '### 🌦️ **UNIFIED WEATHER APPLICATION FRAMEWORK**',
             '⚠️ **CRITICAL**: All weather data represents OUTDOOR conditions. Apply based on scene composition:',
+            '',
+            '🚨 **ABSOLUTE RULE**: Humidity causes moisture effects (sweat, condensation). Precipitation causes rain/snow effects. NEVER confuse atmospheric moisture with falling precipitation.',
             '',
             '#### Scene Type Determination & Application',
             '',
@@ -4905,8 +5788,8 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
             '',
             '##### Character State Integration (All Scene Types)',
             'Apply physical states descriptively, adapting based on scene composition:',
-            '* **Temperature Effects**: "flushed cheeks from warmth" (outdoor) vs "room feels cooler near windows" (indoor)',
-            '* **Moisture Effects**: "sweat beading on skin" (outdoor) vs "condensation on glass" (indoor)',
+            '* **Temperature Effects**: "rosy cheeks from warmth" (outdoor) vs "room feels cooler near windows" (indoor)',
+            '* **Moisture Effects**: "sweat beading on skin from humid air" (outdoor) vs "condensation on glass from humidity" (indoor) - humidity causes moisture effects, NOT precipitation',
             '* **Wind Effects**: "hair tousled by breeze" (outdoor) vs "curtains fluttering from drafts" (indoor)',
             '* **Activity States**: "comfortable in moderate conditions" or "layered against cold"',
         )
@@ -4949,7 +5832,6 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
             );
         }
     }
-    console.log(systemMessageContent);
     
     systemMessageContent.push(
         '',
@@ -4986,6 +5868,13 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '• **Character Opportunities**: How can characters interact with current conditions?',
         '• **Environmental Enhancement**: How can the setting reflect current weather/time?',
         '',
+        '### 4. Quality Assurance Checklist',
+        '• **Visual Hierarchy**: Does the scene have clear focal points and balanced composition?',
+        '• **Atmospheric Consistency**: Do lighting, weather, and time elements work together?',
+        '• **Character Integration**: Do characters feel naturally integrated with their environment?',
+        '• **Token Efficiency**: Are modifications concise without sacrificing essential detail?',
+        '• **Artistic Preservation**: Do changes enhance rather than override the original vision?',
+        '',
         '# 🎨 PHASE 2: CONTEXTUAL MODIFICATION',
         '',
         '## Core Principles',
@@ -4994,6 +5883,26 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '• **Environment-Aware**: Apply effects differently for indoor vs outdoor scenes',
         '• **Character Harmony**: Ensure modifications complement character designs',
         '• **Artistic Balance**: Enhance immersion while preserving creative choices',
+        '',
+        '## Modification Hierarchy',
+        '**Apply modifications in this priority order:**',
+        '1. **Conflict Resolution**: Fix elements that genuinely contradict real conditions',
+        '2. **Essential Enhancement**: Add weather/time elements that improve immersion',
+        '3. **Character Integration**: Modify character responses to environmental conditions',
+        '4. **Atmospheric Refinement**: Enhance lighting and atmosphere for better mood',
+        '5. **Creative Flourishes**: Add artistic enhancements only if they don\'t conflict',
+        '',
+        '## Weight Control Guidelines',
+        '**Choose appropriate weight levels based on modification importance:**',
+        '• **1.0-1.2**: Subtle enhancements (light atmospheric effects, minor character adjustments)',
+        '• **1.3-1.5**: Standard modifications (typical weather effects, moderate character responses)',
+        '• **1.6-2.0**: Strong emphasis (significant weather conditions, important character reactions)',
+        '• **2.1+**: Critical elements (overriding conflicting descriptions, essential corrections)',
+        '',
+        '**Weight Combination Strategy:**',
+        '• **Single Weight**: Use for unified concepts (e.g., `1.3::comfortable warmth`)',
+        '• **Multiple Weights**: Use for complex descriptions (e.g., `1.2::sweat::, 1.1::comfortable::`)',
+        '• **Avoid Overlap**: Don\'t apply multiple weights to the same concept',
         '',
     )
      // Add clothing adaptation instructions if clothing flag is enabled
@@ -5019,11 +5928,11 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
             '**Apply ALL relevant modifications based on current conditions:**',
             '',
             '#### 🌡️ **TEMPERATURE-BASED CHANGES**',
-            '* **Hot Weather (>25°C)**: Replace heavy fabrics with light ones',
+            '* **Hot Weather**: Replace heavy fabrics with light ones',
             '  - `wool sweater` → `thin cotton shirt` or `breathable linen blouse`',
             '  - `heavy jeans` → `light cotton pants` or `shorts`',
             '  - `thick jacket` → `light cardigan` or remove entirely',
-            '* **Cold Weather (<10°C)**: Add warming layers and accessories',
+            '* **Cold Weather**: Add warming layers and accessories',
             '  - `t-shirt` → `thermal undershirt, wool sweater`',
             '  - `light pants` → `wool pants, warm scarf`',
             '  - Add `heavy coat`, `gloves`, `hat`, `boots`',
@@ -5141,9 +6050,9 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
             '* **Contextual Actions**: Modify activities to be more scene-appropriate (`walking` → `strolling through autumn leaves, hands in pockets`)',
             '',
             '#### 🌟 **Environmental Enhancements**',
-            '* **Atmospheric Details**: Add immersive environmental elements (`empty park` → `park with scattered autumn leaves, distant dog walker, glowing street lamps`)',
+            '* **Atmospheric Details**: Add immersive environmental elements (`empty park` → `park with scattered autumn leaves, distant dog walker, glowing street lamps`) - RESPECT seasonal conflicts',
             '* **Lighting & Mood**: Enhance lighting for emotional impact (`standard lighting` → `golden hour sunlight filtering through trees, casting long dramatic shadows`)',
-            '* **Sensory Elements**: Add multi-sensory details (`quiet scene` → `gentle breeze rustling leaves, distant bird calls, crisp autumn air`)',
+            '* **Sensory Elements**: Add multi-sensory details (`quiet scene` → `gentle breeze rustling leaves, distant bird calls, crisp autumn air`) - AVOID if weather already described',
             '* **Scale & Proportion**: Adjust elements for better composition (`small figure` → `figure framed by ancient tree, winding path leading to horizon`)',
             '',
             '#### 🎨 **Artistic Flourishes**',
@@ -5202,6 +6111,7 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
             '',
             '## ⚠️ **CREATIVE ENHANCEMENT REQUIREMENTS**',
             '* **MANDATORY IMPROVEMENT**: You MUST make at least 3 specific creative enhancements when this mode is enabled',
+            '* **AVOID REDUNDANCY**: Do not repeat weather elements already described (no multiple humidity descriptions)',
             '* **BALANCED APPROACH**: Combine bold creativity with respectful character preservation',
             '* **VALUE-DRIVEN**: Every change must add meaningful visual or narrative value',
             '* **COHESIVE RESULT**: All enhancements should work together as a unified improvement',
@@ -5246,100 +6156,17 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '',
         '**REMEMBER**: Large replacements risk breaking the prompt\'s integrity. Small, careful edits preserve quality while enabling enhancement.',
         '',
-        '## 📊 EMPHASIS GROUPS (:: ::) HANDLING PROTOCOL',
+        '## 📊 EMPHASIS HANDLING',
+        '**Use braces/brackets for emphasis/de-emphasis of weather and time elements:**',
+        '* **Light emphasis**: `{element}`',
+        '* **Strong emphasis**: `{{element}}` or `{{{element}}}`',
+        '* **Light de-emphasis**: `[[element]]`',
+        '* **Strong de-emphasis**: `[[[element]]]` or `[[[[element]]]]`',
         '',
-        '### Understanding Emphasis Groups',
-        '* **Format**: `weight::content::` where weight is a number (e.g., `1.25::red hair::`, `2.0::fat::`)',
-        '* **Purpose**: Controls emphasis/weight of elements in the prompt',
-        '* **Weights**: Positive = emphasis, Negative = de-emphasis, Decimal = fine control',
-        '* **Structure**: Opening `::` and closing `::` are structural delimiters - NEVER break them',
-        '',
-        '### 🚨 CRITICAL DISTINCTION: Emphasis vs Weight Groups',
-        '**DO NOT USE `:: ::` format for individual emphasis/de-emphasis.** The `weight::content::` format is for STRUCTURAL weighting of existing prompt elements, not for adding emphasis individual weather/time elements.',
-        '',
-        '**Use braces/brackets for emphasis, NOT `:: ::` groups.** The `:: ::` format should only be used when you encounter existing weighted elements in the original prompt that need their weights adjusted.',
-        '',
-        '### 🎯 WHEN TO APPLY EMPHASIS AND DE-EMPHASIS',
-        '**MANDATORY**: Actively analyze weather, time, and seasonal conditions to determine what elements need emphasis or de-emphasis. Apply emphasis using BRACES AND BRACKETS ONLY - never use `:: ::` format for emphasis.',
-        '',
-        '#### Emphasis Levels and Syntax (Use ONLY These)',
-        '* **Light Emphasis**: `{element}` - subtle highlighting',
-        '* **Strong Emphasis**: `{{element}}` - moderate highlighting',
-        '* **Heavy Emphasis**: `{{{element}}}` - strong highlighting',
-        '* **Very Heavy Emphasis**: `{{{{element}}}}` - maximum highlighting',
-        '* **Light De-emphasis**: `[[element]]` - subtle reduction',
-        '* **Strong De-emphasis**: `[[[[element]]]]` - moderate reduction',
-        '',
-        '#### ⚠️ NEVER USE THESE FOR EMPHASIS',
-        '* ❌ `1.25::element::` (This is for existing weighted prompt elements only)',
-        '* ❌ `2.0::element::` (This is for existing weighted prompt elements only)',
-        '* ❌ `-0.8::element::` (This is for existing weighted prompt elements only)',
-        '* ❌ Any `number::content::` format for weather/time emphasis',
-        '',
-        '### 🗂️ CONSOLIDATED WEATHER GROUPING',
-        '**CRITICAL**: If prompt is getting large and weather elements may get muddled, consolidate ALL weather elements into a single structured group:',
-        '* **Format**: `1.5::complete weather description with all elements::`',
-        '* **Purpose**: Groups all weather information under one weight for clarity',
-        '* **When to Use**: When adding multiple weather elements that might conflict or when prompt length requires consolidation',
-        '* **Example**: `1.5::heavy rain with wind gusts, soaked clothing, puddles everywhere, dark stormy atmosphere::`',
-        '',
-        '#### Weather-Based Emphasis Examples',
-        '* **Very Windy Conditions**: {{{{wind blowing hair}}}}, {{{{clothes billowing}}}}, {{{{leaves scattering}}}}',
-        '* **Heavy Rain**: {{{{rain-soaked clothes}}}}, {{{{puddles reflecting light}}}}, {{{{water streaming down faces}}}}',
-        '* **Extreme Heat**: {{{{sweat glistening on skin}}}}, {{{{heat shimmer in air}}}}, {{{{exhausted expressions}}}}',
-        '* **Dense Fog**: {{{{misty atmosphere}}}}, {{{{reduced visibility}}}}, {{{{ethereal lighting}}}}',
-        '',
-        '#### Time-Based Emphasis Examples',
-        '* **Dawn Sunrise**: [[sunlight]] (de-emphasize as sun is just rising), {{{{golden hour lighting}}}}',
-        '* **Midday Sun**: {{{{harsh sunlight}}}}, {{{{bright illumination}}}}, [[[shadows]]] (de-emphasize shadows)',
-        '* **Sunset**: {{{{warm golden tones}}}}, {{{{long shadows}}}}, {{{{peaceful atmosphere}}}}',
-        '* **Night Twilight**: {{{{deep blue tones}}}}, {{{{emerging stars}}}}, [[[[artificial lights]]]] (if natural focus)',
-        '',
-        '#### Seasonal Emphasis Examples',
-        '* **Summer**: {{{{bright colors}}}}, {{{{vibrant foliage}}}}, {{{{warm lighting}}}}',
-        '* **Winter**: {{{{cool blue tones}}}}, {{{{frost effects}}}}, {{{{bare trees}}}}',
-        '* **Autumn**: {{{{golden yellows}}}}, {{{{falling leaves}}}}, {{{{warm earth tones}}}}',
-        '* **Spring**: {{{{fresh greens}}}}, {{{{blossoming flowers}}}}, {{{{renewal themes}}}}',
-        '',
-        '#### Character Condition Emphasis',
-        '* **Physical State**: {{{{labored breathing}}}} for heat exertion, {{{{shivering}}}} for cold exposure',
-        '* **Clothing Effects**: {{{{clinging wet fabric}}}} in rain, {{{{billowing in wind}}}} in breezy conditions',
-        '* **Emotional Response**: {{{{squinting against glare}}}} in bright sun, {{{{huddled posture}}}} in cold',
-        '',
-        '### 🎨 EMPHASIS APPLICATION RULES',
-        '**CRITICAL**: Always apply appropriate emphasis levels based on weather intensity and contextual importance:',
-        '* **Environmental Priority**: Most important weather elements get highest emphasis',
-        '* **Character Impact**: Elements affecting character appearance get emphasis based on severity',
-        '* **Atmospheric Mood**: Lighting and atmospheric effects emphasized based on time/season',
-        '* **Proportional Response**: Stronger conditions = higher emphasis levels',
-        '* **Balance**: Don\'t over-emphasize everything - use emphasis strategically for key elements',
-        '',
-        '### 🚨 CRITICAL: Emphasis Group Integrity Rules',
-        '* **NEVER BREAK GROUPS**: `1.25::red hair::` must stay as complete `1.25::red hair::`',
-        '* **PRESERVE WEIGHTS**: Weight values (1.25, 2.0, -1.0, etc.) must remain unchanged',
-        '* **MAINTAIN BOUNDARIES**: Opening `weight::` and closing `::` are inseparable',
-        '* **WHOLE GROUP ONLY**: Replace entire emphasis groups or work within their boundaries',
-        '',
-        '### ✅ Proper Emphasis Group Replacement',
-        '* **Complete Group**: Replace `1.25::red hair::` with `1.25::blonde hair::` (whole group)',
-        '* **Within Group**: If modifying content inside, preserve `weight::` and `::` boundaries',
-        '* **Across Groups**: Never split a group across multiple 2-tag operations',
-        '* **Weight Only**: Never modify just the weight number without changing content',
-        '',
-        '### 🚫 ABSOLUTELY FORBIDDEN With Emphasis Groups',
-        '* **NO**: `1.25::red hair` + `::` (breaking group boundary)',
-        '* **NO**: `1.25::` + `red hair::` (splitting structural elements)',
-        '* **NO**: Changing `1.25` to `1.5` without changing the content',
-        '* **NO**: Replacing across group boundaries in separate operations',
-        '',
-        '### 📝 Emphasis Group Operation Protocol',
-        '1. **Identify Complete Groups**: Locate full `weight::content::` structures',
-        '2. **Treat as Unit**: Handle each emphasis group as a single atomic unit',
-        '3. **Preserve Structure**: Never separate weight prefix from content from suffix',
-        '4. **2-Tag Rule Applies**: If working with groups, do exactly 2 complete groups per operation',
-        '5. **Validate Integrity**: Ensure all `::` boundaries remain properly formed',
-        '',
-        '**MANDATE**: Emphasis groups are structural prompt elements. Treat them as unbreakable units during all replacement operations.',
+        '**For existing weighted groups (`weight::content::`) in the prompt:**',
+        '* Treat them as single units - never break the `weight::content::` structure',
+        '* You can only modify content within them',
+        '* Preserve weight values unless intentionally changing emphasis',
         '',
         '# 📝 PHASE 3: STRUCTURED REASONING & SUMMARY',
         '',
@@ -5372,131 +6199,15 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '',
     )
     systemMessageContent.push(
-        '# 🔍 ENHANCED VISUAL ANALYSIS REQUIREMENTS',
+        '# 🔍 ANALYSIS REQUIREMENTS',
+        'Analyze images comprehensively, documenting all visual elements, patterns, and changes.',
+        'When prompts change, identify intent and preserve important modifications.',
         '',
-        '## Comprehensive Visual Analysis',
-        '**MANDATORY ANALYSIS SEQUENCE:**',
-        ' * Analyze ALL images in exhaustive detail - no visual element overlooked',
-        ' * Document EVERY visible component with precise descriptions',
-        ' * Extract technical specifications: resolution, style, artistic techniques, rendering quality',
-        ' * Map spatial relationships and positioning of all elements',
-        ' * Identify visual patterns, repetitions, and symmetries',
-        ' * Document lighting sources, shadow directions, and illumination effects',
-        ' * Infer hidden states from visible cues: stomach contents from shape/distension, emotional state from expressions/posture, medical conditions from visible symptoms',
-        ' * Track progression: Compare current state to previous and note changes in measurements, states, and conditions',
-        ' * When inferring, specify confidence level in descriptions',
-        ' * Character Interactions: When multiple characters are present, analyze their physical positioning, actions, and relationships',
-        ' * **Prompt Change Analysis**: When user provides a new prompt that differs from the last one, analyze the differences to understand what changed and why. This is critical for maintaining user intent and ensuring changes are properly carried forward.',
-        ' * Efficiency: Compare image/description with prompt. If missing/extended time without result image and description stale vs prompt, set "isStale": true.',
+        '## Character Management',
+        'Maintain character integrity and relationships. Use appropriate UC formatting for negations.',
         '',
-        '**Visual Detail Extraction:**',
-        ' * Extract: subjects, objects, backgrounds, textures, patterns, colors, shapes, composition, lighting, shadows, depth of field, perspective, camera angle, focal points, fabric textures, surface reflections, material types, surface conditions, spatial relationships',
-        ' * Detail Hierarchy: Identify primary, secondary, and tertiary visual elements and their importance',
-        ' * Color Analysis: Document color palettes, saturation levels, contrast, color temperature, color relationships',
-        ' * Material Properties: Describe fabric types, surface properties, reflective qualities, and material authenticity',
-        ' * Technical Precision: Use medical terminology where appropriate for conditions/injuries',
-        ' * Visual Complexity: Capture relationships like overlapping elements, depth layers, and focal points',
-        '',
-        '# 🔄 PROMPT CHANGE ANALYSIS (CRITICAL)',
-        '',
-        '## When User Provides Modified Prompts',
-        '**MANDATORY ANALYSIS:** When user provides a new prompt that differs from the last one:',
-        '',
-        '### Change Detection & Analysis',
-        ' * **Compare Prompts**: Analyze differences between current and previous prompts',
-        ' * **Identify Intent**: Determine WHY changes were made (emphasis, removal, addition, modification)',
-        ' * **Preserve Intent**: Ensure the user\'s intended changes are properly carried forward',
-        ' * **Maintain Context**: Keep important elements that weren\'t explicitly changed',
-        '',
-        '### Change Categories & Handling',
-        '**1. Emphasis Changes**:',
-        ' * Added emphasis (1.25::, 1.5::, 2.0::) → User wants to highlight this element',
-        ' * Removed emphasis → User wants to de-emphasize or balance this element',
-        ' * Changed emphasis level → User wants different intensity for this element',
-        ' * **Action**: Preserve the emphasis level and reason in the new prompt',
-        '',
-        '**2. Element Additions**:',
-        ' * New tags/elements added → User wants to include these features',
-        ' * New characters added → User wants to expand the scene',
-        ' * New actions/poses added → User wants to change the dynamic',
-        ' * **Action**: Integrate new elements while maintaining existing structure',
-        '',
-        '**3. Element Removals**:',
-        ' * Tags/elements removed → User wants to exclude these features',
-        ' * Characters removed → User wants to simplify the scene',
-        ' * Actions/poses removed → User wants to change the dynamic',
-        ' * **Action**: Remove elements and add appropriate UC negations if needed',
-        '',
-        '**4. Modifications**:',
-        ' * Changed values (e.g., "long hair" → "short hair") → User wants different appearance',
-        ' * Changed actions (e.g., "standing" → "sitting") → User wants different pose',
-        ' * Changed settings (e.g., "indoor" → "outdoor") → User wants different environment',
-        ' * **Action**: Update the specific elements while preserving the overall structure',
-        '',
-        '**5. Structural Changes**:',
-        ' * Changed from single to multi-character → User wants to expand the scene',
-        ' * Changed from multi to single character → User wants to focus on one character',
-        ' * Changed base_input vs chara[] distribution → User wants different organization',
-        ' * **Action**: Restructure the prompt format while maintaining all intended elements',
-        '',
-        '### Change Analysis Process',
-        '1. **Compare**: Side-by-side analysis of old vs new prompt',
-        '2. **Categorize**: Identify which type of changes were made',
-        '3. **Reason**: Determine the user\'s intent behind each change',
-        '4. **Preserve**: Ensure important changes are maintained in the new prompt',
-        '5. **Integrate**: Seamlessly incorporate changes into the existing structure',
-        '6. **Validate**: Verify that the new prompt reflects all intended changes',
-        '',
-        '# 👥 ENHANCED CHARACTER MANAGEMENT',
-        '',
-        '## Character Management Rules',
-        'This ONLY applies IF there were characters in the character array in the initial input.',
-        ' * **Never Remove Characters**: Do not remove characters unless explicitly requested by user.',
-        ' * **Base vs Character Prompts**:',
-        '   - Main Prompt: Scene elements not specific to any character (environment, setting, shared objects)',
-        '   - input: Features/attributes specific to that exact character only',
-        '   - uc: Negatives specific to that character',
-        ' * **Character Interactions**: When multiple characters are present, describe their interactions, positioning, and relationships using the format: "source#action" (initiates), "target#action" (receives), "mutual#action" (both participate).',
-        '   - Examples: "source#hug", "target#hug", "mutual#embrace", "source#glare", "target#smile"',
-        ' * Identify characters based on canonical features, ignoring body modifications',
-        ' * Use core traits like hair style, clothing, accessories, and species for identification',
-        ' * DO NOT ADD CHARACTERS TO THE ARRAY IF THERE WERE NOT ANY IN THE INITIAL INPUT! If everthing as in the prompt then work only in the prompt.',
-        '',
-        '## Negative Prompt (UC) Rules',
-        ' * **Cross-Character Negation**: If one character has strong/opposite feature, negate it in other characters\' UC',
-        '   - Example: If character A is "2::obese::", add "obese" to other characters\' UC',
-        '   - If character A is "1.5::muscular::", add "muscular" to other characters\' UC',
-        ' * **Self-Negation**: For very strong features, add negation in same character\'s input',
-        '   - Example: If character has "3::obese::", add "0.5::slim::" to balance',
-        ' * **Universal Negatives**: Put scene-wide negatives in base_uc',
-        ' * **Character-Specific Negatives**: Put character-specific negatives in chara[].uc',
-        ' * **UC Formatting**: List tags separated by ", " (comma + space). NEVER use "no" prefixes - just list the tags to avoid',
-        '   - CORRECT: "blurry, watermark, text, signature"',
-        '   - INCORRECT: "no blurry, no watermark, no text, no signature"',
-        '',
-        '## 🔖 DANBOORU TAG INTEGRATION (HIGH PRIORITY)',
-        '',
-        '### CRITICAL: Use Danbooru Tags for Weather & Time Elements',
-        '**MANDATORY**: When adding weather and time-of-day elements, you MUST use official Danbooru tag names with SPACES (not underscores). These tags have VERY HEAVY WEIGHT in NovelAI and significantly influence the final result.',
-        '',
-        '### Weather Tags (Use These Exact Names):',
-        '• **Clear Conditions**: `clear sky` (NOT `clear_sky`)',
-        '• **Cloudy Conditions**: `cloudy`',
-        '• **Rain**: `rain`',
-        '• **Snow**: `snow`',
-        '• **Fog/Mist**: `fog`',
-        '• **Storm**: `storm`',
-        '• **Wind**: `wind`',
-        '• **Sunny**: `sunny`',
-        '',
-        '### Time of Day Tags (Use These Exact Names):',
-        '• **Morning**: `morning`',
-        '• **Afternoon**: `afternoon`',
-        '• **Evening**: `evening`',
-        '• **Night**: `night`',
-        '• **Sunrise**: `sunrise`',
-        '• **Sunset**: `sunset`',
-        '• **Dusk**: `dusk`',
+        '## Danbooru Tags (Priority)',
+        'Use official Danbooru tag names with spaces for weather/time elements: `clear sky`, `rain`, `sunset`, etc.',
         '• **Dawn**: `dawn`',
         '',
         '### Tag Usage Rules:',
@@ -5539,7 +6250,7 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         'After cleaning conflicts, actively incorporate current weather, time, and seasonal context:',
         '* **Weather Integration**: Apply using the scene type framework above (direct for outdoor, indirect for indoor)',
         '* **Time Integration**: Include time-specific lighting characteristics and mood',
-        '* **Seasonal Integration**: Integrate seasonal environmental elements and colors',
+        '* **Seasonal Integration**: Integrate seasonal environmental elements and colors (AVOID if they conflict with time/weather - no autumn leaves at midnight)',
         '* **Character Attire**: Adjust clothing to match weather and seasonal conditions',
         '',
     )
@@ -5658,19 +6369,21 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '**PROHIBITED: Abstract terms like "stormy", "rainy", "snowy", "foggy", "hot", "cold" - meaningless to image models.**',
         '',
         '## NSFW Content Guidelines (When Applicable)',
-        'IMPORTANT: NOT to follow when there is no sexual/fetish content.',
+        'IMPORTANT: NOT to follow when there is no nsfw tags or sexual/fetish content.',
         ' * No censorship or sanitization',
         ' * Be explicit and raw when sexual',
         ' * Play into fetishes and teasing (even degrading), encourage exploration',
-        ' * Amplify overemphasized/distorted attributes, mention in Suggested key',
+        ' * Amplify overemphasized/distorted attributes',
         ' * Use sexually suggestive language when appropriate',
         ' * Maintain explicit nature throughout',
         ' * Specific Fetish Handling:',
-        '   - Pregnancy Fetish: Emphasize belly expansion, fetal movement details, growth progression, maternal changes, lactation if present, the joy of being pregnant and the feeling of having a growing baby inside you, moving and kicking inside you, reacting to hearing it name.',
+        '   - Pregnancy Fetish: Emphasize womb and belly expansion, fetal movement details, growth progression, maternal changes, lactation if present, the joy of being pregnant and the feeling of having a growing baby inside you, moving and kicking inside you.',
+        '   - Birthing Fetish: Emphasize labor, excusiating pain, pushing, contractions, fetal movement, fetal kicking, enhance her pain and pleasure to show her struggle and joy. Add crying and screaming to the birthing process and conflict with her natural birthing process.',
         '   - Inflation/Expansion: Detail distension levels, pressure sensations, shape changes, capacity limits, the joy of being filled and the feeling of being stretched and how it feels to be filled to the brim',
         '   - Vore: Analyze consumption states, internal views if possible, digestion progression, predator/prey dynamics, the joy of eating and the taste of the prey, how they squirm and writhe in the predator\'s stomach',
         '   - Transformation: Track body modifications, hybrid states, progression stages, loss/gain of features, the joy of transformation and the feeling of being changed into something different',
         '   - Bondage/BDSM: Describe restraints, positions, marks/bruises, power dynamics, sensory deprivation, the joy of being restrained and the feeling of being helpless',
+        '   - Weight Gain Fetish: Emphasize weight gain, distension, pressure sensations, shape changes, capacity limits, the joy of being filled and the feeling of being stretched and how it feels to be filled to the brim',
         ' * Forced actions are allowed, the user has agreeded to it including illegal or morally wrong actions. This should only be done if the content is starting to shift into that direction.',
         ' * Integration: Incorporate fetish elements into measurements, states, and prompts with high detail and emphasis',
         '',
@@ -5743,10 +6456,47 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '• **Prompt modifications**: Use `text_replacements` to modify the main prompt',
         '• **Negative prompt modifications**: Use `text_replacements` to modify the UC/negative prompt',
         '• **Character prompt modifications**: Use `text_replacements` to modify character prompts',
-        '• **Exact Matching**: Use exact text from the original input for `select_text`',
+        '• **Smart Text Selection**: Choose short, reliable text segments (1-5 words) that are likely to still exist after previous replacements. Avoid long phrases or combinations that might be split by other changes.',
+        '• **Current State Awareness**: Replacements are applied sequentially - each operates on the result of previous replacements. Select text that will exist in the CURRENT state of the prompt, not necessarily the original.',
         '• **EOF Appending**: Use `"EOF"` as `select_text` to append content (injects before ", Text:" if present)',
         '• **Emphasis Integration**: Actively apply {{{{element}}}} for strong emphasis and [[element]] for de-emphasis based on weather/time conditions during replacement operations',
         '• **Consolidated Weather Groups**: For extensive weather, use `1.5::comprehensive weather description::` format to group elements under single weight control',
+        '',
+        '### RESEARCH-BASED INTEGRATION PRINCIPLES',
+        '**EVIDENCE**: Studies prove detailed narrative prompts outperform keyword lists. Weather integration succeeds as atmospheric storytelling, not technical overlays.',
+        '**MANDATORY STRATEGY**: Write cinematographer-style mini-scenes. Use sensory language evoking mood. Follow real-world physics - humidity creates haze, wind affects movement, temperature influences appearance.',
+        '**INTEGRATION RULE**: Smart enhancement over blind appending. Replace existing elements when possible, append only new concepts. Prioritize atmospheric coherence.',
+        '',
+        '#### When to REPLACE (Enhancement):',
+        '✅ **Object Enhancement**: Replace "espresso (drink)" with "espresso cup with condensation from humidity"',
+        '✅ **Setting Refinement**: Replace "city" with "city sidewalk at dusk" when adding specific location and time context',
+        '✅ **Character Integration**: Replace "detailed face" with "detailed face with light moisture sheen" for weather integration',
+        '✅ **Lighting Updates**: Replace "realistic lighting" with "diffused twilight lighting through overcast sky"',
+        '',
+        '#### When to APPEND (Addition):',
+        '✅ **New Concepts**: Add completely new elements not present in original (atmospheric effects, weather reactions)',
+        '✅ **Multiple Enhancements**: When adding several related elements that work together',
+        '✅ **Safe Fallback**: When uncertain about exact integration, append rather than risk breaking',
+        '',
+        '### CRITICAL TEXT REPLACEMENT ACCURACY REQUIREMENTS',
+        '**EXACT TEXT MATCHING**: You must provide EXACT text segments that currently exist in the prompts as provided below. Do NOT guess or assume text exists.',
+        '**SEQUENTIAL REPLACEMENTS**: Replacements are applied in order - each replacement operates on the result of the previous one. Text may change between replacements.',
+        '**VERIFICATION REQUIRED**: Before creating any replacement, verify the exact text exists in the current prompt state as provided.',
+        '',
+        '### CONFLICT DETECTION & RESOLUTION PROTOCOL',
+        '**MANDATORY ANALYSIS**: Before ANY modifications, analyze for conflicts, redundancies, and integration opportunities. Use this structured approach:',
+        '',
+        '**CONFLICT CHECK**: Temperature, weather state, time, character state, lighting - identify redundancies and contradictions.',
+        '',
+        '**INTEGRATION SCAN**: Look for object enhancement, setting refinement, character enhancement, and lighting integration opportunities.',
+        '',
+        '**RESOLUTION RULES**: Replace conflicting elements, append complementary additions, eliminate redundancies. Choose most accurate descriptors.',
+        '',
+        '### When to REPLACE vs APPEND:',
+        '✅ **REPLACE when**: You need to change specific conflicting elements (e.g., "daytime" → "sunset", "dry" → "humid")',
+        '✅ **APPEND when**: Adding weather effects, lighting, atmosphere, character reactions, or any enhancements',
+        '❌ **NEVER REPLACE**: Text that you just added in a previous replacement - this creates chain failures',
+        '❌ **AVOID CONFLICTS**: Never add elements that contradict or duplicate existing descriptions',
         '',
         '### Why Sequential, Targeted Replacements?',
         'The system applies replacements one by one in sequence. If you try to replace large portions of text that no longer exist after previous replacements, you will get "source string not found" errors. Always make small, surgical replacements of individual elements rather than trying to rewrite large sections.',
@@ -5757,6 +6507,8 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '• **Exact Text**: Use the exact text as it will exist after previous replacements are applied',
         '• **Test Mentally**: Think through the sequence - "after I replace X with Y, the text Z will still exist"',
         '• **Avoid Chain Reactions**: Don\'t assume text will exist if previous replacements might have changed it',
+        '• **NO CHAINING**: Never replace text that you added in a previous replacement step',
+        '• **NO EOF CHAINING**: Never replace the last item in the prompt just to add new content, use EOF to append new content instead',
         '',
         '### Common Pitfalls to Avoid:',
         '❌ **BAD**: Replace "a beautiful sunny landscape scene" with "a dramatic stormy landscape scene"',
@@ -5765,10 +6517,34 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '❌ **BAD**: Replace "character standing in field" with "character sitting on bench"',
         '✅ **GOOD**: Replace "standing" with "sitting", then "in field" with "on bench" (two separate replacements)',
         '',
+        '❌ **BAD**: Chain replacements by replacing text you just added (e.g., add "sunset" then try to replace "sunset")',
+        '✅ **GOOD**: Either replace existing text once, OR append all new content using "EOF"',
+        '',
+        '❌ **BAD OVER-APPPENDING**: Appending massive strings to EOF instead of smart integration',
+        '✅ **GOOD INTEGRATION**: Replace "espresso (drink)" with "espresso cup with condensation" + enhance "detailed face" with sweat + replace "realistic lighting" with twilight version',
+        '',
+        '❌ **BAD CONFLICTS**: Adding "warm", "hot", and "sweating" when weather is only moderately warm',
+        '✅ **GOOD RESOLUTION**: Choose "comfortable warmth" and append "light sweat" only if humidity justifies it',
+        '',
+        '❌ **BAD CONFLICTS**: Adding "dramatic sunset colors" when prompt already has "bright daylight"',
+        '✅ **GOOD RESOLUTION**: Replace "bright daylight" with "sunset" and append complementary elements',
+        '',
+        '❌ **BAD CONFLICTS**: Adding redundant weights like "1.2::warm" and "hot" describing the same temperature',
+        '✅ **GOOD RESOLUTION**: Use "1.2::comfortable warmth" and eliminate the separate "hot" descriptor',
+        '',
+        '### SMART INTEGRATION EXAMPLES',
+        '🎯 **Object Enhancement**: "espresso (drink)" → "espresso cup with condensation from muggy humidity"',
+        '🎯 **Setting Refinement**: "standing on sidewalk in front of convenience store" → "standing on humid city sidewalk in front of convenience store"',
+        '🎯 **Character Enhancement**: "detailed face, detailed eyes" → "detailed face with sweat sheen, detailed eyes"',
+        '🎯 **Lighting Integration**: "realistic lighting" → "diffused realistic lighting from twilight sky"',
+        '🎯 **Body Type Integration**: "thick wide hips, obes" → "thick wide hips showing subtle sweat sheen, obes"',
+        '🎯 **Pose Enhancement**: "cowboy shot" → "relaxed cowboy shot with gentle breeze tousling hair"',
+        '🎯 **Quality Enhancement**: "highres, detailed background" → "highres with humid haze, detailed background with lengthening shadows"',
+        '',
         '### Text Replacement Guidelines:',
         '• `text_replacements` is the ONLY modification method - never use `modified_*` fields for actual changes',
         '• `modified_*` fields are legacy and should only be used for display/verification purposes',
-        '• Use `"EOF"` for adding new content (automatically handles ", Text:" boundaries)',
+        '• **DEFAULT TO EOF**: Use `"EOF"` for adding new content (automatically handles ", Text:" boundaries) - this is safer than replacement',
         '• `replace_text` can be empty to remove text, or contain new content',
         '• Structure replacements by content type: `prompt`, `uc`, and `character_prompts` arrays',
         '• For character prompts, provide one object per character with separate `input` and `uc` replacement arrays',
@@ -5778,7 +6554,35 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '• **BEST PRACTICE**: Replace/remove specific words, phrases, or short clauses individually',
         '• **CRITICAL FOR UC**: Always consolidate ALL UC additions into a SINGLE "EOF" replacement - never create multiple separate UC replacements',
         '• **EXAMPLE**: Instead of replacing "a beautiful sunny landscape", replace "sunny" with "overcast" as a separate operation',
-        '• If exact text is not found, the replacement will be appended as fallback',
+        '• **CHAINING BAN**: Never create replacement chains where step N tries to replace text added in step N-1',
+        '• **STRICT VALIDATION**: If exact text is not found, the ENTIRE generation will FAIL and trigger complete regeneration',
+        '',
+        '### REASONING REQUIREMENT FOR CONFLICTS',
+        '**MANDATORY**: In your reasoning section, you MUST explicitly document your conflict analysis using this format:',
+        '',
+        '#### Conflict Analysis Documentation',
+        '**Temperature**: [Analysis - e.g., "Prompt has "detailed face" but no temperature descriptors, "comfortable warmth" can be integrated via character enhancement"]',
+        '**Weather State**: [Analysis - e.g., "Prompt has "espresso (drink)", can enhance with condensation from current 71% humidity"]',
+        '**Time/Lighting**: [Analysis - e.g., "Prompt has "realistic lighting", can replace with "diffused realistic lighting from twilight sky""]',
+        '**Character State**: [Analysis - e.g., "Character is "obes" with "detailed face", humid conditions justify "detailed face with light moisture sheen""]',
+        '**Redundancy Check**: [Analysis - e.g., "No semantic overlaps detected, weather elements complement rather than duplicate existing descriptors"]',
+        '**Integration Opportunities**: [Analysis - e.g., "Can enhance "espresso (drink)" with condensation, "standing on sidewalk" with humid qualifier, "detailed face" with sweat"]',
+        '',
+        '**Resolution Strategy**: [Chosen approach - e.g., "Replace a drink glass with condensation enhanced version, enhance "detailed face" with sweat, replace "realistic lighting" with twilight version, append wind effects to EOF"]',
+        '',
+        '### ERROR PATTERN RECOGNITION',
+        '**CRITICAL FAILURE MODES TO AVOID:**',
+        '',
+        '❌ **Over-Modification**: Limit to 3-5 key changes - excessive additions overwhelm prompts',
+        '❌ **Blind Appending**: Use targeted replacements, not massive EOF strings',
+        '❌ **Context Blindness**: Identify scene type (INDOOR/OUTDOOR/MIXED) before applying weather',
+        '❌ **Weight Overload**: Use hierarchy (1.0-2.0) - avoid competing high weights',
+        '❌ **Semantic Redundancy**: Choose ONE descriptor - not "warm" + "hot" + "sweating"',
+        '❌ **Chain Reactions**: Never replace text you just added',
+        '❌ **Integration Blindness**: Actively seek object enhancement and setting refinement opportunities',
+        '',
+        '### VALIDATION CRITERIA',
+        '**MANDATORY VERIFICATION**: Each change must enhance (not contradict) original intent. Weather effects must match scene type. Character responses must be realistic. Weights must be balanced. Token efficiency maintained. All modifications documented.',
         '',
         '## 🔒 CONFLICT PREVENTION VIA UC (NEGATIVE PROMPTS)',
         '',
@@ -5793,15 +6597,29 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '',
         '### Weather-Based Conflict Prevention',
         '• **Rainy Scenes**: UC clear sky, sunny, bright sunlight, dry conditions',
-        '• **Sunny Scenes**: UC cloudy, overcast, rain, dark clouds, gloomy',
-        '• **Snowy Scenes**: UC rain, warm weather, green foliage, summer elements',
-        '• **Foggy/Misty Scenes**: UC clear visibility, bright sunlight, sharp details',
+        '• **Sunny Scenes**: UC cloudy, overcast, rain, showers, drizzle, precipitation, storms, dark clouds, gloomy, wet conditions, puddles',
+        '• **Snowy Scenes**: UC rain, showers, warm weather, green leaves, summer elements, melting snow, slush',
+        '• **Foggy/Misty Scenes**: UC clear visibility, bright sunlight, sharp details, dry air',
+        '• **Humid Scenes (without rain)**: UC rain, showers, drizzle, precipitation, storms, thunder, lightning, wet, damp, puddles, flooding, hail, sleet, overcast, cloudy, dark clouds, gloomy, wet conditions',
+        '**MANDATORY PRECIPITATION UC EMPHASIS**: Always strongly emphasize precipitation elements in UC when adding sunny/dry weather conditions OR humid conditions without precipitation.',
+        '  - Include comprehensive precipitation terms: rain, showers, drizzle, downpour, storms, thunder, lightning, wet, damp, puddles, hail, sleet.',
         '',
         '### Seasonal Conflict Prevention',
         '• **Winter Scenes**: UC green leaves, flowers, summer warmth, bright colors',
         '• **Summer Scenes**: UC snow, frost, winter cold, bare trees',
         '• **Spring Scenes**: UC heavy snow, summer heat, autumn leaves (depending on exact conditions)',
         '• **Autumn Scenes**: UC summer greenery, winter snow, spring flowers',
+        '',
+        '### CONTRADICTORY ELEMENT PREVENTION',
+        '**MANDATORY UC for Conflicting Conditions:**',
+        '• **Opposite Lighting Conditions**: UC bright daylight, harsh sunlight, clear blue sky, daytime (when it should be dark)',
+        '• **Conflicting Time Elements**: UC sunrise, sunset, golden hour, twilight colors (when it should be completely dark)',
+        '• **Incorrect Shadow Directions**: UC shadows pointing wrong direction for time of day',
+        '• **Conflicting Weather Combinations**: UC elements that create visual contradictions (tropical storm + desert heat)',
+        '• **Technically Inconsistent Lighting**: UC lighting setups that create confusion (side-lit night scenes, overhead moonlight)',
+        '• **Seasonally Conflicting Elements**: UC flowers blooming in deep winter, snow in tropical locations',
+        '• **Atmospherically Conflicting**: UC clear mountain air in humid coastal scenes, vice versa',
+        '• **Geographically Conflicting**: UC arctic wildlife in savanna, tropical plants in tundra',
         '',
         '### UC Application Rules',
         '• **Proactive Prevention**: Always UC elements that could naturally appear but contradict your scene',
@@ -5818,8 +6636,20 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '// Rainy evening - ALL conflicting elements in ONE replacement',
         '"uc": [{"select_text": "EOF", "replace_text": ", clear sky, sunny, bright sunlight, dry conditions, daytime, morning"}]',
         '',
+        '// STRONG PRECIPITATION UC EMPHASIS - Sunny/dry scenes with comprehensive precipitation prevention',
+        '"uc": [{"select_text": "EOF", "replace_text": ", rain, showers, drizzle, precipitation, storms, thunder, lightning, wet, damp, puddles, flooding, hail, sleet, overcast, cloudy, dark clouds, gloomy, wet conditions"}]',
+        '',
+        '// HUMID CONDITIONS WITHOUT RAIN - Prevent precipitation in humid but dry scenes',
+        '"uc": [{"select_text": "EOF", "replace_text": ", rain, showers, drizzle, precipitation, storms, thunder, lightning, wet, damp, puddles, flooding, monsoons, hail, sleet"}]',
+        '',
         '// Winter night - ALL seasonal/time conflicts in ONE replacement',
         '"uc": [{"select_text": "EOF", "replace_text": ", green leaves, flowers, summer warmth, bright colors, daytime, morning, sunny"}]',
+        '',
+        '// OPPOSITE LIGHTING CONDITIONS',
+        '"uc": [{"select_text": "EOF", "replace_text": ", daylight, clear sky, harsh sunlight, daytime lighting, shadow details"}]',
+        '',
+        '// GEOGRAPHICALLY CONTRADICTORY ELEMENTS',
+        '"uc": [{"select_text": "EOF", "replace_text": ", palm trees, warm colors, sandy beaches, bright sunlight, clear skies"}]',
         '```',
         '',
         '### When to UC',
@@ -5827,6 +6657,9 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '• ✅ When adding weather elements that contradict default assumptions',
         '• ✅ When adding seasonal elements that conflict with common defaults',
         '• ✅ When your modifications could create visual inconsistencies',
+        '• ✅ **MANDATORY**: When adding elements that conflict with the lighting conditions',
+        '• ✅ **MANDATORY**: When geographic/seasonal combinations conflict with current weather conditions',
+        '• ✅ **MANDATORY PRECIPITATION UC**: Always add comprehensive precipitation terms to UC when creating sunny/dry/clear weather scenes OR humid conditions without precipitation - include rain, showers, drizzle, precipitation, storms, wet conditions, puddles, etc.',
         '',
         '### When NOT to UC',
         '• ❌ Generic negative prompts (worst quality, etc.) - these are handled by the base system',
@@ -5836,43 +6669,35 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '## Required JSON Structure',
         '```json',
         '{',
-        '  "modified_prompt": "string - DEPRECATED: use text_replacements instead",',
-        '  "modified_uc": "string - the updated negative prompt",',
-        '  "modified_character_prompts": [',
-        '    {',
-        '      "input": "string - adapted character prompt",',
-        '      "uc": "string - updated character negative prompt"',
-        '    }',
-        '  ],',
-        '  "modifications_made": [',
-        '    "string - list of specific changes made"',
-        '  ],',
-        '  "reasoning": "string - detailed explanation of modifications and their benefits",',
         '  "text_replacements": {',
         '    "prompt": [',
         '      {',
-        '        "select_text": "exact text to find in prompt (use \'EOF\' to append at end)",',
-        '        "replace_text": "text to replace the selected text with"',
+        '        "select_text": "EXACT text that currently exists in the prompt above (use \'EOF\' to append at end)",',
+        '        "replace_text": "text to replace the selected text with",',
+        '        "reason": "plain text brief description of the reason for this replacement"',
         '      }',
         '    ],',
         '    "uc": [',
         '      {',
-        '        "select_text": "exact text to find in negative prompt (use \'EOF\' to append at end)",',
-        '        "replace_text": "text to replace the selected text with"',
+        '        "select_text": "EXACT text that currently exists in the negative prompt above (use \'EOF\' to append at end)",',
+        '        "replace_text": "text to replace the selected text with",',
+        '        "reason": "plain text brief description of the reason for this replacement"',
         '      }',
         '    ],',
         '    "character_prompts": [',
         '      {',
         '        "input": [',
         '          {',
-        '            "select_text": "exact text to find in this character prompt (use \'EOF\' to append at end)",',
-        '            "replace_text": "text to replace the selected text with"',
+        '            "select_text": "EXACT text that currently exists in this character prompt above (use \'EOF\' to append at end)",',
+        '            "replace_text": "text to replace the selected text with",',
+        '            "reason": "plain text brief description of the reason for this replacement"',
         '          }',
         '        ],',
         '        "uc": [',
         '          {',
-        '            "select_text": "exact text to find in this character negative prompt (use \'EOF\' to append at end)",',
-        '            "replace_text": "text to replace the selected text with"',
+        '            "select_text": "EXACT text that currently exists in this character negative prompt above (use \'EOF\' to append at end)",',
+        '            "replace_text": "text to replace the selected text with",',
+        '            "reason": "plain text brief description of the reason for this replacement"',
         '          }',
         '        ]',
         '      }',
@@ -5881,13 +6706,8 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '}',
         '```',
         '',
-        '## Reasoning Field Requirements',
-        'The `reasoning` field must include:',
-        '• **Analysis Summary**: Brief overview of original prompt analysis',
-        '• **Modification Strategy**: Explanation of chosen approach',
-        '• **Change Rationale**: Justification for each modification',
-        '• **Enhancement Benefits**: How changes improve the final result',
-        '• **HTML Summary**: Formatted HTML section for UI display',
+        '## Text Replacement Reason Requirements',
+        'Each text replacement object must include a `reason` field with a brief explanation (3-8 words) of why this specific replacement was made. It must be a plain text string.',
         '',
         '## Quality Standards & Best Practices',
         '🎯 **Contextual Enhancement**: Actively integrate weather/time/season for better immersion',
@@ -5899,23 +6719,34 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
         '🔄 **Validation Completeness**: Complete all quality assurance checks before submission',
         '🌐 **HTML Formatting**: Include properly formatted summary for UI display',
         '',
+        '## Progressive Enhancement Strategy',
+        '**Start minimal, enhance gradually:**',
+        '1. **Base Layer**: Fix genuine conflicts only',
+        '2. **Enhancement Layer**: Add essential weather/time elements',
+        '3. **Refinement Layer**: Improve character integration and atmosphere',
+        '4. **Polish Layer**: Add creative flourishes if they enhance without overwhelming',
+        '',
+        '**Token Efficiency Guidelines:**',
+        '• **Base Prompt**: Reserve 60-70% of token budget for original content',
+        '• **Enhancements**: Use 20-30% for contextual additions',
+        '• **UC Elements**: Use 10-15% for conflict prevention',
+        '• **Buffer**: Keep 5% margin for processing overhead',
+        '',
+        '**Success Metrics:**',
+        '• **Immersion**: Do modifications make the scene feel more real and lived-in?',
+        '• **Coherence**: Do all elements work together without visual contradictions?',
+        '• **Balance**: Does the result maintain the original artistic intent?',
+        '• **Efficiency**: Are modifications concise and token-effective?',
+        '• **Naturalness**: Do changes feel organic rather than artificially added?',
+        '',
+        '## ITERATIVE REFINEMENT PROTOCOL',
+        '**MANDATORY LEARNING**: Analyze each generation result and adapt. Professional prompt engineers continuously refine based on AI feedback.',
+        '',
+        '**RESULT EVALUATION**: Check weather integration quality, atmospheric coherence, visual impact, and technical accuracy.',
+        '',
+        '**ADAPTIVE ADJUSTMENT**: Modify weights, descriptive style, integration strategy, and complexity level based on results.',
+        '',
     );
-
-    console.log(`Summery of system mode:`, JSON.stringify({
-        time,
-        timePeriod,
-        weather,
-        season: currentSeason,
-        seasonalConfig,
-        seasonalGuidelines,
-        clothing,
-        optimize,
-        creative,
-        activity,
-        action,
-        location,
-    }, null, 2))
-
 
     return [{
         type: "text",
@@ -5923,8 +6754,52 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}) {
     }];
 }
 
+// Get client IP-based location for weather data
+async function getClientIPLocation(clientIP) {
+    try {
+        console.log(`🌐 Getting location for client IP: ${clientIP}`);
+
+        // Use IP-API service for server-side IP geolocation
+        const response = await fetch(`http://ip-api.com/json/${clientIP}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,mobile,proxy,hosting,query`, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`IP-API request failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.status !== 'success') {
+            throw new Error(`IP-API error: ${data.message}`);
+        }
+
+        const location = {
+            lat: data.lat,
+            lon: data.lon,
+            timezone: data.timezone,
+            city: data.city,
+            region: data.regionName,
+            country: data.country,
+            source: 'client_ip'
+        };
+
+        console.log(`📍 Client IP location: ${data.city}, ${data.regionName}, ${data.country} (${data.lat.toFixed(4)}, ${data.lon.toFixed(4)})`);
+
+        return location;
+
+    } catch (error) {
+        console.error('❌ Client IP geolocation failed:', error);
+        // Fallback to a default location if IP geolocation fails
+        console.log('⚠️ Falling back to default location for client IP geolocation failure');
+        return await getCurrentLocation();
+    }
+}
+
 // Generalized dynamic generation processing function - extracts core AI logic from WebSocket handler
-async function processDynamicGenerationCore(dynamicConfig, prompt, uc, characterPrompts = [], requestId = 'core') {
+async function processDynamicGenerationCore(dynamicConfig, prompt, uc, characterPrompts = [], requestId = 'core', ws = null, handler = null, wsServer = null) {
     try {
         console.log(`🎭 Processing dynamic generation core: ${requestId}`);
 
@@ -5938,15 +6813,68 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             weather,
             activity,
             action,
-            location
+            location,
+            compiled_prompt_data
         } = dynamicConfig;
 
         // Only fetch location if we need weather or time data
-        const currentLocation = (tod || weather) ? await getCurrentLocation() : null;
-
-        // Only get time data if tod is enabled
+        let currentLocation = null;
+        if (tod || weather) {
+            // Use location if provided, otherwise get current location
+            if (location) {
+                if (location === 'CLIENT') {
+                    // Special case: use client IP for geolocation
+                    console.log('📍 Using client IP for weather location');
+                    // Get client IP from websocket server client info
+                    const clientInfo = wsServer?.clients?.get(ws);
+                    const clientIP = clientInfo?.clientIP || false;
+                    if (clientIP) {
+                        currentLocation = await getClientIPLocation(clientIP);
+                        console.log(`📍 Using client IP for weather location: ${clientIP}`);
+                    } else {
+                        console.warn('⚠️ No client IP found, falling back to current location');
+                        currentLocation = await getCurrentLocation();
+                    }
+                } else {
+                    // Parse location in "LONG_LAT" format
+                    const [longitude, latitude] = location.split('_').map(Number);
+                    if (!isNaN(longitude) && !isNaN(latitude)) {
+                        currentLocation = {
+                            lat: latitude,
+                            lon: longitude,
+                            timezone: getTimezoneByCoordinates(latitude, longitude)
+                        };
+                        console.log(`📍 Using configured weather location: ${latitude}, ${longitude}`);
+                    } else {
+                        console.warn(`⚠️ Invalid location format: ${location}, falling back to current location`);
+                        currentLocation = await getCurrentLocation();
+                    }
+                }
+            } else {
+                currentLocation = await getCurrentLocation();
+            }
+        }
         let baseTime = null;
         let isSpecificTimeOverride = false;
+        let currentSeason = null;
+        let mappedBaseTime = baseTime; // Store original baseTime for reference
+        let holidayInfo = null; // Store holiday information for seasonal guidelines
+        let weatherData = null;
+        let namedTimeForLater = null; // Store named time for later processing in time_date format
+
+        // Handle backward compatibility: convert old holiday season strings to date-based
+        if (typeof season === 'string') {
+            const holidayNames = Object.values(HOLIDAY_DATA).map(h => h.name.toLowerCase());
+            if (holidayNames.includes(season.toLowerCase())) {
+                console.log(`🔄 Converting legacy holiday season "${season}" to date-based TOD`);
+                // Set TOD to the holiday (date-only mode)
+                tod = `true_${season.toLowerCase()}`;
+                // Set season to true for current season detection
+                season = true;
+            }
+        }
+
+        // Only get time data if tod is enabled
         if (tod) {
             baseTime = getCurrentTime();
 
@@ -5956,6 +6884,122 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                 baseTime = getCurrentTime(null, tod.hour, tod.minute || 0);
                 isSpecificTimeOverride = true;
             } else if (typeof tod === 'string') {
+                // Split string by '_' to separate time and date parts
+                const parts = tod.toString().split('_');
+
+                if (parts.length === 2) {
+                    // Two parts: time_date format
+                    const [timeStr, dateStr] = parts;
+                    console.log(`🎯 Processing time_date format: time="${timeStr}", date="${dateStr}"`);
+
+                    // Process date part
+                    let dateOverride = dateStr;
+                    if (dateOverride === 'nearest') {
+                        const nearestHoliday = findClosestHoliday(new Date());
+                        dateOverride = nearestHoliday ? nearestHoliday.name : null;
+                    } else if (dateOverride === 'tomorrow') {
+                        const now = new Date();
+                        let tomorrow;
+
+                        // Check if we're before sunrise - if so, "tomorrow" still refers to today
+                        if (currentLocation) {
+                            try {
+                                const sunTimes = await getSunriseSunset(currentLocation, now);
+                                const sunriseHour = sunTimes.sunriseHour;
+                                const currentHour = now.getHours() + now.getMinutes() / 60;
+
+                                // If current time is before sunrise, "tomorrow" means later today
+                                if (currentHour < sunriseHour) {
+                                    console.log(`🌅 Before sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to today`);
+                                    tomorrow = new Date(now);
+                                } else {
+                                    // After sunrise, "tomorrow" means next calendar day
+                                    console.log(`🌅 After sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to next day`);
+                                    tomorrow = new Date(now);
+                                    tomorrow.setDate(tomorrow.getDate() + 1);
+                                }
+                            } catch (error) {
+                                console.warn('Failed to calculate sunrise for tomorrow logic, using next calendar day:', error.message);
+                                tomorrow = new Date(now);
+                                tomorrow.setDate(tomorrow.getDate() + 1);
+                            }
+                        } else {
+                            // No location data, fall back to next calendar day
+                            tomorrow = new Date(now);
+                            tomorrow.setDate(tomorrow.getDate() + 1);
+                        }
+
+                        dateOverride = tomorrow;
+                    } else if (/^\d{4}$/.test(dateOverride)) {
+                        // MMDD format
+                        const month = parseInt(dateOverride.substring(0, 2)) - 1; // 0-based
+                        const day = parseInt(dateOverride.substring(2, 4));
+                        const dateObj = new Date();
+                        dateObj.setMonth(month, day);
+                        dateOverride = dateObj;
+                    }
+                    // Apply date override
+                    if (dateOverride) {
+                        if (dateOverride instanceof Date) {
+                            baseTime = getCurrentTime(null, baseTime.hour, baseTime.minute, dateOverride);
+                            isSpecificTimeOverride = true; // Date override counts as specific time override
+                        } else {
+                            // Holiday name - map client names to HOLIDAY_NAMES and set date to the holiday date
+                            const normalizedName = dateOverride.toLowerCase().replace(/[^a-z]/g, '');
+                            const holidayName = HOLIDAY_NAMES[Object.keys(HOLIDAY_NAMES).find(key =>
+                                HOLIDAY_NAMES[key].toLowerCase().replace(/[^a-z]/g, '').includes(normalizedName) ||
+                                normalizedName.includes(HOLIDAY_NAMES[key].toLowerCase().replace(/[^a-z]/g, ''))
+                            )] || dateOverride;
+
+                            const holidayDate = getHolidayDate(holidayName);
+                            if (holidayDate) {
+                                baseTime = getCurrentTime(null, baseTime.hour, baseTime.minute, holidayDate);
+                                isSpecificTimeOverride = true; // Date override counts as specific time override
+                            }
+                        }
+                    }
+
+                    // Check if this is date-only format (timeStr === "true") or auto time selection (timeStr === "auto")
+                    if ((timeStr || '').startsWith('%')) {
+                        // Process time part - check if HHMM or named time
+                        const cleanTimeStr = timeStr.startsWith('%') ? timeStr.substring(1) : timeStr;
+                        if (/^\d{4}$/.test(cleanTimeStr)) {
+                            // HHMM format - validate ranges
+                            const hour = parseInt(cleanTimeStr.substring(0, 2));
+                            const minute = parseInt(cleanTimeStr.substring(2, 4));
+                            if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+                                baseTime = getCurrentTime(null, hour, minute, baseTime.timestamp ? new Date(baseTime.timestamp) : null);
+                                isSpecificTimeOverride = true;
+                            } else {
+                                console.warn(`⚠️ Invalid HHMM time format: ${cleanTimeStr} (hour must be 0-23, minute must be 0-59)`);
+                                // Fall back to named time processing
+                                tod = cleanTimeStr;
+                            }
+                        }
+                    } else if (timeStr && timeStr !== 'true' && timeStr !== 'auto') {
+                        // Process named time part (dawn, sunrise, daytime, etc.)
+                        // We'll handle this after we get the astronomical times
+                        // Store the named time for later processing by setting a flag
+                        namedTimeForLater = timeStr;
+                    }
+                } else {
+                    // Single part: check if HHMM time format or named time
+                    const cleanTimeStr = tod.startsWith('%') ? tod.substring(1) : tod;
+                    if (tod.startsWith('%') && /^\d{4}$/.test(cleanTimeStr)) {
+                        // HHMM format - validate ranges
+                        const hour = parseInt(cleanTimeStr.substring(0, 2));
+                        const minute = parseInt(cleanTimeStr.substring(2, 4));
+                        if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+                            baseTime = getCurrentTime(null, hour, minute);
+                            isSpecificTimeOverride = true;
+                        } else {
+                            console.warn(`⚠️ Invalid HHMM time format: ${cleanTimeStr} (hour must be 0-23, minute must be 0-59)`);
+                            // Invalid time format - ignore
+                        }
+                    }
+                }
+            
+
                 // Calculate actual astronomical times for the location and current date
                 let astronomicalTimes = null;
                 if (currentLocation) {
@@ -5993,98 +7037,271 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     'midnight': { hour: 0, minute: 0 }
                 };
 
-                if (timeMappings[tod]) {
-                    let customHour = timeMappings[tod].hour;
-                    let customMinute = timeMappings[tod].minute;
+                // Check if we have a named time to process (either from single tod or from time_date format)
+                const timeToProcess = namedTimeForLater || tod;
+                if (timeMappings[timeToProcess]) {
+                    let customHour = timeMappings[timeToProcess].hour;
+                    let customMinute = timeMappings[timeToProcess].minute;
 
                     // Check if the requested astronomical time has already passed today
                     // If so, we want tomorrow's occurrence of that time
-                    const now = new Date();
-                    const requestedTimeToday = new Date(now);
+                    // Use the baseTime date as "today" (could be overridden date)
+                    const today = new Date(baseTime.timestamp);
+                    const requestedTimeToday = new Date(today);
                     requestedTimeToday.setHours(customHour, customMinute, 0, 0);
 
                     // If the requested time has already passed today, schedule for tomorrow
                     let targetDateTime = requestedTimeToday;
-                    if (requestedTimeToday < now) {
-                        targetDateTime = new Date(requestedTimeToday.getTime() + (24 * 60 * 60 * 1000)); // Add 24 hours
-                        console.log(`🌅 "${tod}" has passed today, scheduling for tomorrow (+24h): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')}`);
+                    if (requestedTimeToday < today) {
+                        targetDateTime = new Date(requestedTimeToday);
+                        targetDateTime.setDate(targetDateTime.getDate() + 1); // Move to next calendar day
+                        console.log(`🌅 "${timeToProcess}" has passed today, scheduling for tomorrow (next day): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')}`);
                     }
 
                     // Use getCurrentTime to create the proper time object for the custom astronomical time
                     // If it's tomorrow, use the targetDateTime, otherwise use today with custom hour/minute
-                    if (requestedTimeToday < now) {
+                    if (requestedTimeToday < today) {
                         // Tomorrow's time - use the targetDateTime as base
                         baseTime = getCurrentTime(null, targetDateTime.getHours(), targetDateTime.getMinutes(), targetDateTime);
                     } else {
-                        // Today's time
-                        baseTime = getCurrentTime(null, customHour, customMinute);
+                        // Today's time - use the baseTime date with astronomical hour/minute
+                        baseTime = getCurrentTime(null, customHour, customMinute, today);
                     }
                     isSpecificTimeOverride = true;
 
                     if (astronomicalTimes) {
-                        const timeDescription = requestedTimeToday < now ? 'tomorrow' : 'today';
-                        console.log(`🌅 Using actual astronomical time for "${tod}" (${timeDescription}): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')} (sunrise: ${astronomicalTimes.sunrise.toFixed(2)}, sunset: ${astronomicalTimes.sunset.toFixed(2)})`);
+                        const timeDescription = requestedTimeToday < today ? 'tomorrow' : 'today';
+                        console.log(`🌅 Using actual astronomical time for "${timeToProcess}" (${timeDescription}): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')} (sunrise: ${astronomicalTimes.sunrise.toFixed(2)}, sunset: ${astronomicalTimes.sunset.toFixed(2)})`);
                     } else {
-                        console.log(`⏰ Using fallback time approximation for "${tod}": ${customHour}:${customMinute.toString().padStart(2, '0')}`);
+                        console.log(`⏰ Using fallback time approximation for "${timeToProcess}": ${customHour}:${customMinute.toString().padStart(2, '0')}`);
                     }
                 }
             }
             // If tod is just boolean true, keep baseTime as current time for context but don't treat as time override
         }
 
-        // Handle weather data based on configuration type
-        let weatherData = null;
-        let isCustomWeather = false;
+        // Get time for seasonal configuration (need time data for holiday calculations)
+        // Get seasonal configuration - uses baseTime date for natural holiday detection
+        // Determine season based on config and apply seasonal date mapping BEFORE weather fetch
+        const timeForSeasonal = baseTime || getCurrentTime();
+        const seasonalConfig = getSeasonalConfig(season, timeForSeasonal);
+        
+        if (seasonalConfig.enabled) {
+            // FIRST: Check for holidays on the current date (takes priority over forced season)
+            const detectedHolidays = detectSeasonalHolidays(timeForSeasonal);
+            if (detectedHolidays && detectedHolidays.length > 0) {
+                // Holiday detected on this date - use holiday context (overrides any forced season)
+                const primaryHoliday = detectedHolidays[0]; // Use first/primary holiday
+                const holidayData = Object.values(HOLIDAY_DATA).find(h => h.name === primaryHoliday.name);
+
+                if (holidayData) {
+                    console.log(`🎉 Holiday detected on date: ${primaryHoliday.name} (seasonal processing enabled)`);
+
+                    // Create holiday info for seasonal guidelines
+                    holidayInfo = {
+                        name: holidayData.name,
+                        decorations: holidayData.decorations,
+                        atmosphere: holidayData.atmosphere,
+                        colors: holidayData.colors,
+                        activities: holidayData.activities,
+                        priority: holidayData.priority,
+                        region: holidayData.region,
+                        season: primaryHoliday.season
+                    };
+
+                    // Use holiday season for time period calculations
+                    currentSeason = primaryHoliday.season;
+                }
+            } else if (seasonalConfig.type === 'season') {
+                currentSeason = seasonalConfig.value; // Forced specific season
+                // When season is overridden, map the date to equivalent position in target season
+                if (baseTime) {
+                    mappedBaseTime = mapDateToSeason(baseTime, currentSeason);
+                    console.log(`🌸 Seasonal date mapping applied: ${baseTime.month + 1}/${baseTime.dayOfMonth} → ${mappedBaseTime.month + 1}/${mappedBaseTime.dayOfMonth} (${currentSeason})`);
+                }
+            } else if (seasonalConfig.type === 'current') {
+                currentSeason = getCurrentSeason(timeForSeasonal.month, currentLocation?.lat || 0); // Current season detection
+            }
+        }
 
         if (weather) {
             // If weather is a string, treat it as a custom weather condition
             if (typeof weather !== 'boolean' && weather !== undefined && weather !== null) {
-                console.log(`🌤️ Using custom weather condition: ${weather}`);
-                isCustomWeather = true;
+                // Special case for forecast - fetch forecast data for baseTime's date
+                if (weather === 'forecast') {
+                    console.log(`🌤️ Using forecast weather data for baseTime's date`);
+                    if (currentLocation) {
+                        // Get forecast data using the weekly forecast API
+                        const weeklyData = await getWeeklyWeatherForecast(currentLocation);
 
-                // Generate extremely accurate weather conditions based on real meteorological data
-                const accurateWeather = generateAccurateWeatherConditions(weather);
+                        // Use baseTime's date for forecast data - find the correct day
+                        if (weeklyData?.weekly && weeklyData.weekly.length > 0) {
+                            const targetDate = new Date(baseTime.timestamp).toISOString().split('T')[0]; // Use baseTime's date
+                            console.log(`🌤️ Looking for forecast data for ${baseTime.month + 1}/${baseTime.dayOfMonth}: ${targetDate}`);
+                            console.log(`🌤️ Available forecast dates: ${weeklyData.weekly.map(w => w.date).join(', ')}`);
 
-                // Create comprehensive weather data with accurate meteorological ranges
-                weatherData = {
-                    condition: weather,
-                    description: accurateWeather.description,
-                    temperature: accurateWeather.temperature,
-                    feelsLike: accurateWeather.temperature, // Calculate feels like based on temperature and wind
-                    humidity: accurateWeather.humidity,
-                    windSpeed: accurateWeather.windSpeed,
-                    windDirection: accurateWeather.windDirection,
-                    pressure: accurateWeather.pressure,
-                    visibility: accurateWeather.visibility,
-                    uvIndex: accurateWeather.uvIndex,
-                    dewPoint: accurateWeather.dewPoint,
-                    cloudCoverage: accurateWeather.cloudCoverage,
-                    precipitationRate: accurateWeather.precipitationRate,
-                    solarRadiation: accurateWeather.uvIndex ? Math.round(accurateWeather.uvIndex * 100) : 500,
-                    cloudDescription: accurateWeather.cloudCoverage > 80 ? 'overcast' :
-                                    accurateWeather.cloudCoverage > 60 ? 'mostly cloudy' :
-                                    accurateWeather.cloudCoverage > 40 ? 'partly cloudy' :
-                                    accurateWeather.cloudCoverage > 20 ? 'few clouds' : 'clear sky',
-                    rawConditionId: 800, // Default clear sky, but will be overridden by accurate data
-                    icon: '01d',
-                    windGust: accurateWeather.windSpeed > 15 ? accurateWeather.windSpeed * 1.5 : null,
-                    weatherQuality: {
-                        airQualityIndex: null,
-                        pollenLevel: null,
-                        comfortLevel: getComfortLevel(accurateWeather.temperature, accurateWeather.humidity, accurateWeather.windSpeed)
-                    },
-                    timestamp: Date.now(),
-                    dataSource: accurateWeather.dataSource,
-                    location: currentLocation ? {
-                        latitude: currentLocation.lat,
-                        longitude: currentLocation.lon,
-                        timezone: 'UTC', // Custom weather doesn't have real timezone data
-                        timezoneAbbreviation: 'UTC',
-                        utcOffsetSeconds: 0
-                    } : null
-                };
+                            // Find forecast data for the target date
+                            const targetForecast = weeklyData.weekly.find(day => day.date === targetDate);
 
-                // Don't need location for custom weather
+                            if (!targetForecast) {
+                                console.log(`🌤️ Target date forecast (${targetDate}) not found in weekly data, using first available day`);
+                                // Fallback to first day if target date is not found
+                                const firstAvailable = weeklyData.weekly[0];
+                                console.log(`🌤️ Using forecast for ${firstAvailable.date} instead`);
+                            }
+
+                            const forecastToUse = targetForecast || weeklyData.weekly[0];
+
+                            // Use general daily temperature (average of min/max) for day's forecast
+                            const dailyTemperature = Math.round((forecastToUse.temperature.min + forecastToUse.temperature.max) / 2);
+
+                            console.log(`🌤️ Using general forecast for ${forecastToUse.date}: ${forecastToUse.condition}, ${dailyTemperature}°C (daily average from ${forecastToUse.temperature.min}°C-${forecastToUse.temperature.max}°C range)`);
+
+                            // Estimate UV index for forecast (use midday for general daily estimate)
+                            const forecastDateTime = new Date(forecastToUse.date + 'T12:00:00'); // Midday
+                            const estimatedUVIndex = estimateUVIndex(forecastDateTime, forecastToUse.cloudCoverage, weeklyData.location.latitude);
+
+                            // Calculate enhanced weather metrics
+                            const forecastHeatIndex = calculateHeatIndex(dailyTemperature, forecastToUse.humidity);
+                            const forecastWindChill = calculateWindChill(dailyTemperature, forecastToUse.wind.maxSpeed);
+
+                            // Analyze precipitation type (consistent with current weather)
+                            const forecastPrecipitationAnalysis = analyzePrecipitationType(
+                                forecastToUse.precipitation.rain || 0,
+                                forecastToUse.precipitation.showers || 0,
+                                forecastToUse.precipitation.snowfall || 0,
+                                dailyTemperature,
+                                forecastToUse.rawConditionId
+                            );
+
+                            // Get UV warnings (consistent with current weather)
+                            const forecastUvWarnings = getUVWarnings(estimatedUVIndex);
+
+                            weatherData = {
+                                temperature: dailyTemperature, // General daily temperature average
+                                condition: forecastToUse.condition,
+                                humidity: forecastToUse.humidity,
+                                dewPoint: forecastToUse.dewPoint,
+                                feelsLike: Math.round((forecastToUse.feelsLike.min + forecastToUse.feelsLike.max) / 2), // Daily average feels-like
+                                precipitation: forecastToUse.precipitation.total,
+                                precipitationRate: forecastToUse.precipitation.total > 0 ? forecastToUse.precipitation.total / 24 : 0,
+                                rain: forecastToUse.precipitation.rain,
+                                showers: forecastToUse.precipitation.showers,
+                                snowfall: forecastToUse.precipitation.snowfall,
+                                precipitationType: forecastPrecipitationAnalysis,
+                                pressure: forecastToUse.pressure,
+                                surfacePressure: forecastToUse.surfacePressure || forecastToUse.pressure,
+                                cloudCoverage: forecastToUse.cloudCoverage,
+                                windSpeed: forecastToUse.wind.maxSpeed,
+                                windGust: forecastToUse.wind.maxGust,
+                                windDirection: forecastToUse.wind.dominantDirection,
+                                visibility: forecastToUse.visibility,
+                                uvIndex: estimatedUVIndex,
+                                solarRadiation: estimatedUVIndex ? Math.round(estimatedUVIndex * 100) : 0,
+                                rawConditionId: forecastToUse.rawConditionId,
+                                icon: mapOpenMeteoIcon(forecastToUse.rawConditionId, true),
+                                weatherQuality: {
+                                    comfortLevel: getComfortLevel(
+                                        dailyTemperature,
+                                        forecastToUse.humidity,
+                                        forecastToUse.wind.maxSpeed
+                                    ),
+                                    heatIndex: forecastHeatIndex,
+                                    windChill: forecastWindChill,
+                                    uvWarnings: forecastUvWarnings
+                                },
+                                timestamp: weeklyData.timestamp, // When the forecast was fetched from API
+                                dataSource: 'General Forecast',
+                                forecastDate: forecastToUse.date,
+                                location: weeklyData.location
+                            };
+
+                            // Validate forecast data quality
+                            const validation = validateWeatherData(weatherData);
+                            if (!validation.isValid) {
+                                console.log(`⚠️ Forecast data validation issues:`, validation.issues);
+                                console.log(`📊 Data confidence: ${validation.confidenceScore}% (${validation.dataQuality} quality)`);
+                            } else {
+                                console.log(`✅ Forecast data validation passed (${validation.confidenceScore}% confidence)`);
+                            }
+
+                            // Analyze weather patterns for enhanced believability
+                            const patterns = analyzeWeatherPatterns(weatherData, weeklyData?.historical);
+                            if (patterns.anomalies.length > 0) {
+                                console.log(`🌊 Weather pattern anomalies detected:`, patterns.anomalies);
+                            }
+                            if (patterns.trends.length > 0) {
+                                console.log(`📈 Weather trends identified:`, patterns.trends);
+                            }
+                            console.log(`🎭 Weather believability score: ${patterns.believability}% (${patterns.stability})`);
+
+                            // Add validation and pattern analysis to weather data
+                            weatherData.dataValidation = validation;
+                            weatherData.patterns = patterns;
+
+                            enhancedWeatherData = weeklyData;
+                        }
+                    }
+                } else {
+                    console.log(`🌤️ Using custom weather condition: ${weather}`);
+                    isCustomWeather = true;
+
+                    // Generate extremely accurate weather conditions based on real meteorological data
+                    const accurateWeather = generateAccurateWeatherConditions(weather);
+
+                    // Create comprehensive weather data with accurate meteorological ranges
+                    // Calculate enhanced weather metrics
+                    const customHeatIndex = calculateHeatIndex(accurateWeather.temperature, accurateWeather.humidity);
+                    const customWindChill = calculateWindChill(accurateWeather.temperature, accurateWeather.windSpeed);
+
+                    // Analyze precipitation type (consistent with current weather)
+                    const customPrecipitationAnalysis = analyzePrecipitationType(
+                        Math.round(accurateWeather.precipitationRate * 24), // Assume rain for custom weather
+                        0, // showers
+                        0, // snowfall
+                        accurateWeather.temperature,
+                        800 // Default clear sky code
+                    );
+
+                    // Get UV warnings (consistent with current weather)
+                    const customUvWarnings = getUVWarnings(accurateWeather.uvIndex);
+
+                    weatherData = {
+                        temperature: accurateWeather.temperature,
+                        condition: weather,
+                        humidity: accurateWeather.humidity,
+                        dewPoint: accurateWeather.dewPoint,
+                        feelsLike: accurateWeather.temperature, // Approximation for custom weather
+                        precipitation: Math.round(accurateWeather.precipitationRate * 24), // Daily total from hourly rate
+                        precipitationRate: accurateWeather.precipitationRate,
+                        rain: Math.round(accurateWeather.precipitationRate * 24), // Assume rain for custom weather
+                        showers: 0,
+                        snowfall: 0,
+                        precipitationType: customPrecipitationAnalysis,
+                        pressure: accurateWeather.pressure,
+                        surfacePressure: accurateWeather.pressure, // Same as pressure for custom weather
+                        cloudCoverage: accurateWeather.cloudCoverage,
+                        windSpeed: accurateWeather.windSpeed,
+                        windGust: Math.round(accurateWeather.windSpeed * 1.2), // Estimate gust from wind speed
+                        windDirection: accurateWeather.windDirection,
+                        visibility: accurateWeather.visibility,
+                        uvIndex: accurateWeather.uvIndex,
+                        solarRadiation: accurateWeather.uvIndex ? Math.round(accurateWeather.uvIndex * 100) : 0,
+                        rawConditionId: 800, // Default clear sky code
+                        icon: '01d', // Default clear sky icon
+                        weatherQuality: {
+                            comfortLevel: getComfortLevel(accurateWeather.temperature, accurateWeather.humidity, accurateWeather.windSpeed),
+                            heatIndex: customHeatIndex,
+                            windChill: customWindChill,
+                            uvWarnings: customUvWarnings
+                        },
+                        timestamp: Date.now(),
+                        dataSource: 'Synthetic weather data (artistic generation)',
+                        location: currentLocation
+                    };
+
+                    // Don't need location for custom weather
+                }
             } else if (currentLocation) {
                 // Weather is boolean true or object - fetch real weather data
                 console.log(`🌤️ Weather request details: baseTime=${baseTime ? JSON.stringify(baseTime) : 'current'}, isSpecificTimeOverride=${isSpecificTimeOverride}`);
@@ -6114,30 +7331,69 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                             const endDate = requestedTime.toISOString().split('T')[0];
                             const startDateStr = startDate.toISOString().split('T')[0];
 
-                            const histData = await getHistoricalWeatherData(currentLocation, startDateStr, endDate);
+                            const histData = await getWeatherFromBestProvider(currentLocation, {
+                                startDate: startDateStr,
+                                endDate: endDate
+                            });
                             if (histData?.daily && histData.daily.length > 0) {
                                 // Use the most recent day's data with real API values
                                 const dailyData = histData.daily[histData.daily.length - 1];
 
                                 // Check if we have sufficient real data (not null/undefined)
-                                const hasRequiredData = dailyData.pressure && dailyData.dewPoint && dailyData.cloudCover;
+                                const hasRequiredData = dailyData.temperature?.avg !== undefined && dailyData.humidity?.avg !== undefined && dailyData.windSpeed?.avg !== undefined && dailyData.pressure?.avg !== undefined;
 
                                 if (hasRequiredData) {
+                                    // Calculate enhanced weather metrics
+                                    const historicalTemp = Math.round(dailyData.temperature.avg);
+                                    const historicalHumidity = Math.round(dailyData.humidity.avg);
+                                    const historicalWindSpeed = Math.round(dailyData.windSpeed.avg);
+                                    const heatIndex = calculateHeatIndex(historicalTemp, historicalHumidity);
+                                    const windChill = calculateWindChill(historicalTemp, historicalWindSpeed);
+
+                                    // Analyze precipitation type (consistent with current weather)
+                                    const precipitationAnalysis = analyzePrecipitationType(
+                                        dailyData.precipitation.rain || 0,
+                                        dailyData.precipitation.showers || 0,
+                                        dailyData.precipitation.snow || 0,
+                                        historicalTemp,
+                                        dailyData.dominantWeatherCode
+                                    );
+
+                                    // Get UV warnings (consistent with current weather)
+                                    const uvWarnings = getUVWarnings(dailyData.uvIndex || 0);
+
                                     weatherData = {
-                                        temperature: Math.round(dailyData.temperature.avg),
+                                        temperature: historicalTemp,
                                         condition: dailyData.dominantCondition || 'clear sky',
-                                        humidity: Math.round(dailyData.humidity.avg),
-                                        windSpeed: Math.round(dailyData.windSpeed.avg),
-                                        pressure: Math.round(dailyData.pressure.avg),
-                                        visibility: 10000, // Default visibility (not provided by historical API)
-                                        feelsLike: Math.round(dailyData.temperature.avg), // Approximation
+                                        humidity: historicalHumidity,
                                         dewPoint: Math.round(dailyData.dewPoint.avg),
-                                        cloudCoverage: Math.round(dailyData.cloudCover.avg),
+                                        feelsLike: Math.round(dailyData.apparentTemperature?.avg || dailyData.temperature.avg),
+                                        precipitation: dailyData.precipitation.total,
                                         precipitationRate: dailyData.precipitation.total > 0 ? dailyData.precipitation.total / hoursToFetch : 0,
+                                        rain: dailyData.precipitation.rain,
+                                        showers: dailyData.precipitation.showers,
+                                        snowfall: dailyData.precipitation.snow,
+                                        precipitationType: precipitationAnalysis,
+                                        pressure: Math.round(dailyData.pressure.avg) || 1013, // Use calculated pressure or standard atmospheric pressure
+                                        surfacePressure: Math.round(dailyData.surfacePressure?.avg || dailyData.pressure.avg) || 1013,
+                                        cloudCoverage: Math.round(dailyData.cloudCover.avg),
+                                        windSpeed: historicalWindSpeed,
+                                        windDirection: dailyData.windDirection?.avg,
+                                        windGust: dailyData.windGust?.max,
+                                        visibility: dailyData.visibility?.avg,
+                                        uvIndex: dailyData.uvIndex || 0, // Default to 0 if not available
+                                        solarRadiation: (dailyData.uvIndex || 0) ? Math.round((dailyData.uvIndex || 0) * 100) : 0,
                                         rawConditionId: dailyData.dominantWeatherCode,
-                                        icon: mapOpenMeteoIcon(dailyData.dominantWeatherCode, true), // Assume daytime
+                                        icon: mapOpenMeteoIcon(dailyData.dominantWeatherCode, true),
+                                        dataSource: `Historical Weather Data (${hoursToFetch}hr offset)`,
+                                        weatherQuality: {
+                                            comfortLevel: getComfortLevel(historicalTemp, historicalHumidity, historicalWindSpeed),
+                                            heatIndex: heatIndex,
+                                            windChill: windChill,
+                                            uvWarnings: uvWarnings
+                                        },
                                         timestamp: requestedTime.getTime(),
-                                        dataSource: `Historical Weather Data (${hoursToFetch}hr offset)`
+                                        location: histData.location
                                     };
                                 } else {
                                     // Missing required real data - fail gracefully
@@ -6165,6 +7421,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                                 } else {
                                     // Fallback to current weather
                                     weatherData = enhancedData.current || enhancedData.temporal?.current;
+                                    enhancedWeatherData = enhancedData;
                                 }
                             }
                         }
@@ -6180,24 +7437,15 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                             const enhancedData = await getComprehensiveWeatherAnalysis(currentLocation, {
                                 includeHistorical: false,
                                 includeWeekly: false,
-                                customTimeOffset: null, // Ensure we get current + forecast data
+                                customTimeOffset: null, // Get current + forecast data
                                 forecastHours: Math.max(24, hoursFromNow + 2) // Get enough forecast hours
                             });
 
                             if (enhancedData) {
                                 // Extract weather data for the specific time
-                                const pastData = enhancedData.temporal?.pastPeriod || [];
                                 const futureData = enhancedData.temporal?.nextPeriod || [];
 
-                                console.log(`📊 Available data: ${pastData.length} past hours, ${futureData.length} future hours`);
-
                                 if (futureData.length > 0) {
-                                    // Debug: Log future data timestamps
-                                    console.log(`🔍 Future data timestamps (first 5):`);
-                                    futureData.slice(0, 5).forEach((data, i) => {
-                                        console.log(`  [${i}]: ${new Date(data.timestamp).toISOString()} - ${data.temperature}°C`);
-                                    });
-
                                     // Find the closest future data point to the requested time
                                     const requestedTimestamp = requestedTime.getTime();
                                     let bestIndex = 0;
@@ -6220,26 +7468,27 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                                     console.log(`🎯 Requested: ${requestedTime.toISOString()}`);
                                     console.log(`✅ Using forecast data: ${dataTime.toISOString()} (diff: ${timeDiffHours} hours, index: ${bestIndex})`);
 
-                                    // Include location information with the weather data
+                                    // Set weather data to the selected forecast data point
                                     weatherData = {
                                         ...selectedData,
+                                        dataSource: `Forecast (${timeDiffHours} hours ahead)`,
                                         location: enhancedData.location
                                     };
-                                } else if (pastData.length > 0) {
-                                    // No future data available, use most recent past data as approximation
-                                    weatherData = {
-                                        ...pastData[pastData.length - 1],
-                                        location: enhancedData.location
-                                    };
-                                    console.log(`⚠️ No future data available, using most recent past data as approximation`);
+                                    enhancedWeatherData = enhancedData;
                                 } else {
-                                    console.log(`⚠️ No temporal data available, using current weather`);
+                                    console.log(`⚠️ No data available, using current weather`);
                                     // Fallback to current weather
-                                    const currentWeather = enhancedData.current || enhancedData.temporal?.current;
-                                    weatherData = currentWeather ? {
-                                        ...currentWeather,
+                                    if (enhancedData.current) {
+                                    weatherData = {
+                                            ...enhancedData.current,
+                                            dataSource: 'Current weather (forecast unavailable)',
                                         location: enhancedData.location
-                                    } : null;
+                                    };
+                                    enhancedWeatherData = enhancedData;
+                                    } else {
+                                        console.error(`❌ No weather data available`);
+                                        return;
+                                    }
                                 }
                             }
                         } else {
@@ -6255,26 +7504,64 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                                 // Find the closest day in the weekly forecast
                                 const targetDayIndex = Math.min(Math.floor(hoursFromNow / 24), enhancedData.weekly.length - 1);
                                 const dailyData = enhancedData.weekly[targetDayIndex];
-                weatherData = {
-                    temperature: Math.round(dailyData.temperature.avg),
-                    condition: dailyData.dominantCondition || 'clear sky',
-                    humidity: Math.round(dailyData.humidity.avg),
-                    windSpeed: Math.round(dailyData.windSpeed.avg),
-                    pressure: 1013,
-                    visibility: 10000,
-                    feelsLike: Math.round(dailyData.temperature.avg),
-                    dewPoint: Math.round(dailyData.temperature.avg - 5),
-                    cloudCoverage: 50,
-                    precipitationRate: dailyData.precipitation.total > 0 ? dailyData.precipitation.total / 24 : 0,
-                    rawConditionId: 800,
-                    icon: '01d',
-                    timestamp: requestedTime.getTime(),
-                    dataSource: 'Weekly Forecast Data',
-                    forecastDate: requestedTime.toISOString(),
-                    dataCollectedAt: Date.now(),
-                    forecastHorizon: `${Math.floor(hoursFromNow / 24)} days ${hoursFromNow % 24} hours ahead`,
-                    location: enhancedData.location
-                };
+                                const avgTemp = (dailyData.temperature.min + dailyData.temperature.max) / 2;
+
+                                // Calculate enhanced weather metrics
+                                const weeklyHeatIndex = calculateHeatIndex(Math.round(avgTemp), dailyData.humidity);
+                                const weeklyWindChill = calculateWindChill(Math.round(avgTemp), dailyData.wind.maxSpeed);
+
+                                // Analyze precipitation type (consistent with current weather)
+                                const weeklyPrecipitationAnalysis = analyzePrecipitationType(
+                                    dailyData.precipitation.rain || 0,
+                                    dailyData.precipitation.showers || 0,
+                                    dailyData.precipitation.snowfall || 0,
+                                    Math.round(avgTemp),
+                                    dailyData.rawConditionId
+                                );
+
+                                // Get UV warnings (consistent with current weather)
+                                const weeklyUvWarnings = getUVWarnings(dailyData.uvIndex);
+
+                                weatherData = {
+                                    temperature: Math.round(avgTemp),
+                                    condition: dailyData.condition || 'clear sky',
+                                    humidity: dailyData.humidity,
+                                    dewPoint: dailyData.dewPoint,
+                                    feelsLike: Math.round(dailyData.feelsLike?.avg || dailyData.temperature.avg),
+                                    precipitation: dailyData.precipitation.total || 0,
+                                    precipitationRate: dailyData.precipitation.total > 0 ? dailyData.precipitation.total / 24 : 0,
+                                    rain: dailyData.precipitation.rain,
+                                    showers: dailyData.precipitation.showers,
+                                    snowfall: dailyData.precipitation.snowfall,
+                                    precipitationType: weeklyPrecipitationAnalysis,
+                                    pressure: dailyData.pressure,
+                                    surfacePressure: dailyData.surfacePressure || dailyData.pressure,
+                                    cloudCoverage: dailyData.cloudCoverage,
+                                    windSpeed: dailyData.wind.maxSpeed,
+                                    windGust: dailyData.wind.maxGust,
+                                    windDirection: dailyData.wind.dominantDirection,
+                                    visibility: dailyData.visibility,
+                                    uvIndex: dailyData.uvIndex,
+                                    solarRadiation: dailyData.uvIndex ? Math.round(dailyData.uvIndex * 100) : 0,
+                                    rawConditionId: dailyData.rawConditionId,
+                                    icon: mapOpenMeteoIcon(dailyData.rawConditionId, true),
+                                    weatherQuality: {
+                                        comfortLevel: getComfortLevel(
+                                            Math.round(avgTemp),
+                                            dailyData.humidity,
+                                            dailyData.wind.maxSpeed
+                                        ),
+                                        heatIndex: weeklyHeatIndex,
+                                        windChill: weeklyWindChill,
+                                        uvWarnings: weeklyUvWarnings
+                                    },
+                                    timestamp: requestedTime.getTime(),
+                                    dataSource: 'Weekly Forecast Data',
+                                    forecastDate: requestedTime.toISOString(),
+                                    dataCollectedAt: Date.now(),
+                                    forecastHorizon: `${Math.floor(hoursFromNow / 24)} days ${hoursFromNow % 24} hours ahead`,
+                                    location: enhancedData.location
+                                };
                             } else {
                                 // Fallback to current weather
                                 const currentWeather = enhancedData?.current || enhancedData?.temporal?.current;
@@ -6282,66 +7569,48 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                                     ...currentWeather,
                                     location: enhancedData.location
                                 } : null;
+                                enhancedWeatherData = enhancedData;
                             }
                         }
                     }
-            } else {
-                // No time override, get current weather
+                } else {
+                    // No time override, get current weather
                     const enhancedData = await getComprehensiveWeatherAnalysis(currentLocation, {
                         includeHistorical: false,
-                        includeWeekly: false
+                        includeWeekly: false,
+                        forecastHours: 2, // Get 2 hours of future data (minutely data will provide more granularity)
+                        pastHours: 2
                     });
                     const currentWeather = enhancedData?.current || enhancedData?.temporal?.current;
                     weatherData = currentWeather ? {
                         ...currentWeather,
                         location: enhancedData.location
                     } : null;
+                    enhancedWeatherData = enhancedData;
                 }
             }
-            }
-
-            // Apply weather override (if any specific overrides beyond time)
-        if (weatherData && typeof weather === 'object') {
-                weatherData = { ...weatherData, ...weather };
-                }
-        console.log(`🌤️ Weather data:`, weatherData);
-
-        // Get time for seasonal configuration (need time data for holiday calculations)
-        const timeForSeasonal = baseTime || getCurrentTime();
-
-        // Get seasonal configuration
-        const seasonalConfig = getSeasonalConfig(season, timeForSeasonal);
-
-        // Determine season based on config
-        let currentSeason = null;
-        if (seasonalConfig.enabled) {
-            if (seasonalConfig.type === 'season') {
-                currentSeason = seasonalConfig.value; // Forced specific season
-                // When season is overridden, map the date to equivalent position in target season
-                if (baseTime) {
-                    baseTime = mapDateToSeason(baseTime, currentSeason);
-                }
-            } else if (seasonalConfig.type === 'current') {
-                currentSeason = getCurrentSeason(timeForSeasonal.month, currentLocation?.lat || 0); // Current season detection
-            }
-            // For holidays, season is handled differently
         }
 
+        if (weatherData && typeof weather === 'object') {
+            weatherData = { ...weatherData, ...weather };
+        }
+
+
         // Recalculate baseTime using weather timezone if available for accurate time period calculations
-        if (baseTime && weatherData?.location?.timezone && weatherData.location.timezone !== 'UTC') {
-            // Recreate baseTime using the correct local timezone
+        if (baseTime && weatherData?.location?.timezone) {
+            // Recreate baseTime using the correct local timezone but preserve the date (holiday or mapped)
             const timezone = weatherData.location.timezone;
             console.log(`🌍 Recalculating time using local timezone: ${timezone}`);
 
             if (isSpecificTimeOverride) {
-                // For specific time overrides, recreate with timezone
-                baseTime = getCurrentTime(timezone, baseTime.hour, baseTime.minute);
+                // For specific time overrides, recreate with timezone but keep current date
+                baseTime = getCurrentTime(timezone, baseTime.hour, baseTime.minute, new Date(baseTime.year, baseTime.month, baseTime.dayOfMonth));
             } else {
-                // For current time, get current time in local timezone
-                baseTime = getCurrentTime(timezone);
+                // For current time, get current time in local timezone but keep current date
+                baseTime = getCurrentTime(timezone, null, null, new Date(baseTime.year, baseTime.month, baseTime.dayOfMonth));
             }
 
-            console.log(`⏰ Local time: ${baseTime.hour}:${String(baseTime.minute).padStart(2, '0')} (${timezone})`);
+            console.log(`⏰ Local time: ${baseTime.hour}:${String(baseTime.minute).padStart(2, '0')} (${timezone}) - Seasonal date: ${baseTime.month + 1}/${baseTime.dayOfMonth}`);
         }
 
         // Determine time period (only if time is available)
@@ -6349,16 +7618,76 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
 
         // Build context - only include data that is enabled
         const context = {};
+
+        // Add location metadata if available
+        if (currentLocation && currentLocation.lat !== undefined && currentLocation.lon !== undefined) {
+            context.location = {
+                latitude: currentLocation.lat,
+                longitude: currentLocation.lon,
+                timezone: currentLocation.timezone
+            };
+
+            // Try to get city/country info via reverse geocoding
+            try {
+                const reverseResult = await geo2city.reverse([currentLocation.lat, currentLocation.lon]);
+                if (reverseResult) {
+                    context.location.city = reverseResult.city;
+                    context.location.country = reverseResult.country;
+                    context.location.state = reverseResult.city ? '' : ''; // State info might not be available
+                }
+            } catch (error) {
+                console.warn('Failed to get location metadata:', error.message);
+            }
+        }
+
         if (baseTime) context.time = baseTime;
-        if (weatherData) context.weather = weatherData;
+        if (weatherData && typeof weatherData === 'object') {
+            const requiredFields = ['temperature', 'condition', 'windSpeed', 'humidity'];
+            const hasRequiredFields = requiredFields.every(field =>
+                weatherData[field] !== undefined && weatherData[field] !== null
+            );
+
+            if (hasRequiredFields) {
+                context.weather = weatherData;
+                console.log('✅ Weather data validation passed');
+            } else {
+                console.warn('⚠️ Weather data missing required fields, excluding from context');
+                const missingFields = requiredFields.filter(field =>
+                    weatherData[field] === undefined || weatherData[field] === null
+                );
+                console.warn('Missing fields:', missingFields);
+            }
+        }
         if (seasonalConfig.enabled) context.season = currentSeason;
         if (timePeriod) context.timePeriod = timePeriod;
         if (clothing) context.clothing = clothing;
         if (optimize) context.optimize = optimize;
         if (creative) context.creative = creative;
+        if (holidayInfo) context.holidayInfo = holidayInfo;
+
+        // Detailed logging of gathered data
+        console.log('📊 GATHERED DATA FOR AI PROCESSING:');
+        console.log('📅 Time Data:', baseTime || 'No time data');
+        console.log('⏰ Time Period:', timePeriod || 'No time period data');
+        console.log('🌤️ Weather Data:', weatherData || 'No weather data');
+        console.log('🌿 Seasonal Data:', seasonalConfig || 'Seasonal disabled');
+        console.log(`👕 Clothing: ${clothing}\n  Activity: ${activity}\n  Action: ${action}\n  Location: ${location}`);
 
         // Generate comprehensive system message using real context
-        const systemMessage = generateDynamicGenerationSystemMessage(context, seasonalConfig);
+        let systemMessage;
+        try {
+            systemMessage = generateDynamicGenerationSystemMessage(context, seasonalConfig);
+        } catch (error) {
+            console.error('❌ Weather data validation failed:', error.message);
+            // Return error structure instead of crashing
+            return {
+                success: false,
+                error: `Weather data validation failed: ${error.message}`,
+                processed: false
+            };
+        }
+
+        const adapttionMode = compiled_prompt_data ? (compiled_prompt_data.prompt || compiled_prompt_data.uc || compiled_prompt_data.character_prompts) : false;
 
         // Prepare user message with current prompts
         const userMessage = {
@@ -6366,7 +7695,8 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             text: [
                 '⚠️ **IMPORTANT THINKING REQUIREMENTS**: Take your time with this task. Do not rush through the analysis or modifications. Think deeply about how all elements work together. Consider the holistic impact of each change before implementing it.',
                 '',
-                'Please intelligently modify the following NovelAI prompts to create a cohesive, immersive scene that harmonizes weather, time, season, and character attire.',
+                adapttionMode ? 
+                    '🔄 **ADAPTATION MODE**: You are adapting a previously compiled prompt that failed to apply. Use the provided compiled prompt data as a reference and adapt it to work with the current context while preserving the original intent and quality.\nPlease intelligently modify the following NovelAI prompts to create a cohesive, immersive scene that harmonizes weather, time, season, and character attire.' : '',
                 '',
                 '## Working Approach',
                 '• Work methodically through each phase (analysis → modification → validation)',
@@ -6374,6 +7704,26 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                 '• Consider how weather, time, season, lighting, and characters all interconnect',
                 '• Double-check that modifications enhance rather than contradict the original intent',
                 '• Document your reasoning clearly for each decision',
+                '',
+                adapttionMode ? [
+                    '## Previous Response Data (for reference):',
+                    '',
+                    '**Previous Base Prompt:**',
+                    compiled_prompt_data.prompt ? JSON.stringify(compiled_prompt_data.prompt, null, 2) : 'No previous base prompt',
+                    '',
+                    '**Previous Negative Prompt:**',
+                    compiled_prompt_data.uc ? JSON.stringify(compiled_prompt_data.uc, null, 2) : 'No previous negative prompt',
+                    '',
+                    '**Previous Character Prompts:**',
+                    compiled_prompt_data.character_prompts ? JSON.stringify(compiled_prompt_data.character_prompts, null, 2) : 'No previous character prompts',
+                    '',
+                    '**Previous Context:**',
+                    compiled_prompt_data.context ? JSON.stringify(compiled_prompt_data.context, null, 2) : 'No previous context',
+                    '',
+                ].join('\n') : '',
+                '## Current Prompts (to adapt):',
+                '⚠️ **CRITICAL**: The prompts below are the EXACT current state. Only replace text that you can see exists in these prompts.',
+                '⚠️ **SEQUENTIAL WARNING**: Replacements are applied in order - each replacement changes the text, so later replacements must target the modified text.',
                 '',
                 '**Base Prompt:**',
                 prompt || 'No base prompt provided',
@@ -6389,11 +7739,21 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     'No character prompts provided',
                 '',
                 '**Modification Process:**',
+                adapttionMode ? [
+                    '🔄 **ADAPTATION PRIORITY**: Use the previous reasoning and added modifications as your foundation for this modification',
+                    '📋 **REFERENCE ANALYSIS**: Study the previous modifications, reasoning, and context to understand the original intent',
+                    '🔧 **UPDATE OF CURRENT ENVIRONMENT**: Identify what changed in the current context and update the prompt to reflect those changes',
+                    '🎯 **PRESERVE QUALITY**: Maintain the quality and effectiveness of the previous work while making it compatible',
+                    '⚡ **EFFICIENT ADAPTATION**: Focus on minimal changes needed to make the prompt work rather than starting over',
+                    '📝 **DOCUMENT CHANGES**: Clearly explain what you changed and why in your reasoning',
+                    '',
+                ].join('\n') : '',
                 '👤 **CHARACTER ANALYSIS FIRST**: Study character appearance, build, weight, clothing, and current emotional state BEFORE weather integration',
                 '🔍 **UNDERSTAND CHARACTER FEELINGS**: Analyze if character appears comfortable, distressed, active, or fatigued to determine appropriate weather reactions',
                 '⚖️ **WEIGHT-BASED PHYSICAL IMPACT**: Heavier characters sweat more in heat, feel wind differently, show more pronounced wetness in rain',
                 '🌦️ **WEATHER INTEGRATION**: Incorporate comprehensive weather descriptions using text_replacements.prompt - analyze all weather factors together',
                 '🧹 **Clean Conflicts**: Remove any existing weather elements that contradict current conditions',
+                '🚫 **MANDATORY UC FOR CONFLICTING ELEMENTS**: Add negative prompts (UC) for opposite lighting, geographically contradictory elements, and technically inconsistent conditions',
                 '🏠 **Environment Analysis**: Determine indoor/outdoor context and how character comfort level affects weather perception',
                 '🎨 **Character-Centric Weather**: Create 6-8 specific visual descriptors showing how weather personally affects THIS character',
                 '👔 **Personal Attire Response**: Show clothing reacting to weather based on character\'s physical build and current state',
@@ -6404,7 +7764,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                 '',
                 creative ? 'Modify the prompt to be more dynamic and more intersting.\n - Improve character positioning, actions, environment, and overall composition while preserving character identity.\nNext, analyze the environment first - weather effects should be visible through openings for indoor scenes.' : 'Analyze the environment first - weather effects should be visible through openings for indoor scenes.',
                 action ? '- Change what the character is doing to be more interesting and engaging based on the weather and time of day. Think of what they are currently doing and then what would they be doing next and work from there.' : '', 
-                seasonalConfig.enabled ? (seasonalConfig.type === 'holiday' ? `- Environment modified for ${seasonalConfig.value} with decorations, lighting, and holiday elements.` : seasonalConfig.type === 'season' ? `- Environment modified for ${seasonalConfig.value.toUpperCase()} season with decorations, lighting, and seasonal elements.` : '- Actively modify the environment to match current seasonal characteristics, including decorations, lighting, and seasonal elements when applicable.') : '- Use seasonal information subtly for lighting and atmosphere only, without adding seasonal decorations or themes.',
+                seasonalConfig.enabled ? (holidayInfo ? `- Environment modified for ${holidayInfo.name} with decorations, lighting, and holiday elements.` : seasonalConfig.type === 'season' ? `- Environment modified for ${seasonalConfig.value.toUpperCase()} season with decorations, lighting, and seasonal elements.` : '- Actively modify the environment to match current seasonal characteristics, including decorations, lighting, and seasonal elements when applicable.') : '- Use seasonal information subtly for lighting and atmosphere only, without adding seasonal decorations or themes.',
                 '- Optimise the prompt by applying advanced prompt engineering techniques including chain-of-thought reasoning, structural and token optimization, and semantic enhancement for maximum effectiveness.',
             ].join('\n')
         };
@@ -6415,52 +7775,97 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             { role: 'user', content: [userMessage] }
         ];
 
+        // Send context phase first with all the time/date/season/weather/holiday info
+        if (ws && handler) {
+            handler.sendToClient(ws, {
+                type: 'dynamic_generation_progress_update',
+                phase: 'context',
+                data: {
+                    date: baseTime ? {
+                        year: baseTime.year,
+                        month: baseTime.month, // 0-based
+                        day: baseTime.dayOfMonth
+                    } : null,
+                    time: baseTime ? `${String(baseTime.hour).padStart(2, '0')}:${String(baseTime.minute).padStart(2, '0')}` : new Date().toTimeString().split(' ')[0],
+                    season: currentSeason,
+                    weather: weatherData,
+                    holiday: holidayInfo,
+                    location: context.location
+                },
+                timestamp: new Date().toISOString()
+            });
+
+            // Then send thinking phase
+            setTimeout(() => {
+                if (ws && handler) {
+                    handler.sendToClient(ws, {
+                        type: 'dynamic_generation_progress_update',
+                        phase: 'thinking',
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            }, 100);
+        }
+
         // Call AI service with structured output
         console.log('🤖 Calling AI for dynamic generation core...');
         const dynamicSchema = createDynamicGenerationResponseSchema(characterPrompts?.length || 0);
         const aiResponse = await callDirectorAIWithStructuredOutput(
             messages,
-            'grok-4-fast-reasoning',
-            false,
-            300000, // 5 minute timeout
-            false, // dryrun
-            true, // enableLiveSearch
-            null, // streamCallback
-            dynamicSchema // Zod schema for structured output
+            {
+                model: 'grok-4-fast-reasoning',
+                timeout: 300000,
+                liveSearch: true,
+                store: false,
+                responseSchema: dynamicSchema,
+                extractKeys: ['*.reason']  // Extract all reasoning fields
+            },
+            // Add streaming callback for reasoning updates
+            (content, fullResponse, extractedKeys) => {
+                if (ws && handler && extractedKeys && extractedKeys.length > 0) {
+                    // Send each extracted reasoning text directly (filter out object/type emissions)
+                    extractedKeys.forEach(keyInfo => {
+                        if (keyInfo.value && typeof keyInfo.value === 'string' &&
+                            keyInfo.value !== 'object' && keyInfo.type === 'value') {
+                            handler.sendToClient(ws, {
+                                type: 'dynamic_generation_progress_update',
+                                phase: 'streaming',
+                                data: {
+                                    reason: keyInfo.value
+                                },
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+                    });
+                }
+            }
         );
 
         // The response is already validated and parsed by the structured output function
         const modifiedData = aiResponse.content || aiResponse; // Handle both response formats
 
-        console.log('✅ Dynamic generation core completed:', {
-            modifications: modifiedData.modifications_made?.length || 0,
-            reasoning: modifiedData.reasoning?.substring(0, 100) + '...' || 'No reasoning provided'
-        });
+        console.log('✅ Dynamic generation core completed:', JSON.stringify(modifiedData, null, 2));
+
+        // Send completion update
+        if (ws && handler) {
+            handler.sendToClient(ws, {
+                type: 'dynamic_generation_progress_update',
+                phase: 'completion',
+                timestamp: new Date().toISOString()
+            });
+        }
 
         // Return processed results (same structure as WebSocket response)
         // Note: text replacement application is now handled in buildOptions
         return {
             success: true,
-            modifications_made: modifiedData.modifications_made || [],
-            reasoning: modifiedData.reasoning || 'Missing Parameter from AI',
             text_replacements: modifiedData.text_replacements, // Pass text replacements to buildOptions
             context: {
-                weather: {
-                    condition: context.weather.condition,
-                    temperature: context.weather.temperature,
-                    feelsLike: context.weather.feelsLike,
-                    humidity: context.weather.humidity,
-                    windSpeed: context.weather.windSpeed
-                },
+                weather: context.weather, // Include all weather data
+                location: context.location, // Include location metadata
                 time: {
-                    period: context.timePeriod.period,
-                    periodKey: context.timePeriod.periodKey,
-                    lighting: context.timePeriod.lighting,
-                    atmosphere: context.timePeriod.atmosphere,
-                    transitionType: context.timePeriod.transitionType,
-                    hour: context.time.hour,
-                    minute: context.time.minute,
-                    timezone: context.time.timezone
+                    ...context.time,
+                    ...context.timePeriod
                 },
                 season: context.season
             },
@@ -6480,5 +7885,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
 
 module.exports = {
     processDynamicGenerationCore,
-    applyDynamicReplacements
+    applyDynamicReplacements,
+    getTimezoneByCoordinates
 };
+

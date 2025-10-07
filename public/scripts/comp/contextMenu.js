@@ -455,7 +455,8 @@ class ContextMenuController {
         if (section.title) {
             const titleElement = document.createElement('div');
             titleElement.className = 'context-menu-section-title';
-            titleElement.textContent = section.title;
+            const titleText = typeof section.title === 'function' ? section.title() : section.title;
+            titleElement.textContent = titleText;
             sectionElement.appendChild(titleElement);
         }
 
@@ -595,7 +596,8 @@ class ContextMenuController {
         if (section.title) {
             const titleElement = document.createElement('div');
             titleElement.className = 'context-menu-section-title';
-            titleElement.textContent = section.title;
+            const titleText = typeof section.title === 'function' ? section.title() : section.title;
+            titleElement.textContent = titleText;
             sectionElement.appendChild(titleElement);
         }
 
@@ -681,7 +683,8 @@ class ContextMenuController {
         if (section.title) {
             const titleElement = document.createElement('div');
             titleElement.className = 'context-menu-section-title';
-            titleElement.textContent = section.title;
+            const titleText = typeof section.title === 'function' ? section.title() : section.title;
+            titleElement.textContent = titleText;
             sectionElement.appendChild(titleElement);
         }
 

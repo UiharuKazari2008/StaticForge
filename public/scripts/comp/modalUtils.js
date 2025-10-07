@@ -2,9 +2,9 @@
 const backdrop = document.querySelector('.modal-backdrop');
 
 // Modal z-index management
-const MODAL_Z_BASE = 1200; // Base z-index for modal stacking (above --z-modal = 1100)
+const MODAL_Z_BASE = 1001; // Base z-index for modal stacking (above --z-modal = 1100)
 const MODAL_Z_INCREMENT = 10; // Increment between modal layers
-let modalZIndexCounter = 0; // Counter for assigning z-index values
+let modalStack = []; // Array to track modal stack order
 
 function initializeModalDragging() {
     // Add drag functionality to all modal title bars
@@ -463,6 +463,13 @@ function closeModal(modal) {
         modal.removeAttribute('data-resize-start-top');
         modal.removeAttribute('data-resize-direction');
 
+        // Remove modal from stack and update z-indexes
+        const modalIndex = modalStack.indexOf(modal);
+        if (modalIndex !== -1) {
+            modalStack.splice(modalIndex, 1);
+            updateModalStackZIndexes();
+        }
+
         // Reset z-index state (but keep moved state)
         modal.removeAttribute('data-modal-z-index');
         modal.removeAttribute('data-modal-stack-position');
@@ -497,31 +504,41 @@ function closeModal(modal) {
 
 // Modal z-index management functions
 function assignModalZIndex(modal) {
-    // Check if modal already has a z-index assigned
-    let currentZIndex = parseInt(modal.getAttribute('data-modal-z-index')) || 0;
-
-    if (currentZIndex === 0) {
-        // First time this modal gets a z-index, assign it to the current counter
-        modalZIndexCounter++;
-        currentZIndex = MODAL_Z_BASE + (modalZIndexCounter * MODAL_Z_INCREMENT);
-        modal.setAttribute('data-modal-z-index', currentZIndex);
-        modal.setAttribute('data-modal-stack-position', modalZIndexCounter);
-    } else {
-        // Modal already has a z-index, bring it to the front
-        bringModalToFront(modal);
+    // Add modal to the top of the stack if not already there
+    const modalIndex = modalStack.indexOf(modal);
+    if (modalIndex !== -1) {
+        // Modal already in stack, remove it first
+        modalStack.splice(modalIndex, 1);
     }
+    // Add to top of stack (end of array)
+    modalStack.push(modal);
 
-    modal.style.zIndex = currentZIndex;
+    // Reassign z-indexes to all modals in the stack
+    updateModalStackZIndexes();
 }
 
 function bringModalToFront(modal) {
-    // Increment counter and assign new highest z-index
-    modalZIndexCounter++;
-    const newZIndex = MODAL_Z_BASE + (modalZIndexCounter * MODAL_Z_INCREMENT);
+    // Move modal to the top of the stack
+    const modalIndex = modalStack.indexOf(modal);
+    if (modalIndex !== -1) {
+        // Remove from current position
+        modalStack.splice(modalIndex, 1);
+    }
+    // Add to top of stack
+    modalStack.push(modal);
 
-    modal.setAttribute('data-modal-z-index', newZIndex);
-    modal.setAttribute('data-modal-stack-position', modalZIndexCounter);
-    modal.style.zIndex = newZIndex;
+    // Reassign z-indexes to all modals in the stack
+    updateModalStackZIndexes();
+}
+
+function updateModalStackZIndexes() {
+    // Assign z-indexes based on stack position (bottom to top)
+    modalStack.forEach((modal, index) => {
+        const zIndex = MODAL_Z_BASE + (index * MODAL_Z_INCREMENT);
+        modal.setAttribute('data-modal-z-index', zIndex);
+        modal.setAttribute('data-modal-stack-position', index + 1);
+        modal.style.zIndex = zIndex;
+    });
 }
 
 function handleModalClick(modal) {

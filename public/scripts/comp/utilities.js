@@ -177,9 +177,9 @@ const modelGroups = [
         group: 'Current Model',
         options: [
             { value: 'v4_5', name: 'NovelAI v4.5', display: 'v4.5', display_full: 'v4.5', badge: 'F', badge_full: 'Full', badge_class: 'full-model-badge' },
-            { value: 'v4_5_cur', name: 'NovelAI v4.5 (Curated)', display: 'v4.5', display_full: 'v4.5', badge: 'FC', badge_full: 'Curated', badge_class: 'curated-badge' },
+            { value: 'v4_5_cur', name: 'NovelAI v4.5 (Curated)', display: 'v4.5', display_full: 'v4.5', badge: 'C', badge_full: 'Cur', badge_class: 'curated-badge' },
             { value: 'v4', name: 'NovelAI v4', display: 'v4', display_full: 'v4', badge: 'F', badge_full: 'Full', badge_class: 'full-model-badge' },
-            { value: 'v4_cur', name: 'NovelAI v4 (Curated)', display: 'v4', display_full: 'v4', badge: 'FC', badge_full: 'Curated', badge_class: 'curated-badge' }
+            { value: 'v4_cur', name: 'NovelAI v4 (Curated)', display: 'v4', display_full: 'v4', badge: 'C', badge_full: 'Cur', badge_class: 'curated-badge' }
         ]
     },
     {
@@ -361,12 +361,55 @@ function createAnimationAwareDebounce(func, wait) {
  * @param {HTMLElement} element
  * @param {string} eventType
  * @param {Function} handler
+ * @param {string} handlerId - Optional unique identifier for the handler
  */
-function addSafeEventListener(element, eventType, handler) {
-    // Remove existing listener first to prevent duplicates
-    element.removeEventListener(eventType, handler);
-    // Add the new listener
+function addSafeEventListener(element, eventType, handler, handlerId = null) {
+    // Create a unique key for this event listener
+    const listenerKey = `_${eventType}_${handlerId || handler.name || 'anonymous'}`;
+    
+    // Remove existing listener if it exists
+    if (element[listenerKey]) {
+        element.removeEventListener(eventType, element[listenerKey]);
+    }
+    
+    // Store the handler reference and add the new listener
+    element[listenerKey] = handler;
     element.addEventListener(eventType, handler);
+}
+
+/**
+ * Helper function to safely remove event listeners
+ * @param {HTMLElement} element
+ * @param {string} eventType
+ * @param {string} handlerId - Unique identifier for the handler
+ */
+function removeSafeEventListener(element, eventType, handlerId) {
+    const listenerKey = `_${eventType}_${handlerId}`;
+    
+    if (element[listenerKey]) {
+        element.removeEventListener(eventType, element[listenerKey]);
+        delete element[listenerKey];
+    }
+}
+
+/**
+ * Helper function to clean up all safe event listeners on an element
+ * @param {HTMLElement} element
+ */
+function cleanupSafeEventListeners(element) {
+    // Get all property names that match our listener pattern
+    const listenerKeys = Object.keys(element).filter(key => 
+        key.startsWith('_') && key.includes('_') && typeof element[key] === 'function'
+    );
+    
+    // Remove each listener
+    listenerKeys.forEach(key => {
+        const [eventType, handlerId] = key.substring(1).split('_', 2);
+        if (eventType && handlerId && element[key]) {
+            element.removeEventListener(eventType, element[key]);
+            delete element[key];
+        }
+    });
 }
 
 /**
@@ -762,7 +805,8 @@ function updatePercentageOverlays() {
     const elements = [
         { input: manualRescale, overlay: manualRescaleOverlay },
         { input: manualStrengthValue, overlay: manualStrengthOverlay },
-        { input: manualNoiseValue, overlay: manualNoiseOverlay }
+        { input: manualNoiseValue, overlay: manualNoiseOverlay },
+        { input: directorReferenceFidelityInput, overlay: directorReferenceFidelityOverlay },
     ];
 
     elements.forEach(({ input, overlay }) => {
@@ -1030,6 +1074,126 @@ function updatePromptStatusIcons() {
                 ucIcon.setAttribute('data-uc-level', ucPreset.toString());
             }
         }
+
+        // Time of day icon
+        const timeOfDayIcon = mainPromptContainer.querySelector('.prompt-status-icon.time-of-day-enabled');
+        if (timeOfDayIcon) {
+            const todBtn = window.todBtn || todBtn;
+            const todState = todBtn ? todBtn.getAttribute('data-state') : 'off';
+            timeOfDayIcon.classList.toggle('hidden', todState !== 'on');
+        }
+
+        // Custom date set icon
+        const customDateIcon = mainPromptContainer.querySelector('.prompt-status-icon.custom-date-set');
+        if (customDateIcon) {
+            const todBtn = window.todBtn || todBtn;
+            const todState = todBtn ? todBtn.getAttribute('data-state') : 'off';
+            const todOverride = todBtn ? todBtn.getAttribute('data-override') : null;
+            const hasDate = todOverride && todOverride.includes('/');
+
+            if (todState === 'on' && hasDate) {
+                customDateIcon.classList.remove('hidden');
+            } else {
+                customDateIcon.classList.add('hidden');
+            }
+        }
+
+        // Weather icon
+        const weatherIcon = mainPromptContainer.querySelector('.prompt-status-icon.weather-enabled');
+        if (weatherIcon) {
+            const weatherBtn = window.weatherBtn || weatherBtn;
+            const weatherState = weatherBtn ? weatherBtn.getAttribute('data-state') : 'off';
+            weatherIcon.classList.toggle('hidden', weatherState !== 'on');
+        }
+
+        // Location set icon
+        const locationIcon = mainPromptContainer.querySelector('.prompt-status-icon.location-set');
+        if (locationIcon) {
+            const weatherBtn = window.weatherBtn || weatherBtn;
+            const weatherState = weatherBtn ? weatherBtn.getAttribute('data-state') : 'off';
+            const hasLocation = weatherBtn && weatherBtn.hasAttribute('data-location');
+
+            if (weatherState === 'on' && hasLocation) {
+                locationIcon.classList.remove('hidden');
+            } else {
+                locationIcon.classList.add('hidden');
+            }
+        }
+
+        // Season icon
+        const seasonIcon = mainPromptContainer.querySelector('.prompt-status-icon.season-enabled');
+        if (seasonIcon) {
+            const seasonBtn = window.seasonBtn || seasonBtn;
+            const seasonState = seasonBtn ? seasonBtn.getAttribute('data-state') : 'off';
+            const seasonOverride = seasonBtn ? seasonBtn.getAttribute('data-override') : null;
+            const iconElement = seasonIcon.querySelector('i');
+
+            if (seasonState === 'on' && seasonOverride) {
+                seasonIcon.classList.remove('hidden');
+                if (iconElement) {
+                    // Set icon based on season
+                    const season = seasonOverride.toLowerCase();
+                    let seasonIconClass = 'fas fa-leaf'; // default
+                    if (season.includes('spring')) {
+                        seasonIconClass = 'fas fa-seedling';
+                    } else if (season.includes('summer')) {
+                        seasonIconClass = 'fas fa-sun';
+                    } else if (season.includes('fall') || season.includes('autumn')) {
+                        seasonIconClass = 'fas fa-leaf';
+                    } else if (season.includes('winter')) {
+                        seasonIconClass = 'fas fa-snowflake';
+                    }
+                    iconElement.className = seasonIconClass;
+                }
+            } else {
+                seasonIcon.classList.add('hidden');
+            }
+        }
+
+        // Clothing icon
+        const clothingIcon = mainPromptContainer.querySelector('.prompt-status-icon.clothing-enabled');
+        if (clothingIcon) {
+            const clothingBtn = window.clothingBtn || clothingBtn;
+            const clothingState = clothingBtn ? clothingBtn.getAttribute('data-state') : 'off';
+            clothingIcon.classList.toggle('hidden', clothingState !== 'on');
+        }
+
+        // Activity icon
+        const activityIcon = mainPromptContainer.querySelector('.prompt-status-icon.activity-enabled');
+        if (activityIcon) {
+            const actionBtn = window.actionBtn || actionBtn;
+            const actionState = actionBtn ? actionBtn.getAttribute('data-state') : 'off';
+            activityIcon.classList.toggle('hidden', actionState !== 'on');
+        }
+
+        // Creative icon
+        const creativeIcon = mainPromptContainer.querySelector('.prompt-status-icon.creative-enabled');
+        if (creativeIcon) {
+            const creativeBtn = window.creativeBtn || creativeBtn;
+            const creativeState = creativeBtn ? creativeBtn.getAttribute('data-state') : 'off';
+            creativeIcon.classList.toggle('hidden', creativeState !== 'on');
+        }
+
+        // NSFW icon - show when NSFW setting is not neutral
+        const nsfwIcon = mainPromptContainer.querySelector('.prompt-status-icon.nsfw-enabled');
+        if (nsfwIcon) {
+            // Import selectedNsfwValue from manualDropdownManager
+            const isNsfwActive = typeof selectedNsfwValue !== 'undefined' && selectedNsfwValue !== 0;
+            nsfwIcon.classList.toggle('hidden', !isNsfwActive);
+
+            // Update icon based on NSFW mode
+            const iconElement = nsfwIcon.querySelector('i');
+            if (iconElement && isNsfwActive) {
+                const iconMap = {
+                    3: 'fas fa-heart', // Nude
+                    2: 'fas fa-face-grin-hearts', // Skimpy
+                    1: 'fas fa-face-grin-wink', // Allow
+                    '-1': 'fas fa-shield-xmark',  // Remove
+                    '-2': 'fas fa-shield-cross'   // Cleanse
+                };
+                iconElement.className = iconMap[selectedNsfwValue.toString()] || 'fas fa-shield';
+            }
+        }
     }
     
     // Update UC prompt status icons
@@ -1079,8 +1243,153 @@ function updatePromptStatusIcons() {
                 ucIcon.setAttribute('data-uc-level', ucPreset.toString());
             }
         }
+
+        // Time of day icon
+        const timeOfDayIcon = ucPromptContainer.querySelector('.prompt-status-icon.time-of-day-enabled');
+        if (timeOfDayIcon) {
+            const todBtn = window.todBtn || todBtn;
+            const todState = todBtn ? todBtn.getAttribute('data-state') : 'off';
+            timeOfDayIcon.classList.toggle('hidden', todState !== 'on');
+        }
+
+        // Custom date set icon
+        const customDateIcon = ucPromptContainer.querySelector('.prompt-status-icon.custom-date-set');
+        if (customDateIcon) {
+            const todBtn = window.todBtn || todBtn;
+            const todState = todBtn ? todBtn.getAttribute('data-state') : 'off';
+            const todOverride = todBtn ? todBtn.getAttribute('data-override') : null;
+            const hasDate = todOverride && todOverride.includes('/');
+
+            if (todState === 'on' && hasDate) {
+                customDateIcon.classList.remove('hidden');
+            } else {
+                customDateIcon.classList.add('hidden');
+            }
+        }
+
+        // Weather icon
+        const weatherIcon = ucPromptContainer.querySelector('.prompt-status-icon.weather-enabled');
+        if (weatherIcon) {
+            const weatherBtn = window.weatherBtn || weatherBtn;
+            const weatherState = weatherBtn ? weatherBtn.getAttribute('data-state') : 'off';
+            weatherIcon.classList.toggle('hidden', weatherState !== 'on');
+        }
+
+        // Location set icon
+        const locationIcon = ucPromptContainer.querySelector('.prompt-status-icon.location-set');
+        if (locationIcon) {
+            const weatherBtn = window.weatherBtn || weatherBtn;
+            const weatherState = weatherBtn ? weatherBtn.getAttribute('data-state') : 'off';
+            const hasLocation = weatherBtn && weatherBtn.hasAttribute('data-location');
+
+            if (weatherState === 'on' && hasLocation) {
+                locationIcon.classList.remove('hidden');
+            } else {
+                locationIcon.classList.add('hidden');
+            }
+        }
+
+        // Season icon
+        const seasonIcon = ucPromptContainer.querySelector('.prompt-status-icon.season-enabled');
+        if (seasonIcon) {
+            const seasonBtn = window.seasonBtn || seasonBtn;
+            const seasonState = seasonBtn ? seasonBtn.getAttribute('data-state') : 'off';
+            const seasonOverride = seasonBtn ? seasonBtn.getAttribute('data-override') : null;
+            const iconElement = seasonIcon.querySelector('i');
+
+            if (seasonState === 'on' && seasonOverride) {
+                seasonIcon.classList.remove('hidden');
+                if (iconElement) {
+                    // Set icon based on season
+                    const season = seasonOverride.toLowerCase();
+                    let seasonIconClass = 'fas fa-leaf'; // default
+                    if (season.includes('spring')) {
+                        seasonIconClass = 'fas fa-seedling';
+                    } else if (season.includes('summer')) {
+                        seasonIconClass = 'fas fa-sun';
+                    } else if (season.includes('fall') || season.includes('autumn')) {
+                        seasonIconClass = 'fas fa-leaf';
+                    } else if (season.includes('winter')) {
+                        seasonIconClass = 'fas fa-snowflake';
+                    }
+                    iconElement.className = seasonIconClass;
+                }
+            } else {
+                seasonIcon.classList.add('hidden');
+            }
+        }
+
+        // Clothing icon
+        const clothingIcon = ucPromptContainer.querySelector('.prompt-status-icon.clothing-enabled');
+        if (clothingIcon) {
+            const clothingBtn = window.clothingBtn || clothingBtn;
+            const clothingState = clothingBtn ? clothingBtn.getAttribute('data-state') : 'off';
+            clothingIcon.classList.toggle('hidden', clothingState !== 'on');
+        }
+
+        // Activity icon
+        const activityIcon = ucPromptContainer.querySelector('.prompt-status-icon.activity-enabled');
+        if (activityIcon) {
+            const actionBtn = window.actionBtn || actionBtn;
+            const actionState = actionBtn ? actionBtn.getAttribute('data-state') : 'off';
+            activityIcon.classList.toggle('hidden', actionState !== 'on');
+        }
+
+        // Creative icon
+        const creativeIcon = ucPromptContainer.querySelector('.prompt-status-icon.creative-enabled');
+        if (creativeIcon) {
+            const creativeBtn = window.creativeBtn || creativeBtn;
+            const creativeState = creativeBtn ? creativeBtn.getAttribute('data-state') : 'off';
+            creativeIcon.classList.toggle('hidden', creativeState !== 'on');
+        }
+
+        // NSFW icon - show when NSFW setting is not neutral
+        const nsfwIcon = ucPromptContainer.querySelector('.prompt-status-icon.nsfw-enabled');
+        if (nsfwIcon) {
+            // Import selectedNsfwValue from manualDropdownManager
+            const isNsfwActive = typeof selectedNsfwValue !== 'undefined' && selectedNsfwValue !== 0;
+            nsfwIcon.classList.toggle('hidden', !isNsfwActive);
+
+            // Update icon based on NSFW mode
+            const iconElement = nsfwIcon.querySelector('i');
+            if (iconElement && isNsfwActive) {
+                const iconMap = {
+                    3: 'fas fa-heart', // Nude
+                    2: 'fas fa-face-grin-hearts', // Skimpy
+                    1: 'fas fa-face-grin-wink', // Allow
+                    '-1': 'fas fa-shield-xmark',  // Remove
+                    '-2': 'fas fa-shield-cross'   // Cleanse
+                };
+                iconElement.className = iconMap[selectedNsfwValue.toString()] || 'fas fa-shield';
+            }
+        }
     }
-    
+
+    // Check if dynamic generation controls are visible - if so, hide dynamic generation icons to avoid duplication
+    const dynamicGenerationGroup = document.getElementById('dynamicGenerationGroup');
+    const isDynamicGenVisible = dynamicGenerationGroup && !dynamicGenerationGroup.classList.contains('hidden');
+
+    if (isDynamicGenVisible) {
+        // Hide dynamic generation feature icons when controls are visible
+        const dynamicGenIcons = ['time-of-day-enabled', 'weather-enabled', 'location-set', 'custom-date-set', 'season-enabled', 'clothing-enabled', 'activity-enabled', 'creative-enabled'];
+
+        // Hide on main prompt
+        dynamicGenIcons.forEach(iconClass => {
+            const mainIcon = mainPromptContainer?.querySelector(`.prompt-status-icon.${iconClass}`);
+            if (mainIcon) {
+                mainIcon.classList.add('hidden');
+            }
+        });
+
+        // Hide on UC prompt
+        dynamicGenIcons.forEach(iconClass => {
+            const ucIcon = ucPromptContainer?.querySelector(`.prompt-status-icon.${iconClass}`);
+            if (ucIcon) {
+                ucIcon.classList.add('hidden');
+            }
+        });
+    }
+
     // In show both mode, ensure proper icon visibility
     if (isShowingBoth) {
         // Hide UC icon on main prompt
@@ -1098,6 +1407,15 @@ function updatePromptStatusIcons() {
         if (ucDatasetIcon) {
             ucDatasetIcon.classList.add('hidden');
         }
+
+        // Hide dynamic generation feature icons on UC prompt in show both mode
+        const dynamicGenIcons = ['time-of-day-enabled', 'weather-enabled', 'location-set', 'custom-date-set', 'season-enabled', 'clothing-enabled', 'activity-enabled', 'creative-enabled'];
+        dynamicGenIcons.forEach(iconClass => {
+            const ucIcon = ucPromptContainer?.querySelector(`.prompt-status-icon.${iconClass}`);
+            if (ucIcon) {
+                ucIcon.classList.add('hidden');
+            }
+        });
     }
 }
 

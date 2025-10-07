@@ -1,4 +1,5 @@
 const TextReplacements = require('./textReplacements');
+const geo2city = require('geo2city');
 const DatasetTagService = require('./datasetTagService');
 const FavoritesManager = require('./favorites');
 const ReferenceMetadataDatabase = require('./referenceMetadataDatabase');
@@ -68,12 +69,13 @@ const imageCounter = require('./imageCounter');
 const { generateImageWebSocket, handleRerollGeneration } = require('./imageGeneration');
 const { upscaleImageWebSocket } = require('./imageUpscaling');
 const { generateMobilePreviews } = require('./previewUtils');
+const { getTimezoneByCoordinates } = require('./dynamicGenerationHandlers');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const https = require('https');
-const { Model, Action, Sampler, Noise, Resolution } = require('nekoai-js');
+const { Model, Action, Sampler, Noise, Resolution, EventType } = require('nekoai-js');
 const config = require('../config.json');
 
 const cacheDir = path.resolve(__dirname, '../.cache');
@@ -232,6 +234,7 @@ class WebSocketMessageHandlers {
             'generate_preset',
             'delete_preset',
             'save_text_replacements',
+            'get_text_replacement_options',
             'spellcheck_add_word',
             'generate_image',
             'upscale_image',
@@ -246,10 +249,14 @@ class WebSocketMessageHandlers {
     // Route messages to appropriate handlers
     async routeMessage(ws, message, clientInfo, wsServer) {
         switch (message.type) {
+            case 'lookup_city':
+                await this.handleCityLookup(ws, message, clientInfo, wsServer);
+                break;
+
             case 'search_characters':
                 await this.handleCharacterSearch(ws, message, clientInfo, wsServer);
                 break;
-                
+
             case 'search_presets':
                 await this.handlePresetSearch(ws, message, clientInfo, wsServer);
                 break;
@@ -328,7 +335,11 @@ class WebSocketMessageHandlers {
             case 'save_text_replacements':
                 await this.handleSaveTextReplacements(ws, message, clientInfo, wsServer);
                 break;
-                
+
+            case 'get_text_replacement_options':
+                await this.handleGetTextReplacementOptions(ws, message, clientInfo, wsServer);
+                break;
+
             case 'delete_text_replacement':
                 await this.handleDeleteTextReplacement(ws, message, clientInfo, wsServer);
                 break;
@@ -713,6 +724,11 @@ class WebSocketMessageHandlers {
                 await handleDirectorRollbackMessage(this, ws, message, clientInfo, wsServer);
                 break;
 
+            // Dynamic Generation Progress handlers
+            case 'dynamic_generation_progress':
+                await this.handleDynamicGenerationProgress(ws, message, clientInfo, wsServer);
+                break;
+
             // IP Management handlers
             case 'get_blocked_ips':
                 await this.handleGetBlockedIPs(ws, message, clientInfo, wsServer);
@@ -735,6 +751,80 @@ class WebSocketMessageHandlers {
         }
     }
 
+    // CITY LOOKUP HANDLER
+    async handleCityLookup(ws, message, clientInfo, wsServer) {
+        const { cityName, requestId } = message;
+
+        if (!cityName || typeof cityName !== 'string') {
+            this.sendError(ws, 'Missing or invalid cityName parameter', 'lookup_city', requestId);
+            return;
+        }
+
+        const trimmedCityName = cityName.trim();
+        if (!trimmedCityName) {
+            this.sendError(ws, 'City name cannot be empty', 'lookup_city', requestId);
+            return;
+        }
+
+        try {
+            // Search for the city coordinates
+            const coordinates = await geo2city.search(trimmedCityName);
+
+            if (coordinates && coordinates.length === 2) {
+                const [latitude, longitude] = coordinates;
+
+                // Try to get additional location data by reverse geocoding
+                let locationData = {};
+                try {
+                    const reverseResult = await geo2city.reverse([latitude, longitude]);
+                    if (reverseResult) {
+                        locationData = {
+                            city: reverseResult.city || trimmedCityName,
+                            state: reverseResult.city ? '' : '', // State info might not be available
+                            country: reverseResult.country || '',
+                            latitude: reverseResult.latitude,
+                            longitude: reverseResult.longitude,
+                            timezone: getTimezoneByCoordinates(latitude, longitude)
+                        };
+                    } else {
+                        // Reverse geocoding returned null/undefined
+                        locationData = {
+                            city: trimmedCityName,
+                            state: '',
+                            country: '',
+                            latitude: latitude,
+                            longitude: longitude,
+                            timezone: getTimezoneByCoordinates(latitude, longitude)
+                        };
+                    }
+                } catch (reverseError) {
+                    console.warn('Reverse geocoding failed, using basic coordinates:', reverseError.message);
+                    locationData = {
+                        city: trimmedCityName,
+                        state: '',
+                        country: '',
+                        latitude: latitude,
+                        longitude: longitude,
+                        timezone: getTimezoneByCoordinates(latitude, longitude)
+                    };
+                }
+
+                // Send success response
+                this.sendToClient(ws, {
+                    type: 'lookup_city_response',
+                    data: locationData,
+                    timestamp: new Date().toISOString(),
+                    requestId: requestId
+                });
+            } else {
+                // City not found
+                this.sendError(ws, 'City not found', 'lookup_city', requestId);
+            }
+        } catch (error) {
+            console.error('City lookup error:', error);
+            this.sendError(ws, 'Failed to lookup city: ' + error.message, 'lookup_city', requestId);
+        }
+    }
 
     // Handle character search requests - Ack-less Latest Request Wins Pattern
     async handleCharacterSearch(ws, message, clientInfo, wsServer) {
@@ -1157,7 +1247,7 @@ class WebSocketMessageHandlers {
 
     // Handle preset generation requests
     async handleGeneratePreset(ws, message, clientInfo, wsServer) {
-        const { presetName, allow_paid, workspace } = message;
+        const { presetName, allow_paid, workspace, enableStreaming } = message;
         
         if (!presetName) {
             this.sendError(ws, 'Missing presetName parameter', 'generate_preset');
@@ -1175,14 +1265,35 @@ class WebSocketMessageHandlers {
 
             // Use target_workspace from preset if no workspace specified (for REST API calls)
             const targetWorkspace = workspace || (preset.target_workspace && preset.target_workspace !== 'default' ? preset.target_workspace : getActiveWorkspace(clientInfo.sessionId));
-            
+
+            let streamingCallback = null;
+            if (enableStreaming) {
+                console.log('🎬 Starting streaming preset generation...');
+                // Create callback to send intermediate images via websocket
+                streamingCallback = async (event) => {
+                    if (event.type === 'intermediate') {
+                        // Send intermediate image update
+                        this.sendToClient(ws, {
+                            type: 'image_generation_intermediate',
+                            requestId: message.requestId,
+                            data: {
+                                step: event.step,
+                                image: event.image.toString('base64'),
+                                timestamp: event.timestamp
+                            },
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                };
+            }
+
             // Generate image using the preset
             const result = await generateImageWebSocket({
                 ...preset,
                 workspace: targetWorkspace,
                 presetName: presetName,
                 allow_paid: allow_paid
-            }, clientInfo.userType, clientInfo.sessionId);
+            }, clientInfo.userType, clientInfo.sessionId, streamingCallback, ws, this, wsServer);
 
             // Send generation response
             this.sendToClient(ws, {
@@ -3533,35 +3644,76 @@ class WebSocketMessageHandlers {
     // References WebSocket Handlers
     async handleGetReferences(ws, message, clientInfo, wsServer) {
         try {
+            const requestId = message.requestId;
             const activeWorkspaceId = getActiveWorkspace(clientInfo.sessionId);
             const workspaces = getWorkspacesData();
+
+            // Start keep-alive for potentially long-running reference loading
+            this.startKeepAliveInterval(ws, requestId, 10000); // Every 10 seconds for reference loading
 
             // Get cache files for active workspace (includes default + active workspace)
             const workspaceCacheFiles = getActiveWorkspaceCacheFiles(null, clientInfo.sessionId);
             const allFiles = fs.readdirSync(uploadCacheDir);
             const files = allFiles.filter(file => workspaceCacheFiles.includes(file));
 
+            // Process files in batches to avoid blocking the event loop
+            const BATCH_SIZE = 50;
             const cacheFiles = [];
-            for (const file of files) {
-                const filePath = path.join(uploadCacheDir, file);
-                const stats = fs.statSync(filePath);
-                const previewPath = path.join(previewCacheDir, `${file}.webp`);
+            const totalBatches = Math.ceil(files.length / BATCH_SIZE);
 
-                // Determine workspace ownership
-                let workspaceId = 'default';
-                if (activeWorkspaceId !== 'default' && workspaces[activeWorkspaceId] && workspaces[activeWorkspaceId].cacheFiles.includes(file)) {
-                    workspaceId = activeWorkspaceId;
+            for (let i = 0; i < files.length; i += BATCH_SIZE) {
+                const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
+                const batch = files.slice(i, i + BATCH_SIZE);
+                const batchPromises = batch.map(async (file) => {
+                    try {
+                        const filePath = path.join(uploadCacheDir, file);
+                        const stats = await fs.promises.stat(filePath);
+                        const previewPath = path.join(previewCacheDir, `${file}.webp`);
+
+                        // Determine workspace ownership
+                        let workspaceId = 'default';
+                        if (activeWorkspaceId !== 'default' && workspaces[activeWorkspaceId] && workspaces[activeWorkspaceId].cacheFiles.includes(file)) {
+                            workspaceId = activeWorkspaceId;
+                        }
+
+                        // Check preview existence asynchronously
+                        let hasPreview = false;
+                        try {
+                            await fs.promises.access(previewPath);
+                            hasPreview = true;
+                        } catch {
+                            // Preview doesn't exist
+                        }
+
+                        return {
+                            hash: file,
+                            filename: file,
+                            mtime: stats.mtime.valueOf(),
+                            size: stats.size,
+                            hasPreview: hasPreview,
+                            workspaceId: workspaceId
+                        };
+                    } catch (error) {
+                        console.warn(`Failed to process cache file ${file}:`, error);
+                        return null;
+                    }
+                });
+
+                const batchResults = await Promise.all(batchPromises);
+                cacheFiles.push(...batchResults.filter(result => result !== null));
+
+                // Update keep-alive progress after each batch
+                if (totalBatches > 1) {
+                    const progress = Math.round((batchIndex / totalBatches) * 50); // Cache files are ~50% of total work
+                    this.updateKeepAliveProgress(ws, requestId, progress, `Processing cache files (${batchIndex}/${totalBatches})`);
                 }
 
-                cacheFiles.push({
-                    hash: file,
-                    filename: file,
-                    mtime: stats.mtime.valueOf(),
-                    size: stats.size,
-                    hasPreview: fs.existsSync(previewPath),
-                    workspaceId: workspaceId
-                });
+                // Allow other operations to run between batches
+                await new Promise(resolve => setImmediate(resolve));
             }
+
+            // Update keep-alive progress before processing vibe images
+            this.updateKeepAliveProgress(ws, requestId, 60, 'Processing vibe images...');
 
             // Get vibe images for current and default workspaces
             let vibeImageDetails = [];
@@ -3583,6 +3735,9 @@ class WebSocketMessageHandlers {
             cacheFiles.sort((a, b) => b.mtime - a.mtime);
             vibeImageDetails.sort((a, b) => b.mtime - a.mtime);
 
+            // Update keep-alive progress before metadata processing
+            this.updateKeepAliveProgress(ws, requestId, 80, 'Loading metadata...');
+
             // Get metadata for all references
             const allHashes = [
                 ...cacheFiles.map(file => file.hash),
@@ -3600,6 +3755,9 @@ class WebSocketMessageHandlers {
                 vibe.metadata = metadataMap[vibe.id] || null;
             });
 
+            // Update final progress
+            this.updateKeepAliveProgress(ws, requestId, 100, 'Complete');
+
             this.sendToClient(ws, {
                 type: 'get_references_response',
                 requestId: message.requestId,
@@ -3613,8 +3771,13 @@ class WebSocketMessageHandlers {
                 timestamp: new Date().toISOString()
             });
 
+            // Stop keep-alive when complete
+            this.stopKeepAliveInterval(requestId);
+
         } catch (error) {
             console.error('Get references error:', error);
+            // Stop keep-alive on error
+            this.stopKeepAliveInterval(message.requestId);
             this.sendError(ws, 'Failed to get references', error.message, message.requestId);
         }
     }
@@ -5830,7 +5993,9 @@ class WebSocketMessageHandlers {
             
             this.sendToClient(ws, {
                 type: 'favorites_get_response',
-                favorites: favorites,
+                data: {
+                    favorites: favorites
+                },
                 requestId: message.requestId
             });
         } catch (error) {
@@ -6103,6 +6268,42 @@ class WebSocketMessageHandlers {
         }
     }
 
+    async handleGetTextReplacementOptions(ws, message, clientInfo, wsServer) {
+        try {
+            const { pattern, presetName, model, periodKey } = message;
+
+            if (!pattern || typeof pattern !== 'string' || pattern.trim() === '') {
+                this.sendError(ws, 'Invalid pattern', 'Text replacement pattern is required and cannot be empty', message.requestId);
+                return;
+            }
+
+            // Use the TextReplacements module to get all options for the pattern
+            const { getTextReplacementOptions } = require('./textReplacements.js');
+            const options = getTextReplacementOptions(pattern, presetName, model, periodKey);
+
+            this.sendToClient(ws, {
+                type: 'get_text_replacement_options_response',
+                data: {
+                    success: true,
+                    pattern: pattern,
+                    options: options
+                },
+                requestId: message.requestId
+            });
+
+        } catch (error) {
+            console.error('Error getting text replacement options:', error);
+            this.sendToClient(ws, {
+                type: 'get_text_replacement_options_response',
+                data: {
+                    success: false,
+                    error: error.message
+                },
+                requestId: message.requestId
+            });
+        }
+    }
+
     // Unified vibe detection and parsing function
     detectAndParseVibeFile(data) {
         const result = {
@@ -6273,6 +6474,17 @@ class WebSocketMessageHandlers {
                         console.log(`Generated SHA256 ID for unknown vibe: ${vibeId}`);
                     }
 
+                    // Check if file already exists, if so generate new UUID
+                    let filename = `${vibeId}.json`;
+                    let filePath = path.join(vibeCacheDir, filename);
+                    if (fs.existsSync(filePath)) {
+                        // Generate new UUID to avoid conflict
+                        vibeId = crypto.randomUUID();
+                        filename = `${vibeId}.json`;
+                        filePath = path.join(vibeCacheDir, filename);
+                        console.log(`File already exists, generated new UUID for vibe: ${vibeId}`);
+                    }
+
                     // Map model names
                     const modelMapping = {
                         'v4full': 'v4',
@@ -6282,14 +6494,14 @@ class WebSocketMessageHandlers {
                     };
                     // Process encodings for each model
                     const processedEncodings = {};
-                    
+
                     for (const [bundleModel, encodings] of Object.entries(vibe.encodings || {})) {
-                        const mappedModel = modelMapping[bundleModel] || bundleModel;                        
+                        const mappedModel = modelMapping[bundleModel] || bundleModel;
                         if (!processedEncodings[mappedModel]) {
                             processedEncodings[mappedModel] = {};
                         }
-                        
-                        for (const [encodingId, encodingData] of Object.entries(encodings)) {                            
+
+                        for (const [encodingId, encodingData] of Object.entries(encodings)) {
                             if (encodingId !== 'unknown') {
                                 const informationExtraction = encodingData.params?.information_extracted || 1;
                                 if (encodingData.encoding && encodingData.encoding.trim() !== '') {
@@ -6315,7 +6527,7 @@ class WebSocketMessageHandlers {
                             }
                         }
                     }
-                                        
+
                     // Create vibe data structure
                     const vibeData = {
                         version: vibe.version || 1,
@@ -6330,12 +6542,10 @@ class WebSocketMessageHandlers {
                         comment: comment || null,
                         locked: false // Will be determined by server-side logic
                     };
-                    
+
                     // Determine locked status using server-side logic
                     vibeData.locked = this.shouldLockVibe(vibeData);
                     // Save vibe file
-                    const filename = `${vibeId}.json`;
-                    const filePath = path.join(vibeCacheDir, filename);
                     fs.writeFileSync(filePath, JSON.stringify(vibeData, null, 2));
                     
                     // Add to workspace
@@ -7867,43 +8077,111 @@ class WebSocketMessageHandlers {
     async handleImageGeneration(ws, message, clientInfo, wsServer) {
         // Extract requestId before try block to ensure it's available in catch block
         const requestId = message.requestId || 'unknown';
-        
+
         try {
-            const { requestId: _, ...data } = message;
-            console.log(`🚀 Processing image generation request: ${requestId}`);
+            const { requestId: _, enableStreaming, ...data } = message;
+
+            console.log(`🚀 Processing image generation request: ${requestId} (streaming: ${enableStreaming})`);
             console.log('📋 Generation data:', data);
 
             // Start keep-alive for long-running image generation
             this.startKeepAliveInterval(ws, requestId, 15000); // Every 15 seconds for image generation
 
-            // Call the WebSocket-native image generation function directly
-            const result = await generateImageWebSocket(
-                data,
-                clientInfo.userType,
-                clientInfo.sessionId
-            );
+            if (enableStreaming) {
+                // Handle streaming generation
+                console.log('🎬 Starting streaming image generation...');
+
+                // Create callback to send intermediate images via websocket
+                const streamingCallback = async (event) => {
+                    if (event.type === 'intermediate') {
+                        // Send intermediate image update
+                        this.sendToClient(ws, {
+                            type: 'image_generation_intermediate',
+                            requestId: requestId,
+                            data: {
+                                step: event.step,
+                                image: event.image.toString('base64'),
+                                timestamp: event.timestamp
+                            },
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                };
+
+                // Call generateImageWebSocket with streaming callback
+                const result = await generateImageWebSocket(
+                    data,
+                    clientInfo.userType,
+                    clientInfo.sessionId,
+                    streamingCallback, // streamingCallback
+                    ws,
+                    this,
+                    wsServer
+                );
+
+                // Send final result (handleGeneration returns the normal result)
+                const responseData = {
+                    image: result.buffer.toString('base64'),
+                    filename: result.filename,
+                    seed: result.seed || null
+                };
+
+                // Include compiled prompt if it was processed
+                if (result.compiled_prompt) {
+                    responseData.compiled_prompt = result.compiled_prompt;
+                }
+
+                // Include text replacement seeds if available
+                if (result.text_replacements_seed) {
+                    responseData.text_replacements_seed = result.text_replacements_seed;
+                }
+
+                this.sendToClient(ws, {
+                    type: 'image_generation_response',
+                    requestId: requestId,
+                    data: responseData,
+                    timestamp: new Date().toISOString()
+                });
+
+            } else {
+                // Handle regular (non-streaming) generation
+                const result = await generateImageWebSocket(
+                    data,
+                    clientInfo.userType,
+                    clientInfo.sessionId,
+                    null, // no streaming callback
+                    ws,
+                    this,
+                    wsServer
+                );
+
+                // Send success response with image data using _response pattern
+                const responseData = {
+                    image: result.buffer.toString('base64'),
+                    filename: result.filename,
+                    seed: result.seed || null
+                };
+
+                // Include compiled prompt if it was processed
+                if (result.compiled_prompt) {
+                    responseData.compiled_prompt = result.compiled_prompt;
+                }
+
+                // Include text replacement seeds if available
+                if (result.text_replacements_seed) {
+                    responseData.text_replacements_seed = result.text_replacements_seed;
+                }
+
+                this.sendToClient(ws, {
+                    type: 'image_generation_response',
+                    requestId: requestId,
+                    data: responseData,
+                    timestamp: new Date().toISOString()
+                });
+            }
 
             // Stop keep-alive when complete
             this.stopKeepAliveInterval(requestId);
-
-            // Send success response with image data using _response pattern
-            const responseData = {
-                image: result.buffer.toString('base64'),
-                filename: result.filename,
-                seed: result.seed || null
-            };
-
-            // Include compiled prompt if it was processed
-            if (result.compiled_prompt) {
-                responseData.compiled_prompt = result.compiled_prompt;
-            }
-
-            this.sendToClient(ws, {
-                type: 'image_generation_response',
-                requestId: requestId,
-                data: responseData,
-                timestamp: new Date().toISOString()
-            });
 
         } catch (error) {
             // Stop keep-alive on error
@@ -9476,6 +9754,26 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('❌ Error updating reference metadata:', error);
             this.sendError(ws, 'Failed to update reference metadata', error.message, message.requestId);
+        }
+    }
+
+    // Handle dynamic generation progress updates
+    async handleDynamicGenerationProgress(ws, message, clientInfo, wsServer) {
+        try {
+            const { phase, data } = message;
+
+            // Broadcast the progress update to all connected clients
+            wsServer.broadcast({
+                type: 'dynamic_generation_progress_update',
+                phase: phase,
+                data: data,
+                timestamp: new Date().toISOString(),
+                sessionId: clientInfo.sessionId
+            });
+
+        } catch (error) {
+            console.error('❌ Error handling dynamic generation progress:', error);
+            this.sendError(ws, 'Failed to handle dynamic generation progress', error.message, message.requestId);
         }
     }
 }

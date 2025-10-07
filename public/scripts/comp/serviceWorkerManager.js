@@ -84,10 +84,6 @@ class ServiceWorkerManager {
             const immediateIsActivated = immediateIsActive?.state === 'activated';
 
             if (immediateIsActive || immediateHasController || immediateIsActivated) {
-                if (!this.initialCheckDone) {
-                    this.initialCheckDone = true;
-                    this.checkStaticFileUpdates();
-                }
                 resolve();
                 return;
             }
@@ -132,11 +128,6 @@ class ServiceWorkerManager {
                     if (checkInterval) {
                         clearInterval(checkInterval);
                     }
-                    // Check for static file updates once ready (only if not already done)
-                    if (!this.initialCheckDone) {
-                        this.initialCheckDone = true;
-                        this.checkStaticFileUpdates();
-                    }
                     resolve();
                     return; // Make sure we don't continue
                 }
@@ -161,7 +152,7 @@ class ServiceWorkerManager {
                 // Check for static file updates once ready (only if not already done)
                 if (!this.initialCheckDone) {
                     this.initialCheckDone = true;
-                    this.checkStaticFileUpdates();
+                    this.checkStaticFileUpdates(true);
                 }
                 resolve();
             };
@@ -197,11 +188,6 @@ class ServiceWorkerManager {
                 navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandler);
 
                 this.handleServiceWorkerTimeout();
-                // Still check for updates even if not fully ready (only if not already done)
-                if (!this.initialCheckDone) {
-                    this.initialCheckDone = true;
-                    this.checkStaticFileUpdates();
-                }
                 resolve();
             }, timeoutMs);
         });
@@ -278,7 +264,7 @@ class ServiceWorkerManager {
         }
     }
     
-    async checkStaticFileUpdates() {
+    async checkStaticFileUpdates(noToast = false) {
         try {
             // First fetch the current rolling key
             const keyResponse = await fetch('/sw.js', {
@@ -309,14 +295,14 @@ class ServiceWorkerManager {
 
             if (response.ok) {
                 const files = await response.json();
-                await this.updateStaticCache(files);
+                await this.updateStaticCache(files, noToast);
             }
         } catch (error) {
             console.error('Failed to check static file updates:', error);
         }
     }
     
-    async updateStaticCache(files) {
+    async updateStaticCache(files, noToast = false) {
         if (!this.swRegistration || !this.swRegistration.active) {
             console.warn('Service Worker not ready');
             this.showServiceWorkerNotReadyToast();
@@ -336,25 +322,33 @@ class ServiceWorkerManager {
 
             if (filesToUpdate.length > 0) {
                 console.log(`Found ${filesToUpdate.length} files that need updating`);
-                this.showUpdateToast(filesToUpdate);
+                // Update existing checking toast to show download progress
+                this.showUpdateToastFromChecking(filesToUpdate);
 
                 // Start background caching
                 this.swRegistration.active.postMessage({
                     type: 'CACHE_STATIC_FILES',
                     files: filesToUpdate
                 });
-            } else {
-                // Show "no updates" toast and notify service worker
-                this.showNoUpdatesToast();
+            } else if (!noToast) {
+                // Update existing checking toast to show "no updates"
+                this.showNoUpdatesFromChecking();
                 if (this.swRegistration && this.swRegistration.active) {
                     this.swRegistration.active.postMessage({
                         type: 'NO_UPDATES_AVAILABLE'
                     });
                 }
+            } else {
+                // Silently remove checking toast when noToast is true
+                if (this.checkingToastId && typeof removeGlassToast === 'function') {
+                    removeGlassToast(this.checkingToastId);
+                    this.checkingToastId = null;
+                }
+                console.log('No application updates found');
             }
         } catch (error) {
             console.error('Error updating static cache:', error);
-            this.showCacheUpdateErrorToast(error);
+            this.showCacheUpdateErrorFromChecking(error);
         }
     }
     
@@ -472,6 +466,56 @@ class ServiceWorkerManager {
                 3000,
                 '<i class="fas fa-exclamation-triangle"></i>'
             );
+        }
+    }
+
+    // Methods to update the existing checking toast instead of replacing it
+    showUpdateToastFromChecking(files) {
+        // Convert checking toast to download progress toast
+        this.updateAvailable = true;
+        this.isUpdating = true;
+        this.updateProgress = 0;
+
+        if (this.checkingToastId && typeof updateGlassToastComplete === 'function') {
+            updateGlassToastComplete(this.checkingToastId, {
+                type: 'info',
+                title: 'Downloading Updates',
+                message: `Downloading ${files.length} updates...`,
+                showProgress: true,
+                customIcon: '<i class="fas fa-download"></i>'
+            });
+            // Keep the same toast ID for progress updates
+            this.updateToastId = this.checkingToastId;
+            this.checkingToastId = null;
+        }
+    }
+
+    showNoUpdatesFromChecking() {
+        if (this.checkingToastId && typeof updateGlassToastComplete === 'function') {
+            updateGlassToastComplete(this.checkingToastId, {
+                type: 'success',
+                title: 'Up to Date',
+                message: 'Your app is already up to date!',
+                showProgress: false,
+                customIcon: '<i class="fas fa-check-circle"></i>',
+                timeout: 3000
+            });
+            // Clear the checking toast ID since it's now a completion toast
+            this.checkingToastId = null;
+        }
+    }
+
+    showCacheUpdateErrorFromChecking(error) {
+        if (this.checkingToastId && typeof updateGlassToastComplete === 'function') {
+            updateGlassToastComplete(this.checkingToastId, {
+                type: 'error',
+                title: 'Update Check Failed',
+                message: 'Failed to check for updates. Please try again.',
+                showProgress: false,
+                customIcon: '<i class="fas fa-exclamation-triangle"></i>'
+            });
+            // Clear the checking toast ID since it's now an error toast
+            this.checkingToastId = null;
         }
     }
 
@@ -878,6 +922,239 @@ class ServiceWorkerManager {
             }
         } catch (error) {
             console.error('Error refreshing server cache:', error);
+        }
+    }
+
+    // Initialization step: Check for and download updates as part of startup process
+    async checkAndDownloadUpdatesForInit() {
+        try {
+            console.log('🔍 Checking for application updates during startup...');
+
+            // First fetch the current rolling key
+            const keyResponse = await fetch('/sw.js', {
+                method: 'OPTIONS',
+                cache: 'no-store',
+                headers: {
+                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                    'Pragma': 'no-cache'
+                }
+            });
+
+            if (!keyResponse.ok) {
+                throw new Error(`Failed to fetch rolling key: ${keyResponse.status}`);
+            }
+
+            const keyData = await keyResponse.json();
+            const rollingKey = keyData.key;
+
+            // Now make the actual request with the rolling key
+            const response = await fetch('/', {
+                method: 'OPTIONS',
+                headers: {
+                    'X-SW-Key': rollingKey,
+                    'X-Service-Worker-Version': '2.0',
+                    'X-Requested-With': 'ServiceWorker'
+                }
+            });
+
+            if (!response.ok) {
+                console.log('No update information available, continuing...');
+                this.initialCheckDone = true;
+                return; // No updates available
+            }
+
+            const files = await response.json();
+
+            // Check which files need updating
+            const filesToUpdate = await this.getFilesNeedingUpdate(files);
+
+            if (filesToUpdate.length === 0) {
+                console.log('✅ No updates available');
+                this.initialCheckDone = true;
+                return; // No updates needed
+            }
+
+            console.log(`📦 Found ${filesToUpdate.length} updates to download`);
+
+            // Start downloading updates with integrated progress - AWAIT the result
+            const downloadResult = await this.downloadUpdatesForInit(filesToUpdate);
+            this.initialCheckDone = true;
+
+            console.log('Update download process completed:', downloadResult);
+
+            // If user chose to skip, the download result will indicate this
+            // If updates were downloaded successfully, user will be prompted with Restart/Skip buttons
+            // In either case, we return here and let the initialization continue
+
+        } catch (error) {
+            console.error('❌ Error during update check:', error);
+            this.initialCheckDone = true;
+            // Don't fail the startup process for update check errors - continue normally
+        }
+    }
+
+    // Download updates with integrated progress for initialization
+    async downloadUpdatesForInit(files) {
+        return new Promise((resolve) => {
+            if (!this.swRegistration || !this.swRegistration.active) {
+                console.warn('Service Worker not ready for updates');
+                resolve({ success: false, reason: 'Service Worker not ready' });
+                return;
+            }
+
+            let updatesDownloaded = 0;
+            let hasErrors = false;
+            let skipRequested = false;
+            let downloadCompleted = false;
+
+            // Add Skip button to the progress notification
+            if (window.wsClient && window.wsClient.progressToastId && typeof updateGlassToastButtons === 'function') {
+                const skipButton = {
+                    text: 'Skip',
+                    type: 'secondary',
+                    onClick: () => {
+                        console.log('User chose to skip update download during startup');
+                        skipRequested = true;
+
+                        // Hide the progress notification buttons
+                        if (typeof updateGlassToastButtons === 'function') {
+                            updateGlassToastButtons(window.wsClient.progressToastId, []);
+                        }
+
+                        // Show the normal update toast
+                        this.showUpdateToast(files);
+
+                        // Resolve immediately when skipped
+                        if (!downloadCompleted) {
+                            downloadCompleted = true;
+                            resolve({ success: false, skipped: true });
+                        }
+                    },
+                    closeOnClick: false
+                };
+
+                updateGlassToastButtons(window.wsClient.progressToastId, [skipButton]);
+            }
+
+            // Listen for progress updates
+            const progressHandler = (event) => {
+                if (skipRequested || downloadCompleted) return; // Ignore if already handled
+
+                if (event.data.type === 'STATIC_CACHE_PROGRESS') {
+                    const progress = Math.round((event.data.completed / event.data.total) * 100);
+                    // Update the startup progress notification with download progress
+                    if (window.wsClient) {
+                        window.wsClient.updateProgressNotification(`Downloading updates... (${event.data.completed}/${event.data.total})`, progress); // 10-90% range
+                    }
+                } else if (event.data.type === 'STATIC_CACHE_COMPLETE') {
+                    updatesDownloaded = event.data.total;
+                    navigator.serviceWorker.removeEventListener('message', progressHandler);
+
+                    if (window.wsClient) {
+                        window.wsClient.updateProgressNotification(`Downloading updates...`, 100); // 10-90% range
+                    }
+                    if (!skipRequested && !downloadCompleted) {
+                        downloadCompleted = true;
+                        console.log(`Update download completed with ${updatesDownloaded} files downloaded${hasErrors ? ' (with errors)' : ''}`);
+
+                        // Show Restart and Skip buttons if updates were downloaded successfully
+                        if (!hasErrors && updatesDownloaded > 0) {
+                            this.showRestartSkipButtonsForInit((choice) => {
+                                resolve({ success: true, filesDownloaded: updatesDownloaded, userChoice: choice.action });
+                            });
+                        } else {
+                            resolve({ success: false, filesDownloaded: updatesDownloaded, hasErrors });
+                        }
+                    }
+                } else if (event.data.type === 'STATIC_CACHE_ERROR') {
+                    console.error(`Cache error for ${event.data.file}: ${event.data.error}`);
+                    hasErrors = true;
+                    // Continue with other files - don't resolve here
+                }
+            };
+
+            navigator.serviceWorker.addEventListener('message', progressHandler);
+
+            // Start caching
+            this.swRegistration.active.postMessage({
+                type: 'CACHE_STATIC_FILES',
+                files: files
+            });
+
+            // Timeout after 30 seconds
+            setTimeout(() => {
+                if (!skipRequested && !downloadCompleted) {
+                    navigator.serviceWorker.removeEventListener('message', progressHandler);
+                    downloadCompleted = true;
+                    console.log(`Update download timed out with ${updatesDownloaded} files downloaded${hasErrors ? ' (with errors)' : ''}`);
+                    resolve({
+                        success: !hasErrors && updatesDownloaded > 0,
+                        filesDownloaded: updatesDownloaded,
+                        hasErrors,
+                        timedOut: true
+                    });
+                }
+            }, 30000);
+        });
+    }
+
+    // Show Restart and Skip buttons for initialization updates
+    showRestartSkipButtonsForInit(onUserChoice) {
+        if (window.wsClient && window.wsClient.progressToastId && typeof updateGlassToastButtons === 'function') {
+            const restartButton = {
+                text: 'Restart',
+                type: 'primary',
+                onClick: () => {
+                    console.log('User chose to restart after update during startup');
+                    // Force restart - this will reload the page
+                    this.forceRestart();
+                    // Don't call onUserChoice since page will reload
+                },
+                closeOnClick: false
+            };
+
+            const skipButton = {
+                text: 'Skip',
+                type: 'secondary',
+                onClick: () => {
+                    console.log('User chose to skip restart after update during startup');
+
+                    // Reset toast to info type and show progress bar
+                    if (window.wsClient && window.wsClient.progressToastId && typeof updateGlassToastComplete === 'function') {
+                        updateGlassToastComplete(window.wsClient.progressToastId, {
+                            type: 'info',
+                            title: 'Dreamscape',
+                            message: 'Continuing...',
+                            customIcon: '<i class="fa-duotone fa-star-christmas"></i>',
+                            showProgress: true
+                        });
+                        // Show progress at 95% since updates are downloaded but we're continuing
+                        if (typeof updateGlassToastProgress === 'function') {
+                            updateGlassToastProgress(window.wsClient.progressToastId, 95);
+                        }
+                    }
+
+                    onUserChoice({ action: 'skip', success: true });
+                },
+                closeOnClick: false
+            };
+
+            updateGlassToastButtons(window.wsClient.progressToastId, [restartButton, skipButton]);
+
+            // Update the progress notification to show completion with warning styling and hidden progress bar
+            if (window.wsClient && window.wsClient.progressToastId && typeof updateGlassToastComplete === 'function') {
+                updateGlassToastComplete(window.wsClient.progressToastId, {
+                    type: 'warning',
+                    title: 'Dreamscape',
+                    message: 'Updates downloaded. Restart to apply changes.',
+                    customIcon: '<i class="fa-duotone fa-star-christmas"></i>',
+                    showProgress: false
+                });
+            }
+        } else {
+            // Fallback if buttons can't be added - continue with skip
+            console.log('Could not show restart/skip buttons, continuing with skip');
+            onUserChoice({ action: 'skip', success: true });
         }
     }
 
