@@ -58,7 +58,6 @@ const transformationDropdown = document.getElementById('transformationDropdown')
 const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
 const transformationDropdownMenu = document.getElementById('transformationDropdownMenu');
 const manualPresetName = document.getElementById('manualPresetName');
-const manualPresetDeleteBtn = document.getElementById('manualDeleteBtn');
 const manualPresetToggleBtn = document.getElementById('manualPresetToggleBtn');
 const manualPresetToggleIcon = document.getElementById('manualPresetToggleIcon');
 const manualPresetGroup = document.getElementById('manualPresetGroup');

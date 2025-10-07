@@ -103,21 +103,21 @@ function savePromptConfig(config) {
 const getReplacementValue = value => Array.isArray(value) ? value[Math.floor(Math.random() * value.length)] : value;
 
 // Text replacement functions
-const applyTextReplacements = (text, presetName, model = null) => {
+const applyTextReplacements = (text, presetName, model = null, periodKey = null) => {
     const currentPromptConfig = loadPromptConfig();
     if (!text || !currentPromptConfig.text_replacements) return text;
-    
+
     let result = text.replace(/!PRESET_NAME/g, presetName);
-    
+
     // Handle PICK replacements (using ~ suffix)
     result = result.replace(/!([a-zA-Z0-9_]+)~/g, (match, name) => {
-        const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(key => 
+        const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(key =>
             key.startsWith(name) && key !== name
         );
         if (matchingKeys.length === 0) throw new Error(`No text replacements found starting with: ${name}`);
         return getReplacementValue(currentPromptConfig.text_replacements[matchingKeys[Math.floor(Math.random() * matchingKeys.length)]]);
     });
-    
+
     // Handle regular replacements with word boundary approach
     const foundKeys = new Set();
     let match;
@@ -125,42 +125,59 @@ const applyTextReplacements = (text, presetName, model = null) => {
     while ((match = keyPattern.exec(text)) !== null) {
         foundKeys.add(match[1]);
     }
-    
+
     for (const baseKey of foundKeys) {
-        // Use word boundary to ensure we match the exact key
-        const pattern = new RegExp(`!${baseKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
-        if (model && currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`]) {
-            result = result.replace(pattern, getReplacementValue(currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`]));
-        } else if (currentPromptConfig.text_replacements[baseKey]) {
-            result = result.replace(pattern, getReplacementValue(currentPromptConfig.text_replacements[baseKey]));
+        // Use word boundary or end of string to ensure we match the exact key
+        const pattern = new RegExp(`!${baseKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\b|$)`, 'g');
+
+        // Check for replacements in priority order: Period+Model > Period > Model > Base
+        let replacementValue = null;
+        if (periodKey && model && currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`]) {
+            replacementValue = currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`];
+        }
+        // Check for periodKey-specific replacement
+        else if (periodKey && currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}`]) {
+            replacementValue = currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}`];
+        }
+        // Then check for model-specific replacement
+        else if (model && currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`]) {
+            replacementValue = currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`];
+        }
+        // Finally fall back to base replacement
+        else if (currentPromptConfig.text_replacements[baseKey]) {
+            replacementValue = currentPromptConfig.text_replacements[baseKey];
+        }
+
+        if (replacementValue !== null) {
+            result = result.replace(pattern, getReplacementValue(replacementValue));
         }
     }
-    
+
     const remainingReplacements = result.match(/![^~\s]+~/g);
     if (remainingReplacements?.length > 0) {
         throw new Error(`Invalid text replacement: ${remainingReplacements.join(', ')}`);
     }
-    
+
     return result;
 };
 
-const getUsedReplacements = (text, model = null) => {
+const getUsedReplacements = (text, model = null, periodKey = null) => {
     const currentPromptConfig = loadPromptConfig();
     if (!text || !currentPromptConfig.text_replacements) return [];
-    
+
     const usedKeys = [];
     if (text.includes('!PRESET_NAME')) usedKeys.push('PRESET_NAME');
-    
+
     // PICK replacements (using ~ suffix)
     let pickMatch;
     const pickPattern = /!([a-zA-Z0-9_]+)~/g;
     while ((pickMatch = pickPattern.exec(text)) !== null) {
-        const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(key => 
+        const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(key =>
             key.startsWith(pickMatch[1]) && key !== pickMatch[1]
         );
         if (matchingKeys.length > 0) usedKeys.push(`${pickMatch[1]}~ (${matchingKeys.length} options)`);
     }
-    
+
     // Regular replacements
     const foundKeys = new Set();
     let match;
@@ -168,18 +185,39 @@ const getUsedReplacements = (text, model = null) => {
     while ((match = keyPattern.exec(text)) !== null) {
         foundKeys.add(match[1]);
     }
-    
+
     for (const baseKey of foundKeys) {
         if (baseKey === 'PRESET_NAME') continue;
-        if (model && currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`]) {
-            const value = currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`];
-            usedKeys.push(`${baseKey}${Array.isArray(value) ? ` (${model.toUpperCase()}, random)` : ` (${model.toUpperCase()})`}`);
-        } else if (currentPromptConfig.text_replacements[baseKey]) {
-            const value = currentPromptConfig.text_replacements[baseKey];
-            usedKeys.push(`${baseKey}${Array.isArray(value) ? ' (random)' : ''}`);
+
+        // Check for replacements in priority order: Period+Model > Period > Model > Base
+        let value = null;
+        let source = '';
+        if (periodKey && model && currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`]) {
+            value = currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`];
+            source = ` (${periodKey.toLowerCase()})`;
+        }
+        // Check for periodKey-specific replacement
+        else if (periodKey && currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}`]) {
+            value = currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}`];
+            source = ` (${periodKey.toLowerCase()})`;
+        }
+        // Then check for model-specific replacement
+        else if (model && currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`]) {
+            value = currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`];
+            source = ` (${model.toUpperCase()})`;
+        }
+        // Finally fall back to base replacement
+        else if (currentPromptConfig.text_replacements[baseKey]) {
+            value = currentPromptConfig.text_replacements[baseKey];
+            source = '';
+        }
+
+        if (value !== null) {
+            const isRandom = Array.isArray(value);
+            usedKeys.push(`${baseKey}${source}${isRandom ? ' (random)' : ''}`);
         }
     }
-    
+
     return usedKeys;
 };
 // Search functionality module
@@ -335,6 +373,7 @@ class SearchService {
     
     // Clean up old session+model rate limiters
     cleanupOldSessionRateLimiters() {
+        let hasOldRequests = false;
         const now = Date.now();
         const maxAge = 300000; // 5 minutes
         
@@ -460,7 +499,7 @@ class SearchService {
     }
 
     // Search for characters and tags - Latest Request Wins Pattern
-    async searchCharacters(query, model, ws = null, sessionId = null, abortSignal = null) {
+    async searchCharacters(query, model, ws = null, sessionId = null, abortSignal = null, requestId = null) {
         const key = `${sessionId}_${model}`;
         
         // Store the latest request (overwrites previous)
@@ -469,6 +508,7 @@ class SearchService {
             model,
             ws,
             sessionId,
+            requestId,
             timestamp: Date.now()
         });
         
@@ -511,7 +551,7 @@ class SearchService {
             return { results: [], spellCheck: null };
         }
         
-        const { query, model, ws, sessionId } = latestRequest;
+        const { query, model, ws, sessionId, requestId } = latestRequest;
         
         try {
             // Check if query starts with ! - only return text replacements in this case
@@ -520,6 +560,19 @@ class SearchService {
             // Check if query starts with "Text:" - only perform spell correction in this case
             const isTextPrefixSearch = query.startsWith('Text:');
 
+            // Handle PICK suffix stripping for search but preserve in inserted text
+            let searchQuery = query;
+            let hasPickSuffix = false;
+
+            if (query.startsWith('!') && query.includes('~')) {
+                // Extract the name between ! and ~
+                const match = query.match(/^!([^~]+)~/);
+                if (match) {
+                    searchQuery = match[1]; // Remove ! and ~ for searching
+                    hasPickSuffix = true;
+                }
+            }
+
             let searchResults = [];
             let spellCheckData = null;
 
@@ -527,7 +580,7 @@ class SearchService {
                 // Start all services independently and send results as they complete
                 
                 // Start character search as independent service
-                const characterPromise = this.performCharacterSearch(query, model, ws).then(results => {
+                const characterPromise = this.performCharacterSearch(query, model, ws, requestId).then(results => {
                     // Send character results immediately when ready
                     if (ws && results && results.length > 0) {
                         const message = {
@@ -535,7 +588,8 @@ class SearchService {
                             service: 'characters',
                             results: results,
                             isComplete: true,
-                            timestamp: new Date().toISOString()
+                            timestamp: new Date().toISOString(),
+                            requestId: requestId
                         };
                         ws.send(JSON.stringify(message));
                     } else if (ws) {
@@ -545,7 +599,8 @@ class SearchService {
                             service: 'characters',
                             results: [],
                             isComplete: true,
-                            timestamp: new Date().toISOString()
+                            timestamp: new Date().toISOString(),
+                            requestId: requestId
                         };
                         ws.send(JSON.stringify(message));
                     }
@@ -558,14 +613,15 @@ class SearchService {
                             service: 'characters',
                             results: [],
                             isComplete: true,
-                            timestamp: new Date().toISOString()
+                            timestamp: new Date().toISOString(),
+                            requestId: requestId
                         }));
                     }
                     return [];
                 });
                 
                 // Start tag search as independent service
-                const tagPromise = this.performTagSearch(query, model, ws, sessionId).then(results => {
+                const tagPromise = this.performTagSearch(query, model, ws, sessionId, requestId).then(results => {
                     // Send tag results immediately when ready
                     if (ws && results && results.length > 0) {
                         const message = {
@@ -573,7 +629,8 @@ class SearchService {
                             service: model, // Use model name as service name for tags
                             results: results,
                             isComplete: true,
-                            timestamp: new Date().toISOString()
+                            timestamp: new Date().toISOString(),
+                            requestId: requestId
                         };
                         ws.send(JSON.stringify(message));
                     } else if (ws) {
@@ -583,7 +640,8 @@ class SearchService {
                             service: model,
                             results: [],
                             isComplete: true,
-                            timestamp: new Date().toISOString()
+                            timestamp: new Date().toISOString(),
+                            requestId: requestId
                         };
                         ws.send(JSON.stringify(message));
                     }
@@ -596,14 +654,15 @@ class SearchService {
                             service: model,
                             results: [],
                             isComplete: true,
-                            timestamp: new Date().toISOString()
+                            timestamp: new Date().toISOString(),
+                            requestId: requestId
                         }));
                     }
                     return [];
                 });
                 
                 // Start spellcheck as independent service
-                const spellcheckPromise = this.performSpellCheckAsync(query, ws).then(results => {
+                const spellcheckPromise = this.performSpellCheckAsync(query, ws, requestId).then(results => {
                     // Send spellcheck results immediately when ready
                     if (ws && results) {
                         ws.send(JSON.stringify({
@@ -617,7 +676,8 @@ class SearchService {
                                 serviceName: 'spellcheck'
                             }],
                             isComplete: true,
-                            timestamp: new Date().toISOString()
+                            timestamp: new Date().toISOString(),
+                            requestId: requestId
                         }));
                     }
                     return results;
@@ -626,24 +686,76 @@ class SearchService {
                     return null;
                 });
                 
+                // Start text replacement search as independent service
+                const textReplacementPromise = this.performTextReplacementSearch(searchQuery, ws, hasPickSuffix, requestId).then(results => {
+                    // Send text replacement results immediately when ready
+                    if (ws && results && results.length > 0) {
+                        ws.send(JSON.stringify({
+                            type: 'search_results_update',
+                            service: 'textReplacements',
+                            results: results,
+                            isComplete: true,
+                            timestamp: new Date().toISOString(),
+                            requestId: requestId
+                        }));
+                    } else if (ws) {
+                        // Send empty results to clear previous results
+                        ws.send(JSON.stringify({
+                            type: 'search_results_update',
+                            service: 'textReplacements',
+                            results: [],
+                            isComplete: true,
+                            timestamp: new Date().toISOString(),
+                            requestId: requestId
+                        }));
+                    }
+                    return results;
+                }).catch(error => {
+                    console.error('Text replacement search error:', error);
+                    if (ws) {
+                        ws.send(JSON.stringify({
+                            type: 'search_results_update',
+                            service: 'textReplacements',
+                            results: [],
+                            isComplete: true,
+                            timestamp: new Date().toISOString(),
+                            requestId: requestId
+                        }));
+                    }
+                    return [];
+                });
+                
                 // Wait for all services to complete (they run concurrently)
-                const [characterResults, tagResults, spellcheckData] = await Promise.allSettled([
+                const [characterResults, tagResults, spellcheckData, textReplacementResults] = await Promise.allSettled([
                     characterPromise,
                     tagPromise,
-                    spellcheckPromise
+                    spellcheckPromise,
+                    textReplacementPromise
                 ]);
-                
+
                 // Extract results (handle any failures gracefully)
                 if (characterResults.status === 'fulfilled') {
                     searchResults = [...searchResults, ...characterResults.value];
                 }
-                
+
                 if (tagResults.status === 'fulfilled') {
                     searchResults = [...searchResults, ...tagResults.value];
                 }
-                
+
                 if (spellcheckData.status === 'fulfilled') {
                     spellCheckData = spellcheckData.value;
+                }
+
+                if (textReplacementResults.status === 'fulfilled') {
+                    searchResults = [...searchResults, ...textReplacementResults.value];
+                }
+            } else if (isTextReplacementSearch) {
+                // Only perform text replacement search when query starts with !
+                const textReplacementResults = await this.performTextReplacementSearch(searchQuery, ws, hasPickSuffix, requestId);
+
+                // Add text replacement results to search results
+                if (textReplacementResults && textReplacementResults.length > 0) {
+                    searchResults = [...searchResults, ...textReplacementResults];
                 }
             }
             
@@ -655,7 +767,8 @@ class SearchService {
                 if (ws) {
                     ws.send(JSON.stringify({
                         type: 'search_status_update',
-                        services: [{ name: 'spellcheck', status: 'searching' }]
+                        services: [{ name: 'spellcheck', status: 'searching' }],
+                        requestId: requestId
                     }));
                 }
                 
@@ -677,7 +790,8 @@ class SearchService {
                                     serviceName: 'spellcheck'
                                 }],
                                 serviceOrder: -2,
-                                isComplete: false
+                                isComplete: false,
+                                requestId: requestId
                             }));
                         }
                         
@@ -685,7 +799,8 @@ class SearchService {
                         if (ws) {
                             ws.send(JSON.stringify({
                                 type: 'search_status_update',
-                                services: [{ name: 'spellcheck', status: 'completed' }]
+                                services: [{ name: 'spellcheck', status: 'completed' }],
+                                requestId: requestId
                             }));
                         }
                     }
@@ -695,69 +810,27 @@ class SearchService {
                     if (ws) {
                         ws.send(JSON.stringify({
                             type: 'search_status_update',
-                            services: [{ name: 'spellcheck', status: 'error' }]
+                            services: [{ name: 'spellcheck', status: 'error' }],
+                            requestId: requestId
                         }));
                     }
                     spellCheckData = null;
                 }
             }
 
-            // Handle PICK suffix stripping for search but preserve in inserted text
-            let searchQuery = query;
-            let hasPickSuffix = false;
-
-            if (query.startsWith('!') && query.includes('~')) {
-                // Extract the name between ! and ~
-                const match = query.match(/^!([^~]+)~/);
-                if (match) {
-                    searchQuery = match[1]; // Remove ! and ~ for searching
-                    hasPickSuffix = true;
-                }
-            }
 
             // For text replacement searches, strip the ! character from the search query
             if (isTextReplacementSearch) {
                 searchQuery = searchQuery.substring(1); // Remove the ! character
             }
 
-            // Search through text replacements (only for non-"Text:" searches)
-            let textReplacementResults = [];
-            if (!isTextPrefixSearch) {
-                // Send initial status update for textReplacements service
-                if (ws) {
-                    ws.send(JSON.stringify({
-                        type: 'search_status_update',
-                        services: [{ name: 'textReplacements', status: 'searching' }]
-                    }));
-                }
-                
-                textReplacementResults = this.searchTextReplacements(searchQuery, hasPickSuffix);
-                
-                // Send text replacement results update
-                if (ws) {
-                    ws.send(JSON.stringify({
-                        type: 'search_results_update',
-                        service: 'textReplacements',
-                        results: textReplacementResults,
-                        isComplete: true,
-                        timestamp: new Date().toISOString()
-                    }));
-                }
-                
-                // Send completion status for textReplacements service
-                if (ws) {
-                    ws.send(JSON.stringify({
-                        type: 'search_status_update',
-                        services: [{ name: 'textReplacements', status: 'completed' }]
-                    }));
-                }
-            }
+            // Text replacements are now handled as an independent service above
 
-            // Combine search results with text replacement results
+            // Combine search results (text replacements are now included in searchResults)
             let allResults = [];
             if (!isTextPrefixSearch) {
-                // Only include search results and text replacements for non-"Text:" searches
-                allResults = [...searchResults, ...textReplacementResults];
+                // Only include search results for non-"Text:" searches
+                allResults = [...searchResults];
             }
             // For "Text:" searches, allResults remains empty (only spell check is performed)
 
@@ -832,7 +905,7 @@ class SearchService {
     }
 
     // Private methods
-    async performCharacterSearch(query, model, ws = null) {
+    async performCharacterSearch(query, model, ws = null, requestId = null) {
         try {
             if (!query || query.trim().length < 2) {
                 return [];
@@ -895,7 +968,8 @@ class SearchService {
             if (ws) {
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
-                    services: [{ name: 'characters', status: 'searching' }]
+                    services: [{ name: 'characters', status: 'searching' }],
+                    requestId: requestId
                 }));
             }
             
@@ -906,7 +980,8 @@ class SearchService {
                     service: 'characters',
                     results: characterResults,
                     serviceOrder: 1,
-                    isComplete: false
+                    isComplete: false,
+                    requestId: requestId
                 }));
             }
             
@@ -914,7 +989,8 @@ class SearchService {
             if (ws) {
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
-                    services: [{ name: 'characters', status: 'completed' }]
+                    services: [{ name: 'characters', status: 'completed' }],
+                    requestId: requestId
                 }));
             }
             
@@ -967,7 +1043,7 @@ class SearchService {
         return [...tagResults, ...characterResults];
     }
 
-    async makeTagRequests(query, model, queryHash, ws = null, sessionId = null) {
+    async makeTagRequests(query, model, queryHash, ws = null, sessionId = null, requestId = null) {
         const https = require('https');
         const config = this.context.config;
         
@@ -985,8 +1061,8 @@ class SearchService {
             }
             
             // Use enhanced rate limiting with rolling window for API calls
-            const requestId = `${apiModel}_${Date.now()}`;
-            const abortSignal = await this.throttleTagRequest(sessionId, query, apiModel, requestId, ws);
+            const localRequestId = `${apiModel}_${Date.now()}`;
+            const abortSignal = await this.throttleTagRequest(sessionId, query, apiModel, localRequestId, ws);
             
             // Check if this request was aborted while waiting
             if (!abortSignal || abortSignal?.aborted) {
@@ -1156,14 +1232,15 @@ class SearchService {
                 ];
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
-                    services: allServices
+                    services: allServices,
+                    requestId: requestId
                 }));
             }
             
             // Start local services immediately (they're fast and don't need rate limiting)
             const localServices = [
-                { name: 'furry-local', method: () => this.makeLocalFurryTagRequests(query, currentModel, queryHash, ws) },
-                { name: 'anime-local', method: () => this.makeLocalAnimeTagRequests(query, currentModel, queryHash, ws) }
+                { name: 'furry-local', method: () => this.makeLocalFurryTagRequests(query, currentModel, queryHash, ws, requestId) },
+                { name: 'anime-local', method: () => this.makeLocalAnimeTagRequests(query, currentModel, queryHash, ws, requestId) }
             ];
             
             // Run local services concurrently
@@ -1178,7 +1255,8 @@ class SearchService {
                     if (ws) {
                         ws.send(JSON.stringify({
                             type: 'search_status_update',
-                            services: [{ name: service.name, status: 'error', error: error.message }]
+                            services: [{ name: service.name, status: 'error', error: error.message }],
+                            requestId: requestId
                         }));
                     }
                     return [];
@@ -1197,7 +1275,8 @@ class SearchService {
                     if (ws) {
                         ws.send(JSON.stringify({
                             type: 'search_status_update',
-                            services: [{ name: apiModel, status: 'searching' }]
+                            services: [{ name: apiModel, status: 'searching' }],
+                            requestId: requestId
                         }));
                     }
                     
@@ -1263,7 +1342,8 @@ class SearchService {
                             service: apiModel,
                             results: modelResults,
                             serviceOrder: i,
-                            isComplete: false
+                            isComplete: false,
+                            requestId: requestId
                         }));
                     }
                     
@@ -1271,7 +1351,8 @@ class SearchService {
                     if (ws) {
                         ws.send(JSON.stringify({
                             type: 'search_status_update',
-                            services: [{ name: apiModel, status: 'completed' }]
+                            services: [{ name: apiModel, status: 'completed' }],
+                            requestId: requestId
                         }));
                     }
                     
@@ -1288,7 +1369,8 @@ class SearchService {
                     if (ws) {
                         ws.send(JSON.stringify({
                             type: 'search_status_update',
-                            services: [{ name: apiModel, status: 'error', error: error.message }]
+                            services: [{ name: apiModel, status: 'error', error: error.message }],
+                            requestId: requestId
                         }));
                     }
                 }
@@ -1303,7 +1385,8 @@ class SearchService {
                 ws.send(JSON.stringify({
                     type: 'search_results_complete',
                     totalServices: totalServices,
-                    completedServices: totalServices
+                    completedServices: totalServices,
+                    requestId: requestId
                 }));
             }
             
@@ -1329,13 +1412,14 @@ class SearchService {
         return crypto.createHash('md5').update(`${query.toLowerCase()}_${model.toLowerCase()}`).digest('hex');
     }
 
-    async makeLocalFurryTagRequests(query, model, queryHash, ws = null) {
+    async makeLocalFurryTagRequests(query, model, queryHash, ws = null, requestId = null) {
         try {
             // Send initial status update
             if (ws) {
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
-                    services: [{ name: 'furry-local', status: 'searching' }]
+                    services: [{ name: 'furry-local', status: 'searching' }],
+                    requestId: requestId
                 }));
             }
             
@@ -1379,7 +1463,8 @@ class SearchService {
                     searchModel: model,
                     results: furryModelResults,
                     serviceOrder: 0,
-                    isComplete: false
+                    isComplete: false,
+                    requestId: requestId
                 }));
             }
             
@@ -1387,7 +1472,8 @@ class SearchService {
             if (ws) {
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
-                    services: [{ name: 'furry-local', status: 'completed' }]
+                    services: [{ name: 'furry-local', status: 'completed' }],
+                    requestId: requestId
                 }));
             }
             
@@ -1400,7 +1486,8 @@ class SearchService {
             if (ws) {
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
-                    services: [{ name: 'furry-local', status: 'error', error: error.message }]
+                    services: [{ name: 'furry-local', status: 'error', error: error.message }],
+                    requestId: requestId
                 }));
             }
             
@@ -1408,13 +1495,14 @@ class SearchService {
         }
     }
 
-    async makeLocalAnimeTagRequests(query, model, queryHash, ws = null) {
+    async makeLocalAnimeTagRequests(query, model, queryHash, ws = null, requestId = null) {
         try {
             // Send initial status update
             if (ws) {
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
-                    services: [{ name: 'anime-local', status: 'searching' }]
+                    services: [{ name: 'anime-local', status: 'searching' }],
+                    requestId: requestId
                 }));
             }
             
@@ -1458,7 +1546,8 @@ class SearchService {
                     searchModel: model,
                     results: animeModelResults,
                     serviceOrder: 0,
-                    isComplete: false
+                    isComplete: false,
+                    requestId: requestId
                 }));
             }
             
@@ -1466,7 +1555,8 @@ class SearchService {
             if (ws) {
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
-                    services: [{ name: 'anime-local', status: 'completed' }]
+                    services: [{ name: 'anime-local', status: 'completed' }],
+                    requestId: requestId
                 }));
             }
             
@@ -1479,7 +1569,8 @@ class SearchService {
             if (ws) {
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
-                    services: [{ name: 'anime-local', status: 'error', error: error.message }]
+                    services: [{ name: 'anime-local', status: 'error', error: error.message }],
+                    requestId: requestId
                 }));
             }
             
@@ -1622,8 +1713,52 @@ class SearchService {
         return results;
     }
 
+    // New helper method for independent text replacement search
+    async performTextReplacementSearch(query, ws = null, hasPickSuffix = false, requestId = null) {
+        try {
+            if (!query || query.trim().length < 1) {
+                return [];
+            }
+            
+            // Send initial status update for textReplacements service
+            if (ws) {
+                ws.send(JSON.stringify({
+                    type: 'search_status_update',
+                    services: [{ name: 'textReplacements', status: 'searching' }],
+                    requestId: requestId
+                }));
+            }
+            
+            const results = this.searchTextReplacements(query, hasPickSuffix);
+            
+            // Send completion status for textReplacements service
+            if (ws) {
+                ws.send(JSON.stringify({
+                    type: 'search_status_update',
+                    services: [{ name: 'textReplacements', status: 'completed' }],
+                    requestId: requestId
+                }));
+            }
+            
+            return results;
+        } catch (error) {
+            console.error('Text replacement search error:', error);
+            
+            // Send error status for textReplacements service
+            if (ws) {
+                ws.send(JSON.stringify({
+                    type: 'search_status_update',
+                    services: [{ name: 'textReplacements', status: 'error' }],
+                    requestId: requestId
+                }));
+            }
+            
+            return [];
+        }
+    }
+
     // New helper method for independent tag search
-    async performTagSearch(query, model, ws = null, sessionId = null) {
+    async performTagSearch(query, model, ws = null, sessionId = null, requestId = null) {
         try {
             if (!query || query.trim().length < 2) {
                 return [];
@@ -1631,7 +1766,7 @@ class SearchService {
 
             // Always make API requests for tags (cache checking happens in each makeTagRequest)
             const queryHash = this.generateQueryHash(query.trim().toLowerCase(), model);            
-            const tagResults = await this.makeTagRequests(query, model, queryHash, ws, sessionId);
+            const tagResults = await this.makeTagRequests(query, model, queryHash, ws, sessionId, requestId);
             return tagResults;
         } catch (error) {
             console.error('Tag search error:', error);
@@ -1640,7 +1775,7 @@ class SearchService {
     }
 
     // New helper method for independent spellcheck
-    async performSpellCheckAsync(query, ws = null) {
+    async performSpellCheckAsync(query, ws = null, requestId = null) {
         try {
             if (!this.spellChecker || typeof this.spellChecker.checkText !== 'function') {
                 return null;
@@ -1650,7 +1785,8 @@ class SearchService {
             if (ws) {
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
-                    services: [{ name: 'spellcheck', status: 'searching' }]
+                    services: [{ name: 'spellcheck', status: 'searching' }],
+                    requestId: requestId
                 }));
             }
 
@@ -1670,7 +1806,8 @@ class SearchService {
                         serviceName: 'spellcheck'
                     }],
                     serviceOrder: -2,
-                    isComplete: false
+                    isComplete: false,
+                    requestId: requestId
                 }));
             }
             
@@ -1678,7 +1815,8 @@ class SearchService {
             if (ws) {
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
-                    services: [{ name: 'spellcheck', status: 'completed' }]
+                    services: [{ name: 'spellcheck', status: 'completed' }],
+                    requestId: requestId
                 }));
             }
 
@@ -1690,7 +1828,8 @@ class SearchService {
             if (ws) {
                 ws.send(JSON.stringify({
                     type: 'search_status_update',
-                    services: [{ name: 'spellcheck', status: 'error' }]
+                    services: [{ name: 'spellcheck', status: 'error' }],
+                    requestId: requestId
                 }));
             }
             

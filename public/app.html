@@ -363,6 +363,11 @@
                                     <!-- Right side action elements -->
                                     <div class="director-header-right">
                                         <!-- Session chat actions -->
+                                        <div id="directorHeaderActions" class="director-header-element hidden" data-view="newSession">
+                                            <button type="button" id="directorMaxResolutionBtn" class="btn-secondary indicator" data-state="on">
+                                                <i class="fas fa-high-definition"></i>
+                                            </button>
+                                        </div>
                                         <div id="directorHeaderActions" class="director-header-element hidden" data-view="sessionChat">
                                             <!-- Message filter slider -->
                                             <div id="directorMessageFilterGroup" class="gallery-toggle-group" title="Message Filter" data-filter="all">
@@ -428,9 +433,6 @@
                                                     </button>
                                                     <input type="file" id="directorImageFileInput" accept="image/*" class="hidden">
                                                     <textarea id="directorUserIntent" class="form-control hover-show" placeholder="Describe what you want to create..." rows="1"></textarea>
-                                                    <button type="button" id="directorMaxResolutionBtn" class="btn-secondary indicator" data-state="on">
-                                                        <i class="fas fa-high-definition"></i>
-                                                    </button>
                                                     <button type="button" id="directorCreateSessionBtn" class="btn-primary">
                                                         Create
                                                     </button>
@@ -464,15 +466,15 @@
                                 </div>
 
                                 <div id="manualPresetGroup" class="form-row hidden">
-                                    <input type="text" id="manualPresetName" class="form-control hover-show colored" placeholder="Enter preset name to save..." autocorrect="false"  autocapitalize="false">
-                                    <button type="button" id="manualDeleteBtn" class="btn-danger">
-                                        <i class="nai-trash"></i>
+                                    <button type="button" id="manualPresetManagerBtn" class="btn-secondary">
+                                        <i class="fas fa-list-ul"></i>
                                     </button>
+                                    <input type="text" id="manualPresetName" class="form-control hover-show colored" placeholder="Enter preset name to save..." autocorrect="false"  autocapitalize="false">
                                     <button type="button" id="manualLoadBtn" class="btn-secondary" disabled>
-                                        <i class="nai-import"></i> Load
+                                        <i class="fas fa-arrow-up-from-square"></i>
                                     </button>
                                     <button type="button" id="manualSaveBtn" class="btn-secondary">
-                                        <i class="nai-save"></i> Save
+                                        Write <i class="fas fa-arrow-down-to-square"></i>
                                     </button>
                                 </div>
 
@@ -487,6 +489,9 @@
                                                     <i class="fas fa-ban"></i>
                                                 </button>
                                                 <div class="gallery-toggle-slider"></div>
+                                            </div>
+                                            <div id="manualPresetPlaceholder" class="manual-preset-placeholder">
+                                                <span id="manualPresetPlaceholderText"></span>
                                             </div>
                                             <div class="extra-buttons">
                                                 <div id="transformationDropdown" class="custom-dropdown dropright">
@@ -521,7 +526,10 @@
                                                     <i class="xai-icon"></i>
                                                 </button>
                                                 <button type="button" id="manualPresetToggleBtn" class="btn-secondary indicator" data-state="off" title="Preset Settings">
-                                                    <i class="fa-regular fa-book-sparkles"></i>
+                                                    <i class="fa-regular fa-bookmark"></i>
+                                                </button>
+                                                <button type="button" id="dynamicGenerationToggleBtn" class="btn-secondary indicator" data-state="off" title="Dynamic Generation">
+                                                    <i class="fas fa-flask-round-potion"></i>
                                                 </button>
                                                 <button type="button" class="btn-secondary indicator" id="showBothBtn" data-state="off" title="Show both panes">
                                                     <i class="nai-detatch-up"></i>
@@ -604,11 +612,11 @@
                                                                 <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
                                                                     <i class="fas fa-scale-unbalanced-flip"></i>
                                                                 </button>
+                                                                <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
+                                                                    <i class="fas fa-book-font"></i>
+                                                                </button>
                                                                 <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
                                                                     <i class="fas fa-search"></i>
-                                                                </button>
-                                                                <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                                                                    <i class="fas fa-book-skull"></i>
                                                                 </button>
                                                             </div>
                                                             <!-- Search Mode Buttons (Hidden by default) -->
@@ -676,11 +684,11 @@
                                                                 <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
                                                                     <i class="fas fa-scale-unbalanced-flip"></i>
                                                                 </button>
+                                                                <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
+                                                                    <i class="fas fa-book-font"></i>
+                                                                </button>
                                                                 <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
                                                                     <i class="fas fa-search"></i>
-                                                                </button>
-                                                                <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                                                                    <i class="fas fa-book-skull"></i>
                                                                 </button>
                                                             </div>
                                                             <!-- Search Mode Buttons (Hidden by default) -->
@@ -695,6 +703,51 @@
                                                 </div>
                                             </div>
                                         </div>
+                                        <!-- Dynamic Generation Section -->
+                                        <div id="dynamicGenerationGroup" class="form-row hidden">
+                                            <div class="dynamic-generation-container">
+                                                <div class="dynamic-generation-buttons">
+                                                    <!-- Dynamic Generation Buttons -->
+                                                </div>
+                                                <div class="dynamic-generation-actions">
+                                                    <button type="button" id="todBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Time of Day">
+                                                        <i class="fa-regular fa-clock"></i>
+                                                    </button>
+                                                    <button type="button" id="weatherBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Weather">
+                                                        <i class="fa-regular fa-temperature-sun"></i>
+                                                    </button>
+                                                    <button type="button" id="seasonBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Season">
+                                                        <i class="fas fa-leaf-maple"></i>
+                                                    </button>
+                                                    <button type="button" id="clothingBtn" class="btn-secondary btn-small indicator" data-state="off" title="Clothing Adaptation">
+                                                        <i class="fas fa-shirt"></i>
+                                                    </button>
+                                                    <button type="button" id="activityBtn" class="btn-secondary btn-small indicator hidden" data-state="off" data-override="" title="Activity">
+                                                        <i class="fa-regular fa-person-walking"></i>
+                                                    </button>
+                                                    <button type="button" id="actionBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Character Action">
+                                                        <i class="fa-regular fa-person-running"></i>
+                                                    </button>
+                                                    <button type="button" id="locationBtn" class="btn-secondary btn-small indicator hidden" data-state="off" data-override="" title="Location">
+                                                        <i class="fas fa-plane"></i>
+                                                    </button>
+                                                    <div class="divider"></div>
+                                                    <button type="button" id="creativeBtn" class="btn-secondary btn-small indicator" data-state="off" title="Creative Mode">
+                                                        <i class="fa-solid fa-magic-wand-sparkles"></i>
+                                                    </button>
+                                                    <button type="button" id="optimizeBtn" class="btn-secondary btn-small indicator" data-state="off" title="Optimize Mode">
+                                                        <i class="fa-regular fa-broom-wide"></i>
+                                                    </button>
+                                                    <div class="divider"></div>
+                                                    <button type="button" id="lockBtn" class="btn-secondary btn-small indicator" data-state="off" data-use-cache="true" data-has-cache="false" title="Lock Results">
+                                                        <i class="fas fa-lock"></i>
+                                                    </button>
+                                                    <button type="button" id="dynamicGenerationViewBtn" class="btn-secondary btn-small" disabled>
+                                                        <i class="fa-regular fa-memo-pad"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -705,13 +758,13 @@
                                         </div>
                                         <div class="character-prompts-controls">
                                             <button type="button" id="manualTextReplacementManagerBtn" class="btn-secondary" title="Manage Text Expanders">
-                                                <i class="fa-light fa-language"></i>
+                                                <i class="fa-regular fa-language"></i>
                                             </button>
                                             <button type="button" id="autoPositionBtn" class="btn-secondary indicator hidden" data-state="on" title="Auto Position">
-                                                <i class="fas fa-arrows-up-down-left-right"></i> Auto
+                                                <i class="fa-regular fa-arrows-up-down-left-right"></i> Auto
                                             </button>
                                             <button type="button" id="vibeNormalizeToggle" class="btn-secondary indicator" data-state="on" title="Normalize vibe strengths">
-                                                <i class="fas fa-equals"></i>
+                                                <i class="fa-regular fa-equals"></i>
                                             </button>
                                             <!-- Custom Transformation Dropdown -->
                                             <button type="button" id="addCharacterBtn" class="btn-secondary">
@@ -913,6 +966,18 @@
                                     <div class="manual-preview-image-container-inner">
                                         <div id="manualBlockContainer" class="block-container"></div>
                                         <img id="manualPreviewImage" src="" alt="Generated Image" class="hidden">
+                                        <!-- Dynamic Generation Context Overlay -->
+                                        <div id="dynamicGenerationOverlay" class="dynamic-generation-overlay hidden">
+                                            <div class="dynamic-generation-overlay-content">
+                                                <div class="dynamic-generation-overlay-header">
+                                                    <i class="fas fa-magic"></i>
+                                                    <span>AI Context</span>
+                                                </div>
+                                                <div id="dynamicGenerationOverlayBody" class="dynamic-generation-overlay-body">
+                                                    <!-- Context info populated by JavaScript -->
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div id="manualPreviewPlaceholder" class="manual-preview-placeholder">
                                         <i class="mdi mdi-draw-pen"></i>
@@ -1010,7 +1075,7 @@
                                         <i class="fas fa-sync-alt"></i>
                                     </button>
                                     <button type="button" id="showAllReferencesBtn" class="btn-secondary indicator" data-state="off" title="Show All Planets">
-                                        <i class="fas fa-planet-ringed"></i> Show All
+                                        <i class="fas fa-planet-ringed"></i>
                                     </button>
                                     <button type="button" id="cacheBrowserOptionsBtn" class="btn-secondary">
                                         <i class="fas fa-cog"></i>
@@ -1164,6 +1229,9 @@
                             <button type="button" id="paidRequestToggle" class="btn-secondary indicator flashing" data-state="off" title="Force Paid Request">
                                 <i class="fas fa-dollar-sign"></i>
                             </button>
+                            <button type="button" id="controlsToggle" class="btn-secondary small-viewport" title="Toggle Generations Settings">
+                                <i class="fas fa-gear"></i>
+                            </button>
                             <!-- Preset Toggle Button -->
                         </div>
                         <div id="manualPendingRequestsSpinner" class="websocket-ticker">
@@ -1248,7 +1316,7 @@
         </div>
 
         <!-- Mask Editor Dialog Modal -->
-        <div id="maskEditorDialog" class="modal hidden">
+        <div id="maskEditorDialog" class="modal resizeable-window hidden">
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
                     <i class="nai-inpaint"></i>
@@ -1299,7 +1367,7 @@
         </div>
 
         <!-- Image Bias Adjustment Modal -->
-        <div id="imageBiasAdjustmentModal" class="modal hidden">
+        <div id="imageBiasAdjustmentModal" class="modal resizeable-window hidden">
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
                     <i class="fas fa-ruler-combined"></i>
@@ -1620,8 +1688,28 @@
             </div>
         </div>
 
+        <!-- Compiled Prompt Modal -->
+        <div id="compiledPromptModal" class="modal resizeable-window hidden">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-magic"></i>
+                    <span>Reality Crossover Information</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" id="closeCompiledPromptBtn" class="btn-danger close-btn btn-small">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
+            <div class="modal-content">
+                <div class="modal-body" id="compiledPromptContent" style="max-height: 60vh; overflow-y: auto;">
+                    <!-- Content will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
         <!-- Text Replacement Manager Modal -->
-        <div id="textReplacementManagerModal" class="modal hidden">
+        <div id="textReplacementManagerModal" class="modal resizeable-window hidden">
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
                     <i class="fas fa-language"></i>
@@ -1632,17 +1720,20 @@
                 <button type="button" id="createTextReplacementBtn" class="btn-secondary" onclick="createTextReplacement()" title="Create New Text Replacement">
                     <i class="fas fa-plus"></i>
                 </button>
+                <button type="button" id="toggleTextReplacementSearchBtn" class="btn-secondary" title="Search Text Replacements">
+                    <i class="fas fa-search"></i>
+                </button>
                 <button type="button" id="closeTextReplacementManagerBtn" class="btn-danger close-btn btn-small">
                     <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
             <div class="modal-content text-replacement-manager-content">
                 <div class="modal-body">
-                    <div class="text-replacement-search">
+                    <div id="textReplacementSearchContainer" class="text-replacement-search hidden">
                         <input type="text" id="textReplacementSearch" class="form-control" placeholder="Search text replacements...">
                         <i class="fas fa-search"></i>
                     </div>
-                    <div class="text-replacement-list-container">
+                    <div id="textReplacementListContainer" class="text-replacement-list-container">
                         <div id="textReplacementList" class="text-replacement-list">
                             <!-- Text replacement items will be populated here -->
                         </div>
@@ -1663,7 +1754,7 @@
         </div>
 
         <!-- Create Text Replacement Modal -->
-        <div id="createTextReplacementModal" class="modal hidden">
+        <div id="createTextReplacementModal" class="modal resizeable-window hidden">
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
                     <i class="fas fa-language"></i>
@@ -1706,7 +1797,7 @@
         </div>
 
         <!-- Preset Manager Modal -->
-        <div id="presetManagerModal" class="modal hidden">
+        <div id="presetManagerModal" class="modal resizeable-window hidden">
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
                     <i class="fas fa-book-spells"></i>
@@ -1714,15 +1805,18 @@
                 </div>
             </div>
             <div class="modal-window-controls">
+                <button type="button" id="togglePresetSearchBtn" class="btn-secondary" title="Search Presets">
+                    <i class="fas fa-search"></i>
+                </button>
                 <button type="button" id="closePresetManagerBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
             <div class="modal-content text-replacement-manager-content">
                 <div class="modal-body">
-                    <div class="text-replacement-search">
+                    <div id="presetSearchContainer" class="text-replacement-search hidden">
                         <input type="text" id="presetSearch" class="form-control" placeholder="Search presets...">
                         <i class="fas fa-search"></i>
                     </div>
-                    <div class="text-replacement-list-container">
+                    <div id="presetListContainer" class="text-replacement-list-container">
                         <div id="presetList" class="text-replacement-list">
                             <!-- Preset items will be populated here -->
                         </div>
@@ -1801,6 +1895,51 @@
                                         </div>
                                     </button>
                                     <div id="updatePresetWorkspaceDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Dynamic Generation Section -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Crossover</label>
+                                <div class="dynamic-generation-container">
+                                    <div class="dynamic-generation-buttons">
+                                        <!-- Dynamic Generation Buttons -->
+                                    </div>
+                                    <div class="dynamic-generation-actions">
+                                        <button type="button" id="updatePresetTodBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Time of Day">
+                                            <i class="fa-regular fa-clock"></i>
+                                        </button>
+                                        <button type="button" id="updatePresetWeatherBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Weather">
+                                            <i class="fa-regular fa-temperature-sun"></i>
+                                        </button>
+                                        <button type="button" id="updatePresetSeasonBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Season">
+                                            <i class="fas fa-leaf-maple"></i>
+                                        </button>
+                                        <button type="button" id="updatePresetClothingBtn" class="btn-secondary btn-small indicator" data-state="off" title="Clothing Adaptation">
+                                            <i class="fas fa-shirt"></i>
+                                        </button>
+                                        <button type="button" id="updatePresetActivityBtn" class="btn-secondary btn-small indicator hidden" data-state="off" data-override="" title="Activity">
+                                            <i class="fa-regular fa-person-walking"></i>
+                                        </button>
+                                        <button type="button" id="updatePresetActionBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Character Action">
+                                            <i class="fa-regular fa-person-running"></i>
+                                        </button>
+                                        <button type="button" id="updatePresetLocationBtn" class="btn-secondary btn-small indicator hidden" data-state="off" data-override="" title="Location">
+                                            <i class="fas fa-plane"></i>
+                                        </button>
+                                        <div class="divider"></div>
+                                        <button type="button" id="updatePresetCreativeBtn" class="btn-secondary btn-small indicator" data-state="off" title="Creative Mode">
+                                            <i class="fa-solid fa-magic-wand-sparkles"></i>
+                                        </button>
+                                        <button type="button" id="updatePresetOptimizeBtn" class="btn-secondary btn-small indicator" data-state="off" title="Optimize Mode">
+                                            <i class="fa-regular fa-broom-wide"></i>
+                                        </button>
+                                        <div class="divider"></div>
+                                        <button type="button" id="updatePresetUseCacheResponsesBtn" class="btn-secondary btn-small indicator" data-state="on" title="Use Cache Responses (Preset Only)">
+                                            <i class="fas fa-lock"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1984,7 +2123,7 @@
         </div>
 
         <!-- Reference Manager Modal -->
-        <div id="cacheManagerModal" class="modal hidden">
+        <div id="cacheManagerModal" class="modal resizeable-window hidden">
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
                     <i class="fas fa-swatchbook"></i>
@@ -2235,7 +2374,7 @@
         </div>
 
         <!-- Reference Manager Move Modal -->
-        <div id="cacheManagerMoveModal" class="modal hidden">
+        <div id="cacheManagerMoveModal" class="modal resizeable-window hidden">
             <div class="modal-window-controls">
                 <button id="closeCacheManagerMoveBtn" class="btn-danger btn-small modal-close" type="button" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
@@ -2904,7 +3043,7 @@
         </div>
 
         <!-- Measurements Modal -->
-        <div id="measurementsModal" class="modal hidden">
+        <div id="measurementsModal" class="modal resizeable-window transient hidden">
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
                     <i class="fas fa-ruler-combined"></i>
@@ -3063,12 +3202,68 @@
             </div>
         </div>
 
+        <!-- Image Viewer Modal Template (will be cloned for multiple instances) -->
+        <div id="imageViewerModalTemplate" class="modal hidden transient image-viewer-modal resizeable-window"
+             data-window-max-width="1600"
+             data-window-max-height="1200"
+             data-window-min-width="400"
+             data-window-min-height="300">
+
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-image"></i>
+                    <span id="imageViewerTitle">Image Viewer</span>
+                </div>
+                <div class="modal-window-controls">
+                    <button type="button" class="btn-secondary minimize-btn" title="Minimize">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                    <button type="button" class="btn-danger close-btn btn-small" title="Close">
+                        <i class="fa-regular fa-xmark-large"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-content image-viewer-content">
+                <div class="image-viewer-body">
+                    <div class="image-container">
+                        <img id="imageViewerImage" src="" alt="Image" class="viewer-image">
+                    </div>
+                </div>
+                <div class="image-viewer-toolbar">
+                    <div class="toolbar-left">
+                        <button type="button" class="btn-secondary toolbar-btn" id="zoomOutBtn" title="Zoom Out">
+                            <i class="fas fa-search-minus"></i>
+                        </button>
+                        <span class="zoom-level" id="zoomLevel">100%</span>
+                        <button type="button" class="btn-secondary toolbar-btn" id="zoomInBtn" title="Zoom In">
+                            <i class="fas fa-search-plus"></i>
+                        </button>
+                        <button type="button" class="btn-secondary toolbar-btn" id="fitToScreenBtn" title="Fit to Screen">
+                            <i class="fas fa-expand"></i>
+                        </button>
+                        <button type="button" class="btn-secondary toolbar-btn" id="actualSizeBtn" title="Actual Size">
+                            <i class="fas fa-compress"></i>
+                        </button>
+                    </div>
+                    <div class="toolbar-right">
+                        <button type="button" class="btn-secondary toolbar-btn" id="openInLightboxBtn" title="Open in Lightbox">
+                            <i class="fas fa-external-link-alt"></i>
+                        </button>
+                        <button type="button" class="btn-secondary toolbar-btn" id="downloadBtn" title="Download">
+                            <i class="fas fa-download"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <script src="scripts/websocket.js"></script>
         <script src="scripts/comp/serviceWorkerManager.js"></script>
         <script src="scripts/comp/dropdown.js"></script>
         <script src="scripts/comp/contextMenu.js"></script>
         <script src="scripts/comp/lightbox.js"></script>
         <script src="scripts/comp/modalUtils.js"></script>
+        <script src="scripts/comp/imageViewer.js"></script>
         <script src="scripts/comp/spellbookModal.js"></script>
         <script src="scripts/comp/modelManager.js"></script>
         <script src="scripts/comp/chatSystem.js"></script>

@@ -12,7 +12,6 @@
 
 const presetAutocompleteOverlay = document.getElementById('presetAutocompleteOverlay');
 const presetAutocompleteList = document.querySelector('.preset-autocomplete-list');
-const loadSeedBtn = document.getElementById('loadSeedBtn');
 
 let bypassConfirmation = false;
 let previewRatio = 1;
@@ -278,6 +277,7 @@ async function deletePreset(presetName) {
         // Clear the manual preset name input and hide delete button
         if (manualPresetName) {
             manualPresetName.value = '';
+            updateManualPresetPlaceholder();
             updatePresetLoadSaveState();
         }
 
@@ -419,6 +419,584 @@ function updateManualPresetToggleBtn() {
 
     // Update button state
     manualPresetToggleBtn.setAttribute('data-state', state);
+
+    // Update placeholder visibility
+    updateManualPresetPlaceholder();
+}
+
+function updateManualPresetPlaceholder() {
+    const manualPresetPlaceholder = document.getElementById('manualPresetPlaceholder');
+    const manualPresetPlaceholderText = document.getElementById('manualPresetPlaceholderText');
+    const presetName = manualPresetName.value.trim();
+
+    // If manualPresetGroup is hidden, show placeholder with preset name
+    if (manualPresetGroup.classList.contains('hidden')) {
+        manualPresetPlaceholder.classList.add('show');
+        if (presetName) {
+            manualPresetPlaceholderText.textContent = presetName;
+        } else {
+            manualPresetPlaceholderText.textContent = '';
+        }
+    } else {
+        // If manualPresetGroup is shown, hide the placeholder
+        manualPresetPlaceholder.classList.remove('show');
+        manualPresetPlaceholderText.textContent = '';
+    }
+}
+
+// Dynamic Generation Functions
+function updateDynamicGenerationToggleBtn() {
+    const isOpen = !dynamicGenerationGroup.classList.contains('hidden');
+    const hasActiveOverrides = ['todBtn', 'weatherBtn', 'seasonBtn', 'activityBtn', 'actionBtn', 'locationBtn', 'creativeBtn']
+        .some(btnId => {
+            const btn = document.getElementById(btnId);
+            return btn && btn.dataset.state === 'on' && btn.getAttribute('data-override');
+        });
+    const hasCompiledPrompt = window.dynamicGenerationData && window.dynamicGenerationData.compiled_prompt;
+
+    let state = 'off'; // default
+
+    if (hasCompiledPrompt) {
+        state = 'compiled'; // has compiled prompt available
+    } else if (hasActiveOverrides) {
+        state = 'on'; // has active overrides
+    } else if (isOpen) {
+        state = 'open'; // group is open but no active overrides
+    }
+
+    // Update button state
+    dynamicGenerationToggleBtn.setAttribute('data-state', state);
+
+    if (hasCompiledPrompt) {
+        if (dynamicGenerationViewBtn) dynamicGenerationViewBtn.disabled = '';
+    } else {
+        if (dynamicGenerationViewBtn) dynamicGenerationViewBtn.disabled = 'true';
+    }
+}
+
+// Show compiled prompt modal
+function showCompiledPromptModal() {
+    if (!window.dynamicGenerationData || !window.dynamicGenerationData.compiled_prompt) {
+        showGlassToast('warning', null, 'No compiled prompt available to view.');
+        return;
+    }
+
+    const compiled = window.dynamicGenerationData.compiled_prompt;
+    const modal = document.getElementById('compiledPromptModal');
+    const content = document.getElementById('compiledPromptContent');
+
+    if (!modal || !content) {
+        console.error('Compiled prompt modal not found in HTML');
+        return;
+    }
+
+    // Helper function to create info item
+    const createInfoItem = (label, value, icon = '', className = '') => {
+        if (!value || value === 'Unknown') return '';
+        return `
+            <div class="info-item ${className}">
+                <span class="info-label">${icon} ${label}</span>
+                <span>${value}</span>
+            </div>
+        `;
+    };
+
+    // Helper function to create section
+    const createSection = (title, content, icon = '', contentClass = '') => {
+        if (!content) return '';
+        return `
+            <div class="content-wrapper${contentClass}">
+                <label><strong>${icon} ${title}</strong></label>
+                ${content}
+            </div>
+        `;
+    };
+
+    // Build context section
+    let contextContent = '';
+    if (compiled.context) {
+        const context = compiled.context;
+        const weather = context.weather || {};
+        const time = context.time || {};
+
+        const contextItems = [
+            createInfoItem('Weather Condition', weather.condition, '🌤️'),
+            createInfoItem('Temperature', weather.temperature ? `${weather.temperature}°C` : null, '🌡️'),
+            createInfoItem('Feels Like', weather.feelsLike ? `${weather.feelsLike}°C` : null, '🌡️'),
+            createInfoItem('Humidity', weather.humidity ? `${weather.humidity}%` : null, '💧'),
+            createInfoItem('Wind Speed', weather.windSpeed ? `${weather.windSpeed} m/s` : null, '💨'),
+            createInfoItem('Time Period', time.period, '🕐'),
+            createInfoItem('Lighting', time.lighting, '💡'),
+            createInfoItem('Atmosphere', time.atmosphere, '🌫️'),
+            createInfoItem('Season', context.season, '🍂'),
+            createInfoItem('Hour', time.hour !== undefined ? `${time.hour}:${String(time.minute || 0).padStart(2, '0')}` : null, '🕐'),
+            createInfoItem('Timezone', time.timezone, '🌍')
+        ].filter(item => item).join('');
+
+        if (contextItems) {
+            contextContent = `<div class="info-grid">${contextItems}</div>`;
+        }
+    }
+
+    // Build modifications section
+    let modificationsContent = '';
+    if (compiled.modifications_made && compiled.modifications_made.length > 0) {
+        const modItems = compiled.modifications_made.map(mod => `
+            <div class="info-item modification">
+                <span>${mod.description || mod}</span>
+            </div>
+        `).join('');
+        modificationsContent = `<div class="info-list compact">${modItems}</div>`;
+    }
+
+    // Build text replacements section
+    let replacementsContent = '';
+    if (compiled.text_replacements) {
+        const replacements = [];
+
+        const addReplacements = (items, title, icon) => {
+            if (items && items.length > 0) {
+                replacements.push(`<div class="content-header"><strong>${icon} ${title}:</strong></div>`);
+                items.forEach(rep => {
+                    replacements.push(`
+                        <div class="replacement-item">
+                            <div class="find-text">Find: "${rep.select_text}"</div>
+                            <div class="replace-text">Replace: "${rep.replace_text}"</div>
+                        </div>
+                    `);
+                });
+            }
+        };
+
+        addReplacements(compiled.text_replacements.prompt, 'Prompt Replacements', '<i class="fas fa-input-text"></i>');
+        addReplacements(compiled.text_replacements.uc, 'Negative Prompt Replacements', '<i class="fas fa-ban"></i>');
+
+        if (compiled.text_replacements.character_prompts && compiled.text_replacements.character_prompts.length > 0) {
+            replacements.push(`<div class="content-header"><strong>👥 Character Replacements:</strong></div>`);
+            compiled.text_replacements.character_prompts.forEach((char, charIndex) => {
+                if (char && (char.input?.length > 0 || char.uc?.length > 0)) {
+                    replacements.push(`<div class="info-item"><strong>Character ${charIndex + 1}:</strong></div>`);
+                    addReplacements(char.input, 'Input Replacements', '<i class="fas fa-input-text"></i>');
+                    addReplacements(char.uc, 'Negative Replacements', '<i class="fas fa-ban"></i>');
+                }
+            });
+        }
+
+        if (replacements.length > 0) {
+            replacementsContent = `<div class="info-list">${replacements.join('')}</div>`;
+        } else {
+            replacementsContent = '<div class="content-header">No text replacements were applied</div>';
+        }
+    }
+
+    // Build reasoning section
+    let reasoningContent = '';
+    if (compiled.reasoning) {
+        reasoningContent = `<div class="reasoning-content">${compiled.reasoning}</div>`;
+    }
+
+    // Build metadata section
+    const metadataItems = [
+        createInfoItem('Timestamp', compiled.timestamp ? new Date(compiled.timestamp).toLocaleString() : null, '🕐'),
+        createInfoItem('AI Processed', compiled.ai_processed ? 'Yes' : 'No', '🤖'),
+        createInfoItem('Cache Status', compiled.prompt_hash ? 'Cached' : 'Fresh', '💾')
+    ].filter(item => item);
+
+    const metadataContent = metadataItems.length > 0 ? `<div class="info-grid compact">${metadataItems.join('')}</div>` : '';
+
+    // Combine all sections
+    content.innerHTML = [
+        createSection('Context', contextContent, '🌍'),
+        createSection('Text Replacements', replacementsContent, '📝'),
+        createSection('Modifications Made', modificationsContent, '🔧'),
+        createSection('AI Reasoning', reasoningContent, '🤖'),
+        createSection('Metadata', metadataContent, '📊')
+    ].filter(section => section).join('');
+
+    // Show modal
+    openModal(modal);
+
+    // Focus management for accessibility
+    modal.focus();
+}
+
+// Clear compiled prompt
+async function clearCompiledPrompt() {
+    if (!window.dynamicGenerationData || !window.dynamicGenerationData.compiled_prompt) {
+        showGlassToast('warning', null, 'No compiled prompt to clear.');
+        return;
+    }
+
+    // Confirm deletion using confirmationDialog.js
+    const confirmed = await showConfirmationDialog(
+        'Are you sure you want to clear the compiled prompt?',
+        [
+            {
+                text: 'Clear Prompt',
+                value: true,
+                className: 'btn-warning',
+                icon: 'fas fa-trash'
+            },
+            {
+                text: 'Cancel',
+                value: false,
+                className: 'btn-secondary'
+            }
+        ]
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    // Clear the compiled prompt
+    delete window.dynamicGenerationData.compiled_prompt;
+
+    // Update UI
+    updateDynamicGenerationToggleBtn();
+
+    showGlassToast('success', null, 'Compiled prompt cleared.');
+}
+
+function collectDynamicButtonState(btn) {
+    if (!btn) {
+        return false;
+    }
+
+    const state = btn.dataset.state;
+    const override = btn.getAttribute('data-override');
+    const seasonMode = btn.getAttribute('data-season-mode');
+
+    if (state === 'on') {
+        // Special handling for season button
+        if (btn.id === 'seasonBtn') {
+            // If override is 'true', return true (Seasonal Decor - smart mode)
+            if (override === 'true') {
+                return true;
+            }
+
+            // If override is 'nearest', return 'nearest' (Nearest Holiday)
+            if (override === 'nearest') {
+                return 'nearest';
+            }
+
+            // If there's a numeric override (season/holiday index), return it as number
+            const numValue = parseInt(override);
+            if (!isNaN(numValue)) {
+                return numValue;
+            }
+
+            // Fallback
+            return true;
+        }
+
+        // For other buttons, if there's a specific override selected, return the index number
+        if (override) {
+            let v = parseInt(override);
+            if (!isNaN(v)) {
+                return v;
+            }
+            return override;
+        }
+        // If button is just turned on without specific selection, return true
+        return true;
+    }
+    return false;
+}
+
+function setupDynamicGenerationContextMenus() {
+    // Time of Day options - Enhanced with detailed transitional periods
+    const todMenuConfig = {
+        sections: [{
+            type: 'list',
+            title: 'Time of Day',
+            items: [
+                { text: '🌅 Dawn - Pre-sunrise soft light', action: 'setTodOverride', value: 'dawn' },
+                { text: '🌄 Sunrise - Sun rising, golden light', action: 'setTodOverride', value: 'sunrise' },
+                { text: '🌅 Early Morning - Post-sunrise fresh air', action: 'setTodOverride', value: 'early_morning' },
+                { text: '🌞 Morning - Mid-morning bright light', action: 'setTodOverride', value: 'morning' },
+                { text: '☀️ Late Morning - Approaching noon', action: 'setTodOverride', value: 'late_morning' },
+                { text: '☀️ Daytime - Sun at highest point', action: 'setTodOverride', value: 'daytime' },
+                { text: '☀️ Afternoon - Full warm sunlight', action: 'setTodOverride', value: 'afternoon' },
+                { text: '🌅 Late Afternoon - Golden hour approaching', action: 'setTodOverride', value: 'late_afternoon' },
+                { text: '🌅 Golden Hour - Warm magical light', action: 'setTodOverride', value: 'golden_hour' },
+                { text: '🌇 Sunset - Sun setting, dramatic colors', action: 'setTodOverride', value: 'sunset' },
+                { text: '🌆 Dusk - Fading light to twilight', action: 'setTodOverride', value: 'dusk' },
+                { text: '🌃 Early Evening - Residual twilight', action: 'setTodOverride', value: 'early_evening' },
+                { text: '🌙 Evening - Full night atmosphere', action: 'setTodOverride', value: 'evening' },
+                { text: '🌙 Late Evening - Deep night darkness', action: 'setTodOverride', value: 'late_evening' },
+                { text: '🌙 Midnight - Complete darkness', action: 'setTodOverride', value: 'midnight' }
+            ]
+        }]
+    };
+
+    // Weather options - Comprehensive weather conditions
+    const weatherMenuConfig = {
+        sections: [
+            {
+            type: 'list',
+                title: 'Clear & Fair Weather',
+            items: [
+                    { text: '☀️ Clear Sky - Perfect blue sky, no clouds', action: 'setWeatherOverride', value: 'clear_sky' },
+                    { text: '🌤️ Few Clouds - Mostly clear with scattered clouds', action: 'setWeatherOverride', value: 'few_clouds' },
+                    { text: '⛅ Partly Cloudy - Mix of sun and clouds', action: 'setWeatherOverride', value: 'partly_cloudy' },
+                    { text: '🌤️ Fair Weather - Pleasant, mild conditions', action: 'setWeatherOverride', value: 'fair' }
+                ]
+            },
+            {
+                type: 'list',
+                title: 'Cloudy Conditions',
+                items: [
+                    { text: '☁️ Scattered Clouds - Some cloud coverage', action: 'setWeatherOverride', value: 'scattered_clouds' },
+                    { text: '☁️ Broken Clouds - Significant cloud coverage', action: 'setWeatherOverride', value: 'broken_clouds' },
+                    { text: '☁️ Overcast - Completely cloudy sky', action: 'setWeatherOverride', value: 'overcast' },
+                    { text: '🌫️ Mostly Cloudy - Predominantly cloudy', action: 'setWeatherOverride', value: 'mostly_cloudy' }
+                ]
+            },
+            {
+                type: 'list',
+                title: 'Precipitation',
+                items: [
+                    { text: '🌦️ Light Rain - Gentle, steady rain', action: 'setWeatherOverride', value: 'light_rain' },
+                    { text: '🌧️ Moderate Rain - Steady rainfall', action: 'setWeatherOverride', value: 'moderate_rain' },
+                    { text: '⛈️ Heavy Rain - Intense downpour', action: 'setWeatherOverride', value: 'heavy_rain' },
+                    { text: '🌨️ Light Snow - Gentle snowfall', action: 'setWeatherOverride', value: 'light_snow' },
+                    { text: '❄️ Moderate Snow - Steady snow', action: 'setWeatherOverride', value: 'moderate_snow' },
+                    { text: '❄️ Heavy Snow - Intense snowfall', action: 'setWeatherOverride', value: 'heavy_snow' },
+                    { text: '🌧️ Freezing Rain - Rain that freezes on contact', action: 'setWeatherOverride', value: 'freezing_rain' },
+                    { text: '🌨️ Sleet - Mix of rain and snow', action: 'setWeatherOverride', value: 'sleet' }
+                ]
+            },
+            {
+                type: 'list',
+                title: 'Severe Weather',
+                items: [
+                    { text: '⛈️ Thunderstorm - Lightning and thunder', action: 'setWeatherOverride', value: 'thunderstorm' },
+                    { text: '⛈️ Severe Thunderstorm - Intense electrical storm', action: 'setWeatherOverride', value: 'severe_thunderstorm' },
+                    { text: '🌪️ Tornado - Severe rotating storm', action: 'setWeatherOverride', value: 'tornado' },
+                    { text: '🌀 Hurricane - Tropical cyclone', action: 'setWeatherOverride', value: 'hurricane' },
+                    { text: '🌊 Tropical Storm - Weaker tropical system', action: 'setWeatherOverride', value: 'tropical_storm' }
+                ]
+            },
+            {
+                type: 'list',
+                title: 'Atmospheric Conditions',
+                items: [
+                    { text: '🌫️ Mist - Light fog, poor visibility', action: 'setWeatherOverride', value: 'mist' },
+                    { text: '🌫️ Fog - Dense fog, very poor visibility', action: 'setWeatherOverride', value: 'fog' },
+                    { text: '🌫️ Dense Fog - Extremely poor visibility', action: 'setWeatherOverride', value: 'dense_fog' },
+                    { text: '💨 Haze - Atmospheric particles reducing visibility', action: 'setWeatherOverride', value: 'haze' },
+                    { text: '🏜️ Dust - Dusty conditions', action: 'setWeatherOverride', value: 'dust' },
+                    { text: '🌋 Volcanic Ash - Ash from volcanic activity', action: 'setWeatherOverride', value: 'volcanic_ash' },
+                    { text: '💨 Sand - Sandy conditions', action: 'setWeatherOverride', value: 'sand' },
+                    { text: '💨 Squalls - Sudden, strong winds', action: 'setWeatherOverride', value: 'squalls' }
+                ]
+            },
+            {
+                type: 'list',
+                title: 'Special Conditions',
+                items: [
+                    { text: '🌈 Rainbow - Colorful arc after rain', action: 'setWeatherOverride', value: 'rainbow' },
+                    { text: '❄️ Blizzard - Severe snowstorm with high winds', action: 'setWeatherOverride', value: 'blizzard' },
+                    { text: '🌊 High Surf - Large ocean waves', action: 'setWeatherOverride', value: 'high_surf' },
+                    { text: '☀️ Heat Wave - Extremely hot conditions', action: 'setWeatherOverride', value: 'heat_wave' },
+                    { text: '🥶 Cold Wave - Extremely cold conditions', action: 'setWeatherOverride', value: 'cold_wave' }
+                ]
+            }
+        ]
+    };
+
+    // Season options
+    const seasonMenuConfig = {
+        sections: [
+            {
+            type: 'list',
+            title: 'Season',
+            items: [
+                    { text: '🌿 Seasonal Decor', action: 'setSeasonOverride', value: true },
+                    { text: '🎯 Nearest Holiday', action: 'setSeasonOverride', value: 'nearest' },
+                    { separator: true },
+                    { text: '🌸 Spring', action: 'setSeasonOverride', value: 1 },
+                    { text: '☀️ Summer', action: 'setSeasonOverride', value: 2 },
+                    { text: '🍂 Autumn', action: 'setSeasonOverride', value: 3 },
+                    { text: '❄️ Winter', action: 'setSeasonOverride', value: 4 },
+                    {
+                        text: '🎉 Holiday',
+                        submenu: [
+                            { text: '🎄 Christmas', action: 'setSeasonOverride', value: 10 },
+                            { text: '🎆 New Year\'s', action: 'setSeasonOverride', value: 11 },
+                            { text: '👻 Halloween', action: 'setSeasonOverride', value: 12 },
+                            { text: '🦃 Thanksgiving', action: 'setSeasonOverride', value: 13 },
+                            { text: '🇺🇸 Independence Day', action: 'setSeasonOverride', value: 14 },
+                            { text: '💝 Valentine\'s Day', action: 'setSeasonOverride', value: 15 },
+                            { text: '🐰 Easter', action: 'setSeasonOverride', value: 16 },
+                            { text: '🍀 St. Patrick\'s Day', action: 'setSeasonOverride', value: 17 },
+                            { text: '🏖️ Memorial Day', action: 'setSeasonOverride', value: 18 },
+                            { text: '⚽ Labor Day', action: 'setSeasonOverride', value: 19 },
+                            { text: '🎖️ Veterans Day', action: 'setSeasonOverride', value: 20 },
+                            { text: '🎎 Japanese New Year', action: 'setSeasonOverride', value: 21 },
+                            { text: '🌸 Cherry Blossom', action: 'setSeasonOverride', value: 22 },
+                            { text: '🏮 Tanabata Festival', action: 'setSeasonOverride', value: 23 },
+                            { text: '🎌 Golden Week', action: 'setSeasonOverride', value: 24 },
+                            { text: '🎏 Children\'s Day', action: 'setSeasonOverride', value: 25 },
+                            { text: '🎑 Tsukimi', action: 'setSeasonOverride', value: 26 },
+                            { text: '🪔 Obon Festival', action: 'setSeasonOverride', value: 27 }
+                        ]
+                    }
+                ]
+            }
+        ]
+    };
+
+    // Activity options
+    const activityMenuConfig = {
+        sections: [{
+            type: 'list',
+            title: 'Activity',
+            items: [
+                { text: 'Resting', action: 'setActivityOverride', value: 1 },
+                { text: 'Walking', action: 'setActivityOverride', value: 2 },
+                { text: 'Running', action: 'setActivityOverride', value: 3 },
+                { text: 'Working', action: 'setActivityOverride', value: 4 },
+                { text: 'Playing', action: 'setActivityOverride', value: 5 },
+                { text: 'Traveling', action: 'setActivityOverride', value: 6 }
+            ]
+        }]
+    };
+
+    // Location options
+    const locationMenuConfig = {
+        sections: [{
+            type: 'list',
+            title: 'Location',
+            items: [
+                { text: 'Home', action: 'setLocationOverride', value: 1 },
+                { text: 'Office', action: 'setLocationOverride', value: 2 },
+                { text: 'Outdoor', action: 'setLocationOverride', value: 3 },
+                { text: 'Urban', action: 'setLocationOverride', value: 4 },
+                { text: 'Rural', action: 'setLocationOverride', value: 5 },
+                { text: 'Beach', action: 'setLocationOverride', value: 6 },
+                { text: 'Mountain', action: 'setLocationOverride', value: 7 },
+                { text: 'Forest', action: 'setLocationOverride', value: 8 }
+            ]
+        }]
+    };
+
+    const lockMenuConfig = {
+        sections: [{
+            type: 'list',
+            title: 'Cache Responses',
+            loadfn: function(section) {
+                // Show timestamp in header if compiled prompt exists
+                const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
+                if (compiledPrompt && compiledPrompt.timestamp) {
+                    const date = new Date(compiledPrompt.timestamp);
+                    const timeString = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    section.title = `Cache Responses (Last: ${timeString})`;
+                } else {
+                    section.title = 'Cache Responses';
+                }
+            },
+            items: [
+                {
+                    text: 'Use Cache Response',
+                    action: 'toggleUseCache',
+                    icon: 'fas fa-floppy-disk',
+                    loadfn: function(item) {
+                        const lockBtn = document.getElementById('lockBtn');
+                        const hasCache = window.dynamicGenerationData?.compiled_prompt;
+                        const useCache = lockBtn?.getAttribute('data-use-cache') === 'true';
+
+                        item.disabled = !hasCache;
+                        item.icon = useCache ? 'fas fa-bot' : 'fas fa-floppy-disk';
+                        item.text = useCache ? 'Regenerate Data' : 'Use Cache Response';
+                        item.className = useCache ? 'text-success' : 'text-danger';
+                    }
+                },
+                {
+                    text: 'Erase Cache',
+                    action: 'clearCompiledPrompt',
+                    className: 'text-danger',
+                    icon: 'fas fa-recycle',
+                    loadfn: function(item) {
+                        const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
+                        item.disabled = !compiledPrompt;
+                    }
+                }
+            ]
+        }]
+    };
+
+    // Attach context menus to buttons
+    window.contextMenu.attachToElement(document.getElementById('todBtn'), todMenuConfig);
+    window.contextMenu.attachToElement(document.getElementById('weatherBtn'), weatherMenuConfig);
+    window.contextMenu.attachToElement(document.getElementById('seasonBtn'), seasonMenuConfig);
+    window.contextMenu.attachToElement(document.getElementById('activityBtn'), activityMenuConfig);
+    window.contextMenu.attachToElement(document.getElementById('locationBtn'), locationMenuConfig);
+    window.contextMenu.attachToElement(document.getElementById('lockBtn'), lockMenuConfig);
+}
+
+// Handle context menu actions
+document.addEventListener('contextMenuAction', (e) => {
+    const { action, target } = e.detail;
+
+    if (action === 'setTodOverride') {
+        setDynamicOverride(document.getElementById('todBtn'), e.detail.item.value);
+    } else if (action === 'setWeatherOverride') {
+        setDynamicOverride(document.getElementById('weatherBtn'), e.detail.item.value);
+    } else if (action === 'setSeasonOverride') {
+        setSeasonOverride(document.getElementById('seasonBtn'), e.detail.item.value);
+    } else if (action === 'setActivityOverride') {
+        setDynamicOverride(document.getElementById('activityBtn'), e.detail.item.value);
+    } else if (action === 'setLocationOverride') {
+        setDynamicOverride(document.getElementById('locationBtn'), e.detail.item.value);
+    } else if (action === 'clearCompiledPrompt') {
+        clearCompiledPrompt();
+    } else if (action === 'toggleUseCache') {
+        // Toggle whether to include compiled_prompt in requests
+        const lockBtn = document.getElementById('lockBtn');
+        if (lockBtn) {
+            const currentUseCache = lockBtn.getAttribute('data-use-cache') === 'true';
+            const newUseCache = !currentUseCache;
+            lockBtn.setAttribute('data-use-cache', newUseCache.toString());
+
+            console.log(`Include compiled_prompt in requests: ${newUseCache ? 'enabled' : 'disabled'}`);
+        }
+    }
+});
+
+function setDynamicOverride(btn, value) {
+    btn.setAttribute('data-override', value);
+    btn.dataset.state = 'on';
+    btn.classList.add('active');
+    updateDynamicGenerationToggleBtn();
+}
+
+function setSeasonOverride(btn, value) {
+    // Handle different seasonal override types
+    if (value === true) {
+        // Seasonal Decor (smart mode)
+        btn.setAttribute('data-override', 'true');
+        btn.dataset.state = 'on';
+        btn.classList.add('active');
+    } else if (value === 'nearest') {
+        // Nearest Holiday
+        btn.setAttribute('data-override', 'nearest');
+        btn.dataset.state = 'on';
+        btn.classList.add('active');
+    } else if (value === false || value === null) {
+        // Disable seasonal
+        btn.dataset.state = 'off';
+        btn.removeAttribute('data-override');
+        btn.classList.remove('active');
+    } else {
+        // Season index (1-4) or holiday index (10-27)
+        btn.setAttribute('data-override', value);
+        btn.dataset.state = 'on';
+        btn.classList.add('active');
+    }
+
+    updateDynamicGenerationToggleBtn();
 }
 
 // TRANSFORMATION SYSTEM - Move to transformationManager.js
@@ -995,15 +1573,15 @@ function setupEventListeners() {
     // PRESET MANAGEMENT SYSTEM - Preset name input and button events
     manualPresetName.addEventListener('input', () => {
         validatePresetWithTimeout();
-        //manualPresetToggleText.textContent = manualPresetName.value.trim();
+        updateManualPresetPlaceholder();
     });
     manualPresetName.addEventListener('keyup', () => {
         validatePresetWithTimeout();
-        //manualPresetToggleText.textContent = manualPresetName.value.trim();
+        updateManualPresetPlaceholder();
     });
     manualPresetName.addEventListener('change', () => {
         validatePresetWithTimeout();
-        //manualPresetToggleText.textContent = manualPresetName.value.trim();
+        updateManualPresetPlaceholder();
     });
 
     // PRESET MANAGEMENT SYSTEM - Load, delete, and save button events
@@ -1012,13 +1590,6 @@ function setupEventListeners() {
         const presetName = manualPresetName.value.trim();
         if (presetName) {
             loadPresetIntoForm(presetName);
-        }
-    });
-    manualPresetDeleteBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        const presetName = manualPresetName.value.trim();
-        if (presetName) {
-            deletePreset(presetName);
         }
     });
     manualSaveBtn.addEventListener('click', (e) => {
@@ -1188,6 +1759,11 @@ function setupEventListeners() {
         deleteManualPreviewImage();
     });
 
+    manualPresetManagerBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        showPresetManager();
+    });
+
     manualPreviewPinBtn.addEventListener('click', (e) => {
         e.preventDefault();
         if (window.currentManualPreviewImage) {
@@ -1249,6 +1825,11 @@ function setupEventListeners() {
         e.preventDefault();
         forcePaidRequest = !forcePaidRequest;
         paidRequestToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
+    });
+
+    manualControlsToggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        manualModal.classList.toggle('min-controls');
     });
 
     qualityToggleBtn.addEventListener('click', (e) => {
@@ -2017,7 +2598,58 @@ function setupEventListeners() {
         }
         // Update the button state after toggling
         updateManualPresetToggleBtn();
+        updateManualPresetPlaceholder();
     });
+
+    // Dynamic Generation toggle button click handler
+    dynamicGenerationToggleBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (dynamicGenerationGroup.classList.contains('hidden')) {
+            dynamicGenerationGroup.classList.remove('hidden');
+        } else {
+            dynamicGenerationGroup.classList.add('hidden');
+        }
+        // Update the button state after toggling
+        updateDynamicGenerationToggleBtn();
+    });
+
+    // Dynamic Generation button click handlers
+    [todBtn, weatherBtn, seasonBtn, clothingBtn, activityBtn, actionBtn, locationBtn, optimizeBtn, dynamicGenerationLockedBtn, creativeBtn].forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const state = btn.dataset.state === 'on' ? 'off' : 'on';
+            btn.dataset.state = state;
+            btn.classList.toggle('active', state === 'on');
+
+            // Clear override when turning off
+            if (state === 'off') {
+                btn.removeAttribute('data-override');
+            }
+        });
+    });
+
+    // Dynamic Generation view compiled button
+    if (dynamicGenerationViewBtn) {
+        dynamicGenerationViewBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            showCompiledPromptModal();
+        });
+    }
+
+    // Compiled Prompt Modal close button
+    const closeCompiledPromptBtn = document.getElementById('closeCompiledPromptBtn');
+    if (closeCompiledPromptBtn) {
+        closeCompiledPromptBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const modal = document.getElementById('compiledPromptModal');
+            if (modal) {
+                closeModal(modal);
+            }
+        });
+    }
+
+    // Setup context menus for dynamic generation buttons
+    setupDynamicGenerationContextMenus();
 
     // GALLERY COLUMN CONTROLS SYSTEM - Move to galleryColumnManager.js
     // This system handles gallery column adjustment via scroll wheel and buttons
@@ -2141,8 +2773,6 @@ function setupEventListeners() {
     sproutSeedBtn.addEventListener('click', toggleSproutSeed);
     loadSeedBtn.addEventListener('click', loadSeedFromPreview);
     updateSproutSeedButton();
-
-    const varietyBtn = document.getElementById('varietyBtn');
     if (varietyBtn) {
         varietyBtn.addEventListener('click', function(e) {
             e.preventDefault();
@@ -2179,6 +2809,7 @@ function setupEventListeners() {
     setupDropdown(ucPresetsDropdown, ucPresetsDropdownBtn, ucPresetsDropdownMenu, renderUcPresetsDropdown, () => selectedUcPreset, { preventFocusTransfer: true });
 
     updatePresetLoadSaveState();
+    updateManualPresetPlaceholder();
 
     setupTransformationDropdownListeners();
 
@@ -3657,6 +4288,11 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
 
         // Update navigation buttons
         updateManualPreviewNavigation();
+
+        // Update dynamic generation overlay
+        if (typeof updateDynamicGenerationOverlay === 'function') {
+            updateDynamicGenerationOverlay();
+        }
     }
 }
 
@@ -6292,11 +6928,11 @@ function addCharacterPrompt() {
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
                                             <i class="fas fa-scale-unbalanced-flip"></i>
                                         </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
+                                            <i class="fas fa-book-font"></i>
+                                        </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
                                             <i class="fas fa-search"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                                            <i class="fas fa-book-skull"></i>
                                         </button>
                                     </div>
                                     <!-- Search Mode Buttons (Hidden by default) -->
@@ -6335,11 +6971,11 @@ function addCharacterPrompt() {
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
                                             <i class="fas fa-scale-unbalanced-flip"></i>
                                         </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
+                                            <i class="fas fa-book-font"></i>
+                                        </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
                                             <i class="fas fa-search"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                                            <i class="fas fa-book-skull"></i>
                                         </button>
                                     </div>
                                     <!-- Search Mode Buttons (Hidden by default) -->
@@ -6771,11 +7407,11 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
                                             <i class="fas fa-scale-unbalanced-flip"></i>
                                         </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
+                                            <i class="fas fa-book-font"></i>
+                                        </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
                                             <i class="fas fa-search"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                                            <i class="fas fa-book-skull"></i>
                                         </button>
                                     </div>
                                     <!-- Search Mode Buttons (Hidden by default) -->
@@ -6814,11 +7450,11 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
                                             <i class="fas fa-scale-unbalanced-flip"></i>
                                         </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
+                                            <i class="fas fa-book-font"></i>
+                                        </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
                                             <i class="fas fa-search"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                                            <i class="fas fa-book-skull"></i>
                                         </button>
                                     </div>
                                     <!-- Search Mode Buttons (Hidden by default) -->

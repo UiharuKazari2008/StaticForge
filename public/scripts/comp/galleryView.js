@@ -891,6 +891,11 @@ function createGalleryItem(image, index) {
                             tooltip: 'Copy',
                             action: 'copy'
                         },
+                        {
+                            icon: 'fas fa-external-link-alt',
+                            tooltip: 'Open in Window',
+                            action: 'open-in-window'
+                        },
                     ]
                 },
                 {
@@ -2660,6 +2665,15 @@ function handleGalleryContextMenuAction(event) {
         case 'copy':
             // Copy image to clipboard directly
             copyImageToClipboard(image);
+            break;
+
+        case 'open-in-window':
+            // Open image in a new image viewer window with full image data
+            const viewer = openGalleryImageInViewer(image);
+            if (viewer && viewer.element) {
+                // Store the full image data in the modal's dataset for future features
+                viewer.element.dataset.imageData = JSON.stringify(image);
+            }
             break;
             
         case 'move':

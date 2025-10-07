@@ -1346,6 +1346,81 @@ async function generateCombinedSpriteSheet(images, outputPath, width, height) {
 }
 
 // On startup: generate missing previews and clean up orphans
+async function syncCachePreviews() {
+    console.log('🔄 Checking cache previews...');
+
+    // Ensure upload cache and preview cache directories exist
+    if (!fs.existsSync(uploadCacheDir)) {
+        console.log('📁 Upload cache directory does not exist, skipping cache preview sync');
+        return;
+    }
+    if (!fs.existsSync(previewCacheDir)) {
+        fs.mkdirSync(previewCacheDir, { recursive: true });
+    }
+
+    // Get all files in upload cache
+    const cacheFiles = fs.readdirSync(uploadCacheDir);
+
+    console.log(`📊 Found ${cacheFiles.length} cache files`);
+
+    // Find cache files that don't have previews
+    let missingPreviews = 0;
+    let generatedPreviews = 0;
+
+    for (const cacheFile of cacheFiles) {
+        const cachePath = path.join(uploadCacheDir, cacheFile);
+        const previewPath = path.join(previewCacheDir, `${cacheFile}.webp`);
+
+        if (!fs.existsSync(previewPath)) {
+            try {
+                missingPreviews++;
+                console.log(`📸 Generating cache preview for: ${cacheFile}`);
+
+                await sharp(cachePath)
+                    .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+                    .webp({ quality: 80 })
+                    .toFile(previewPath);
+
+                generatedPreviews++;
+                console.log(`✅ Generated cache preview: ${cacheFile}.webp`);
+            } catch (error) {
+                console.error(`❌ Failed to generate cache preview for ${cacheFile}:`, error);
+            }
+        }
+    }
+
+    if (missingPreviews === 0) {
+        console.log('✅ All cache previews are up to date');
+    } else {
+        console.log(`📸 Generated ${generatedPreviews}/${missingPreviews} missing cache previews`);
+    }
+
+    // Remove orphan cache previews (previews without corresponding cache files)
+    /*const previewFiles = fs.readdirSync(previewCacheDir).filter(f => f.endsWith('.webp'));
+    let orphanCount = 0;
+
+    for (const previewFile of previewFiles) {
+        // Remove .webp extension to get original filename
+        const baseName = previewFile.replace(/\.webp$/, '');
+        const sourcePath = path.join(uploadCacheDir, baseName);
+
+        if (!fs.existsSync(sourcePath)) {
+            const orphanPath = path.join(previewCacheDir, previewFile);
+            fs.unlinkSync(orphanPath);
+            orphanCount++;
+            console.log(`🧹 Removed orphan cache preview: ${previewFile}`);
+        }
+    }
+
+    if (orphanCount > 0) {
+        console.log(`🧹 Cache cleanup complete: ${orphanCount} orphan previews removed`);
+    } else {
+        console.log('🧹 No orphan cache previews found');
+    }
+
+    console.log('✅ Cache preview synchronization complete');*/
+}
+
 async function syncPreviews() {
     console.log('🔄 Starting preview synchronization...');
     
@@ -1476,6 +1551,9 @@ async function syncPreviews() {
         console.log('🧹 No orphan previews found');
     }
     
+    // Also ensure all .cache/upload files have previews in .cache/preview
+    await syncCachePreviews();
+
     console.log('✅ Preview synchronization complete');
 }
 

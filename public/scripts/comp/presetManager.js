@@ -46,12 +46,14 @@ function getQueueStatus() {
 function initializePresetManager() {
     const presetManagerBtn = document.getElementById('presetManagerBtn');
     const closePresetManagerBtn = document.getElementById('closePresetManagerBtn');
+    const togglePresetSearchBtn = document.getElementById('togglePresetSearchBtn');
     const presetSearch = document.getElementById('presetSearch');
     const presetPrevBtn = document.getElementById('presetPrevBtn');
     const presetNextBtn = document.getElementById('presetNextBtn');
 
     // Event listeners
     closePresetManagerBtn.addEventListener('click', hidePresetManager);
+    togglePresetSearchBtn.addEventListener('click', togglePresetSearch);
     presetSearch.addEventListener('input', debounce(async () => {
         presetPaginationInfo.currentPage = 1; // Reset to first page when searching
         presetSearchTerm = presetSearch.value;
@@ -157,6 +159,22 @@ function hidePresetManager() {
     const searchInput = document.getElementById('presetSearch');
     if (searchInput) {
         searchInput.value = '';
+    }
+    const presetSearchContainer = document.getElementById('presetSearchContainer');
+    if (presetSearchContainer) {
+        presetSearchContainer.classList.add('hidden');
+    }
+}
+
+// Toggle preset search
+function togglePresetSearch() {
+    const toggleContainer = document.getElementById('presetSearchContainer');
+    if (toggleContainer) {
+        toggleContainer.classList.toggle('hidden');
+    }
+    const searchInput = document.getElementById('presetSearch');
+    if (searchInput) {
+        searchInput.focus();
     }
 }
 
@@ -780,7 +798,50 @@ async function loadPresetIntoUpdateModal(presetName) {
     if (scaleToggle) {
         scaleToggle.setAttribute('data-state', preset.request_upscale ? 'on' : 'off');
     }
-    
+
+    // Set dynamic generation buttons
+    const dynamicGenerationButtons = [
+        { id: 'updatePresetTodBtn', key: 'tod' },
+        { id: 'updatePresetWeatherBtn', key: 'weather' },
+        { id: 'updatePresetSeasonBtn', key: 'season' },
+        { id: 'updatePresetClothingBtn', key: 'clothing' },
+        { id: 'updatePresetActivityBtn', key: 'activity' },
+        { id: 'updatePresetActionBtn', key: 'action' },
+        { id: 'updatePresetLocationBtn', key: 'location' },
+        { id: 'updatePresetOptimizeBtn', key: 'optimize' },
+        { id: 'updatePresetCreativeBtn', key: 'creative' },
+        { id: 'updatePresetUseCacheResponsesBtn', key: 'use_cache_responses' }
+    ];
+
+    dynamicGenerationButtons.forEach(({ id, key }) => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            // Check if preset has dynamic_generation settings
+            let state = 'off';
+            let override = '';
+
+            if (key === 'use_cache_responses') {
+                // Handle use_cache_responses_preset separately
+                state = (preset.use_cache_responses_preset !== false) ? 'on' : 'off';
+            } else if (preset.dynamic_generation && preset.dynamic_generation[key] !== undefined) {
+                const value = preset.dynamic_generation[key];
+                if (typeof value === 'boolean') {
+                    state = value ? 'on' : 'off';
+                } else if (typeof value === 'string' || typeof value === 'number') {
+                    // For override values
+                    state = 'on';
+                    override = value.toString();
+                }
+            }
+
+            btn.setAttribute('data-state', state);
+            if (override) {
+                btn.setAttribute('data-override', override);
+            } else {
+                btn.removeAttribute('data-override');
+            }
+        }
+    });
 
 }
 
@@ -964,6 +1025,31 @@ function initializeUpdatePresetToggleButtons() {
             scaleToggle.setAttribute('data-state', newState);
         });
     }
+
+    // Dynamic generation buttons
+    const dynamicGenerationButtons = [
+        'updatePresetTodBtn', 'updatePresetWeatherBtn', 'updatePresetSeasonBtn',
+        'updatePresetClothingBtn', 'updatePresetActivityBtn', 'updatePresetActionBtn',
+        'updatePresetLocationBtn', 'updatePresetOptimizeBtn', 'updatePresetCreativeBtn',
+        'updatePresetUseCacheResponsesBtn'
+    ];
+
+    dynamicGenerationButtons.forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const state = btn.dataset.state === 'on' ? 'off' : 'on';
+                btn.dataset.state = state;
+                btn.classList.toggle('active', state === 'on');
+
+                // Clear override when turning off (for buttons that support overrides)
+                if (state === 'off' && btn.hasAttribute('data-override')) {
+                    btn.removeAttribute('data-override');
+                }
+            });
+        }
+    });
 }
 
 // Hide update preset modal
@@ -972,7 +1058,32 @@ function hideUpdatePresetModal() {
     if (modal) {
         closeModal(modal);
     }
-    
+
+    const searchInput = document.getElementById('presetSearch');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    const presetSearchContainer = document.getElementById('presetSearchContainer');
+    if (presetSearchContainer) {
+        presetSearchContainer.classList.add('hidden');
+    }
+
+    // Reset dynamic generation buttons
+    const dynamicGenerationButtons = [
+        'updatePresetTodBtn', 'updatePresetWeatherBtn', 'updatePresetSeasonBtn',
+        'updatePresetClothingBtn', 'updatePresetActivityBtn', 'updatePresetActionBtn',
+        'updatePresetLocationBtn', 'updatePresetOptimizeBtn', 'updatePresetCreativeBtn',
+        'updatePresetUseCacheResponsesBtn'
+    ];
+
+    dynamicGenerationButtons.forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            btn.setAttribute('data-state', 'off');
+            btn.removeAttribute('data-override');
+        }
+    });
+
     // Clear editing state
     editingPresetName = null;
 }
@@ -1071,13 +1182,63 @@ function getUpdatePresetFormData() {
     const resolutionSelected = document.getElementById('updatePresetResolutionSelected');
     const scaleToggle = document.getElementById('updatePresetScaleInput');
     const uuidToggle = document.getElementById('updatePresetRegenerateUuidBtn');
-    
-    return {
+
+    // Collect dynamic generation settings
+    const dynamicGenerationButtons = [
+        { id: 'updatePresetTodBtn', key: 'tod' },
+        { id: 'updatePresetWeatherBtn', key: 'weather' },
+        { id: 'updatePresetSeasonBtn', key: 'season' },
+        { id: 'updatePresetClothingBtn', key: 'clothing' },
+        { id: 'updatePresetActivityBtn', key: 'activity' },
+        { id: 'updatePresetActionBtn', key: 'action' },
+        { id: 'updatePresetLocationBtn', key: 'location' },
+        { id: 'updatePresetOptimizeBtn', key: 'optimize' },
+        { id: 'updatePresetCreativeBtn', key: 'creative' }
+    ];
+
+    const dynamic_generation = {};
+    let hasDynamicGeneration = false;
+
+    dynamicGenerationButtons.forEach(({ id, key }) => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            const state = btn.dataset.state;
+            const override = btn.dataset.override;
+
+            if (state === 'on') {
+                hasDynamicGeneration = true;
+                if (override) {
+                    // If there's an override, store the override value
+                    dynamic_generation[key] = override;
+                } else {
+                    // Otherwise, store boolean true
+                    dynamic_generation[key] = true;
+                }
+            }
+        }
+    });
+
+    // Handle useCacheResponsesBtn separately as a preset-only setting
+    const useCacheResponsesBtn = document.getElementById('updatePresetUseCacheResponsesBtn');
+    let use_cache_responses_preset = true; // Default to true
+    if (useCacheResponsesBtn) {
+        use_cache_responses_preset = useCacheResponsesBtn.dataset.state === 'on';
+    }
+
+    const formData = {
         name: nameInput?.value?.trim() || '',
         target_workspace: workspaceSelected?.dataset?.value || 'default',
         resolution: resolutionSelected?.dataset?.value.toUpperCase() || '',
-        request_upscale: scaleToggle?.getAttribute('data-state') === 'on'
+        request_upscale: scaleToggle?.getAttribute('data-state') === 'on',
+        use_cache_responses_preset: use_cache_responses_preset
     };
+
+    // Only include dynamic_generation if there are settings configured
+    if (hasDynamicGeneration) {
+        formData.dynamic_generation = dynamic_generation;
+    }
+
+    return formData;
 }
 
 // Delete preset
@@ -1123,11 +1284,13 @@ async function updatePresetSimple(presetName, updates) {
         
         // Only include fields that are actually being updated
         const updateData = { presetName };
-        
+
         if (updates.name !== undefined) updateData.name = updates.name;
         if (updates.target_workspace !== undefined) updateData.target_workspace = updates.target_workspace;
         if (updates.resolution !== undefined) updateData.resolution = updates.resolution;
         if (updates.request_upscale !== undefined) updateData.request_upscale = updates.request_upscale;
+        if (updates.dynamic_generation !== undefined) updateData.dynamic_generation = updates.dynamic_generation;
+        if (updates.use_cache_responses_preset !== undefined) updateData.use_cache_responses_preset = updates.use_cache_responses_preset;
         
         const result = await wsClient.updatePreset(presetName, updateData);
         

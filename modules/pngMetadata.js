@@ -323,7 +323,8 @@ function extractNovelAIMetadata(filePath) {
                     'director_session_id',
                     'director_message_id',
                     'software',
-                    'history'
+                    'history',
+                    'dynamic_generation'
                 ];
                 
                 const filteredForgeData = {};
@@ -510,7 +511,8 @@ async function extractRelevantFields(meta, filename) {
             ) || meta.v4_prompt.use_coords
         ) : forgeData.use_coords || false,
         strength: meta.strength || forgeData.img2img_strength,
-        noise: meta.noise || forgeData.img2img_noise
+        noise: meta.noise || forgeData.img2img_noise,
+        dynamic_generation: forgeData.dynamic_generation
     };
 
     // If image_source is present, get width and height from the file and add to result
@@ -647,6 +649,11 @@ async function extractRelevantFields(meta, filename) {
     }
     if (forgeData.director_message_id) {
         result.director_message_id = forgeData.director_message_id;
+    }
+
+    // Add dynamic generation data
+    if (forgeData.dynamic_generation) {
+        result.dynamic_generation = forgeData.dynamic_generation;
     }
 
     return result;

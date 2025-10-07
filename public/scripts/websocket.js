@@ -1258,7 +1258,7 @@ class WebSocketClient {
         }
         
         // Handle all Director-related messages
-        if (message.type.startsWith('director_')) {
+        if (message.type.startsWith('director_') || message.type === 'dynamic_generation_response' || message.type === 'dynamic_generation_error') {
             // Trigger custom events for Director messages
             this.triggerEvent(message.type, message);
             return;
@@ -1714,10 +1714,10 @@ class WebSocketClient {
     }
 
     // Search methods
-    async searchCharacters(query, model) {
+    async searchCharacters(query, model, options = {}) {
         try {
             // Send ack-less search request (no response expected)
-            this.sendAcklessMessage('search_characters', { query, model });
+            this.sendAcklessMessage('search_characters', { query, model, requestId: options.requestId });
             return { success: true };
         } catch (error) {
             showGlassToast('error', 'Character search error', error.message, false);

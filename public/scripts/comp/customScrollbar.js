@@ -240,26 +240,29 @@ class CustomScrollbar {
             }, { passive: true });
         }
 
-        // Resize observer to update scrollbar when content changes
-        const resizeObserver = new ResizeObserver((entries) => {
-            entries.forEach(entry => {
-                // Check if height changed
-                const newHeight = entry.contentRect.height;
-                const oldHeight = this.scrollbars.get(element)?.lastHeight || 0;
-                
-                if (newHeight !== oldHeight) {
-                    // Store the new height
-                    const data = this.scrollbars.get(element);
-                    if (data) {
-                        data.lastHeight = newHeight;
-                    }
-                    
-                    // Update scrollbar visibility
-                    this.updateScrollbar(element);
-                }
-            });
+        // Resize observer to update scrollbar when content or container changes
+        const resizeObserver = new ResizeObserver(() => {
+            // Update scrollbar on any resize event - content or container size changes
+            this.updateScrollbar(element);
         });
+
+        // Observe both the scrollable content and the parent element
         resizeObserver.observe(scrollableContent);
+        resizeObserver.observe(element);
+
+        // Mutation observer to watch for content changes that might affect scrollability
+        const mutationObserver = new MutationObserver(() => {
+            // Update scrollbar when content is added, removed, or modified
+            this.updateScrollbar(element);
+        });
+
+        // Observe child additions/removals and subtree changes
+        mutationObserver.observe(scrollableContent, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+            attributes: true
+        });
     }
 
     updateScrollbar(element) {
@@ -267,20 +270,40 @@ class CustomScrollbar {
         if (!data) return;
 
         const { scrollableContent, scrollbar, thumb } = data;
-        
+
         const scrollHeight = scrollableContent.scrollHeight;
         const clientHeight = scrollableContent.clientHeight;
         const scrollTop = scrollableContent.scrollTop;
-        
+
         // Check if scrollbar is needed
         const needsScrollbar = scrollHeight > clientHeight;
-        
+
+        // Update scroll state classes
         if (needsScrollbar) {
+            // Add scroll-ready class when content is scrollable
+            element.classList.add('scroll-ready');
+
+            // Check scroll position for top/bottom classes
+            const atTop = scrollTop <= 0;
+            const atBottom = scrollTop >= scrollHeight - clientHeight;
+
+            if (atTop) {
+                element.classList.add('scroll-top');
+            } else {
+                element.classList.remove('scroll-top');
+            }
+
+            if (atBottom) {
+                element.classList.add('scroll-end');
+            } else {
+                element.classList.remove('scroll-end');
+            }
+
             // Calculate thumb position for static height
             const maxScrollDistance = scrollHeight - clientHeight;
             const scrollbarTrackHeight = scrollbar.offsetHeight - thumb.offsetHeight;
             const scrollRatio = maxScrollDistance > 0 ? scrollTop / maxScrollDistance : 0;
-            
+
             // Update thumb position
             const isReversed = element.classList.contains('reverse-scroll');
             if (isReversed) {
@@ -294,10 +317,13 @@ class CustomScrollbar {
                 thumb.style.top = `${thumbTop}px`;
                 thumb.style.bottom = 'auto';
             }
-            
+
             // Show scrollbar
             scrollbar.classList.remove('hidden');
         } else {
+            // Remove all scroll state classes when not scrollable
+            element.classList.remove('scroll-ready', 'scroll-top', 'scroll-end');
+
             // Hide scrollbar when not needed
             scrollbar.classList.add('hidden');
         }

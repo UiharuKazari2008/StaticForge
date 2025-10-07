@@ -39,7 +39,7 @@ class PromptTextareaToolbar {
 
         // Listen for toolbar button clicks
         document.addEventListener('click', (e) => {
-            if (e.target.closest('.toolbar-btn')) {
+            if (e.target.closest('.prompt-textarea-toolbar .toolbar-btn')) {
                 const button = e.target.closest('.toolbar-btn');
                 const action = button.dataset.action;
                 const textarea = this.getTextareaFromToolbar(button);

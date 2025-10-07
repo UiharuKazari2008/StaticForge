@@ -424,12 +424,12 @@ class Director {
 
         // Auto-expand textarea
         if (this.directorChatInput) {
-        this.directorChatInput.addEventListener('input', () => this.autoExpandTextarea());
-        this.directorChatInput.addEventListener('focus', () => this.autoExpandTextarea());
+        this.directorChatInput.addEventListener('input', (e) => this.autoExpandTextarea(e.target));
+        this.directorChatInput.addEventListener('focus', (e) => this.autoExpandTextarea(e.target));
         }
         if (this.directorUserIntent) {
-            this.directorUserIntent.addEventListener('input', () => this.autoExpandTextarea());
-            this.directorUserIntent.addEventListener('focus', () => this.autoExpandTextarea());
+            this.directorUserIntent.addEventListener('input', (e) => this.autoExpandTextarea(e.target));
+            this.directorUserIntent.addEventListener('focus', (e) => this.autoExpandTextarea(e.target));
         }
 
         // Image selection functionality
@@ -487,19 +487,30 @@ class Director {
     }
 
     // Auto-expand textarea as content grows
-    autoExpandTextarea() {
-        const textarea = this.directorChatInput;
-        if (!textarea) return;
+    autoExpandTextarea(targetTextarea = null) {
+        // Handle both directorChatInput and directorUserIntent
+        const textareas = [];
 
-        // Reset height to auto to get the correct scrollHeight
-        textarea.style.height = 'auto';
+        if (targetTextarea) {
+            textareas.push(targetTextarea);
+        } else {
+            if (this.directorChatInput) textareas.push(this.directorChatInput);
+            if (this.directorUserIntent) textareas.push(this.directorUserIntent);
+        }
 
-        // Set height to scrollHeight to fit all content
-        const scrollHeight = textarea.scrollHeight;
-        const minHeight = 32; // Minimum height in pixels (matches min-height from HTML)
-        const maxHeight = 320; // Maximum height to prevent excessive growth
+        textareas.forEach(textarea => {
+            if (!textarea) return;
 
-        textarea.style.height = Math.min(Math.max(scrollHeight, minHeight), maxHeight) + 'px';
+            // Reset height to auto to get the correct scrollHeight
+            textarea.style.height = 'auto';
+
+            // Set height to scrollHeight to fit all content
+            const scrollHeight = textarea.scrollHeight;
+            const minHeight = 32; // Minimum height in pixels (matches min-height from HTML)
+            const maxHeight = 320; // Maximum height to prevent excessive growth
+
+            textarea.style.height = Math.min(Math.max(scrollHeight, minHeight), maxHeight) + 'px';
+        });
     }
 
     // Update image selection button visibility based on mode
@@ -1349,7 +1360,7 @@ class Director {
         // Reset input after successful session creation
         if (this.directorUserIntent) {
             this.directorUserIntent.value = '';
-            this.autoExpandTextarea(); // Reset to minimum height
+            this.autoExpandTextarea(this.directorUserIntent); // Reset to minimum height
         }
 
         // Reset selected image data
@@ -1845,7 +1856,7 @@ class Director {
         this.directorChatInput.value = '';
 
         // Auto-expand textarea to reset to minimum height
-        this.autoExpandTextarea();
+        this.autoExpandTextarea(this.directorUserInput);
 
         // Scroll to bottom after adding user message
         this.scrollToBottom();
@@ -5747,7 +5758,7 @@ class Director {
         this.directorChatInput.value = messageText;
 
         // Auto-expand textarea to fit new content
-        this.autoExpandTextarea();
+        this.autoExpandTextarea(this.directorUserInput);
 
         // Focus on the input
         this.directorChatInput.focus();

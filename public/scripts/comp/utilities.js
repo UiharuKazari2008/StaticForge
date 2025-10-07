@@ -942,21 +942,20 @@ function autoResizeTextarea(textarea) {
             textarea.style.height = 'auto';
             const newScrollHeight = textarea.scrollHeight;
             if (newScrollHeight > 0) {
-                const newHeight = Math.max(newScrollHeight + totalPadding, minHeight);
+                const newHeight = parseInt(Math.max(newScrollHeight + totalPadding, minHeight).toFixed(0)) - 1;
                 textarea.style.height = newHeight + 'px';
 
                 // Update container height if it exists
                 const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
                 if (container) {
                     container.style.height = newHeight + 'px';
-                    container.style.minHeight = newHeight + 'px';
                 }
             }
         }, 5);
         return;
     }
 
-    const newHeight = Math.max(scrollHeight + totalPadding, minHeight);
+    const newHeight = (parseInt(Math.max(scrollHeight + totalPadding, minHeight).toFixed(0)) - 1);
 
     // Set the new height
     textarea.style.height = newHeight + 'px';
@@ -965,10 +964,9 @@ function autoResizeTextarea(textarea) {
     const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
     if (container) {
         const toolbar = container.querySelector('.prompt-textarea-toolbar');
-        const toolbarHeight = toolbar && !toolbar.classList.contains('hidden') ? toolbar.offsetHeight + 8 : 0; // 10px for margin-top
+        const toolbarHeight = toolbar && !toolbar.classList.contains('hidden') ? 50 : 0; // 10px for margin-top
         const totalHeight = newHeight + toolbarHeight;
         container.style.height = totalHeight + 'px';
-        container.style.minHeight = totalHeight + 'px';
     }
 }
 
@@ -1258,7 +1256,6 @@ function updatePresetLoadSaveState() {
     const manualLoadBtn = document.getElementById('manualLoadBtn');
     const manualSaveBtn = document.getElementById('manualSaveBtn');
     const manualPresetName = document.getElementById('manualPresetName');
-    const manualPresetDeleteBtn = document.getElementById('manualDeleteBtn');
 
     if (!manualLoadBtn || !manualSaveBtn || !manualPresetName) return;
 
@@ -1274,15 +1271,12 @@ function updatePresetLoadSaveState() {
         manualSaveBtn.classList.remove('disabled');
         if (isValidPreset) {
             manualLoadBtn.classList.remove('disabled');
-            if (manualPresetDeleteBtn) manualPresetDeleteBtn.classList.remove('hidden');
         } else {
             manualLoadBtn.classList.add('disabled');
-            if (manualPresetDeleteBtn) manualPresetDeleteBtn.classList.add('hidden');
         }
     } else {
         manualSaveBtn.classList.add('disabled');
         manualLoadBtn.classList.add('disabled');
-        if (manualPresetDeleteBtn) manualPresetDeleteBtn.classList.add('hidden');
     }
 }
 

@@ -18,7 +18,6 @@
 /*
 // Preset DOM Elements - Move these from app.js
 const manualPresetName = document.getElementById('manualPresetName');
-const manualPresetDeleteBtn = document.getElementById('manualDeleteBtn');
 const manualLoadBtn = document.getElementById('manualLoadBtn');
 const manualSaveBtn = document.getElementById('manualSaveBtn');
 const manualPresetToggleBtn = document.getElementById('manualPresetToggleBtn');

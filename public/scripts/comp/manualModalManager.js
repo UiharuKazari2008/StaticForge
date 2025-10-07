@@ -63,6 +63,7 @@ const manualPreviewDeleteBtn = document.getElementById('manualPreviewDeleteBtn')
 const manualStrengthValue = document.getElementById('manualStrengthValue');
 const manualNoiseValue = document.getElementById('manualNoiseValue');
 const paidRequestToggle = document.getElementById('paidRequestToggle');
+const manualControlsToggle = document.getElementById('controlsToggle');
 const previewContainer = document.getElementById('manualPreviewContainer');
 const previewStars = document.getElementById('previewStars');
 const previewBackgroundLines = document.getElementById('previewBackgroundLines');
@@ -86,6 +87,25 @@ const previewCharacterReferenceImageBtn = document.getElementById('previewCharac
 const manualRescaleOverlay = manualRescale?.parentElement?.querySelector('.percentage-input-overlay');
 const manualStrengthOverlay = manualStrengthValue?.parentElement?.querySelector('.percentage-input-overlay');
 const manualNoiseOverlay = manualNoiseValue?.parentElement?.querySelector('.percentage-input-overlay');
+const manualPresetPlaceholder = document.getElementById('manualPresetPlaceholder');
+const manualPresetPlaceholderText = document.getElementById('manualPresetPlaceholderText');
+const loadSeedBtn = document.getElementById('loadSeedBtn');
+const manualPresetManagerBtn = document.getElementById('manualPresetManagerBtn');
+
+// Dynamic Generation System
+const dynamicGenerationToggleBtn = document.getElementById('dynamicGenerationToggleBtn');
+const dynamicGenerationGroup = document.getElementById('dynamicGenerationGroup');
+const todBtn = document.getElementById('todBtn');
+const weatherBtn = document.getElementById('weatherBtn');
+const seasonBtn = document.getElementById('seasonBtn');
+const clothingBtn = document.getElementById('clothingBtn');
+const activityBtn = document.getElementById('activityBtn');
+const actionBtn = document.getElementById('actionBtn');
+const locationBtn = document.getElementById('locationBtn');
+const creativeBtn = document.getElementById('creativeBtn');
+const dynamicGenerationUndoBtn = document.getElementById('dynamicGenerationUndoBtn');
+const dynamicGenerationViewBtn = document.getElementById('dynamicGenerationViewBtn');
+const dynamicGenerationLockedBtn = document.getElementById('lockBtn');
 
 // Director Reference Elements
 const directorReferenceSection = document.getElementById('directorReferenceSection');
@@ -127,9 +147,7 @@ function showManualPreview() {
         if (previewSection) {
             previewSection.classList.add('active');
         }
-        setTimeout(() => { 
-            manualModal.classList.add('show-preview'); 
-        }, 1);
+        manualModal.classList.add('show-preview'); 
     }
 }
 
@@ -147,9 +165,7 @@ function hideManualPreviewResponsive() {
     if (previewSection) {
         previewSection.classList.remove('active');
     }
-    setTimeout(() => { 
-        manualModal.classList.remove('show-preview'); 
-    }, 500);
+    manualModal.classList.remove('show-preview'); 
 }
 
 function calculatePreviewRatio() {
@@ -687,6 +703,8 @@ function clearManualForm() {
     cleanupBlobUrls();
 
     manualForm.reset();
+    
+    manualModal.classList.remove('show-preview', 'min-controls');
 
     // Reset custom dropdowns to defaults
     selectManualModel('v4_5', '', true);
@@ -707,6 +725,33 @@ function clearManualForm() {
     forcePaidRequest = false;
     if (paidRequestToggle) {
         paidRequestToggle.setAttribute('data-state', 'off');
+    }
+
+    // Reset dynamic generation buttons to default states
+    const dynamicGenButtons = [
+        { btn: todBtn, defaultState: 'off' },
+        { btn: weatherBtn, defaultState: 'off' },
+        { btn: seasonBtn, defaultState: 'off' },
+        { btn: clothingBtn, defaultState: 'off' },
+        { btn: activityBtn, defaultState: 'off' },
+        { btn: actionBtn, defaultState: 'off' },
+        { btn: locationBtn, defaultState: 'off' },
+        { btn: optimizeBtn, defaultState: 'off' },
+        { btn: dynamicGenerationLockedBtn, defaultState: 'off' },
+        { btn: creativeBtn, defaultState: 'off' }
+    ];
+
+    dynamicGenButtons.forEach(({ btn, defaultState }) => {
+        if (btn) {
+            btn.setAttribute('data-state', defaultState);
+            btn.classList.toggle('active', defaultState === 'on');
+            btn.removeAttribute('data-override'); // Clear any overrides
+        }
+    });
+
+    // Clear dynamic generation data
+    if (window.dynamicGenerationData) {
+        delete window.dynamicGenerationData;
     }
 
     // Reset new parameters
@@ -840,6 +885,19 @@ function clearManualForm() {
     hideCharacterAutocomplete();
     hidePresetAutocomplete();
 
+    // Reset dynamic generation buttons and clear stored data
+    const dynamicGenerationButtons = ['todBtn', 'weatherBtn', 'seasonBtn', 'activityBtn', 'actionBtn', 'locationBtn', 'optimizeBtn', 'creativeBtn'];
+    dynamicGenerationButtons.forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            btn.setAttribute('data-state', 'off');
+        }
+    });
+
+    // Clear stored dynamic generation data
+    delete window.dynamicGenerationData;
+    dynamicGenerationGroup.classList.add('hidden');
+
     updatePresetLoadSaveState();
 }
 
@@ -864,7 +922,7 @@ function collectManualFormValues() {
         guidance: parseFloat(manualGuidance.value) || 5.0,
         rescale: parseFloat(manualRescale.value) || 0.0,
         upscale: manualUpscale.getAttribute('data-state') === 'on',
-        presetName: manualPresetName.value ? manualPresetName.value.trim() : "",
+        presetName: manualPresetName.value ? manualPresetName.value.trim() : undefined,
         autoPositionBtn: document.getElementById('autoPositionBtn'),
         container: characterPromptsContainer,
         characterItems: characterPromptsContainer ? characterPromptsContainer.querySelectorAll('.character-prompt-item') : [],
@@ -1005,6 +1063,52 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         requestBody.normalize_vibes = values.normalize_vibes;
     }
 
+    // Collect dynamic generation data from current button states
+    const todBtn = document.getElementById('todBtn');
+    const weatherBtn = document.getElementById('weatherBtn');
+    const seasonBtn = document.getElementById('seasonBtn');
+    const creativeBtn = document.getElementById('creativeBtn');
+    const activityBtn = document.getElementById('activityBtn');
+    const locationBtn = document.getElementById('locationBtn');
+    const optimizeBtn = document.getElementById('optimizeBtn');
+
+    // Collect current button states
+    const dynamicData = {
+        locked: dynamicGenerationLockedBtn?.dataset.state === 'on',
+        tod: collectDynamicButtonState(todBtn),
+        weather: collectDynamicButtonState(weatherBtn),
+        season: collectDynamicButtonState(seasonBtn),
+        clothing: clothingBtn?.dataset.state === 'on',
+        activity: collectDynamicButtonState(activityBtn),
+        action: collectDynamicButtonState(actionBtn),
+        location: collectDynamicButtonState(locationBtn),
+        optimize: optimizeBtn?.dataset.state === 'on',
+        creative: creativeBtn?.dataset.state === 'on'
+    };
+    // Always include dynamic_generation if any button has been configured (even if turned off)
+    // This ensures the server receives the seasonal parameter even when set to false
+    const hasAnyConfiguration = Object.values(dynamicData).some(value =>
+        value !== undefined && value !== null && value !== ''
+    );
+
+    if (hasAnyConfiguration) {
+        // Preserve existing compiled prompt and other data
+        const existingData = window.dynamicGenerationData || {};
+        const useCache = dynamicGenerationLockedBtn?.getAttribute('data-use-cache') === 'true';
+
+        const fullDynamicData = {
+            ...dynamicData,
+            compiled_prompt: useCache ? existingData.compiled_prompt : undefined
+        };
+
+        window.dynamicGenerationData = fullDynamicData;
+        requestBody.dynamic_generation = fullDynamicData;
+    } else {
+        if (window.dynamicGenerationData) {
+            delete window.dynamicGenerationData;
+        }
+    }
+
     // Add director reference data
     const directorRefData = getDirectorReferenceForForgeData();
     if (directorRefData) {
@@ -1012,6 +1116,60 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         if (directorRefData.with_style) {
             requestBody.chara_reference_with_style = true;
         }
+    }
+}
+
+// Get OpenWeatherMap icon URL
+function getWeatherIcon(iconCode) {
+    if (!iconCode) return '';
+
+    // OpenWeatherMap icon URL format: https://openweathermap.org/img/wn/{icon}@2x.png
+    return `https://openweathermap.org/img/wn/${iconCode}@2x.png`;
+}
+
+// Update dynamic generation overlay in manual preview
+function updateDynamicGenerationOverlay() {
+    const overlay = document.getElementById('dynamicGenerationOverlay');
+    const overlayBody = document.getElementById('dynamicGenerationOverlayBody');
+
+    if (!overlay || !overlayBody) return;
+
+    // Check if we have compiled prompt context
+    const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
+    const context = compiledPrompt?.context;
+
+    if (context) {
+        const weather = context.weather || {};
+        const time = context.time || {};
+
+        // Format actual time
+        const timeString = (time.hour !== undefined && time.minute !== undefined)
+            ? `${time.hour.toString().padStart(2, '0')}:${time.minute.toString().padStart(2, '0')}`
+            : 'Unknown';
+
+        // Get weather icon URL
+        const weatherIconUrl = getWeatherIcon(weather.icon);
+
+        overlayBody.innerHTML = `
+            <div class="context-item">
+                ${weatherIconUrl ? `<img class="weather-icon" src="${weatherIconUrl}" alt="Weather" />` : '<span class="context-icon">🌤️</span>'}
+                <span class="context-label">${weather.condition || 'Unknown'}</span>
+            </div>
+            <div class="context-item">
+                <span class="context-icon">🌡️</span>
+                <span class="context-value">${weather.temperature ? weather.temperature + '°C' : 'Unknown'}</span>
+            </div>
+            <div class="context-item">
+                <span class="context-icon">🕐</span>
+                <span class="context-value">${timeString}</span>
+            </div>
+            ${weather.humidity ? `<div class="context-item"><span class="context-icon">💧</span><span class="context-value">${weather.humidity}%</span></div>` : ''}
+            ${weather.windSpeed ? `<div class="context-item"><span class="context-icon">💨</span><span class="context-value">${weather.windSpeed} m/s</span></div>` : ''}
+        `;
+
+        overlay.classList.remove('hidden');
+    } else {
+        overlay.classList.add('hidden');
     }
 }
 
@@ -1430,7 +1588,7 @@ async function loadIntoManualForm(source, image = null) {
         if (manualGuidance) {
             // Handle both preset (guidance) and metadata (scale) formats
             const guidanceValue = data.guidance ?? data.scale ?? 5.0;
-            manualGuidance.value = guidanceValue !== undefined ? Number(guidanceValue).toFixed(1) : '';
+            manualGuidance.value = guidanceValue !== undefined ? (Number(guidanceValue) >= 10 ? Number(guidanceValue).toString() : Number(guidanceValue).toFixed(1)) : '';
         }
         if (manualRescale) {
             // Handle both preset (rescale) and metadata (cfg_rescale) formats
@@ -1456,9 +1614,11 @@ async function loadIntoManualForm(source, image = null) {
         if (document.getElementById('varietyBtn')) {
             const varietyBtn = document.getElementById('varietyBtn');
             // Handle both preset (variety) and metadata (skip_cfg_above_sigma) formats
-            const varietyEnabled = data.variety !== null && data.variety !== undefined ? data.variety : 
-                                 (data.skip_cfg_above_sigma !== null && data.skip_cfg_above_sigma !== undefined);
-            varietyBtn.setAttribute('data-state', varietyEnabled ? 'on' : 'off');
+            const isVarietyEnabled = data.variety !== null && data.variety !== undefined ? data.variety :
+                                   (data.skip_cfg_above_sigma !== null && data.skip_cfg_above_sigma !== undefined);
+            varietyBtn.setAttribute('data-state', isVarietyEnabled ? 'on' : 'off');
+            // Update the global varietyEnabled variable used for generation requests
+            varietyEnabled = isVarietyEnabled;
         }
 
         // Handle upscale
@@ -1821,7 +1981,10 @@ async function loadIntoManualForm(source, image = null) {
         }
 
         // Type-specific handling
-        if (name) { manualPresetName.value = name; }
+        if (name) {
+            manualPresetName.value = name;
+            manualPresetPlaceholderText.textContent = name;
+        }
 
         if (type === 'preset') {
             // Preset-specific
@@ -1869,7 +2032,10 @@ async function loadIntoManualForm(source, image = null) {
             }
         }
         // Restore the preset name that was entered by the user
-        if (manualPresetName && currentPresetName) { manualPresetName.value = currentPresetName; }
+        if (manualPresetName && currentPresetName) { 
+            manualPresetName.value = currentPresetName;
+            manualPresetPlaceholderText.textContent = currentPresetName;
+        }
 
         // Handle director reference data from metadata
         if (data.chara_reference_source) {
@@ -1913,6 +2079,54 @@ async function loadIntoManualForm(source, image = null) {
             }
         } else {
             clearDirectorReference();
+        }
+
+        // Load dynamic generation data from forge_data if available
+        if (data.dynamic_generation) {
+            window.dynamicGenerationData = data.dynamic_generation;
+
+            // Update lock button cache attributes
+            if (dynamicGenerationLockedBtn) {
+                dynamicGenerationLockedBtn.setAttribute('data-has-cache', (!!window.dynamicGenerationData.compiled_prompt).toString());
+                // Check if cache is not expired (15 minutes)
+                if (Date.now() - window.dynamicGenerationData.compiled_prompt?.timestamp < 1000 * 60 * 15) {
+                    dynamicGenerationLockedBtn.setAttribute('data-use-cache', 'true');
+                }
+            }
+
+            // Update dynamic generation button states based on loaded data
+            const buttonMappings = {
+                tod: 'todBtn',
+                weather: 'weatherBtn',
+                season: 'seasonBtn',
+                clothing: 'clothingBtn',
+                activity: 'activityBtn',
+                action: 'actionBtn',
+                location: 'locationBtn',
+                optimize: 'optimizeBtn',
+                locked: 'dynamicGenerationLockedBtn',
+                creative: 'creativeBtn'
+            };
+
+            Object.entries(buttonMappings).forEach(([key, btnId]) => {
+                const btn = document.getElementById(btnId);
+                if (btn && window.dynamicGenerationData[key] !== undefined) {
+                    const state = window.dynamicGenerationData[key] ? 'on' : 'off';
+                    btn.setAttribute('data-state', state);
+                    btn.classList.toggle('active', state === 'on');
+                    // Set override if there's an override value
+                    if (typeof window.dynamicGenerationData[key] === 'number') {
+                        btn.setAttribute('data-override', window.dynamicGenerationData[key]);
+                    } else {
+                        btn.removeAttribute('data-override');
+                    }
+                }
+            });
+            
+            updateDynamicGenerationToggleBtn();
+            dynamicGenerationGroup.classList.remove('hidden');
+        } else {
+            dynamicGenerationGroup.classList.add('hidden');
         }
         
         updatePercentageOverlays();
@@ -2097,8 +2311,28 @@ async function handleManualGeneration(e) {
         const result = await window.wsClient.generateImage(generationParams);
         
         if (result) {
-            const { image, filename, seed } = result;
-            
+            const { image, filename, seed, compiled_prompt } = result;
+
+            // Store compiled prompt if it was included in the response
+            if (compiled_prompt && window.dynamicGenerationData) {
+                console.log('📝 Received compiled prompt from image generation');
+                window.dynamicGenerationData.compiled_prompt = compiled_prompt;
+
+                // Update lock button attributes
+                if (dynamicGenerationLockedBtn) {
+                    dynamicGenerationLockedBtn.setAttribute('data-has-cache', 'true');
+                    dynamicGenerationLockedBtn.setAttribute('data-use-cache', 'true');
+                }
+
+                // Update UI to reflect compiled state
+                if (typeof updateDynamicGenerationToggleBtn === 'function') {
+                    updateDynamicGenerationToggleBtn();
+                }
+
+                // Clear any stored request data
+                delete window.dynamicGenerationRequestData;
+            }
+
             // Convert base64 to blob
             const byteCharacters = atob(image);
             const byteNumbers = new Array(byteCharacters.length);

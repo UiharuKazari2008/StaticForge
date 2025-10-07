@@ -169,6 +169,15 @@ html.disable-blur [data-workspace="${workspaceId}"] {
     workspaceStyleElement.textContent = updatedStyle + workspaceCSS;
 }
 
+// Helper to blend two colors (foreground over background) given alpha
+function blendColors(fg, bg, alpha) {
+    return {
+        r: Math.round(fg.r * alpha + bg.r * (1 - alpha)),
+        g: Math.round(fg.g * alpha + bg.g * (1 - alpha)),
+        b: Math.round(fg.b * alpha + bg.b * (1 - alpha))
+    };
+}
+
 // Generate CSS variables for a specific workspace
 function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor, primaryFont = '', textareaFont = '', isBlurDisabled = false) {
     // Color adjustment variables for consistent theming
@@ -191,9 +200,31 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
     const ROUND_SECONDARY_LIGHTNESS = 3; // Round secondary button lightness
     const ROUND_SECONDARY_SATURATION = 85; // Round secondary button saturation   
     
-    // Convert workspace color to HSL for direct manipulation
     const workspaceHsl = hexToHsl(workspaceColor);
     const workspaceBackgroundHsl = hexToHsl(workspaceBackgroundColor);
+    
+    const originalSaturation = 86; // Original orange saturation
+    const originalLightness = Math.min(workspaceHsl.l, 43);   // Original orange lightness
+    
+    const brightenedHsl = {
+        h: workspaceHsl.h,
+        s: workspaceHsl.s,
+        l: Math.min(100, workspaceHsl.l * 1.3) // 30% brighter
+    };
+    
+    const bgTintedHsl = {
+        h: workspaceBackgroundHsl.h,
+        s: Math.max(0, workspaceBackgroundHsl.s * 0.05), // Much reduced saturation
+        l: Math.min(100, 95 + workspaceBackgroundHsl.l * 0.05) // Very light
+    };
+    
+    const glassTintH = workspaceBackgroundHsl.h;
+    const glassTintS = GLASS_TINT_SATURATION;
+    const glassTintL = Math.max(GLASS_TINT_MIN_LIGHTNESS, workspaceBackgroundHsl.l * GLASS_TINT_LIGHTNESS_FACTOR);
+    
+    const headerDarkS = Math.min(100, Math.max(60, workspaceHsl.s + 20));
+    const headerDarkL = Math.min(20, Math.max(workspaceHsl.l - 20, 5));
+    const headerDarkBorderS = Math.min(100, workspaceHsl.s + 20);
 
     // Generate all CSS variables
     const variables = [
@@ -207,6 +238,31 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
         `--text-accent: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}%);`,
         `--shadow-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 30%);`,
         `--text-accent-tinted: hsl(${workspaceHsl.h} 100% 85%);`,
+        `--btn-hover-bg-primary: radial-gradient(hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 38%), hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 84%));`,
+        `--btn-hover-border-primary: hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 80%);`,
+        `--btn-hover-text-primary: #ffffff;`,
+        `--btn-shadow-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 89%);`,
+        `--btn-shadow-primary-glow: 0 2px 16px hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 89%);`,
+        `--btn-hover-bg-secondary: radial-gradient(hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 21%), hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 38%));`,
+        `--btn-shadow-secondary-glow: 0 8px 20px hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 33%);`,
+        `--hover-show-active-bg: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 66%);`,
+        `--hover-show-active-border: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 20%);`,
+        `--hover-show-active-shadow: 0 8px 20px hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 55%);`,
+        `--dropdown-hover-bg: hsl(${workspaceBackgroundHsl.h} ${workspaceBackgroundHsl.s}% ${workspaceBackgroundHsl.l}% / 50%);`,
+        `--dropdown-selected-bg: hsl(${workspaceBackgroundHsl.h} ${workspaceBackgroundHsl.s}% ${workspaceBackgroundHsl.l}% / 90.3%);`,
+        `--dropdown-keyboard-selected-bg: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 80%);`,
+        `--dropdown-keyboard-selected-border: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}%);`,
+        `--badge-bg: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 80%);`,
+        `--badge-text: #ffffff;`,
+        `--badge-shadow: 0 1px 3px hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 30%);`,
+        `--custom-dropdown-badge-bg: linear-gradient(45deg, hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${BADGE_LIGHTNESS_1}%), hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${BADGE_LIGHTNESS_2}%));`,
+        `--custom-dropdown-badge-text: #ffffff;`,
+        `--hover-show-colored-text: hsl(${workspaceHsl.h} 100% ${HOVER_SHOW_COLORED_LIGHTNESS}%);`,
+        `--toggle-on-bg: hsl(${workspaceHsl.h} ${TOGGLE_ON_SATURATION}% ${TOGGLE_ON_LIGHTNESS}%);`,
+        `--toggle-on-hover-bg: hsl(${workspaceHsl.h} ${TOGGLE_ON_HOVER_SATURATION}% ${TOGGLE_ON_HOVER_LIGHTNESS}%);`,
+        `--toggle-shadow-color-58: hsl(${workspaceHsl.h} ${TOGGLE_SHADOW_SATURATION}% ${TOGGLE_SHADOW_LIGHTNESS}% / 58%);`,
+        `--toggle-shadow-color-19: hsl(${workspaceHsl.h} ${Math.max(0, TOGGLE_SHADOW_SATURATION - 20)}% ${Math.min(100, TOGGLE_SHADOW_LIGHTNESS + 15)}% / 19%);`,
+        `--round-secondary-bg: hsl(${workspaceHsl.h} ${ROUND_SECONDARY_SATURATION}% ${ROUND_SECONDARY_LIGHTNESS}%);`,
     ];
 
     // Fonts: if provided, set per-workspace font variables used by styles.css
@@ -216,90 +272,19 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
     if (textareaFont && typeof textareaFont === 'string') {
         variables.push(`--font-mono: '${textareaFont}', 'Share Tech Mono', 'Noto Sans', 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;`);
     }
-
-    // Set button hover and shadow colors with workspace theming
-    const brightenedHsl = {
-        h: workspaceHsl.h,
-        s: workspaceHsl.s,
-        l: Math.min(100, workspaceHsl.l * 1.3) // 30% brighter
-    };
     
-    variables.push(
-        `--btn-hover-bg-primary: radial-gradient(hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 38%), hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 84%));`,
-        `--btn-hover-border-primary: hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 80%);`,
-        `--btn-hover-text-primary: #ffffff;`,
-        `--btn-shadow-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 89%);`,
-        `--btn-shadow-primary-glow: 0 2px 16px hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 89%);`
-    );
 
-    // Set secondary button hover using workspace background color
-    const bgTintedHsl = {
-        h: workspaceBackgroundHsl.h,
-        s: Math.max(0, workspaceBackgroundHsl.s * 0.05), // Much reduced saturation
-        l: Math.min(100, 95 + workspaceBackgroundHsl.l * 0.05) // Very light
-    };
-    
-    variables.push(
-        `--btn-hover-bg-secondary: radial-gradient(hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 21%), hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 38%));`,
-        `--btn-shadow-secondary-glow: 0 8px 20px hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 33%);`
-    );
-
-    // Set hover-show active colors using workspace color with original saturation and lightness
-    const originalSaturation = 86; // Original orange saturation
-    const originalLightness = 43;   // Original orange lightness
-    
-    variables.push(
-        `--hover-show-active-bg: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 66%);`,
-        `--hover-show-active-border: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 20%);`,
-        `--hover-show-active-shadow: 0 8px 20px hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 55%);`
-    );
-
-    // Set dropdown hover and selected colors using workspace background color
-    variables.push(
-        `--dropdown-hover-bg: hsl(${workspaceBackgroundHsl.h} ${workspaceBackgroundHsl.s}% ${workspaceBackgroundHsl.l}% / 50%);`,
-        `--dropdown-selected-bg: hsl(${workspaceBackgroundHsl.h} ${workspaceBackgroundHsl.s}% ${workspaceBackgroundHsl.l}% / 90.3%);`,
-        `--dropdown-keyboard-selected-bg: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 80%);`,
-        `--dropdown-keyboard-selected-border: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}%);`
-    );
-
-    // Set badge colors using workspace background color
-    variables.push(
-        `--badge-bg: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 80%);`,
-        `--badge-text: #ffffff;`,
-        `--badge-shadow: 0 1px 3px hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 30%);`
-    );
-
-    // Set custom dropdown badge colors using workspace background color with darker values
-    variables.push(
-        `--custom-dropdown-badge-bg: linear-gradient(45deg, hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${BADGE_LIGHTNESS_1}%), hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${BADGE_LIGHTNESS_2}%));`,
-        `--custom-dropdown-badge-text: #ffffff;`
-    );
-
-    // Set hover-show colored text using workspace color with consistent lightness
-    variables.push(`--hover-show-colored-text: hsl(${workspaceHsl.h} 100% ${HOVER_SHOW_COLORED_LIGHTNESS}%);`);
-    
-    // Set toggle button colors using workspace color with consistent lightness
-    variables.push(
-        `--toggle-on-bg: hsl(${workspaceHsl.h} ${TOGGLE_ON_SATURATION}% ${TOGGLE_ON_LIGHTNESS}%);`,
-        `--toggle-on-hover-bg: hsl(${workspaceHsl.h} ${TOGGLE_ON_HOVER_SATURATION}% ${TOGGLE_ON_HOVER_LIGHTNESS}%);`
-    );
-    
-    // Set toggle button shadow colors maintaining original hue offset and lightness differences
-    variables.push(
-        `--toggle-shadow-color-58: hsl(${workspaceHsl.h} ${TOGGLE_SHADOW_SATURATION}% ${TOGGLE_SHADOW_LIGHTNESS}% / 58%);`,
-        `--toggle-shadow-color-19: hsl(${workspaceHsl.h} ${Math.max(0, TOGGLE_SHADOW_SATURATION - 20)}% ${Math.min(100, TOGGLE_SHADOW_LIGHTNESS + 15)}% / 19%);`
-    );
-    
-    // Set round button secondary background with dark tint
-    variables.push(`--round-secondary-bg: hsl(${workspaceHsl.h} ${ROUND_SECONDARY_SATURATION}% ${ROUND_SECONDARY_LIGHTNESS}%);`);
-
-    // Create glass tint using workspace background HSL
-    const glassTintH = workspaceBackgroundHsl.h;
-    const glassTintS = GLASS_TINT_SATURATION;
-    const glassTintL = Math.max(GLASS_TINT_MIN_LIGHTNESS, workspaceBackgroundHsl.l * GLASS_TINT_LIGHTNESS_FACTOR);
-    
-    // Match the exact transparency levels from the CSS file for all glass layers
+    // Generate glass-layer-* variables with 1-3% workspace color tinting
+    // When blur is disabled, use higher opacity for better readability while keeping darker colors for contrast
     if (isBlurDisabled) {
+        // For accessibility with white text, use higher opacity and darker, more neutral colors
+        // Glass layer HSL values
+        const glassLayer1S = Math.max(0, workspaceHsl.s - 75);
+        const glassLayer2S = Math.max(0, workspaceHsl.s - 65);
+        const glassLayer3S = Math.max(0, workspaceHsl.s - 60);
+        const glassLayer4S = Math.max(0, workspaceHsl.s - 55);
+        const glassLayer5S = Math.max(0, workspaceHsl.s - 50);
+
         // For blur-disabled mode, use higher opacity for better readability while keeping darker colors for contrast
         const glassTintLightH = workspaceBackgroundHsl.h;
         const glassTintLightS = Math.max(0, workspaceBackgroundHsl.s - 40); // Less reduction in saturation
@@ -313,69 +298,48 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
             `--glass-layer-dark-3: hsl(${glassTintLightH} ${glassTintLightS}% ${glassTintLightL}% / 90%);`,
             `--glass-layer-dark-2: hsl(${glassTintLightH} ${glassTintLightS}% ${glassTintLightL}% / 85%);`,
             `--glass-layer-dark-1: hsl(${glassTintLightH} ${glassTintLightS}% ${glassTintLightL}% / 80%);`,
-            `--glass-windows-bg: hsl(${glassTintLightH} 25% 20% / 94%);`
-        );
-    } else {
-        // Original glass tint generation
-        variables.push(
-            `--glass-layer-dark-menu: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 97%);`,
-            `--glass-layer-dark-5: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 66%);`,
-            `--glass-layer-dark-4: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 44%);`,
-            `--glass-layer-dark-3: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 33%);`,
-            `--glass-layer-dark-2: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 22%);`,
-            `--glass-layer-dark-1: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 13%);`
-        );
-    }
+            `--glass-windows-bg: hsl(${glassTintLightH} 25% 20% / 94%);`,
+            `--glass-windows-semi-bg: hsl(${glassTintLightH} 25% 25% / 70%);`,
 
-    // Helper to blend two colors (foreground over background) given alpha
-    function blendColors(fg, bg, alpha) {
-        return {
-            r: Math.round(fg.r * alpha + bg.r * (1 - alpha)),
-            g: Math.round(fg.g * alpha + bg.g * (1 - alpha)),
-            b: Math.round(fg.b * alpha + bg.b * (1 - alpha))
-        };
-    }
-
-    // Generate glass-layer-* variables with 1-3% workspace color tinting
-    // When blur is disabled, use higher opacity for better readability while keeping darker colors for contrast
-    if (isBlurDisabled) {
-        // For accessibility with white text, use higher opacity and darker, more neutral colors
-        // Glass layer HSL values
-        const glassLayer1H = workspaceHsl.h;
-        const glassLayer2H = workspaceHsl.h;
-        const glassLayer3H = workspaceHsl.h;
-        const glassLayer4H = workspaceHsl.h;
-        const glassLayer5H = workspaceHsl.h;
-        
-        const glassLayer1S = Math.max(0, workspaceHsl.s - 75);
-        const glassLayer2S = Math.max(0, workspaceHsl.s - 65);
-        const glassLayer3S = Math.max(0, workspaceHsl.s - 60);
-        const glassLayer4S = Math.max(0, workspaceHsl.s - 55);
-        const glassLayer5S = Math.max(0, workspaceHsl.s - 50);
-
-        variables.push(
-            `--glass-layer-1: hsl(${glassLayer1H} ${glassLayer1S}% 40% / 15%);`,
-            `--glass-layer-2: hsl(${glassLayer2H} ${glassLayer2S}% 45% / 32.5%);`,
-            `--glass-layer-3: hsl(${glassLayer3H} ${glassLayer3S}% 50% / 35%);`,
-            `--glass-layer-4: hsl(${glassLayer4H} ${glassLayer4S}% 55% / 45%);`,
-            `--glass-layer-5: hsl(${glassLayer5H} ${glassLayer5S}% 70% / 50%);`,
+            `--glass-layer-1: hsl(${workspaceHsl.h} ${glassLayer1S}% 40% / 15%);`,
+            `--glass-layer-2: hsl(${workspaceHsl.h} ${glassLayer2S}% 45% / 32.5%);`,
+            `--glass-layer-3: hsl(${workspaceHsl.h} ${glassLayer3S}% 50% / 35%);`,
+            `--glass-layer-4: hsl(${workspaceHsl.h} ${glassLayer4S}% 55% / 45%);`,
+            `--glass-layer-5: hsl(${workspaceHsl.h} ${glassLayer5S}% 70% / 50%);`,
             `--glass-overlay-bg: hsl(${workspaceHsl.h} 20% 75% / 95%);`,
 
             // Fully opaque versions - for blur disabled, we use simpler direct HSL
-            `--glass-layer-1-opaque: hsl(${glassLayer1H} ${glassLayer1S}% 40%);`,
-            `--glass-layer-2-opaque: hsl(${glassLayer2H} ${glassLayer2S}% 45%);`,
-            `--glass-layer-3-opaque: hsl(${glassLayer3H} ${glassLayer3S}% 50%);`,
-            `--glass-layer-4-opaque: hsl(${glassLayer4H} ${glassLayer4S}% 55%);`,
-            `--glass-layer-5-opaque: hsl(${glassLayer5H} ${glassLayer5S}% 70%);`
-        );
-        
-        // Generate more opaque glass layer variants
-        variables.push(
+            `--glass-layer-1-opaque: hsl(${workspaceHsl.h} ${glassLayer1S}% 40%);`,
+            `--glass-layer-2-opaque: hsl(${workspaceHsl.h} ${glassLayer2S}% 45%);`,
+            `--glass-layer-3-opaque: hsl(${workspaceHsl.h} ${glassLayer3S}% 50%);`,
+            `--glass-layer-4-opaque: hsl(${workspaceHsl.h} ${glassLayer4S}% 55%);`,
+            `--glass-layer-5-opaque: hsl(${workspaceHsl.h} ${glassLayer5S}% 70%);`,
             `--glass-layer-alt-1: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 95)}% 25% / 80%);`,
             `--glass-layer-alt-2: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 85)}% 20% / 85%);`,
             `--glass-layer-alt-3: hsl(${workspaceHsl.h} 40% 15% / 90%);`,
             `--glass-layer-alt-4: hsl(${workspaceHsl.h} 50% 10% / 95%);`,
-            `--glass-layer-alt-5: hsl(${workspaceHsl.h} 60% 5%);`
+            `--glass-layer-alt-5: hsl(${workspaceHsl.h} 60% 5%);`,
+            `--shadow-color-1: hsl(${workspaceHsl.h} 100% 5% / 90%);`,
+            `--shadow-color-2: hsl(${workspaceHsl.h} 100% 10% / 80%);`,
+            `--shadow-color-3: hsl(${workspaceHsl.h} 100% 12.5% / 70%);`,
+            `--shadow-color-4: hsl(${workspaceHsl.h} 100% 13% / 60%);`,
+            `--shadow-color-5: hsl(${workspaceHsl.h} 100% 15% / 50%);`,
+            `--glass-border-saturated: hsl(${workspaceHsl.h} 100% 35% / 45%);`,
+            `--glass-border-1: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 80)}% 40% / 25%);`,
+            `--glass-border-2: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 75)}% 45% / 35%);`,
+            `--glass-border-3: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 70)}% 50% / 45%);`,
+            `--glass-border-4: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 65)}% 55% / 55%);`,
+            `--glass-border-5: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 60)}% 60% / 65%);`,
+            `--glass-inset-bg-1: hsl(${workspaceHsl.h} 75% 35% / 25%);`,
+            `--glass-inset-bg-2: hsl(${workspaceHsl.h} 70% 30% / 35%);`,
+            `--glass-inset-bg-3: hsl(${workspaceHsl.h} 65% 25% / 45%);`,
+            `--glass-inset-bg-4: hsl(${workspaceHsl.h} 60% 20% / 55%);`,
+            `--glass-inset-bg-5: hsl(${workspaceHsl.h} 55% 15% / 65%);`,
+            `--header-bg: hsl(${workspaceHsl.h} ${headerDarkS}% ${headerDarkL}% / 90%);`,
+            `--header-border: hsl(${workspaceHsl.h} ${headerDarkBorderS}% 50% / 50%);`,
+            `--active-tab-bg: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 90%);`,
+            `--active-tab-border: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 85%);`,
+            `--active-tab-text: #ffffff;`
         );
     } else {
         // Original glass layer generation
@@ -392,101 +356,36 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
         const glassLayer5L = Math.min(100, workspaceHsl.l + 25);
 
         variables.push(
+            `--glass-layer-dark-menu: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 97%);`,
+            `--glass-layer-dark-5: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 66%);`,
+            `--glass-layer-dark-4: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 44%);`,
+            `--glass-layer-dark-3: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 33%);`,
+            `--glass-layer-dark-2: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 22%);`,
+            `--glass-layer-dark-1: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 13%);`,
+            
             `--glass-layer-1: hsl(${workspaceHsl.h} ${glassLayer1S}% ${glassLayer1L}% / 5%);`,
             `--glass-layer-2: hsl(${workspaceHsl.h} ${glassLayer2S}% ${glassLayer2L}% / 10%);`,
             `--glass-layer-3: hsl(${workspaceHsl.h} ${glassLayer3S}% ${glassLayer3L}% / 20%);`,
             `--glass-layer-4: hsl(${workspaceHsl.h} ${glassLayer4S}% ${glassLayer4L}% / 30%);`,
             `--glass-layer-5: hsl(${workspaceHsl.h} ${glassLayer5S}% ${glassLayer5L}% / 40%);`,
             `--glass-overlay-bg: hsl(${workspaceHsl.h} 18% 70% / 85%);`,
-
-            // Fully opaque versions - for non-blur, we use simpler direct HSL
             `--glass-layer-1-opaque: hsl(${workspaceHsl.h} ${glassLayer1S}% ${glassLayer1L}%);`,
             `--glass-layer-2-opaque: hsl(${workspaceHsl.h} ${glassLayer2S}% ${glassLayer2L}%);`,
             `--glass-layer-3-opaque: hsl(${workspaceHsl.h} ${glassLayer3S}% ${glassLayer3L}%);`,
             `--glass-layer-4-opaque: hsl(${workspaceHsl.h} ${glassLayer4S}% ${glassLayer4L}%);`,
-            `--glass-layer-5-opaque: hsl(${workspaceHsl.h} ${glassLayer5S}% ${glassLayer5L}%);`
-        );
-    }
-
-    // Generate glass-border-* variables with 1-3% workspace color tinting
-    // When blur is disabled, use higher opacity for better readability while keeping darker colors for contrast
-    if (isBlurDisabled) {
-    
-        // Generate 5-level shadow color system tinted to workspace
-        variables.push(
-            `--shadow-color-1: hsl(${workspaceHsl.h} 100% 5% / 90%);`,
-            `--shadow-color-2: hsl(${workspaceHsl.h} 100% 10% / 80%);`,
-            `--shadow-color-3: hsl(${workspaceHsl.h} 100% 12.5% / 70%);`,
-            `--shadow-color-4: hsl(${workspaceHsl.h} 100% 13% / 60%);`,
-            `--shadow-color-5: hsl(${workspaceHsl.h} 100% 15% / 50%);`
-        );
-        
-        variables.push(
-            `--glass-border-saturated: hsl(${workspaceHsl.h} 100% 35% / 45%);`,
-            `--glass-border-1: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 80)}% 40% / 25%);`,
-            `--glass-border-2: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 75)}% 45% / 35%);`,
-            `--glass-border-3: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 70)}% 50% / 45%);`,
-            `--glass-border-4: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 65)}% 55% / 55%);`,
-            `--glass-border-5: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 60)}% 60% / 65%);`
-        );
-    } else {
-        // Original glass border generation
-        variables.push(
+            `--glass-layer-5-opaque: hsl(${workspaceHsl.h} ${glassLayer5S}% ${glassLayer5L}%);`,
             `--glass-border-1: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 75)}% ${Math.min(100, workspaceHsl.l + 50)}% / 8%);`,
             `--glass-border-2: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 65)}% ${Math.min(100, workspaceHsl.l + 45)}% / 10%);`,
             `--glass-border-3: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 55)}% ${Math.min(100, workspaceHsl.l + 40)}% / 15%);`,
             `--glass-border-4: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 45)}% ${Math.min(100, workspaceHsl.l + 35)}% / 20%);`,
-            `--glass-border-5: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 35)}% ${Math.min(100, workspaceHsl.l + 30)}% / 25%);`
-        );
-    }
-    // Generate glass-inset-bg-* variables with 1-3% workspace color tinting
-    // When blur is disabled, use higher opacity for better readability while keeping darker colors for contrast
-    if (isBlurDisabled) {
-        variables.push(
-            `--glass-inset-bg-1: hsl(${workspaceHsl.h} 75% 35% / 25%);`,
-            `--glass-inset-bg-2: hsl(${workspaceHsl.h} 70% 30% / 35%);`,
-            `--glass-inset-bg-3: hsl(${workspaceHsl.h} 65% 25% / 45%);`,
-            `--glass-inset-bg-4: hsl(${workspaceHsl.h} 60% 20% / 55%);`,
-            `--glass-inset-bg-5: hsl(${workspaceHsl.h} 55% 15% / 65%);`
-        );
-    } else {
-        // Original glass inset background generation
-        variables.push(
+            `--glass-border-5: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 35)}% ${Math.min(100, workspaceHsl.l + 30)}% / 25%);`,
             `--glass-inset-bg-1: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 80)}% ${Math.min(100, workspaceHsl.l + 50)}% / 5%);`,
             `--glass-inset-bg-2: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 75)}% ${Math.min(100, workspaceHsl.l + 45)}% / 8%);`,
             `--glass-inset-bg-3: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 70)}% ${Math.min(100, workspaceHsl.l + 40)}% / 12%);`,
             `--glass-inset-bg-4: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 65)}% ${Math.min(100, workspaceHsl.l + 35)}% / 15%);`,
-            `--glass-inset-bg-5: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 60)}% ${Math.min(100, workspaceHsl.l + 30)}% / 20%);`
-        );
-    }
-
-    // Generate header color variables
-    // For blur-disabled mode, use more opaque, saturated, and darker header colors for better readability
-    const headerDarkS = Math.min(100, Math.max(60, workspaceHsl.s + 20));
-    const headerDarkL = Math.min(20, Math.max(workspaceHsl.l - 20, 10));
-    const headerDarkBorderS = Math.min(100, workspaceHsl.s + 20);
-    
-    if (isBlurDisabled) {
-        variables.push(
-            `--header-bg: hsl(${workspaceHsl.h} ${headerDarkS}% ${headerDarkL}% / 90%);`,
-            `--header-border: hsl(${workspaceHsl.h} ${headerDarkBorderS}% 50% / 50%);`
-        );
-    } else {
-        // Original header color generation
-        variables.push(
+            `--glass-inset-bg-5: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 60)}% ${Math.min(100, workspaceHsl.l + 30)}% / 20%);`,
             `--header-bg: hsl(${workspaceHsl.h} 100% 25% / 40%);`,
-            `--header-border: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 30%);`
-        );
-    }
-    
-    if (isBlurDisabled) {
-        variables.push(
-            `--active-tab-bg: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 90%);`,
-            `--active-tab-border: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 85%);`,
-            `--active-tab-text: #ffffff;`
-        );
-    } else {
-        variables.push(
+            `--header-border: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 30%);`,
             `--active-tab-bg: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 54%);`,
             `--active-tab-border: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 53%);`,
             `--active-tab-text: #ffffff;`
@@ -1308,7 +1207,6 @@ async function setActiveWorkspace(id) {
 
         // Fade out gallery
         if (gallery) {
-            gallery.style.transition = 'opacity 0.3s ease-out';
             gallery.style.opacity = '0';
         }
 
@@ -2231,8 +2129,7 @@ function completeWorkspaceSwitch() {
     // Fade in gallery
     const gallery = document.getElementById('gallery');
     if (gallery) {
-        gallery.style.transition = 'opacity 0.3s ease-in';
-        gallery.style.opacity = '1';
+        gallery.style.opacity = '';
     }
     
     // Remove workspace loading overlay

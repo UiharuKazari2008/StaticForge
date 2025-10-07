@@ -6,6 +6,33 @@ const sharp = require('sharp');
 
 // Import modules
 const { loadPromptConfig, applyTextReplacements, getUsedReplacements } = require('./textReplacements');
+
+/**
+ * Get the current time period key based on current time
+ * Simplified version for image generation context
+ * @returns {string} Current period key (dawn, sunrise, morning, etc.)
+ */
+function getCurrentPeriodKey() {
+    const now = new Date();
+    const currentHour = now.getHours() + now.getMinutes() / 60; // Decimal hour (0-24)
+
+    // Simplified time period calculation based on hour of day
+    // This is a rough approximation - could be enhanced with location-based sunrise/sunset
+    if (currentHour >= 5 && currentHour < 6) return 'dawn';
+    if (currentHour >= 6 && currentHour < 7) return 'sunrise';
+    if (currentHour >= 7 && currentHour < 9) return 'early_morning';
+    if (currentHour >= 9 && currentHour < 11) return 'morning';
+    if (currentHour >= 11 && currentHour < 12) return 'late_morning';
+    if (currentHour >= 12 && currentHour < 16) return 'afternoon';
+    if (currentHour >= 16 && currentHour < 18) return 'golden_hour';
+    if (currentHour >= 18 && currentHour < 19) return 'sunset';
+    if (currentHour >= 19 && currentHour < 20) return 'dusk';
+    if (currentHour >= 20 && currentHour < 21) return 'early_evening';
+    if (currentHour >= 21 && currentHour < 23) return 'evening';
+    if (currentHour >= 23 || currentHour < 2) return 'late_evening';
+    // Late night/early morning before dawn
+    return 'midnight';
+}
 const { 
     updateMetadata, 
     stripPngTextChunks, 
@@ -25,6 +52,7 @@ const { upscaleImageCore } = require('./imageUpscaling');
 let context = {};
 function setContext(newContext) { context = { ...newContext }; }
 
+// Dynamic Generation Processing - Uses pre-compiled AI prompts from client
 const cacheDir = path.resolve(__dirname, '../.cache');
 const uploadCacheDir = path.join(cacheDir, 'upload');
 const presetSourceCacheDir = path.join(cacheDir, 'preset_source');
@@ -393,8 +421,11 @@ const buildOptions = async (body, preset = null, queryParams = {}) => {
     }
     
     try {
-        let processedPrompt = applyTextReplacements(rawPrompt, presetName, body.model);
-        let processedNegativePrompt = applyTextReplacements(rawNegativePrompt, presetName, body.model);
+        // Get periodKey from dynamic generation context if available, otherwise current time
+        const periodKey = body.dynamic_generation?.compiled_prompt?.context?.time?.periodKey || getCurrentPeriodKey();
+
+        let processedPrompt = applyTextReplacements(rawPrompt, presetName, body.model, periodKey);
+        let processedNegativePrompt = applyTextReplacements(rawNegativePrompt, presetName, body.model, periodKey);
         
         // Process NSFW removal from negative prompt
         if (processedNegativePrompt && processedNegativePrompt.startsWith("nsfw")) {
@@ -409,8 +440,8 @@ const buildOptions = async (body, preset = null, queryParams = {}) => {
             processedNegativePrompt = j;
         }
         
-        const usedPromptReplacements = getUsedReplacements(rawPrompt, body.model);
-        const usedNegativeReplacements = getUsedReplacements(rawNegativePrompt, body.model);
+        const usedPromptReplacements = getUsedReplacements(rawPrompt, body.model, periodKey);
+        const usedNegativeReplacements = getUsedReplacements(rawNegativePrompt, body.model, periodKey);
         
         if (usedPromptReplacements.length > 0 || usedNegativeReplacements.length > 0) {
             console.log(`🔄 Text replacements: ${[...usedPromptReplacements, ...usedNegativeReplacements].join(', ')}`);
@@ -421,8 +452,8 @@ const buildOptions = async (body, preset = null, queryParams = {}) => {
         if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
             processedCharacterPrompts = processedCharacterPrompts.map(char => {
                 // Apply text replacements to character prompt and UC
-                const processedPrompt = applyTextReplacements(char.prompt, presetName, body.model);
-                const processedUC = applyTextReplacements(char.uc, presetName, body.model);
+                const processedPrompt = applyTextReplacements(char.prompt, presetName, body.model, periodKey);
+                const processedUC = applyTextReplacements(char.uc, presetName, body.model, periodKey);
                 
                 return {
                     ...char,
@@ -443,6 +474,293 @@ const buildOptions = async (body, preset = null, queryParams = {}) => {
             
             if (usedCharacterReplacements.length > 0) {
                 console.log(`🔄 Character prompt text replacements: ${usedCharacterReplacements.join(', ')}`);
+            }
+        }
+
+        // Handle dynamic generation processing
+        let dynamic_generation = body.dynamic_generation || undefined;
+
+        // If no body dynamic_generation provided, check preset for dynamic_generation and use_cache_responses_preset
+        if (!body.dynamic_generation && preset) {
+            console.log(`🔄 Preset generation detected, checking for dynamic_generation on preset ${preset.name || 'unnamed'}`);
+            if (preset.dynamic_generation) {
+                console.log(`📝 Using preset dynamic_generation settings`);
+                dynamic_generation = { ...preset.dynamic_generation };
+                body.dynamic_generation = dynamic_generation; // Set on body so it can be returned
+            }
+            // Handle preset-specific cache responses setting
+            if (preset.use_cache_responses_preset !== undefined) {
+                console.log(`📝 Using preset use_cache_responses_preset: ${preset.use_cache_responses_preset}`);
+                dynamic_generation = dynamic_generation || {};
+                dynamic_generation.use_cache_responses = preset.use_cache_responses_preset;
+                body.dynamic_generation = dynamic_generation; // Set on body so it can be returned
+            }
+        }
+
+        if (dynamic_generation) {
+            const { applyDynamicReplacements } = require('./dynamicGenerationHandlers');
+
+            // Create MD5 hash of current prompts for cache validation
+            const crypto = require('crypto');
+            const currentPromptHash = crypto.createHash('md5')
+                .update(JSON.stringify({
+                    prompt: rawPrompt,
+                    uc: rawNegativePrompt,
+                    characterPrompts: body.allCharacterPrompts || preset?.allCharacterPrompts || []
+                }))
+                .digest('hex');
+            const currentRequestHash = crypto.createHash('md5')
+                .update(JSON.stringify({
+                    dynamic_generation: body.dynamic_generation ? {
+                        tod: body.dynamic_generation.tod,
+                        weather: body.dynamic_generation.weather,
+                        season: body.dynamic_generation.season,
+                        activity: body.dynamic_generation.activity,
+                        action: body.dynamic_generation.action,
+                        location: body.dynamic_generation.location,
+                        optimize: body.dynamic_generation.optimize,
+                        creative: body.dynamic_generation.creative,
+                    } : null
+                }))
+                .digest('hex');
+
+            // Check if we have a cached compiled prompt with valid conditions
+            let hasValidCache = body?.dynamic_generation?.compiled_prompt &&
+                !!body?.dynamic_generation?.compiled_prompt?.prompt_hash &&
+                !!body?.dynamic_generation?.compiled_prompt?.request_hash;
+
+            // If use_cache_responses is disabled, never use cache
+            if (body?.dynamic_generation?.use_cache_responses !== undefined && body?.dynamic_generation?.use_cache_responses === false) {
+                hasValidCache = false;
+            }
+
+            // If we have cache and it's either not expired OR locked, try to apply transforms
+            const isLocked = !!body?.dynamic_generation?.locked;
+            if (hasValidCache) {
+                const compiledPrompt = body.dynamic_generation.compiled_prompt;
+                const now = Date.now();
+                const isNotExpired = (now - compiledPrompt.timestamp) < 15 * 60 * 1000;
+                const canUseCache = isNotExpired || isLocked;
+
+                if (canUseCache) {
+                    console.log(`${isLocked ? '🔒' : '📝'} ${isLocked ? 'Locked' : 'Cached'} prompt available - attempting to apply text transformations`);
+
+                    // Check if request parameters changed
+                    if (compiledPrompt.request_hash !== currentRequestHash) {
+                        console.log('🔄 Request hash modified, invalidating cache');
+                        hasValidCache = false;
+                    }
+
+                    // Try to apply text replacements - create backups first
+                    if (hasValidCache && compiledPrompt.text_replacements) {
+                        // Create backups of original prompts
+                        const originalPrompt = processedPrompt + '';
+                        const originalNegativePrompt = processedNegativePrompt + '';
+                        const originalCharacterPrompts = processedCharacterPrompts ? processedCharacterPrompts.map(char => ({ ...char })) : [];
+
+                        try {
+                            // Apply replacements to prompt
+                            if (compiledPrompt.text_replacements.prompt && compiledPrompt.text_replacements.prompt.length > 0) {
+                                console.log(`🔄 Applying ${compiledPrompt.text_replacements.prompt.length} cached prompt replacements`);
+                                processedPrompt = applyDynamicReplacements(processedPrompt, compiledPrompt.text_replacements, 'prompt');
+                            }
+
+                            // Apply replacements to negative prompt
+                            if (compiledPrompt.text_replacements.uc && compiledPrompt.text_replacements.uc.length > 0) {
+                                console.log(`🔄 Applying ${compiledPrompt.text_replacements.uc.length} cached UC replacements`);
+                                processedNegativePrompt = applyDynamicReplacements(processedNegativePrompt, compiledPrompt.text_replacements, 'uc');
+                            }
+
+                            // Apply replacements to character prompts
+                            if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts) && processedCharacterPrompts.length > 0 &&
+                                compiledPrompt.text_replacements.character_prompts) {
+                                processedCharacterPrompts = processedCharacterPrompts.map((char, index) => {
+                                    const charReplacements = compiledPrompt.text_replacements.character_prompts[index];
+                                    if (!charReplacements) {
+                                        return char;
+                                    }
+                                    let updatedChar = { ...char };
+
+                                    if (charReplacements.input && charReplacements.input.length > 0) {
+                                        console.log(`🔄 Applying ${charReplacements.input.length} cached input replacements to character ${index}`);
+                                        updatedChar.input = applyDynamicReplacements(char.input || '', compiledPrompt.text_replacements, 'character', index, 'input');
+                                    }
+
+                                    if (charReplacements.uc && charReplacements.uc.length > 0) {
+                                        console.log(`🔄 Applying ${charReplacements.uc.length} cached UC replacements to character ${index}`);
+                                        updatedChar.uc = applyDynamicReplacements(char.uc || '', compiledPrompt.text_replacements, 'character', index, 'uc');
+                                    }
+
+                                    return updatedChar;
+                                });
+                            }
+                        } catch (error) {
+                            console.error('❌ Error applying cached text replacements:', error);
+                            hasValidCache = false;
+                        }
+
+                        if (!hasValidCache) {
+                            console.log('🔄 Text transformations failed, restoring originals and regenerating');
+                            // Restore from backups
+                            processedPrompt = originalPrompt;
+                            processedNegativePrompt = originalNegativePrompt;
+                            processedCharacterPrompts = originalCharacterPrompts;
+                            hasValidCache = false;
+                        }
+                    } else if (hasValidCache && body.dynamic_generation.compiled_prompt.prompt_hash !== currentPromptHash) {
+                        console.log('🔄 Text replacement sources modified, invalidating cache');
+                        hasValidCache = false;
+                    }
+                } else {
+                    console.log('⏰ Cached prompt expired and not locked, invalidating cache');
+                    hasValidCache = false;
+                }
+
+                if (!hasValidCache) {
+                    console.log(`🗑️ ${isLocked ? 'Locked' : 'Cached'} prompt invalidated - will regenerate`);
+                }
+            }
+
+            if (hasValidCache) {
+                console.log('✅ Using successfully transformed cached prompt');
+            } else {
+                // Has configured values but no compiled prompt - run actual AI processing like the client does
+                console.log('🎭 Dynamic generation configured but no compiled prompt - running AI processing');
+
+                // Import the core AI processing function
+                const { processDynamicGenerationCore } = require('./dynamicGenerationHandlers');
+
+                // Call the actual AI processing (same as client WebSocket handler)
+                const dynamicResult = await processDynamicGenerationCore(
+                    body.dynamic_generation,
+                    processedPrompt,
+                    processedNegativePrompt,
+                    processedCharacterPrompts,
+                    'buildOptions'
+                );
+
+                // Check if processing was successful
+                if (!dynamicResult.success) {
+                    console.warn('⚠️ Dynamic generation processing failed:', dynamicResult.error);
+                } else {
+                    // Store the compiled result
+                    const compiledPrompt = {
+                        prompt: dynamicResult.prompt,
+                        uc: dynamicResult.uc,
+                        characterPrompts: dynamicResult.characterPrompts,
+                        modifications_made: dynamicResult.modifications_made,
+                        reasoning: dynamicResult.reasoning,
+                        citations: dynamicResult.citations,
+                        context: dynamicResult.context, // Include weather/time/season context
+                        text_replacements: dynamicResult.text_replacements, // Store text replacements for caching
+                        prompt_hash: currentPromptHash, // Store hash for cache validation
+                        request_hash: currentRequestHash, // Store hash for cache validation
+                        timestamp: Date.now(),
+                        ai_processed: true // Mark as real AI processing
+                    };
+                    
+                    if (dynamicResult.text_replacements) {
+                        // Apply replacements to prompt
+                        if (dynamicResult.text_replacements.prompt && dynamicResult.text_replacements.prompt.length > 0) {
+                            console.log(`🔄 Applying ${dynamicResult.text_replacements.prompt.length} prompt replacements`);
+                            try {
+                                processedPrompt = applyDynamicReplacements(processedPrompt, dynamicResult.text_replacements, 'prompt');
+                            } catch (error) {
+                                console.error('❌ Error applying prompt replacements:', error);
+                            }
+                        }
+
+                        // Apply replacements to negative prompt
+                        if (dynamicResult.text_replacements.uc && dynamicResult.text_replacements.uc.length > 0) {
+                            console.log(`🔄 Applying ${dynamicResult.text_replacements.uc.length} UC replacements`);
+                            try {
+                                processedNegativePrompt = applyDynamicReplacements(processedNegativePrompt, dynamicResult.text_replacements, 'uc');
+                            } catch (error) {
+                                console.error('❌ Error applying UC replacements:', error);
+                            }
+                        }
+
+                        // Apply replacements to character prompts
+                        if (dynamicResult.text_replacements.character_prompts) {
+                            processedCharacterPrompts = processedCharacterPrompts || [];
+                            if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts) && processedCharacterPrompts.length > 0) {
+                                dynamicResult.text_replacements.character_prompts.forEach((charReplacements, index) => {
+                                    if (charReplacements) {
+                                        if (processedCharacterPrompts[index]) {
+                                            if (charReplacements.input && charReplacements.input.length > 0) {
+                                                try {
+                                                    processedCharacterPrompts[index].input = applyDynamicReplacements(
+                                                        processedCharacterPrompts[index].input || '',
+                                                        dynamicResult.text_replacements,
+                                                        'character',
+                                                        index,
+                                                        'input'
+                                                    );
+                                                } catch (error) {
+                                                    console.error(`❌ Error applying character ${index} input replacements:`, error);
+                                                }
+                                            }
+
+                                            if (charReplacements.uc && charReplacements.uc.length > 0) {
+                                                console.log(`🔄 Applying ${charReplacements.uc.length} UC replacements to character ${index}`);
+                                                try {
+                                                    processedCharacterPrompts[index].uc = applyDynamicReplacements(
+                                                        processedCharacterPrompts[index].uc || '',
+                                                        dynamicResult.text_replacements,
+                                                        'character',
+                                                        index,
+                                                        'uc'
+                                                    );
+                                                } catch (error) {
+                                                    console.error(`❌ Error applying character ${index} UC replacements:`, error);
+                                                }
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                        const totalReplacements = (dynamicResult.text_replacements.prompt?.length || 0) +
+                                                    (dynamicResult.text_replacements.uc?.length || 0) +
+                                                    (dynamicResult.text_replacements.character_prompts?.reduce((sum, char) =>
+                                                        (char.input?.length || 0) + (char.uc?.length || 0), 0) || 0);
+                        console.log(`🔄 Applied ${totalReplacements} text replacements (primary method)`);
+                    } else {
+                        console.log('⚠️ No text replacements provided, falling back to compiled prompt');
+                        processedPrompt = compiledPrompt.prompt;
+                        processedNegativePrompt = compiledPrompt.uc;
+                        processedCharacterPrompts = compiledPrompt.characterPrompts;
+                    }
+
+                    // Store in the dynamic_generation object for caching
+                    dynamic_generation.compiled_prompt = compiledPrompt;
+                    console.log('💾 Created and stored compiled prompt in dynamic_generation');
+
+                    // If this is a preset generation, save the compiled prompt directly to the preset
+                    if (!!preset &&body.presetName) {
+                        try {
+                            const { savePromptConfig, loadPromptConfig } = require('./textReplacements');
+                            const currentPromptConfig = loadPromptConfig();
+
+                            if (currentPromptConfig.presets[body.presetName]) {
+                                if (!currentPromptConfig.presets[body.presetName].dynamic_generation) {
+                                    currentPromptConfig.presets[body.presetName].dynamic_generation = {};
+                                }
+
+                                currentPromptConfig.presets[body.presetName].dynamic_generation.compiled_prompt = compiledPrompt;
+
+                                const success = savePromptConfig(currentPromptConfig);
+                                if (success) {
+                                    console.log(`💾 Saved compiled prompt directly to preset: ${body.presetName}`);
+                                } else {
+                                    console.warn(`⚠️ Failed to save compiled prompt to preset ${body.presetName}: savePromptConfig returned false`);
+                                }
+                            }
+                        } catch (error) {
+                            console.warn(`⚠️ Failed to save compiled prompt to preset ${body.presetName}:`, error.message);
+                        }
+                    }
+                }
             }
         }
 
@@ -496,6 +814,37 @@ const buildOptions = async (body, preset = null, queryParams = {}) => {
         let selectedQualityId = null;
         let selectedUcId = null;
 
+        // Append dynamic lighting information from compiled prompt context
+        if (body.dynamic_generation?.compiled_prompt?.context?.time?.lighting) {
+            const lightingInfo = body.dynamic_generation.compiled_prompt.context.time.lighting;
+            if (lightingInfo.trim()) {
+                // Check if prompt contains "Text:" and handle accordingly (same as quality presets)
+                if (processedPrompt.includes('Text:')) {
+                    // Find the first instance of "Text:" and insert lighting before it
+                    const textIndex = processedPrompt.indexOf('Text:');
+                    const beforeText = processedPrompt.substring(0, textIndex).trim();
+                    const afterText = processedPrompt.substring(textIndex);
+
+                    if (beforeText) {
+                        // If there's content before "Text:", add lighting with ", " separator
+                        processedPrompt = beforeText + ', ' + lightingInfo + ' ' + afterText;
+                    } else {
+                        // If "Text:" is at the beginning, just add lighting before it
+                        processedPrompt = lightingInfo + ' ' + afterText;
+                    }
+                } else {
+                    // Original logic for prompts without "Text:" - add to end
+                    processedPrompt = processedPrompt.trim();
+                    if (processedPrompt) {
+                        processedPrompt += ', ' + lightingInfo;
+                    } else {
+                        processedPrompt = lightingInfo;
+                    }
+                }
+                console.log(`💡 Applied dynamic lighting: ${lightingInfo}`);
+            }
+        }
+
         // Handle append_quality with enhanced preset selection
         if (body.append_quality && currentPromptConfig.quality_presets) {
             const modelKey = body.model.toLowerCase();
@@ -532,7 +881,7 @@ const buildOptions = async (body, preset = null, queryParams = {}) => {
                 console.log(`🎨 Applied quality preset for ${modelKey}: ${selectedQuality.value} (ID: ${selectedQuality.id})`);
             }
         }
-
+        
         // Handle append_uc with enhanced preset selection
         if (body.append_uc !== undefined && body.append_uc > 0 && currentPromptConfig.uc_presets) {
             const modelKey = body.model.toLowerCase();
@@ -547,346 +896,347 @@ const buildOptions = async (body, preset = null, queryParams = {}) => {
             }
         }
 
-    // Check if this is an img2img request
-    const baseOptions = {
-        prompt: processedPrompt,
-        negative_prompt: processedNegativePrompt,
-        input_prompt: rawPrompt,
-        input_uc: rawNegativePrompt,
-        model: Model[body.model.toUpperCase() + ((body.mask || body.mask_compressed) && body.image && !body.model.toUpperCase().includes('_INP') ? '_INP' : '')],
-        steps: parseInt(body.steps || preset?.steps || '24'),
-        scale: parseFloat((body.guidance || preset?.guidance || '5.5').toString()),
-        cfg_rescale: parseFloat((body.rescale || preset?.rescale || '0.0').toString()),
-        skip_cfg_above_sigma: (body?.variety || preset?.variety || queryParams?.variety === 'true') ? 58 : undefined,
-        sampler: body.sampler ? Sampler[body.sampler.toUpperCase()] : (preset?.sampler ? Sampler[preset.sampler.toUpperCase()] : Sampler.EULER_ANC),
-        noise_schedule: body.noiseScheduler ? Noise[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? Noise[preset.noiseScheduler.toUpperCase()] : Noise.KARRAS),
-        no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
-        qualityToggle: false,
-        ucPreset: 4,
-        dynamicThresholding: body.dynamicThresholding || preset?.dynamicThresholding,
-        seed: parseInt((body.seed || preset?.seed || '0').toString()),
-        upscale: upscaleValue,
-        characterPrompts: body.characterPrompts || preset?.characterPrompts || undefined,
-        allCharacterPrompts: processedCharacterPrompts || undefined,
-        input_character_prompts: body.allCharacterPrompts || preset?.allCharacterPrompts || undefined,
-        dataset_config: body.dataset_config || preset?.dataset_config || undefined,
-        append_quality: body.append_quality !== undefined ? body.append_quality : preset?.append_quality,
-        append_uc: body.append_uc !== undefined ? body.append_uc : preset?.append_uc,
-        append_quality_id: selectedQualityId,
-        append_uc_id: selectedUcId,
-        vibe_transfer: body.vibe_transfer !== undefined ? body.vibe_transfer : (preset && preset.vibe_transfer ? preset.vibe_transfer : undefined),
-        normalize_vibes: body.normalize_vibes !== undefined ? body.normalize_vibes : (preset && preset.normalize_vibes !== undefined ? preset.normalize_vibes : true),
-    };
+        // Check if this is an img2img request
+        const baseOptions = {
+            prompt: processedPrompt,
+            negative_prompt: processedNegativePrompt,
+            input_prompt: rawPrompt,
+            input_uc: rawNegativePrompt,
+            model: Model[body.model.toUpperCase() + ((body.mask || body.mask_compressed) && body.image && !body.model.toUpperCase().includes('_INP') ? '_INP' : '')],
+            steps: parseInt(body.steps || preset?.steps || '24'),
+            scale: parseFloat((body.guidance || preset?.guidance || '5.5').toString()),
+            cfg_rescale: parseFloat((body.rescale || preset?.rescale || '0.0').toString()),
+            skip_cfg_above_sigma: (body?.variety || preset?.variety || queryParams?.variety === 'true') ? 58 : undefined,
+            sampler: body.sampler ? Sampler[body.sampler.toUpperCase()] : (preset?.sampler ? Sampler[preset.sampler.toUpperCase()] : Sampler.EULER_ANC),
+            noise_schedule: body.noiseScheduler ? Noise[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? Noise[preset.noiseScheduler.toUpperCase()] : Noise.KARRAS),
+            no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
+            qualityToggle: false,
+            ucPreset: 4,
+            dynamicThresholding: body.dynamicThresholding || preset?.dynamicThresholding,
+            seed: parseInt((body.seed || preset?.seed || '0').toString()),
+            upscale: upscaleValue,
+            characterPrompts: body.characterPrompts || preset?.characterPrompts || undefined,
+            allCharacterPrompts: processedCharacterPrompts || undefined,
+            input_character_prompts: body.allCharacterPrompts || preset?.allCharacterPrompts || undefined,
+            dataset_config: body.dataset_config || preset?.dataset_config || undefined,
+            append_quality: body.append_quality !== undefined ? body.append_quality : preset?.append_quality,
+            append_uc: body.append_uc !== undefined ? body.append_uc : preset?.append_uc,
+            append_quality_id: selectedQualityId,
+            append_uc_id: selectedUcId,
+            vibe_transfer: body.vibe_transfer !== undefined ? body.vibe_transfer : (preset && preset.vibe_transfer ? preset.vibe_transfer : undefined),
+            normalize_vibes: body.normalize_vibes !== undefined ? body.normalize_vibes : (preset && preset.normalize_vibes !== undefined ? preset.normalize_vibes : true),
+            dynamic_generation: dynamic_generation || (preset?.dynamic_generation ? { ...preset.dynamic_generation, compiled_prompt: undefined } : undefined),
+        };
 
-    if (baseOptions.upscale && baseOptions.upscale > 1 && !allowPaid) {
-        throw new Error(`Upscaling with scale ${baseOptions.upscale} requires Opus credits. Set "allow_paid": true to confirm you accept using Opus credits for upscaling.`);
-    }
-
-    if (body.width && body.height) {
-        baseOptions.width = parseInt(body.width.toString());
-        baseOptions.height = parseInt(body.height.toString());
-    } else if (resolution && Resolution[resolution.toUpperCase()]) {
-        baseOptions.resPreset = Resolution[resolution.toUpperCase()];
-    } else {
-        baseOptions.resPreset = "NORMAL_SQUARE";
-    }
-
-    if (body.director_session_id !== undefined) {
-        baseOptions.director_session_id = body.director_session_id;
-    }
-    if (body.director_message_id !== undefined) {
-        baseOptions.director_message_id = body.director_message_id;
-    }
-
-    if (body.chara_reference_source !== undefined) {
-        try {
-            // Convert character reference to base64 PNG image (following chunk pattern)
-            const charaReferenceBase64 = await convertCharacterReferenceToBase64(body.chara_reference_source);
-            if (charaReferenceBase64) {
-                // Add to API options following chunk pattern exactly
-                baseOptions.director_reference_images = [charaReferenceBase64];
-                baseOptions.director_reference_descriptions = [{
-                    caption: {
-                        base_caption: body.chara_reference_with_style ? "character&style" : "character",
-                        char_captions: []
-                    },
-                    legacy_uc: false
-                }];
-                baseOptions.director_reference_information_extracted = [1];
-                baseOptions.director_reference_strength_values = [1];
-
-                // Add to returned options for forgeData storage
-                baseOptions.chara_reference_source = body.chara_reference_source;
-                baseOptions.chara_reference_with_style = body.chara_reference_with_style !== undefined ? body.chara_reference_with_style : false;
-
-                console.log(`🎭 Added character reference to API request (${charaReferenceBase64.length} chars, style: ${body.chara_reference_with_style})`);
-            } else {
-                console.warn(`⚠️ Failed to convert character reference to base64: ${body.chara_reference_source}`);
-            }
-        } catch (error) {
-            console.warn(`⚠️ Failed to process character reference: ${error.message}`);
+        if (baseOptions.upscale && baseOptions.upscale > 1 && !allowPaid) {
+            throw new Error(`Upscaling with scale ${baseOptions.upscale} requires Opus credits. Set "allow_paid": true to confirm you accept using Opus credits for upscaling.`);
         }
-    }
-    
-    if (!!body.image) {
-        if (!body.image.includes(":")) throw new Error(`No Image Format Passed`);
 
-        let imageBuffer;
-        let originalSource = body.image;
-        let imageSourceSeed = null;
-        const [imageType, imageIdentifier] = body.image.split(':', 2);
+        if (body.width && body.height) {
+            baseOptions.width = parseInt(body.width.toString());
+            baseOptions.height = parseInt(body.height.toString());
+        } else if (resolution && Resolution[resolution.toUpperCase()]) {
+            baseOptions.resPreset = Resolution[resolution.toUpperCase()];
+        } else {
+            baseOptions.resPreset = "NORMAL_SQUARE";
+        }
 
-        switch (imageType) {
-            case 'preset':
-                // Handle preset as image source
-                const presetName = imageIdentifier;
-                if (!presetName || presetName.trim() === '') {
-                    throw new Error('Preset name cannot be empty');
-                }
-                let seed = body.image_source_seed;
-                if (seed !== undefined) {
-                    // Validate provided seed
-                    const parsedSeed = parseInt(seed);
-                    if (isNaN(parsedSeed) || parsedSeed < 0 || parsedSeed > 0xFFFFFFFF) {
-                        throw new Error(`Invalid image_source_seed: ${seed}. Must be a number between 0 and 4294967295`);
-                    }
-                    seed = parsedSeed;
+        if (body.director_session_id !== undefined) {
+            baseOptions.director_session_id = body.director_session_id;
+        }
+        if (body.director_message_id !== undefined) {
+            baseOptions.director_message_id = body.director_message_id;
+        }
+
+        if (body.chara_reference_source !== undefined) {
+            try {
+                // Convert character reference to base64 PNG image (following chunk pattern)
+                const charaReferenceBase64 = await convertCharacterReferenceToBase64(body.chara_reference_source);
+                if (charaReferenceBase64) {
+                    // Add to API options following chunk pattern exactly
+                    baseOptions.director_reference_images = [charaReferenceBase64];
+                    baseOptions.director_reference_descriptions = [{
+                        caption: {
+                            base_caption: body.chara_reference_with_style ? "character&style" : "character",
+                            char_captions: []
+                        },
+                        legacy_uc: false
+                    }];
+                    baseOptions.director_reference_information_extracted = [1];
+                    baseOptions.director_reference_strength_values = [1];
+
+                    // Add to returned options for forgeData storage
+                    baseOptions.chara_reference_source = body.chara_reference_source;
+                    baseOptions.chara_reference_with_style = body.chara_reference_with_style !== undefined ? body.chara_reference_with_style : false;
+
+                    console.log(`🎭 Added character reference to API request (${charaReferenceBase64.length} chars, style: ${body.chara_reference_with_style})`);
                 } else {
-                    // Generate random seed
-                    seed = Math.floor(0x100000000 * Math.random() - 1);
+                    console.warn(`⚠️ Failed to convert character reference to base64: ${body.chara_reference_source}`);
                 }
-                let resolution = body.resolution;
-                if (!resolution && body.width && body.height) {
-                    resolution = `${body.width}x${body.height}`;
-                }
-                
-                try {
-                    const presetResult = await generatePresetSourceImage(presetName, seed, resolution, body.model);
-                    
-                    // Validate the generated image buffer
-                    if (!presetResult.buffer || !Buffer.isBuffer(presetResult.buffer)) {
-                        throw new Error('Generated preset image is invalid or empty');
-                    }
-                    
-                    if (presetResult.buffer.length === 0) {
-                        throw new Error('Generated preset image buffer is empty');
-                    }
-                    
-                    imageBuffer = presetResult.buffer;
-                    imageSourceSeed = presetResult.seed;
-                    originalSource = `preset:${presetName}`;
-                    console.log(`🎨 Generated preset source image with seed: ${imageSourceSeed}`);
-                } catch (error) {
-                    console.error(`❌ Preset source generation failed:`, error);
-                    throw new Error(`Failed to generate preset source image: ${error.message}`);
-                }
-                break;
-            case 'cache':
-                const cachedImagePath = path.join(uploadCacheDir, imageIdentifier);
-                if (!fs.existsSync(cachedImagePath)) throw new Error(`Cached image not found: ${imageIdentifier}`);
-                imageBuffer = fs.readFileSync(cachedImagePath);
-                break;
-            case 'file':
-                const filePath = path.join(imagesDir, imageIdentifier);
-                if (!fs.existsSync(filePath)) throw new Error(`Image not found: ${imageIdentifier}`);
-                imageBuffer = fs.readFileSync(filePath);
-                break;
-            case 'data': // For new uploads from client, not yet cached.
-                imageBuffer = Buffer.from(imageIdentifier, 'base64');
-                originalSource = 'data:base64'; // Don't store full base64 in metadata
-                break;
-            default:
-                throw new Error(`Unsupported image type: ${imageType}`);
-        }
-        imageBuffer = stripPngTextChunks(imageBuffer);
-        let targetDims = { width: baseOptions.width, height: baseOptions.height };
-        if (!targetDims.width || !targetDims.height) {
-            const dims = getDimensionsFromResolution(baseOptions.resPreset?.toLowerCase() || "");
-            if (dims) {
-                targetDims.width = dims.width;
-                targetDims.height = dims.height;
-            }
-        }
-        
-        if (!targetDims.width || !targetDims.height) {
-            console.error('Invalid target dimensions:', targetDims);
-            throw new Error('Invalid target dimensions');
-        }
-        
-        if (targetDims.width && targetDims.height) {
-            imageBuffer = await processDynamicImage(imageBuffer, targetDims, body.image_bias);
-            console.log(`📏 Resized base image to ${targetDims.width}x${targetDims.height} with bias ${body.image_bias}`);
-        }
-
-        baseOptions.action = (body.mask || body.mask_compressed) ? Action.INPAINT : Action.IMG2IMG;
-        baseOptions.color_correct = false;
-        if (body.mask_compressed && targetDims.width && targetDims.height) {
-            try {
-                // Process the compressed mask to target resolution
-                const maskBuffer = Buffer.from(body.mask_compressed, 'base64');
-                const processedMaskBuffer = await resizeMaskWithCanvas(maskBuffer, targetDims.width, targetDims.height);
-                body.mask = processedMaskBuffer.toString('base64');
-                baseOptions.mask_compressed = body.mask_compressed;
-                console.log(`🎭 Processed compressed mask to ${targetDims.width}x${targetDims.height}`);
             } catch (error) {
-                console.error('❌ Failed to process compressed mask:', error.message);
-                // Continue without mask if processing fails
-                body.mask_compressed = null;
+                console.warn(`⚠️ Failed to process character reference: ${error.message}`);
             }
         }
         
-        // Auto-convert standard mask to compressed mask if no compressed mask exists
-        if (body.mask && !body.mask_compressed && targetDims.width && targetDims.height) {
-            try {
-                // Convert standard mask to compressed format (1/8 scale)
-                const compressedWidth = Math.floor(targetDims.width / 8);
-                const compressedHeight = Math.floor(targetDims.height / 8);
-                
-                // Create a temporary canvas to resize the mask
-                const { createCanvas, loadImage } = require('canvas');
-                const maskBuffer = Buffer.from(body.mask, 'base64');
-                const maskImage = await loadImage(maskBuffer);
-                
-                const tempCanvas = createCanvas(compressedWidth, compressedHeight);
-                const tempCtx = tempCanvas.getContext('2d');
-                
-                // Fill with black background
-                tempCtx.fillStyle = 'black';
-                tempCtx.fillRect(0, 0, compressedWidth, compressedHeight);
-                
-                // Disable image smoothing for nearest neighbor scaling
-                tempCtx.imageSmoothingEnabled = false;
-                
-                // Draw the mask scaled down to compressed size
-                tempCtx.drawImage(maskImage, 0, 0, compressedWidth, compressedHeight);
-                
-                // Binarize the image data to ensure crisp 1-bit mask
-                const imageData = tempCtx.getImageData(0, 0, compressedWidth, compressedHeight);
-                const data = imageData.data;
-                
-                for (let i = 0; i < data.length; i += 4) {
-                    const r = data[i];
-                    const g = data[i + 1];
-                    const b = data[i + 2];
-                    
-                    // If pixel is not black (has been drawn on), make it pure white
-                    if (r > 0 || g > 0 || b > 0) {
-                        data[i] = 255;     // Red
-                        data[i + 1] = 255; // Green
-                        data[i + 2] = 255; // Blue
-                        data[i + 3] = 255; // Alpha
+        if (!!body.image) {
+            if (!body.image.includes(":")) throw new Error(`No Image Format Passed`);
+
+            let imageBuffer;
+            let originalSource = body.image;
+            let imageSourceSeed = null;
+            const [imageType, imageIdentifier] = body.image.split(':', 2);
+
+            switch (imageType) {
+                case 'preset':
+                    // Handle preset as image source
+                    const presetName = imageIdentifier;
+                    if (!presetName || presetName.trim() === '') {
+                        throw new Error('Preset name cannot be empty');
+                    }
+                    let seed = body.image_source_seed;
+                    if (seed !== undefined) {
+                        // Validate provided seed
+                        const parsedSeed = parseInt(seed);
+                        if (isNaN(parsedSeed) || parsedSeed < 0 || parsedSeed > 0xFFFFFFFF) {
+                            throw new Error(`Invalid image_source_seed: ${seed}. Must be a number between 0 and 4294967295`);
+                        }
+                        seed = parsedSeed;
                     } else {
-                        // Black pixels (background) stay pure black
-                        data[i] = 0;       // Red
-                        data[i + 1] = 0;   // Green
-                        data[i + 2] = 0;   // Blue
-                        data[i + 3] = 255; // Alpha
+                        // Generate random seed
+                        seed = Math.floor(0x100000000 * Math.random() - 1);
                     }
-                }
-                
-                // Put the binarized image data back
-                tempCtx.putImageData(imageData, 0, 0);
-                
-                // Convert to base64 and store as compressed mask
-                const compressedMaskBase64 = tempCanvas.toBuffer('image/png').toString('base64');
-                body.mask_compressed = compressedMaskBase64;
-                baseOptions.mask_compressed = compressedMaskBase64;
-                
-                console.log(`🔄 Auto-converted standard mask to compressed format (${compressedWidth}x${compressedHeight})`);
-            } catch (error) {
-                console.error('❌ Failed to auto-convert standard mask to compressed:', error.message);
-                // Continue with original mask if conversion fails
-            }
-        }
-        
-        if (body.mask) {
-            // Process compressed mask if available, otherwise use regular mask
-            baseOptions.mask = body.mask;
-            baseOptions.strength = parseFloat((body.inpainting_strength || body.strength || "1").toString());
-            baseOptions.noise = 0.0;
-        } else {
-            baseOptions.strength = parseFloat((body.strength || 0.8).toString());
-            baseOptions.noise = parseFloat((body.noise || 0.1).toString());
-        }
-
-        baseOptions.image = imageBuffer.toString('base64');
-        baseOptions.image_source = originalSource;
-        baseOptions.image_source_seed = imageSourceSeed;
-        baseOptions.image_bias = body.image_bias;
-    }
-
-    // Process vibe transfer data if present (disabled when mask is provided for inpainting)
-    if (baseOptions.vibe_transfer && Array.isArray(baseOptions.vibe_transfer) && baseOptions.vibe_transfer.length > 0 && 
-    !(baseOptions.director_reference_images && baseOptions.director_reference_images.length > 0)) {
-        if (baseOptions.mask) {
-            console.log(`⚠️ Vibe transfers disabled due to inpainting mask presence`);
-        } else {
-            try {
-                // Load vibe references from the vibe cache directory
-                const vibeCacheDir = path.join(cacheDir, 'vibe');
-                const referenceImageMultiple = [];
-                const referenceStrengthMultiple = [];
-                
-                if (fs.existsSync(vibeCacheDir)) {
-                    for (const vibeTransfer of baseOptions.vibe_transfer) {
-                        // Directly access the vibe file using the ID as filename
-                        const vibeFilePath = path.join(vibeCacheDir, `${vibeTransfer.id}.json`);
+                    let resolution = body.resolution;
+                    if (!resolution && body.width && body.height) {
+                        resolution = `${body.width}x${body.height}`;
+                    }
+                    
+                    try {
+                        const presetResult = await generatePresetSourceImage(presetName, seed, resolution, body.model);
                         
-                        if (fs.existsSync(vibeFilePath)) {
-                            try {
-                                const vibeData = JSON.parse(fs.readFileSync(vibeFilePath, 'utf8'));
-                                
-                                // Get the encoding for the specific model and IE (case-insensitive lookup)
-                                const modelKey = Object.keys(vibeData.encodings || {}).find(key => key.toUpperCase() === body.model.toUpperCase());
-                                if (vibeData.encodings && 
-                                    modelKey && 
-                                    vibeData.encodings[modelKey] && 
-                                    vibeData.encodings[modelKey][vibeTransfer.ie.toString()]) {
-                                    
-                                    const encoding = vibeData.encodings[modelKey][vibeTransfer.ie.toString()];
-                                    referenceImageMultiple.push(encoding);
-                                    referenceStrengthMultiple.push(vibeTransfer.strength);
-                                    console.log(`🎨 Found encoding for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} and strength ${vibeTransfer.strength} (model: ${body.model})`);
-                                } else {
-                                    console.warn(`⚠️ No encoding found for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} for model ${body.model}`);
-                                }
-                            } catch (parseError) {
-                                console.warn(`⚠️ Failed to parse vibe file ${vibeTransfer.id}.json:`, parseError.message);
-                            }
+                        // Validate the generated image buffer
+                        if (!presetResult.buffer || !Buffer.isBuffer(presetResult.buffer)) {
+                            throw new Error('Generated preset image is invalid or empty');
+                        }
+                        
+                        if (presetResult.buffer.length === 0) {
+                            throw new Error('Generated preset image buffer is empty');
+                        }
+                        
+                        imageBuffer = presetResult.buffer;
+                        imageSourceSeed = presetResult.seed;
+                        originalSource = `preset:${presetName}`;
+                        console.log(`🎨 Generated preset source image with seed: ${imageSourceSeed}`);
+                    } catch (error) {
+                        console.error(`❌ Preset source generation failed:`, error);
+                        throw new Error(`Failed to generate preset source image: ${error.message}`);
+                    }
+                    break;
+                case 'cache':
+                    const cachedImagePath = path.join(uploadCacheDir, imageIdentifier);
+                    if (!fs.existsSync(cachedImagePath)) throw new Error(`Cached image not found: ${imageIdentifier}`);
+                    imageBuffer = fs.readFileSync(cachedImagePath);
+                    break;
+                case 'file':
+                    const filePath = path.join(imagesDir, imageIdentifier);
+                    if (!fs.existsSync(filePath)) throw new Error(`Image not found: ${imageIdentifier}`);
+                    imageBuffer = fs.readFileSync(filePath);
+                    break;
+                case 'data': // For new uploads from client, not yet cached.
+                    imageBuffer = Buffer.from(imageIdentifier, 'base64');
+                    originalSource = 'data:base64'; // Don't store full base64 in metadata
+                    break;
+                default:
+                    throw new Error(`Unsupported image type: ${imageType}`);
+            }
+            imageBuffer = stripPngTextChunks(imageBuffer);
+            let targetDims = { width: baseOptions.width, height: baseOptions.height };
+            if (!targetDims.width || !targetDims.height) {
+                const dims = getDimensionsFromResolution(baseOptions.resPreset?.toLowerCase() || "");
+                if (dims) {
+                    targetDims.width = dims.width;
+                    targetDims.height = dims.height;
+                }
+            }
+            
+            if (!targetDims.width || !targetDims.height) {
+                console.error('Invalid target dimensions:', targetDims);
+                throw new Error('Invalid target dimensions');
+            }
+            
+            if (targetDims.width && targetDims.height) {
+                imageBuffer = await processDynamicImage(imageBuffer, targetDims, body.image_bias);
+                console.log(`📏 Resized base image to ${targetDims.width}x${targetDims.height} with bias ${body.image_bias}`);
+            }
+
+            baseOptions.action = (body.mask || body.mask_compressed) ? Action.INPAINT : Action.IMG2IMG;
+            baseOptions.color_correct = false;
+            if (body.mask_compressed && targetDims.width && targetDims.height) {
+                try {
+                    // Process the compressed mask to target resolution
+                    const maskBuffer = Buffer.from(body.mask_compressed, 'base64');
+                    const processedMaskBuffer = await resizeMaskWithCanvas(maskBuffer, targetDims.width, targetDims.height);
+                    body.mask = processedMaskBuffer.toString('base64');
+                    baseOptions.mask_compressed = body.mask_compressed;
+                    console.log(`🎭 Processed compressed mask to ${targetDims.width}x${targetDims.height}`);
+                } catch (error) {
+                    console.error('❌ Failed to process compressed mask:', error.message);
+                    // Continue without mask if processing fails
+                    body.mask_compressed = null;
+                }
+            }
+            
+            // Auto-convert standard mask to compressed mask if no compressed mask exists
+            if (body.mask && !body.mask_compressed && targetDims.width && targetDims.height) {
+                try {
+                    // Convert standard mask to compressed format (1/8 scale)
+                    const compressedWidth = Math.floor(targetDims.width / 8);
+                    const compressedHeight = Math.floor(targetDims.height / 8);
+                    
+                    // Create a temporary canvas to resize the mask
+                    const { createCanvas, loadImage } = require('canvas');
+                    const maskBuffer = Buffer.from(body.mask, 'base64');
+                    const maskImage = await loadImage(maskBuffer);
+                    
+                    const tempCanvas = createCanvas(compressedWidth, compressedHeight);
+                    const tempCtx = tempCanvas.getContext('2d');
+                    
+                    // Fill with black background
+                    tempCtx.fillStyle = 'black';
+                    tempCtx.fillRect(0, 0, compressedWidth, compressedHeight);
+                    
+                    // Disable image smoothing for nearest neighbor scaling
+                    tempCtx.imageSmoothingEnabled = false;
+                    
+                    // Draw the mask scaled down to compressed size
+                    tempCtx.drawImage(maskImage, 0, 0, compressedWidth, compressedHeight);
+                    
+                    // Binarize the image data to ensure crisp 1-bit mask
+                    const imageData = tempCtx.getImageData(0, 0, compressedWidth, compressedHeight);
+                    const data = imageData.data;
+                    
+                    for (let i = 0; i < data.length; i += 4) {
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+                        
+                        // If pixel is not black (has been drawn on), make it pure white
+                        if (r > 0 || g > 0 || b > 0) {
+                            data[i] = 255;     // Red
+                            data[i + 1] = 255; // Green
+                            data[i + 2] = 255; // Blue
+                            data[i + 3] = 255; // Alpha
                         } else {
-                            console.warn(`⚠️ Vibe file not found: ${vibeTransfer.id}.json`);
+                            // Black pixels (background) stay pure black
+                            data[i] = 0;       // Red
+                            data[i + 1] = 0;   // Green
+                            data[i + 2] = 0;   // Blue
+                            data[i + 3] = 255; // Alpha
                         }
                     }
+                    
+                    // Put the binarized image data back
+                    tempCtx.putImageData(imageData, 0, 0);
+                    
+                    // Convert to base64 and store as compressed mask
+                    const compressedMaskBase64 = tempCanvas.toBuffer('image/png').toString('base64');
+                    body.mask_compressed = compressedMaskBase64;
+                    baseOptions.mask_compressed = compressedMaskBase64;
+                    
+                    console.log(`🔄 Auto-converted standard mask to compressed format (${compressedWidth}x${compressedHeight})`);
+                } catch (error) {
+                    console.error('❌ Failed to auto-convert standard mask to compressed:', error.message);
+                    // Continue with original mask if conversion fails
                 }
-                
-                // Add to baseOptions if we found encodings
-                if (referenceImageMultiple.length > 0) {
-                    baseOptions.reference_image_multiple = referenceImageMultiple;
-                    baseOptions.reference_strength_multiple = referenceStrengthMultiple;
-                    baseOptions.normalize_reference_strength_multiple = baseOptions.normalize_vibes;
-                    console.log(`🎨 Applied ${referenceImageMultiple.length} vibe transfers with normalize: ${baseOptions.normalize_vibes}`);
-                } else {
-                    console.warn(`⚠️ No valid encodings found for any vibe transfers`);
+            }
+            
+            if (body.mask) {
+                // Process compressed mask if available, otherwise use regular mask
+                baseOptions.mask = body.mask;
+                baseOptions.strength = parseFloat((body.inpainting_strength || body.strength || "1").toString());
+                baseOptions.noise = 0.0;
+            } else {
+                baseOptions.strength = parseFloat((body.strength || 0.8).toString());
+                baseOptions.noise = parseFloat((body.noise || 0.1).toString());
+            }
+
+            baseOptions.image = imageBuffer.toString('base64');
+            baseOptions.image_source = originalSource;
+            baseOptions.image_source_seed = imageSourceSeed;
+            baseOptions.image_bias = body.image_bias;
+        }
+
+        // Process vibe transfer data if present (disabled when mask is provided for inpainting)
+        if (baseOptions.vibe_transfer && Array.isArray(baseOptions.vibe_transfer) && baseOptions.vibe_transfer.length > 0 && 
+        !(baseOptions.director_reference_images && baseOptions.director_reference_images.length > 0)) {
+            if (baseOptions.mask) {
+                console.log(`⚠️ Vibe transfers disabled due to inpainting mask presence`);
+            } else {
+                try {
+                    // Load vibe references from the vibe cache directory
+                    const vibeCacheDir = path.join(cacheDir, 'vibe');
+                    const referenceImageMultiple = [];
+                    const referenceStrengthMultiple = [];
+                    
+                    if (fs.existsSync(vibeCacheDir)) {
+                        for (const vibeTransfer of baseOptions.vibe_transfer) {
+                            // Directly access the vibe file using the ID as filename
+                            const vibeFilePath = path.join(vibeCacheDir, `${vibeTransfer.id}.json`);
+                            
+                            if (fs.existsSync(vibeFilePath)) {
+                                try {
+                                    const vibeData = JSON.parse(fs.readFileSync(vibeFilePath, 'utf8'));
+                                    
+                                    // Get the encoding for the specific model and IE (case-insensitive lookup)
+                                    const modelKey = Object.keys(vibeData.encodings || {}).find(key => key.toUpperCase() === body.model.toUpperCase());
+                                    if (vibeData.encodings && 
+                                        modelKey && 
+                                        vibeData.encodings[modelKey] && 
+                                        vibeData.encodings[modelKey][vibeTransfer.ie.toString()]) {
+                                        
+                                        const encoding = vibeData.encodings[modelKey][vibeTransfer.ie.toString()];
+                                        referenceImageMultiple.push(encoding);
+                                        referenceStrengthMultiple.push(vibeTransfer.strength);
+                                        console.log(`🎨 Found encoding for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} and strength ${vibeTransfer.strength} (model: ${body.model})`);
+                                    } else {
+                                        console.warn(`⚠️ No encoding found for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} for model ${body.model}`);
+                                    }
+                                } catch (parseError) {
+                                    console.warn(`⚠️ Failed to parse vibe file ${vibeTransfer.id}.json:`, parseError.message);
+                                }
+                            } else {
+                                console.warn(`⚠️ Vibe file not found: ${vibeTransfer.id}.json`);
+                            }
+                        }
+                    }
+                    
+                    // Add to baseOptions if we found encodings
+                    if (referenceImageMultiple.length > 0) {
+                        baseOptions.reference_image_multiple = referenceImageMultiple;
+                        baseOptions.reference_strength_multiple = referenceStrengthMultiple;
+                        baseOptions.normalize_reference_strength_multiple = baseOptions.normalize_vibes;
+                        console.log(`🎨 Applied ${referenceImageMultiple.length} vibe transfers with normalize: ${baseOptions.normalize_vibes}`);
+                    } else {
+                        console.warn(`⚠️ No valid encodings found for any vibe transfers`);
+                    }
+                } catch (error) {
+                    console.error('❌ Failed to process vibe transfers:', error.message);
+                    // Continue without vibe transfers if processing fails
+                }
+            }
+        }
+
+        if (!allowPaid) {
+            try {
+                const cost_opus = calculateCost(baseOptions, true);
+                if (cost_opus > 0) {
+                    throw new Error(`Request requires Opus credits (cost: ${cost_opus}). Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
                 }
             } catch (error) {
-                console.error('❌ Failed to process vibe transfers:', error.message);
-                // Continue without vibe transfers if processing fails
+                    if (error.message.includes('requires Opus credits')) throw error;
             }
         }
-    }
 
-    if (!allowPaid) {
-        try {
-            const cost_opus = calculateCost(baseOptions, true);
-            if (cost_opus > 0) {
-                throw new Error(`Request requires Opus credits (cost: ${cost_opus}). Set "allow_paid": true to confirm you accept using Opus credits for this request.`);
-            }
-        } catch (error) {
-                if (error.message.includes('requires Opus credits')) throw error;
-        }
-    }
-
-    return baseOptions;
+        return baseOptions;
     } catch (error) {
         throw error;
     }
@@ -1106,7 +1456,10 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         if (opts.director_message_id !== undefined) {
             forgeData.director_message_id = opts.director_message_id;
         }
-        
+        if (opts.dynamic_generation !== undefined) {
+            forgeData.dynamic_generation = opts.dynamic_generation;
+        }
+
         // Update buffer with forge metadata
         buffer = updateMetadata(buffer, forgeData);
         const targetWorkspaceId = workspaceId || context.getActiveWorkspace(req?.session?.id);
@@ -1183,12 +1536,24 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             }
             
             // Return result with appropriate seed information
-            const result = { buffer: updatedScaledBuffer, filename: name, saved: shouldSave, seed: seed };
+            const result = {
+                buffer: updatedScaledBuffer,
+                filename: name,
+                saved: shouldSave,
+                seed: seed,
+                compiled_prompt: opts.dynamic_generation?.compiled_prompt
+            };
             return result;
         }
         
         // Return result with appropriate seed information
-        const finalResult = { buffer, filename: name, saved: shouldSave, seed: seed };
+        const finalResult = {
+            buffer,
+            filename: name,
+            saved: shouldSave,
+            seed: seed,
+            compiled_prompt: opts.dynamic_generation?.compiled_prompt
+        };
         return finalResult;
     } else {
         // Save image and return filename only (legacy behavior)
@@ -1206,7 +1571,12 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         }
         
         // Return result with appropriate seed information
-        const result = { filename: name, saved: shouldSave, seed: seed };
+        const result = {
+            filename: name,
+            saved: shouldSave,
+            seed: seed,
+            compiled_prompt: opts.dynamic_generation?.compiled_prompt
+        };
         return result;
     }
 }
@@ -1284,13 +1654,14 @@ async function generateImageWebSocket(body, userType, sessionId) {
         if (bodyData.image && !bodyData.is_frontend_upload) {
             opts.original_filename = baseFilename;
         }
-        
+
         // Create a mock req object for context functions that need it
         const mockReq = { session: { id: sessionId } };
-        
+
         // Call handleGeneration directly and return the result
         const result = await handleGeneration(opts, true, body?.preset || body?.presetName, body?.workspace, mockReq);
-        
+
+
         return result;
     } catch(e) {
         console.error('❌ WebSocket image generation error:', e);
@@ -1318,6 +1689,7 @@ async function convertMetadataToRequestFormat(metadata, allowPaid = false) {
     }
 
     const requestBody = {
+        workspace: metadata.workspace || 'default',
         model: extractedMetadata.model || 'v4_5',
         prompt: extractedMetadata.prompt || '',
         uc: extractedMetadata.uc || '',
@@ -1325,32 +1697,14 @@ async function convertMetadataToRequestFormat(metadata, allowPaid = false) {
         steps: extractedMetadata.steps || 25,
         guidance: extractedMetadata.scale || 5.0,
         rescale: extractedMetadata.cfg_rescale || 0.0,
+        sampler: extractedMetadata.sampler || undefined,
+        noiseScheduler: extractedMetadata.noise_schedule || undefined,
+        variety: !!(extractedMetadata.skip_cfg_above_sigma),
+        upscale: !!(extractedMetadata.upscaled),
         allow_paid: allowPaid, // Use the passed allowPaid flag
-        workspace: metadata.workspace || 'default'
+        preset: extractedMetadata.preset_name || undefined,
+        dynamic_generation: extractedMetadata.dynamic_generation !== undefined ? extractedMetadata.dynamic_generation : null
     };
-
-    // Add optional fields if they have values
-    if (extractedMetadata.sampler) {
-        requestBody.sampler = extractedMetadata.sampler;
-    }
-
-    if (extractedMetadata.noise_schedule) {
-        requestBody.noiseScheduler = extractedMetadata.noise_schedule;
-    }
-
-    if (extractedMetadata.skip_cfg_above_sigma) {
-        requestBody.variety = true;
-    }
-
-    // Add upscale if it was used in original generation
-    if (extractedMetadata.upscaled) {
-        requestBody.upscale = true;
-    }
-
-    // Add preset if available
-    if (extractedMetadata.preset_name) {
-        requestBody.preset = extractedMetadata.preset_name;
-    }
 
     // Add character prompts if available
     if (extractedMetadata.characterPrompts && Array.isArray(extractedMetadata.characterPrompts) && extractedMetadata.characterPrompts.length > 0) {
@@ -1410,6 +1764,9 @@ async function convertMetadataToRequestFormat(metadata, allowPaid = false) {
         } else if (extractedMetadata.mask) {
             requestBody.mask = extractedMetadata.mask;
         }
+        if (extractedMetadata.mask_bias !== undefined) {
+            requestBody.mask_bias = extractedMetadata.mask_bias;
+        }
     }
 
     // Remove seed to ensure new random seed is generated
@@ -1455,6 +1812,6 @@ module.exports = {
     setContext,
     generatePresetSourceImage,
     convertMetadataToRequestFormat,
-    handleRerollGeneration
+    handleRerollGeneration,
 };
 

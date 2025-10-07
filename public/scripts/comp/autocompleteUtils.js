@@ -32,8 +32,6 @@ let currentSearchTimestamp = null;
 let serviceResults = new Map(); // Store results per service
 let serviceStatuses = new Map(); // Store status per service (stalled/completed/no-results)
 
-// Global variables for spellcheck tracking (same pattern as search)
-let currentSpellCheckTimestamp = null;
 
 // Global handler for ack-less search responses
 window.handleSearchResponse = function(message) {
@@ -120,8 +118,7 @@ window.handleSearchResponse = function(message) {
             currentModel = searchModelMapping[currentModel] || currentModel;
             searchServices.set(currentModel, 'completed');
             
-            // Final spellcheck is handled by the timer system in requestFrequentSpellCheck
-            // No need to trigger it here as it would cause a loop
+            // Spellcheck is now handled by the primary WebSocket search system
             
             updateSearchStatusDisplay();
             if (currentCharacterAutocompleteTarget) {
@@ -138,7 +135,11 @@ window.handleSearchResponse = function(message) {
         // Process search_results_update
         
         // Only process if this is from the latest search
-        if (currentSearchTimestamp && messageTimestamp >= currentSearchTimestamp) {
+        // Use request ID if available, otherwise fall back to timestamp check
+        const requestId = message.requestId;
+        const isCurrentRequest = requestId ? requestId === currentSearchRequestId : (currentSearchTimestamp && messageTimestamp >= currentSearchTimestamp);
+        console.log('🔍 Request check for service:', serviceName, 'requestId:', requestId, 'currentRequestId:', currentSearchRequestId, 'isCurrentRequest:', isCurrentRequest);
+        if (isCurrentRequest) {
             // Store results for this service in both Maps for compatibility
             serviceResults.set(serviceName, results);
             searchResultsByService.set(serviceName, results);
@@ -201,14 +202,6 @@ let currentSearchTimeout = null;
 // Persistent results storage for stable autocomplete
 let persistentSpellCheckData = null; // Current spell check data
 let isAutocompleteVisible = false; // Track if autocomplete is currently visible
-
-// Spellcheck timing variables for frequent checking
-let lastSpellCheckQuery = ''; // Track last spellcheck query to avoid duplicates
-let spellCheckTimer = null; // Timer for frequent spellcheck
-let spellCheckWordCount = 0; // Track word count for spellcheck
-let lastSpellCheckTime = 0; // Track last spellcheck time
-let spellCheckInputTimer = null; // Timer for input delay spellcheck
-let currentSpellCheckRequest = null; // Track current spellcheck request for cancellation
 
 // Track last search query to prevent unnecessary clearing
 let lastSearchQuery = '';
@@ -1109,6 +1102,7 @@ function isAutofillEnabled() {
 window.toggleAutofill = toggleAutofill;
 window.setAutofillEnabled = setAutofillEnabled;
 window.isAutofillEnabled = isAutofillEnabled;
+window.showAddToFavoritesDialog = showAddToFavoritesDialog;
 
 // Character autocomplete functions
 function handleCharacterAutocompleteInput(e) {
@@ -1117,11 +1111,6 @@ function handleCharacterAutocompleteInput(e) {
         return;
     }
     
-    // Cancel any pending spellcheck request when user starts typing
-    if (currentSpellCheckRequest) {
-        currentSpellCheckRequest.cancel();
-        currentSpellCheckRequest = null;
-    }
     
     // Don't trigger autocomplete if we're in navigation mode and user is actively navigating
     // Don't trigger autocomplete if we're in navigation mode and user is actively navigating
@@ -1166,10 +1155,6 @@ function handleCharacterAutocompleteInput(e) {
                     }
                 }, 50);
                 
-                // Also trigger frequent spellcheck for backspace cases
-                if (textAfterPrefix.length >= 3) {
-                    requestFrequentSpellCheck(textAfterPrefix, target);
-                }
                 return;
             } else {
                 // Not actively navigating, hide autocomplete
@@ -1194,10 +1179,6 @@ function handleCharacterAutocompleteInput(e) {
             }
         }, 250); // Reduced from 500ms for better responsiveness
         
-        // Also trigger frequent spellcheck for Text: searches
-        if (textAfterPrefix.length >= 3) {
-            requestFrequentSpellCheck(textAfterPrefix, target);
-        }
         return;
     }
 
@@ -1247,10 +1228,6 @@ function handleCharacterAutocompleteInput(e) {
                 }
             }, 50);
             
-            // Also trigger frequent spellcheck for backspace cases
-            if (searchText.length >= 2) {
-                requestFrequentSpellCheck(searchText, target);
-            }
             return;
         } else {
             // Not actively navigating, hide autocomplete
@@ -1275,10 +1252,6 @@ function handleCharacterAutocompleteInput(e) {
         }
     }, 250); // Reduced from 500ms for better responsiveness
     
-    // Also trigger frequent spellcheck for continuous typing
-    if (searchText.length >= 3) {
-        requestFrequentSpellCheck(searchText, target);
-    }
 }
 
 function handleCharacterAutocompleteKeydown(e) {
@@ -1322,6 +1295,25 @@ function handleCharacterAutocompleteKeydown(e) {
 
     // Handle autocomplete navigation - only when autocomplete is visible
     if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
+        // Check if we're in character detail view (enhancers list)
+        const characterDetailContent = characterAutocompleteList?.querySelector('.character-detail-content');
+        if (characterDetailContent) {
+                e.preventDefault();
+                e.stopPropagation();
+            // Handle character detail navigation (enhancers list)
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                handleCharacterDetailArrowKeys(e.key);
+                return;
+            } else if (e.key === 'Enter') {
+                handleCharacterDetailEnter();
+                return;
+            } else if (e.key === 'Escape') {
+                hideCharacterDetail();
+                return;
+            }
+            return;
+        }
+
         const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
         const items = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
 
@@ -1808,161 +1800,7 @@ function handleCharacterAutocompleteKeydown(e) {
     }
 }
 
-// Function to handle frequent spellcheck requests
-async function requestFrequentSpellCheck(query, target) {
-    // Clear any existing timers
-    if (spellCheckInputTimer) {
-        clearTimeout(spellCheckInputTimer);
-    }
-    
-    // Cancel any pending spellcheck request
-    if (currentSpellCheckRequest) {
-        currentSpellCheckRequest.cancel();
-        currentSpellCheckRequest = null;
-    }
-    
-    // Count words in the query
-    const wordCount = query.trim().split(/\s+/).filter(word => word.length > 0).length;
-    
-    // Check if we should trigger spellcheck based on conditions
-    const shouldTriggerSpellCheck = (
-        query !== lastSpellCheckQuery && // Different query
-        query.length >= 3 && // At least 3 characters
-        (
-            wordCount >= 3 || // Every 3 words
-            (Date.now() - lastSpellCheckTime >= 250) || // Every 250ms
-            wordCount > spellCheckWordCount // Word count increased
-        )
-    );
-    
-    if (shouldTriggerSpellCheck) {
-        // Update tracking variables
-        lastSpellCheckQuery = query;
-        lastSpellCheckTime = Date.now();
-        spellCheckWordCount = wordCount;
-        
-        // Trigger spellcheck immediately
-        await triggerSpellCheck(query, target);
-    }
-    
-    // Set timer for final spellcheck after no input (only one timer needed)
-    spellCheckInputTimer = setTimeout(async () => {
-        if (query === lastSpellCheckQuery && query.length >= 3) {
-            await triggerSpellCheck(query, target);
-        }
-    }, 500);
-}
 
-// Function to trigger spellcheck
-async function triggerSpellCheck(query, target) {
-    try {
-        // Only proceed if we have a valid query and target
-        if (!query || !target || query.length < 3) {
-            return;
-        }
-        
-        // Set timestamp for this spellcheck request (same pattern as search)
-        currentSpellCheckTimestamp = Date.now();
-        const requestTimestamp = currentSpellCheckTimestamp;
-        
-        // Check if query starts with "Text:" - if not, add it for spellcheck
-        const spellCheckQuery = query.startsWith('Text:') ? query : `Text:${query}`;
-        
-        // Initialize spellcheck service as searching
-        searchServices.set('spellcheck', 'searching');
-        updateSearchStatusDisplay();
-        
-        // Create a cancellable request
-        const requestPromise = new Promise(async (resolve, reject) => {
-            const cancelToken = { cancelled: false };
-            
-            // Store the cancellation function
-            currentSpellCheckRequest = {
-                cancel: () => {
-                    cancelToken.cancelled = true;
-                    reject(new Error('Request cancelled'));
-                }
-            };
-            
-            try {
-                // Send spellcheck request via WebSocket
-                if (window.wsClient && window.wsClient.isConnected()) {
-                    const responseData = await window.wsClient.searchCharacters(spellCheckQuery, manualModel.value);
-                    
-                    // Check if request was cancelled
-                    if (cancelToken.cancelled) {
-                        reject(new Error('Request cancelled'));
-                        return;
-                    }
-                    
-                    // Only process if this is still the latest spellcheck request
-                    if (requestTimestamp !== currentSpellCheckTimestamp) {
-                        reject(new Error('Request superseded by newer request'));
-                        return;
-                    }
-                    
-                    const spellCheckData = responseData.spellCheck || null;
-                    
-                    if (spellCheckData) {
-                        // Update persistent spellcheck data
-                        persistentSpellCheckData = spellCheckData;
-                        
-                        // Store spellcheck results in the unified system instead of sending separate WebSocket messages
-                        if (spellCheckData.hasErrors) {
-                            const spellCheckResult = {
-                                type: 'spellcheck',
-                                data: spellCheckData,
-                                serviceOrder: -2,
-                                resultOrder: 0,
-                                serviceName: 'spellcheck'
-                            };
-                            
-                            // Add to the unified results system
-                            searchResultsByService.set('spellcheck', [spellCheckResult]);
-                        }
-                        
-                        // Mark spellcheck service as completed or completed-none based on results
-                        if (spellCheckData.hasErrors && spellCheckData.misspelled && spellCheckData.misspelled.length > 0) {
-                            searchServices.set('spellcheck', 'completed');
-                        } else {
-                            searchServices.set('spellcheck', 'completed-noerrors');
-                        }
-                        updateSearchStatusDisplay();
-                        
-                        // Rebuild and display results to show spellcheck
-                        rebuildAndDisplayResults();
-                    }
-                    
-                    resolve(spellCheckData);
-                } else {
-                    reject(new Error('WebSocket not connected'));
-                }
-            } catch (wsError) {
-                console.error('WebSocket spellcheck failed:', wsError);
-                searchServices.set('spellcheck', 'error');
-                updateSearchStatusDisplay();
-                reject(wsError);
-            }
-        });
-        
-        // Wait for the request to complete
-        await requestPromise;
-        
-        // Clear the current request reference
-        currentSpellCheckRequest = null;
-        
-    } catch (error) {
-        // Only log errors that aren't cancellation
-        if (error.message !== 'Request cancelled') {
-            console.error('Spellcheck error:', error);
-            searchServices.set('spellcheck', 'error');
-            updateSearchStatusDisplay();
-        }
-        
-        // Clear the current request reference
-        currentSpellCheckRequest = null;
-    }
-}
 
 // Note: performSpellCheck function removed to prevent duplicate requests
 // All spellcheck functionality is now handled by triggerSpellCheck only
@@ -1972,6 +1810,7 @@ async function searchCharacters(query, target) {
         // Prevent duplicate searches for the same query
         if (currentSearchQuery === query && isSearching) {
             console.log(`🔄 Skipping duplicate search for query: "${query}"`);
+            console.log(`🔍 Current search state: query="${currentSearchQuery}", isSearching=${isSearching}`);
             return;
         }
         
@@ -1983,6 +1822,9 @@ async function searchCharacters(query, target) {
         
         // Update current search query
         currentSearchQuery = query;
+        
+        // Generate UUID for this search request
+        currentSearchRequestId = 'search_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         
         // Only clear results if this is a completely new search query
         // But don't clear searchServices - we want to preserve service status
@@ -2022,11 +1864,6 @@ async function searchCharacters(query, target) {
         persistentSpellCheckData = null;
         isAutocompleteVisible = false;
         
-        // Clear any existing spellcheck timers for new search
-        if (spellCheckInputTimer) {
-            clearTimeout(spellCheckInputTimer);
-            spellCheckInputTimer = null;
-        }
         
         // Set the current target for autocomplete
         currentCharacterAutocompleteTarget = target;
@@ -2051,12 +1888,11 @@ async function searchCharacters(query, target) {
         let spellCheckData = null;
 
         if (!isTextReplacementSearch && !isTextPrefixSearch) {
-            // Start frequent spellcheck for this query (separate from main search)
-            requestFrequentSpellCheck(query, target);
             
             // Mark services as searching for regular searches
             searchServices.set('characters', 'searching');
             searchServices.set('anime-local', 'searching');
+            searchServices.set('spellcheck', 'searching');
             
             // Mark the current model service as searching
             let currentModel = window.manualModel?.value || 'unknown';
@@ -2076,16 +1912,17 @@ async function searchCharacters(query, target) {
             if (window.wsClient && window.wsClient.isConnected()) {
                 try {
                     // Send ack-less search request (responses handled by global handler)
-                    await window.wsClient.searchCharacters(query, manualModel.value);
+                    await window.wsClient.searchCharacters(query, manualModel.value, { requestId: currentSearchRequestId });
                     
-                    // Note: Spellcheck is now handled separately by frequent requests
-                    // The backend will send status updates for characters, tags, and textReplacements
+                    // Note: Spellcheck is now handled server-side as an independent service
+                    // The backend will send status updates for characters, tags, textReplacements, and spellcheck
                     // Results will be processed by the global handleSearchResponse function
                 } catch (wsError) {
                     console.error('WebSocket search failed:', wsError);
                     // Mark services as error if search fails
                     searchServices.set('characters', 'error');
                     searchServices.set('anime-local', 'error');
+                    searchServices.set('spellcheck', 'error');
                     
                     // Mark the current model service as error
                     let currentModel = window.manualModel?.value || 'unknown';
@@ -2136,11 +1973,6 @@ async function searchCharacters(query, target) {
                     updateSearchStatusDisplay();
                 }
             }
-        }
-        
-        // Start frequent spellcheck for all non-Text: searches
-        if (!isTextPrefixSearch) {
-            requestFrequentSpellCheck(query, target);
         }
         
         // Note: Text replacements are now handled server-side via WebSocket
@@ -2461,8 +2293,6 @@ function createAutocompleteItem(result) {
 
             item.addEventListener('click', (e) => {
                 e.preventDefault();
-                // Fallback action - could be customized based on result type
-                console.log('Clicked unknown result type:', result);
             });
         }
     }
@@ -2574,7 +2404,6 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
         // Try to restore previous selection first
         if (lastSelectedItemData && lastSelectedItemType) {
             // Selection will be restored by rebuildAutocompleteDisplay, don't do it here
-            console.log('showCharacterAutocompleteSuggestions: Selection persistence active, skipping auto-selection');
         } else {
             // Fallback to first item if no previous selection
             selectedCharacterAutocompleteIndex = 0;
@@ -2754,7 +2583,6 @@ function restoreSelection(displayResults) {
             if (targetIndex >= 0) {
                 selectedCharacterAutocompleteIndex = targetIndex;
                 updateCharacterAutocompleteSelection();
-                console.log('Selection restored to relative position:', targetIndex);
             } else {
                 selectedCharacterAutocompleteIndex = 0;
                 updateCharacterAutocompleteSelection();
@@ -3697,6 +3525,15 @@ function showCharacterDetail(character) {
             characterAutocompleteOverlay.style.width = characterAutocompleteOverlay.style.width || '400px';
         }
 
+        // Select the first enhancer group automatically
+        setTimeout(() => {
+            const enhancerGroups = document.querySelectorAll('.character-detail-content .enhancer-group');
+            if (enhancerGroups.length > 0) {
+                selectedEnhancerGroupIndex = 0;
+                enhancerGroups[0].classList.add('selected');
+            }
+        }, 0);
+
         // The autocomplete overlay is already visible, so no need to show/hide anything
     } catch (error) {
         console.error('Error showing character detail:', error);
@@ -3952,10 +3789,23 @@ function handleCharacterDetailArrowKeys(key) {
     enhancerGroups.forEach(group => group.classList.remove('selected'));
 
     if (key === 'ArrowUp') {
-        selectedEnhancerGroupIndex = selectedEnhancerGroupIndex <= 0 ? enhancerGroups.length - 1 : selectedEnhancerGroupIndex - 1;
+        if (selectedEnhancerGroupIndex <= 0) {
+            // If at first item, go to last item
+            selectedEnhancerGroupIndex = enhancerGroups.length - 1;
+        } else {
+            selectedEnhancerGroupIndex = selectedEnhancerGroupIndex - 1;
+        }
     } else if (key === 'ArrowDown') {
-        selectedEnhancerGroupIndex = selectedEnhancerGroupIndex >= enhancerGroups.length - 1 ? 0 : selectedEnhancerGroupIndex + 1;
+        if (selectedEnhancerGroupIndex >= enhancerGroups.length - 1) {
+            // If at last item, go to first item
+            selectedEnhancerGroupIndex = 0;
+        } else {
+            selectedEnhancerGroupIndex = selectedEnhancerGroupIndex + 1;
+        }
     }
+    
+    // Ensure we don't go out of bounds
+    selectedEnhancerGroupIndex = Math.max(0, Math.min(selectedEnhancerGroupIndex, enhancerGroups.length - 1));
 
     // Add selection to current item
     if (selectedEnhancerGroupIndex >= 0 && selectedEnhancerGroupIndex < enhancerGroups.length) {
@@ -4024,14 +3874,6 @@ function hideCharacterAutocomplete() {
     serviceStatuses.clear();
     searchResultsByService.clear();
     currentSearchTimestamp = null;
-    currentSpellCheckTimestamp = null; // Clear spellcheck timestamp when hiding
-    window.currentSpellCheckData = null; // Clear spell check data when hiding
-    
-    // Clear spellcheck timers
-    if (spellCheckInputTimer) {
-        clearTimeout(spellCheckInputTimer);
-        spellCheckInputTimer = null;
-    }
     
     // Reset persistent state
     searchResultsByService.clear();
@@ -5089,55 +4931,12 @@ async function showAddToFavoritesDialog(selectedText) {
 async function detectIfTag(text) {
     // Clean the text
     const cleanText = text.trim();
-    
-    // Basic heuristics for tag detection
-    const tagPatterns = [
-        // Single words without spaces (most tags)
-        /^[a-zA-Z0-9_-]+$/,
-        // Character names (typically 1-3 words)
-        /^[a-zA-Z0-9_\s-]{1,50}$/,
-        // Common tag formats
-        /^\d+(boy|girl|man|woman)s?$/i,
-        /^(very\s+)?(short|long|medium)\s+(hair|skirt|dress|pants)$/i,
-        /^(red|blue|green|black|white|brown|blonde|pink|purple|yellow|orange)\s+(hair|eyes)$/i
-    ];
-    
-    // If it's very short (1-2 words), likely a tag
-    const wordCount = cleanText.split(/\s+/).length;
-    if (wordCount <= 2 && cleanText.length <= 30) {
-        return true;
-    }
-    
-    // Check against tag patterns
-    for (const pattern of tagPatterns) {
-        if (pattern.test(cleanText)) {
-            return true;
-        }
-    }
-    
-    // If it contains common text replacement indicators, it's not a tag
-    const textReplacementIndicators = [
-        ',', // Lists like "forest, nature, outdoors"
-        ':', // Ratios or descriptions
-        '!', // Existing replacement references
-        '\n', // Multi-line content
-        '(', ')', // Parenthetical content
-        '"', "'", // Quoted content
-    ];
-    
-    for (const indicator of textReplacementIndicators) {
-        if (cleanText.includes(indicator)) {
-            return false;
-        }
-    }
-    
-    // If it's longer than typical tag length, likely text replacement
-    if (cleanText.length > 50) {
-        return false;
-    }
-    
-    // Default to tag for ambiguous cases
-    return true;
+
+    // Check if it contains a comma delimiter and has at least 2 items
+    // If so, it's a text replacement (like "find,replacement")
+    // Otherwise, it's a tag
+    const parts = cleanText.split(',');
+    return parts.length < 2;
 }
 
 // Show simple confirmation dialog for tags

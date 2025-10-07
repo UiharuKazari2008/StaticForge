@@ -56,7 +56,7 @@ const {
     getChatMessageCount, 
     getLastChatMessage 
 } = require('./chatDatabase');
-const { createPersonaChatSession, establishPersona, continueConversation, getCharacterMemories: getGrokMemories, addCharacterMemory: addGrokMemory, getConversationSummary: getGrokSummary, updateConversationSummary: updateGrokSummary, callDirectorAIWithStructuredOutput, DirectorResponseSchema } = require('./aiServices/grokService');
+const { createPersonaChatSession, establishPersona, continueConversation, getCharacterMemories: getGrokMemories, addCharacterMemory: addGrokMemory, getConversationSummary: getGrokSummary, updateConversationSummary: updateGrokSummary, callDirectorAIWithStructuredOutput } = require('./aiServices/grokService');
 const { handleDirectorGetSessions, handleDirectorCreateSession, handleDirectorGetSession, handleDirectorDeleteSession, handleDirectorSendMessage, handleDirectorGetMessages, handleDirectorRollbackMessage } = require('./directorHandlers');
 const { createPersonaChatSession: createChatGPTSession, establishPersona: establishChatGPTPersona, continueConversation: continueChatGPTConversation, establishPersonaStreaming: establishChatGPTPersonaStreaming, continueConversationStreaming: continueChatGPTConversationStreaming, getCharacterMemories: getChatGPTMemories, addCharacterMemory: addChatGPTMemory, getConversationSummary: getChatGPTSummary, updateConversationSummary: updateChatGPTSummary } = require('./aiServices/chatgptService');
 const aiServiceManager = require('./aiServiceManager');
@@ -610,7 +610,7 @@ class WebSocketMessageHandlers {
             case 'generate_image':
                 await this.handleImageGeneration(ws, message, clientInfo, wsServer);
                 break;
-                
+
             case 'reroll_image':
                 await this.handleImageReroll(ws, message, clientInfo, wsServer);
                 break;
@@ -738,7 +738,7 @@ class WebSocketMessageHandlers {
 
     // Handle character search requests - Ack-less Latest Request Wins Pattern
     async handleCharacterSearch(ws, message, clientInfo, wsServer) {
-        const { query, model } = message;
+        const { query, model, requestId } = message;
         
         if (!query) {
             this.sendError(ws, 'Missing query parameter', 'search_characters');
@@ -750,17 +750,19 @@ class WebSocketMessageHandlers {
             this.sendToClient(ws, {
                 type: 'search_characters_response',
                 data: { results: [], spellCheck: null },
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                requestId: requestId
             });
             
-            // Perform search with latest-request-wins pattern (no request ID needed)
-            const result = await this.searchService.searchCharacters(query, model, ws, clientInfo.sessionId);
+            // Perform search with latest-request-wins pattern
+            const result = await this.searchService.searchCharacters(query, model, ws, clientInfo.sessionId, null, requestId);
             
             // Send final complete response (ack-less)
             this.sendToClient(ws, {
                 type: 'search_characters_complete',
                 data: result,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                requestId: requestId
             });
         } catch (error) {
             // Only log errors that aren't cancellation
@@ -863,9 +865,13 @@ class WebSocketMessageHandlers {
             
             currentPromptConfig.presets[presetName] = config;
 
-            fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
-
-            console.log(`💾 Saved new preset: ${presetName}`);
+            // Save using checkpoint system
+            const success = TextReplacements.savePromptConfig(currentPromptConfig);
+            if (success) {
+                console.log(`💾 Saved new preset: ${presetName}`);
+            } else {
+                throw new Error('Failed to save preset configuration');
+            }
 
             this.sendToClient(ws, {
                 type: 'save_preset_response',
@@ -1001,9 +1007,13 @@ class WebSocketMessageHandlers {
                 };
             }
 
-            fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
-
-            console.log(`💾 Updated preset: ${presetName} -> ${name} with UUID: ${uuid}`);
+            // Save using checkpoint system
+            const success = TextReplacements.savePromptConfig(currentPromptConfig);
+            if (success) {
+                console.log(`💾 Updated preset: ${presetName} -> ${name} with UUID: ${uuid}`);
+            } else {
+                throw new Error('Failed to update preset configuration');
+            }
 
             this.sendToClient(ws, {
                 type: 'update_preset_response',
@@ -1054,11 +1064,14 @@ class WebSocketMessageHandlers {
             
             // Update the preset with new UUID
             currentPromptConfig.presets[presetName].uuid = newUuid;
-            
-            // Save the updated config
-            fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
 
-            console.log(`🔄 Regenerated UUID for preset: ${presetName} -> ${newUuid}`);
+            // Save using checkpoint system
+            const success = TextReplacements.savePromptConfig(currentPromptConfig);
+            if (success) {
+                console.log(`🔄 Regenerated UUID for preset: ${presetName} -> ${newUuid}`);
+            } else {
+                throw new Error('Failed to save preset configuration');
+            }
 
             this.sendToClient(ws, {
                 type: 'regenerate_preset_uuid_response',
@@ -1106,9 +1119,14 @@ class WebSocketMessageHandlers {
 
             // Delete the preset
             delete currentPromptConfig.presets[presetName];
-            fs.writeFileSync('./prompt.config.json', JSON.stringify(currentPromptConfig, null, 2));
 
-            console.log(`🗑️ Deleted preset: ${presetName}`);
+            // Save using checkpoint system
+            const success = TextReplacements.savePromptConfig(currentPromptConfig);
+            if (success) {
+                console.log(`🗑️ Deleted preset: ${presetName}`);
+            } else {
+                throw new Error('Failed to save preset configuration');
+            }
 
             this.sendToClient(ws, {
                 type: 'delete_preset_response',
@@ -1165,7 +1183,7 @@ class WebSocketMessageHandlers {
                 presetName: presetName,
                 allow_paid: allow_paid
             }, clientInfo.userType, clientInfo.sessionId);
-            
+
             // Send generation response
             this.sendToClient(ws, {
                 type: 'generate_preset_response',
@@ -4075,8 +4093,15 @@ class WebSocketMessageHandlers {
             const filePath = path.join(uploadCacheDir, hash);
             fs.writeFileSync(filePath, imageBuffer);
             
-            // Handle preview - use existing temp preview if available, otherwise generate new one
-            generateMobilePreviews(filePath, hash);
+            // Handle preview - generate single cache preview for references
+            const previewPath = path.join(previewCacheDir, `${hash}.webp`);
+            if (!fs.existsSync(previewPath)) {
+                await sharp(imageBuffer)
+                    .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+                    .webp({ quality: 80 })
+                    .toFile(previewPath);
+                console.log(`📸 Generated cache preview: ${hash}.webp`);
+            }
             
             // Add to workspace cache files
             addToWorkspaceArray('cacheFiles', hash, workspaceId);
@@ -7862,14 +7887,21 @@ class WebSocketMessageHandlers {
             this.stopKeepAliveInterval(requestId);
 
             // Send success response with image data using _response pattern
+            const responseData = {
+                image: result.buffer.toString('base64'),
+                filename: result.filename,
+                seed: result.seed || null
+            };
+
+            // Include compiled prompt if it was processed
+            if (result.compiled_prompt) {
+                responseData.compiled_prompt = result.compiled_prompt;
+            }
+
             this.sendToClient(ws, {
                 type: 'image_generation_response',
                 requestId: requestId,
-                data: {
-                    image: result.buffer.toString('base64'),
-                    filename: result.filename,
-                    seed: result.seed || null
-                },
+                data: responseData,
                 timestamp: new Date().toISOString()
             });
 

@@ -38,7 +38,7 @@ function createShortcutsOverlay() {
                 </div>
                 <div class="shortcut-item">
                     <span class="shortcut-key">F4</span>
-                    <span class="shortcut-desc"><span>Quick Access</span><i class="fa fa-book-skull"></i></span>
+                    <span class="shortcut-desc"><span>Quick Access</span><i class="fa fa-book-font"></i></span>
                 </div>
                 <div class="divider"></div>
                 <div class="shortcut-item">
@@ -252,6 +252,21 @@ function handleKeyDown(event) {
                         }
                     }
                 });
+            }
+            break;
+        case 'ALT+F':
+            // Add selected text as favorite (tag or text replacement)
+            if (document.activeElement && (document.activeElement.type === 'textarea' ||
+                document.activeElement.classList.contains('prompt-textarea') ||
+                document.activeElement.classList.contains('character-prompt-textarea'))) {
+                const selectedText = getSelectedTextFromTextarea(document.activeElement);
+                if (selectedText && selectedText.trim()) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (window.showAddToFavoritesDialog) {
+                        window.showAddToFavoritesDialog(selectedText.trim());
+                    }
+                }
             }
             break;
             

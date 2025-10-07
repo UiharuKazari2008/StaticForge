@@ -57,6 +57,7 @@ function initializeTextReplacementManager() {
     const textReplacementManagerBtn = document.getElementById('textReplacementManagerBtn');
     const manualTextReplacementManagerBtn = document.getElementById('manualTextReplacementManagerBtn');
     const closeTextReplacementManagerBtn = document.getElementById('closeTextReplacementManagerBtn');
+    const toggleTextReplacementSearchBtn = document.getElementById('toggleTextReplacementSearchBtn');
     const textReplacementSearch = document.getElementById('textReplacementSearch');
     const textReplacementPrevBtn = document.getElementById('textReplacementPrevBtn');
     const textReplacementNextBtn = document.getElementById('textReplacementNextBtn');
@@ -72,6 +73,10 @@ function initializeTextReplacementManager() {
     
     if (closeTextReplacementManagerBtn) {
         closeTextReplacementManagerBtn.addEventListener('click', hideTextReplacementManager);
+    }
+    
+    if (toggleTextReplacementSearchBtn) {
+        toggleTextReplacementSearchBtn.addEventListener('click', toggleTextReplacementSearch);
     }
     
     if (textReplacementSearch) {
@@ -133,12 +138,6 @@ async function showTextReplacementManager() {
     await loadTextReplacements();
     renderTextReplacementList();
     openModal(modal);
-    
-    // Focus search input
-    const searchInput = document.getElementById('textReplacementSearch');
-    if (searchInput) {
-        searchInput.focus();
-    }
 }
 
 // Hide text replacement manager modal
@@ -154,7 +153,25 @@ function hideTextReplacementManager() {
     if (searchInput) {
         searchInput.value = '';
     }
+
+    const textReplacementSearchContainer = document.getElementById('textReplacementSearchContainer');
+    if (textReplacementSearchContainer) {
+        textReplacementSearchContainer.classList.add('hidden');
+    }
 }
+
+// Toggle text replacement search
+function toggleTextReplacementSearch() {
+    const toggleContainer = document.getElementById('textReplacementSearchContainer');
+    if (toggleContainer) {
+        toggleContainer.classList.toggle('hidden');
+        const searchInput = document.getElementById('textReplacementSearch');
+        if (searchInput) {
+            searchInput.focus();
+        }
+    }
+}
+
 
 // Load text replacements from server
 async function loadTextReplacements() {
@@ -298,7 +315,7 @@ function createTextReplacementItem(key, value, isArray, isModified, isNew) {
         <div class="text-replacement-header">
             <div class="text-replacement-name">!${key}</div>
             <div class="text-replacement-actions">
-                <div class="text-replacement-type ${isArray ? 'random' : ''}">${isArray ? '<span>Random</span><i class="fas fa-dice"></i>' : '<span>Expand</span><i class="fas fa-input-text"></i>'}</div>
+                <div class="text-replacement-type ${isArray ? 'random' : ''}">${isArray ? '<i class="fas fa-dice"></i>' : '<i class="fas fa-input-text"></i>'}</div>
                 <button type="button" class="btn-small btn-secondary edit-btn" onclick="toggleEditMode('${key}')" title="Edit">
                     <i class="fas fa-edit"></i>
                 </button>
@@ -456,7 +473,7 @@ function convertToEditMode(key) {
                             <i class="fas fa-scale-unbalanced-flip"></i>
                         </button>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                            <i class="fas fa-book-skull"></i>
+                            <i class="fas fa-book-font"></i>
                         </button>
                     </div>
                 </div>
@@ -1003,6 +1020,14 @@ function hideCreateTextReplacementModal() {
     if (modal) {
         closeModal(modal);
     }
+    const searchInput = document.getElementById('textReplacementSearch');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    const textReplacementSearchContainer = document.getElementById('textReplacementSearchContainer');
+    if (textReplacementSearchContainer) {
+        textReplacementSearchContainer.classList.add('hidden');
+    }
 }
 
 // Handle type selection change
@@ -1080,11 +1105,11 @@ function addCreateArrayItem() {
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
                             <i class="fas fa-scale-unbalanced-flip"></i>
                         </button>
+                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
+                            <i class="fas fa-book-font"></i>
+                        </button>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
                             <i class="fas fa-search"></i>
-                        </button>
-                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                            <i class="fas fa-book-skull"></i>
                         </button>
                     </div>
                     <!-- Search Mode Buttons (Hidden by default) -->

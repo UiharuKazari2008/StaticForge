@@ -1210,6 +1210,12 @@ function handleGlobalKeyboardNav(event) {
         return;
     }
     
+    // Don't handle navigation if we're in character detail view (enhancers list)
+    const characterDetailContent = document.querySelector('.character-detail-content');
+    if (characterDetailContent) {
+        return;
+    }
+    
     // Stop propagation to prevent conflicts
     const currentDropdown = dropdowns[currentActiveDropdown];
     if (!currentDropdown) return;

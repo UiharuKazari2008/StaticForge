@@ -2105,6 +2105,15 @@ function createReferenceBrowserContextMenuConfig() {
                             const cacheImage = getReferenceBrowserImageFromElement(target);
                             menuItem.disabled = !cacheImage;
                         }
+                    },
+                    {
+                        icon: 'fas fa-external-link-alt',
+                        tooltip: 'Open in Window',
+                        action: 'reference-browser-open-in-window',
+                        loadfn: (menuItem, target) => {
+                            const cacheImage = getReferenceBrowserImageFromElement(target);
+                            menuItem.disabled = !cacheImage;
+                        }
                     }
                 ]
             },
@@ -2794,6 +2803,15 @@ function handleReferenceBrowserContextMenuAction(event) {
             break;
         case 'reference-browser-cancel':
             hideCacheBrowser();
+            break;
+
+        case 'reference-browser-open-in-window':
+            // Open image in a new image viewer window with full cache image data
+            const viewer = openReferenceImageInViewer(cacheImage);
+            if (viewer && viewer.element) {
+                // Store the full cache image data in the modal's dataset for future features
+                viewer.element.dataset.cacheImageData = JSON.stringify(cacheImage);
+            }
             break;
     }
 }
